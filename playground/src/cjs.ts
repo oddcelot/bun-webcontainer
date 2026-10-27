@@ -1,7 +1,7 @@
 // CommonJS → ESM for modules served from /__vfs/. `require("x")` with a literal specifier becomes a hoisted
 // static import, so dependencies load before the body runs; anything else throws at call time.
 
-const ESM_SYNTAX = /(^|[\n;])\s*(import\s*[\w{*'"]|export\s+[\w{*]|export\s+default\b)/;
+const ESM_SYNTAX = /(^|[\n;])\s*(import\s*[\w{*'"]|export\s*[{*]|export\s+\w)/;
 const REQUIRE = /\brequire\s*\(\s*(["'])([^"'\n]+)\1\s*\)/g;
 
 /** Whole-line comments (`// x`, ` * x`), so `require()` in doc comments isn't hoisted into an import (and a cycle). */

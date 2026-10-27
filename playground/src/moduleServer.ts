@@ -163,7 +163,9 @@ function hoistMetaRequire(vfs: VFS, code: string, dir: string): string {
 ${code.replace(/\bimport\.meta\.require\b/g, "__metaRequire")}`;
 }
 
-const SPEC_RE = /(\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)(["'])([^"'\n]+)\2/g;
+// The keywords may touch a quote in minified code (`import"lit"`, `export*from"x"`), so a keyword counts only at the
+// start or after whitespace, punctuation or an operator: not inside strings like `"@import"` or `"extensionless-import"`.
+const SPEC_RE = /((?<=^|[\s;{}()[\],=?!&|+*<>~^%])(?:from\s*|import\s*\(\s*|import\s*))(["'])([^"'\n]+)\2/g;
 
 function rewriteImports(vfs: VFS, code: string, dir: string): string {
   return code.replace(SPEC_RE, (m, pre: string, q: string, spec: string) => {
