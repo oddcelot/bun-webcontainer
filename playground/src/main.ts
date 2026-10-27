@@ -12,7 +12,8 @@ import { VFS } from "./vfs";
 
 if (!supportsMemory64()) {
   showUnsupported();
-  throw new Error("WebAssembly Memory64 is not supported in this browser");
+  // Stop here without an error: nothing below can work, and the page already explains why.
+  await new Promise<never>(() => {});
 }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
