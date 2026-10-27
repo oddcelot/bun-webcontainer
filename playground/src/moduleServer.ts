@@ -1,6 +1,8 @@
 import { isCommonJS, wrapCommonJS } from "./cjs";
 import { transpile } from "./transpiler";
 import { dirname, norm, type VFS } from "./vfs";
+import hostNames, { version as hostVersion } from "virtual:host-package-names";
+import { builtins, exportNames } from "./worker/node";
 
 export type ModuleResponse = { status: number; body: string };
 
@@ -33,10 +35,25 @@ function pickTarget(t: unknown): string | null {
   return null;
 }
 
+/** An `exports`/`imports` map entry for `key`: exact, else the longest `prefix*suffix` pattern. */
+function lookup(map: Record<string, unknown>, key: string): string | null {
+  if (key in map) return pickTarget(map[key]);
+  let best: string | undefined;
+  for (const k of Object.keys(map)) {
+    const i = k.indexOf("*");
+    if (i < 0 || !key.startsWith(k.slice(0, i)) || !key.endsWith(k.slice(i + 1)) || key.length < k.length - 1) continue;
+    if (best === undefined || i > best.indexOf("*")) best = k;
+  }
+  if (best === undefined) return null;
+  const i = best.indexOf("*");
+  const t = pickTarget(map[best]);
+  return t && t.replaceAll("*", key.slice(i, key.length - (best.length - i - 1)));
+}
+
 function pickExport(exports: unknown, sub: string): string | null {
   const isMap = exports && typeof exports === "object" && !Array.isArray(exports) && Object.keys(exports).some((k) => k.startsWith("."));
   if (!isMap) return sub === "." ? pickTarget(exports) : null;
-  return pickTarget((exports as Record<string, unknown>)[sub]);
+  return lookup(exports as Record<string, unknown>, sub);
 }
 
 /** `"type"` of the nearest package.json above `path`. */
@@ -66,6 +83,21 @@ function findPackage(vfs: VFS, name: string, fromDir: string): string | null {
   }
 }
 
+/** `#name` specifiers: the nearest package.json's `imports` field. */
+function resolveImports(vfs: VFS, spec: string, fromDir: string): string | null {
+  for (let dir = fromDir; ; dir = dirname(dir)) {
+    const text = vfs.readText(dir ? `${dir}/package.json` : "package.json");
+    if (text !== undefined) {
+      const imports = (JSON.parse(text) as { imports?: Record<string, unknown> }).imports;
+      if (!imports) return null;
+      const t = lookup(imports, spec);
+      if (!t) return null;
+      return t.startsWith(".") ? resolveFile(vfs, norm(`${dir}/${t}`)) : resolveBare(vfs, t, dir);
+    }
+    if (!dir) return null;
+  }
+}
+
 function resolveBare(vfs: VFS, spec: string, fromDir: string): string | null {
   const parts = spec.split("/");
   const name = spec.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0];
@@ -83,22 +115,168 @@ function resolveBare(vfs: VFS, spec: string, fromDir: string): string | null {
   return resolveFile(vfs, norm(`${base}/${entry}`));
 }
 
+let warned = false;
+/** Warn once if the user's installed rolldown differs from the host's @rolldown/browser. */
+function checkHostVersion(vfs: VFS) {
+  if (warned) return;
+  warned = true;
+  const text = vfs.readText("node_modules/rolldown/package.json");
+  const v = text && (JSON.parse(text) as { version?: string }).version;
+  if (v && v !== hostVersion) console.warn(`rolldown ${v} is installed, but the playground supplies @rolldown/browser ${hostVersion}`);
+}
+
+const CREATE_REQUIRE = /\bcreateRequire\(import\.meta\.url\)/g;
+
+/**
+ * Bundles like Vite's call `__require("x")` on a `createRequire(import.meta.url)`. Literal `__require` specifiers that
+ * resolve become static imports, and the created require serves them (as wrapped CommonJS does); others fall through.
+ */
+function hoistRequires(vfs: VFS, code: string, dir: string): string {
+  if (!code.includes("createRequire(import.meta.url)")) return code;
+  const specs = [...new Set([...code.matchAll(/\b__require\(\s*"([^"\n]+)"\s*\)/g)].map((m) => m[1]))].filter((s) => !s.startsWith(".") && !(s.replace(/^node:/, "") in builtins) && resolveBare(vfs, s, dir));
+  if (!specs.length) return code;
+  const imports = specs.map((s, i) => `import * as __h${i} from ${JSON.stringify(s)};`).join("");
+  const table = specs.map((s, i) => `${JSON.stringify(s)}: __h${i}`).join(", ");
+  return `${imports}const __hoisted = { ${table} };
+const __withHoisted = (r) => Object.assign((id) => (id in __hoisted ? ("__cjs" in __hoisted[id] ? __hoisted[id].__cjs : __hoisted[id]) : r(id)), r);
+${code.replace(CREATE_REQUIRE, "__withHoisted($&)")}`;
+}
+
+/**
+ * Bun has a synchronous `import.meta.require` (Vite uses it for `ws`). Literal specifiers that resolve become static
+ * imports; Node built-ins and `bun:<spec>` fallbacks come from the registry; anything else throws when called.
+ */
+function hoistMetaRequire(vfs: VFS, code: string, dir: string): string {
+  if (!code.includes("import.meta.require")) return code;
+  const lits = [...new Set([...code.matchAll(/\bimport\.meta\.require\(\s*"([^"\n]+)"\s*\)/g)].map((m) => m[1]))];
+  const specs = lits.filter((s) => !(s.replace(/^node:/, "") in builtins) && (s.startsWith(".") ? resolveFile(vfs, norm(`${dir}/${s}`)) : resolveBare(vfs, s, dir)));
+  const imports = specs.map((s, i) => `import * as __mr${i} from ${JSON.stringify(s)};`).join("");
+  const table = specs.map((s, i) => `${JSON.stringify(s)}: __mr${i}`).join(", ");
+  return `${imports}const __metaRequire = ((t, b) => (id) => {
+  const n = String(id).replace(/^node:/, "");
+  if (n in b) return b[n];
+  if (id in t) return "__cjs" in t[id] ? t[id].__cjs : t[id];
+  if ("bun:" + id in b) return b["bun:" + id];
+  throw new Error("import.meta.require: cannot require " + JSON.stringify(id) + " (only literal specifiers of installed packages or built-ins are supported)");
+})({ ${table} }, globalThis.__nodeBuiltins);
+${code.replace(/\bimport\.meta\.require\b/g, "__metaRequire")}`;
+}
+
 const SPEC_RE = /(\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)(["'])([^"'\n]+)\2/g;
 
 function rewriteImports(vfs: VFS, code: string, dir: string): string {
   return code.replace(SPEC_RE, (m, pre: string, q: string, spec: string) => {
-    if (/^(node:|https?:|data:|blob:|\/__vfs\/)/.test(spec)) return m;
-    const target = spec.startsWith(".")
-      ? resolveFile(vfs, norm(`${dir}/${spec}`))
-      : spec.startsWith("/")
-        ? resolveFile(vfs, norm(spec))
-        : resolveBare(vfs, spec, dir);
+    if (/^(https?:|data:|blob:|\/__vfs\/)/.test(spec)) return m;
+    const builtin = spec.replace(/^node:/, "");
+    if (spec in hostNames) {
+      checkHostVersion(vfs);
+      return `${pre}${q}/__vfs/__host/${spec}${q}`;
+    }
+    const target =
+      spec.startsWith("node:") || builtin in builtins
+        ? builtin in builtins
+          ? `__node/${builtin}`
+          : null
+        : spec.startsWith(".")
+          ? resolveFile(vfs, norm(`${dir}/${spec}`))
+          : spec.startsWith("/")
+            ? resolveFile(vfs, norm(spec))
+            : spec.startsWith("#")
+              ? resolveImports(vfs, spec, dir)
+              : resolveBare(vfs, spec, dir);
     return `${pre}${q}/__vfs/${target ?? `__unresolved__/${encodeURIComponent(spec)}`}${q}`;
   });
 }
 
+const REGEX_AFTER = /(?:^|[^\w$.])(?:return|typeof|case|in|of|delete|void|throw|new|else|do|yield|await)$/;
+const META_RE = /^import\.meta\.(url|dirname|filename)\b/;
+
+/** `import.meta.url` & co. point at a `file:` URL of the module's VFS path, as Node and Bun have them. Only code is touched, not strings, templates, comments or regex literals. */
+function rewriteMeta(code: string, path: string): string {
+  const value = { url: `file:///${path}`, dirname: "/" + dirname(path), filename: "/" + path };
+  const n = code.length;
+  const stack: number[] = []; // brace depths at which an open template literal resumes
+  let depth = 0;
+  let out = "";
+  let last = 0;
+  let i = 0;
+  let prev = ""; // last significant code character
+  const template = () => {
+    for (; i < n; i++) {
+      if (code[i] === "\\") i++;
+      else if (code[i] === "`") return void i++;
+      else if (code[i] === "$" && code[i + 1] === "{") {
+        stack.push(depth++);
+        return void (i += 2);
+      }
+    }
+  };
+  while (i < n) {
+    const c = code[i];
+    if (c === "/" && code[i + 1] === "/") i = code.indexOf("\n", i) < 0 ? n : code.indexOf("\n", i);
+    else if (c === "/" && code[i + 1] === "*") i = code.indexOf("*/", i + 2) < 0 ? n : code.indexOf("*/", i + 2) + 2;
+    else if (c === '"' || c === "'") {
+      for (i++; i < n && code[i] !== c; i += code[i] === "\\" ? 2 : 1);
+      i++;
+      prev = c;
+    } else if (c === "`") {
+      i++;
+      template();
+      prev = "`";
+    } else if (c === "/" && (!prev || !/[\w$)\]}"'`]/.test(prev) || REGEX_AFTER.test(code.slice(Math.max(0, i - 12), i).trimEnd()))) {
+      for (i++; i < n && code[i] !== "/" && code[i] !== "\n"; i += code[i] === "\\" ? 2 : 1) if (code[i] === "[") for (i++; i < n && code[i] !== "]" && code[i] !== "\n"; i += code[i] === "\\" ? 2 : 1);
+      i++;
+      prev = "/";
+    } else {
+      if (c === "i" && !/[\w$.]/.test(prev) && code.startsWith("import.meta.", i)) {
+        const m = META_RE.exec(code.slice(i, i + 24));
+        if (m) {
+          out += code.slice(last, i) + JSON.stringify(value[m[1] as keyof typeof value]);
+          i += m[0].length;
+          last = i;
+          prev = '"';
+          continue;
+        }
+      }
+      if (c === "{") depth++;
+      else if (c === "}") {
+        depth--;
+        if (stack.length && stack[stack.length - 1] === depth) {
+          stack.pop();
+          i++;
+          template();
+          prev = "`";
+          continue;
+        }
+      }
+      if (!/\s/.test(c)) prev = c;
+      i++;
+    }
+  }
+  return out + code.slice(last);
+}
+
+/** The module for a Node built-in: the worker registers the real object as `globalThis.__nodeBuiltins`. */
+function builtinModule(name: string): string {
+  const names = exportNames(name);
+  return `const m = globalThis.__nodeBuiltins[${JSON.stringify(name)}];
+export default m;
+export const __cjs = m;
+${names.length ? `export const { ${names.join(", ")} } = m;` : ""}`;
+}
+
+/** The module for a host package: the worker loads it on demand as `globalThis.__hostPackage(spec)`. */
+function hostModule(spec: string): string {
+  const names = hostNames[spec].filter((k) => k !== "default" && /^[A-Za-z_$][\w$]*$/.test(k));
+  return `const __m = await globalThis.__hostPackage(${JSON.stringify(spec)});
+export default ${hostNames[spec].includes("default") ? "__m.default" : "__m"};
+${names.length ? `export const { ${names.join(", ")} } = __m;` : ""}`;
+}
+
 export async function serveModule(vfs: VFS, rawPath: string, onError: (msg: string) => void): Promise<ModuleResponse> {
   const path = norm(rawPath);
+  if (path.startsWith("__node/")) return { status: 200, body: builtinModule(path.slice(7)) };
+  if (path.startsWith("__host/")) return { status: 200, body: hostModule(path.slice(7)) };
   if (path.startsWith("__unresolved__/")) {
     const msg = `cannot resolve "${decodeURIComponent(path.slice(15))}"`;
     onError(msg);
@@ -117,7 +295,7 @@ export async function serveModule(vfs: VFS, rawPath: string, onError: (msg: stri
     else if (/\.(ts|tsx|jsx)$/.test(path)) code = await transpile(src, path);
     else if (isCommonJS(path, src, packageType(vfs, path))) code = wrapCommonJS(path, src);
     else code = src;
-    return { status: 200, body: rewriteImports(vfs, code, dirname(path)) };
+    return { status: 200, body: rewriteImports(vfs, rewriteMeta(hoistMetaRequire(vfs, hoistRequires(vfs, code, dirname(path)), dirname(path)), path), dirname(path)) };
   } catch (e) {
     const msg = `${path}: ${e instanceof Error ? e.message : String(e)}`;
     onError(msg);

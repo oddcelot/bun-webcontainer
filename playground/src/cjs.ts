@@ -4,6 +4,9 @@
 const ESM_SYNTAX = /(^|[\n;])\s*(import\s*[\w{*'"]|export\s+[\w{*]|export\s+default\b)/;
 const REQUIRE = /\brequire\s*\(\s*(["'])([^"'\n]+)\1\s*\)/g;
 
+/** Whole-line comments (`// x`, ` * x`), so `require()` in doc comments isn't hoisted into an import (and a cycle). */
+const COMMENT_LINE = /^[ \t]*(?:\/\/|\/\*|\*).*$/gm;
+
 /** A `.cjs` file, or a `.js` file with no ESM syntax in a package that isn't `"type": "module"`. */
 export function isCommonJS(path: string, source: string, packageType: string | undefined): boolean {
   if (path.endsWith(".cjs")) return true;
@@ -24,7 +27,7 @@ function exportNames(source: string): string[] {
 }
 
 export function wrapCommonJS(path: string, source: string): string {
-  const specs = [...new Set([...source.matchAll(REQUIRE)].map((m) => m[2]))];
+  const specs = [...new Set([...source.replace(COMMENT_LINE, "").matchAll(REQUIRE)].map((m) => m[2]))];
   const imports = specs.map((s, i) => `import * as __req${i} from ${JSON.stringify(s)};`).join("\n");
   const table = specs.map((s, i) => `${JSON.stringify(s)}: __req${i}`).join(", ");
   const names = exportNames(source);

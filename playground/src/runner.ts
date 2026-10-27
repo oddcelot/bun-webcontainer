@@ -49,17 +49,12 @@ export class Runner {
         else if (m.type === "ready") {
           clearTimeout(timer);
           resolve();
-        } else if (m.type === "rpc") {
-          try {
-            let value: unknown;
-            if (m.op === "read") value = this.vfs.read(m.args[0]);
-            else if (m.op === "exists") value = this.vfs.exists(m.args[0]);
-            else if (m.op === "write") this.vfs.write(m.args[0], m.args[1]);
-            else throw new Error(`unknown rpc ${m.op}`);
-            worker.postMessage({ type: "rpcResult", id: m.id, ok: true, value });
-          } catch (err) {
-            worker.postMessage({ type: "rpcResult", id: m.id, ok: false, error: String(err) });
-          }
+        } else if (m.type === "vfs") {
+          const [a, b] = m.args;
+          if (m.op === "write") this.vfs.write(a, b);
+          else if (m.op === "mkdir") this.vfs.mkdir(a);
+          else if (m.op === "remove") this.vfs.remove(a);
+          else if (m.op === "rename") this.vfs.rename(a, b);
         }
       };
       worker.onerror = (e) => {
@@ -68,7 +63,7 @@ export class Runner {
         resolve();
       };
     });
-    worker.postMessage({ type: "start", entry });
+    worker.postMessage({ type: "start", entry, files: this.vfs.files, dirs: this.vfs.dirs });
     return this.ready;
   }
 }
