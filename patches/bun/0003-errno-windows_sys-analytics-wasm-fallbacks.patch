@@ -1,0 +1,79 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Stefan Kopco <hey@oddcelot.dev>
+Date: Tue, 27 Oct 2026 22:15:37 +0100
+Subject: [PATCH] errno, windows_sys, analytics: wasm fallbacks
+
+Linux errno numbering on wasm; teb()/peb() are unimplemented on other architectures; the analytics platform reports Linux.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/analytics/lib.rs       | 7 +++++++
+ src/errno/lib.rs           | 6 +++---
+ src/windows_sys/externs.rs | 4 ++++
+ 3 files changed, 14 insertions(+), 3 deletions(-)
+
+diff --git a/src/analytics/lib.rs b/src/analytics/lib.rs
+index 444c4faa..e1ebb85c 100644
+--- a/src/analytics/lib.rs
++++ b/src/analytics/lib.rs
+@@ -433,6 +433,13 @@ pub mod generate_header {
+                         version: &[],
+                     };
+                 }
++                #[cfg(target_family = "wasm")] // wasm-experiment: reported as Linux
++                {
++                    return Platform {
++                        os: OperatingSystem::Linux,
++                        version: &[],
++                    };
++                }
+             })
+         }
+ 
+diff --git a/src/errno/lib.rs b/src/errno/lib.rs
+index e0fb9698..a4b92f10 100644
+--- a/src/errno/lib.rs
++++ b/src/errno/lib.rs
+@@ -186,9 +186,9 @@ pub use freebsd_errno::*;
+ // Android shares the Linux kernel errno space (bionic copies <asm/errno.h>),
+ // so it uses the same per-errno enum. Rust splits `target_os` into
+ // `linux`/`android`, so list both.
+-#[cfg(any(target_os = "linux", target_os = "android"))]
++#[cfg(any(target_os = "linux", target_os = "android", target_family = "wasm"))] // wasm-experiment: Linux numbering
+ pub mod linux_errno;
+-#[cfg(any(target_os = "linux", target_os = "android"))]
++#[cfg(any(target_os = "linux", target_os = "android", target_family = "wasm"))]
+ pub use linux_errno::*;
+ #[cfg(windows)]
+ pub mod windows_errno;
+@@ -207,7 +207,7 @@ pub use windows_errno::{posix, *};
+ #[allow(non_camel_case_types)]
+ pub mod posix {
+     /// glibc/musl/bionic `mode_t` == `unsigned int`.
+-    #[cfg(any(target_os = "linux", target_os = "android"))]
++    #[cfg(any(target_os = "linux", target_os = "android", target_family = "wasm"))]
+     pub type mode_t = u32;
+     /// Darwin/FreeBSD `mode_t` == `__uint16_t` in `<sys/types.h>`.
+     #[cfg(any(target_os = "macos", target_os = "freebsd"))]
+diff --git a/src/windows_sys/externs.rs b/src/windows_sys/externs.rs
+index b4e9db24..dbe08e24 100644
+--- a/src/windows_sys/externs.rs
++++ b/src/windows_sys/externs.rs
+@@ -1692,6 +1692,8 @@ pub fn teb() -> *mut TEB {
+         core::arch::asm!("mov {}, x18", out(reg) p, options(nostack, pure, readonly));
+         p
+     }
++    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))] // wasm-experiment
++    unimplemented!()
+ }
+ 
+ /// Reads the PEB pointer — `gs:[0x60]` (x64) / `TEB+0x60` (ARM64).
+@@ -1720,6 +1722,8 @@ pub fn peb() -> *const PEB {
+             .cast::<core::ffi::c_void>()
+             .cast::<*const PEB>()
+     }
++    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))] // wasm-experiment
++    unimplemented!()
+ }
+ 
+ // ── Console ctrl-handler dwCtrlType values (`wincon.h`) ───────────────────

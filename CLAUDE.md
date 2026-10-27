@@ -61,7 +61,8 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 ## Build & Test
 
 ```bash
-scripts/setup-bun.sh                       # recreate bun/ (pinned commit + bun-wasm.patch); bun/ is not tracked
+scripts/setup-bun.sh                       # recreate bun/ (pinned commit + patches/bun/ via git am); bun/ is not tracked
+scripts/export-bun-patches.sh              # after committing in bun/ on wasm-experiment
 scripts/w64.sh <crate>...                  # wasm64 compile check of bun crates
 W="-Zbuild-std=std,panic_abort --target wasm64-unknown-unknown --release"
 (cd semver-wasm && cargo build $W && node test.mjs && node diff.mjs)
@@ -80,8 +81,11 @@ playground runs user code in the browser engine with JS shims for `Bun.*`, a VFS
 
 ## Conventions & Patterns
 
-- Changes to Bun live only in `bun-wasm.patch`: cfg-gated (`target_family = "wasm"`), marked
-  `// wasm-experiment`, native builds unchanged. Regenerate the patch from `bun/` after editing it.
+- Changes to Bun: commit them in `bun/` on the `wasm-experiment` branch (one logical change per
+  commit, subject `crate: what`), then run `scripts/export-bun-patches.sh` and commit `patches/bun/`.
+  The pre-commit hook (`scripts/check-bun-patches.sh`) blocks commits while `bun/src` is dirty or
+  unexported. Every change is cfg-gated (`target_family = "wasm"`), marked `// wasm-experiment`,
+  and leaves native builds unchanged.
 - Don't touch `*_jsc` crates.
 - C/C++ symbol stand-ins belong in the wrapper crates (`transpile-wasm/src/native.rs`), not in bun.
 - Stop the playground dev server by port (`kill $(lsof -tiTCP:5173 -sTCP:LISTEN)`), never `pkill vite`.

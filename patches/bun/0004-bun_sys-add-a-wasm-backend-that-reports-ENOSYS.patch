@@ -1,0 +1,1045 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Stefan Kopco <hey@oddcelot.dev>
+Date: Tue, 27 Oct 2026 22:15:37 +0100
+Subject: [PATCH] bun_sys: add a wasm backend that reports ENOSYS
+
+wasm_impl.rs is a third syscall backend next to posix_impl and windows_impl; every operation returns ENOSYS until it is wired to a host filesystem. wasm_libc.rs supplies the Linux-valued types and constants bun_sys names through libc::.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/sys/PosixStat.rs       |   8 +-
+ src/sys/copy_file.rs       |   4 +-
+ src/sys/dir.rs             |   2 +-
+ src/sys/fd.rs              |   4 +
+ src/sys/lib.rs             | 156 +++++++++++++++-----
+ src/sys/libuv_error_map.rs |   2 +-
+ src/sys/wasm_impl.rs       | 291 +++++++++++++++++++++++++++++++++++++
+ src/sys/wasm_libc.rs       | 115 +++++++++++++++
+ 8 files changed, 537 insertions(+), 45 deletions(-)
+ create mode 100644 src/sys/wasm_impl.rs
+ create mode 100644 src/sys/wasm_libc.rs
+
+diff --git a/src/sys/PosixStat.rs b/src/sys/PosixStat.rs
+index a5610ec3..a6d473a1 100644
+--- a/src/sys/PosixStat.rs
++++ b/src/sys/PosixStat.rs
+@@ -73,7 +73,7 @@ fn to_u64<T: to_u64_impl::ToU64>(value: T) -> u64 {
+ // `unix` targets.
+ #[inline]
+ pub fn stat_atime(s: &Stat) -> Timespec {
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     {
+         Timespec {
+             sec: s.st_atime,
+@@ -90,7 +90,7 @@ pub fn stat_atime(s: &Stat) -> Timespec {
+ }
+ #[inline]
+ pub fn stat_mtime(s: &Stat) -> Timespec {
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     {
+         Timespec {
+             sec: s.st_mtime,
+@@ -107,7 +107,7 @@ pub fn stat_mtime(s: &Stat) -> Timespec {
+ }
+ #[inline]
+ pub fn stat_ctime(s: &Stat) -> Timespec {
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     {
+         Timespec {
+             sec: s.st_ctime,
+@@ -171,7 +171,7 @@ impl PosixStat {
+         let ctime_val = stat_ctime(stat_);
+         let birthtime_val = stat_birthtime(stat_);
+ 
+-        #[cfg(unix)]
++        #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+         {
+             PosixStat {
+                 dev: to_u64(stat_.st_dev),
+diff --git a/src/sys/copy_file.rs b/src/sys/copy_file.rs
+index 1bc5b8cf..fa4182ab 100644
+--- a/src/sys/copy_file.rs
++++ b/src/sys/copy_file.rs
+@@ -4,11 +4,11 @@
+ 
+ use core::sync::atomic::{AtomicI32, Ordering};
+ 
+-#[cfg(not(windows))]
++#[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment
+ use crate::E;
+ #[cfg(not(windows))]
+ use crate::Fd;
+-#[cfg(not(any(target_os = "linux", target_os = "android")))]
++#[cfg(not(any(target_os = "linux", target_os = "android", target_family = "wasm")))] // wasm-experiment
+ use crate::Tag;
+ #[cfg(not(windows))]
+ use bun_core::vec::UninitBuf;
+diff --git a/src/sys/dir.rs b/src/sys/dir.rs
+index 7f2d9cdc..fa8f37a8 100644
+--- a/src/sys/dir.rs
++++ b/src/sys/dir.rs
+@@ -302,7 +302,7 @@ impl Dir {
+     }
+ }
+ 
+-#[cfg(unix)]
++#[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+ pub const AT_REMOVEDIR: i32 = libc::AT_REMOVEDIR;
+ #[cfg(windows)]
+ pub const AT_REMOVEDIR: i32 = 0x200;
+diff --git a/src/sys/fd.rs b/src/sys/fd.rs
+index add0523b..38bd831d 100644
+--- a/src/sys/fd.rs
++++ b/src/sys/fd.rs
+@@ -117,6 +117,10 @@ impl FdExt for Fd {
+                     _ => None,
+                 }
+             }
++            #[cfg(target_family = "wasm")] // wasm-experiment
++            {
++                None
++            }
+             #[cfg(target_os = "freebsd")]
+             {
+                 debug_assert!(self.native() >= 0);
+diff --git a/src/sys/lib.rs b/src/sys/lib.rs
+index 9524cfbd..d5f5db09 100644
+--- a/src/sys/lib.rs
++++ b/src/sys/lib.rs
+@@ -15,6 +15,9 @@
+ pub extern crate bun_core as bun_str;
+ #[cfg(windows)]
+ pub extern crate bun_libuv_sys;
++#[cfg(target_family = "wasm")] // wasm-experiment
++#[path = "wasm_libc.rs"]
++mod libc;
+ pub mod fd;
+ pub use fd::{ErrorCase, FdExt, MakeLibUvOwnedError, RawFd};
+ #[path = "Error.rs"]
+@@ -169,6 +172,7 @@ pub mod dir_iterator {
+     use super::{EntryKind, Fd, Result, Tag};
+     use bun_paths::OSPathChar;
+ 
++    #[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+     const BUF_SIZE: usize = 8192;
+ 
+     /// Native-encoding directory entry returned by `WrappedIterator::next()`.
+@@ -240,6 +244,7 @@ pub mod dir_iterator {
+     }
+     impl Name {
+         #[cfg(not(windows))]
++        #[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+         #[inline]
+         fn borrow(s: &[u8]) -> Name {
+             // SAFETY: `s` is a `dirent::Entry` name, so the byte after it is its NUL,
+@@ -307,7 +312,9 @@ pub mod dir_iterator {
+     // `State` so the per-dir heap allocation is gone too. The kernel fills
+     // `[0..rc]` before we read; we never index past `end_index`.
+     #[repr(C, align(8))]
++    #[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+     struct AlignedBuf(core::mem::MaybeUninit<[u8; BUF_SIZE]>);
++    #[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+     impl AlignedBuf {
+         #[inline(always)]
+         const fn uninit() -> Self {
+@@ -502,6 +509,20 @@ pub mod dir_iterator {
+         }
+     }
+ 
++    // ── wasm ─────────────────────────────────────────────────────────────
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    struct State;
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    impl State {
++        #[inline]
++        fn new() -> State {
++            State
++        }
++        fn next(&mut self, _dir: Fd) -> Result<Option<IteratorResult>> {
++            Err(Error::from_code(super::E::ENOSYS, Tag::getdents64))
++        }
++    }
++
+     // ── FreeBSD ──────────────────────────────────────────────────────────
+     #[cfg(target_os = "freebsd")]
+     struct State {
+@@ -846,6 +867,11 @@ pub fn lstatat(fd: impl AsFd, path: &ZStr) -> Result<Stat> {
+         linux_syscall::fstatat(dirfd, path, libc::AT_SYMLINK_NOFOLLOW)
+             .map_err(|e| Error::from_code_int(e, Tag::fstatat).with_path(path.as_bytes()))
+     }
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    {
++        let _ = (fd, path);
++        Err(Error::from_code(E::ENOSYS, Tag::fstatat))
++    }
+     #[cfg(all(unix, not(any(target_os = "linux", target_os = "android"))))]
+     {
+         let mut st = core::mem::MaybeUninit::<libc::stat>::uninit();
+@@ -915,7 +941,7 @@ pub use tmp::Tmpfile;
+ // `#[cfg(windows)]` arms in dependents.
+ pub mod windows;
+ 
+-#[cfg(not(windows))]
++#[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment
+ use core::ffi::c_int;
+ use core::ffi::{c_char, c_void};
+ 
+@@ -983,7 +1009,7 @@ pub(crate) extern "C" fn Bun__errnoName(err: core::ffi::c_int) -> *const core::f
+     // `SystemErrno::init` has a per-target signature: `i64` on every POSIX
+     // target (Linux/Darwin/FreeBSD), generic `SystemErrnoInit` on Windows.
+     // Feed it the widest signed int and let each impl narrow.
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     let code = err as i64;
+     #[cfg(windows)]
+     let code = err;
+@@ -1123,6 +1149,8 @@ pub mod syscall {
+ // `bun.O` — open flags. cfg-per-platform; values match libc.
+ // ──────────────────────────────────────────────────────────────────────────
+ pub mod O {
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    use crate::libc;
+     pub const RDONLY: i32 = libc::O_RDONLY;
+     pub const WRONLY: i32 = libc::O_WRONLY;
+     pub const RDWR: i32 = libc::O_RDWR;
+@@ -1130,13 +1158,13 @@ pub mod O {
+     // NOT MSVCRT `_O_*`. `uv::O::from_bun_o` bit-tests
+     // against these exact values, so re-using `libc::O_CREAT` (0x100) etc.
+     // silently dropped CREAT/EXCL/APPEND on Windows.
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     pub const CREAT: i32 = libc::O_CREAT;
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     pub const TRUNC: i32 = libc::O_TRUNC;
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     pub const APPEND: i32 = libc::O_APPEND;
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     pub const EXCL: i32 = libc::O_EXCL;
+     #[cfg(windows)]
+     pub const CREAT: i32 = 0o100;
+@@ -1146,9 +1174,9 @@ pub mod O {
+     pub const TRUNC: i32 = 0o1000;
+     #[cfg(windows)]
+     pub const APPEND: i32 = 0o2000;
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     pub const NONBLOCK: i32 = libc::O_NONBLOCK;
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     pub const CLOEXEC: i32 = libc::O_CLOEXEC;
+     // Windows libc has no `O_NONBLOCK`/`O_CLOEXEC`; libuv ignores them. Values
+     // chosen to round-trip through `uv::O::from_bun_o` without colliding with
+@@ -1157,7 +1185,7 @@ pub mod O {
+     pub const NONBLOCK: i32 = 0o4000;
+     #[cfg(windows)]
+     pub const CLOEXEC: i32 = 0o2000000;
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     pub const DIRECTORY: i32 = libc::O_DIRECTORY;
+     // Non-zero on Windows so `(flags & O::DIRECTORY) != 0`
+     // routes `openat_windows_impl` to the directory NtCreateFile path.
+@@ -1175,27 +1203,27 @@ pub mod O {
+     pub const PATH: i32 = 0o10000000;
+     #[cfg(windows)]
+     pub const NOATIME: i32 = 0o1000000;
+-    #[cfg(all(unix, not(any(target_os = "linux", target_os = "android"))))]
++    #[cfg(all(any(unix, target_family = "wasm"), not(any(target_os = "linux", target_os = "android"))))] // wasm-experiment
+     pub const PATH: i32 = 0;
+-    #[cfg(all(unix, not(any(target_os = "linux", target_os = "android"))))]
++    #[cfg(all(any(unix, target_family = "wasm"), not(any(target_os = "linux", target_os = "android"))))] // wasm-experiment
+     pub const NOATIME: i32 = 0;
+     // Defined for every platform; Darwin-only flags map to 0
+     // elsewhere so `flags & O.EVTONLY` etc. compile and are no-ops.
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     pub const NOFOLLOW: i32 = libc::O_NOFOLLOW;
+     #[cfg(windows)]
+     pub const NOFOLLOW: i32 = 0o400000;
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     pub const SYNC: i32 = libc::O_SYNC;
+     // Windows has no O_SYNC/O_DSYNC; node's stringToFlags() ORs in `undefined`
+     // (→ 0) there, so the 's' flag-string modifier is a no-op. Match that.
+     #[cfg(windows)]
+     pub const SYNC: i32 = 0;
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     pub const DSYNC: i32 = libc::O_DSYNC;
+     #[cfg(windows)]
+     pub const DSYNC: i32 = 0;
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     pub const NOCTTY: i32 = libc::O_NOCTTY;
+     #[cfg(windows)]
+     pub const NOCTTY: i32 = 0;
+@@ -1224,7 +1252,7 @@ pub use file::{File, ReadToEndResult};
+ pub mod dir;
+ pub use dir::*;
+ 
+-#[cfg(unix)]
++#[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+ pub type Stat = libc::stat;
+ /// On Windows `bun.Stat` is libuv's `uv_stat_t`.
+ #[cfg(windows)]
+@@ -1256,11 +1284,13 @@ pub fn to_posix_path(
+ 
+ #[inline]
+ #[cfg(not(windows))]
++#[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+ fn err_with(tag: Tag) -> Error {
+     Error::from_code_int(last_errno(), tag)
+ }
+ #[inline]
+ #[cfg(not(windows))]
++#[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+ fn err_with_path(tag: Tag, path: &ZStr) -> Error {
+     err_with(tag).with_path(path.as_bytes())
+ }
+@@ -1316,6 +1346,7 @@ impl Tag {
+     pub const unlink: Tag = Tag(45);
+     pub const utime: Tag = Tag(46);
+     #[cfg(not(windows))]
++    #[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+     pub(crate) const utimensat: Tag = Tag(47);
+     pub const write: Tag = Tag(48);
+     pub(crate) const getcwd: Tag = Tag(49);
+@@ -1377,17 +1408,22 @@ impl Tag {
+     #[cfg(not(windows))]
+     pub(crate) const fchdir: Tag = Tag(102);
+     pub const fchownat: Tag = Tag(103);
++    #[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+     pub(crate) const ioctl: Tag = Tag(104);
+     #[cfg(not(windows))]
++    #[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+     pub(crate) const getrlimit: Tag = Tag(105);
+     #[cfg(not(windows))]
++    #[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+     pub(crate) const setrlimit: Tag = Tag(106);
+     pub const clone3: Tag = Tag(107);
+     pub const uv_os_setpriority: Tag = Tag(108);
+     pub const flock: Tag = Tag(109);
+     #[cfg(not(windows))]
++    #[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+     pub(crate) const flistxattr: Tag = Tag(110);
+     #[cfg(not(windows))]
++    #[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+     pub(crate) const fgetxattr: Tag = Tag(111);
+     pub const epoll_create1: Tag = Tag(112);
+     pub const pthread_create: Tag = Tag(113);
+@@ -3601,6 +3637,10 @@ mod posix_impl {
+ }
+ #[cfg(unix)]
+ pub use posix_impl::*;
++#[cfg(target_family = "wasm")] // wasm-experiment
++mod wasm_impl;
++#[cfg(target_family = "wasm")] // wasm-experiment
++pub use wasm_impl::*;
+ 
+ // D034: canonical lives in the leaf crate (cached via OnceLock); the per-platform
+ // impls in posix_impl/windows_impl were uncached duplicates.
+@@ -3617,7 +3657,7 @@ pub struct TimeLike {
+ }
+ impl TimeLike {
+     #[inline]
+-    #[cfg(not(windows))]
++    #[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment
+     pub(crate) fn to_timespec(self) -> libc::timespec {
+         libc::timespec {
+             tv_sec: self.sec as _,
+@@ -3625,7 +3665,7 @@ impl TimeLike {
+         }
+     }
+ }
+-#[cfg(unix)]
++#[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+ pub const UTIME_NOW: i64 = libc::UTIME_NOW;
+ #[cfg(windows)]
+ pub const UTIME_NOW: i64 = -1;
+@@ -4597,7 +4637,7 @@ fn read_fill_vec(
+ // Layout matches `libc::iovec` (`{ *void, usize }`) so a `&[PlatformIoVecConst]`
+ // can be passed straight to `pwritev(2)`.
+ // ──────────────────────────────────────────────────────────────────────────
+-#[cfg(unix)]
++#[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+ #[repr(C)]
+ #[derive(Clone, Copy)]
+ pub struct PlatformIoVecConst {
+@@ -4605,15 +4645,15 @@ pub struct PlatformIoVecConst {
+     pub len: usize,
+ }
+ // SAFETY: `{ *const u8, usize }` — `(null, 0)` is a valid empty iovec (S021).
+-#[cfg(unix)]
++#[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+ unsafe impl bun_core::ffi::Zeroable for PlatformIoVecConst {}
+-#[cfg(unix)]
++#[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+ const _: () = assert!(
+     core::mem::size_of::<PlatformIoVecConst>() == core::mem::size_of::<libc::iovec>()
+         && core::mem::align_of::<PlatformIoVecConst>() == core::mem::align_of::<libc::iovec>()
+ );
+ 
+-#[cfg(unix)]
++#[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+ #[inline]
+ pub fn platform_iovec_const_create(buf: &[u8]) -> PlatformIoVecConst {
+     PlatformIoVecConst {
+@@ -4686,6 +4726,11 @@ pub fn pwritev(fd: Fd, vecs: &[PlatformIoVecConst], offset: i64) -> Maybe<usize>
+         // (asserted below), so the slice forwards as-is.
+         sys_uv::pwritev(fd, vecs, offset)
+     }
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    {
++        let _ = (fd, vecs, offset);
++        Err(Error::from_code(E::ENOSYS, Tag::pwritev))
++    }
+ }
+ 
+ // ──────────────────────────────────────────────────────────────────────────
+@@ -4693,7 +4738,7 @@ pub fn pwritev(fd: Fd, vecs: &[PlatformIoVecConst], offset: i64) -> Maybe<usize>
+ // `uv_buf_t` on Windows). Layout-compatible with `libc::iovec` so a
+ // `&[PlatformIoVec]` can be passed straight to `readv(2)`/`writev(2)`.
+ // ──────────────────────────────────────────────────────────────────────────
+-#[cfg(unix)]
++#[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+ pub type PlatformIoVec = libc::iovec;
+ #[cfg(windows)]
+ pub type PlatformIoVec = bun_libuv_sys::uv_buf_t;
+@@ -4704,7 +4749,7 @@ pub use PlatformIoVecConst as PlatformIOVecConst;
+ 
+ #[inline]
+ pub fn platform_iovec_create(buf: &mut [u8]) -> PlatformIoVec {
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     {
+         PlatformIoVec {
+             iov_base: buf.as_mut_ptr().cast(),
+@@ -4724,7 +4769,7 @@ pub fn platform_iovec_create(buf: &mut [u8]) -> PlatformIoVec {
+ 
+ #[inline]
+ pub const fn platform_iovec_len(iov: &PlatformIoVec) -> usize {
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     {
+         iov.iov_len
+     }
+@@ -4910,9 +4955,9 @@ pub fn preadv(fd: Fd, vecs: &[PlatformIoVec], position: i64) -> Maybe<usize> {
+ // Windows it is `uv_statfs_t` populated from `GetDiskFreeSpace` (handled in
+ // `sys_uv`).
+ // ──────────────────────────────────────────────────────────────────────────
+-#[cfg(unix)]
++#[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+ pub type StatFS = libc::statfs;
+-#[cfg(not(unix))]
++#[cfg(not(any(unix, target_family = "wasm")))] // wasm-experiment
+ pub type StatFS = self::windows::libuv::uv_statfs_t;
+ 
+ /// `bun.sys.statfs` — query filesystem stats for `path`. Retries on EINTR.
+@@ -6092,8 +6137,10 @@ impl DynLib {
+ }
+ 
+ /// `RTLD_*` flags for `dlopen`.
+-#[cfg(unix)]
++#[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+ pub mod RTLD {
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    use crate::libc;
+     pub const LAZY: i32 = libc::RTLD_LAZY;
+     pub const LOCAL: i32 = libc::RTLD_LOCAL;
+ }
+@@ -6107,6 +6154,11 @@ pub mod RTLD {
+ 
+ /// `dlopen(filename, flags)`. Windows → `LoadLibraryExW` (UTF-8 → UTF-16).
+ pub fn dlopen(filename: &ZStr, flags: i32) -> Option<*mut c_void> {
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    {
++        let _ = (filename, flags);
++        None
++    }
+     #[cfg(unix)]
+     {
+         // SAFETY: filename is NUL-terminated.
+@@ -6144,6 +6196,11 @@ pub fn dlopen(filename: &ZStr, flags: i32) -> Option<*mut c_void> {
+ }
+ /// `dlsym(handle, name)`.
+ pub fn dlsym_impl(handle: Option<*mut c_void>, name: &ZStr) -> Option<*mut c_void> {
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    {
++        let _ = (handle, name);
++        None
++    }
+     #[cfg(unix)]
+     {
+         let h = handle.unwrap_or(core::ptr::null_mut());
+@@ -7147,7 +7204,12 @@ pub fn get_file_attributes(path: &ZStr) -> Option<WindowsFileAttributes> {
+ 
+ /// `access(path, F_OK) == 0`. `file_only` ignored on POSIX.
+ pub fn exists_os_path(path: &bun_paths::OSPathSliceZ, file_only: bool) -> bool {
+-    #[cfg(not(windows))]
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    {
++        let _ = (path, file_only);
++        false
++    }
++    #[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment
+     {
+         let _ = file_only;
+         // SAFETY: path is NUL-terminated.
+@@ -7279,7 +7341,7 @@ fn exists_at_type_nt(dir: Fd, path: &[u16]) -> Maybe<ExistsAtType> {
+ }
+ /// `fstatat` then `S_ISDIR`.
+ pub fn exists_at_type(dir: Fd, sub: &ZStr) -> Maybe<ExistsAtType> {
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     {
+         let st = fstatat(dir, sub)?;
+         Ok(if S::ISDIR(st.st_mode as _) {
+@@ -7330,7 +7392,7 @@ pub fn directory_exists_at_w(dir: Fd, sub: &[u16]) -> Maybe<bool> {
+ // ── fcntl / nonblocking / dup ──
+ 
+ /// `fcntl(fd, F_GETFL, 0)`.
+-#[cfg(unix)]
++#[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+ pub fn get_fcntl_flags(fd: Fd) -> Maybe<FcntlInt> {
+     fcntl(fd, libc::F_GETFL, 0)
+ }
+@@ -7344,7 +7406,7 @@ pub fn set_nonblocking(fd: Fd) -> Maybe<()> {
+ }
+ /// GETFL → toggle O_NONBLOCK → SETFL (only if changed).
+ pub fn update_nonblocking(fd: Fd, nonblocking: bool) -> Maybe<()> {
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     {
+         let cur = get_fcntl_flags(fd)? as i32;
+         let new = if nonblocking {
+@@ -7692,6 +7754,10 @@ pub fn get_fd_path_w(fd: Fd, out: &mut [u16]) -> Maybe<&mut [u16]> {
+ /// SAFETY note: the returned slice borrows the libc `environ` global; do not
+ /// mutate the environment concurrently.
+ pub fn environ() -> &'static [*const c_char] {
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    {
++        &[]
++    }
+     #[cfg(unix)]
+     {
+         // SAFETY: `environ` is a process-global NULL-terminated array.
+@@ -7727,6 +7793,10 @@ pub fn environ() -> &'static [*const c_char] {
+ /// global pointer (already NULL-terminated) rather than a length-bounded
+ /// borrowed slice, so it is suitable to pass directly as `envp`.
+ pub fn environ_ptr() -> *const *const c_char {
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    {
++        core::ptr::null()
++    }
+     #[cfg(unix)]
+     {
+         bun_core::c_environ()
+@@ -7976,6 +8046,8 @@ pub mod posix {
+     // ws2def.h values there. INET6 is *not* portable (10 on Linux, 30 on
+     // Darwin/BSD, 23 on Windows) — keep the `libc` symbol on POSIX.
+     pub mod AF {
++        #[cfg(target_family = "wasm")] // wasm-experiment
++        use crate::libc;
+         use core::ffi::c_int;
+         // Windows literals live in `bun_windows_sys::ws2_32` (leaf tier-0); route
+         // through it so the hardcoded `2/23` exists in exactly one place.
+@@ -7987,9 +8059,9 @@ pub mod posix {
+         pub const INET: c_int = bun_windows_sys::ws2_32::AF_INET;
+         #[cfg(windows)]
+         pub const INET6: c_int = bun_windows_sys::ws2_32::AF_INET6;
+-        #[cfg(unix)]
++        #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+         pub const INET: c_int = libc::AF_INET;
+-        #[cfg(unix)]
++        #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+         pub const INET6: c_int = libc::AF_INET6;
+     }
+ 
+@@ -8003,6 +8075,8 @@ pub mod posix {
+     // ── sockaddr family ──
+     #[cfg(unix)]
+     pub use libc::{sockaddr, sockaddr_in, sockaddr_in6, sockaddr_storage};
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    pub use crate::libc::{sockaddr, sockaddr_in, sockaddr_in6, sockaddr_storage};
+     // Route through `bun_libuv_sys` (not `bun_windows_sys::ws2_32`) so types
+     // returned by libuv APIs (`uv_interface_address_t`, `uv_udp_*`) are the
+     // *same* nominal type callers see via `bun_sys::posix::sockaddr_*` — Rust
+@@ -8191,6 +8265,8 @@ pub mod posix {
+ // `bun_dns`). Dependents only need the data shape + Display.
+ // ──────────────────────────────────────────────────────────────────────────
+ pub mod net {
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    use crate::libc;
+     use core::fmt;
+ 
+     // POSIX libc has `sockaddr_*` at the crate root; MSVC libc does not. Route
+@@ -8201,6 +8277,12 @@ pub mod net {
+             AF_INET, AF_INET6, sockaddr, sockaddr_in, sockaddr_in6, sockaddr_storage,
+         };
+     }
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    mod sock {
++        pub(super) use crate::libc::{
++            AF_INET, AF_INET6, sockaddr, sockaddr_in, sockaddr_in6, sockaddr_storage,
++        };
++    }
+     #[cfg(windows)]
+     mod sock {
+         // Same nominal types as `bun_sys::posix::sockaddr*` (see comment there)
+@@ -8227,9 +8309,9 @@ pub mod net {
+     // so struct-update initializers (`..sockaddr_in::ZEROED`)
+     // work uniformly on all targets and in `const` context.
+     // ──────────────────────────────────────────────────────────────────────
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     pub type sa_family_t = libc::sa_family_t;
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     pub type in_port_t = libc::in_port_t;
+     #[cfg(windows)]
+     pub type sa_family_t = u16; // ws2def.h: `typedef USHORT ADDRESS_FAMILY;`
+@@ -8498,7 +8580,7 @@ pub mod elf {
+     /// Walk loaded ELF objects via `dl_iterate_phdr`, returning the one whose
+     /// `PT_LOAD` segment contains `address` (matched by address, so it does not
+     /// depend on how a libc names or orders the main program).
+-    #[cfg(not(any(windows, target_os = "macos")))]
++    #[cfg(not(any(windows, target_os = "macos", target_family = "wasm")))] // wasm-experiment
+     pub fn find_loaded_module(address: usize) -> Option<LoadedModule> {
+         use core::ffi::{c_int, c_void};
+ 
+diff --git a/src/sys/libuv_error_map.rs b/src/sys/libuv_error_map.rs
+index be899d07..9f8a9e39 100644
+--- a/src/sys/libuv_error_map.rs
++++ b/src/sys/libuv_error_map.rs
+@@ -101,7 +101,7 @@ const fn build_libuv_error_map() -> EnumMap<SystemErrno, &'static str> {
+         arr[SystemErrno::EREMOTEIO as usize] = "remote I/O error";
+     }
+     arr[SystemErrno::ENOTTY as usize] = "inappropriate ioctl for device";
+-    #[cfg(not(any(target_os = "linux", target_os = "android")))]
++    #[cfg(not(any(target_os = "linux", target_os = "android", target_family = "wasm")))] // wasm-experiment
+     {
+         arr[SystemErrno::EFTYPE as usize] = "inappropriate file type or format";
+     }
+diff --git a/src/sys/wasm_impl.rs b/src/sys/wasm_impl.rs
+new file mode 100644
+index 00000000..3a29a4b7
+--- /dev/null
++++ b/src/sys/wasm_impl.rs
+@@ -0,0 +1,291 @@
++//! wasm-experiment: syscall surface for `target_family = "wasm"`. Every operation reports ENOSYS
++//! until it is wired to a host-provided filesystem.
++
++use super::*;
++
++#[inline]
++fn enosys(tag: Tag) -> Error {
++    Error::from_code(E::ENOSYS, tag)
++}
++
++pub type FcntlInt = isize;
++
++pub fn open(_path: &ZStr, _flags: i32, _mode: Mode) -> Maybe<Fd> {
++    Err(enosys(Tag::open))
++}
++
++pub fn openat(_dir: impl AsFd, _path: &ZStr, _flags: i32, _mode: Mode) -> Maybe<Fd> {
++    Err(enosys(Tag::open))
++}
++
++pub fn close(_fd: Fd) -> Maybe<()> {
++    Err(enosys(Tag::close))
++}
++
++pub fn read(_fd: Fd, _buf: &mut [u8]) -> Maybe<usize> {
++    Err(enosys(Tag::read))
++}
++
++pub fn write(_fd: Fd, _buf: &[u8]) -> Maybe<usize> {
++    Err(enosys(Tag::write))
++}
++
++pub fn pread(_fd: Fd, _buf: &mut [u8], _off: i64) -> Maybe<usize> {
++    Err(enosys(Tag::pread))
++}
++
++pub fn pwrite(_fd: Fd, _buf: &[u8], _off: i64) -> Maybe<usize> {
++    Err(enosys(Tag::pwrite))
++}
++
++pub fn stat(_path: &ZStr) -> Maybe<Stat> {
++    Err(enosys(Tag::stat))
++}
++
++pub fn fstat(_fd: Fd) -> Maybe<Stat> {
++    Err(enosys(Tag::fstat))
++}
++
++pub fn lstat(_path: &ZStr) -> Maybe<Stat> {
++    Err(enosys(Tag::lstat))
++}
++
++pub fn mkdir(_path: &ZStr, _mode: Mode) -> Maybe<()> {
++    Err(enosys(Tag::mkdir))
++}
++
++pub fn mkdirat(_dir: impl AsFd, _path: &ZStr, _mode: Mode) -> Maybe<()> {
++    Err(enosys(Tag::mkdir))
++}
++
++pub(crate) fn mkdir_recursive_at(_dir: impl AsFd, _sub_path: &[u8]) -> Maybe<()> {
++    Err(enosys(Tag::mkdir))
++}
++
++pub fn mkdir_recursive_at_mode(_dir: Fd, _sub_path: &[u8], _mode: Mode) -> Maybe<()> {
++    Err(enosys(Tag::mkdir))
++}
++
++pub fn unlink(_path: &ZStr) -> Maybe<()> {
++    Err(enosys(Tag::unlink))
++}
++
++pub fn rename(_from: &ZStr, _to: &ZStr) -> Maybe<()> {
++    Err(enosys(Tag::rename))
++}
++
++pub fn renameat(_from_dir: impl AsFd, _from: &ZStr, _to_dir: impl AsFd, _to: &ZStr) -> Maybe<()> {
++    Err(enosys(Tag::rename))
++}
++
++pub fn renameat2(_from_dir: Fd, _from: &ZStr, _to_dir: Fd, _to: &ZStr, _mode: RenameMode) -> Maybe<()> {
++    Err(enosys(Tag::rename))
++}
++
++pub fn unlinkat_with_flags(_dir: Fd, _path: &ZStr, _flags: i32) -> Maybe<()> {
++    Err(enosys(Tag::unlink))
++}
++
++pub fn unlinkat(_dir: impl AsFd, _path: &ZStr) -> Maybe<()> {
++    Err(enosys(Tag::unlink))
++}
++
++pub fn symlink(_target: &ZStr, _link: &ZStr) -> Maybe<()> {
++    Err(enosys(Tag::symlink))
++}
++
++pub fn readlink(_path: &ZStr, _buf: &mut [u8]) -> Maybe<usize> {
++    Err(enosys(Tag::readlink))
++}
++
++pub fn dup(_fd: Fd) -> Maybe<Fd> {
++    Err(enosys(Tag::dup))
++}
++
++pub fn dup_at_least(_fd: Fd, _min: i32) -> Maybe<Fd> {
++    Err(enosys(Tag::fcntl))
++}
++
++pub fn fchmod(_fd: Fd, _mode: Mode) -> Maybe<()> {
++    Err(enosys(Tag::fchmod))
++}
++
++pub fn fchown(_fd: Fd, _uid: u32, _gid: u32) -> Maybe<()> {
++    Err(enosys(Tag::fchown))
++}
++
++pub fn extended_attributes(_fd: Fd) -> Maybe<Vec<(Vec<u8>, Vec<u8>)>> {
++    Err(enosys(Tag::TODO))
++}
++
++pub fn ftruncate(_fd: Fd, _len: i64) -> Maybe<()> {
++    Err(enosys(Tag::ftruncate))
++}
++
++pub fn flock(_fd: Fd, _mode: FileLockMode, _nonblocking: bool) -> Maybe<bool> {
++    Err(enosys(Tag::flock))
++}
++
++pub fn getcwd(_buf: &mut [u8]) -> Maybe<usize> {
++    Err(enosys(Tag::getcwd))
++}
++
++pub fn linkat(_src_dir: impl AsFd, _src: &ZStr, _dest_dir: impl AsFd, _dest: &ZStr) -> Maybe<()> {
++    Err(enosys(Tag::link))
++}
++
++pub fn symlinkat(_target: &ZStr, _dirfd: impl AsFd, _dest: &ZStr) -> Maybe<()> {
++    Err(enosys(Tag::symlinkat))
++}
++
++pub fn readlinkat(_fd: impl AsFd, _path: &ZStr, _buf: &mut [u8]) -> Maybe<usize> {
++    Err(enosys(Tag::readlink))
++}
++
++pub fn chmod(_path: &ZStr, _mode: Mode) -> Maybe<()> {
++    Err(enosys(Tag::chmod))
++}
++
++pub fn fchmodat(_dir: impl AsFd, _path: &ZStr, _mode: Mode, _flags: i32) -> Maybe<()> {
++    Err(enosys(Tag::fchmodat))
++}
++
++pub fn lchmod(_path: &ZStr, _mode: Mode) -> Maybe<()> {
++    Err(enosys(Tag::lchmod))
++}
++
++pub fn chown(_path: &ZStr, _uid: u32, _gid: u32) -> Maybe<()> {
++    Err(enosys(Tag::chown))
++}
++
++pub fn lchown(_path: &ZStr, _uid: u32, _gid: u32) -> Maybe<()> {
++    Err(enosys(Tag::lchown))
++}
++
++pub fn fstatat(_fd: impl AsFd, _path: &ZStr) -> Maybe<Stat> {
++    Err(enosys(Tag::fstatat))
++}
++
++pub fn access(_path: &ZStr, _mode: i32) -> Maybe<()> {
++    Err(enosys(Tag::access))
++}
++
++pub fn faccessat(_dir: impl AsFd, _sub: &ZStr) -> Maybe<bool> {
++    Err(enosys(Tag::access))
++}
++
++pub fn futimens(_fd: Fd, _atime: TimeLike, _mtime: TimeLike) -> Maybe<()> {
++    Err(enosys(Tag::futimens))
++}
++
++pub fn utimens(_path: &ZStr, _atime: TimeLike, _mtime: TimeLike) -> Maybe<()> {
++    Err(enosys(Tag::futimens))
++}
++
++pub fn lutimens(_path: &ZStr, _atime: TimeLike, _mtime: TimeLike) -> Maybe<()> {
++    Err(enosys(Tag::futimens))
++}
++
++pub fn exists_z(_path: &ZStr) -> bool {
++    false
++}
++
++pub fn exists_at(_dir: impl AsFd, _sub: &ZStr) -> bool {
++    false
++}
++
++pub fn is_executable_file_path(_path: &ZStr) -> bool {
++    false
++}
++
++pub fn get_file_size(_fd: Fd) -> Maybe<u64> {
++    Err(enosys(Tag::fstat))
++}
++
++pub fn realpath<'a>(_path: &ZStr, _buf: &'a mut bun_core::PathBuffer) -> Maybe<&'a [u8]> {
++    Err(enosys(Tag::realpath))
++}
++
++pub(crate) fn fcntl(_fd: Fd, _cmd: i32, _arg: isize) -> Maybe<FcntlInt> {
++    Err(enosys(Tag::fcntl))
++}
++
++pub fn dup2(_old: Fd, _new: Fd) -> Maybe<Fd> {
++    Err(enosys(Tag::dup2))
++}
++
++pub fn pipe() -> Maybe<[Fd; 2]> {
++    Err(enosys(Tag::pipe))
++}
++
++pub fn isatty(_fd: Fd) -> bool {
++    false
++}
++
++pub fn fsync(_fd: Fd) -> Maybe<()> {
++    Err(enosys(Tag::fsync))
++}
++
++pub fn lseek(_fd: Fd, _offset: i64, _whence: i32) -> Maybe<i64> {
++    Err(enosys(Tag::lseek))
++}
++
++pub fn chdir(_path: &ZStr) -> Maybe<()> {
++    Err(enosys(Tag::chdir))
++}
++
++pub fn fchdir(_fd: Fd) -> Maybe<()> {
++    Err(enosys(Tag::fchdir))
++}
++
++pub fn umask(_mode: Mode) -> Mode {
++    0
++}
++
++pub fn recv_non_block(_fd: Fd, _buf: &mut [u8]) -> Maybe<usize> {
++    Err(enosys(Tag::recv))
++}
++
++pub fn send_non_block(_fd: Fd, _buf: &[u8]) -> Maybe<usize> {
++    Err(enosys(Tag::send))
++}
++
++pub fn set_close_on_exec(_fd: Fd) -> Maybe<()> {
++    Err(enosys(Tag::fcntl))
++}
++
++pub fn socketpair(_domain: i32, _ty: i32, _proto: i32, _nonblock: bool) -> Maybe<[Fd; 2]> {
++    Err(enosys(Tag::socketpair))
++}
++
++pub fn socketpair_for_shell(_domain: i32, _ty: i32, _proto: i32, _nonblock: bool) -> Maybe<[Fd; 2]> {
++    Err(enosys(Tag::socketpair))
++}
++
++pub fn mmap(_addr: *mut u8, _len: usize, _prot: i32, _flags: i32, _fd: Fd, _off: i64) -> Maybe<*mut u8> {
++    Err(enosys(Tag::mmap))
++}
++
++pub fn munmap(_ptr: *mut u8, _len: usize) -> Maybe<()> {
++    Err(enosys(Tag::munmap))
++}
++
++pub fn mmap_file(_path: &ZStr, _flags: core::ffi::c_int, _wanted_size: Option<usize>, _offset: usize) -> Maybe<(&'static mut [u8], usize)> {
++    Err(enosys(Tag::mmap))
++}
++
++pub fn writev(_fd: Fd, _vecs: &[PlatformIoVec]) -> Maybe<usize> {
++    Err(enosys(Tag::writev))
++}
++
++pub fn readv(_fd: Fd, _vecs: &[PlatformIoVec]) -> Maybe<usize> {
++    Err(enosys(Tag::readv))
++}
++
++pub fn preadv(_fd: Fd, _vecs: &[PlatformIoVec], _position: i64) -> Maybe<usize> {
++    Err(enosys(Tag::preadv))
++}
++
++pub fn statfs(_path: &ZStr) -> Maybe<StatFS> {
++    Err(enosys(Tag::statfs))
++}
+diff --git a/src/sys/wasm_libc.rs b/src/sys/wasm_libc.rs
+new file mode 100644
+index 00000000..7202fdb5
+--- /dev/null
++++ b/src/sys/wasm_libc.rs
+@@ -0,0 +1,115 @@
++//! wasm-experiment: the `libc` items this crate names, for `target_family = "wasm"` where the
++//! `libc` crate has none. Mounted as `crate::libc`.
++
++#![allow(non_camel_case_types)]
++
++pub(crate) use core::ffi::{c_int, c_void};
++
++pub(crate) const UTIME_NOW: i64 = (1 << 30) - 1;
++
++#[repr(C)]
++#[derive(Clone, Copy)]
++pub struct iovec {
++    pub iov_base: *mut c_void,
++    pub iov_len: usize,
++}
++
++#[repr(C)]
++#[derive(Clone, Copy, Default)]
++pub struct stat {
++    pub st_dev: u64,
++    pub st_ino: u64,
++    pub st_nlink: u64,
++    pub st_mode: u32,
++    pub st_uid: u32,
++    pub st_gid: u32,
++    pub st_rdev: u64,
++    pub st_size: i64,
++    pub st_blksize: i64,
++    pub st_blocks: i64,
++    pub st_atime: i64,
++    pub st_atime_nsec: i64,
++    pub st_mtime: i64,
++    pub st_mtime_nsec: i64,
++    pub st_ctime: i64,
++    pub st_ctime_nsec: i64,
++}
++
++pub(crate) const RTLD_LAZY: c_int = 1;
++pub(crate) const RTLD_LOCAL: c_int = 0;
++pub(crate) const F_GETFL: c_int = 3;
++pub(crate) const F_SETFL: c_int = 4;
++
++pub(crate) const SEEK_SET: c_int = 0;
++pub(crate) const ENAMETOOLONG: c_int = 36;
++pub(crate) const O_RDONLY: c_int = 0;
++pub(crate) const O_DIRECTORY: c_int = 0o200000;
++pub(crate) const O_CLOEXEC: c_int = 0o2000000;
++
++pub(crate) const AF_INET: c_int = 2;
++pub(crate) const AF_INET6: c_int = 10;
++pub(crate) type sa_family_t = u16;
++
++#[repr(C)]
++#[derive(Clone, Copy)]
++pub struct sockaddr {
++    pub sa_family: sa_family_t,
++    pub sa_data: [u8; 14],
++}
++
++#[repr(C)]
++#[derive(Clone, Copy)]
++pub struct sockaddr_in {
++    pub sin_family: sa_family_t,
++    pub sin_port: u16,
++    pub sin_addr: u32,
++    pub sin_zero: [u8; 8],
++}
++
++#[repr(C)]
++#[derive(Clone, Copy)]
++pub struct sockaddr_in6 {
++    pub sin6_family: sa_family_t,
++    pub sin6_port: u16,
++    pub sin6_flowinfo: u32,
++    pub sin6_addr: [u8; 16],
++    pub sin6_scope_id: u32,
++}
++
++#[repr(C)]
++#[derive(Clone, Copy)]
++pub struct sockaddr_storage {
++    pub ss_family: sa_family_t,
++    pub __ss_padding: [u8; 126],
++}
++
++pub(crate) const O_WRONLY: c_int = 1;
++pub(crate) const O_RDWR: c_int = 2;
++pub(crate) const O_CREAT: c_int = 0o100;
++pub(crate) const O_EXCL: c_int = 0o200;
++pub(crate) const O_NOCTTY: c_int = 0o400;
++pub(crate) const O_TRUNC: c_int = 0o1000;
++pub(crate) const O_APPEND: c_int = 0o2000;
++pub(crate) const O_NONBLOCK: c_int = 0o4000;
++pub(crate) const O_DSYNC: c_int = 0o10000;
++pub(crate) const O_SYNC: c_int = 0o4010000;
++pub(crate) const O_NOFOLLOW: c_int = 0o400000;
++pub(crate) const SEEK_CUR: c_int = 1;
++pub(crate) const AT_REMOVEDIR: c_int = 0x200;
++pub(crate) const ENOSYS: c_int = 38;
++pub(crate) type in_port_t = u16;
++
++#[repr(C)]
++#[derive(Clone, Copy, Default)]
++pub struct statfs {
++    pub f_type: i64,
++    pub f_bsize: i64,
++    pub f_blocks: u64,
++    pub f_bfree: u64,
++    pub f_bavail: u64,
++    pub f_files: u64,
++    pub f_ffree: u64,
++    pub f_namelen: i64,
++    pub f_frsize: i64,
++    pub f_flags: i64,
++}

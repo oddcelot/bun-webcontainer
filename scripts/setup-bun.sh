@@ -1,14 +1,11 @@
 #!/bin/sh
-# Recreates the patched Bun checkout the wasm crates build against.
+# Recreates bun/: the pinned upstream commit with patches/bun/ applied as commits on the
+# wasm-experiment branch, plus the vendored crates and generated files the wasm builds need.
 # Usage: scripts/setup-bun.sh [dir]   (default: ./bun)
 set -eu
 
-BUN_COMMIT=7942008688acad538e64933b82465dc614fe7536
-LOLHTML_COMMIT=725ce499aa9b71e38b7a2d0a9fbb6d7294a4079e   # scripts/build/deps/lolhtml.ts
-ARGON2_COMMIT=ed81866f163f0c7026aa6fd8388adf37242eb32a    # scripts/build/deps/rust-argon2.ts
-TOOLCHAIN=nightly-2026-09-15                              # bun's rust-toolchain.toml
-
 root=$(cd "$(dirname "$0")/.." && pwd)
+. "$root/scripts/bun-pins.sh"
 dir=${1:-$root/bun}
 
 if [ -e "$dir" ]; then
@@ -19,8 +16,10 @@ fi
 git init -q "$dir"
 git -C "$dir" remote add origin https://github.com/oven-sh/bun.git
 git -C "$dir" fetch -q --depth 1 origin "$BUN_COMMIT"
-git -C "$dir" checkout -q FETCH_HEAD
-git -C "$dir" apply "$root/bun-wasm.patch"
+git -C "$dir" checkout -q -b "$BUN_BRANCH" FETCH_HEAD
+# Keep the series' authors and dates; fall back to a placeholder committer if git has no identity.
+git -C "$dir" -c user.name="$(git config user.name || echo setup-bun)" -c user.email="$(git config user.email || echo setup-bun@localhost)" \
+  am -q --committer-date-is-author-date "$root"/patches/bun/*.patch
 
 # cargo resolves the whole workspace, so these path dependencies must exist even though
 # nothing we build uses them. Bun's own build also applies patches to them; we don't need those.
@@ -41,4 +40,4 @@ generateXmlByteClass(cfg);')
 # Minimal install; letting rust-toolchain.toml auto-install pulls ~11 cross targets, miri and clippy.
 rustup toolchain list | grep -q "^$TOOLCHAIN" || rustup toolchain install "$TOOLCHAIN" --profile minimal -c rust-src
 
-echo "setup-bun: ready at $dir (bun $BUN_COMMIT + bun-wasm.patch)"
+echo "setup-bun: ready at $dir ($BUN_BRANCH = upstream $BUN_COMMIT + $(ls "$root"/patches/bun/*.patch | wc -l | tr -d ' ') patches)"

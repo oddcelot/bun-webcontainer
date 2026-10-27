@@ -15,7 +15,7 @@ node_modules/
 # Screenshots taken while verifying in the browser
 /playground/docs-*.png
 
-# Superseded by bun-wasm.patch
+# Superseded by patches/bun/
 /bun-wasm-experiment.patch
 
 .DS_Store

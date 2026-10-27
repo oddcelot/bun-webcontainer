@@ -17,8 +17,8 @@ A StackBlitz/WebContainers-style "Bun" in the browser. User code runs in the bro
 ## Layout
 
 ```
-bun/                     untracked; scripts/setup-bun.sh recreates it (upstream @ 79420086 + bun-wasm.patch + vendor/ + codegen)
-bun-wasm.patch           the whole bun diff: 32 files changed + 4 new, every hunk cfg-gated, marked `// wasm-experiment`
+bun/                     untracked; scripts/setup-bun.sh recreates it (upstream @ 79420086 + patches/bun/ on branch wasm-experiment + vendor/ + codegen)
+patches/bun/             the bun changes as 5 commits (git format-patch), every hunk cfg-gated, marked `// wasm-experiment`
 build_options.rs         copy to bun/build/debug/codegen/
 scripts/w64.sh crate...  wasm64 compile check of bun crates (errors in short form)
 semver-wasm/             cdylib: Bun.semver order/satisfies; test.mjs, diff.mjs (vs real Bun)
@@ -31,7 +31,7 @@ playground/              Vite app; README has architecture + limitations
 ## Reproduce
 
 ```sh
-scripts/setup-bun.sh        # clone bun @ pinned commit, apply bun-wasm.patch, vendor crates, codegen, toolchain
+scripts/setup-bun.sh        # clone bun @ pinned commit, git am patches/bun/, vendor crates, codegen, toolchain
 
 W="-Zbuild-std=std,panic_abort --target wasm64-unknown-unknown --release"
 (cd semver-wasm && cargo build $W && node test.mjs && bun gen-expected.ts && node diff.mjs)

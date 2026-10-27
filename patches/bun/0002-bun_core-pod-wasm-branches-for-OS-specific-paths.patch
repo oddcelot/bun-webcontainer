@@ -1,0 +1,321 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Stefan Kopco <hey@oddcelot.dev>
+Date: Tue, 27 Oct 2026 22:15:37 +0100
+Subject: [PATCH] bun_core, pod: wasm branches for OS-specific paths
+
+Exit and signal paths abort; clock reads 0; entropy uses a fixed seed; msync, poll, AT_FDCWD, strlen, strncasecmp and thread ids get wasm variants. is_writable and reload_process are unimplemented. Env var keys use the POSIX names. Items only used on other platforms allow dead_code on wasm.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/bun_core/Global.rs    | 24 ++++++++++++++++------
+ src/bun_core/debug.rs     |  8 +++++++-
+ src/bun_core/env_var.rs   |  2 +-
+ src/bun_core/lib.rs       |  4 ++--
+ src/bun_core/thread_id.rs |  5 +++++
+ src/bun_core/util.rs      | 42 ++++++++++++++++++++++++++++++++++-----
+ src/pod/lib.rs            |  1 +
+ 7 files changed, 71 insertions(+), 15 deletions(-)
+
+diff --git a/src/bun_core/Global.rs b/src/bun_core/Global.rs
+index f324977e..491ae2f3 100644
+--- a/src/bun_core/Global.rs
++++ b/src/bun_core/Global.rs
+@@ -603,7 +603,7 @@ pub fn set_thread_name(name: &ZStr) {
+             libc::pthread_set_name_np(libc::pthread_self(), name.as_ptr().cast::<c_char>());
+         }
+     }
+-    #[cfg(windows)]
++    #[cfg(any(windows, target_family = "wasm"))] // wasm-experiment
+     {
+         let _ = name;
+         // TODO: use SetThreadDescription or NtSetInformationThread with 0x26 (ThreadNameInformation)
+@@ -679,6 +679,7 @@ unsafe extern "C" {
+     #[cfg(windows)]
+     #[link_name = "abort"]
+     safe fn libc_abort() -> !;
++    #[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+     #[link_name = "raise"]
+     safe fn libc_raise(sig: c_int) -> c_int;
+     #[cfg(unix)]
+@@ -719,13 +720,18 @@ pub fn exit(code: u32) -> ! {
+         // `ExitProcess` is `safe fn` (no preconditions; never returns).
+         crate::windows_sys::kernel32::ExitProcess(code)
+     }
+-    #[cfg(not(any(target_os = "macos", windows)))]
++    #[cfg(not(any(target_os = "macos", windows, target_family = "wasm")))]
+     {
+         if env::ENABLE_ASAN {
+             libc_exit(code as i32);
+         }
+         quick_exit(code as c_int);
+     }
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    {
++        let _ = code;
++        std::process::abort()
++    }
+ }
+ 
+ pub fn raise_ignoring_panic_handler(sig: crate::SignalCode) -> ! {
+@@ -775,9 +781,15 @@ pub fn raise_ignoring_panic_handler_raw(sig: c_int) -> ! {
+         }
+     }
+ 
+-    #[cfg(not(windows))]
++    #[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment
+     raise_default_action(sig);
+ 
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    {
++        let _ = sig;
++        std::process::abort()
++    }
++
+     #[cfg(windows)]
+     {
+         // kill self; `raise` has no preconditions (see the `safe fn` decl above).
+@@ -789,7 +801,7 @@ pub fn raise_ignoring_panic_handler_raw(sig: c_int) -> ! {
+ 
+ /// Kills the process with `sig`'s default action. Exits with 128 + `sig` if the kernel discards
+ /// the signal (PID 1 in a pid namespace). Async-signal-safe.
+-#[cfg(not(windows))]
++#[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment
+ pub fn raise_default_action(sig: c_int) -> ! {
+     // SAFETY: zeroed sigset + SIG_DFL handler is a valid Sigaction.
+     unsafe {
+@@ -815,7 +827,7 @@ pub fn raise_default_action(sig: c_int) -> ! {
+ }
+ 
+ /// Exposes `raise_default_action` to C++ (`onExitSignal` in c-bindings.cpp).
+-#[cfg(not(windows))]
++#[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment
+ #[unsafe(no_mangle)]
+ extern "C" fn Bun__raiseDefaultAction(sig: c_int) -> ! {
+     raise_default_action(sig)
+@@ -956,7 +968,7 @@ extern "C" fn Bun__onExit() {
+     run_exit_callbacks();
+     Output::flush();
+     crate::keep_symbols!(Bun__atexit);
+-    #[cfg(not(windows))]
++    #[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment
+     crate::keep_symbols!(Bun__raiseDefaultAction);
+ 
+     Output::source::stdio::restore();
+diff --git a/src/bun_core/debug.rs b/src/bun_core/debug.rs
+index 336b0911..ecafc2ed 100644
+--- a/src/bun_core/debug.rs
++++ b/src/bun_core/debug.rs
+@@ -202,7 +202,12 @@ fn is_valid_memory(address: usize) -> bool {
+             && mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD) == 0
+             && mbi.Protect & READABLE != 0
+     }
+-    #[cfg(not(windows))]
++    #[cfg(target_family = "wasm")] // wasm-experiment: linear memory has no unmapped pages
++    {
++        let _ = (aligned_address, page_size);
++        true
++    }
++    #[cfg(not(any(windows, target_family = "wasm")))]
+     {
+         // SAFETY: msync only inspects the mapping; aligned_address is page-aligned.
+         let rc = unsafe {
+@@ -274,6 +279,7 @@ impl StackIterator {
+     }
+ }
+ 
++#[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+ pub(crate) const PC_OFFSET: usize = StackIterator::PC_OFFSET;
+ 
+ /// Capture the current thread's call stack.
+diff --git a/src/bun_core/env_var.rs b/src/bun_core/env_var.rs
+index 0227e811..615c004b 100644
+--- a/src/bun_core/env_var.rs
++++ b/src/bun_core/env_var.rs
+@@ -766,7 +766,7 @@ macro_rules! platform_specific_new {
+ 
+             /// Retrieve the key of the environment variable for the current platform, if any.
+             pub(crate) fn platform_key() -> Option<&'static ZStr> {
+-                #[cfg(unix)]
++                #[cfg(not(windows))] // wasm-experiment: was `unix`
+                 { return $crate::env_var::__key_opt!($posix); }
+                 #[cfg(windows)]
+                 { return $crate::env_var::__key_opt!($windows); }
+diff --git a/src/bun_core/lib.rs b/src/bun_core/lib.rs
+index 4a8ef1cc..7a77c248 100644
+--- a/src/bun_core/lib.rs
++++ b/src/bun_core/lib.rs
+@@ -1337,12 +1337,12 @@ pub(crate) mod strings_impl {
+         debug_assert!(!a.is_empty());
+ 
+         // Miri has no shim for either libc call, and `bun_url`'s unit tests reach this.
+-        #[cfg(miri)]
++        #[cfg(any(miri, target_family = "wasm"))] // wasm-experiment: no libc
+         {
+             a.eq_ignore_ascii_case(&b[..a.len()])
+         }
+         // SAFETY: a.len() <= b.len() here; strncasecmp reads at most a.len() bytes from each.
+-        #[cfg(all(not(miri), not(windows)))]
++        #[cfg(all(not(miri), not(windows), not(target_family = "wasm")))]
+         unsafe {
+             libc::strncasecmp(a.as_ptr().cast(), b.as_ptr().cast(), a.len()) == 0
+         }
+diff --git a/src/bun_core/thread_id.rs b/src/bun_core/thread_id.rs
+index 2b8756de..d6030240 100644
+--- a/src/bun_core/thread_id.rs
++++ b/src/bun_core/thread_id.rs
+@@ -171,6 +171,7 @@ fn current_uncached() -> ThreadId {
+         target_os = "watchos",
+         target_os = "tvos",
+         target_os = "visionos",
++        target_family = "wasm",
+     )))]
+     {
+         unsafe extern "C" {
+@@ -179,4 +180,8 @@ fn current_uncached() -> ThreadId {
+         }
+         return pthread_self() as ThreadId;
+     }
++    #[cfg(target_family = "wasm")] // wasm-experiment: single-threaded
++    {
++        return 1;
++    }
+ }
+diff --git a/src/bun_core/util.rs b/src/bun_core/util.rs
+index af7e75cc..937d87d9 100644
+--- a/src/bun_core/util.rs
++++ b/src/bun_core/util.rs
+@@ -144,7 +144,11 @@ impl ZStr {
+             return Self::EMPTY;
+         }
+         // SAFETY: caller contract — `p` is non-null, NUL-terminated, valid for `'a`.
++        #[cfg(not(target_family = "wasm"))]
+         let len = unsafe { libc::strlen(p) };
++        // SAFETY: as above. wasm-experiment: the `libc` crate has no `strlen` here.
++        #[cfg(target_family = "wasm")]
++        let len = unsafe { core::ffi::CStr::from_ptr(p) }.count_bytes();
+         // SAFETY: `p[len] == 0` (strlen postcondition) and `p[..len]` readable.
+         unsafe { Self::from_raw(p.cast::<u8>(), len) }
+     }
+@@ -913,11 +917,16 @@ impl Fd {
+     pub const fn stderr() -> Fd {
+         Fd(2)
+     }
+-    #[cfg(not(windows))]
++    #[cfg(not(any(windows, target_family = "wasm")))]
+     #[inline]
+     pub fn cwd() -> Fd {
+         Fd(libc::AT_FDCWD)
+     }
++    #[cfg(target_family = "wasm")] // wasm-experiment: Linux's AT_FDCWD
++    #[inline]
++    pub fn cwd() -> Fd {
++        Fd(-100)
++    }
+ 
+     #[cfg(windows)]
+     #[inline]
+@@ -2482,6 +2491,7 @@ impl Pollable {
+     /// Lowercase tag name for the `[sys]` debug log.
+     #[inline]
+     #[cfg(not(windows))]
++    #[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+     pub(crate) const fn tag_name(self) -> &'static str {
+         match self {
+             Pollable::Ready => "ready",
+@@ -2496,7 +2506,7 @@ impl Pollable {
+ crate::declare_scope!(SYS, visible);
+ 
+ /// Non-blocking poll for readability. POSIX-only.
+-#[cfg(not(windows))]
++#[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment
+ pub fn is_readable(fd: Fd) -> Pollable {
+     debug_assert!(fd.is_valid());
+     let mut polls = [libc::pollfd {
+@@ -2528,14 +2538,14 @@ pub fn is_readable(fd: Fd) -> Pollable {
+     );
+     rc
+ }
+-#[cfg(windows)]
++#[cfg(any(windows, target_family = "wasm"))] // wasm-experiment
+ pub fn is_readable(_fd: Fd) -> Pollable {
+     // No callers reach this on Windows.
+     panic!("TODO on Windows");
+ }
+ 
+ /// Non-blocking `poll(fd, POLLOUT)` (or `WSAPoll` on Windows); reports writability.
+-#[cfg(not(windows))]
++#[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment
+ pub fn is_writable(fd: Fd) -> Pollable {
+     debug_assert!(fd.is_valid());
+     let mut polls = [libc::pollfd {
+@@ -2567,6 +2577,10 @@ pub fn is_writable(fd: Fd) -> Pollable {
+     );
+     rc
+ }
++#[cfg(target_family = "wasm")] // wasm-experiment
++pub fn is_writable(_fd: Fd) -> Pollable {
++    unimplemented!("is_writable on wasm");
++}
+ #[cfg(windows)]
+ pub fn is_writable(fd: Fd) -> Pollable {
+     // bun_core can't depend on
+@@ -2606,6 +2620,11 @@ pub fn is_writable(fd: Fd) -> Pollable {
+ // must use `bun_boringssl_sys::rand_bytes` (userspace DRBG, no syscall per
+ // call).
+ fn os_entropy(bytes: &mut [u8]) {
++    // wasm-experiment: wasm64-unknown-unknown has no entropy source; seed from a fixed value.
++    #[cfg(target_family = "wasm")]
++    for (i, b) in bytes.iter_mut().enumerate() {
++        *b = (i as u8).wrapping_mul(0x9d) ^ 0x5a;
++    }
+     #[cfg(any(target_os = "linux", target_os = "android"))]
+     {
+         let mut filled = 0usize;
+@@ -2684,6 +2703,10 @@ pub fn self_exe_path() -> crate::CrateResult<&'static ZStr> {
+         //  test/js/node/test/parallel/test-process-execpath.js).
+         #[cfg(any(target_vendor = "apple", windows))]
+         let path = path.canonicalize().unwrap_or(path);
++        #[cfg(target_family = "wasm")] // wasm-experiment: `current_exe` always errs above
++        {
++            Ok(ZBox::from_vec_with_nul(path.into_os_string().into_encoded_bytes()))
++        }
+         #[cfg(unix)]
+         {
+             use std::os::unix::ffi::OsStringExt;
+@@ -4279,7 +4302,12 @@ pub fn reload_process(clear_terminal: bool, may_return: bool) {
+         crate::Global::exit(1);
+     }
+ 
+-    #[cfg(not(any(unix, windows)))]
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    {
++        let _ = (clear_terminal, may_return);
++        unimplemented!("reload_process on wasm");
++    }
++    #[cfg(not(any(unix, windows, target_family = "wasm")))]
+     {
+         // Bun only targets POSIX + Windows; any other target
+         // is a build-time error, not a runtime panic.
+@@ -4860,6 +4888,10 @@ impl Timespec {
+                 nsec: ts.tv_nsec,
+             }
+         }
++        #[cfg(target_family = "wasm")] // wasm-experiment: no clock
++        {
++            Timespec { sec: 0, nsec: 0 }
++        }
+         #[cfg(windows)]
+         {
+             // QPC via the c-bindings.cpp shim: the same monotonic clock libuv
+diff --git a/src/pod/lib.rs b/src/pod/lib.rs
+index 8101df93..1c255218 100644
+--- a/src/pod/lib.rs
++++ b/src/pod/lib.rs
+@@ -7,6 +7,7 @@ extern crate alloc;
+ 
+ use core::mem::{align_of, size_of, size_of_val};
+ 
++#[cfg(any(unix, windows))] // wasm-experiment
+ mod foreign;
+ 
+ /// The all-zero byte pattern is a valid `Self`.

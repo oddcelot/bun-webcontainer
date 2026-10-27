@@ -1,0 +1,601 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Stefan Kopco <hey@oddcelot.dev>
+Date: Tue, 27 Oct 2026 22:15:38 +0100
+Subject: [PATCH] io, crash_handler, spawn_sys, uws_sys: compile on wasm
+
+bun_js_parser reaches these through bun_crash_handler. Stubs only: the waker reports ENOSYS, the parent-death watchdog is a no-op, crashes abort, and socket/process types use local wasm definitions.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/crash_handler/CPUFeatures.rs | 14 +++++++-
+ src/crash_handler/lib.rs         | 57 ++++++++++++++++++++-----------
+ src/io/PipeReader.rs             |  4 +--
+ src/io/PipeWriter.rs             | 10 +++---
+ src/io/lib.rs                    | 58 +++++++++++++++++++++++++++++---
+ src/io/openForWriting.rs         |  4 +--
+ src/io/posix_event_loop.rs       |  9 +++--
+ src/spawn_sys/spawn_process.rs   |  7 ++--
+ src/uws_sys/Loop.rs              |  2 +-
+ src/uws_sys/SocketContext.rs     |  5 +++
+ src/uws_sys/udp.rs               |  5 ++-
+ 11 files changed, 135 insertions(+), 40 deletions(-)
+
+diff --git a/src/crash_handler/CPUFeatures.rs b/src/crash_handler/CPUFeatures.rs
+index 5736ea90..4c681328 100644
+--- a/src/crash_handler/CPUFeatures.rs
++++ b/src/crash_handler/CPUFeatures.rs
+@@ -44,7 +44,16 @@ bitflags::bitflags! {
+     }
+ }
+ 
+-#[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
++#[cfg(target_family = "wasm")] // wasm-experiment
++bitflags::bitflags! {
++    #[repr(transparent)]
++    #[derive(Copy, Clone)]
++    pub struct Flags: u8 {
++        const NONE = 1 << 0;
++    }
++}
++
++#[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64", target_family = "wasm")))] // wasm-experiment
+ compile_error!("CPUFeatures: unsupported target architecture");
+ 
+ // Per-arch const table of flag names, skipping "none" and padding bits.
+@@ -67,6 +76,9 @@ const NAMED_FLAGS: &[(&str, Flags)] = &[
+     ("sve", Flags::SVE),
+ ];
+ 
++#[cfg(target_family = "wasm")] // wasm-experiment
++const NAMED_FLAGS: &[(&str, Flags)] = &[];
++
+ impl fmt::Display for CPUFeatures {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+         let mut is_first = true;
+diff --git a/src/crash_handler/lib.rs b/src/crash_handler/lib.rs
+index e0e7ddbe..c4a834d9 100644
+--- a/src/crash_handler/lib.rs
++++ b/src/crash_handler/lib.rs
+@@ -95,15 +95,15 @@ pub mod debug {
+     // crash handler (lower-tier crate) gets real symbol names in debug builds
+     // and `btjs` re-exports from this module.
+     use crate::Error;
+-    #[cfg(not(windows))]
++    #[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment
+     use bun_collections::HashMap;
+-    #[cfg(not(windows))]
++    #[cfg(not(any(windows, target_family = "wasm")))]
+     use core::ffi::c_void;
+ 
+     pub use bun_core::debug::{SourceLocation, SymbolInfo};
+ 
+     pub struct SelfInfo {
+-        #[cfg(not(windows))]
++        #[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment
+         address_map: HashMap<usize, Box<Module>>,
+     }
+ 
+@@ -139,7 +139,7 @@ pub mod debug {
+             {
+                 // SelfInfo.init — non-Windows path is just an empty address_map.
+                 return Ok(SelfInfo {
+-                    #[cfg(not(windows))]
++                    #[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment
+                     address_map: HashMap::new(),
+                 });
+             }
+@@ -164,12 +164,12 @@ pub mod debug {
+             {
+                 return self.lookup_module_dyld(address);
+             }
+-            #[cfg(windows)]
++            #[cfg(any(windows, target_family = "wasm"))] // wasm-experiment
+             {
+                 let _ = address;
+                 return Err(crate::Error::MissingDebugInfo);
+             }
+-            #[cfg(not(any(target_vendor = "apple", windows)))]
++            #[cfg(not(any(target_vendor = "apple", windows, target_family = "wasm")))]
+             {
+                 return self.lookup_module_dl(address);
+             }
+@@ -182,18 +182,18 @@ pub mod debug {
+             {
+                 return lookup_module_name_dyld(address);
+             }
+-            #[cfg(windows)]
++            #[cfg(any(windows, target_family = "wasm"))] // wasm-experiment
+             {
+                 let _ = address;
+                 return None;
+             }
+-            #[cfg(not(any(target_vendor = "apple", windows)))]
++            #[cfg(not(any(target_vendor = "apple", windows, target_family = "wasm")))]
+             {
+                 return lookup_module_name_dl(address);
+             }
+         }
+ 
+-        #[cfg(not(any(target_vendor = "apple", windows)))]
++        #[cfg(not(any(target_vendor = "apple", windows, target_family = "wasm")))] // wasm-experiment
+         fn lookup_module_dl(&mut self, address: usize) -> Result<&mut Module, Error> {
+             let m =
+                 bun_sys::elf::find_loaded_module(address).ok_or(crate::Error::MissingDebugInfo)?;
+@@ -236,7 +236,7 @@ pub mod debug {
+ 
+     impl Module {
+         /// Port of `Module.getSymbolAtAddress`.
+-        #[cfg(windows)]
++        #[cfg(any(windows, target_family = "wasm"))] // wasm-experiment
+         pub fn get_symbol_at_address(&mut self, address: usize) -> Result<SymbolInfo, Error> {
+             // Windows symbol resolution via the loaded PE's PDB
+             // (`dbghelp.dll` `SymFromAddr`) is not implemented yet, so
+@@ -253,7 +253,7 @@ pub mod debug {
+             })
+         }
+         /// Port of `Module.getSymbolAtAddress`.
+-        #[cfg(not(windows))]
++        #[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment
+         pub fn get_symbol_at_address(&mut self, address: usize) -> Result<SymbolInfo, Error> {
+             let _ = self.base_address;
+             let mut info: libc::Dl_info = bun_core::ffi::zeroed();
+@@ -291,7 +291,7 @@ pub mod debug {
+         }
+     }
+ 
+-    #[cfg(not(any(target_vendor = "apple", windows)))]
++    #[cfg(not(any(target_vendor = "apple", windows, target_family = "wasm")))] // wasm-experiment
+     fn lookup_module_name_dl(address: usize) -> Option<Box<[u8]>> {
+         bun_sys::elf::find_loaded_module(address)
+             .map(|m| bun_paths::basename(&m.name).to_vec().into_boxed_slice())
+@@ -439,7 +439,11 @@ impl Write for StderrWriter {
+                 );
+             }
+         }
+-        #[cfg(not(windows))]
++        #[cfg(target_family = "wasm")] // wasm-experiment
++        {
++            let _ = bun_sys::write(bun_sys::Fd::from_native(2), bytes);
++        }
++        #[cfg(not(any(windows, target_family = "wasm")))]
+         {
+             // SAFETY: fd 2 is always open; libc::write is async-signal-safe.
+             unsafe {
+@@ -455,11 +459,11 @@ mod draft {
+ 
+     use core::cell::Cell;
+     use core::ffi::c_char;
+-    #[cfg(not(windows))]
++    #[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment
+     use core::ffi::c_int;
+     #[cfg(windows)]
+     use core::ffi::c_long;
+-    #[cfg(not(windows))]
++    #[cfg(not(any(windows, target_family = "wasm")))]
+     use core::ffi::c_void;
+     use core::fmt;
+     // D101: `core::fmt::Write` intentionally NOT in scope here — `bun_io::Write`
+@@ -498,7 +502,9 @@ mod draft {
+             core::intrinsics::breakpoint();
+             bun_sys::windows::kernel32::ExitProcess(3)
+         }
+-        #[cfg(not(windows))]
++        #[cfg(target_family = "wasm")] // wasm-experiment
++        core::intrinsics::abort();
++        #[cfg(not(any(windows, target_family = "wasm")))]
+         // SAFETY: libc::abort has no preconditions; never returns.
+         unsafe {
+             libc::abort()
+@@ -2369,6 +2375,10 @@ mod draft {
+             {
+                 b'F'
+             }
++            #[cfg(target_family = "wasm")] // wasm-experiment
++            {
++                b'z'
++            }
+         };
+     }
+ 
+@@ -2407,6 +2417,11 @@ mod draft {
+     impl StackLine {
+         /// `None` implies the trace is not known.
+         fn from_address(addr: usize, name_bytes: &mut [u8]) -> Option<StackLine> {
++            #[cfg(target_family = "wasm")] // wasm-experiment
++            {
++                let _ = (addr, name_bytes);
++                return None;
++            }
+             #[cfg(windows)]
+             {
+                 let module = bun_sys::windows::get_module_handle_from_address(addr)?;
+@@ -2519,7 +2534,7 @@ mod draft {
+                 let _ = name_bytes;
+                 return None;
+             }
+-            #[cfg(not(any(windows, target_os = "macos")))]
++            #[cfg(not(any(windows, target_os = "macos", target_family = "wasm")))] // wasm-experiment
+             {
+                 let _ = name_bytes;
+                 let address = addr.saturating_sub(1);
+@@ -2843,6 +2858,10 @@ mod draft {
+             // `crash()` → `ExitProcess(3)`, so the kernel reclaims them anyway.
+             let _ = spawn_result;
+         }
++        #[cfg(target_family = "wasm")] // wasm-experiment
++        {
++            let _ = url;
++        }
+         #[cfg(any(
+             target_os = "macos",
+             target_os = "linux",
+@@ -2913,7 +2932,7 @@ mod draft {
+     /// for panics) so the parent sees the real fault and core dumps are
+     /// attributed correctly.
+     fn crash(reason: CrashReason) -> ! {
+-        #[cfg(not(windows))]
++        #[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment
+         {
+             let sig = reason.terminal_signal();
+ 
+@@ -2966,7 +2985,7 @@ mod draft {
+             // If we somehow get here, fall through to a guaranteed-fatal trap.
+             core::intrinsics::abort();
+         }
+-        #[cfg(windows)]
++        #[cfg(any(windows, target_family = "wasm"))] // wasm-experiment
+         {
+             let _ = reason;
+             // Node.js exits with code 134 (128 + SIGABRT) instead. We use abort() as it
+diff --git a/src/io/PipeReader.rs b/src/io/PipeReader.rs
+index dcbb385a..57c468b3 100644
+--- a/src/io/PipeReader.rs
++++ b/src/io/PipeReader.rs
+@@ -1980,9 +1980,9 @@ impl Drop for WindowsBufferedReader {
+ // Platform alias
+ // ──────────────────────────────────────────────────────────────────────────
+ 
+-#[cfg(unix)]
++#[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+ pub type BufferedReader = PosixBufferedReader;
+ #[cfg(windows)]
+ pub type BufferedReader = WindowsBufferedReader;
+-#[cfg(not(any(unix, windows)))]
++#[cfg(not(any(unix, windows, target_family = "wasm")))] // wasm-experiment
+ compile_error!("Unsupported platform");
+diff --git a/src/io/PipeWriter.rs b/src/io/PipeWriter.rs
+index 4c9688d8..5c21a125 100644
+--- a/src/io/PipeWriter.rs
++++ b/src/io/PipeWriter.rs
+@@ -2719,14 +2719,14 @@ impl<Parent: WindowsStreamingWriterParent> Drop for WindowsStreamingWriter<Paren
+ // Platform aliases
+ // ──────────────────────────────────────────────────────────────────────────
+ 
+-#[cfg(unix)]
++#[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+ pub type BufferedWriter<P> = PosixBufferedWriter<P>;
+-#[cfg(not(unix))]
++#[cfg(not(any(unix, target_family = "wasm")))] // wasm-experiment
+ pub type BufferedWriter<P> = WindowsBufferedWriter<P>;
+ 
+-#[cfg(unix)]
++#[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+ pub type StreamingWriter<P> = PosixStreamingWriter<P>;
+-#[cfg(not(unix))]
++#[cfg(not(any(unix, target_family = "wasm")))] // wasm-experiment
+ pub type StreamingWriter<P> = WindowsStreamingWriter<P>;
+ 
+ // ──────────────────────────────────────────────────────────────────────────
+@@ -2798,7 +2798,7 @@ macro_rules! impl_streaming_writer_parent {
+         ref_       = |$ref_this:ident| $ref_:expr,
+         deref      = |$deref_this:ident| $deref:expr,
+     ) => {
+-        #[cfg(unix)]
++        #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+         impl $($gen)* $crate::pipe_writer::PosixStreamingWriterParent for $Ty {
+             const POLL_OWNER_TAG: $crate::PollTag = $poll_tag;
+             #[inline]
+diff --git a/src/io/lib.rs b/src/io/lib.rs
+index 8d487073..b6896330 100644
+--- a/src/io/lib.rs
++++ b/src/io/lib.rs
+@@ -57,6 +57,19 @@ pub use keep_alive::KeepAlive;
+ #[cfg(unix)]
+ #[path = "ParentDeathWatchdog.rs"]
+ pub mod parent_death_watchdog;
++#[cfg(target_family = "wasm")] // wasm-experiment
++pub mod parent_death_watchdog {
++    #[inline]
++    pub fn is_enabled() -> bool {
++        false
++    }
++    #[inline]
++    pub fn install() {}
++    #[inline]
++    pub fn enable() {}
++    #[inline]
++    pub fn ensure_kill_on_close_job() {}
++}
+ #[cfg(windows)]
+ pub mod parent_death_watchdog {
+     use core::ffi::c_void;
+@@ -671,7 +684,7 @@ pub use open_for_writing_mod::{open_for_writing, open_for_writing_impl};
+ 
+ // ════════════════════════════════════════════════════════════════════════════
+ 
+-#[cfg(not(windows))]
++#[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment
+ use core::ffi::c_int;
+ use core::sync::atomic::Ordering;
+ 
+@@ -683,6 +696,7 @@ use bun_sys::{self as sys, E, Fd};
+ // named `io_loop` but the runtime tagname is `"loop"` so `BUN_DEBUG_loop=1` works.
+ #[cfg(not(windows))]
+ #[allow(non_upper_case_globals)]
++#[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+ pub(crate) static io_loop: bun_core::output::ScopedLogger =
+     bun_core::output::ScopedLogger::new("loop", bun_core::output::Visibility::Visible);
+ // All `log!` call sites are inside epoll/kqueue paths (Linux/macOS/FreeBSD); on
+@@ -813,7 +827,7 @@ impl IoRequestLoop {
+     /// Initializes `LOOP`. On failure, closes the fds it opened so a later call can retry.
+     #[cfg(not(windows))]
+     fn load() -> sys::Result<()> {
+-        #[cfg(not(target_os = "macos"))]
++        #[cfg(not(any(target_os = "macos", target_family = "wasm")))] // wasm-experiment
+         use bun_sys::FdExt as _;
+ 
+         let waker = Waker::init().map_err(|err| {
+@@ -913,7 +927,7 @@ impl IoRequestLoop {
+             }
+         }
+ 
+-        #[cfg(target_os = "macos")]
++        #[cfg(any(target_os = "macos", target_family = "wasm"))] // wasm-experiment
+         let _ = (loop_, waker_fd);
+         Ok(())
+     }
+@@ -941,8 +955,12 @@ impl IoRequestLoop {
+                     .stack_size(1024 * 1024 * 2)
+                     .spawn(Self::on_spawn_io_thread)
+                     .map_err(|err| {
++                        #[cfg(target_family = "wasm")] // wasm-experiment
++                        let eagain = E::EAGAIN as i32;
++                        #[cfg(not(target_family = "wasm"))]
++                        let eagain = libc::EAGAIN;
+                         sys::Error::from_code_int(
+-                            err.raw_os_error().unwrap_or(libc::EAGAIN),
++                            err.raw_os_error().unwrap_or(eagain),
+                             sys::Tag::pthread_create,
+                         )
+                     })?;
+@@ -1137,7 +1155,8 @@ impl IoRequestLoop {
+     // these so any Windows call site fails at compile time rather than
+     // compiling cleanly and only panicking at runtime.
+     #[cfg(not(windows))]
+-    pub(crate) fn pollfd(&self) -> Fd {
++    #[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
++pub(crate) fn pollfd(&self) -> Fd {
+         #[cfg(any(target_os = "linux", target_os = "android"))]
+         {
+             return self.epoll_fd;
+@@ -1432,17 +1451,21 @@ pub enum PollableTag {
+ /// single `u64` (`epoll_event.data.u64` / `kevent.udata`), so we keep the
+ /// packed addr:49 + tag:15 layout locally.
+ #[cfg(not(windows))]
++#[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+ #[derive(Clone, Copy)]
+ struct Pollable {
+     value: u64,
+ }
+ 
+ #[cfg(not(windows))]
++#[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+ const POLLABLE_ADDR_BITS: u64 = 49;
+ #[cfg(not(windows))]
++#[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+ const POLLABLE_ADDR_MASK: u64 = (1u64 << POLLABLE_ADDR_BITS) - 1;
+ 
+ #[cfg(not(windows))]
++#[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+ impl Pollable {
+     fn init(t: PollableTag, p: *mut Poll) -> Pollable {
+         let addr = p as usize as u64;
+@@ -2013,6 +2036,31 @@ pub mod waker {
+     pub type Waker = LinuxWaker;
+     #[cfg(windows)]
+     pub type Waker = WindowsWaker;
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    pub type Waker = WasmWaker;
++
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    pub struct WasmWaker;
++
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    impl WasmWaker {
++        pub const fn placeholder() -> Self {
++            Self
++        }
++
++        pub fn init() -> crate::error::Result<Self> {
++            Err(crate::Error::Sys(bun_errno::SystemErrno::ENOSYS))
++        }
++
++        #[inline]
++        pub(crate) fn get_fd(&self) -> Fd {
++            Fd::INVALID
++        }
++
++        pub fn wait(&self) {}
++
++        pub fn wake(&self) {}
++    }
+ 
+     // ── Linux / FreeBSD ───────────────────────────────────────────────────────
+ 
+diff --git a/src/io/openForWriting.rs b/src/io/openForWriting.rs
+index ef7904dc..edc966ee 100644
+--- a/src/io/openForWriting.rs
++++ b/src/io/openForWriting.rs
+@@ -105,14 +105,14 @@ where
+     #[cfg(windows)]
+     let input_flags = input_flags & !bun_sys::O::NONBLOCK;
+     // TODO: this should be concurrent.
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     let mut isatty = false;
+     let mut is_nonblocking = false;
+     let result =
+         input_path.open_for_writing_result(dir, input_flags, mode, &mut is_nonblocking, &openat);
+     let fd = result?;
+ 
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     {
+         match bun_sys::fstat(fd) {
+             Err(err) => {
+diff --git a/src/io/posix_event_loop.rs b/src/io/posix_event_loop.rs
+index d3c93569..62303184 100644
+--- a/src/io/posix_event_loop.rs
++++ b/src/io/posix_event_loop.rs
+@@ -4,7 +4,7 @@ use core::ffi::c_int;
+ use core::ffi::c_void;
+ #[cfg(not(windows))]
+ use core::fmt;
+-#[cfg(unix)]
++#[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+ use core::ptr;
+ 
+ #[cfg(not(windows))]
+@@ -19,6 +19,7 @@ pub type Loop = UwsLoop;
+ // such counter (libuv tracks active handles itself); `posix_event_loop` is only
+ // reachable from non-Windows `Loop` consumers, so the Windows arm is a no-op.
+ #[cfg(not(windows))]
++#[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+ #[inline]
+ fn loop_add_active(loop_: &mut Loop, value: u32) {
+     loop_.active = loop_.active.saturating_add(value);
+@@ -79,6 +80,7 @@ fn kevent_change_error(data: i64) -> sys::Result<()> {
+ /// be registered and re-issuing doomed deletes on later teardown calls. libuv
+ /// ignores the same errnos for its kqueue/epoll delete operations.
+ #[cfg(not(windows))]
++#[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+ #[inline]
+ fn deregistration_already_gone(errno: sys::E) -> bool {
+     matches!(errno, sys::E::ENOENT | sys::E::EBADF)
+@@ -143,7 +145,7 @@ pub fn js_vm_ctx() -> EventLoopCtx {
+ // `KQueueGenerationNumber` is `usize` on macOS-debug, else a zero-size sentinel.
+ #[cfg(all(target_os = "macos", debug_assertions))]
+ type KQueueGenerationNumber = usize;
+-#[cfg(all(unix, not(all(target_os = "macos", debug_assertions))))]
++#[cfg(all(any(unix, target_family = "wasm"), not(all(target_os = "macos", debug_assertions))))] // wasm-experiment
+ type KQueueGenerationNumber = u8; // Note: conceptually zero-width; smallest Rust int is u8. Gated by cfg below.
+ 
+ // Debug-only diagnostic; `Relaxed` (no synchronization implied).
+@@ -306,6 +308,7 @@ pub struct FilePoll {
+ }
+ 
+ #[cfg(not(windows))]
++#[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+ impl FilePoll {
+     fn update_flags(&mut self, updated: FlagsSet) {
+         let mut flags = self.flags;
+@@ -1421,12 +1424,14 @@ impl Store {
+ // on a tuple). Since the union has exactly one variant, wrap the raw
+ // `TaggedPtr` directly with the same tag scheme (`1024 - index`).
+ #[cfg(not(windows))]
++#[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+ #[derive(Copy, Clone)]
+ pub(crate) struct Pollable {
+     repr: bun_collections::TaggedPtr,
+ }
+ 
+ #[cfg(not(windows))]
++#[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+ impl Pollable {
+     /// Tag value for `FilePoll` (index 0 → `1024 - 0`).
+     pub(crate) const FILE_POLL_TAG: u16 = 1024;
+diff --git a/src/spawn_sys/spawn_process.rs b/src/spawn_sys/spawn_process.rs
+index cd13d1f6..08e57264 100644
+--- a/src/spawn_sys/spawn_process.rs
++++ b/src/spawn_sys/spawn_process.rs
+@@ -16,7 +16,7 @@ use bun_core::Output;
+ use bun_sys::FdExt as _;
+ use bun_sys::{self, Fd};
+ 
+-#[cfg(not(windows))]
++#[cfg(unix)]
+ use crate::posix_spawn::posix_spawn;
+ #[cfg(unix)]
+ use posix_spawn::{Actions as PosixSpawnActions, Attr as PosixSpawnAttr};
+@@ -30,6 +30,8 @@ use crate::{Argv, Envp};
+ 
+ #[cfg(unix)]
+ pub type PidT = libc::pid_t;
++#[cfg(target_family = "wasm")] // wasm-experiment
++pub type PidT = i32;
+ #[cfg(windows)]
+ pub type PidT = bun_libuv_sys::uv_pid_t;
+ 
+@@ -138,7 +140,7 @@ pub fn uv_getrusage(process: &mut bun_libuv_sys::uv_process_t) -> WinRusage {
+     usage_info
+ }
+ 
+-#[cfg(windows)]
++#[cfg(any(windows, target_family = "wasm"))] // wasm-experiment
+ pub type Rusage = WinRusage;
+ #[cfg(unix)]
+ pub type Rusage = libc::rusage;
+@@ -456,6 +458,7 @@ pub struct PosixSpawnResult {
+     pub stdout: Option<Fd>,
+     pub stderr: Option<Fd>,
+     #[cfg(not(windows))]
++    #[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+     pub(crate) ipc: Option<Fd>,
+     pub extra_pipes: Vec<ExtraPipe>,
+     pub memfds: [bool; 3],
+diff --git a/src/uws_sys/Loop.rs b/src/uws_sys/Loop.rs
+index 90ab5336..16d1417a 100644
+--- a/src/uws_sys/Loop.rs
++++ b/src/uws_sys/Loop.rs
+@@ -98,7 +98,7 @@ pub type EventType = libc::kevent64_s;
+ #[cfg(target_os = "freebsd")]
+ pub type EventType = libc::kevent;
+ // TODO:
+-#[cfg(windows)]
++#[cfg(any(windows, target_family = "wasm"))] // wasm-experiment
+ pub type EventType = *mut c_void;
+ 
+ /// Loop handler trait with optional `pre`/`post` hooks. Implementors override
+diff --git a/src/uws_sys/SocketContext.rs b/src/uws_sys/SocketContext.rs
+index 9028bac9..e35627e2 100644
+--- a/src/uws_sys/SocketContext.rs
++++ b/src/uws_sys/SocketContext.rs
+@@ -33,6 +33,11 @@ fn stat_for_digest(path: &bun_core::ZStr) -> Option<[i64; 3]> {
+     ])
+ }
+ 
++#[cfg(target_family = "wasm")] // wasm-experiment
++fn stat_for_digest(_path: &bun_core::ZStr) -> Option<[i64; 3]> {
++    None
++}
++
+ #[cfg(windows)]
+ fn stat_for_digest(path: &bun_core::ZStr) -> Option<[i64; 3]> {
+     use bun_windows_sys as fs;
+diff --git a/src/uws_sys/udp.rs b/src/uws_sys/udp.rs
+index dfe2b062..3a4c9344 100644
+--- a/src/uws_sys/udp.rs
++++ b/src/uws_sys/udp.rs
+@@ -5,8 +5,11 @@ use crate::{LIBUS_SOCKET_DESCRIPTOR, Loop};
+ // ws2_32 shim there. Both definitions are 128-byte 8-aligned POD.
+ #[cfg(windows)]
+ use bun_windows_sys::ws2_32::sockaddr_storage;
+-#[cfg(not(windows))]
++#[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment
+ use libc::sockaddr_storage;
++#[cfg(target_family = "wasm")] // wasm-experiment
++#[repr(C, align(8))]
++pub struct sockaddr_storage([u8; 128]);
+ 
+ bun_opaque::opaque_ffi! {
+     /// Opaque uSockets UDP socket handle (`us_udp_socket_t`).

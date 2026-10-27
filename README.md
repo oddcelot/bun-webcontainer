@@ -9,8 +9,9 @@ JSC-independent Rust crates compiled to wasm64 (Memory64) plus JS shims for the 
 | `transpile-wasm/` | Bun's transpiler (`bun_js_parser` + `bun_js_printer`) as wasm64 |
 | `semver-wasm/` | `bun_semver` as wasm64 |
 | `shim-test/` | Native tests for the wasm mimalloc shim |
-| `bun-wasm.patch` | Every change to upstream Bun, cfg-gated and marked `// wasm-experiment` |
-| `scripts/setup-bun.sh` | Recreates `bun/` (pinned commit + patch + vendored crates + codegen) |
+| `patches/bun/` | Every change to upstream Bun as a patch series (one commit each), cfg-gated and marked `// wasm-experiment` |
+| `scripts/setup-bun.sh` | Recreates `bun/`: pinned commit + `patches/bun/` as commits on `wasm-experiment`, vendored crates, codegen |
+| `scripts/export-bun-patches.sh` | Exports `bun/`'s `wasm-experiment` commits to `patches/bun/` (pre-commit checks they match) |
 | `scripts/w64.sh` | wasm64 compile check of Bun crates |
 | `HANDOFF.md` | How the port works, findings, next steps |
 

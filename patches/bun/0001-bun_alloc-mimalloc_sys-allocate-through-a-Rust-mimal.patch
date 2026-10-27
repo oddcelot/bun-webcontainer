@@ -1,0 +1,447 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Stefan Kopco <hey@oddcelot.dev>
+Date: Tue, 27 Oct 2026 22:15:37 +0100
+Subject: [PATCH] bun_alloc, mimalloc_sys: allocate through a Rust mimalloc
+ shim on wasm
+
+wasm64-unknown-unknown has no C toolchain for mimalloc and an empty libc crate. mimalloc_sys/wasm.rs implements the mi_* symbols on std::alloc, with per-heap block lists so mi_heap_destroy frees every block. bun_alloc mounts wasm_libc.rs as crate::libc for malloc/realloc/free/strlen/max_align_t. 64-bit layout asserts are gated on target_pointer_width.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/bun_alloc/arena_box.rs |   3 +
+ src/bun_alloc/baby_vec.rs  |   1 +
+ src/bun_alloc/basic.rs     |   5 +-
+ src/bun_alloc/lib.rs       |  10 ++
+ src/bun_alloc/wasm_libc.rs |  23 +++
+ src/mimalloc_sys/lib.rs    |   2 +
+ src/mimalloc_sys/wasm.rs   | 303 +++++++++++++++++++++++++++++++++++++
+ 7 files changed, 346 insertions(+), 1 deletion(-)
+ create mode 100644 src/bun_alloc/wasm_libc.rs
+ create mode 100644 src/mimalloc_sys/wasm.rs
+
+diff --git a/src/bun_alloc/arena_box.rs b/src/bun_alloc/arena_box.rs
+index 1a548fa9..425d3c06 100644
+--- a/src/bun_alloc/arena_box.rs
++++ b/src/bun_alloc/arena_box.rs
+@@ -53,8 +53,11 @@ unsafe impl Allocator for FreesOnly<'_> {
+ /// See the module doc.
+ pub struct ArenaBox<'a, T: ?Sized>(Box<T, FreesOnly<'a>>);
+ 
++#[cfg(target_pointer_width = "64")] // wasm-experiment
+ const _: () = assert!(size_of::<ArenaBox<'static, u64>>() == 8);
++#[cfg(target_pointer_width = "64")] // wasm-experiment
+ const _: () = assert!(size_of::<ArenaBox<'static, [u64]>>() == 16);
++#[cfg(target_pointer_width = "64")] // wasm-experiment
+ const _: () = assert!(size_of::<Option<ArenaBox<'static, [u64]>>>() == 16);
+ 
+ impl<'a, T: ?Sized> ArenaBox<'a, T> {
+diff --git a/src/bun_alloc/baby_vec.rs b/src/bun_alloc/baby_vec.rs
+index d13cbace..7523bb33 100644
+--- a/src/bun_alloc/baby_vec.rs
++++ b/src/bun_alloc/baby_vec.rs
+@@ -24,6 +24,7 @@ pub struct BabyVec<'a, T> {
+     alloc: &'a MimallocArena,
+ }
+ 
++#[cfg(target_pointer_width = "64")] // wasm-experiment
+ const _: () = assert!(size_of::<BabyVec<'static, u8>>() == 24);
+ 
+ // SAFETY: same as `Vec<T, &MimallocArena>` — `Send`/`Sync` follow `T` and the
+diff --git a/src/bun_alloc/basic.rs b/src/bun_alloc/basic.rs
+index 4ec2f3a1..8eb1b039 100644
+--- a/src/bun_alloc/basic.rs
++++ b/src/bun_alloc/basic.rs
+@@ -43,7 +43,10 @@ static C_ALLOCATOR_VTABLE: &AllocatorVTable = &AllocatorVTable {
+ mod memory_allocator_tags {
+     use core::ffi::c_void;
+ 
+-    const DEFAULT_ALLOCATOR_TAG: usize = 0xBEEFA110C; // "BEEFA110C"  beef a110c i guess
++    #[cfg(target_pointer_width = "64")]
++    const DEFAULT_ALLOCATOR_TAG: usize = 0xBEEFA110C;
++    #[cfg(not(target_pointer_width = "64"))] // wasm-experiment
++    const DEFAULT_ALLOCATOR_TAG: usize = 0xEEFA110C; // "BEEFA110C"  beef a110c i guess
+     pub(crate) const DEFAULT_ALLOCATOR_TAG_PTR: *mut c_void = DEFAULT_ALLOCATOR_TAG as *mut c_void;
+ }
+ 
+diff --git a/src/bun_alloc/lib.rs b/src/bun_alloc/lib.rs
+index 9c595055..45e35288 100644
+--- a/src/bun_alloc/lib.rs
++++ b/src/bun_alloc/lib.rs
+@@ -21,6 +21,9 @@ use std::collections::HashMap;
+ 
+ pub use bun_mimalloc_sys::mimalloc;
+ pub mod c_thunks;
++#[cfg(target_family = "wasm")] // wasm-experiment
++#[path = "wasm_libc.rs"]
++mod libc;
+ 
+ // ── Allocator vtable ───────────────────────────────────────────────────────
+ #[repr(transparent)]
+@@ -193,6 +196,8 @@ pub mod stack_fallback;
+ /// Raw alloc/free matching the `#[global_allocator]` (`mi_*` normally, libc under ASAN).
+ pub mod default_alloc {
+     use core::ffi::c_void;
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    use crate::libc;
+ 
+     #[inline]
+     pub fn malloc(size: usize) -> *mut c_void {
+@@ -652,6 +657,11 @@ pub fn page_size() -> usize {
+             GetSystemInfo(&mut info);
+             info.dw_page_size as usize
+         }
++        // wasm-experiment: WASM linear memory grows in 64 KiB pages.
++        #[cfg(target_family = "wasm")]
++        {
++            65536
++        }
+     })
+ }
+ 
+diff --git a/src/bun_alloc/wasm_libc.rs b/src/bun_alloc/wasm_libc.rs
+new file mode 100644
+index 00000000..36178a31
+--- /dev/null
++++ b/src/bun_alloc/wasm_libc.rs
+@@ -0,0 +1,23 @@
++//! wasm-experiment: the `libc` items this crate names, for `target_family = "wasm"` where the
++//! `libc` crate has none. Mounted as `crate::libc`; the allocation functions are the mimalloc shim.
++
++use core::ffi::{c_char, c_void};
++
++#[repr(C, align(16))]
++pub(crate) struct max_align_t([u8; 16]);
++
++pub(crate) unsafe fn malloc(size: usize) -> *mut c_void {
++    crate::mimalloc::mi_malloc(size)
++}
++
++pub(crate) unsafe fn realloc(p: *mut c_void, size: usize) -> *mut c_void {
++    unsafe { crate::mimalloc::mi_realloc(p, size) }
++}
++
++pub(crate) unsafe fn free(p: *mut c_void) {
++    unsafe { crate::mimalloc::mi_free(p) }
++}
++
++pub(crate) unsafe fn strlen(s: *const c_char) -> usize {
++    unsafe { core::ffi::CStr::from_ptr(s).count_bytes() }
++}
+diff --git a/src/mimalloc_sys/lib.rs b/src/mimalloc_sys/lib.rs
+index 11548c46..a1a3e1db 100644
+--- a/src/mimalloc_sys/lib.rs
++++ b/src/mimalloc_sys/lib.rs
+@@ -1,2 +1,4 @@
+ #![warn(unused_must_use)]
+ pub mod mimalloc;
++#[cfg(target_family = "wasm")] // wasm-experiment
++mod wasm;
+diff --git a/src/mimalloc_sys/wasm.rs b/src/mimalloc_sys/wasm.rs
+new file mode 100644
+index 00000000..dc069779
+--- /dev/null
++++ b/src/mimalloc_sys/wasm.rs
+@@ -0,0 +1,303 @@
++//! wasm-experiment: the `mi_*` symbols the extern blocks in `mimalloc.rs` declare, implemented in
++//! Rust on top of `std::alloc` for `target_family = "wasm"`, where there is no C toolchain to build
++//! mimalloc. Defined `#[no_mangle]`, so the declarations resolve to these at link time.
++//!
++//! Every block carries a [`Header`] just below the pointer handed out. Blocks from a heap made by
++//! `mi_heap_new` are also linked into that heap's list, so `mi_heap_destroy` can free them all.
++//! Blocks from `mi_malloc` and `mi_heap_main()` are untracked. Single-threaded only.
++
++use core::ffi::{c_long, c_void};
++use core::ptr::{self, null_mut};
++use std::alloc::{Layout, alloc, dealloc};
++
++use crate::mimalloc::{Heap, Option as MiOption, mi_heap_area_t};
++
++#[repr(C)]
++struct Header {
++    /// Start of the `std::alloc` allocation.
++    base: *mut u8,
++    /// Layout passed to `std::alloc::alloc`.
++    total: usize,
++    align: usize,
++    /// Bytes the caller asked for.
++    size: usize,
++    /// Owning heap, or null when untracked.
++    heap: *mut HeapState,
++    prev: *mut Header,
++    next: *mut Header,
++}
++
++struct HeapState {
++    head: *mut Header,
++}
++
++const MIN_ALIGN: usize = 16;
++const HEADER: usize = size_of::<Header>();
++
++/// Sentinel returned by `mi_heap_main()`; never dereferenced.
++static mut MAIN_HEAP: u8 = 0;
++
++fn main_heap() -> *mut Heap {
++    (&raw mut MAIN_HEAP).cast()
++}
++
++fn state_of(heap: *mut Heap) -> *mut HeapState {
++    if heap.is_null() || heap == main_heap() { null_mut() } else { heap.cast() }
++}
++
++unsafe fn header_of(p: *const c_void) -> *mut Header {
++    unsafe { p.cast::<u8>().sub(HEADER).cast_mut().cast() }
++}
++
++unsafe fn alloc_in(heap: *mut HeapState, size: usize, align: usize, zero: bool) -> *mut c_void {
++    let align = align.max(MIN_ALIGN);
++    // Header sits right below the user pointer; round the prefix up so the user pointer is aligned.
++    let prefix = HEADER.next_multiple_of(align);
++    let Some(total) = prefix.checked_add(size.max(1)) else { return null_mut() };
++    let Ok(layout) = Layout::from_size_align(total, align) else { return null_mut() };
++    unsafe {
++        let base = if zero { std::alloc::alloc_zeroed(layout) } else { alloc(layout) };
++        if base.is_null() {
++            return null_mut();
++        }
++        let user = base.add(prefix);
++        let h = user.sub(HEADER).cast::<Header>();
++        h.write(Header { base, total, align, size, heap, prev: null_mut(), next: null_mut() });
++        if !heap.is_null() {
++            (*h).next = (*heap).head;
++            if !(*heap).head.is_null() {
++                (*(*heap).head).prev = h;
++            }
++            (*heap).head = h;
++        }
++        user.cast()
++    }
++}
++
++unsafe fn release(h: *mut Header) {
++    unsafe {
++        let heap = (*h).heap;
++        if !heap.is_null() {
++            if (*h).prev.is_null() {
++                (*heap).head = (*h).next;
++            } else {
++                (*(*h).prev).next = (*h).next;
++            }
++            if !(*h).next.is_null() {
++                (*(*h).next).prev = (*h).prev;
++            }
++        }
++        dealloc((*h).base, Layout::from_size_align_unchecked((*h).total, (*h).align));
++    }
++}
++
++unsafe fn realloc_in(heap: *mut HeapState, p: *mut c_void, newsize: usize, align: usize) -> *mut c_void {
++    if p.is_null() {
++        return unsafe { alloc_in(heap, newsize, align, false) };
++    }
++    unsafe {
++        let old = header_of(p);
++        let n = alloc_in(heap, newsize, align.max((*old).align), false);
++        if n.is_null() {
++            return null_mut();
++        }
++        ptr::copy_nonoverlapping(p.cast::<u8>(), n.cast::<u8>(), (*old).size.min(newsize));
++        release(old);
++        n
++    }
++}
++
++#[unsafe(no_mangle)]
++extern "C" fn mi_malloc(size: usize) -> *mut c_void {
++    unsafe { alloc_in(null_mut(), size, MIN_ALIGN, false) }
++}
++
++#[unsafe(no_mangle)]
++extern "C" fn mi_zalloc(size: usize) -> *mut c_void {
++    unsafe { alloc_in(null_mut(), size, MIN_ALIGN, true) }
++}
++
++#[unsafe(no_mangle)]
++extern "C" fn mi_calloc(count: usize, size: usize) -> *mut c_void {
++    count.checked_mul(size).map_or(null_mut(), |n| mi_zalloc(n))
++}
++
++#[unsafe(no_mangle)]
++extern "C" fn mi_malloc_aligned(size: usize, alignment: usize) -> *mut c_void {
++    unsafe { alloc_in(null_mut(), size, alignment, false) }
++}
++
++#[unsafe(no_mangle)]
++extern "C" fn mi_zalloc_aligned(size: usize, alignment: usize) -> *mut c_void {
++    unsafe { alloc_in(null_mut(), size, alignment, true) }
++}
++
++/// Keeps `p` in the heap it came from.
++#[unsafe(no_mangle)]
++unsafe extern "C" fn mi_realloc(p: *mut c_void, newsize: usize) -> *mut c_void {
++    unsafe { mi_realloc_aligned(p, newsize, MIN_ALIGN) }
++}
++
++#[unsafe(no_mangle)]
++unsafe extern "C" fn mi_realloc_aligned(p: *mut c_void, newsize: usize, alignment: usize) -> *mut c_void {
++    let heap = if p.is_null() { null_mut() } else { unsafe { (*header_of(p)).heap } };
++    unsafe { realloc_in(heap, p, newsize, alignment) }
++}
++
++/// In-place growth only; blocks are exact-size, so this succeeds only when shrinking.
++#[unsafe(no_mangle)]
++unsafe extern "C" fn mi_expand(p: *mut c_void, newsize: usize) -> *mut c_void {
++    if p.is_null() {
++        return null_mut();
++    }
++    unsafe {
++        let h = header_of(p);
++        if newsize <= (*h).size {
++            (*h).size = newsize;
++            p
++        } else {
++            null_mut()
++        }
++    }
++}
++
++#[unsafe(no_mangle)]
++unsafe extern "C" fn mi_free(p: *mut c_void) {
++    if !p.is_null() {
++        unsafe { release(header_of(p)) }
++    }
++}
++
++#[unsafe(no_mangle)]
++unsafe extern "C" fn mi_free_size(p: *mut c_void, _size: usize) {
++    unsafe { mi_free(p) }
++}
++
++#[unsafe(no_mangle)]
++unsafe extern "C" fn mi_free_size_aligned(p: *mut c_void, _size: usize, _alignment: usize) {
++    unsafe { mi_free(p) }
++}
++
++#[unsafe(no_mangle)]
++unsafe extern "C" fn mi_usable_size(p: *const c_void) -> usize {
++    if p.is_null() { 0 } else { unsafe { (*header_of(p)).size } }
++}
++
++#[unsafe(no_mangle)]
++unsafe extern "C" fn mi_malloc_usable_size(p: *const c_void) -> usize {
++    unsafe { mi_usable_size(p) }
++}
++
++/// No region bookkeeping; only used by debug assertions.
++#[unsafe(no_mangle)]
++extern "C" fn mi_is_in_heap_region(_p: *const c_void) -> bool {
++    true
++}
++
++#[unsafe(no_mangle)]
++extern "C" fn mi_collect(_force: bool) {}
++
++#[unsafe(no_mangle)]
++extern "C" fn mi_option_set(_option: MiOption, _value: c_long) {}
++
++#[unsafe(no_mangle)]
++extern "C" fn mi_heap_new() -> *mut Heap {
++    Box::into_raw(Box::new(HeapState { head: null_mut() })).cast()
++}
++
++#[unsafe(no_mangle)]
++extern "C" fn mi_heap_main() -> *mut Heap {
++    main_heap()
++}
++
++#[unsafe(no_mangle)]
++unsafe extern "C" fn mi_heap_destroy(heap: *mut Heap) {
++    let state = state_of(heap);
++    if state.is_null() {
++        return;
++    }
++    unsafe {
++        let mut h = (*state).head;
++        while !h.is_null() {
++            let next = (*h).next;
++            dealloc((*h).base, Layout::from_size_align_unchecked((*h).total, (*h).align));
++            h = next;
++        }
++        drop(Box::from_raw(state));
++    }
++}
++
++#[unsafe(no_mangle)]
++unsafe extern "C" fn mi_heap_malloc(heap: *mut Heap, size: usize) -> *mut c_void {
++    unsafe { alloc_in(state_of(heap), size, MIN_ALIGN, false) }
++}
++
++#[unsafe(no_mangle)]
++unsafe extern "C" fn mi_heap_zalloc(heap: *mut Heap, size: usize) -> *mut c_void {
++    unsafe { alloc_in(state_of(heap), size, MIN_ALIGN, true) }
++}
++
++#[unsafe(no_mangle)]
++unsafe extern "C" fn mi_heap_malloc_aligned(heap: *mut Heap, size: usize, alignment: usize) -> *mut c_void {
++    unsafe { alloc_in(state_of(heap), size, alignment, false) }
++}
++
++#[unsafe(no_mangle)]
++unsafe extern "C" fn mi_heap_zalloc_aligned(heap: *mut Heap, size: usize, alignment: usize) -> *mut c_void {
++    unsafe { alloc_in(state_of(heap), size, alignment, true) }
++}
++
++#[unsafe(no_mangle)]
++unsafe extern "C" fn mi_heap_realloc(heap: *mut Heap, p: *mut c_void, newsize: usize) -> *mut c_void {
++    unsafe { realloc_in(state_of(heap), p, newsize, MIN_ALIGN) }
++}
++
++#[unsafe(no_mangle)]
++unsafe extern "C" fn mi_heap_realloc_aligned(
++    heap: *mut Heap,
++    p: *mut c_void,
++    newsize: usize,
++    alignment: usize,
++) -> *mut c_void {
++    unsafe { realloc_in(state_of(heap), p, newsize, alignment) }
++}
++
++/// Reports each tracked block as its own one-block area. The main heap reports nothing.
++#[unsafe(no_mangle)]
++unsafe extern "C" fn mi_heap_visit_blocks(
++    heap: *const Heap,
++    visit_all_blocks: bool,
++    visitor: core::option::Option<
++        extern "C" fn(*const Heap, *const mi_heap_area_t, *mut c_void, usize, *mut c_void) -> bool,
++    >,
++    arg: *mut c_void,
++) -> bool {
++    let (state, Some(visit)) = (state_of(heap.cast_mut()), visitor) else { return true };
++    if state.is_null() {
++        return true;
++    }
++    unsafe {
++        let mut h = (*state).head;
++        while !h.is_null() {
++            let next = (*h).next;
++            let block = h.cast::<u8>().add(HEADER).cast::<c_void>();
++            let area = mi_heap_area_t {
++                blocks: block,
++                reserved: (*h).total,
++                committed: (*h).total,
++                used: 1,
++                block_size: (*h).size,
++                full_block_size: (*h).size,
++                reserved1: null_mut(),
++            };
++            if !visit(heap, &area, null_mut(), (*h).size, arg) {
++                return false;
++            }
++            if visit_all_blocks && !visit(heap, &area, block, (*h).size, arg) {
++                return false;
++            }
++            h = next;
++        }
++    }
++    true
++}
