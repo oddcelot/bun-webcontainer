@@ -5,7 +5,12 @@ import type { VFS } from "./vfs";
 type Log = (level: "log" | "error", text: string) => void;
 type Packument = {
   "dist-tags"?: Record<string, string>;
-  versions: Record<string, { dependencies?: Record<string, string>; optionalDependencies?: Record<string, string>; os?: unknown; cpu?: unknown; libc?: unknown; dist: { tarball: string } }>;
+  versions: Record<string, {
+    dependencies?: Record<string, string>;
+    optionalDependencies?: Record<string, string>;
+    peerDependencies?: Record<string, string>;
+    peerDependenciesMeta?: Record<string, { optional?: boolean }>;
+    os?: unknown; cpu?: unknown; libc?: unknown; dist: { tarball: string } }>;
 };
 
 async function gunzip(res: Response): Promise<Uint8Array> {
@@ -68,6 +73,8 @@ export async function bunInstall(vfs: VFS, semver: Semver, log: Log): Promise<nu
       log("log", `+ ${name}@${version}`);
       await Promise.all(Object.entries(meta.dependencies ?? {}).filter(([n]) => !meta.optionalDependencies?.[n]).map(([n, r]) => add(n, r)));
       await Promise.all(Object.entries(meta.optionalDependencies ?? {}).map(([n, r]) => add(n, r, true)));
+      // Like Bun, install required peers (Elysia 1.x needs @sinclair/typebox); a direct dependency wins via `seen`.
+      await Promise.all(Object.entries(meta.peerDependencies ?? {}).filter(([n]) => !meta.peerDependenciesMeta?.[n]?.optional).map(([n, r]) => add(n, r)));
     } catch (e) {
       log("error", `install ${name}@${range}: ${e instanceof Error ? e.message : e}`);
     }
