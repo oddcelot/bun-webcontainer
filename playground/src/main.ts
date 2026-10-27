@@ -1,4 +1,5 @@
 import { seedDemo } from "./demo";
+import { examples, loadExample } from "./examples";
 import { createCodeMirror } from "./editors/codemirror";
 import type { CodeEditor, EditorKind } from "./editors/types";
 import { bunInstall } from "./install";
@@ -34,7 +35,18 @@ async function setupServiceWorker() {
 }
 
 const vfs = new VFS();
-seedDemo(vfs);
+const exampleName = new URLSearchParams(location.search).get("example") ?? "";
+if (!(exampleName && (await loadExample(vfs, exampleName)))) seedDemo(vfs);
+
+const exampleSelect = $<HTMLSelectElement>("example");
+for (const [name, label] of Object.entries(examples)) exampleSelect.add(new Option(label, name));
+exampleSelect.value = exampleName in examples ? exampleName : "";
+exampleSelect.onchange = () => {
+  const url = new URL(location.href);
+  if (exampleSelect.value) url.searchParams.set("example", exampleSelect.value);
+  else url.searchParams.delete("example");
+  location.assign(url);
+};
 await setupServiceWorker();
 const semver = await loadSemver();
 const runner = new Runner(vfs, log);
