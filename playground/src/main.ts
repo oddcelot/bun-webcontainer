@@ -1,6 +1,7 @@
 import { BASE } from "./base";
 import { seedDemo } from "./demo";
-import { examples, loadExample } from "./examples";
+import { examples, loadExample, repoExamples } from "./examples";
+import { loadRepo, parseRepo } from "./github";
 import { createCodeMirror } from "./editors/codemirror";
 import type { CodeEditor, EditorKind } from "./editors/types";
 import { bunInstall } from "./install";
@@ -43,17 +44,33 @@ async function setupServiceWorker() {
 }
 
 const vfs = new VFS();
-const exampleName = new URLSearchParams(location.search).get("example") ?? "";
-if (!(exampleName && (await loadExample(vfs, exampleName)))) seedDemo(vfs);
+const params = new URLSearchParams(location.search);
+const exampleName = params.get("example") ?? "";
+const repoParam = params.get("repo") ?? "";
+const repo = repoParam ? parseRepo(repoParam) : null;
+if (repoParam && !repo) log("error", `[github] not a GitHub repo: ${repoParam}`);
+if (!(repo ? await loadRepo(vfs, repo, log) : exampleName && (await loadExample(vfs, exampleName)))) seedDemo(vfs);
+
+/** Reloads with `?example=` or `?repo=` (picker values for repos are `repo:<owner/repo>`). */
+function openProject(value: string) {
+  const url = new URL(location.href);
+  url.searchParams.delete("example");
+  url.searchParams.delete("repo");
+  if (value.startsWith("repo:")) url.searchParams.set("repo", value.slice(5));
+  else if (value) url.searchParams.set("example", value);
+  location.assign(url);
+}
 
 const exampleSelect = $<HTMLSelectElement>("example");
 for (const [name, label] of Object.entries(examples)) exampleSelect.add(new Option(label, name));
-exampleSelect.value = exampleName in examples ? exampleName : "";
-exampleSelect.onchange = () => {
-  const url = new URL(location.href);
-  if (exampleSelect.value) url.searchParams.set("example", exampleSelect.value);
-  else url.searchParams.delete("example");
-  location.assign(url);
+for (const [name, label] of Object.entries(repoExamples)) exampleSelect.add(new Option(label, `repo:${name}`));
+const selected = repoParam ? `repo:${repoParam}` : exampleName;
+if (repoParam && !(repoParam in repoExamples)) exampleSelect.add(new Option(`GitHub: ${repoParam}`, selected));
+exampleSelect.value = repoParam || exampleName in examples ? selected : "";
+exampleSelect.onchange = () => openProject(exampleSelect.value);
+$("openrepo").onclick = () => {
+  const input = prompt("GitHub repo (owner/repo, owner/repo@ref or a github.com URL)", repoParam || "oddcelot/bun-elysia-demo");
+  if (input) openProject(`repo:${input.trim()}`);
 };
 await setupServiceWorker();
 const semver = await loadSemver();

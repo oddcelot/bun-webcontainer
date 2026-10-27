@@ -14,6 +14,11 @@ export const examples: Record<string, string> = {
   "vite-demo": "Vite (probe)",
 };
 
+/** Public GitHub repos in the picker, loaded with `?repo=` (see github.ts). */
+export const repoExamples: Record<string, string> = {
+  "oddcelot/bun-elysia-demo": "Elysia (from GitHub)",
+};
+
 /** Loads `fixtures/<name>/` into the VFS; false if there is no such example. */
 export async function loadExample(vfs: VFS, name: string): Promise<boolean> {
   const prefix = `../fixtures/${name}/`;
