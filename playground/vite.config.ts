@@ -43,7 +43,8 @@ function emnapiNotNode(): Plugin {
 export default defineConfig({
   plugins: [hostPackageNames(), emnapiNotNode()],
   build: { target: "esnext" },
-  worker: { format: "es" },
+  // In builds, worker bundles (the runtime and rolldown's wasi worker) only get worker.plugins.
+  worker: { format: "es", plugins: () => [emnapiNotNode()] },
   server: { headers: isolation },
   preview: { headers: isolation },
   optimizeDeps: { exclude: ["@rolldown/browser", "@napi-rs/wasm-runtime", "@emnapi/core", "@emnapi/runtime", "@emnapi/wasi-threads"] },
