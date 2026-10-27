@@ -123,8 +123,11 @@ editorSelect.onchange = () => switchEditor(editorSelect.value as EditorKind);
 
 function entryFile(): string {
   try {
-    const pkg = JSON.parse(vfs.readText("package.json") ?? "{}") as { module?: string; main?: string };
-    for (const e of [pkg.module, pkg.main]) if (e && vfs.files.has(e.replace(/^\.\//, ""))) return e.replace(/^\.\//, "");
+    const pkg = JSON.parse(vfs.readText("package.json") ?? "{}") as { module?: string; main?: string; scripts?: Record<string, string> };
+    // `"dev": "bun --watch src/dev.ts"`: the file a `bun [flags] <file>` script runs.
+    const script = (s?: string) => s?.match(/^bun\s+(?:(?:run\s+)?--?[\w-]+(?:=\S+)?\s+)*(?:run\s+)?(\S+\.[cm]?[jt]sx?)\b/)?.[1];
+    for (const e of [pkg.module, pkg.main, script(pkg.scripts?.dev), script(pkg.scripts?.start)])
+      if (e && vfs.files.has(e.replace(/^\.\//, ""))) return e.replace(/^\.\//, "");
   } catch {}
   return ["index.ts", "index.tsx", "index.js", "src/index.ts"].find((f) => vfs.files.has(f)) ?? "index.ts";
 }
