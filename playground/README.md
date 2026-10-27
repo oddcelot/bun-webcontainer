@@ -51,4 +51,10 @@ Checked in Chrome only (via chrome-devtools MCP): Memory64 wasm instantiates and
 - No install scripts, no pax/GNU long tar names.
 - Single tab only (SW picks one page); no persistence, HMR, or type checking in the editor.
 - A hard refresh (bypassing the SW) leaves the page uncontrolled; reload normally.
-- Dev only was exercised; `vite build` not tried.
+
+## Deploying
+
+`bun run build` writes a static site to `dist/` (the prebuild step copies both `.wasm` files from the
+local Rust builds, so build them first). Any static HTTPS host works. For a sub-path, build with
+`bunx vite build --base=/sub/path/`; the service worker derives its paths from its own URL.
+Browsers without WebAssembly Memory64 (Safari as of late 2025) get an explanation instead of the app.

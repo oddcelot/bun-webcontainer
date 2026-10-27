@@ -1,3 +1,4 @@
+import { BASE } from "./base";
 import { isCommonJS, wrapCommonJS } from "./cjs";
 import { transpile } from "./transpiler";
 import { dirname, norm, type VFS } from "./vfs";
@@ -87,13 +88,13 @@ const SPEC_RE = /(\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)(["'])([^"'\n]+)\2/g;
 
 function rewriteImports(vfs: VFS, code: string, dir: string): string {
   return code.replace(SPEC_RE, (m, pre: string, q: string, spec: string) => {
-    if (/^(node:|https?:|data:|blob:|\/__vfs\/)/.test(spec)) return m;
+    if (/^(node:|https?:|data:|blob:)/.test(spec) || spec.startsWith(`${BASE}__vfs/`)) return m;
     const target = spec.startsWith(".")
       ? resolveFile(vfs, norm(`${dir}/${spec}`))
       : spec.startsWith("/")
         ? resolveFile(vfs, norm(spec))
         : resolveBare(vfs, spec, dir);
-    return `${pre}${q}/__vfs/${target ?? `__unresolved__/${encodeURIComponent(spec)}`}${q}`;
+    return `${pre}${q}${BASE}__vfs/${target ?? `__unresolved__/${encodeURIComponent(spec)}`}${q}`;
   });
 }
 

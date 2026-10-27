@@ -1,3 +1,4 @@
+import { BASE } from "./base";
 import { seedDemo } from "./demo";
 import { examples, loadExample } from "./examples";
 import { createCodeMirror } from "./editors/codemirror";
@@ -6,7 +7,13 @@ import { bunInstall } from "./install";
 import { Runner } from "./runner";
 import { mountFileTree } from "./fileTree";
 import { loadSemver } from "./semver";
+import { showUnsupported, supportsMemory64 } from "./support";
 import { VFS } from "./vfs";
+
+if (!supportsMemory64()) {
+  showUnsupported();
+  throw new Error("WebAssembly Memory64 is not supported in this browser");
+}
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const consoleEl = $("console");
@@ -21,7 +28,7 @@ function log(level: string, text: string) {
 }
 
 async function setupServiceWorker() {
-  const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+  const reg = await navigator.serviceWorker.register(`${BASE}sw.js`, { scope: BASE });
   await reg.update().catch(() => {});
   const updating = reg.installing ?? reg.waiting;
   await navigator.serviceWorker.ready;
@@ -110,7 +117,7 @@ async function run() {
   const entry = entryFile();
   log("sys", `[run] ${entry}`);
   await runner.start(entry);
-  ($("preview") as HTMLIFrameElement).contentWindow!.location.replace("/__preview/");
+  ($("preview") as HTMLIFrameElement).contentWindow!.location.replace(`${BASE}__preview/`);
   statusEl.textContent = "running";
   btn.disabled = false;
 }

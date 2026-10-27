@@ -21,3 +21,4 @@ main { flex: 1; min-height: 0; display: grid; grid-template-columns: 200px 1fr 1
 #console .warn { color: #e5c07b; }
 #console .error { color: #e06c75; }
 #console .sys { color: #61afef; }
+.unsupported { max-width: 36rem; margin: 4rem auto; padding: 0 1rem; line-height: 1.5; }

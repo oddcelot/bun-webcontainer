@@ -1,3 +1,5 @@
+import { BASE } from "../base";
+
 // Bun's own transpiler (bun_js_parser + bun_js_printer) compiled to wasm64; see ../../../transpile-wasm.
 // Output matches `bun build --no-bundle --target=browser`.
 
@@ -14,7 +16,7 @@ const LOADERS: Record<string, number> = { js: 0, mjs: 0, jsx: 1, ts: 2, mts: 2, 
 let ready: Promise<Exports> | undefined;
 
 async function load(): Promise<Exports> {
-  const res = await fetch("/bun_transpile_wasm.wasm");
+  const res = await fetch(`${BASE}bun_transpile_wasm.wasm`);
   const { instance } = await WebAssembly.instantiate(await res.arrayBuffer(), {});
   return instance.exports as unknown as Exports;
 }

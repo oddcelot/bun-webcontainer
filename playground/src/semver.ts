@@ -1,3 +1,5 @@
+import { BASE } from "./base";
+
 type Exports = {
   memory: WebAssembly.Memory;
   alloc(len: bigint): bigint;
@@ -12,7 +14,7 @@ export type Semver = {
 };
 
 export async function loadSemver(): Promise<Semver> {
-  const res = await fetch("/bun_semver_wasm.wasm");
+  const res = await fetch(`${BASE}bun_semver_wasm.wasm`);
   const { instance } = await WebAssembly.instantiate(await res.arrayBuffer(), {});
   const w = instance.exports as unknown as Exports;
   const enc = new TextEncoder();

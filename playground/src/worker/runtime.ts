@@ -1,3 +1,4 @@
+import { BASE } from "../base";
 import { loadSemver } from "../semver";
 import { dirname, norm } from "../vfs";
 
@@ -38,7 +39,7 @@ async function serveHtml(imp: HtmlImport): Promise<Response> {
   const dir = dirname(imp.__htmlImport);
   const html = (await rpc<string | undefined>("read", imp.__htmlImport)) ?? "";
   const out = html.replace(/(<(?:script|link)\b[^>]*?\b(?:src|href)=)(["'])([^"']+)\2/gi, (m, pre: string, q: string, ref: string) =>
-    /^(https?:|data:|\/\/|#)/.test(ref) ? m : `${pre}${q}/__vfs/${norm(ref.startsWith("/") ? ref : `${dir}/${ref}`)}${q}`,
+    /^(https?:|data:|\/\/|#)/.test(ref) ? m : `${pre}${q}${BASE}__vfs/${norm(ref.startsWith("/") ? ref : `${dir}/${ref}`)}${q}`,
   );
   return new Response(out, { headers: { "content-type": "text/html; charset=utf-8" } });
 }
@@ -238,7 +239,7 @@ self.addEventListener("message", async (e: MessageEvent) => {
   if (e.data.type !== "start") return;
   await booted;
   try {
-    await import(/* @vite-ignore */ `/__vfs/${e.data.entry}`);
+    await import(/* @vite-ignore */ `${BASE}__vfs/${e.data.entry}`);
   } catch (err) {
     post({ type: "console", level: "error", text: fmt(err) });
   }
