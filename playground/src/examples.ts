@@ -9,6 +9,7 @@ const files = import.meta.glob<string>("../fixtures/*/{package.json,bun.lock,*.t
 
 export const examples: Record<string, string> = {
   "elysia-demo": "Elysia",
+  "elysia2-demo": "Elysia 2 (rc)",
   "node-demo": "node:* built-ins",
   "lockfile-demo": "bun.lock + nested node_modules",
   "vite-demo": "Vite (probe)",
