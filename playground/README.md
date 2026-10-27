@@ -78,4 +78,6 @@ The page must be cross-origin isolated (`Cross-Origin-Opener-Policy: same-origin
 static assets) and Netlify; hosts that can't send headers (GitHub Pages) need a COOP/COEP service-worker workaround.
 
 Cloudflare Workers: `wrangler.jsonc` deploys `dist/` as static assets with no Worker script:
-`bun run build && bunx wrangler deploy`.
+`bun run build && bunx wrangler deploy`. It serves on the custom domain https://runbun.dev and on
+https://bun-playground.oddcelot.workers.dev (`workers_dev`); a fork deploying under its own account should
+drop or replace the `routes` entry.

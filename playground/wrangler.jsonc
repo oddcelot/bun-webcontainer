@@ -2,5 +2,7 @@
 {
   "name": "bun-playground",
   "compatibility_date": "2026-10-28",
-  "assets": { "directory": "./dist" }
+  "assets": { "directory": "./dist" },
+  "routes": [{ "pattern": "runbun.dev", "custom_domain": true }],
+  "workers_dev": true
 }
