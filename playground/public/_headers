@@ -1,0 +1,5 @@
+# Cloudflare Pages / Netlify: cross-origin isolation for SharedArrayBuffer (rolldown's wasm threads).
+# vite dev and vite preview send the same headers (vite.config.ts).
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: credentialless
