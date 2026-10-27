@@ -1,3 +1,4 @@
+import { isCommonJS, wrapCommonJS } from "./cjs";
 import { transpile } from "./transpiler";
 import { dirname, norm, type VFS } from "./vfs";
 
@@ -36,6 +37,21 @@ function pickExport(exports: unknown, sub: string): string | null {
   const isMap = exports && typeof exports === "object" && !Array.isArray(exports) && Object.keys(exports).some((k) => k.startsWith("."));
   if (!isMap) return sub === "." ? pickTarget(exports) : null;
   return pickTarget((exports as Record<string, unknown>)[sub]);
+}
+
+/** `"type"` of the nearest package.json above `path`. */
+function packageType(vfs: VFS, path: string): string | undefined {
+  for (let dir = dirname(path); ; dir = dirname(dir)) {
+    const text = vfs.readText(dir ? `${dir}/package.json` : "package.json");
+    if (text !== undefined) {
+      try {
+        return (JSON.parse(text) as { type?: string }).type;
+      } catch {
+        return undefined;
+      }
+    }
+    if (!dir) return undefined;
+  }
 }
 
 /** Nearest `node_modules/<name>` walking up from `fromDir`, like Node's lookup. */
@@ -99,6 +115,7 @@ export async function serveModule(vfs: VFS, rawPath: string, onError: (msg: stri
     if (path.endsWith(".css")) return { status: 200, body: src };
     if (path.endsWith(".json")) code = `export default ${src}`;
     else if (/\.(ts|tsx|jsx)$/.test(path)) code = await transpile(src, path);
+    else if (isCommonJS(path, src, packageType(vfs, path))) code = wrapCommonJS(path, src);
     else code = src;
     return { status: 200, body: rewriteImports(vfs, code, dirname(path)) };
   } catch (e) {

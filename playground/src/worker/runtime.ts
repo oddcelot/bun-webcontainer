@@ -12,6 +12,7 @@ const post = (msg: unknown, transfer: Transferable[] = []) => (self as unknown a
 
 let handler: Handler | undefined;
 let routes: Routes = {};
+let server: unknown;
 
 const isHtmlImport = (v: unknown): v is HtmlImport => typeof v === "object" && v !== null && "__htmlImport" in v;
 
@@ -50,11 +51,11 @@ async function dispatch(req: Request): Promise<Response> {
     Object.assign(req, { params });
     if (value instanceof Response) return value.clone();
     if (isHtmlImport(value)) return serveHtml(value);
-    if (typeof value === "function") return value(req, undefined);
+    if (typeof value === "function") return value(req, server);
     const byMethod = value[req.method];
-    if (byMethod) return byMethod instanceof Response ? byMethod.clone() : byMethod(req, undefined);
+    if (byMethod) return byMethod instanceof Response ? byMethod.clone() : byMethod(req, server);
   }
-  if (handler) return handler(req, undefined);
+  if (handler) return handler(req, server);
   return new Response("Not Found", { status: 404 });
 }
 let nextId = 1;
@@ -123,10 +124,49 @@ async function write(path: string, data: unknown): Promise<number> {
   return typeof out === "string" ? new TextEncoder().encode(out).length : out.byteLength;
 }
 
+// Bun.env and process.env are the same object in Bun.
+const env: Record<string, string> = { NODE_ENV: "development" };
+// Listeners are kept but never fired: the worker receives no signals or exit events.
+const processListeners = new Map<string, Set<(...a: unknown[]) => void>>();
+const listen = (event: string, fn: (...a: unknown[]) => void) => {
+  if (!processListeners.has(event)) processListeners.set(event, new Set());
+  processListeners.get(event)!.add(fn);
+  return g.process;
+};
+const unlisten = (event: string, fn: (...a: unknown[]) => void) => {
+  processListeners.get(event)?.delete(fn);
+  return g.process;
+};
+g.process ??= {
+  on: listen,
+  once: listen,
+  addListener: listen,
+  off: unlisten,
+  removeListener: unlisten,
+  emit: (event: string, ...args: unknown[]) => {
+    for (const fn of processListeners.get(event) ?? []) fn(...args);
+    return (processListeners.get(event)?.size ?? 0) > 0;
+  },
+  env,
+  argv: ["bun"],
+  cwd: () => "/",
+  platform: "linux",
+  version: "v24.3.0",
+  versions: { bun: "1.4.4-browser" },
+  nextTick: (fn: (...a: unknown[]) => void, ...args: unknown[]) => queueMicrotask(() => fn(...args)),
+  exit(code = 0) {
+    throw new Error(`process.exit(${code}) is not supported in the playground`);
+  },
+};
+
 async function main() {
   const semver = await loadSemver();
   g.Bun = {
     version: "1.4.4-browser",
+    env,
+    gc: () => {},
+    sleep: (ms: number) => new Promise((r) => setTimeout(r, ms)),
+    nanoseconds: () => Math.round(performance.now() * 1e6),
     semver: {
       order: semver.order,
       satisfies: semver.satisfies,
@@ -138,11 +178,19 @@ async function main() {
       routes = opts.routes ?? {};
       const port = opts.port ?? 3000;
       const hostname = opts.hostname ?? "localhost";
-      const server = {
+      server = {
         port,
         hostname,
         url: new URL(`http://${hostname}:${port}/`),
-        stop() {
+        development: true,
+        /** Swaps handlers in place, as Bun's does; the port and hostname stay. */
+        reload(next: { fetch?: Handler; routes?: Routes }) {
+          if (next.fetch) handler = next.fetch;
+          if (next.routes) routes = next.routes;
+        },
+        /** No WebSockets in the preview yet. */
+        upgrade: () => false,
+        async stop() {
           handler = undefined;
           routes = {};
         },

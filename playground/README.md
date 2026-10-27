@@ -8,7 +8,7 @@ Primitive in-browser "Bun" playground: user code runs in a module Web Worker wit
     bun run dev        # copies ../semver-wasm .wasm into public/, starts Vite on :5173
     bunx tsc --noEmit
 
-Open http://localhost:5173 (Chrome; Memory64 wasm needed). The demo is a Bun fullstack app: `Bun.serve({ routes })` with an HTML import (`import homepage from "./index.html"`) whose `client.ts` imports `canvas-confetti` (installed automatically on load). Run restarts the worker and reloads the preview; "bun install" installs `package.json` deps into the VFS, or exactly what `bun.lock` lists when there is one. "Open folder" loads a project from disk (skipping `node_modules`); try `fixtures/lockfile-demo`, which needs nested installs and prints `width: 13` like real Bun.
+Open http://localhost:5173 (Chrome; Memory64 wasm needed). The demo is a Bun fullstack app: `Bun.serve({ routes })` with an HTML import (`import homepage from "./index.html"`) whose `client.ts` imports `canvas-confetti` (installed automatically on load). Run restarts the worker and reloads the preview; "bun install" installs `package.json` deps into the VFS, or exactly what `bun.lock` lists when there is one. "Open folder" loads a project from disk (skipping `node_modules`); try `fixtures/lockfile-demo`, which needs nested installs and prints `width: 13` like real Bun, or `fixtures/elysia-demo` (Elysia 1.4: every route matches real Bun's status and body).
 
 ## Architecture
 
@@ -41,7 +41,8 @@ Checked in Chrome only (via chrome-devtools MCP): Memory64 wasm instantiates and
 
 ## Known limitations
 
-- ESM-only packages; no CJS interop, no `node:` polyfills, no `exports` patterns (`./*`).
+- CommonJS in `node_modules` is wrapped as ESM (src/cjs.ts): literal `require("x")` calls only, named exports found by a static scan of `exports.x =` patterns. No `node:` polyfills, no `exports` patterns (`./*`).
+- `process` and `Bun.env` are minimal shims (env, argv, cwd, nextTick, listeners that never fire); `Bun.serve`'s server has `reload` but `upgrade` returns false (no WebSockets).
 - Import rewriting is regex-based (can touch import-like text inside strings).
 - Pierre editor: renders every line (no virtualization yet; `VirtualizedFile` would be needed for very large files) and has no autocomplete; undo history resets when switching files or editors.
 - HTML imports are not bundled: each script/stylesheet loads as its own module from /__vfs/ (CSS is served as plain CSS; no CSS imports from JS).
