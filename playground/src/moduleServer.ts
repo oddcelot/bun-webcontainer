@@ -287,7 +287,9 @@ function rewriteMeta(code: string, path: string): string {
 /** The module for a Node built-in: the worker registers the real object as `globalThis.__nodeBuiltins`. */
 function builtinModule(name: string): string {
   const names = exportNames(name);
-  return `const m = globalThis.__nodeBuiltins[${JSON.stringify(name)}];
+  // bun:sqlite's wasm loads asynchronously, before anything is exported
+  const pre = name === "bun:sqlite" ? "await globalThis.__loadBunSqlite();\n" : "";
+  return `${pre}const m = globalThis.__nodeBuiltins[${JSON.stringify(name)}];
 export default m;
 export const __cjs = m;
 ${names.length ? `export const { ${names.join(", ")} } = m;` : ""}`;
