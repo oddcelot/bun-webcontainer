@@ -10,6 +10,7 @@ const files = import.meta.glob<string>("../fixtures/*/{package.json,bun.lock,*.t
 export const examples: Record<string, string> = {
   "elysia-demo": "Elysia",
   "lockfile-demo": "bun.lock + nested node_modules",
+  "vite-demo": "Vite (probe)",
 };
 
 /** Loads `fixtures/<name>/` into the VFS; false if there is no such example. */
