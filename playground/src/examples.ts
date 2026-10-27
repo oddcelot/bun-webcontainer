@@ -18,6 +18,7 @@ export const examples: Record<string, string> = {
 /** Public GitHub repos in the picker, loaded with `?repo=` (see github.ts). */
 export const repoExamples: Record<string, string> = {
   "oddcelot/bun-elysia-demo": "Elysia (from GitHub)",
+  "https://github.com/oddcelot/lit-devtools/tree/main/examples/elysia": "Lit SSR guestbook (from GitHub)",
 };
 
 /** Loads `fixtures/<name>/` into the VFS; false if there is no such example. */
