@@ -36,6 +36,9 @@ function splitKey(key: string): string[] {
   return names;
 }
 
+/** No native binary runs in the browser, so any `os`/`cpu`/`libc` restriction means "doesn't match this host". */
+export const platformRestricted = (m?: { os?: unknown; cpu?: unknown; libc?: unknown }): boolean => !!m && !!(m.os || m.cpu || m.libc);
+
 function parseIdent(ident: string): { name: string; version: string } | null {
   const at = ident.lastIndexOf("@");
   if (at <= 0) return null;
@@ -91,14 +94,24 @@ export async function installFromBunLock(vfs: VFS, lockText: string, log: Log): 
     if (stale.length) log("error", `bun.lock is out of date with package.json (${stale.join(", ")}); installing what the lockfile says`);
   }
 
+  // Like Bun, only optional dependencies are dropped for a platform mismatch; a required one is still installed.
+  const optional = new Set<string>();
+  const addOpt = (o?: Record<string, string>) => Object.keys(o ?? {}).forEach((n) => optional.add(n));
+  for (const w of Object.values(lock.workspaces ?? {})) addOpt((w as { optionalDependencies?: Record<string, string> }).optionalDependencies);
+  for (const e of Object.values(lock.packages)) addOpt((e[2] as { optionalDependencies?: Record<string, string> } | undefined)?.optionalDependencies);
+
   const dec = new TextDecoder("utf-8", { fatal: true });
   let installed = 0;
   await Promise.all(
     Object.entries(lock.packages).map(async ([key, entry]) => {
-      const [ident, registry, , integrity] = entry as [string, string, unknown, string];
+      const [ident, registry, meta, integrity] = entry as [string, string, Parameters<typeof platformRestricted>[0], string];
       const id = typeof ident === "string" ? parseIdent(ident) : null;
       if (!id || typeof registry !== "string" || typeof integrity !== "string" || !/^\d/.test(id.version)) {
         log("error", `skip ${key}: only npm registry packages are supported (${String(ident)})`);
+        return;
+      }
+      if (platformRestricted(meta) && optional.has(splitKey(key).at(-1)!)) {
+        log("log", `- ${key}@${id.version} (optional, unsupported platform)`);
         return;
       }
       const dest = splitKey(key).map((n) => `node_modules/${n}`).join("/");

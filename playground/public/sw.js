@@ -6,6 +6,14 @@ const PREVIEW = `${BASE}__preview`;
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
 
+// Cross-origin isolation: every response we synthesize needs COEP (documents/workers) and CORP (subresources).
+function isolated(init) {
+  const headers = new Headers(init.headers);
+  headers.set("cross-origin-embedder-policy", "credentialless");
+  headers.set("cross-origin-resource-policy", "same-origin");
+  return { ...init, headers };
+}
+
 async function host() {
   const all = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
   return all.find((c) => !new URL(c.url).pathname.startsWith(PREVIEW));
@@ -25,10 +33,10 @@ async function serveModule(url) {
   const path = decodeURIComponent(url.pathname.slice(VFS.length));
   const r = await ask({ type: "module", path });
   const type = url.pathname.endsWith(".css") ? "text/css" : "text/javascript";
-  return new Response(r.body, {
+  return new Response(r.body, isolated({
     status: r.status,
     headers: { "content-type": `${type}; charset=utf-8`, "cache-control": "no-store" },
-  });
+  }));
 }
 
 async function servePreview(req, url, path = (url.pathname.slice(PREVIEW.length) || "/") + url.search) {
@@ -36,10 +44,11 @@ async function servePreview(req, url, path = (url.pathname.slice(PREVIEW.length)
   const body = hasBody ? await req.arrayBuffer() : null;
   const r = await ask({
     type: "preview",
-    req: { path, method: req.method, headers: [...req.headers], body },
+    // A 304 would reach the page as an empty response (we answer from memory, nothing is cached), so never ask for one.
+    req: { path, method: req.method, headers: [...req.headers].filter(([k]) => k !== "if-none-match" && k !== "if-modified-since"), body },
   });
   const nullBody = [101, 204, 205, 304].includes(r.status);
-  return new Response(nullBody ? null : r.body, { status: r.status, statusText: r.statusText, headers: r.headers });
+  return new Response(nullBody ? null : r.body, isolated({ status: r.status, statusText: r.statusText, headers: r.headers }));
 }
 
 self.addEventListener("fetch", (e) => {

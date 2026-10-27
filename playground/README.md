@@ -8,7 +8,7 @@ Primitive in-browser "Bun" playground: user code runs in a module Web Worker wit
     bun run dev        # copies ../semver-wasm .wasm into public/, starts Vite on :5173
     bunx tsc --noEmit
 
-Open http://localhost:5173 (Chrome; Memory64 wasm needed). The demo is a Bun fullstack app: `Bun.serve({ routes })` with an HTML import (`import homepage from "./index.html"`) whose `client.ts` imports `canvas-confetti` (installed automatically on load). Run restarts the worker and reloads the preview; "bun install" installs `package.json` deps into the VFS, or exactly what `bun.lock` lists when there is one. The header's example picker (or `?example=<name>`) loads a project from `fixtures/` and installs it; "Open folder" loads one from disk (skipping `node_modules`). Try `fixtures/lockfile-demo`, which needs nested installs and prints `width: 13` like real Bun, or `fixtures/elysia-demo` (Elysia 1.4: every route matches real Bun's status and body). `fixtures/vite-demo` is a probe that does not run yet: Vite 8 needs `node:*` built-ins, `#` package imports and its native rolldown/lightningcss bindings.
+Open http://localhost:5173 (Chrome; Memory64 wasm needed). The demo is a Bun fullstack app: `Bun.serve({ routes })` with an HTML import (`import homepage from "./index.html"`) whose `client.ts` imports `canvas-confetti` (installed automatically on load). Run restarts the worker and reloads the preview; "bun install" installs `package.json` deps into the VFS, or exactly what `bun.lock` lists when there is one. The header's example picker (or `?example=<name>`) loads a project from `fixtures/` and installs it; "Open folder" loads one from disk (skipping `node_modules`). Try `fixtures/lockfile-demo`, which needs nested installs and prints `width: 13` like real Bun, or `fixtures/elysia-demo` (Elysia 1.4: every route matches real Bun's status and body). `fixtures/node-demo` exercises the `node:*` built-ins (output matches real Bun). `fixtures/vite-demo` runs an idiomatic Vite 8 dev server (`createServer` + `listen` + `printUrls`): the preview iframe shows the page Vite serves (`index.html` through `transformIndexHtml`, `/main.ts` transformed) and the console shows Vite's URLs. Caveats: the config sets `optimizeDeps.noDiscovery` (the dep scanner runs rolldown's wasm, which cannot see the VFS) and `server.watch: null` (chokidar reports every file under the VFS root `/` as deleted at startup, and watchers never fire anyway); the Vite client's HMR WebSocket cannot connect, so it logs "failed to connect to websocket" in the browser console and there is no live reload.
 
 ## Architecture
 
@@ -24,16 +24,24 @@ Open http://localhost:5173 (Chrome; Memory64 wasm needed). The demo is a Bun ful
     src/install.ts        no lockfile: registry fetch, semver pick (wasm), flat node_modules
     src/lockfile.ts       bun.lock (text format; tested with lockfileVersion 2 from Bun 1.4.4): locked versions, nested node_modules, sha512 integrity check
     src/semver.ts         loader for public/bun_semver_wasm.wasm (wasm64, BigInt pointers)
-    src/worker/runtime.ts worker: Bun shim (serve, file, write, version, semver), console forwarding
+    src/worker/runtime.ts worker: Bun shim (serve, file, write, version, semver), console forwarding, worker-side VFS copy
+    src/worker/node/      Node built-ins (fs on the worker VFS, path, url, util, events, buffer, crypto, stream, process, http/https/net, ...) + `builtins` registry
+    src/worker/hostPackages.ts  host packages (see below)
     public/sw.js          service worker: /__vfs/*, /__preview/*, and absolute requests made by the preview page (so `fetch("/api/x")` reaches Bun.serve)
 
 Data flow:
 
 - Module: worker `import("/__vfs/index.ts")` -> SW -> (MessageChannel) page -> `serveModule` (transpile + import rewrite) -> SW -> worker.
 - Preview: iframe `/__preview/x` -> SW -> page -> port transferred to worker -> `routes` match (exact, `:param`, `*`; HTML imports are served with their `<script src>`/`<link href>` pointed at /__vfs/), else user `fetch(Request)` -> Response serialized back on the same port.
-- `Bun.file`/`Bun.write` -> RPC to page VFS. `console.*` -> postMessage -> console pane.
+- VFS: `start` carries the whole page VFS; the worker keeps its own copy, so `Bun.file`/`Bun.write`/`node:fs` are synchronous. Writes, mkdirs, removes and renames are mirrored to the page with fire-and-forget messages (later page edits are not pushed to a running worker). `console.*` and `process.stdout` -> postMessage -> console pane.
+- Node built-ins: the worker sets `globalThis.__nodeBuiltins`; the module server maps `node:x` and bare built-in names to `/__vfs/__node/x`, a wrapper re-exporting that object (names taken from the same registry on the page).
 
-Bare imports use `node_modules/<pkg>/package.json` (`exports` with import/browser/module/default conditions, then `module`, `main`).
+- Host packages: `rolldown` (+ `/experimental`, `/filter`, `/parseAst`, `/plugins`, `/utils`) comes from the playground's own `@rolldown/browser` (wasm, needs cross-origin isolation), not from the user's `node_modules` copy, whose native binding cannot load. The module server maps those specifiers to `/__vfs/__host/<spec>`, a wrapper over `globalThis.__hostPackage(spec)` (set by `src/worker/hostPackages.ts`, cached dynamic import served by the host Vite). Export names come from the `virtual:host-package-names` Vite plugin (vite.config.ts), computed in Node from the native `rolldown` so the page never instantiates the wasm binding; a console warning is logged once if the installed rolldown version differs. vite.config.ts also aliases the browser entry points, excludes the wasm/emnapi packages from pre-bundling and makes emnapi ignore the worker's Node-like `process`.
+- `node:http`/`https`/`net` (`http.ts`, `net.ts`): `createServer().listen()` succeeds without a socket and registers the server as the worker's preview handler (same hook as `Bun.serve`, `node/serve.ts`); each preview `Request` becomes an `IncomingMessage`/`ServerResponse` pair, and the response is collected on `end()` (buffered, not streamed). `listen` picks a port only for bookkeeping; the preview is always `/__preview/`. `http.request`/`get` throw. A socket-less `ws` stand-in (`bun:ws`, `ws.ts`) is what `import.meta.require("ws")` gets when no `ws` package is installed.
+- `import.meta.require("x")` (Bun's sync require, used by Vite): literal specifiers of installed packages become static imports, built-ins and `bun:x` come from the registry, anything else throws at call time.
+- `createRequire(import.meta.url)` in ES modules (Vite's bundles): literal `__require("x")` specifiers that resolve are hoisted into static imports and served by that require.
+
+Bare imports use `node_modules/<pkg>/package.json` (`exports`, including `./*` patterns, with import/browser/module/default conditions, then `module`, `main`); `#x` imports use the nearest package.json `imports`. `import.meta.url`/`dirname`/`filename` become `file:///<vfs path>` values.
 
 ## Verification
 
@@ -41,14 +49,17 @@ Checked in Chrome only (via chrome-devtools MCP): Memory64 wasm instantiates and
 
 ## Known limitations
 
-- CommonJS in `node_modules` is wrapped as ESM (src/cjs.ts): literal `require("x")` calls only, named exports found by a static scan of `exports.x =` patterns. No `node:` polyfills, no `exports` patterns (`./*`).
-- `process` and `Bun.env` are minimal shims (env, argv, cwd, nextTick, listeners that never fire); `Bun.serve`'s server has `reload` but `upgrade` returns false (no WebSockets).
+- CommonJS in `node_modules` is wrapped as ESM (src/cjs.ts): literal `require("x")` calls only, named exports found by a static scan of `exports.x =` patterns. `child_process`, `zlib`, `vm`, `readline` etc. are stubs that throw when called; `fs` has no symlinks and its watchers never fire.
+- `process` and `Bun.env` are minimal shims (env, argv, cwd, nextTick, listeners that never fire); `Bun.serve`'s server has `reload` but `upgrade` returns false (no WebSockets); same for `http` servers (`upgrade` never fires).
 - Import rewriting is regex-based (can touch import-like text inside strings).
 - Pierre editor: renders every line (no virtualization yet; `VirtualizedFile` would be needed for very large files) and has no autocomplete; undo history resets when switching files or editors.
 - HTML imports are not bundled: each script/stylesheet loads as its own module from /__vfs/ (CSS is served as plain CSS; no CSS imports from JS).
-- Install without a lockfile: root `dependencies`/`devDependencies` only, flat, first version wins; it doesn't write a `bun.lock`.
+- Install without a lockfile: dependencies, devDependencies and optionalDependencies, flat, first version wins; it doesn't write a `bun.lock`.
+- Optional packages with `os`/`cpu`/`libc` restrictions (rolldown/lightningcss bindings, fsevents) are skipped in both paths, since no native binary runs in the browser.
 - Install from `bun.lock`: npm-registry packages only (git/tarball/workspace/file entries are skipped with an error); binary `bun.lockb` is not supported.
 - No install scripts, no pax/GNU long tar names.
+- `require()` of non-builtins is only supported through the literal-specifier paths above.
+- The preview SW drops `If-None-Match`/`If-Modified-Since` (nothing is cached, and a 304 would arrive empty).
 - Single tab only (SW picks one page); no persistence, HMR, or type checking in the editor.
 - A hard refresh (bypassing the SW) leaves the page uncontrolled; reload normally.
 
