@@ -72,5 +72,8 @@ local Rust builds, so build them first). Any static HTTPS host works. For a sub-
 Browsers without WebAssembly Memory64 (Safari as of late 2025) get an explanation instead of the app.
 
 The page must be cross-origin isolated (`Cross-Origin-Opener-Policy: same-origin`,
-`Cross-Origin-Embedder-Policy: credentialless`). `public/_headers` sets them on Cloudflare Pages and
-Netlify; hosts that can't send headers (GitHub Pages) need a COOP/COEP service-worker workaround.
+`Cross-Origin-Embedder-Policy: credentialless`). `public/_headers` sets them on Cloudflare (Pages, and Workers
+static assets) and Netlify; hosts that can't send headers (GitHub Pages) need a COOP/COEP service-worker workaround.
+
+Cloudflare Workers: `wrangler.jsonc` deploys `dist/` as static assets with no Worker script:
+`bun run build && bunx wrangler deploy`.

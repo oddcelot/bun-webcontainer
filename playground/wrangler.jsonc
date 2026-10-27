@@ -1,0 +1,6 @@
+// Static assets only: everything runs in the browser. public/_headers (copied into dist/) sets COOP/COEP.
+{
+  "name": "bun-playground",
+  "compatibility_date": "2026-10-28",
+  "assets": { "directory": "./dist" }
+}
