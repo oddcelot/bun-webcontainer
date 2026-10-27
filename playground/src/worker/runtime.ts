@@ -344,6 +344,29 @@ async function write(path: string, data: unknown): Promise<number> {
   return typeof out === "string" ? new TextEncoder().encode(out).length : out.byteLength;
 }
 
+type BuildArtifact = Blob & { path: string; kind: "entry-point"; loader: "js"; hash: null; sourcemap: null };
+
+/**
+ * `Bun.build` without a bundler (bwc-6yq.6): each entry point becomes a module that imports its source from the
+ * module server, which transpiles it and its imports on request. Enough for a dev server that serves the
+ * output to a page; `outdir` gets the same stubs.
+ */
+async function build(opts: { entrypoints: string[]; outdir?: string; naming?: string }) {
+  const outputs: BuildArtifact[] = [];
+  for (const entry of opts.entrypoints) {
+    const src = norm(nodePath.resolve(entry.startsWith("file:") ? new URL(entry).pathname : entry));
+    if (!vfs.files.has(src)) {
+      const message = `Could not resolve: "${entry}"`;
+      return { success: false, outputs: [], logs: [Object.assign(new Error(message), { level: "error", message })] };
+    }
+    const name = (opts.naming ?? "[name].[ext]").replace("[dir]/", "").replace("[name]", nodePath.basename(src).replace(/\.[^.]+$/, "")).replace("[hash]", "dev").replace("[ext]", "js");
+    const blob = new Blob([`import ${JSON.stringify(`${BASE}__vfs/${src}`)};\n`], { type: "text/javascript;charset=utf-8" });
+    outputs.push(Object.assign(blob, { path: `./${name}`, kind: "entry-point" as const, loader: "js" as const, hash: null, sourcemap: null }));
+    if (opts.outdir) await write(nodePath.join(opts.outdir, name), blob);
+  }
+  return { success: true, outputs, logs: [] };
+}
+
 async function main() {
   const semver = await loadSemver();
   g.Bun = {
@@ -359,6 +382,7 @@ async function main() {
     file: (path: string) => new BunFile(path),
     write,
     serve: (opts: ServeOptions) => createInstance(opts).server,
+    build,
   };
 
   self.addEventListener("unhandledrejection", (e) => {
