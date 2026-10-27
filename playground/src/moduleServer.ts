@@ -1,6 +1,6 @@
 import { BASE } from "./base";
 import { isCommonJS, wrapCommonJS } from "./cjs";
-import { transpile } from "./transpiler";
+import { transpile, type TsconfigFlags } from "./transpiler";
 import { dirname, norm, type VFS } from "./vfs";
 import hostNames, { version as hostVersion } from "virtual:host-package-names";
 import { builtins, exportNames } from "./worker/node";
@@ -69,6 +69,22 @@ function packageType(vfs: VFS, path: string): string | undefined {
       }
     }
     if (!dir) return undefined;
+  }
+}
+
+/** `compilerOptions` of the nearest tsconfig.json above `path` (comments and trailing commas allowed; no `extends`). */
+function tsconfigFor(vfs: VFS, path: string): TsconfigFlags {
+  for (let dir = dirname(path); ; dir = dirname(dir)) {
+    const text = vfs.readText(dir ? `${dir}/tsconfig.json` : "tsconfig.json");
+    if (text !== undefined) {
+      try {
+        const json = text.replace(/("(?:\\.|[^"\\])*")|\/\/[^\n]*|\/\*[\s\S]*?\*\//g, "$1").replace(/,(\s*[}\]])/g, "$1");
+        return (JSON.parse(json) as { compilerOptions?: TsconfigFlags }).compilerOptions ?? {};
+      } catch {
+        return {};
+      }
+    }
+    if (!dir) return {};
   }
 }
 
@@ -295,7 +311,7 @@ export async function serveModule(vfs: VFS, rawPath: string, onError: (msg: stri
     if (path.endsWith(".html")) return { status: 200, body: `export default ${JSON.stringify({ __htmlImport: path })};` };
     if (path.endsWith(".css")) return { status: 200, body: src };
     if (path.endsWith(".json")) code = `export default ${src}`;
-    else if (/\.(ts|tsx|jsx)$/.test(path)) code = await transpile(src, path);
+    else if (/\.(ts|tsx|jsx)$/.test(path)) code = await transpile(src, path, tsconfigFor(vfs, path));
     else if (isCommonJS(path, src, packageType(vfs, path))) code = wrapCommonJS(path, src);
     else code = src;
     return { status: 200, body: rewriteImports(vfs, rewriteMeta(hoistMetaRequire(vfs, hoistRequires(vfs, code, dirname(path)), dirname(path)), path), dirname(path)) };

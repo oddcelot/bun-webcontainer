@@ -7,9 +7,12 @@ type Exports = {
   memory: WebAssembly.Memory;
   alloc(len: bigint): bigint;
   dealloc(ptr: bigint, len: bigint): void;
-  transpile_c(pathPtr: bigint, pathLen: bigint, srcPtr: bigint, srcLen: bigint, loader: number): bigint;
+  transpile_flags_c(pathPtr: bigint, pathLen: bigint, srcPtr: bigint, srcLen: bigint, loader: number, flags: number): bigint;
   output_free(out: bigint): void;
 };
+
+/** tsconfig `compilerOptions` the output depends on (bits of transpile-wasm's `flags`). */
+export type TsconfigFlags = { experimentalDecorators?: boolean; emitDecoratorMetadata?: boolean };
 
 const LOADERS: Record<string, number> = { js: 0, mjs: 0, jsx: 1, ts: 2, mts: 2, tsx: 3 };
 
@@ -24,7 +27,7 @@ async function load(): Promise<Exports> {
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
-export async function transpile(source: string, path: string): Promise<string> {
+export async function transpile(source: string, path: string, tsconfig: TsconfigFlags = {}): Promise<string> {
   const w = await (ready ??= load());
   const put = (s: string): [bigint, bigint] => {
     const b = enc.encode(s);
@@ -35,7 +38,8 @@ export async function transpile(source: string, path: string): Promise<string> {
   };
   const [pp, pl] = put(path);
   const [sp, sl] = put(source);
-  const out = w.transpile_c(pp, pl, sp, sl, LOADERS[path.slice(path.lastIndexOf(".") + 1)] ?? 0);
+  const flags = (tsconfig.experimentalDecorators ? 1 : 0) | (tsconfig.emitDecoratorMetadata ? 2 : 0);
+  const out = w.transpile_flags_c(pp, pl, sp, sl, LOADERS[path.slice(path.lastIndexOf(".") + 1)] ?? 0, flags);
   try {
     const view = new DataView(w.memory.buffer);
     const at = Number(out);
