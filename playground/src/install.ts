@@ -1,11 +1,11 @@
 import type { Semver } from "./semver";
-import { installFromBunLock, untar } from "./lockfile";
+import { installFromBunLock, platformRestricted, untar } from "./lockfile";
 import type { VFS } from "./vfs";
 
 type Log = (level: "log" | "error", text: string) => void;
 type Packument = {
   "dist-tags"?: Record<string, string>;
-  versions: Record<string, { dependencies?: Record<string, string>; dist: { tarball: string } }>;
+  versions: Record<string, { dependencies?: Record<string, string>; optionalDependencies?: Record<string, string>; os?: unknown; cpu?: unknown; libc?: unknown; dist: { tarball: string } }>;
 };
 
 async function gunzip(res: Response): Promise<Uint8Array> {
@@ -39,7 +39,7 @@ export async function bunInstall(vfs: VFS, semver: Semver, log: Log): Promise<nu
   const seen = new Set<string>();
   let installed = 0;
 
-  async function add(name: string, range: string): Promise<void> {
+  async function add(name: string, range: string, optional = false): Promise<void> {
     if (seen.has(name)) return;
     seen.add(name);
     if (vfs.files.has(`node_modules/${name}/package.json`)) return;
@@ -51,6 +51,7 @@ export async function bunInstall(vfs: VFS, semver: Semver, log: Log): Promise<nu
       const doc = (await res.json()) as Packument;
       const version = pickVersion(doc, range, semver);
       const meta = doc.versions[version];
+      if (optional && platformRestricted(meta)) return void log("log", `- ${name}@${version} (optional, unsupported platform)`);
       const tar = await fetch(meta.dist.tarball);
       if (!tar.ok) throw new Error(`tarball ${tar.status}`);
       const dec = new TextDecoder("utf-8", { fatal: true });
@@ -65,7 +66,8 @@ export async function bunInstall(vfs: VFS, semver: Semver, log: Log): Promise<nu
       }
       installed++;
       log("log", `+ ${name}@${version}`);
-      await Promise.all(Object.entries(meta.dependencies ?? {}).map(([n, r]) => add(n, r)));
+      await Promise.all(Object.entries(meta.dependencies ?? {}).filter(([n]) => !meta.optionalDependencies?.[n]).map(([n, r]) => add(n, r)));
+      await Promise.all(Object.entries(meta.optionalDependencies ?? {}).map(([n, r]) => add(n, r, true)));
     } catch (e) {
       log("error", `install ${name}@${range}: ${e instanceof Error ? e.message : e}`);
     }
