@@ -29,9 +29,11 @@ async function ask(msg) {
   });
 }
 
-async function serveModule(url) {
+async function serveModule(url, clientId) {
   const path = decodeURIComponent(url.pathname.slice(VFS.length));
-  const r = await ask({ type: "module", path });
+  // The worker runs the program (Bun's runtime conditions); a page gets the browser's.
+  const client = clientId && (await self.clients.get(clientId));
+  const r = await ask({ type: "module", path, target: client?.type === "window" ? "browser" : "bun" });
   const type = url.pathname.endsWith(".css") ? "text/css" : "text/javascript";
   return new Response(r.body, isolated({
     status: r.status,
@@ -54,7 +56,7 @@ async function servePreview(req, url, path = (url.pathname.slice(PREVIEW.length)
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
   if (url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith(VFS)) e.respondWith(serveModule(url));
+  if (url.pathname.startsWith(VFS)) e.respondWith(serveModule(url, e.clientId));
   else if (url.pathname === PREVIEW || url.pathname.startsWith(`${PREVIEW}/`)) e.respondWith(servePreview(e.request, url));
   else if (e.clientId) e.respondWith(fromPreviewOrNetwork(e));
 });

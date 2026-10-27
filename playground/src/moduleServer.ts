@@ -9,7 +9,14 @@ import { builtins, exportNames } from "./worker/node";
 export type ModuleResponse = { status: number; body: string };
 
 const EXTS = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".json"];
-const CONDITIONS = new Set(["import", "browser", "module", "default"]);
+/** Export conditions as Bun resolves them: its runtime for the worker, its dev server's for a page. */
+const TARGET_CONDITIONS = {
+  bun: new Set(["bun", "node", "import", "development", "default"]),
+  browser: new Set(["browser", "module", "import", "development", "default"]),
+};
+export type ModuleTarget = keyof typeof TARGET_CONDITIONS;
+/** For the resolution in progress; set by serveModule right before its synchronous rewrite. */
+let CONDITIONS = TARGET_CONDITIONS.browser;
 
 function resolveFile(vfs: VFS, p: string): string | null {
   if (vfs.files.has(p)) return p;
@@ -294,7 +301,7 @@ export default ${hostNames[spec].includes("default") ? "__m.default" : "__m"};
 ${names.length ? `export const { ${names.join(", ")} } = __m;` : ""}`;
 }
 
-export async function serveModule(vfs: VFS, rawPath: string, onError: (msg: string) => void): Promise<ModuleResponse> {
+export async function serveModule(vfs: VFS, rawPath: string, onError: (msg: string) => void, target: ModuleTarget = "browser"): Promise<ModuleResponse> {
   const path = norm(rawPath);
   if (path.startsWith("__node/")) return { status: 200, body: builtinModule(path.slice(7)) };
   if (path.startsWith("__host/")) return { status: 200, body: hostModule(path.slice(7)) };
@@ -317,6 +324,7 @@ export async function serveModule(vfs: VFS, rawPath: string, onError: (msg: stri
     else if (/\.(ts|tsx|jsx)$/.test(path)) code = await transpile(src, path, tsconfigFor(vfs, path));
     else if (isCommonJS(path, src, packageType(vfs, path))) code = wrapCommonJS(path, src);
     else code = src;
+    CONDITIONS = TARGET_CONDITIONS[target];
     return { status: 200, body: rewriteImports(vfs, rewriteMeta(hoistMetaRequire(vfs, hoistRequires(vfs, code, dirname(path)), dirname(path)), path), dirname(path)) };
   } catch (e) {
     const msg = `${path}: ${e instanceof Error ? e.message : String(e)}`;

@@ -18,7 +18,7 @@ export class Runner {
     const port = e.ports[0];
     const m = e.data;
     if (m.type === "module") {
-      port.postMessage(await serveModule(this.vfs, m.path, (msg) => this.log("error", msg)));
+      port.postMessage(await serveModule(this.vfs, m.path, (msg) => this.log("error", msg), m.target));
     } else if (m.type === "preview") {
       await this.ready;
       if (!this.worker) {
