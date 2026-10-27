@@ -47,6 +47,20 @@ cp -rf source dest          # NOT: cp -r source dest
 - `apt-get` - use `-y` flag
 - `brew` - use `HOMEBREW_NO_AUTO_UPDATE=1` env var
 
+## Git Workflow
+
+These rules override the conservative Beads profile for commits (not for pushes).
+
+- Never work on `main`. Before the first edit, branch off an up-to-date `main`:
+  `git switch -c <type>/<slug>` (`feat/`, `fix/`, `probe/`, `docs/`, `chore/`; e.g. `feat/deploy-base`).
+  One branch per bead or topic; reuse the current branch if it already matches the task.
+- Commit atomically as you go: one logical change per commit, each building and passing its tests
+  on its own. Don't mix refactors, formatting, or unrelated fixes into a feature commit; split with
+  `git add -p` if needed.
+- Subject `area: what` in imperative mood (`playground: serve from any base path`), ≤72 chars; body
+  explains why when it isn't obvious.
+- Don't push, merge into `main`, rebase shared branches, or force-push without asking.
+
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:1105d646 -->
 ## Beads Issue Tracker
 

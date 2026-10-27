@@ -79,6 +79,20 @@ See README.md and HANDOFF.md. In short: Bun's JSC-independent Rust crates compil
 playground runs user code in the browser engine with JS shims for `Bun.*`, a VFS, a service worker
 (`/__vfs/` modules, `/__preview/` Bun.serve), and Bun's wasm transpiler.
 
+## Git Workflow
+
+These rules override the conservative Beads profile for commits (not for pushes).
+
+- Never work on `main`. Before the first edit, branch off an up-to-date `main`:
+  `git switch -c <type>/<slug>` (`feat/`, `fix/`, `probe/`, `docs/`, `chore/`; e.g. `feat/deploy-base`).
+  One branch per bead or topic; reuse the current branch if it already matches the task.
+- Commit atomically as you go: one logical change per commit, each building and passing its tests
+  on its own. Don't mix refactors, formatting, or unrelated fixes into a feature commit; split with
+  `git add -p` if needed.
+- Subject `area: what` in imperative mood (`playground: serve from any base path`), ≤72 chars; body
+  explains why when it isn't obvious.
+- Don't push, merge into `main`, rebase shared branches, or force-push without asking.
+
 ## Conventions & Patterns
 
 - Changes to Bun: commit them in `bun/` on the `wasm-experiment` branch (one logical change per
