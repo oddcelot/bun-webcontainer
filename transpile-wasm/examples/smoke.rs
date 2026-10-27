@@ -8,7 +8,7 @@ fn main() {
         ("bad.ts", b"let = ;\n", Loader::Ts),
     ];
     for (path, src, loader) in cases {
-        match transpile(path.as_bytes(), src, *loader) {
+        match transpile(path.as_bytes(), src, *loader, 0) {
             Ok(out) => println!("== {path} OK\n{}", String::from_utf8_lossy(&out)),
             Err(e) => println!("== {path} ERR\n{}", String::from_utf8_lossy(&e)),
         }

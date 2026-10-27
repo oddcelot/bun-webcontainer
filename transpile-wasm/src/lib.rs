@@ -20,8 +20,12 @@ pub enum Loader {
     Tsx = 3,
 }
 
+/// tsconfig `compilerOptions` that change the output, as bits of `transpile_flags_c`'s `flags`.
+pub const EXPERIMENTAL_DECORATORS: u32 = 1;
+pub const EMIT_DECORATOR_METADATA: u32 = 2;
+
 /// Transpiled JS on success; formatted diagnostics on failure.
-pub fn transpile(path: &[u8], source: &[u8], loader: Loader) -> Result<Vec<u8>, Vec<u8>> {
+pub fn transpile(path: &[u8], source: &[u8], loader: Loader, flags: u32) -> Result<Vec<u8>, Vec<u8>> {
     let arena = Arena::new();
     let mut ast_alloc = bun_ast::ASTMemoryAllocator::borrowing(&arena);
     let _ast_scope = ast_alloc.enter();
@@ -39,7 +43,10 @@ pub fn transpile(path: &[u8], source: &[u8], loader: Loader) -> Result<Vec<u8>, 
     opts.features.no_macros = true;
     opts.features.top_level_await = true;
     opts.features.lower_using = true;
-    opts.features.standard_decorators = true;
+    // As `bundler/transpiler.rs`: either tsconfig option means TypeScript's legacy decorators.
+    let legacy = flags & (EXPERIMENTAL_DECORATORS | EMIT_DECORATOR_METADATA) != 0;
+    opts.features.emit_decorator_metadata = flags & EMIT_DECORATOR_METADATA != 0;
+    opts.features.standard_decorators = !loader.is_typescript() || !legacy;
     let define = Define::default();
     let mut log = bun_ast::Log::init();
 
@@ -116,6 +123,22 @@ pub unsafe extern "C" fn transpile_c(
     src_len: usize,
     loader: u32,
 ) -> *mut Output {
+    unsafe { transpile_flags_c(path, path_len, src, src_len, loader, 0) }
+}
+
+/// `transpile_c` with tsconfig flags (`EXPERIMENTAL_DECORATORS`, `EMIT_DECORATOR_METADATA`).
+///
+/// # Safety
+/// Both input ranges must be readable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn transpile_flags_c(
+    path: *const u8,
+    path_len: usize,
+    src: *const u8,
+    src_len: usize,
+    loader: u32,
+    flags: u32,
+) -> *mut Output {
     let slice = |p: *const u8, n: usize| if n == 0 { &[][..] } else { unsafe { core::slice::from_raw_parts(p, n) } };
     let loader = match loader {
         0 => Loader::Js,
@@ -124,7 +147,7 @@ pub unsafe extern "C" fn transpile_c(
         3 => Loader::Tsx,
         _ => return Box::into_raw(Box::new(Output { status: 2, ptr: core::ptr::null_mut(), len: 0 })),
     };
-    let (status, bytes) = match transpile(slice(path, path_len), slice(src, src_len), loader) {
+    let (status, bytes) = match transpile(slice(path, path_len), slice(src, src_len), loader, flags) {
         Ok(b) => (0, b),
         Err(b) => (1, b),
     };
