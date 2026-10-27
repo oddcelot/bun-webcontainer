@@ -1,5 +1,6 @@
 import { BASE } from "./base";
 import { isCommonJS, wrapCommonJS } from "./cjs";
+import bunWrap from "./bunWrap.js?raw";
 import { transpile, type TsconfigFlags } from "./transpiler";
 import { dirname, norm, type VFS } from "./vfs";
 import hostNames, { version as hostVersion } from "virtual:host-package-names";
@@ -187,6 +188,7 @@ function rewriteImports(vfs: VFS, code: string, dir: string): string {
   return code.replace(SPEC_RE, (m, pre: string, q: string, spec: string) => {
     if (/^(https?:|data:|blob:)/.test(spec) || spec.startsWith(`${BASE}__vfs/`)) return m;
     const builtin = spec.replace(/^node:/, "");
+    if (spec === "bun:wrap") return `${pre}${q}${BASE}__vfs/__bun/wrap${q}`;
     if (spec in hostNames) {
       checkHostVersion(vfs);
       return `${pre}${q}${BASE}__vfs/__host/${spec}${q}`;
@@ -296,6 +298,7 @@ export async function serveModule(vfs: VFS, rawPath: string, onError: (msg: stri
   const path = norm(rawPath);
   if (path.startsWith("__node/")) return { status: 200, body: builtinModule(path.slice(7)) };
   if (path.startsWith("__host/")) return { status: 200, body: hostModule(path.slice(7)) };
+  if (path === "__bun/wrap") return { status: 200, body: bunWrap };
   if (path.startsWith("__unresolved__/")) {
     const msg = `cannot resolve "${decodeURIComponent(path.slice(15))}"`;
     onError(msg);
