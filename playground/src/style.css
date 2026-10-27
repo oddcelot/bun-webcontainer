@@ -15,10 +15,15 @@ main { flex: 1; min-height: 0; display: grid; grid-template-columns: 200px 1fr 1
 #example, .editorkind select { background: #2c313a; color: #d7dae0; border: 1px solid #3a3f4a; border-radius: 4px; padding: 3px 6px; }
 #right { display: grid; grid-template-rows: 1fr 1fr; min-width: 0; min-height: 0; border-left: 1px solid #2c2f36; }
 #preview-wrap { display: flex; flex-direction: column; min-height: 0; }
+/* Expanded: almost the whole window, over the playground; the frame stays where it is, so it doesn't reload. */
+#preview-wrap.expanded { position: fixed; inset: 2.5vh 2.5vw; z-index: 20; background: #1b1d23; border: 1px solid #3a3f4a; border-radius: 8px; overflow: hidden; box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6); }
+#preview-backdrop { position: fixed; inset: 0; z-index: 19; background: rgba(0, 0, 0, 0.55); }
+#preview-backdrop[hidden] { display: none; }
 #request { display: flex; gap: 6px; padding: 4px 8px; background: #14161a; border-bottom: 1px solid #2c2f36; }
 #request select, #request input, #req-body { background: #2c313a; color: #d7dae0; border: 1px solid #3a3f4a; border-radius: 4px; padding: 3px 6px; font: 12px ui-monospace, monospace; }
 #req-path { flex: 1; min-width: 0; }
 #request button { background: #2c313a; color: inherit; border: 1px solid #3a3f4a; border-radius: 4px; padding: 3px 10px; cursor: pointer; }
+#expand { display: grid; place-items: center; padding: 0 8px; }
 #req-body { height: 5em; margin: 0; border-radius: 0; border-width: 0 0 1px; resize: vertical; }
 #preview { flex: 1; width: 100%; border: 0; background: white; }
 #preview[hidden], #req-body[hidden] { display: none; }

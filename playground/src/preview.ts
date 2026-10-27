@@ -1,6 +1,12 @@
 import { BASE } from "./base";
 
 const PREFIX = `${BASE}__preview`;
+// Corners pointing out (expand) or in (restore).
+const ICON = (d: string) =>
+  `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
+const EXPAND = ICON("M1 5V1h4M9 1h4v4M13 9v4H9M5 13H1V9");
+const RESTORE = ICON("M5 1v4H1M13 5H9V1M9 13V9h4M1 9h4v4");
+
 // Added by sw.js to every preview response, not sent by the user's server.
 const SW_HEADERS = new Set(["cross-origin-embedder-policy", "cross-origin-resource-policy"]);
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -74,9 +80,30 @@ export function mountPreview() {
     request();
   };
   // Keep the path in sync when the page navigates itself (links, forms, redirects).
+  const wrap = $("preview-wrap");
+  const backdrop = $("preview-backdrop");
+  const expandBtn = $<HTMLButtonElement>("expand");
+  const expand = (on: boolean) => {
+    wrap.classList.toggle("expanded", on);
+    backdrop.hidden = !on;
+    expandBtn.innerHTML = on ? RESTORE : EXPAND;
+    expandBtn.title = on ? "Restore preview (Esc)" : "Expand preview (Esc)";
+    expandBtn.setAttribute("aria-pressed", String(on));
+  };
+  expand(false);
+  expandBtn.onclick = () => expand(!wrap.classList.contains("expanded"));
+  backdrop.onclick = () => expand(false);
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === "Escape" && wrap.classList.contains("expanded")) expand(false);
+  };
+  addEventListener("keydown", onKey);
+
   frame.onload = () => {
-    const loc = frame.contentWindow?.location;
+    const win = frame.contentWindow;
+    const loc = win?.location;
     if (loc?.pathname.startsWith(PREFIX)) path.value = loc.pathname.slice(PREFIX.length) + loc.search;
+    // Keys pressed in the page stay in the frame; same origin, so listen there too.
+    win?.addEventListener("keydown", onKey);
   };
 
   /** After Run: GET the current path again. */
