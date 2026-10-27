@@ -51,6 +51,9 @@ async function servePreview(req, url, path = (url.pathname.slice(PREVIEW.length)
   });
   const nullBody = [101, 204, 205, 304].includes(r.status);
   const headers = new Headers(r.headers);
+  // Redirects to an absolute path stay inside the preview (`redirect("/")` from a form post).
+  const location = headers.get("location");
+  if (location?.startsWith("/") && !location.startsWith("//") && !location.startsWith(PREVIEW)) headers.set("location", PREVIEW + location);
   let out = r.body;
   if (!nullBody && headers.get("content-type")?.startsWith("text/html")) {
     out = withWebSocketShim(new TextDecoder().decode(out));
@@ -165,6 +168,9 @@ self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith(VFS)) e.respondWith(serveModule(url, e.clientId));
+  // A link, form or redirect in the preview frame that leaves `/__preview` (`<a href="/entries/2">`): same server.
+  else if (e.request.mode === "navigate" && e.request.destination === "iframe" && !url.pathname.startsWith(PREVIEW))
+    e.respondWith(e.request.method === "GET" ? Response.redirect(PREVIEW + url.pathname + url.search, 302) : servePreview(e.request, url, url.pathname + url.search));
   else if (url.pathname === PREVIEW || url.pathname.startsWith(`${PREVIEW}/`)) e.respondWith(servePreview(e.request, url));
   else if (e.clientId) e.respondWith(fromPreviewOrNetwork(e));
 });
