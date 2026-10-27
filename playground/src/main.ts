@@ -7,6 +7,7 @@ import type { CodeEditor, EditorKind } from "./editors/types";
 import { bunInstall } from "./install";
 import { Runner } from "./runner";
 import { mountFileTree } from "./fileTree";
+import { mountPreview } from "./preview";
 import { loadSemver } from "./semver";
 import { showUnsupported, supportsMemory64 } from "./support";
 import { VFS } from "./vfs";
@@ -135,7 +136,7 @@ async function run() {
   const entry = entryFile();
   log("sys", `[run] ${entry}`);
   await runner.start(entry);
-  ($("preview") as HTMLIFrameElement).contentWindow!.location.replace(`${BASE}__preview/`);
+  preview.reload();
   statusEl.textContent = "running";
   btn.disabled = false;
 }
@@ -155,6 +156,7 @@ async function install() {
   btn.disabled = false;
 }
 
+const preview = mountPreview();
 $("run").onclick = run;
 $("install").onclick = install;
 $("clear").onclick = () => consoleEl.replaceChildren();
