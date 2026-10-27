@@ -1,6 +1,9 @@
 import { serveModule } from "./moduleServer";
 import type { VFS } from "./vfs";
 
+/** Tells preview pages (see previewWebSocket in sw.js) that their WebSockets' server is gone. */
+const previewChannel = new BroadcastChannel("bun-preview");
+
 export type LogFn = (level: string, text: string) => void;
 
 export class Runner {
@@ -26,10 +29,15 @@ export class Runner {
         return;
       }
       this.worker.postMessage({ type: "request", req: m.req }, [port]);
+    } else if (m.type === "ws") {
+      await this.ready;
+      if (!this.worker) return port.postMessage({ type: "close", code: 1011, reason: "No server running" });
+      this.worker.postMessage(m, [port]);
     }
   }
 
   stop() {
+    if (this.worker) previewChannel.postMessage("stopped");
     this.worker?.terminate();
     this.worker = undefined;
   }

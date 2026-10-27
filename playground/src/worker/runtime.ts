@@ -12,6 +12,14 @@ type Handler = (req: Request, server: unknown) => Response | Promise<Response>;
 type HtmlImport = { __htmlImport: string };
 type RouteValue = Response | Handler | HtmlImport | Partial<Record<string, Handler | Response>>;
 type Routes = Record<string, RouteValue>;
+type WebSocketHandlers = {
+  open?(ws: ServerWebSocket): void;
+  message?(ws: ServerWebSocket, message: string | Uint8Array): void;
+  close?(ws: ServerWebSocket, code: number, reason: string): void;
+  drain?(ws: ServerWebSocket): void;
+};
+type ServeOptions = { port?: number | string; hostname?: string; fetch?: Handler; routes?: Routes; websocket?: WebSocketHandlers };
+type WsPayload = string | ArrayBuffer | ArrayBufferView;
 
 const g = globalThis as unknown as Record<string, unknown>;
 const post = (msg: unknown, transfer: Transferable[] = []) => (self as unknown as Worker).postMessage(msg, transfer);
@@ -27,15 +35,211 @@ g.global ??= globalThis;
 g.Buffer ??= (builtins.buffer as { Buffer: unknown }).Buffer;
 installTimers();
 
-let handler: Handler | undefined;
-let routes: Routes = {};
-let server: unknown;
+/** One `Bun.serve` (or `http.Server#listen`). A program may start several: devframe adds one on port 0 for its RPC socket. */
+interface Instance {
+  handler?: Handler;
+  routes: Routes;
+  websocket: WebSocketHandlers;
+  port: number;
+  /** Started on port 0: a helper the preview never shows. */
+  ephemeral: boolean;
+  topics: Map<string, Set<ServerWebSocket>>;
+  server: object;
+}
 
+const servers: Instance[] = [];
+let nextPort = 40001;
+/** What the preview shows: the first server on a fixed port. */
+const previewServer = () => servers.find((s) => !s.ephemeral) ?? servers[0];
+const stopServer = (inst: Instance) => servers.splice(servers.indexOf(inst) >>> 0, 1);
+
+let nodeServer: Instance | undefined;
 hooks.set = (h) => {
-  handler = h;
-  routes = {};
+  if (nodeServer) stopServer(nodeServer);
+  nodeServer = h ? createInstance({ fetch: h }) : undefined;
 };
-hooks.get = () => handler;
+hooks.get = () => nodeServer?.handler;
+
+/** Requests the worker made for a page's WebSocket: `server.upgrade(req)` accepts them, once. */
+const upgrades = new WeakMap<Request, (data: unknown) => void>();
+
+const size = (m: WsPayload) => (typeof m === "string" ? new TextEncoder().encode(m).length : m.byteLength);
+const bytesOf = (m: Exclude<WsPayload, string>) =>
+  m instanceof ArrayBuffer ? m.slice(0) : (m.buffer.slice(m.byteOffset, m.byteOffset + m.byteLength) as ArrayBuffer);
+
+/** Bun's `ServerWebSocket`, talking to the page's `WebSocket` over a MessagePort (see previewWebSocket in sw.js). */
+class ServerWebSocket {
+  readyState = 1;
+  binaryType = "nodebuffer";
+  remoteAddress = "127.0.0.1";
+  #subs = new Set<string>();
+  constructor(
+    private port: MessagePort,
+    private inst: Instance,
+    public data: unknown,
+  ) {}
+  send(message: WsPayload) {
+    if (this.readyState !== 1) return 0;
+    const data = typeof message === "string" ? message : bytesOf(message);
+    this.port.postMessage({ type: "message", data }, typeof data === "string" ? [] : [data]);
+    return size(message);
+  }
+  sendText(message: string) {
+    return this.send(message);
+  }
+  sendBinary(message: ArrayBuffer | ArrayBufferView) {
+    return this.send(message);
+  }
+  publish(topic: string, message: WsPayload) {
+    for (const ws of this.inst.topics.get(topic) ?? []) if (ws !== this) ws.send(message);
+    return size(message);
+  }
+  publishText(topic: string, message: string) {
+    return this.publish(topic, message);
+  }
+  publishBinary(topic: string, message: ArrayBuffer | ArrayBufferView) {
+    return this.publish(topic, message);
+  }
+  subscribe(topic: string) {
+    this.#subs.add(topic);
+    let set = this.inst.topics.get(topic);
+    if (!set) this.inst.topics.set(topic, (set = new Set()));
+    set.add(this);
+  }
+  unsubscribe(topic: string) {
+    this.#subs.delete(topic);
+    this.inst.topics.get(topic)?.delete(this);
+  }
+  isSubscribed(topic: string) {
+    return this.#subs.has(topic);
+  }
+  get subscriptions() {
+    return [...this.#subs];
+  }
+  cork<T>(fn: (ws: this) => T) {
+    return fn(this);
+  }
+  ping() {
+    return 0;
+  }
+  pong() {
+    return 0;
+  }
+  getBufferedAmount() {
+    return 0;
+  }
+  close(code = 1000, reason = "") {
+    if (this.readyState !== 1) return;
+    this.port.postMessage({ type: "close", code, reason });
+    this.closed(code, reason);
+  }
+  terminate() {
+    this.close(1006);
+  }
+  /** The connection is gone, from either side. */
+  closed(code: number, reason: string) {
+    if (this.readyState === 3) return;
+    this.readyState = 3;
+    for (const t of this.#subs) this.inst.topics.get(t)?.delete(this);
+    this.#subs.clear();
+    this.port.close();
+    this.inst.websocket.close?.(this, code, reason);
+  }
+}
+
+function createInstance(opts: ServeOptions): Instance {
+  const requested = Number(opts.port ?? env.PORT ?? env.BUN_PORT ?? 3000);
+  const port = requested === 0 ? nextPort++ : requested;
+  const hostname = opts.hostname ?? "localhost";
+  const inst: Instance = {
+    handler: opts.fetch,
+    routes: opts.routes ?? {},
+    websocket: opts.websocket ?? {},
+    port,
+    ephemeral: requested === 0,
+    topics: new Map(),
+    server: {},
+  };
+  inst.server = {
+    port,
+    hostname,
+    url: new URL(`http://${hostname}:${port}/`),
+    development: true,
+    /** Swaps handlers in place, as Bun's does; the port and hostname stay. */
+    reload(next: ServeOptions) {
+      if (next.fetch) inst.handler = next.fetch;
+      if (next.routes) inst.routes = next.routes;
+      if (next.websocket) inst.websocket = next.websocket;
+    },
+    upgrade(req: Request, o?: { data?: unknown }) {
+      const accept = upgrades.get(req);
+      if (!accept) return false;
+      upgrades.delete(req);
+      accept(o?.data);
+      return true;
+    },
+    publish(topic: string, message: WsPayload) {
+      const subs = inst.topics.get(topic);
+      for (const ws of subs ?? []) ws.send(message);
+      return subs?.size ? size(message) : 0;
+    },
+    subscriberCount: (topic: string) => inst.topics.get(topic)?.size ?? 0,
+    get pendingWebSockets() {
+      let n = 0;
+      for (const s of inst.topics.values()) n += s.size;
+      return n;
+    },
+    async stop() {
+      for (const subs of inst.topics.values()) for (const ws of subs) ws.close(1001);
+      stopServer(inst);
+    },
+  };
+  servers.push(inst);
+  return inst;
+}
+
+/**
+ * A server-side Request. `new Request()` drops forbidden header names (Cookie, Origin, Upgrade, Sec-*), which a
+ * server must see; a standalone `Headers` keeps them.
+ */
+function serverRequest(path: string, init: { method?: string; body?: BodyInit | null }, headers: [string, string][]) {
+  // The init's headers too: body methods (`formData()`) read the Request's own content-type.
+  const req = new Request(self.location.origin + path, { ...init, headers });
+  return Object.defineProperty(req, "headers", { value: new Headers(headers) });
+}
+
+/** A page's WebSocket: a GET with `upgrade: websocket` through the server's handler, which may accept it. */
+async function openSocket(inst: Instance, port: MessagePort, path: string, headers: [string, string][]) {
+  const key = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16))));
+  const req = serverRequest(path, {}, [...headers, ["upgrade", "websocket"], ["connection", "Upgrade"], ["sec-websocket-version", "13"], ["sec-websocket-key", key]]);
+  let ws: ServerWebSocket | undefined;
+  upgrades.set(req, (data) => (ws = new ServerWebSocket(port, inst, data)));
+  try {
+    await dispatch(inst, req);
+  } catch (err) {
+    console.error(err);
+  }
+  upgrades.delete(req);
+  if (!ws) {
+    port.postMessage({ type: "close", code: 1006, reason: "" });
+    return port.close();
+  }
+  const socket = ws;
+  port.onmessage = (e) => {
+    const m = e.data;
+    if (m.type === "close") {
+      if (socket.readyState !== 1) return;
+      port.postMessage({ type: "close", code: m.code, reason: m.reason });
+      socket.closed(m.code, m.reason);
+    } else if (m.type === "message" && socket.readyState === 1) {
+      const data = typeof m.data === "string" ? m.data : (builtins.buffer as { Buffer: { from(b: ArrayBuffer): Uint8Array } }).Buffer.from(m.data);
+      inst.websocket.message?.(socket, data);
+    }
+  };
+  const protocol = headers.find(([k]) => k === "sec-websocket-protocol")?.[1].split(",")[0].trim();
+  port.postMessage({ type: "open", protocol });
+  inst.websocket.open?.(socket);
+}
 
 const isHtmlImport = (v: unknown): v is HtmlImport => typeof v === "object" && v !== null && "__htmlImport" in v;
 
@@ -66,7 +270,8 @@ async function serveHtml(imp: HtmlImport): Promise<Response> {
   return new Response(out, { headers: { "content-type": "text/html; charset=utf-8" } });
 }
 
-async function dispatch(req: Request): Promise<Response> {
+async function dispatch(inst: Instance, req: Request): Promise<Response> {
+  const { routes, handler, server } = inst;
   const path = new URL(req.url).pathname;
   for (const [pattern, value] of Object.entries(routes)) {
     const params = matchRoute(pattern, path);
@@ -153,30 +358,7 @@ async function main() {
     },
     file: (path: string) => new BunFile(path),
     write,
-    serve(opts: { port?: number; hostname?: string; fetch?: Handler; routes?: Routes }) {
-      handler = opts.fetch;
-      routes = opts.routes ?? {};
-      const port = opts.port ?? 3000;
-      const hostname = opts.hostname ?? "localhost";
-      server = {
-        port,
-        hostname,
-        url: new URL(`http://${hostname}:${port}/`),
-        development: true,
-        /** Swaps handlers in place, as Bun's does; the port and hostname stay. */
-        reload(next: { fetch?: Handler; routes?: Routes }) {
-          if (next.fetch) handler = next.fetch;
-          if (next.routes) routes = next.routes;
-        },
-        /** No WebSockets in the preview yet. */
-        upgrade: () => false,
-        async stop() {
-          handler = undefined;
-          routes = {};
-        },
-      };
-      return server;
-    },
+    serve: (opts: ServeOptions) => createInstance(opts).server,
   };
 
   self.addEventListener("unhandledrejection", (e) => {
@@ -188,19 +370,28 @@ async function main() {
     if (m.type === "request") {
       const port = e.ports[0];
       try {
-        if (!handler && !Object.keys(routes).length) {
+        const inst = previewServer();
+        if (!inst) {
           port.postMessage({ status: 503, statusText: "", headers: [], body: new TextEncoder().encode("No Bun.serve handler registered").buffer });
           return;
         }
         const r = m.req;
-        const req = new Request(self.location.origin + r.path, { method: r.method, headers: r.headers, body: r.body });
-        const res = await dispatch(req);
+        const req = serverRequest(r.path, { method: r.method, body: r.body }, r.headers);
+        const res = await dispatch(inst, req);
         const body = await res.arrayBuffer();
         port.postMessage({ status: res.status, statusText: res.statusText, headers: [...res.headers], body }, [body]);
       } catch (err) {
         console.error(err);
         port.postMessage({ status: 500, statusText: "", headers: [["content-type", "text/plain"]], body: new TextEncoder().encode(fmt(err)).buffer });
       }
+    } else if (m.type === "ws") {
+      const port = e.ports[0];
+      const inst = m.port === undefined ? previewServer() : servers.find((s) => s.port === m.port);
+      if (!inst) {
+        port.postMessage({ type: "close", code: 1006, reason: "" });
+        return port.close();
+      }
+      openSocket(inst, port, m.path, m.headers);
     }
   });
 
