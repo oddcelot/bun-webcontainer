@@ -1,0 +1,2397 @@
+diff --git a/src/analytics/lib.rs b/src/analytics/lib.rs
+index 444c4faa..e1ebb85c 100644
+--- a/src/analytics/lib.rs
++++ b/src/analytics/lib.rs
+@@ -433,6 +433,13 @@ pub mod generate_header {
+                         version: &[],
+                     };
+                 }
++                #[cfg(target_family = "wasm")] // wasm-experiment: reported as Linux
++                {
++                    return Platform {
++                        os: OperatingSystem::Linux,
++                        version: &[],
++                    };
++                }
+             })
+         }
+ 
+diff --git a/src/bun_alloc/arena_box.rs b/src/bun_alloc/arena_box.rs
+index 1a548fa9..425d3c06 100644
+--- a/src/bun_alloc/arena_box.rs
++++ b/src/bun_alloc/arena_box.rs
+@@ -53,8 +53,11 @@ unsafe impl Allocator for FreesOnly<'_> {
+ /// See the module doc.
+ pub struct ArenaBox<'a, T: ?Sized>(Box<T, FreesOnly<'a>>);
+ 
++#[cfg(target_pointer_width = "64")] // wasm-experiment
+ const _: () = assert!(size_of::<ArenaBox<'static, u64>>() == 8);
++#[cfg(target_pointer_width = "64")] // wasm-experiment
+ const _: () = assert!(size_of::<ArenaBox<'static, [u64]>>() == 16);
++#[cfg(target_pointer_width = "64")] // wasm-experiment
+ const _: () = assert!(size_of::<Option<ArenaBox<'static, [u64]>>>() == 16);
+ 
+ impl<'a, T: ?Sized> ArenaBox<'a, T> {
+diff --git a/src/bun_alloc/baby_vec.rs b/src/bun_alloc/baby_vec.rs
+index d13cbace..7523bb33 100644
+--- a/src/bun_alloc/baby_vec.rs
++++ b/src/bun_alloc/baby_vec.rs
+@@ -24,6 +24,7 @@ pub struct BabyVec<'a, T> {
+     alloc: &'a MimallocArena,
+ }
+ 
++#[cfg(target_pointer_width = "64")] // wasm-experiment
+ const _: () = assert!(size_of::<BabyVec<'static, u8>>() == 24);
+ 
+ // SAFETY: same as `Vec<T, &MimallocArena>` — `Send`/`Sync` follow `T` and the
+diff --git a/src/bun_alloc/basic.rs b/src/bun_alloc/basic.rs
+index 4ec2f3a1..8eb1b039 100644
+--- a/src/bun_alloc/basic.rs
++++ b/src/bun_alloc/basic.rs
+@@ -43,7 +43,10 @@ static C_ALLOCATOR_VTABLE: &AllocatorVTable = &AllocatorVTable {
+ mod memory_allocator_tags {
+     use core::ffi::c_void;
+ 
+-    const DEFAULT_ALLOCATOR_TAG: usize = 0xBEEFA110C; // "BEEFA110C"  beef a110c i guess
++    #[cfg(target_pointer_width = "64")]
++    const DEFAULT_ALLOCATOR_TAG: usize = 0xBEEFA110C;
++    #[cfg(not(target_pointer_width = "64"))] // wasm-experiment
++    const DEFAULT_ALLOCATOR_TAG: usize = 0xEEFA110C; // "BEEFA110C"  beef a110c i guess
+     pub(crate) const DEFAULT_ALLOCATOR_TAG_PTR: *mut c_void = DEFAULT_ALLOCATOR_TAG as *mut c_void;
+ }
+ 
+diff --git a/src/bun_alloc/lib.rs b/src/bun_alloc/lib.rs
+index 9c595055..45e35288 100644
+--- a/src/bun_alloc/lib.rs
++++ b/src/bun_alloc/lib.rs
+@@ -21,6 +21,9 @@ use std::collections::HashMap;
+ 
+ pub use bun_mimalloc_sys::mimalloc;
+ pub mod c_thunks;
++#[cfg(target_family = "wasm")] // wasm-experiment
++#[path = "wasm_libc.rs"]
++mod libc;
+ 
+ // ── Allocator vtable ───────────────────────────────────────────────────────
+ #[repr(transparent)]
+@@ -193,6 +196,8 @@ pub mod stack_fallback;
+ /// Raw alloc/free matching the `#[global_allocator]` (`mi_*` normally, libc under ASAN).
+ pub mod default_alloc {
+     use core::ffi::c_void;
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    use crate::libc;
+ 
+     #[inline]
+     pub fn malloc(size: usize) -> *mut c_void {
+@@ -652,6 +657,11 @@ pub fn page_size() -> usize {
+             GetSystemInfo(&mut info);
+             info.dw_page_size as usize
+         }
++        // wasm-experiment: WASM linear memory grows in 64 KiB pages.
++        #[cfg(target_family = "wasm")]
++        {
++            65536
++        }
+     })
+ }
+ 
+diff --git a/src/bun_core/Global.rs b/src/bun_core/Global.rs
+index f324977e..491ae2f3 100644
+--- a/src/bun_core/Global.rs
++++ b/src/bun_core/Global.rs
+@@ -603,7 +603,7 @@ pub fn set_thread_name(name: &ZStr) {
+             libc::pthread_set_name_np(libc::pthread_self(), name.as_ptr().cast::<c_char>());
+         }
+     }
+-    #[cfg(windows)]
++    #[cfg(any(windows, target_family = "wasm"))] // wasm-experiment
+     {
+         let _ = name;
+         // TODO: use SetThreadDescription or NtSetInformationThread with 0x26 (ThreadNameInformation)
+@@ -679,6 +679,7 @@ unsafe extern "C" {
+     #[cfg(windows)]
+     #[link_name = "abort"]
+     safe fn libc_abort() -> !;
++    #[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+     #[link_name = "raise"]
+     safe fn libc_raise(sig: c_int) -> c_int;
+     #[cfg(unix)]
+@@ -719,13 +720,18 @@ pub fn exit(code: u32) -> ! {
+         // `ExitProcess` is `safe fn` (no preconditions; never returns).
+         crate::windows_sys::kernel32::ExitProcess(code)
+     }
+-    #[cfg(not(any(target_os = "macos", windows)))]
++    #[cfg(not(any(target_os = "macos", windows, target_family = "wasm")))]
+     {
+         if env::ENABLE_ASAN {
+             libc_exit(code as i32);
+         }
+         quick_exit(code as c_int);
+     }
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    {
++        let _ = code;
++        std::process::abort()
++    }
+ }
+ 
+ pub fn raise_ignoring_panic_handler(sig: crate::SignalCode) -> ! {
+@@ -775,9 +781,15 @@ pub fn raise_ignoring_panic_handler_raw(sig: c_int) -> ! {
+         }
+     }
+ 
+-    #[cfg(not(windows))]
++    #[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment
+     raise_default_action(sig);
+ 
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    {
++        let _ = sig;
++        std::process::abort()
++    }
++
+     #[cfg(windows)]
+     {
+         // kill self; `raise` has no preconditions (see the `safe fn` decl above).
+@@ -789,7 +801,7 @@ pub fn raise_ignoring_panic_handler_raw(sig: c_int) -> ! {
+ 
+ /// Kills the process with `sig`'s default action. Exits with 128 + `sig` if the kernel discards
+ /// the signal (PID 1 in a pid namespace). Async-signal-safe.
+-#[cfg(not(windows))]
++#[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment
+ pub fn raise_default_action(sig: c_int) -> ! {
+     // SAFETY: zeroed sigset + SIG_DFL handler is a valid Sigaction.
+     unsafe {
+@@ -815,7 +827,7 @@ pub fn raise_default_action(sig: c_int) -> ! {
+ }
+ 
+ /// Exposes `raise_default_action` to C++ (`onExitSignal` in c-bindings.cpp).
+-#[cfg(not(windows))]
++#[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment
+ #[unsafe(no_mangle)]
+ extern "C" fn Bun__raiseDefaultAction(sig: c_int) -> ! {
+     raise_default_action(sig)
+@@ -956,7 +968,7 @@ extern "C" fn Bun__onExit() {
+     run_exit_callbacks();
+     Output::flush();
+     crate::keep_symbols!(Bun__atexit);
+-    #[cfg(not(windows))]
++    #[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment
+     crate::keep_symbols!(Bun__raiseDefaultAction);
+ 
+     Output::source::stdio::restore();
+diff --git a/src/bun_core/debug.rs b/src/bun_core/debug.rs
+index 336b0911..ecafc2ed 100644
+--- a/src/bun_core/debug.rs
++++ b/src/bun_core/debug.rs
+@@ -202,7 +202,12 @@ fn is_valid_memory(address: usize) -> bool {
+             && mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD) == 0
+             && mbi.Protect & READABLE != 0
+     }
+-    #[cfg(not(windows))]
++    #[cfg(target_family = "wasm")] // wasm-experiment: linear memory has no unmapped pages
++    {
++        let _ = (aligned_address, page_size);
++        true
++    }
++    #[cfg(not(any(windows, target_family = "wasm")))]
+     {
+         // SAFETY: msync only inspects the mapping; aligned_address is page-aligned.
+         let rc = unsafe {
+@@ -274,6 +279,7 @@ impl StackIterator {
+     }
+ }
+ 
++#[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+ pub(crate) const PC_OFFSET: usize = StackIterator::PC_OFFSET;
+ 
+ /// Capture the current thread's call stack.
+diff --git a/src/bun_core/env_var.rs b/src/bun_core/env_var.rs
+index 0227e811..615c004b 100644
+--- a/src/bun_core/env_var.rs
++++ b/src/bun_core/env_var.rs
+@@ -766,7 +766,7 @@ macro_rules! platform_specific_new {
+ 
+             /// Retrieve the key of the environment variable for the current platform, if any.
+             pub(crate) fn platform_key() -> Option<&'static ZStr> {
+-                #[cfg(unix)]
++                #[cfg(not(windows))] // wasm-experiment: was `unix`
+                 { return $crate::env_var::__key_opt!($posix); }
+                 #[cfg(windows)]
+                 { return $crate::env_var::__key_opt!($windows); }
+diff --git a/src/bun_core/lib.rs b/src/bun_core/lib.rs
+index 4a8ef1cc..7a77c248 100644
+--- a/src/bun_core/lib.rs
++++ b/src/bun_core/lib.rs
+@@ -1337,12 +1337,12 @@ pub(crate) mod strings_impl {
+         debug_assert!(!a.is_empty());
+ 
+         // Miri has no shim for either libc call, and `bun_url`'s unit tests reach this.
+-        #[cfg(miri)]
++        #[cfg(any(miri, target_family = "wasm"))] // wasm-experiment: no libc
+         {
+             a.eq_ignore_ascii_case(&b[..a.len()])
+         }
+         // SAFETY: a.len() <= b.len() here; strncasecmp reads at most a.len() bytes from each.
+-        #[cfg(all(not(miri), not(windows)))]
++        #[cfg(all(not(miri), not(windows), not(target_family = "wasm")))]
+         unsafe {
+             libc::strncasecmp(a.as_ptr().cast(), b.as_ptr().cast(), a.len()) == 0
+         }
+diff --git a/src/bun_core/thread_id.rs b/src/bun_core/thread_id.rs
+index 2b8756de..d6030240 100644
+--- a/src/bun_core/thread_id.rs
++++ b/src/bun_core/thread_id.rs
+@@ -171,6 +171,7 @@ fn current_uncached() -> ThreadId {
+         target_os = "watchos",
+         target_os = "tvos",
+         target_os = "visionos",
++        target_family = "wasm",
+     )))]
+     {
+         unsafe extern "C" {
+@@ -179,4 +180,8 @@ fn current_uncached() -> ThreadId {
+         }
+         return pthread_self() as ThreadId;
+     }
++    #[cfg(target_family = "wasm")] // wasm-experiment: single-threaded
++    {
++        return 1;
++    }
+ }
+diff --git a/src/bun_core/util.rs b/src/bun_core/util.rs
+index af7e75cc..937d87d9 100644
+--- a/src/bun_core/util.rs
++++ b/src/bun_core/util.rs
+@@ -144,7 +144,11 @@ impl ZStr {
+             return Self::EMPTY;
+         }
+         // SAFETY: caller contract — `p` is non-null, NUL-terminated, valid for `'a`.
++        #[cfg(not(target_family = "wasm"))]
+         let len = unsafe { libc::strlen(p) };
++        // SAFETY: as above. wasm-experiment: the `libc` crate has no `strlen` here.
++        #[cfg(target_family = "wasm")]
++        let len = unsafe { core::ffi::CStr::from_ptr(p) }.count_bytes();
+         // SAFETY: `p[len] == 0` (strlen postcondition) and `p[..len]` readable.
+         unsafe { Self::from_raw(p.cast::<u8>(), len) }
+     }
+@@ -913,11 +917,16 @@ impl Fd {
+     pub const fn stderr() -> Fd {
+         Fd(2)
+     }
+-    #[cfg(not(windows))]
++    #[cfg(not(any(windows, target_family = "wasm")))]
+     #[inline]
+     pub fn cwd() -> Fd {
+         Fd(libc::AT_FDCWD)
+     }
++    #[cfg(target_family = "wasm")] // wasm-experiment: Linux's AT_FDCWD
++    #[inline]
++    pub fn cwd() -> Fd {
++        Fd(-100)
++    }
+ 
+     #[cfg(windows)]
+     #[inline]
+@@ -2482,6 +2491,7 @@ impl Pollable {
+     /// Lowercase tag name for the `[sys]` debug log.
+     #[inline]
+     #[cfg(not(windows))]
++    #[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+     pub(crate) const fn tag_name(self) -> &'static str {
+         match self {
+             Pollable::Ready => "ready",
+@@ -2496,7 +2506,7 @@ impl Pollable {
+ crate::declare_scope!(SYS, visible);
+ 
+ /// Non-blocking poll for readability. POSIX-only.
+-#[cfg(not(windows))]
++#[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment
+ pub fn is_readable(fd: Fd) -> Pollable {
+     debug_assert!(fd.is_valid());
+     let mut polls = [libc::pollfd {
+@@ -2528,14 +2538,14 @@ pub fn is_readable(fd: Fd) -> Pollable {
+     );
+     rc
+ }
+-#[cfg(windows)]
++#[cfg(any(windows, target_family = "wasm"))] // wasm-experiment
+ pub fn is_readable(_fd: Fd) -> Pollable {
+     // No callers reach this on Windows.
+     panic!("TODO on Windows");
+ }
+ 
+ /// Non-blocking `poll(fd, POLLOUT)` (or `WSAPoll` on Windows); reports writability.
+-#[cfg(not(windows))]
++#[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment
+ pub fn is_writable(fd: Fd) -> Pollable {
+     debug_assert!(fd.is_valid());
+     let mut polls = [libc::pollfd {
+@@ -2567,6 +2577,10 @@ pub fn is_writable(fd: Fd) -> Pollable {
+     );
+     rc
+ }
++#[cfg(target_family = "wasm")] // wasm-experiment
++pub fn is_writable(_fd: Fd) -> Pollable {
++    unimplemented!("is_writable on wasm");
++}
+ #[cfg(windows)]
+ pub fn is_writable(fd: Fd) -> Pollable {
+     // bun_core can't depend on
+@@ -2606,6 +2620,11 @@ pub fn is_writable(fd: Fd) -> Pollable {
+ // must use `bun_boringssl_sys::rand_bytes` (userspace DRBG, no syscall per
+ // call).
+ fn os_entropy(bytes: &mut [u8]) {
++    // wasm-experiment: wasm64-unknown-unknown has no entropy source; seed from a fixed value.
++    #[cfg(target_family = "wasm")]
++    for (i, b) in bytes.iter_mut().enumerate() {
++        *b = (i as u8).wrapping_mul(0x9d) ^ 0x5a;
++    }
+     #[cfg(any(target_os = "linux", target_os = "android"))]
+     {
+         let mut filled = 0usize;
+@@ -2684,6 +2703,10 @@ pub fn self_exe_path() -> crate::CrateResult<&'static ZStr> {
+         //  test/js/node/test/parallel/test-process-execpath.js).
+         #[cfg(any(target_vendor = "apple", windows))]
+         let path = path.canonicalize().unwrap_or(path);
++        #[cfg(target_family = "wasm")] // wasm-experiment: `current_exe` always errs above
++        {
++            Ok(ZBox::from_vec_with_nul(path.into_os_string().into_encoded_bytes()))
++        }
+         #[cfg(unix)]
+         {
+             use std::os::unix::ffi::OsStringExt;
+@@ -4279,7 +4302,12 @@ pub fn reload_process(clear_terminal: bool, may_return: bool) {
+         crate::Global::exit(1);
+     }
+ 
+-    #[cfg(not(any(unix, windows)))]
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    {
++        let _ = (clear_terminal, may_return);
++        unimplemented!("reload_process on wasm");
++    }
++    #[cfg(not(any(unix, windows, target_family = "wasm")))]
+     {
+         // Bun only targets POSIX + Windows; any other target
+         // is a build-time error, not a runtime panic.
+@@ -4860,6 +4888,10 @@ impl Timespec {
+                 nsec: ts.tv_nsec,
+             }
+         }
++        #[cfg(target_family = "wasm")] // wasm-experiment: no clock
++        {
++            Timespec { sec: 0, nsec: 0 }
++        }
+         #[cfg(windows)]
+         {
+             // QPC via the c-bindings.cpp shim: the same monotonic clock libuv
+diff --git a/src/crash_handler/CPUFeatures.rs b/src/crash_handler/CPUFeatures.rs
+index 5736ea90..4c681328 100644
+--- a/src/crash_handler/CPUFeatures.rs
++++ b/src/crash_handler/CPUFeatures.rs
+@@ -44,7 +44,16 @@ bitflags::bitflags! {
+     }
+ }
+ 
+-#[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
++#[cfg(target_family = "wasm")] // wasm-experiment
++bitflags::bitflags! {
++    #[repr(transparent)]
++    #[derive(Copy, Clone)]
++    pub struct Flags: u8 {
++        const NONE = 1 << 0;
++    }
++}
++
++#[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64", target_family = "wasm")))] // wasm-experiment
+ compile_error!("CPUFeatures: unsupported target architecture");
+ 
+ // Per-arch const table of flag names, skipping "none" and padding bits.
+@@ -67,6 +76,9 @@ const NAMED_FLAGS: &[(&str, Flags)] = &[
+     ("sve", Flags::SVE),
+ ];
+ 
++#[cfg(target_family = "wasm")] // wasm-experiment
++const NAMED_FLAGS: &[(&str, Flags)] = &[];
++
+ impl fmt::Display for CPUFeatures {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+         let mut is_first = true;
+diff --git a/src/crash_handler/lib.rs b/src/crash_handler/lib.rs
+index e0e7ddbe..c4a834d9 100644
+--- a/src/crash_handler/lib.rs
++++ b/src/crash_handler/lib.rs
+@@ -95,15 +95,15 @@ pub mod debug {
+     // crash handler (lower-tier crate) gets real symbol names in debug builds
+     // and `btjs` re-exports from this module.
+     use crate::Error;
+-    #[cfg(not(windows))]
++    #[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment
+     use bun_collections::HashMap;
+-    #[cfg(not(windows))]
++    #[cfg(not(any(windows, target_family = "wasm")))]
+     use core::ffi::c_void;
+ 
+     pub use bun_core::debug::{SourceLocation, SymbolInfo};
+ 
+     pub struct SelfInfo {
+-        #[cfg(not(windows))]
++        #[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment
+         address_map: HashMap<usize, Box<Module>>,
+     }
+ 
+@@ -139,7 +139,7 @@ pub mod debug {
+             {
+                 // SelfInfo.init — non-Windows path is just an empty address_map.
+                 return Ok(SelfInfo {
+-                    #[cfg(not(windows))]
++                    #[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment
+                     address_map: HashMap::new(),
+                 });
+             }
+@@ -164,12 +164,12 @@ pub mod debug {
+             {
+                 return self.lookup_module_dyld(address);
+             }
+-            #[cfg(windows)]
++            #[cfg(any(windows, target_family = "wasm"))] // wasm-experiment
+             {
+                 let _ = address;
+                 return Err(crate::Error::MissingDebugInfo);
+             }
+-            #[cfg(not(any(target_vendor = "apple", windows)))]
++            #[cfg(not(any(target_vendor = "apple", windows, target_family = "wasm")))]
+             {
+                 return self.lookup_module_dl(address);
+             }
+@@ -182,18 +182,18 @@ pub mod debug {
+             {
+                 return lookup_module_name_dyld(address);
+             }
+-            #[cfg(windows)]
++            #[cfg(any(windows, target_family = "wasm"))] // wasm-experiment
+             {
+                 let _ = address;
+                 return None;
+             }
+-            #[cfg(not(any(target_vendor = "apple", windows)))]
++            #[cfg(not(any(target_vendor = "apple", windows, target_family = "wasm")))]
+             {
+                 return lookup_module_name_dl(address);
+             }
+         }
+ 
+-        #[cfg(not(any(target_vendor = "apple", windows)))]
++        #[cfg(not(any(target_vendor = "apple", windows, target_family = "wasm")))] // wasm-experiment
+         fn lookup_module_dl(&mut self, address: usize) -> Result<&mut Module, Error> {
+             let m =
+                 bun_sys::elf::find_loaded_module(address).ok_or(crate::Error::MissingDebugInfo)?;
+@@ -236,7 +236,7 @@ pub mod debug {
+ 
+     impl Module {
+         /// Port of `Module.getSymbolAtAddress`.
+-        #[cfg(windows)]
++        #[cfg(any(windows, target_family = "wasm"))] // wasm-experiment
+         pub fn get_symbol_at_address(&mut self, address: usize) -> Result<SymbolInfo, Error> {
+             // Windows symbol resolution via the loaded PE's PDB
+             // (`dbghelp.dll` `SymFromAddr`) is not implemented yet, so
+@@ -253,7 +253,7 @@ pub mod debug {
+             })
+         }
+         /// Port of `Module.getSymbolAtAddress`.
+-        #[cfg(not(windows))]
++        #[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment
+         pub fn get_symbol_at_address(&mut self, address: usize) -> Result<SymbolInfo, Error> {
+             let _ = self.base_address;
+             let mut info: libc::Dl_info = bun_core::ffi::zeroed();
+@@ -291,7 +291,7 @@ pub mod debug {
+         }
+     }
+ 
+-    #[cfg(not(any(target_vendor = "apple", windows)))]
++    #[cfg(not(any(target_vendor = "apple", windows, target_family = "wasm")))] // wasm-experiment
+     fn lookup_module_name_dl(address: usize) -> Option<Box<[u8]>> {
+         bun_sys::elf::find_loaded_module(address)
+             .map(|m| bun_paths::basename(&m.name).to_vec().into_boxed_slice())
+@@ -439,7 +439,11 @@ impl Write for StderrWriter {
+                 );
+             }
+         }
+-        #[cfg(not(windows))]
++        #[cfg(target_family = "wasm")] // wasm-experiment
++        {
++            let _ = bun_sys::write(bun_sys::Fd::from_native(2), bytes);
++        }
++        #[cfg(not(any(windows, target_family = "wasm")))]
+         {
+             // SAFETY: fd 2 is always open; libc::write is async-signal-safe.
+             unsafe {
+@@ -455,11 +459,11 @@ mod draft {
+ 
+     use core::cell::Cell;
+     use core::ffi::c_char;
+-    #[cfg(not(windows))]
++    #[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment
+     use core::ffi::c_int;
+     #[cfg(windows)]
+     use core::ffi::c_long;
+-    #[cfg(not(windows))]
++    #[cfg(not(any(windows, target_family = "wasm")))]
+     use core::ffi::c_void;
+     use core::fmt;
+     // D101: `core::fmt::Write` intentionally NOT in scope here — `bun_io::Write`
+@@ -498,7 +502,9 @@ mod draft {
+             core::intrinsics::breakpoint();
+             bun_sys::windows::kernel32::ExitProcess(3)
+         }
+-        #[cfg(not(windows))]
++        #[cfg(target_family = "wasm")] // wasm-experiment
++        core::intrinsics::abort();
++        #[cfg(not(any(windows, target_family = "wasm")))]
+         // SAFETY: libc::abort has no preconditions; never returns.
+         unsafe {
+             libc::abort()
+@@ -2369,6 +2375,10 @@ mod draft {
+             {
+                 b'F'
+             }
++            #[cfg(target_family = "wasm")] // wasm-experiment
++            {
++                b'z'
++            }
+         };
+     }
+ 
+@@ -2407,6 +2417,11 @@ mod draft {
+     impl StackLine {
+         /// `None` implies the trace is not known.
+         fn from_address(addr: usize, name_bytes: &mut [u8]) -> Option<StackLine> {
++            #[cfg(target_family = "wasm")] // wasm-experiment
++            {
++                let _ = (addr, name_bytes);
++                return None;
++            }
+             #[cfg(windows)]
+             {
+                 let module = bun_sys::windows::get_module_handle_from_address(addr)?;
+@@ -2519,7 +2534,7 @@ mod draft {
+                 let _ = name_bytes;
+                 return None;
+             }
+-            #[cfg(not(any(windows, target_os = "macos")))]
++            #[cfg(not(any(windows, target_os = "macos", target_family = "wasm")))] // wasm-experiment
+             {
+                 let _ = name_bytes;
+                 let address = addr.saturating_sub(1);
+@@ -2843,6 +2858,10 @@ mod draft {
+             // `crash()` → `ExitProcess(3)`, so the kernel reclaims them anyway.
+             let _ = spawn_result;
+         }
++        #[cfg(target_family = "wasm")] // wasm-experiment
++        {
++            let _ = url;
++        }
+         #[cfg(any(
+             target_os = "macos",
+             target_os = "linux",
+@@ -2913,7 +2932,7 @@ mod draft {
+     /// for panics) so the parent sees the real fault and core dumps are
+     /// attributed correctly.
+     fn crash(reason: CrashReason) -> ! {
+-        #[cfg(not(windows))]
++        #[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment
+         {
+             let sig = reason.terminal_signal();
+ 
+@@ -2966,7 +2985,7 @@ mod draft {
+             // If we somehow get here, fall through to a guaranteed-fatal trap.
+             core::intrinsics::abort();
+         }
+-        #[cfg(windows)]
++        #[cfg(any(windows, target_family = "wasm"))] // wasm-experiment
+         {
+             let _ = reason;
+             // Node.js exits with code 134 (128 + SIGABRT) instead. We use abort() as it
+diff --git a/src/errno/lib.rs b/src/errno/lib.rs
+index e0fb9698..a4b92f10 100644
+--- a/src/errno/lib.rs
++++ b/src/errno/lib.rs
+@@ -186,9 +186,9 @@ pub use freebsd_errno::*;
+ // Android shares the Linux kernel errno space (bionic copies <asm/errno.h>),
+ // so it uses the same per-errno enum. Rust splits `target_os` into
+ // `linux`/`android`, so list both.
+-#[cfg(any(target_os = "linux", target_os = "android"))]
++#[cfg(any(target_os = "linux", target_os = "android", target_family = "wasm"))] // wasm-experiment: Linux numbering
+ pub mod linux_errno;
+-#[cfg(any(target_os = "linux", target_os = "android"))]
++#[cfg(any(target_os = "linux", target_os = "android", target_family = "wasm"))]
+ pub use linux_errno::*;
+ #[cfg(windows)]
+ pub mod windows_errno;
+@@ -207,7 +207,7 @@ pub use windows_errno::{posix, *};
+ #[allow(non_camel_case_types)]
+ pub mod posix {
+     /// glibc/musl/bionic `mode_t` == `unsigned int`.
+-    #[cfg(any(target_os = "linux", target_os = "android"))]
++    #[cfg(any(target_os = "linux", target_os = "android", target_family = "wasm"))]
+     pub type mode_t = u32;
+     /// Darwin/FreeBSD `mode_t` == `__uint16_t` in `<sys/types.h>`.
+     #[cfg(any(target_os = "macos", target_os = "freebsd"))]
+diff --git a/src/io/PipeReader.rs b/src/io/PipeReader.rs
+index dcbb385a..57c468b3 100644
+--- a/src/io/PipeReader.rs
++++ b/src/io/PipeReader.rs
+@@ -1980,9 +1980,9 @@ impl Drop for WindowsBufferedReader {
+ // Platform alias
+ // ──────────────────────────────────────────────────────────────────────────
+ 
+-#[cfg(unix)]
++#[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+ pub type BufferedReader = PosixBufferedReader;
+ #[cfg(windows)]
+ pub type BufferedReader = WindowsBufferedReader;
+-#[cfg(not(any(unix, windows)))]
++#[cfg(not(any(unix, windows, target_family = "wasm")))] // wasm-experiment
+ compile_error!("Unsupported platform");
+diff --git a/src/io/PipeWriter.rs b/src/io/PipeWriter.rs
+index 4c9688d8..5c21a125 100644
+--- a/src/io/PipeWriter.rs
++++ b/src/io/PipeWriter.rs
+@@ -2719,14 +2719,14 @@ impl<Parent: WindowsStreamingWriterParent> Drop for WindowsStreamingWriter<Paren
+ // Platform aliases
+ // ──────────────────────────────────────────────────────────────────────────
+ 
+-#[cfg(unix)]
++#[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+ pub type BufferedWriter<P> = PosixBufferedWriter<P>;
+-#[cfg(not(unix))]
++#[cfg(not(any(unix, target_family = "wasm")))] // wasm-experiment
+ pub type BufferedWriter<P> = WindowsBufferedWriter<P>;
+ 
+-#[cfg(unix)]
++#[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+ pub type StreamingWriter<P> = PosixStreamingWriter<P>;
+-#[cfg(not(unix))]
++#[cfg(not(any(unix, target_family = "wasm")))] // wasm-experiment
+ pub type StreamingWriter<P> = WindowsStreamingWriter<P>;
+ 
+ // ──────────────────────────────────────────────────────────────────────────
+@@ -2798,7 +2798,7 @@ macro_rules! impl_streaming_writer_parent {
+         ref_       = |$ref_this:ident| $ref_:expr,
+         deref      = |$deref_this:ident| $deref:expr,
+     ) => {
+-        #[cfg(unix)]
++        #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+         impl $($gen)* $crate::pipe_writer::PosixStreamingWriterParent for $Ty {
+             const POLL_OWNER_TAG: $crate::PollTag = $poll_tag;
+             #[inline]
+diff --git a/src/io/lib.rs b/src/io/lib.rs
+index 8d487073..b6896330 100644
+--- a/src/io/lib.rs
++++ b/src/io/lib.rs
+@@ -57,6 +57,19 @@ pub use keep_alive::KeepAlive;
+ #[cfg(unix)]
+ #[path = "ParentDeathWatchdog.rs"]
+ pub mod parent_death_watchdog;
++#[cfg(target_family = "wasm")] // wasm-experiment
++pub mod parent_death_watchdog {
++    #[inline]
++    pub fn is_enabled() -> bool {
++        false
++    }
++    #[inline]
++    pub fn install() {}
++    #[inline]
++    pub fn enable() {}
++    #[inline]
++    pub fn ensure_kill_on_close_job() {}
++}
+ #[cfg(windows)]
+ pub mod parent_death_watchdog {
+     use core::ffi::c_void;
+@@ -671,7 +684,7 @@ pub use open_for_writing_mod::{open_for_writing, open_for_writing_impl};
+ 
+ // ════════════════════════════════════════════════════════════════════════════
+ 
+-#[cfg(not(windows))]
++#[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment
+ use core::ffi::c_int;
+ use core::sync::atomic::Ordering;
+ 
+@@ -683,6 +696,7 @@ use bun_sys::{self as sys, E, Fd};
+ // named `io_loop` but the runtime tagname is `"loop"` so `BUN_DEBUG_loop=1` works.
+ #[cfg(not(windows))]
+ #[allow(non_upper_case_globals)]
++#[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+ pub(crate) static io_loop: bun_core::output::ScopedLogger =
+     bun_core::output::ScopedLogger::new("loop", bun_core::output::Visibility::Visible);
+ // All `log!` call sites are inside epoll/kqueue paths (Linux/macOS/FreeBSD); on
+@@ -813,7 +827,7 @@ impl IoRequestLoop {
+     /// Initializes `LOOP`. On failure, closes the fds it opened so a later call can retry.
+     #[cfg(not(windows))]
+     fn load() -> sys::Result<()> {
+-        #[cfg(not(target_os = "macos"))]
++        #[cfg(not(any(target_os = "macos", target_family = "wasm")))] // wasm-experiment
+         use bun_sys::FdExt as _;
+ 
+         let waker = Waker::init().map_err(|err| {
+@@ -913,7 +927,7 @@ impl IoRequestLoop {
+             }
+         }
+ 
+-        #[cfg(target_os = "macos")]
++        #[cfg(any(target_os = "macos", target_family = "wasm"))] // wasm-experiment
+         let _ = (loop_, waker_fd);
+         Ok(())
+     }
+@@ -941,8 +955,12 @@ impl IoRequestLoop {
+                     .stack_size(1024 * 1024 * 2)
+                     .spawn(Self::on_spawn_io_thread)
+                     .map_err(|err| {
++                        #[cfg(target_family = "wasm")] // wasm-experiment
++                        let eagain = E::EAGAIN as i32;
++                        #[cfg(not(target_family = "wasm"))]
++                        let eagain = libc::EAGAIN;
+                         sys::Error::from_code_int(
+-                            err.raw_os_error().unwrap_or(libc::EAGAIN),
++                            err.raw_os_error().unwrap_or(eagain),
+                             sys::Tag::pthread_create,
+                         )
+                     })?;
+@@ -1137,7 +1155,8 @@ impl IoRequestLoop {
+     // these so any Windows call site fails at compile time rather than
+     // compiling cleanly and only panicking at runtime.
+     #[cfg(not(windows))]
+-    pub(crate) fn pollfd(&self) -> Fd {
++    #[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
++pub(crate) fn pollfd(&self) -> Fd {
+         #[cfg(any(target_os = "linux", target_os = "android"))]
+         {
+             return self.epoll_fd;
+@@ -1432,17 +1451,21 @@ pub enum PollableTag {
+ /// single `u64` (`epoll_event.data.u64` / `kevent.udata`), so we keep the
+ /// packed addr:49 + tag:15 layout locally.
+ #[cfg(not(windows))]
++#[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+ #[derive(Clone, Copy)]
+ struct Pollable {
+     value: u64,
+ }
+ 
+ #[cfg(not(windows))]
++#[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+ const POLLABLE_ADDR_BITS: u64 = 49;
+ #[cfg(not(windows))]
++#[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+ const POLLABLE_ADDR_MASK: u64 = (1u64 << POLLABLE_ADDR_BITS) - 1;
+ 
+ #[cfg(not(windows))]
++#[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+ impl Pollable {
+     fn init(t: PollableTag, p: *mut Poll) -> Pollable {
+         let addr = p as usize as u64;
+@@ -2013,6 +2036,31 @@ pub mod waker {
+     pub type Waker = LinuxWaker;
+     #[cfg(windows)]
+     pub type Waker = WindowsWaker;
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    pub type Waker = WasmWaker;
++
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    pub struct WasmWaker;
++
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    impl WasmWaker {
++        pub const fn placeholder() -> Self {
++            Self
++        }
++
++        pub fn init() -> crate::error::Result<Self> {
++            Err(crate::Error::Sys(bun_errno::SystemErrno::ENOSYS))
++        }
++
++        #[inline]
++        pub(crate) fn get_fd(&self) -> Fd {
++            Fd::INVALID
++        }
++
++        pub fn wait(&self) {}
++
++        pub fn wake(&self) {}
++    }
+ 
+     // ── Linux / FreeBSD ───────────────────────────────────────────────────────
+ 
+diff --git a/src/io/openForWriting.rs b/src/io/openForWriting.rs
+index ef7904dc..edc966ee 100644
+--- a/src/io/openForWriting.rs
++++ b/src/io/openForWriting.rs
+@@ -105,14 +105,14 @@ where
+     #[cfg(windows)]
+     let input_flags = input_flags & !bun_sys::O::NONBLOCK;
+     // TODO: this should be concurrent.
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     let mut isatty = false;
+     let mut is_nonblocking = false;
+     let result =
+         input_path.open_for_writing_result(dir, input_flags, mode, &mut is_nonblocking, &openat);
+     let fd = result?;
+ 
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     {
+         match bun_sys::fstat(fd) {
+             Err(err) => {
+diff --git a/src/io/posix_event_loop.rs b/src/io/posix_event_loop.rs
+index d3c93569..62303184 100644
+--- a/src/io/posix_event_loop.rs
++++ b/src/io/posix_event_loop.rs
+@@ -4,7 +4,7 @@ use core::ffi::c_int;
+ use core::ffi::c_void;
+ #[cfg(not(windows))]
+ use core::fmt;
+-#[cfg(unix)]
++#[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+ use core::ptr;
+ 
+ #[cfg(not(windows))]
+@@ -19,6 +19,7 @@ pub type Loop = UwsLoop;
+ // such counter (libuv tracks active handles itself); `posix_event_loop` is only
+ // reachable from non-Windows `Loop` consumers, so the Windows arm is a no-op.
+ #[cfg(not(windows))]
++#[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+ #[inline]
+ fn loop_add_active(loop_: &mut Loop, value: u32) {
+     loop_.active = loop_.active.saturating_add(value);
+@@ -79,6 +80,7 @@ fn kevent_change_error(data: i64) -> sys::Result<()> {
+ /// be registered and re-issuing doomed deletes on later teardown calls. libuv
+ /// ignores the same errnos for its kqueue/epoll delete operations.
+ #[cfg(not(windows))]
++#[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+ #[inline]
+ fn deregistration_already_gone(errno: sys::E) -> bool {
+     matches!(errno, sys::E::ENOENT | sys::E::EBADF)
+@@ -143,7 +145,7 @@ pub fn js_vm_ctx() -> EventLoopCtx {
+ // `KQueueGenerationNumber` is `usize` on macOS-debug, else a zero-size sentinel.
+ #[cfg(all(target_os = "macos", debug_assertions))]
+ type KQueueGenerationNumber = usize;
+-#[cfg(all(unix, not(all(target_os = "macos", debug_assertions))))]
++#[cfg(all(any(unix, target_family = "wasm"), not(all(target_os = "macos", debug_assertions))))] // wasm-experiment
+ type KQueueGenerationNumber = u8; // Note: conceptually zero-width; smallest Rust int is u8. Gated by cfg below.
+ 
+ // Debug-only diagnostic; `Relaxed` (no synchronization implied).
+@@ -306,6 +308,7 @@ pub struct FilePoll {
+ }
+ 
+ #[cfg(not(windows))]
++#[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+ impl FilePoll {
+     fn update_flags(&mut self, updated: FlagsSet) {
+         let mut flags = self.flags;
+@@ -1421,12 +1424,14 @@ impl Store {
+ // on a tuple). Since the union has exactly one variant, wrap the raw
+ // `TaggedPtr` directly with the same tag scheme (`1024 - index`).
+ #[cfg(not(windows))]
++#[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+ #[derive(Copy, Clone)]
+ pub(crate) struct Pollable {
+     repr: bun_collections::TaggedPtr,
+ }
+ 
+ #[cfg(not(windows))]
++#[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+ impl Pollable {
+     /// Tag value for `FilePoll` (index 0 → `1024 - 0`).
+     pub(crate) const FILE_POLL_TAG: u16 = 1024;
+diff --git a/src/mimalloc_sys/lib.rs b/src/mimalloc_sys/lib.rs
+index 11548c46..a1a3e1db 100644
+--- a/src/mimalloc_sys/lib.rs
++++ b/src/mimalloc_sys/lib.rs
+@@ -1,2 +1,4 @@
+ #![warn(unused_must_use)]
+ pub mod mimalloc;
++#[cfg(target_family = "wasm")] // wasm-experiment
++mod wasm;
+diff --git a/src/pod/lib.rs b/src/pod/lib.rs
+index 8101df93..1c255218 100644
+--- a/src/pod/lib.rs
++++ b/src/pod/lib.rs
+@@ -7,6 +7,7 @@ extern crate alloc;
+ 
+ use core::mem::{align_of, size_of, size_of_val};
+ 
++#[cfg(any(unix, windows))] // wasm-experiment
+ mod foreign;
+ 
+ /// The all-zero byte pattern is a valid `Self`.
+diff --git a/src/spawn_sys/spawn_process.rs b/src/spawn_sys/spawn_process.rs
+index cd13d1f6..08e57264 100644
+--- a/src/spawn_sys/spawn_process.rs
++++ b/src/spawn_sys/spawn_process.rs
+@@ -16,7 +16,7 @@ use bun_core::Output;
+ use bun_sys::FdExt as _;
+ use bun_sys::{self, Fd};
+ 
+-#[cfg(not(windows))]
++#[cfg(unix)]
+ use crate::posix_spawn::posix_spawn;
+ #[cfg(unix)]
+ use posix_spawn::{Actions as PosixSpawnActions, Attr as PosixSpawnAttr};
+@@ -30,6 +30,8 @@ use crate::{Argv, Envp};
+ 
+ #[cfg(unix)]
+ pub type PidT = libc::pid_t;
++#[cfg(target_family = "wasm")] // wasm-experiment
++pub type PidT = i32;
+ #[cfg(windows)]
+ pub type PidT = bun_libuv_sys::uv_pid_t;
+ 
+@@ -138,7 +140,7 @@ pub fn uv_getrusage(process: &mut bun_libuv_sys::uv_process_t) -> WinRusage {
+     usage_info
+ }
+ 
+-#[cfg(windows)]
++#[cfg(any(windows, target_family = "wasm"))] // wasm-experiment
+ pub type Rusage = WinRusage;
+ #[cfg(unix)]
+ pub type Rusage = libc::rusage;
+@@ -456,6 +458,7 @@ pub struct PosixSpawnResult {
+     pub stdout: Option<Fd>,
+     pub stderr: Option<Fd>,
+     #[cfg(not(windows))]
++    #[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+     pub(crate) ipc: Option<Fd>,
+     pub extra_pipes: Vec<ExtraPipe>,
+     pub memfds: [bool; 3],
+diff --git a/src/sys/PosixStat.rs b/src/sys/PosixStat.rs
+index a5610ec3..a6d473a1 100644
+--- a/src/sys/PosixStat.rs
++++ b/src/sys/PosixStat.rs
+@@ -73,7 +73,7 @@ fn to_u64<T: to_u64_impl::ToU64>(value: T) -> u64 {
+ // `unix` targets.
+ #[inline]
+ pub fn stat_atime(s: &Stat) -> Timespec {
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     {
+         Timespec {
+             sec: s.st_atime,
+@@ -90,7 +90,7 @@ pub fn stat_atime(s: &Stat) -> Timespec {
+ }
+ #[inline]
+ pub fn stat_mtime(s: &Stat) -> Timespec {
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     {
+         Timespec {
+             sec: s.st_mtime,
+@@ -107,7 +107,7 @@ pub fn stat_mtime(s: &Stat) -> Timespec {
+ }
+ #[inline]
+ pub fn stat_ctime(s: &Stat) -> Timespec {
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     {
+         Timespec {
+             sec: s.st_ctime,
+@@ -171,7 +171,7 @@ impl PosixStat {
+         let ctime_val = stat_ctime(stat_);
+         let birthtime_val = stat_birthtime(stat_);
+ 
+-        #[cfg(unix)]
++        #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+         {
+             PosixStat {
+                 dev: to_u64(stat_.st_dev),
+diff --git a/src/sys/copy_file.rs b/src/sys/copy_file.rs
+index 1bc5b8cf..fa4182ab 100644
+--- a/src/sys/copy_file.rs
++++ b/src/sys/copy_file.rs
+@@ -4,11 +4,11 @@
+ 
+ use core::sync::atomic::{AtomicI32, Ordering};
+ 
+-#[cfg(not(windows))]
++#[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment
+ use crate::E;
+ #[cfg(not(windows))]
+ use crate::Fd;
+-#[cfg(not(any(target_os = "linux", target_os = "android")))]
++#[cfg(not(any(target_os = "linux", target_os = "android", target_family = "wasm")))] // wasm-experiment
+ use crate::Tag;
+ #[cfg(not(windows))]
+ use bun_core::vec::UninitBuf;
+diff --git a/src/sys/dir.rs b/src/sys/dir.rs
+index 7f2d9cdc..fa8f37a8 100644
+--- a/src/sys/dir.rs
++++ b/src/sys/dir.rs
+@@ -302,7 +302,7 @@ impl Dir {
+     }
+ }
+ 
+-#[cfg(unix)]
++#[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+ pub const AT_REMOVEDIR: i32 = libc::AT_REMOVEDIR;
+ #[cfg(windows)]
+ pub const AT_REMOVEDIR: i32 = 0x200;
+diff --git a/src/sys/fd.rs b/src/sys/fd.rs
+index add0523b..38bd831d 100644
+--- a/src/sys/fd.rs
++++ b/src/sys/fd.rs
+@@ -117,6 +117,10 @@ impl FdExt for Fd {
+                     _ => None,
+                 }
+             }
++            #[cfg(target_family = "wasm")] // wasm-experiment
++            {
++                None
++            }
+             #[cfg(target_os = "freebsd")]
+             {
+                 debug_assert!(self.native() >= 0);
+diff --git a/src/sys/lib.rs b/src/sys/lib.rs
+index 9524cfbd..d5f5db09 100644
+--- a/src/sys/lib.rs
++++ b/src/sys/lib.rs
+@@ -15,6 +15,9 @@
+ pub extern crate bun_core as bun_str;
+ #[cfg(windows)]
+ pub extern crate bun_libuv_sys;
++#[cfg(target_family = "wasm")] // wasm-experiment
++#[path = "wasm_libc.rs"]
++mod libc;
+ pub mod fd;
+ pub use fd::{ErrorCase, FdExt, MakeLibUvOwnedError, RawFd};
+ #[path = "Error.rs"]
+@@ -169,6 +172,7 @@ pub mod dir_iterator {
+     use super::{EntryKind, Fd, Result, Tag};
+     use bun_paths::OSPathChar;
+ 
++    #[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+     const BUF_SIZE: usize = 8192;
+ 
+     /// Native-encoding directory entry returned by `WrappedIterator::next()`.
+@@ -240,6 +244,7 @@ pub mod dir_iterator {
+     }
+     impl Name {
+         #[cfg(not(windows))]
++        #[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+         #[inline]
+         fn borrow(s: &[u8]) -> Name {
+             // SAFETY: `s` is a `dirent::Entry` name, so the byte after it is its NUL,
+@@ -307,7 +312,9 @@ pub mod dir_iterator {
+     // `State` so the per-dir heap allocation is gone too. The kernel fills
+     // `[0..rc]` before we read; we never index past `end_index`.
+     #[repr(C, align(8))]
++    #[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+     struct AlignedBuf(core::mem::MaybeUninit<[u8; BUF_SIZE]>);
++    #[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+     impl AlignedBuf {
+         #[inline(always)]
+         const fn uninit() -> Self {
+@@ -502,6 +509,20 @@ pub mod dir_iterator {
+         }
+     }
+ 
++    // ── wasm ─────────────────────────────────────────────────────────────
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    struct State;
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    impl State {
++        #[inline]
++        fn new() -> State {
++            State
++        }
++        fn next(&mut self, _dir: Fd) -> Result<Option<IteratorResult>> {
++            Err(Error::from_code(super::E::ENOSYS, Tag::getdents64))
++        }
++    }
++
+     // ── FreeBSD ──────────────────────────────────────────────────────────
+     #[cfg(target_os = "freebsd")]
+     struct State {
+@@ -846,6 +867,11 @@ pub fn lstatat(fd: impl AsFd, path: &ZStr) -> Result<Stat> {
+         linux_syscall::fstatat(dirfd, path, libc::AT_SYMLINK_NOFOLLOW)
+             .map_err(|e| Error::from_code_int(e, Tag::fstatat).with_path(path.as_bytes()))
+     }
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    {
++        let _ = (fd, path);
++        Err(Error::from_code(E::ENOSYS, Tag::fstatat))
++    }
+     #[cfg(all(unix, not(any(target_os = "linux", target_os = "android"))))]
+     {
+         let mut st = core::mem::MaybeUninit::<libc::stat>::uninit();
+@@ -915,7 +941,7 @@ pub use tmp::Tmpfile;
+ // `#[cfg(windows)]` arms in dependents.
+ pub mod windows;
+ 
+-#[cfg(not(windows))]
++#[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment
+ use core::ffi::c_int;
+ use core::ffi::{c_char, c_void};
+ 
+@@ -983,7 +1009,7 @@ pub(crate) extern "C" fn Bun__errnoName(err: core::ffi::c_int) -> *const core::f
+     // `SystemErrno::init` has a per-target signature: `i64` on every POSIX
+     // target (Linux/Darwin/FreeBSD), generic `SystemErrnoInit` on Windows.
+     // Feed it the widest signed int and let each impl narrow.
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     let code = err as i64;
+     #[cfg(windows)]
+     let code = err;
+@@ -1123,6 +1149,8 @@ pub mod syscall {
+ // `bun.O` — open flags. cfg-per-platform; values match libc.
+ // ──────────────────────────────────────────────────────────────────────────
+ pub mod O {
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    use crate::libc;
+     pub const RDONLY: i32 = libc::O_RDONLY;
+     pub const WRONLY: i32 = libc::O_WRONLY;
+     pub const RDWR: i32 = libc::O_RDWR;
+@@ -1130,13 +1158,13 @@ pub mod O {
+     // NOT MSVCRT `_O_*`. `uv::O::from_bun_o` bit-tests
+     // against these exact values, so re-using `libc::O_CREAT` (0x100) etc.
+     // silently dropped CREAT/EXCL/APPEND on Windows.
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     pub const CREAT: i32 = libc::O_CREAT;
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     pub const TRUNC: i32 = libc::O_TRUNC;
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     pub const APPEND: i32 = libc::O_APPEND;
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     pub const EXCL: i32 = libc::O_EXCL;
+     #[cfg(windows)]
+     pub const CREAT: i32 = 0o100;
+@@ -1146,9 +1174,9 @@ pub mod O {
+     pub const TRUNC: i32 = 0o1000;
+     #[cfg(windows)]
+     pub const APPEND: i32 = 0o2000;
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     pub const NONBLOCK: i32 = libc::O_NONBLOCK;
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     pub const CLOEXEC: i32 = libc::O_CLOEXEC;
+     // Windows libc has no `O_NONBLOCK`/`O_CLOEXEC`; libuv ignores them. Values
+     // chosen to round-trip through `uv::O::from_bun_o` without colliding with
+@@ -1157,7 +1185,7 @@ pub mod O {
+     pub const NONBLOCK: i32 = 0o4000;
+     #[cfg(windows)]
+     pub const CLOEXEC: i32 = 0o2000000;
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     pub const DIRECTORY: i32 = libc::O_DIRECTORY;
+     // Non-zero on Windows so `(flags & O::DIRECTORY) != 0`
+     // routes `openat_windows_impl` to the directory NtCreateFile path.
+@@ -1175,27 +1203,27 @@ pub mod O {
+     pub const PATH: i32 = 0o10000000;
+     #[cfg(windows)]
+     pub const NOATIME: i32 = 0o1000000;
+-    #[cfg(all(unix, not(any(target_os = "linux", target_os = "android"))))]
++    #[cfg(all(any(unix, target_family = "wasm"), not(any(target_os = "linux", target_os = "android"))))] // wasm-experiment
+     pub const PATH: i32 = 0;
+-    #[cfg(all(unix, not(any(target_os = "linux", target_os = "android"))))]
++    #[cfg(all(any(unix, target_family = "wasm"), not(any(target_os = "linux", target_os = "android"))))] // wasm-experiment
+     pub const NOATIME: i32 = 0;
+     // Defined for every platform; Darwin-only flags map to 0
+     // elsewhere so `flags & O.EVTONLY` etc. compile and are no-ops.
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     pub const NOFOLLOW: i32 = libc::O_NOFOLLOW;
+     #[cfg(windows)]
+     pub const NOFOLLOW: i32 = 0o400000;
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     pub const SYNC: i32 = libc::O_SYNC;
+     // Windows has no O_SYNC/O_DSYNC; node's stringToFlags() ORs in `undefined`
+     // (→ 0) there, so the 's' flag-string modifier is a no-op. Match that.
+     #[cfg(windows)]
+     pub const SYNC: i32 = 0;
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     pub const DSYNC: i32 = libc::O_DSYNC;
+     #[cfg(windows)]
+     pub const DSYNC: i32 = 0;
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     pub const NOCTTY: i32 = libc::O_NOCTTY;
+     #[cfg(windows)]
+     pub const NOCTTY: i32 = 0;
+@@ -1224,7 +1252,7 @@ pub use file::{File, ReadToEndResult};
+ pub mod dir;
+ pub use dir::*;
+ 
+-#[cfg(unix)]
++#[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+ pub type Stat = libc::stat;
+ /// On Windows `bun.Stat` is libuv's `uv_stat_t`.
+ #[cfg(windows)]
+@@ -1256,11 +1284,13 @@ pub fn to_posix_path(
+ 
+ #[inline]
+ #[cfg(not(windows))]
++#[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+ fn err_with(tag: Tag) -> Error {
+     Error::from_code_int(last_errno(), tag)
+ }
+ #[inline]
+ #[cfg(not(windows))]
++#[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+ fn err_with_path(tag: Tag, path: &ZStr) -> Error {
+     err_with(tag).with_path(path.as_bytes())
+ }
+@@ -1316,6 +1346,7 @@ impl Tag {
+     pub const unlink: Tag = Tag(45);
+     pub const utime: Tag = Tag(46);
+     #[cfg(not(windows))]
++    #[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+     pub(crate) const utimensat: Tag = Tag(47);
+     pub const write: Tag = Tag(48);
+     pub(crate) const getcwd: Tag = Tag(49);
+@@ -1377,17 +1408,22 @@ impl Tag {
+     #[cfg(not(windows))]
+     pub(crate) const fchdir: Tag = Tag(102);
+     pub const fchownat: Tag = Tag(103);
++    #[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+     pub(crate) const ioctl: Tag = Tag(104);
+     #[cfg(not(windows))]
++    #[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+     pub(crate) const getrlimit: Tag = Tag(105);
+     #[cfg(not(windows))]
++    #[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+     pub(crate) const setrlimit: Tag = Tag(106);
+     pub const clone3: Tag = Tag(107);
+     pub const uv_os_setpriority: Tag = Tag(108);
+     pub const flock: Tag = Tag(109);
+     #[cfg(not(windows))]
++    #[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+     pub(crate) const flistxattr: Tag = Tag(110);
+     #[cfg(not(windows))]
++    #[cfg_attr(target_family = "wasm", allow(dead_code))] // wasm-experiment
+     pub(crate) const fgetxattr: Tag = Tag(111);
+     pub const epoll_create1: Tag = Tag(112);
+     pub const pthread_create: Tag = Tag(113);
+@@ -3601,6 +3637,10 @@ mod posix_impl {
+ }
+ #[cfg(unix)]
+ pub use posix_impl::*;
++#[cfg(target_family = "wasm")] // wasm-experiment
++mod wasm_impl;
++#[cfg(target_family = "wasm")] // wasm-experiment
++pub use wasm_impl::*;
+ 
+ // D034: canonical lives in the leaf crate (cached via OnceLock); the per-platform
+ // impls in posix_impl/windows_impl were uncached duplicates.
+@@ -3617,7 +3657,7 @@ pub struct TimeLike {
+ }
+ impl TimeLike {
+     #[inline]
+-    #[cfg(not(windows))]
++    #[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment
+     pub(crate) fn to_timespec(self) -> libc::timespec {
+         libc::timespec {
+             tv_sec: self.sec as _,
+@@ -3625,7 +3665,7 @@ impl TimeLike {
+         }
+     }
+ }
+-#[cfg(unix)]
++#[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+ pub const UTIME_NOW: i64 = libc::UTIME_NOW;
+ #[cfg(windows)]
+ pub const UTIME_NOW: i64 = -1;
+@@ -4597,7 +4637,7 @@ fn read_fill_vec(
+ // Layout matches `libc::iovec` (`{ *void, usize }`) so a `&[PlatformIoVecConst]`
+ // can be passed straight to `pwritev(2)`.
+ // ──────────────────────────────────────────────────────────────────────────
+-#[cfg(unix)]
++#[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+ #[repr(C)]
+ #[derive(Clone, Copy)]
+ pub struct PlatformIoVecConst {
+@@ -4605,15 +4645,15 @@ pub struct PlatformIoVecConst {
+     pub len: usize,
+ }
+ // SAFETY: `{ *const u8, usize }` — `(null, 0)` is a valid empty iovec (S021).
+-#[cfg(unix)]
++#[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+ unsafe impl bun_core::ffi::Zeroable for PlatformIoVecConst {}
+-#[cfg(unix)]
++#[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+ const _: () = assert!(
+     core::mem::size_of::<PlatformIoVecConst>() == core::mem::size_of::<libc::iovec>()
+         && core::mem::align_of::<PlatformIoVecConst>() == core::mem::align_of::<libc::iovec>()
+ );
+ 
+-#[cfg(unix)]
++#[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+ #[inline]
+ pub fn platform_iovec_const_create(buf: &[u8]) -> PlatformIoVecConst {
+     PlatformIoVecConst {
+@@ -4686,6 +4726,11 @@ pub fn pwritev(fd: Fd, vecs: &[PlatformIoVecConst], offset: i64) -> Maybe<usize>
+         // (asserted below), so the slice forwards as-is.
+         sys_uv::pwritev(fd, vecs, offset)
+     }
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    {
++        let _ = (fd, vecs, offset);
++        Err(Error::from_code(E::ENOSYS, Tag::pwritev))
++    }
+ }
+ 
+ // ──────────────────────────────────────────────────────────────────────────
+@@ -4693,7 +4738,7 @@ pub fn pwritev(fd: Fd, vecs: &[PlatformIoVecConst], offset: i64) -> Maybe<usize>
+ // `uv_buf_t` on Windows). Layout-compatible with `libc::iovec` so a
+ // `&[PlatformIoVec]` can be passed straight to `readv(2)`/`writev(2)`.
+ // ──────────────────────────────────────────────────────────────────────────
+-#[cfg(unix)]
++#[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+ pub type PlatformIoVec = libc::iovec;
+ #[cfg(windows)]
+ pub type PlatformIoVec = bun_libuv_sys::uv_buf_t;
+@@ -4704,7 +4749,7 @@ pub use PlatformIoVecConst as PlatformIOVecConst;
+ 
+ #[inline]
+ pub fn platform_iovec_create(buf: &mut [u8]) -> PlatformIoVec {
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     {
+         PlatformIoVec {
+             iov_base: buf.as_mut_ptr().cast(),
+@@ -4724,7 +4769,7 @@ pub fn platform_iovec_create(buf: &mut [u8]) -> PlatformIoVec {
+ 
+ #[inline]
+ pub const fn platform_iovec_len(iov: &PlatformIoVec) -> usize {
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     {
+         iov.iov_len
+     }
+@@ -4910,9 +4955,9 @@ pub fn preadv(fd: Fd, vecs: &[PlatformIoVec], position: i64) -> Maybe<usize> {
+ // Windows it is `uv_statfs_t` populated from `GetDiskFreeSpace` (handled in
+ // `sys_uv`).
+ // ──────────────────────────────────────────────────────────────────────────
+-#[cfg(unix)]
++#[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+ pub type StatFS = libc::statfs;
+-#[cfg(not(unix))]
++#[cfg(not(any(unix, target_family = "wasm")))] // wasm-experiment
+ pub type StatFS = self::windows::libuv::uv_statfs_t;
+ 
+ /// `bun.sys.statfs` — query filesystem stats for `path`. Retries on EINTR.
+@@ -6092,8 +6137,10 @@ impl DynLib {
+ }
+ 
+ /// `RTLD_*` flags for `dlopen`.
+-#[cfg(unix)]
++#[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+ pub mod RTLD {
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    use crate::libc;
+     pub const LAZY: i32 = libc::RTLD_LAZY;
+     pub const LOCAL: i32 = libc::RTLD_LOCAL;
+ }
+@@ -6107,6 +6154,11 @@ pub mod RTLD {
+ 
+ /// `dlopen(filename, flags)`. Windows → `LoadLibraryExW` (UTF-8 → UTF-16).
+ pub fn dlopen(filename: &ZStr, flags: i32) -> Option<*mut c_void> {
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    {
++        let _ = (filename, flags);
++        None
++    }
+     #[cfg(unix)]
+     {
+         // SAFETY: filename is NUL-terminated.
+@@ -6144,6 +6196,11 @@ pub fn dlopen(filename: &ZStr, flags: i32) -> Option<*mut c_void> {
+ }
+ /// `dlsym(handle, name)`.
+ pub fn dlsym_impl(handle: Option<*mut c_void>, name: &ZStr) -> Option<*mut c_void> {
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    {
++        let _ = (handle, name);
++        None
++    }
+     #[cfg(unix)]
+     {
+         let h = handle.unwrap_or(core::ptr::null_mut());
+@@ -7147,7 +7204,12 @@ pub fn get_file_attributes(path: &ZStr) -> Option<WindowsFileAttributes> {
+ 
+ /// `access(path, F_OK) == 0`. `file_only` ignored on POSIX.
+ pub fn exists_os_path(path: &bun_paths::OSPathSliceZ, file_only: bool) -> bool {
+-    #[cfg(not(windows))]
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    {
++        let _ = (path, file_only);
++        false
++    }
++    #[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment
+     {
+         let _ = file_only;
+         // SAFETY: path is NUL-terminated.
+@@ -7279,7 +7341,7 @@ fn exists_at_type_nt(dir: Fd, path: &[u16]) -> Maybe<ExistsAtType> {
+ }
+ /// `fstatat` then `S_ISDIR`.
+ pub fn exists_at_type(dir: Fd, sub: &ZStr) -> Maybe<ExistsAtType> {
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     {
+         let st = fstatat(dir, sub)?;
+         Ok(if S::ISDIR(st.st_mode as _) {
+@@ -7330,7 +7392,7 @@ pub fn directory_exists_at_w(dir: Fd, sub: &[u16]) -> Maybe<bool> {
+ // ── fcntl / nonblocking / dup ──
+ 
+ /// `fcntl(fd, F_GETFL, 0)`.
+-#[cfg(unix)]
++#[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+ pub fn get_fcntl_flags(fd: Fd) -> Maybe<FcntlInt> {
+     fcntl(fd, libc::F_GETFL, 0)
+ }
+@@ -7344,7 +7406,7 @@ pub fn set_nonblocking(fd: Fd) -> Maybe<()> {
+ }
+ /// GETFL → toggle O_NONBLOCK → SETFL (only if changed).
+ pub fn update_nonblocking(fd: Fd, nonblocking: bool) -> Maybe<()> {
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     {
+         let cur = get_fcntl_flags(fd)? as i32;
+         let new = if nonblocking {
+@@ -7692,6 +7754,10 @@ pub fn get_fd_path_w(fd: Fd, out: &mut [u16]) -> Maybe<&mut [u16]> {
+ /// SAFETY note: the returned slice borrows the libc `environ` global; do not
+ /// mutate the environment concurrently.
+ pub fn environ() -> &'static [*const c_char] {
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    {
++        &[]
++    }
+     #[cfg(unix)]
+     {
+         // SAFETY: `environ` is a process-global NULL-terminated array.
+@@ -7727,6 +7793,10 @@ pub fn environ() -> &'static [*const c_char] {
+ /// global pointer (already NULL-terminated) rather than a length-bounded
+ /// borrowed slice, so it is suitable to pass directly as `envp`.
+ pub fn environ_ptr() -> *const *const c_char {
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    {
++        core::ptr::null()
++    }
+     #[cfg(unix)]
+     {
+         bun_core::c_environ()
+@@ -7976,6 +8046,8 @@ pub mod posix {
+     // ws2def.h values there. INET6 is *not* portable (10 on Linux, 30 on
+     // Darwin/BSD, 23 on Windows) — keep the `libc` symbol on POSIX.
+     pub mod AF {
++        #[cfg(target_family = "wasm")] // wasm-experiment
++        use crate::libc;
+         use core::ffi::c_int;
+         // Windows literals live in `bun_windows_sys::ws2_32` (leaf tier-0); route
+         // through it so the hardcoded `2/23` exists in exactly one place.
+@@ -7987,9 +8059,9 @@ pub mod posix {
+         pub const INET: c_int = bun_windows_sys::ws2_32::AF_INET;
+         #[cfg(windows)]
+         pub const INET6: c_int = bun_windows_sys::ws2_32::AF_INET6;
+-        #[cfg(unix)]
++        #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+         pub const INET: c_int = libc::AF_INET;
+-        #[cfg(unix)]
++        #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+         pub const INET6: c_int = libc::AF_INET6;
+     }
+ 
+@@ -8003,6 +8075,8 @@ pub mod posix {
+     // ── sockaddr family ──
+     #[cfg(unix)]
+     pub use libc::{sockaddr, sockaddr_in, sockaddr_in6, sockaddr_storage};
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    pub use crate::libc::{sockaddr, sockaddr_in, sockaddr_in6, sockaddr_storage};
+     // Route through `bun_libuv_sys` (not `bun_windows_sys::ws2_32`) so types
+     // returned by libuv APIs (`uv_interface_address_t`, `uv_udp_*`) are the
+     // *same* nominal type callers see via `bun_sys::posix::sockaddr_*` — Rust
+@@ -8191,6 +8265,8 @@ pub mod posix {
+ // `bun_dns`). Dependents only need the data shape + Display.
+ // ──────────────────────────────────────────────────────────────────────────
+ pub mod net {
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    use crate::libc;
+     use core::fmt;
+ 
+     // POSIX libc has `sockaddr_*` at the crate root; MSVC libc does not. Route
+@@ -8201,6 +8277,12 @@ pub mod net {
+             AF_INET, AF_INET6, sockaddr, sockaddr_in, sockaddr_in6, sockaddr_storage,
+         };
+     }
++    #[cfg(target_family = "wasm")] // wasm-experiment
++    mod sock {
++        pub(super) use crate::libc::{
++            AF_INET, AF_INET6, sockaddr, sockaddr_in, sockaddr_in6, sockaddr_storage,
++        };
++    }
+     #[cfg(windows)]
+     mod sock {
+         // Same nominal types as `bun_sys::posix::sockaddr*` (see comment there)
+@@ -8227,9 +8309,9 @@ pub mod net {
+     // so struct-update initializers (`..sockaddr_in::ZEROED`)
+     // work uniformly on all targets and in `const` context.
+     // ──────────────────────────────────────────────────────────────────────
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     pub type sa_family_t = libc::sa_family_t;
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     pub type in_port_t = libc::in_port_t;
+     #[cfg(windows)]
+     pub type sa_family_t = u16; // ws2def.h: `typedef USHORT ADDRESS_FAMILY;`
+@@ -8498,7 +8580,7 @@ pub mod elf {
+     /// Walk loaded ELF objects via `dl_iterate_phdr`, returning the one whose
+     /// `PT_LOAD` segment contains `address` (matched by address, so it does not
+     /// depend on how a libc names or orders the main program).
+-    #[cfg(not(any(windows, target_os = "macos")))]
++    #[cfg(not(any(windows, target_os = "macos", target_family = "wasm")))] // wasm-experiment
+     pub fn find_loaded_module(address: usize) -> Option<LoadedModule> {
+         use core::ffi::{c_int, c_void};
+ 
+diff --git a/src/sys/libuv_error_map.rs b/src/sys/libuv_error_map.rs
+index be899d07..9f8a9e39 100644
+--- a/src/sys/libuv_error_map.rs
++++ b/src/sys/libuv_error_map.rs
+@@ -101,7 +101,7 @@ const fn build_libuv_error_map() -> EnumMap<SystemErrno, &'static str> {
+         arr[SystemErrno::EREMOTEIO as usize] = "remote I/O error";
+     }
+     arr[SystemErrno::ENOTTY as usize] = "inappropriate ioctl for device";
+-    #[cfg(not(any(target_os = "linux", target_os = "android")))]
++    #[cfg(not(any(target_os = "linux", target_os = "android", target_family = "wasm")))] // wasm-experiment
+     {
+         arr[SystemErrno::EFTYPE as usize] = "inappropriate file type or format";
+     }
+diff --git a/src/uws_sys/Loop.rs b/src/uws_sys/Loop.rs
+index 90ab5336..16d1417a 100644
+--- a/src/uws_sys/Loop.rs
++++ b/src/uws_sys/Loop.rs
+@@ -98,7 +98,7 @@ pub type EventType = libc::kevent64_s;
+ #[cfg(target_os = "freebsd")]
+ pub type EventType = libc::kevent;
+ // TODO:
+-#[cfg(windows)]
++#[cfg(any(windows, target_family = "wasm"))] // wasm-experiment
+ pub type EventType = *mut c_void;
+ 
+ /// Loop handler trait with optional `pre`/`post` hooks. Implementors override
+diff --git a/src/uws_sys/SocketContext.rs b/src/uws_sys/SocketContext.rs
+index 9028bac9..e35627e2 100644
+--- a/src/uws_sys/SocketContext.rs
++++ b/src/uws_sys/SocketContext.rs
+@@ -33,6 +33,11 @@ fn stat_for_digest(path: &bun_core::ZStr) -> Option<[i64; 3]> {
+     ])
+ }
+ 
++#[cfg(target_family = "wasm")] // wasm-experiment
++fn stat_for_digest(_path: &bun_core::ZStr) -> Option<[i64; 3]> {
++    None
++}
++
+ #[cfg(windows)]
+ fn stat_for_digest(path: &bun_core::ZStr) -> Option<[i64; 3]> {
+     use bun_windows_sys as fs;
+diff --git a/src/uws_sys/udp.rs b/src/uws_sys/udp.rs
+index dfe2b062..3a4c9344 100644
+--- a/src/uws_sys/udp.rs
++++ b/src/uws_sys/udp.rs
+@@ -5,8 +5,11 @@ use crate::{LIBUS_SOCKET_DESCRIPTOR, Loop};
+ // ws2_32 shim there. Both definitions are 128-byte 8-aligned POD.
+ #[cfg(windows)]
+ use bun_windows_sys::ws2_32::sockaddr_storage;
+-#[cfg(not(windows))]
++#[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment
+ use libc::sockaddr_storage;
++#[cfg(target_family = "wasm")] // wasm-experiment
++#[repr(C, align(8))]
++pub struct sockaddr_storage([u8; 128]);
+ 
+ bun_opaque::opaque_ffi! {
+     /// Opaque uSockets UDP socket handle (`us_udp_socket_t`).
+diff --git a/src/windows_sys/externs.rs b/src/windows_sys/externs.rs
+index b4e9db24..dbe08e24 100644
+--- a/src/windows_sys/externs.rs
++++ b/src/windows_sys/externs.rs
+@@ -1692,6 +1692,8 @@ pub fn teb() -> *mut TEB {
+         core::arch::asm!("mov {}, x18", out(reg) p, options(nostack, pure, readonly));
+         p
+     }
++    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))] // wasm-experiment
++    unimplemented!()
+ }
+ 
+ /// Reads the PEB pointer — `gs:[0x60]` (x64) / `TEB+0x60` (ARM64).
+@@ -1720,6 +1722,8 @@ pub fn peb() -> *const PEB {
+             .cast::<core::ffi::c_void>()
+             .cast::<*const PEB>()
+     }
++    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))] // wasm-experiment
++    unimplemented!()
+ }
+ 
+ // ── Console ctrl-handler dwCtrlType values (`wincon.h`) ───────────────────
+diff --git a/src/bun_alloc/wasm_libc.rs b/src/bun_alloc/wasm_libc.rs
+new file mode 100644
+index 00000000..36178a31
+--- /dev/null
++++ b/src/bun_alloc/wasm_libc.rs
+@@ -0,0 +1,23 @@
++//! wasm-experiment: the `libc` items this crate names, for `target_family = "wasm"` where the
++//! `libc` crate has none. Mounted as `crate::libc`; the allocation functions are the mimalloc shim.
++
++use core::ffi::{c_char, c_void};
++
++#[repr(C, align(16))]
++pub(crate) struct max_align_t([u8; 16]);
++
++pub(crate) unsafe fn malloc(size: usize) -> *mut c_void {
++    crate::mimalloc::mi_malloc(size)
++}
++
++pub(crate) unsafe fn realloc(p: *mut c_void, size: usize) -> *mut c_void {
++    unsafe { crate::mimalloc::mi_realloc(p, size) }
++}
++
++pub(crate) unsafe fn free(p: *mut c_void) {
++    unsafe { crate::mimalloc::mi_free(p) }
++}
++
++pub(crate) unsafe fn strlen(s: *const c_char) -> usize {
++    unsafe { core::ffi::CStr::from_ptr(s).count_bytes() }
++}
+diff --git a/src/mimalloc_sys/wasm.rs b/src/mimalloc_sys/wasm.rs
+new file mode 100644
+index 00000000..dc069779
+--- /dev/null
++++ b/src/mimalloc_sys/wasm.rs
+@@ -0,0 +1,303 @@
++//! wasm-experiment: the `mi_*` symbols the extern blocks in `mimalloc.rs` declare, implemented in
++//! Rust on top of `std::alloc` for `target_family = "wasm"`, where there is no C toolchain to build
++//! mimalloc. Defined `#[no_mangle]`, so the declarations resolve to these at link time.
++//!
++//! Every block carries a [`Header`] just below the pointer handed out. Blocks from a heap made by
++//! `mi_heap_new` are also linked into that heap's list, so `mi_heap_destroy` can free them all.
++//! Blocks from `mi_malloc` and `mi_heap_main()` are untracked. Single-threaded only.
++
++use core::ffi::{c_long, c_void};
++use core::ptr::{self, null_mut};
++use std::alloc::{Layout, alloc, dealloc};
++
++use crate::mimalloc::{Heap, Option as MiOption, mi_heap_area_t};
++
++#[repr(C)]
++struct Header {
++    /// Start of the `std::alloc` allocation.
++    base: *mut u8,
++    /// Layout passed to `std::alloc::alloc`.
++    total: usize,
++    align: usize,
++    /// Bytes the caller asked for.
++    size: usize,
++    /// Owning heap, or null when untracked.
++    heap: *mut HeapState,
++    prev: *mut Header,
++    next: *mut Header,
++}
++
++struct HeapState {
++    head: *mut Header,
++}
++
++const MIN_ALIGN: usize = 16;
++const HEADER: usize = size_of::<Header>();
++
++/// Sentinel returned by `mi_heap_main()`; never dereferenced.
++static mut MAIN_HEAP: u8 = 0;
++
++fn main_heap() -> *mut Heap {
++    (&raw mut MAIN_HEAP).cast()
++}
++
++fn state_of(heap: *mut Heap) -> *mut HeapState {
++    if heap.is_null() || heap == main_heap() { null_mut() } else { heap.cast() }
++}
++
++unsafe fn header_of(p: *const c_void) -> *mut Header {
++    unsafe { p.cast::<u8>().sub(HEADER).cast_mut().cast() }
++}
++
++unsafe fn alloc_in(heap: *mut HeapState, size: usize, align: usize, zero: bool) -> *mut c_void {
++    let align = align.max(MIN_ALIGN);
++    // Header sits right below the user pointer; round the prefix up so the user pointer is aligned.
++    let prefix = HEADER.next_multiple_of(align);
++    let Some(total) = prefix.checked_add(size.max(1)) else { return null_mut() };
++    let Ok(layout) = Layout::from_size_align(total, align) else { return null_mut() };
++    unsafe {
++        let base = if zero { std::alloc::alloc_zeroed(layout) } else { alloc(layout) };
++        if base.is_null() {
++            return null_mut();
++        }
++        let user = base.add(prefix);
++        let h = user.sub(HEADER).cast::<Header>();
++        h.write(Header { base, total, align, size, heap, prev: null_mut(), next: null_mut() });
++        if !heap.is_null() {
++            (*h).next = (*heap).head;
++            if !(*heap).head.is_null() {
++                (*(*heap).head).prev = h;
++            }
++            (*heap).head = h;
++        }
++        user.cast()
++    }
++}
++
++unsafe fn release(h: *mut Header) {
++    unsafe {
++        let heap = (*h).heap;
++        if !heap.is_null() {
++            if (*h).prev.is_null() {
++                (*heap).head = (*h).next;
++            } else {
++                (*(*h).prev).next = (*h).next;
++            }
++            if !(*h).next.is_null() {
++                (*(*h).next).prev = (*h).prev;
++            }
++        }
++        dealloc((*h).base, Layout::from_size_align_unchecked((*h).total, (*h).align));
++    }
++}
++
++unsafe fn realloc_in(heap: *mut HeapState, p: *mut c_void, newsize: usize, align: usize) -> *mut c_void {
++    if p.is_null() {
++        return unsafe { alloc_in(heap, newsize, align, false) };
++    }
++    unsafe {
++        let old = header_of(p);
++        let n = alloc_in(heap, newsize, align.max((*old).align), false);
++        if n.is_null() {
++            return null_mut();
++        }
++        ptr::copy_nonoverlapping(p.cast::<u8>(), n.cast::<u8>(), (*old).size.min(newsize));
++        release(old);
++        n
++    }
++}
++
++#[unsafe(no_mangle)]
++extern "C" fn mi_malloc(size: usize) -> *mut c_void {
++    unsafe { alloc_in(null_mut(), size, MIN_ALIGN, false) }
++}
++
++#[unsafe(no_mangle)]
++extern "C" fn mi_zalloc(size: usize) -> *mut c_void {
++    unsafe { alloc_in(null_mut(), size, MIN_ALIGN, true) }
++}
++
++#[unsafe(no_mangle)]
++extern "C" fn mi_calloc(count: usize, size: usize) -> *mut c_void {
++    count.checked_mul(size).map_or(null_mut(), |n| mi_zalloc(n))
++}
++
++#[unsafe(no_mangle)]
++extern "C" fn mi_malloc_aligned(size: usize, alignment: usize) -> *mut c_void {
++    unsafe { alloc_in(null_mut(), size, alignment, false) }
++}
++
++#[unsafe(no_mangle)]
++extern "C" fn mi_zalloc_aligned(size: usize, alignment: usize) -> *mut c_void {
++    unsafe { alloc_in(null_mut(), size, alignment, true) }
++}
++
++/// Keeps `p` in the heap it came from.
++#[unsafe(no_mangle)]
++unsafe extern "C" fn mi_realloc(p: *mut c_void, newsize: usize) -> *mut c_void {
++    unsafe { mi_realloc_aligned(p, newsize, MIN_ALIGN) }
++}
++
++#[unsafe(no_mangle)]
++unsafe extern "C" fn mi_realloc_aligned(p: *mut c_void, newsize: usize, alignment: usize) -> *mut c_void {
++    let heap = if p.is_null() { null_mut() } else { unsafe { (*header_of(p)).heap } };
++    unsafe { realloc_in(heap, p, newsize, alignment) }
++}
++
++/// In-place growth only; blocks are exact-size, so this succeeds only when shrinking.
++#[unsafe(no_mangle)]
++unsafe extern "C" fn mi_expand(p: *mut c_void, newsize: usize) -> *mut c_void {
++    if p.is_null() {
++        return null_mut();
++    }
++    unsafe {
++        let h = header_of(p);
++        if newsize <= (*h).size {
++            (*h).size = newsize;
++            p
++        } else {
++            null_mut()
++        }
++    }
++}
++
++#[unsafe(no_mangle)]
++unsafe extern "C" fn mi_free(p: *mut c_void) {
++    if !p.is_null() {
++        unsafe { release(header_of(p)) }
++    }
++}
++
++#[unsafe(no_mangle)]
++unsafe extern "C" fn mi_free_size(p: *mut c_void, _size: usize) {
++    unsafe { mi_free(p) }
++}
++
++#[unsafe(no_mangle)]
++unsafe extern "C" fn mi_free_size_aligned(p: *mut c_void, _size: usize, _alignment: usize) {
++    unsafe { mi_free(p) }
++}
++
++#[unsafe(no_mangle)]
++unsafe extern "C" fn mi_usable_size(p: *const c_void) -> usize {
++    if p.is_null() { 0 } else { unsafe { (*header_of(p)).size } }
++}
++
++#[unsafe(no_mangle)]
++unsafe extern "C" fn mi_malloc_usable_size(p: *const c_void) -> usize {
++    unsafe { mi_usable_size(p) }
++}
++
++/// No region bookkeeping; only used by debug assertions.
++#[unsafe(no_mangle)]
++extern "C" fn mi_is_in_heap_region(_p: *const c_void) -> bool {
++    true
++}
++
++#[unsafe(no_mangle)]
++extern "C" fn mi_collect(_force: bool) {}
++
++#[unsafe(no_mangle)]
++extern "C" fn mi_option_set(_option: MiOption, _value: c_long) {}
++
++#[unsafe(no_mangle)]
++extern "C" fn mi_heap_new() -> *mut Heap {
++    Box::into_raw(Box::new(HeapState { head: null_mut() })).cast()
++}
++
++#[unsafe(no_mangle)]
++extern "C" fn mi_heap_main() -> *mut Heap {
++    main_heap()
++}
++
++#[unsafe(no_mangle)]
++unsafe extern "C" fn mi_heap_destroy(heap: *mut Heap) {
++    let state = state_of(heap);
++    if state.is_null() {
++        return;
++    }
++    unsafe {
++        let mut h = (*state).head;
++        while !h.is_null() {
++            let next = (*h).next;
++            dealloc((*h).base, Layout::from_size_align_unchecked((*h).total, (*h).align));
++            h = next;
++        }
++        drop(Box::from_raw(state));
++    }
++}
++
++#[unsafe(no_mangle)]
++unsafe extern "C" fn mi_heap_malloc(heap: *mut Heap, size: usize) -> *mut c_void {
++    unsafe { alloc_in(state_of(heap), size, MIN_ALIGN, false) }
++}
++
++#[unsafe(no_mangle)]
++unsafe extern "C" fn mi_heap_zalloc(heap: *mut Heap, size: usize) -> *mut c_void {
++    unsafe { alloc_in(state_of(heap), size, MIN_ALIGN, true) }
++}
++
++#[unsafe(no_mangle)]
++unsafe extern "C" fn mi_heap_malloc_aligned(heap: *mut Heap, size: usize, alignment: usize) -> *mut c_void {
++    unsafe { alloc_in(state_of(heap), size, alignment, false) }
++}
++
++#[unsafe(no_mangle)]
++unsafe extern "C" fn mi_heap_zalloc_aligned(heap: *mut Heap, size: usize, alignment: usize) -> *mut c_void {
++    unsafe { alloc_in(state_of(heap), size, alignment, true) }
++}
++
++#[unsafe(no_mangle)]
++unsafe extern "C" fn mi_heap_realloc(heap: *mut Heap, p: *mut c_void, newsize: usize) -> *mut c_void {
++    unsafe { realloc_in(state_of(heap), p, newsize, MIN_ALIGN) }
++}
++
++#[unsafe(no_mangle)]
++unsafe extern "C" fn mi_heap_realloc_aligned(
++    heap: *mut Heap,
++    p: *mut c_void,
++    newsize: usize,
++    alignment: usize,
++) -> *mut c_void {
++    unsafe { realloc_in(state_of(heap), p, newsize, alignment) }
++}
++
++/// Reports each tracked block as its own one-block area. The main heap reports nothing.
++#[unsafe(no_mangle)]
++unsafe extern "C" fn mi_heap_visit_blocks(
++    heap: *const Heap,
++    visit_all_blocks: bool,
++    visitor: core::option::Option<
++        extern "C" fn(*const Heap, *const mi_heap_area_t, *mut c_void, usize, *mut c_void) -> bool,
++    >,
++    arg: *mut c_void,
++) -> bool {
++    let (state, Some(visit)) = (state_of(heap.cast_mut()), visitor) else { return true };
++    if state.is_null() {
++        return true;
++    }
++    unsafe {
++        let mut h = (*state).head;
++        while !h.is_null() {
++            let next = (*h).next;
++            let block = h.cast::<u8>().add(HEADER).cast::<c_void>();
++            let area = mi_heap_area_t {
++                blocks: block,
++                reserved: (*h).total,
++                committed: (*h).total,
++                used: 1,
++                block_size: (*h).size,
++                full_block_size: (*h).size,
++                reserved1: null_mut(),
++            };
++            if !visit(heap, &area, null_mut(), (*h).size, arg) {
++                return false;
++            }
++            if visit_all_blocks && !visit(heap, &area, block, (*h).size, arg) {
++                return false;
++            }
++            h = next;
++        }
++    }
++    true
++}
+diff --git a/src/sys/wasm_impl.rs b/src/sys/wasm_impl.rs
+new file mode 100644
+index 00000000..3a29a4b7
+--- /dev/null
++++ b/src/sys/wasm_impl.rs
+@@ -0,0 +1,291 @@
++//! wasm-experiment: syscall surface for `target_family = "wasm"`. Every operation reports ENOSYS
++//! until it is wired to a host-provided filesystem.
++
++use super::*;
++
++#[inline]
++fn enosys(tag: Tag) -> Error {
++    Error::from_code(E::ENOSYS, tag)
++}
++
++pub type FcntlInt = isize;
++
++pub fn open(_path: &ZStr, _flags: i32, _mode: Mode) -> Maybe<Fd> {
++    Err(enosys(Tag::open))
++}
++
++pub fn openat(_dir: impl AsFd, _path: &ZStr, _flags: i32, _mode: Mode) -> Maybe<Fd> {
++    Err(enosys(Tag::open))
++}
++
++pub fn close(_fd: Fd) -> Maybe<()> {
++    Err(enosys(Tag::close))
++}
++
++pub fn read(_fd: Fd, _buf: &mut [u8]) -> Maybe<usize> {
++    Err(enosys(Tag::read))
++}
++
++pub fn write(_fd: Fd, _buf: &[u8]) -> Maybe<usize> {
++    Err(enosys(Tag::write))
++}
++
++pub fn pread(_fd: Fd, _buf: &mut [u8], _off: i64) -> Maybe<usize> {
++    Err(enosys(Tag::pread))
++}
++
++pub fn pwrite(_fd: Fd, _buf: &[u8], _off: i64) -> Maybe<usize> {
++    Err(enosys(Tag::pwrite))
++}
++
++pub fn stat(_path: &ZStr) -> Maybe<Stat> {
++    Err(enosys(Tag::stat))
++}
++
++pub fn fstat(_fd: Fd) -> Maybe<Stat> {
++    Err(enosys(Tag::fstat))
++}
++
++pub fn lstat(_path: &ZStr) -> Maybe<Stat> {
++    Err(enosys(Tag::lstat))
++}
++
++pub fn mkdir(_path: &ZStr, _mode: Mode) -> Maybe<()> {
++    Err(enosys(Tag::mkdir))
++}
++
++pub fn mkdirat(_dir: impl AsFd, _path: &ZStr, _mode: Mode) -> Maybe<()> {
++    Err(enosys(Tag::mkdir))
++}
++
++pub(crate) fn mkdir_recursive_at(_dir: impl AsFd, _sub_path: &[u8]) -> Maybe<()> {
++    Err(enosys(Tag::mkdir))
++}
++
++pub fn mkdir_recursive_at_mode(_dir: Fd, _sub_path: &[u8], _mode: Mode) -> Maybe<()> {
++    Err(enosys(Tag::mkdir))
++}
++
++pub fn unlink(_path: &ZStr) -> Maybe<()> {
++    Err(enosys(Tag::unlink))
++}
++
++pub fn rename(_from: &ZStr, _to: &ZStr) -> Maybe<()> {
++    Err(enosys(Tag::rename))
++}
++
++pub fn renameat(_from_dir: impl AsFd, _from: &ZStr, _to_dir: impl AsFd, _to: &ZStr) -> Maybe<()> {
++    Err(enosys(Tag::rename))
++}
++
++pub fn renameat2(_from_dir: Fd, _from: &ZStr, _to_dir: Fd, _to: &ZStr, _mode: RenameMode) -> Maybe<()> {
++    Err(enosys(Tag::rename))
++}
++
++pub fn unlinkat_with_flags(_dir: Fd, _path: &ZStr, _flags: i32) -> Maybe<()> {
++    Err(enosys(Tag::unlink))
++}
++
++pub fn unlinkat(_dir: impl AsFd, _path: &ZStr) -> Maybe<()> {
++    Err(enosys(Tag::unlink))
++}
++
++pub fn symlink(_target: &ZStr, _link: &ZStr) -> Maybe<()> {
++    Err(enosys(Tag::symlink))
++}
++
++pub fn readlink(_path: &ZStr, _buf: &mut [u8]) -> Maybe<usize> {
++    Err(enosys(Tag::readlink))
++}
++
++pub fn dup(_fd: Fd) -> Maybe<Fd> {
++    Err(enosys(Tag::dup))
++}
++
++pub fn dup_at_least(_fd: Fd, _min: i32) -> Maybe<Fd> {
++    Err(enosys(Tag::fcntl))
++}
++
++pub fn fchmod(_fd: Fd, _mode: Mode) -> Maybe<()> {
++    Err(enosys(Tag::fchmod))
++}
++
++pub fn fchown(_fd: Fd, _uid: u32, _gid: u32) -> Maybe<()> {
++    Err(enosys(Tag::fchown))
++}
++
++pub fn extended_attributes(_fd: Fd) -> Maybe<Vec<(Vec<u8>, Vec<u8>)>> {
++    Err(enosys(Tag::TODO))
++}
++
++pub fn ftruncate(_fd: Fd, _len: i64) -> Maybe<()> {
++    Err(enosys(Tag::ftruncate))
++}
++
++pub fn flock(_fd: Fd, _mode: FileLockMode, _nonblocking: bool) -> Maybe<bool> {
++    Err(enosys(Tag::flock))
++}
++
++pub fn getcwd(_buf: &mut [u8]) -> Maybe<usize> {
++    Err(enosys(Tag::getcwd))
++}
++
++pub fn linkat(_src_dir: impl AsFd, _src: &ZStr, _dest_dir: impl AsFd, _dest: &ZStr) -> Maybe<()> {
++    Err(enosys(Tag::link))
++}
++
++pub fn symlinkat(_target: &ZStr, _dirfd: impl AsFd, _dest: &ZStr) -> Maybe<()> {
++    Err(enosys(Tag::symlinkat))
++}
++
++pub fn readlinkat(_fd: impl AsFd, _path: &ZStr, _buf: &mut [u8]) -> Maybe<usize> {
++    Err(enosys(Tag::readlink))
++}
++
++pub fn chmod(_path: &ZStr, _mode: Mode) -> Maybe<()> {
++    Err(enosys(Tag::chmod))
++}
++
++pub fn fchmodat(_dir: impl AsFd, _path: &ZStr, _mode: Mode, _flags: i32) -> Maybe<()> {
++    Err(enosys(Tag::fchmodat))
++}
++
++pub fn lchmod(_path: &ZStr, _mode: Mode) -> Maybe<()> {
++    Err(enosys(Tag::lchmod))
++}
++
++pub fn chown(_path: &ZStr, _uid: u32, _gid: u32) -> Maybe<()> {
++    Err(enosys(Tag::chown))
++}
++
++pub fn lchown(_path: &ZStr, _uid: u32, _gid: u32) -> Maybe<()> {
++    Err(enosys(Tag::lchown))
++}
++
++pub fn fstatat(_fd: impl AsFd, _path: &ZStr) -> Maybe<Stat> {
++    Err(enosys(Tag::fstatat))
++}
++
++pub fn access(_path: &ZStr, _mode: i32) -> Maybe<()> {
++    Err(enosys(Tag::access))
++}
++
++pub fn faccessat(_dir: impl AsFd, _sub: &ZStr) -> Maybe<bool> {
++    Err(enosys(Tag::access))
++}
++
++pub fn futimens(_fd: Fd, _atime: TimeLike, _mtime: TimeLike) -> Maybe<()> {
++    Err(enosys(Tag::futimens))
++}
++
++pub fn utimens(_path: &ZStr, _atime: TimeLike, _mtime: TimeLike) -> Maybe<()> {
++    Err(enosys(Tag::futimens))
++}
++
++pub fn lutimens(_path: &ZStr, _atime: TimeLike, _mtime: TimeLike) -> Maybe<()> {
++    Err(enosys(Tag::futimens))
++}
++
++pub fn exists_z(_path: &ZStr) -> bool {
++    false
++}
++
++pub fn exists_at(_dir: impl AsFd, _sub: &ZStr) -> bool {
++    false
++}
++
++pub fn is_executable_file_path(_path: &ZStr) -> bool {
++    false
++}
++
++pub fn get_file_size(_fd: Fd) -> Maybe<u64> {
++    Err(enosys(Tag::fstat))
++}
++
++pub fn realpath<'a>(_path: &ZStr, _buf: &'a mut bun_core::PathBuffer) -> Maybe<&'a [u8]> {
++    Err(enosys(Tag::realpath))
++}
++
++pub(crate) fn fcntl(_fd: Fd, _cmd: i32, _arg: isize) -> Maybe<FcntlInt> {
++    Err(enosys(Tag::fcntl))
++}
++
++pub fn dup2(_old: Fd, _new: Fd) -> Maybe<Fd> {
++    Err(enosys(Tag::dup2))
++}
++
++pub fn pipe() -> Maybe<[Fd; 2]> {
++    Err(enosys(Tag::pipe))
++}
++
++pub fn isatty(_fd: Fd) -> bool {
++    false
++}
++
++pub fn fsync(_fd: Fd) -> Maybe<()> {
++    Err(enosys(Tag::fsync))
++}
++
++pub fn lseek(_fd: Fd, _offset: i64, _whence: i32) -> Maybe<i64> {
++    Err(enosys(Tag::lseek))
++}
++
++pub fn chdir(_path: &ZStr) -> Maybe<()> {
++    Err(enosys(Tag::chdir))
++}
++
++pub fn fchdir(_fd: Fd) -> Maybe<()> {
++    Err(enosys(Tag::fchdir))
++}
++
++pub fn umask(_mode: Mode) -> Mode {
++    0
++}
++
++pub fn recv_non_block(_fd: Fd, _buf: &mut [u8]) -> Maybe<usize> {
++    Err(enosys(Tag::recv))
++}
++
++pub fn send_non_block(_fd: Fd, _buf: &[u8]) -> Maybe<usize> {
++    Err(enosys(Tag::send))
++}
++
++pub fn set_close_on_exec(_fd: Fd) -> Maybe<()> {
++    Err(enosys(Tag::fcntl))
++}
++
++pub fn socketpair(_domain: i32, _ty: i32, _proto: i32, _nonblock: bool) -> Maybe<[Fd; 2]> {
++    Err(enosys(Tag::socketpair))
++}
++
++pub fn socketpair_for_shell(_domain: i32, _ty: i32, _proto: i32, _nonblock: bool) -> Maybe<[Fd; 2]> {
++    Err(enosys(Tag::socketpair))
++}
++
++pub fn mmap(_addr: *mut u8, _len: usize, _prot: i32, _flags: i32, _fd: Fd, _off: i64) -> Maybe<*mut u8> {
++    Err(enosys(Tag::mmap))
++}
++
++pub fn munmap(_ptr: *mut u8, _len: usize) -> Maybe<()> {
++    Err(enosys(Tag::munmap))
++}
++
++pub fn mmap_file(_path: &ZStr, _flags: core::ffi::c_int, _wanted_size: Option<usize>, _offset: usize) -> Maybe<(&'static mut [u8], usize)> {
++    Err(enosys(Tag::mmap))
++}
++
++pub fn writev(_fd: Fd, _vecs: &[PlatformIoVec]) -> Maybe<usize> {
++    Err(enosys(Tag::writev))
++}
++
++pub fn readv(_fd: Fd, _vecs: &[PlatformIoVec]) -> Maybe<usize> {
++    Err(enosys(Tag::readv))
++}
++
++pub fn preadv(_fd: Fd, _vecs: &[PlatformIoVec], _position: i64) -> Maybe<usize> {
++    Err(enosys(Tag::preadv))
++}
++
++pub fn statfs(_path: &ZStr) -> Maybe<StatFS> {
++    Err(enosys(Tag::statfs))
++}
+diff --git a/src/sys/wasm_libc.rs b/src/sys/wasm_libc.rs
+new file mode 100644
+index 00000000..7202fdb5
+--- /dev/null
++++ b/src/sys/wasm_libc.rs
+@@ -0,0 +1,115 @@
++//! wasm-experiment: the `libc` items this crate names, for `target_family = "wasm"` where the
++//! `libc` crate has none. Mounted as `crate::libc`.
++
++#![allow(non_camel_case_types)]
++
++pub(crate) use core::ffi::{c_int, c_void};
++
++pub(crate) const UTIME_NOW: i64 = (1 << 30) - 1;
++
++#[repr(C)]
++#[derive(Clone, Copy)]
++pub struct iovec {
++    pub iov_base: *mut c_void,
++    pub iov_len: usize,
++}
++
++#[repr(C)]
++#[derive(Clone, Copy, Default)]
++pub struct stat {
++    pub st_dev: u64,
++    pub st_ino: u64,
++    pub st_nlink: u64,
++    pub st_mode: u32,
++    pub st_uid: u32,
++    pub st_gid: u32,
++    pub st_rdev: u64,
++    pub st_size: i64,
++    pub st_blksize: i64,
++    pub st_blocks: i64,
++    pub st_atime: i64,
++    pub st_atime_nsec: i64,
++    pub st_mtime: i64,
++    pub st_mtime_nsec: i64,
++    pub st_ctime: i64,
++    pub st_ctime_nsec: i64,
++}
++
++pub(crate) const RTLD_LAZY: c_int = 1;
++pub(crate) const RTLD_LOCAL: c_int = 0;
++pub(crate) const F_GETFL: c_int = 3;
++pub(crate) const F_SETFL: c_int = 4;
++
++pub(crate) const SEEK_SET: c_int = 0;
++pub(crate) const ENAMETOOLONG: c_int = 36;
++pub(crate) const O_RDONLY: c_int = 0;
++pub(crate) const O_DIRECTORY: c_int = 0o200000;
++pub(crate) const O_CLOEXEC: c_int = 0o2000000;
++
++pub(crate) const AF_INET: c_int = 2;
++pub(crate) const AF_INET6: c_int = 10;
++pub(crate) type sa_family_t = u16;
++
++#[repr(C)]
++#[derive(Clone, Copy)]
++pub struct sockaddr {
++    pub sa_family: sa_family_t,
++    pub sa_data: [u8; 14],
++}
++
++#[repr(C)]
++#[derive(Clone, Copy)]
++pub struct sockaddr_in {
++    pub sin_family: sa_family_t,
++    pub sin_port: u16,
++    pub sin_addr: u32,
++    pub sin_zero: [u8; 8],
++}
++
++#[repr(C)]
++#[derive(Clone, Copy)]
++pub struct sockaddr_in6 {
++    pub sin6_family: sa_family_t,
++    pub sin6_port: u16,
++    pub sin6_flowinfo: u32,
++    pub sin6_addr: [u8; 16],
++    pub sin6_scope_id: u32,
++}
++
++#[repr(C)]
++#[derive(Clone, Copy)]
++pub struct sockaddr_storage {
++    pub ss_family: sa_family_t,
++    pub __ss_padding: [u8; 126],
++}
++
++pub(crate) const O_WRONLY: c_int = 1;
++pub(crate) const O_RDWR: c_int = 2;
++pub(crate) const O_CREAT: c_int = 0o100;
++pub(crate) const O_EXCL: c_int = 0o200;
++pub(crate) const O_NOCTTY: c_int = 0o400;
++pub(crate) const O_TRUNC: c_int = 0o1000;
++pub(crate) const O_APPEND: c_int = 0o2000;
++pub(crate) const O_NONBLOCK: c_int = 0o4000;
++pub(crate) const O_DSYNC: c_int = 0o10000;
++pub(crate) const O_SYNC: c_int = 0o4010000;
++pub(crate) const O_NOFOLLOW: c_int = 0o400000;
++pub(crate) const SEEK_CUR: c_int = 1;
++pub(crate) const AT_REMOVEDIR: c_int = 0x200;
++pub(crate) const ENOSYS: c_int = 38;
++pub(crate) type in_port_t = u16;
++
++#[repr(C)]
++#[derive(Clone, Copy, Default)]
++pub struct statfs {
++    pub f_type: i64,
++    pub f_bsize: i64,
++    pub f_blocks: u64,
++    pub f_bfree: u64,
++    pub f_bavail: u64,
++    pub f_files: u64,
++    pub f_ffree: u64,
++    pub f_namelen: i64,
++    pub f_frsize: i64,
++    pub f_flags: i64,
++}

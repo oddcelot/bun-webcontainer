@@ -1,0 +1,26 @@
+[package]
+name = "bun_transpile_wasm"
+version = "0.0.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+bun_alloc = { path = "../bun/src/bun_alloc" }
+bun_ast = { path = "../bun/src/ast" }
+bun_js_parser = { path = "../bun/src/js_parser" }
+bun_js_printer = { path = "../bun/src/js_printer" }
+# for the sema stand-ins in src/native.rs
+bun_core = { path = "../bun/src/bun_core" }
+bun_threading = { path = "../bun/src/threading" }
+bstr = "1"
+libc = "0.2"
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = true
+
+[profile.dev]
+panic = "abort"

@@ -60,18 +60,28 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 
 ## Build & Test
 
-_Add your build and test commands here_
-
 ```bash
-# Example:
-# npm install
-# npm test
+scripts/setup-bun.sh                       # recreate bun/ (pinned commit + bun-wasm.patch); bun/ is not tracked
+scripts/w64.sh <crate>...                  # wasm64 compile check of bun crates
+W="-Zbuild-std=std,panic_abort --target wasm64-unknown-unknown --release"
+(cd semver-wasm && cargo build $W && node test.mjs && node diff.mjs)
+(cd transpile-wasm && cargo build $W && node test.mjs)   # diff vs `bun build --no-bundle` on corpus/
+(cd shim-test && cargo +nightly-2026-09-15 test)
+(cd playground && bunx tsc --noEmit && bun run dev)      # verify in Chrome (Memory64)
 ```
+
+Use `cargo +nightly-2026-09-15` inside `bun/` (don't let its rust-toolchain.toml auto-install 11 targets).
 
 ## Architecture Overview
 
-_Add a brief overview of your project architecture_
+See README.md and HANDOFF.md. In short: Bun's JSC-independent Rust crates compile to wasm64; the
+playground runs user code in the browser engine with JS shims for `Bun.*`, a VFS, a service worker
+(`/__vfs/` modules, `/__preview/` Bun.serve), and Bun's wasm transpiler.
 
 ## Conventions & Patterns
 
-_Add your project-specific conventions here_
+- Changes to Bun live only in `bun-wasm.patch`: cfg-gated (`target_family = "wasm"`), marked
+  `// wasm-experiment`, native builds unchanged. Regenerate the patch from `bun/` after editing it.
+- Don't touch `*_jsc` crates.
+- C/C++ symbol stand-ins belong in the wrapper crates (`transpile-wasm/src/native.rs`), not in bun.
+- Stop the playground dev server by port (`kill $(lsof -tiTCP:5173 -sTCP:LISTEN)`), never `pkill vite`.

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Bun playground</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <header>
+      <strong>Bun playground</strong>
+      <button id="run">Run</button>
+      <button id="install">bun install</button>
+      <button id="newfile">New file</button>
+      <button id="openfolder">Open folder</button>
+      <input id="folderinput" type="file" webkitdirectory multiple hidden />
+      <label class="editorkind">Editor
+        <select id="editorkind">
+          <option value="codemirror">CodeMirror</option>
+          <option value="pierre">Pierre (@pierre/diffs)</option>
+        </select>
+      </label>
+      <span id="status"></span>
+    </header>
+    <main>
+      <nav id="tree"></nav>
+      <section id="editor"></section>
+      <div id="right">
+        <iframe id="preview" title="preview"></iframe>
+        <div id="console-wrap">
+          <div id="console-head">Console <button id="clear">clear</button></div>
+          <div id="console"></div>
+        </div>
+      </div>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

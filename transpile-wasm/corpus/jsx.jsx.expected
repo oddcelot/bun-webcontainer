@@ -1,0 +1,11 @@
+import { jsxDEV as jsxDEV_7x81h0kn } from "react/jsx-dev-runtime";
+export const El = (p) => /* @__PURE__ */ jsxDEV_7x81h0kn("div", {
+  className: "x",
+  ...p,
+  children: [
+    /* @__PURE__ */ jsxDEV_7x81h0kn("span", {
+      children: p.children
+    }, undefined, false, undefined, this),
+    "text & more"
+  ]
+}, undefined, true, undefined, this);

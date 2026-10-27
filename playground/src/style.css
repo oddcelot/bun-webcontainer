@@ -1,0 +1,23 @@
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; background: #1b1d23; color: #d7dae0; font: 13px system-ui, sans-serif; }
+body { display: flex; flex-direction: column; }
+header { display: flex; gap: 8px; align-items: center; padding: 6px 10px; background: #14161a; border-bottom: 1px solid #2c2f36; }
+header button, #clear { background: #2c313a; color: inherit; border: 1px solid #3a3f4a; border-radius: 4px; padding: 4px 10px; cursor: pointer; }
+header button:hover { background: #3a404c; }
+header button:disabled { opacity: 0.5; cursor: default; }
+#status { color: #8b919e; }
+main { flex: 1; min-height: 0; display: grid; grid-template-columns: 200px 1fr 1fr; }
+#tree { min-height: 0; border-right: 1px solid #2c2f36; }
+#editor { min-width: 0; overflow: hidden; }
+#editor .cm-editor { height: 100%; }
+#editor .pierre-host { height: 100%; overflow: auto; background: #0a0a0a; /* pierre-dark editor background */ }
+.editorkind { margin-left: auto; color: #8b919e; display: flex; gap: 6px; align-items: center; }
+.editorkind select { background: #2c313a; color: #d7dae0; border: 1px solid #3a3f4a; border-radius: 4px; padding: 3px 6px; }
+#right { display: grid; grid-template-rows: 1fr 1fr; min-width: 0; min-height: 0; border-left: 1px solid #2c2f36; }
+#preview { width: 100%; height: 100%; border: 0; background: white; }
+#console-wrap { display: flex; flex-direction: column; min-height: 0; border-top: 1px solid #2c2f36; }
+#console-head { display: flex; justify-content: space-between; padding: 4px 8px; background: #14161a; color: #8b919e; }
+#console { flex: 1; overflow: auto; padding: 4px 8px; font: 12px ui-monospace, monospace; white-space: pre-wrap; }
+#console .warn { color: #e5c07b; }
+#console .error { color: #e06c75; }
+#console .sys { color: #61afef; }

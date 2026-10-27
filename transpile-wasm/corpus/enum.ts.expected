@@ -1,0 +1,35 @@
+var Color;
+((Color) => {
+  Color[Color["Red"] = 0] = "Red";
+  Color["Green"] = "g";
+  Color[Color["Blue"] = 4] = "Blue";
+})(Color ||= {});
+export var Flags;
+((Flags) => {
+  Flags[Flags["A"] = 1] = "A";
+  Flags[Flags["B"] = 2] = "B";
+})(Flags ||= {});
+var NS;
+((NS) => {
+  NS.x = 1;
+})(NS ||= {});
+export function id(v) {
+  return v;
+}
+
+class Root {
+}
+
+class Base extends Root {
+  t;
+  n;
+  constructor(t, n) {
+    super();
+    this.t = t;
+    this.n = n;
+  }
+}
+let y = ["a"];
+let z = y;
+
+export { Color, NS, Base };
