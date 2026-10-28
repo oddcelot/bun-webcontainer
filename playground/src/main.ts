@@ -7,12 +7,12 @@ import { createRoot } from "solid-js";
 import { isShareLink, loadShareLink, rememberSource } from "./share";
 import { bunInstall } from "./install";
 import { Runner } from "./runner";
-import { mountPreview } from "./preview";
 import { loadSemver } from "./semver";
 import { checkSupport, showUnsupported } from "./support";
 import { VFS } from "./vfs";
 import { mountUI } from "./ui/mount";
 import { createSession, type Status } from "./ui/session";
+import { createPreviews } from "./ui/previews";
 import { createWorkspace } from "./ui/workspace";
 import { createConsole } from "./console";
 import { createShell, scriptEntry } from "./shell";
@@ -29,7 +29,7 @@ const terminal = createConsole({
   onInterrupt: () => stop(),
   onClear: () => clearConsole(),
 });
-const [session, workspace] = createRoot(() => [createSession(canRun), createWorkspace()] as const);
+const [session, workspace, previews] = createRoot(() => [createSession(canRun), createWorkspace(), createPreviews()] as const);
 
 function log(level: string, text: string) {
   terminal.log(level, text);
@@ -51,7 +51,7 @@ async function setupServiceWorker() {
 }
 
 const vfs = new VFS();
-mountUI({ session, workspace, terminal, clearConsole, vfs, log, run: () => run(), install, openProject, newFile, openFolder, repoParam: new URLSearchParams(location.search).get("repo") ?? "" });
+mountUI({ session, workspace, previews, terminal, clearConsole, vfs, log, run: () => run(), install, openProject, newFile, openFolder, repoParam: new URLSearchParams(location.search).get("repo") ?? "" });
 const params = new URLSearchParams(location.search);
 const exampleName = params.get("example") ?? "";
 const repoParam = params.get("repo") ?? "";
@@ -124,7 +124,7 @@ async function run(entry = entryFile()) {
     log("sys", `[run] ${entry}`);
     try {
       await runner.start(entry);
-      preview.reload();
+      previews.reload();
       return { state: "running", text: `Running ${entry}` };
     } catch (e) {
       log("error", String(e));
@@ -161,10 +161,6 @@ function clearConsole() {
 
 const exec = createShell({ vfs, log, run, install, stop, clear: clearConsole });
 
-const preview = mountPreview();
-if (!canRun)
-  for (const el of document.querySelectorAll("#request button, #request input, #request select"))
-    Object.assign(el, { disabled: true, title: "This browser can't run code here" });
 async function openFolder(files: File[]) {
   runner?.stop();
   workspace.closeAll();

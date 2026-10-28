@@ -3,6 +3,7 @@ import { AppContext, type App } from "./app";
 import { Console } from "./Console";
 import { FileTree } from "./FileTree";
 import { Header } from "./Header";
+import { Preview } from "./Preview";
 import { EditorPane } from "./EditorPane";
 
 /**
@@ -18,5 +19,12 @@ export function mountUI(app: App) {
   into("header", () => <Header />);
   into("#tree", () => <FileTree />);
   into("#editor-pane", () => <EditorPane />);
-  into("#console-wrap", () => <Console />);
+  into("#right", () => (
+    <>
+      <Preview />
+      <div id="console-wrap">
+        <Console />
+      </div>
+    </>
+  ));
 }

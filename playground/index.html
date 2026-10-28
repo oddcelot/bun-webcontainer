@@ -58,37 +58,8 @@
     </header>
     <main>
       <nav id="tree"></nav>
-      <section id="editor-pane">
-        <div id="tabs" class="tabs" role="tablist" aria-label="Open files"></div>
-        <div id="editor"></div>
-      </section>
-      <div id="right">
-        <div id="preview-backdrop" hidden></div>
-        <div id="preview-wrap">
-          <div id="preview-tabs" class="tabs" role="tablist" aria-label="Previews"></div>
-          <form id="request">
-            <select id="req-method" title="Method">
-              <option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option>
-            </select>
-            <input id="req-path" value="/" spellcheck="false" title="Path on the running server" />
-            <button><i class="i-lucide-send" aria-hidden="true"></i> Send</button>
-            <button type="button" id="expand" title="Expand preview (Esc)" aria-pressed="false"></button>
-          </form>
-          <textarea id="req-body" spellcheck="false" placeholder="Request body (JSON is sent as application/json)"></textarea>
-          <div id="preview-views"></div>
-        </div>
-        <div id="console-wrap">
-          <div id="console-head">
-            <i class="i-lucide-square-terminal" aria-hidden="true"></i>
-            <span class="label">Console</span>
-            <span id="console-count" class="chip" title="Lines">0</span>
-            <span id="console-errors" class="chip error" title="Errors" hidden><i class="i-lucide-circle-x" aria-hidden="true"></i><span></span></span>
-            <span id="console-warns" class="chip warn" title="Warnings" hidden><i class="i-lucide-triangle-alert" aria-hidden="true"></i><span></span></span>
-            <button id="clear" title="Clear console" aria-label="Clear console" disabled><i class="i-lucide-trash-2" aria-hidden="true"></i></button>
-          </div>
-          <div id="console"></div>
-        </div>
-      </div>
+      <section id="editor-pane"></section>
+      <div id="right"></div>
     </main>
     <script type="module" src="/src/main.ts"></script>
   </body>
