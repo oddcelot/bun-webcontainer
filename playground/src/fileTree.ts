@@ -5,25 +5,8 @@ import {
   type FileTreeDirectoryHandle,
   type FileTreeItemHandle,
 } from "@pierre/trees";
+import { onTheme } from "./theme";
 import type { VFS } from "./vfs";
-
-// Mirrors the editor chrome in style.css (One Dark).
-const theme = themeToTreeStyles({
-  type: "dark",
-  bg: "#1b1d23",
-  fg: "#d7dae0",
-  colors: {
-    "sideBar.background": "#1b1d23",
-    "sideBar.foreground": "#d7dae0",
-    "sideBar.border": "#2c2f36",
-    "list.hoverBackground": "#262a31",
-    "list.activeSelectionBackground": "#2f3542",
-    "list.activeSelectionForeground": "#ffffff",
-    "list.focusOutline": "#528bff",
-    "input.background": "#14161a",
-    "input.border": "#3a3f4a",
-  },
-});
 
 const isDirectory = (item: FileTreeItemHandle | null): item is FileTreeDirectoryHandle => item?.isDirectory() === true;
 
@@ -48,7 +31,9 @@ export function mountFileTree(mount: HTMLElement, vfs: VFS, onOpen: (path: strin
   const host = tree.getFileTreeContainer();
   if (host) {
     host.style.height = "100%";
-    for (const [k, v] of Object.entries(theme)) host.style.setProperty(k, v);
+    onTheme((_, theme) => {
+      for (const [k, v] of Object.entries(themeToTreeStyles(theme))) host.style.setProperty(k, v);
+    });
   }
 
   // An install writes thousands of files; add them in one batch per frame.

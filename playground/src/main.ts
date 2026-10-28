@@ -12,6 +12,7 @@ import { loadSemver } from "./semver";
 import { showUnsupported, supportsMemory64 } from "./support";
 import { VFS } from "./vfs";
 import "./title";
+import { mountThemePicker } from "./theme";
 
 if (!supportsMemory64()) {
   showUnsupported();
@@ -79,6 +80,7 @@ const semver = await loadSemver();
 const runner = new Runner(vfs, log);
 
 let current = "index.ts";
+mountThemePicker($<HTMLSelectElement>("theme"));
 const editorEl = $("editor");
 const editor = createPierre(editorEl);
 

@@ -1,38 +1,54 @@
+/* Set from the chosen theme by theme.ts; the rest derive from these. Defaults: pierre-dark. */
+:root {
+  color-scheme: dark;
+  --bg: #0a0a0a;
+  --fg: #fafafa;
+  --panel: #171717;
+  --border: color-mix(in srgb, var(--fg) 14%, var(--bg));
+  --muted: color-mix(in srgb, var(--fg) 60%, var(--bg));
+  --accent: #009fff;
+  --error: #ff2e3f;
+  --warn: #ffca00;
+  --info: #009fff;
+  --control: color-mix(in srgb, var(--fg) 9%, var(--panel));
+  --control-hover: color-mix(in srgb, var(--fg) 16%, var(--panel));
+  --control-border: color-mix(in srgb, var(--fg) 18%, var(--panel));
+}
 * { box-sizing: border-box; }
-html, body { height: 100%; margin: 0; background: #1b1d23; color: #d7dae0; font: 13px system-ui, sans-serif; }
+html, body { height: 100%; margin: 0; background: var(--bg); color: var(--fg); font: 13px system-ui, sans-serif; }
 body { display: flex; flex-direction: column; }
-header { display: flex; gap: 8px; align-items: center; padding: 6px 10px; background: #14161a; border-bottom: 1px solid #2c2f36; }
+header { display: flex; gap: 8px; align-items: center; padding: 6px 10px; background: var(--panel); border-bottom: 1px solid var(--border); }
 header button, #clear, #request button { display: inline-flex; align-items: center; gap: 5px; }
-header button, #clear { background: #2c313a; color: inherit; border: 1px solid #3a3f4a; border-radius: 4px; padding: 4px 10px; cursor: pointer; }
-header button:hover { background: #3a404c; }
+header button, #clear { background: var(--control); color: inherit; border: 1px solid var(--control-border); border-radius: 4px; padding: 4px 10px; cursor: pointer; }
+header button:hover { background: var(--control-hover); }
 header button:disabled { opacity: 0.5; cursor: default; }
 .title { display: inline-flex; align-items: center; gap: 6px; }
-#status { margin-left: auto; color: #8b919e; }
+#status { margin-left: auto; color: var(--muted); }
 main { flex: 1; min-height: 0; display: grid; grid-template-columns: 200px 1fr 1fr; }
-#tree { min-height: 0; border-right: 1px solid #2c2f36; }
+#tree { min-height: 0; border-right: 1px solid var(--border); }
 #editor { min-width: 0; overflow: hidden; }
-#editor .pierre-host { height: 100%; overflow: auto; background: #0a0a0a; /* pierre-dark editor background */ }
-#example { background: #2c313a; color: #d7dae0; border: 1px solid #3a3f4a; border-radius: 4px; padding: 3px 6px; }
-#right { display: grid; grid-template-rows: 1fr 1fr; min-width: 0; min-height: 0; border-left: 1px solid #2c2f36; }
+#editor .pierre-host { height: 100%; overflow: auto; background: var(--bg); }
+#example, #theme { background: var(--control); color: var(--fg); border: 1px solid var(--control-border); border-radius: 4px; padding: 3px 6px; }
+#right { display: grid; grid-template-rows: 1fr 1fr; min-width: 0; min-height: 0; border-left: 1px solid var(--border); }
 #preview-wrap { display: flex; flex-direction: column; min-height: 0; }
 /* Expanded: almost the whole window, over the playground; the frame stays where it is, so it doesn't reload. */
-#preview-wrap.expanded { position: fixed; inset: 2.5vh 2.5vw; z-index: 20; background: #1b1d23; border: 1px solid #3a3f4a; border-radius: 8px; overflow: hidden; box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6); }
+#preview-wrap.expanded { position: fixed; inset: 2.5vh 2.5vw; z-index: 20; background: var(--bg); border: 1px solid var(--control-border); border-radius: 8px; overflow: hidden; box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6); }
 #preview-backdrop { position: fixed; inset: 0; z-index: 19; background: rgba(0, 0, 0, 0.55); }
 #preview-backdrop[hidden] { display: none; }
-#request { display: flex; gap: 6px; padding: 4px 8px; background: #14161a; border-bottom: 1px solid #2c2f36; }
-#request select, #request input, #req-body { background: #2c313a; color: #d7dae0; border: 1px solid #3a3f4a; border-radius: 4px; padding: 3px 6px; font: 12px ui-monospace, monospace; }
+#request { display: flex; gap: 6px; padding: 4px 8px; background: var(--panel); border-bottom: 1px solid var(--border); }
+#request select, #request input, #req-body { background: var(--control); color: var(--fg); border: 1px solid var(--control-border); border-radius: 4px; padding: 3px 6px; font: 12px ui-monospace, monospace; }
 #req-path { flex: 1; min-width: 0; }
-#request button { background: #2c313a; color: inherit; border: 1px solid #3a3f4a; border-radius: 4px; padding: 3px 10px; cursor: pointer; }
+#request button { background: var(--control); color: inherit; border: 1px solid var(--control-border); border-radius: 4px; padding: 3px 10px; cursor: pointer; }
 #expand { display: grid; place-items: center; padding: 0 8px; }
 #req-body { height: 5em; margin: 0; border-radius: 0; border-width: 0 0 1px; resize: vertical; }
 #preview { flex: 1; width: 100%; border: 0; background: white; }
 #preview[hidden], #req-body[hidden] { display: none; }
 #response { flex: 1; overflow: auto; margin: 0; padding: 6px 8px; font: 12px ui-monospace, monospace; white-space: pre-wrap; }
-#response.error { color: #e06c75; }
-#console-wrap { display: flex; flex-direction: column; min-height: 0; border-top: 1px solid #2c2f36; }
-#console-head { display: flex; justify-content: space-between; padding: 4px 8px; background: #14161a; color: #8b919e; }
+#response.error { color: var(--error); }
+#console-wrap { display: flex; flex-direction: column; min-height: 0; border-top: 1px solid var(--border); }
+#console-head { display: flex; justify-content: space-between; padding: 4px 8px; background: var(--panel); color: var(--muted); }
 #console { flex: 1; overflow: auto; padding: 4px 8px; font: 12px ui-monospace, monospace; white-space: pre-wrap; }
-#console .warn { color: #e5c07b; }
-#console .error { color: #e06c75; }
-#console .sys { color: #61afef; }
+#console .warn { color: var(--warn); }
+#console .error { color: var(--error); }
+#console .sys { color: var(--info); }
 .unsupported { max-width: 36rem; margin: 4rem auto; padding: 0 1rem; line-height: 1.5; }

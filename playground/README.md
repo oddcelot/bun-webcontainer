@@ -31,7 +31,8 @@ The picker's "Astro + Solid" (`fixtures/astro-solid-demo`) runs an Astro 7 dev s
     src/moduleServer.ts   VFS path -> JS: transpile TS/JSX, rewrite relative + bare specifiers to /__vfs/...
     src/transpiler/       Bun's transpiler as wasm64 (../transpile-wasm): transpile(source, path) => Promise<string>
     src/editors/          pierre.ts: @pierre/diffs File + edit-mode Editor behind the CodeEditor interface
-    src/fileTree.ts       @pierre/trees file tree over the VFS (search, icons, One Dark theme); selecting a file opens it
+    src/fileTree.ts       @pierre/trees file tree over the VFS (search, icons); selecting a file opens it
+    src/theme.ts          header theme picker: any Pierre/Shiki theme colors the editor, tree (themeToTreeStyles) and chrome (CSS variables); remembered in localStorage
     src/install.ts        no lockfile: registry fetch, semver pick (wasm), flat node_modules
     src/lockfile.ts       bun.lock (text format; tested with lockfileVersion 2 from Bun 1.4.4): locked versions, nested node_modules, sha512 integrity check
     src/semver.ts         loader for public/bun_semver_wasm.wasm (wasm64, BigInt pointers)
