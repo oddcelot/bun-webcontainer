@@ -2,7 +2,7 @@ import { BASE } from "../base";
 import { loadSemver } from "../semver";
 import { dirname, norm, VFS } from "../vfs";
 import { builtins, installTimers, setFs, setStdio } from "./node";
-import "./hostPackages";
+import { setHostVfs } from "./hostPackages";
 import { fsError } from "./node/errors";
 import { hooks } from "./node/serve";
 import nodePath from "./node/path";
@@ -27,6 +27,7 @@ const post = (msg: unknown, transfer: Transferable[] = []) => (self as unknown a
 // The worker's copy of the page VFS (sent with "start"); node:fs and Bun.file read it synchronously, and
 // writes are mirrored to the page.
 const vfs = new VFS();
+setHostVfs(vfs);
 setFs(vfs, (op, ...args) => post({ type: "vfs", op, args }));
 setStdio((level, text) => post({ type: "console", level, text }));
 g.__nodeBuiltins = builtins;

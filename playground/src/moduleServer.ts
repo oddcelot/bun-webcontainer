@@ -335,6 +335,13 @@ export const __cjs = m;
 ${names.length ? `export const { ${names.join(", ")} } = m;` : ""}`;
 }
 
+/** The host package whose installed entry file is `path`: Vite's module runner imports externals by file URL. */
+function hostEntry(vfs: VFS, path: string): string | undefined {
+  if (!path.startsWith("node_modules/rolldown/")) return undefined;
+  CONDITIONS = TARGET_CONDITIONS.bun;
+  return Object.keys(hostNames).find((spec) => resolveBare(vfs, spec, "") === path);
+}
+
 /** The module for a host package: the worker loads it on demand as `globalThis.__hostPackage(spec)`. */
 function hostModule(spec: string): string {
   const names = hostNames[spec].filter((k) => k !== "default" && /^[A-Za-z_$][\w$]*$/.test(k));
@@ -384,6 +391,8 @@ export async function serveModule(vfs: VFS, rawPath: string, onError: (msg: stri
     return { status: 404, body: msg };
   }
   if (path.startsWith("__cjs/")) return serveCommonJS(vfs, path.slice(6), onError, target);
+  const host = hostEntry(vfs, path);
+  if (host) return { status: 200, body: hostModule(host) };
   const src = vfs.readText(path);
   if (src === undefined) {
     onError(`module not found: ${path}`);
