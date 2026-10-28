@@ -1,0 +1,23 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Stefan Kopco <hey@oddcelot.dev>
+Date: Wed, 28 Oct 2026 19:26:25 +0100
+Subject: [PATCH] threading: no idle wake-up on wasm
+
+---
+ src/threading/ThreadPool.rs | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/threading/ThreadPool.rs b/src/threading/ThreadPool.rs
+index 5943282b..70568d34 100644
+--- a/src/threading/ThreadPool.rs
++++ b/src/threading/ThreadPool.rs
+@@ -299,7 +299,8 @@ impl ThreadPool {
+     }
+ 
+     pub fn wake_for_idle_events(&self) {
+-        // Wake all the threads to check for idle events.
++        // wasm-experiment: no worker threads to wake (futex wake is unsupported there).
++        #[cfg(not(target_family = "wasm"))]
+         self.idle_event.wake_all();
+     }
+ 

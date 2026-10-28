@@ -1,0 +1,52 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Stefan Kopco <hey@oddcelot.dev>
+Date: Wed, 28 Oct 2026 19:19:07 +0100
+Subject: [PATCH] boringssl: drop c-ares on wasm
+
+---
+ src/boringssl/Cargo.toml |  3 +++
+ src/boringssl/lib.rs     | 12 +++++++++++-
+ 2 files changed, 14 insertions(+), 1 deletion(-)
+
+diff --git a/src/boringssl/Cargo.toml b/src/boringssl/Cargo.toml
+index 1cb4291a..02f6ff9a 100644
+--- a/src/boringssl/Cargo.toml
++++ b/src/boringssl/Cargo.toml
+@@ -14,4 +14,7 @@ bun_alloc.workspace = true
+ bun_core.workspace = true
+ bun_sys.workspace = true
+ bun_boringssl_sys.workspace = true
++
++# wasm-experiment: c-ares (DNS) doesn't exist on wasm; only used for ip text formatting
++[target.'cfg(not(target_family = "wasm"))'.dependencies]
+ bun_cares_sys.workspace = true
+diff --git a/src/boringssl/lib.rs b/src/boringssl/lib.rs
+index 4a7a9c7f..0d260190 100644
+--- a/src/boringssl/lib.rs
++++ b/src/boringssl/lib.rs
+@@ -8,6 +8,7 @@ use core::ptr;
+ use std::cell::Cell;
+ 
+ pub use bun_boringssl_sys as boring;
++#[cfg(not(target_family = "wasm"))] // wasm-experiment
+ use bun_cares_sys as c_ares;
+ use bun_core::strings;
+ 
+@@ -191,7 +192,16 @@ fn canonical_ip_octets<'a>(
+     };
+     // SAFETY: `octets` is readable for its checked 4/16-byte length and
+     // `out_ip` is INET6_ADDRSTRLEN + 1 bytes — `ntop`'s requirements.
+-    unsafe { c_ares::ntop(af, octets.as_ptr().cast(), &mut out_ip[..]) }
++    #[cfg(not(target_family = "wasm"))]
++    unsafe {
++        c_ares::ntop(af, octets.as_ptr().cast(), &mut out_ip[..])
++    }
++    // wasm-experiment: no c-ares; TLS hostname verification is unused on wasm
++    #[cfg(target_family = "wasm")]
++    {
++        let _ = (af, octets, out_ip);
++        None
++    }
+ }
+ 
+ /// Strips a single trailing `.` (the DNS root label). Mirrors Node.js

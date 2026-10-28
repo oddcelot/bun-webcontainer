@@ -1,0 +1,27 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Stefan Kopco <hey@oddcelot.dev>
+Date: Wed, 28 Oct 2026 19:25:48 +0100
+Subject: [PATCH] bun_core: wasm nano_timestamp reads 0 instead of panicking
+
+---
+ src/bun_core/util.rs | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/src/bun_core/util.rs b/src/bun_core/util.rs
+index 937d87d9..298f817d 100644
+--- a/src/bun_core/util.rs
++++ b/src/bun_core/util.rs
+@@ -2826,7 +2826,12 @@ pub mod time {
+             super::clock_gettime(libc::CLOCK_REALTIME, &mut ts);
+             (ts.tv_sec as i128) * NS_PER_S as i128 + (ts.tv_nsec as i128)
+         }
+-        #[cfg(not(unix))]
++        // wasm-experiment: no clock on wasm (std's SystemTime::now panics there); like `clock_gettime`, reads 0.
++        #[cfg(target_family = "wasm")]
++        {
++            0
++        }
++        #[cfg(all(not(unix), not(target_family = "wasm")))]
+         {
+             // SystemTime is backed by GetSystemTimePreciseAsFileTime on Windows.
+             match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {

@@ -1,0 +1,50 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Stefan Kopco <hey@oddcelot.dev>
+Date: Wed, 28 Oct 2026 19:19:07 +0100
+Subject: [PATCH] watcher: inert Watcher stub on wasm for the bundler
+
+---
+ src/watcher/lib.rs | 26 +++++++++++++++++++++++++-
+ 1 file changed, 25 insertions(+), 1 deletion(-)
+
+diff --git a/src/watcher/lib.rs b/src/watcher/lib.rs
+index 7160d85b..9fb72452 100644
+--- a/src/watcher/lib.rs
++++ b/src/watcher/lib.rs
+@@ -39,6 +39,28 @@ pub mod watcher_impl {
+         pub(crate) callback: fn(*mut (), dir_path: &[u8], dir_fd: Fd),
+     }
+ 
++    // wasm-experiment: inert Watcher so `bun_bundler` (which only calls `add_file`) compiles.
++    pub const REQUIRES_FILE_DESCRIPTORS: bool = false;
++    pub const WATCH_OPEN_FLAGS: i32 = 0;
++    pub enum FdOwnership {
++        Watcher,
++        Caller,
++    }
++    pub struct Watcher(());
++    pub struct PackageJSON(());
++    impl Watcher {
++        pub fn add_file<const CLONE_FILE_PATH: bool>(
++            &mut self,
++            _fd: Fd,
++            _file_path: &[u8],
++            _hash: u32,
++            _dir_fd: Fd,
++            _package_json: Option<&'static PackageJSON>,
++        ) -> bun_sys::Result<FdOwnership> {
++            Ok(FdOwnership::Caller)
++        }
++    }
++
+     impl AnyResolveWatcher {
+         #[inline]
+         pub fn watch(self, dir_path: &[u8], dir_fd: Fd) {
+@@ -63,4 +85,6 @@ pub use watcher_impl::{
+ };
+ 
+ #[cfg(target_family = "wasm")]
+-pub use watcher_impl::AnyResolveWatcher;
++pub use watcher_impl::{
++    AnyResolveWatcher, FdOwnership, PackageJSON, REQUIRES_FILE_DESCRIPTORS, WATCH_OPEN_FLAGS, Watcher,
++};

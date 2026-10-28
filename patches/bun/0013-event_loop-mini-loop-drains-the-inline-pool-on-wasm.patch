@@ -1,0 +1,32 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Stefan Kopco <hey@oddcelot.dev>
+Date: Wed, 28 Oct 2026 19:20:30 +0100
+Subject: [PATCH] event_loop: mini loop drains the inline pool on wasm
+
+---
+ src/event_loop/MiniEventLoop.rs | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/src/event_loop/MiniEventLoop.rs b/src/event_loop/MiniEventLoop.rs
+index 6219edb6..673811ac 100644
+--- a/src/event_loop/MiniEventLoop.rs
++++ b/src/event_loop/MiniEventLoop.rs
+@@ -304,6 +304,18 @@ impl MiniEventLoop {
+ 
+     #[inline]
+     pub fn tick_once(&mut self, context: *mut c_void) {
++        // wasm-experiment: no threads or uws loop. Run queued worker-pool tasks here (they post
++        // their results back to `concurrent_tasks`), then drain.
++        #[cfg(target_family = "wasm")]
++        {
++            while bun_threading::thread_pool::run_pending_one() {}
++            let _ = self.tick_concurrent_with_count();
++            while let Some(task) = self.tasks.read_item() {
++                // SAFETY: see below.
++                unsafe { (*task).run(context) };
++            }
++        }
++        #[cfg(not(target_family = "wasm"))]
+         if self.tick_concurrent_with_count() == 0 && self.tasks.readable_length() == 0 {
+             // SAFETY: see `loop_ptr()` invariant.
+             unsafe {

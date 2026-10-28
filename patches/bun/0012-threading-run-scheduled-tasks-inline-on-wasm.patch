@@ -1,0 +1,124 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Stefan Kopco <hey@oddcelot.dev>
+Date: Wed, 28 Oct 2026 19:20:30 +0100
+Subject: [PATCH] threading: run scheduled tasks inline on wasm
+
+---
+ src/threading/ThreadPool.rs | 58 +++++++++++++++++++++++++++++++++++++
+ src/threading/WaitGroup.rs  | 16 ++++++++++
+ 2 files changed, 74 insertions(+)
+
+diff --git a/src/threading/ThreadPool.rs b/src/threading/ThreadPool.rs
+index dc508d73..5943282b 100644
+--- a/src/threading/ThreadPool.rs
++++ b/src/threading/ThreadPool.rs
+@@ -26,6 +26,9 @@
+ //   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ //   SOFTWARE.
+ 
++// wasm-experiment: the threaded scheduler is unused on wasm
++#![cfg_attr(target_family = "wasm", allow(dead_code))]
++
+ use core::cell::Cell;
+ use core::ptr::{self, NonNull};
+ use core::sync::atomic::{AtomicPtr, AtomicU32, AtomicU64, AtomicUsize, Ordering, fence};
+@@ -653,6 +656,19 @@ impl ThreadPool {
+     }
+ 
+     fn schedule_impl(&self, batch: &Batch, try_current: bool) {
++        // wasm-experiment: no threads; queue the tasks, they run when the caller waits.
++        #[cfg(target_family = "wasm")]
++        {
++            let _ = try_current;
++            inline::push(*batch);
++            return;
++        }
++        #[cfg(not(target_family = "wasm"))]
++        self.schedule_impl_threaded(batch, try_current)
++    }
++
++    #[cfg(not(target_family = "wasm"))]
++    fn schedule_impl_threaded(&self, batch: &Batch, try_current: bool) {
+         let Batch { len, head, tail } = *batch;
+         // Sanity check
+         if len == 0 {
+@@ -788,6 +804,12 @@ impl ThreadPool {
+     /// Warm the thread pool up to the given number of threads.
+     /// https://www.youtube.com/watch?v=ys3qcbO5KWw
+     pub fn warm(&self, count: u16) {
++        // wasm-experiment: no threads.
++        #[cfg(target_family = "wasm")]
++        if true {
++            let _ = count;
++            return;
++        }
+         // Thread counts are 14-bit fields in `Sync`; truncate to 14 bits.
+         let target = count.min((self.max_threads & Sync::IDLE_MASK) as u16);
+         let mut sync = self.sync.load(Ordering::Relaxed);
+@@ -2058,3 +2080,39 @@ pub mod node {
+         }
+     }
+ }
++
++/// wasm-experiment: a single-threaded stand-in for the worker pool. `schedule` queues tasks
++/// here; whoever would block on the pool (`WaitGroup::wait`, the mini event loop tick) calls
++/// [`run_pending_one`] instead, so tasks run on the calling thread.
++#[cfg(target_family = "wasm")]
++pub(crate) mod inline {
++    use super::{Batch, Task};
++    use std::collections::VecDeque;
++
++    // Raw task pointers aren't `Send`; stored as addresses (single-threaded anyway).
++    static QUEUE: std::sync::Mutex<VecDeque<usize>> = std::sync::Mutex::new(VecDeque::new());
++
++    pub(crate) fn push(mut batch: Batch) {
++        let mut q = QUEUE.lock().unwrap();
++        while let Some(task) = batch.pop() {
++            q.push_back(task.as_ptr() as usize);
++        }
++    }
++
++    pub(crate) fn run_one() -> bool {
++        let Some(addr) = QUEUE.lock().unwrap().pop_front() else {
++            return false;
++        };
++        let task = addr as *mut Task;
++        // SAFETY: queued by `push` from a live scheduled task; the lock is released so the
++        // callback may schedule more work.
++        unsafe { ((*task).callback)(task) };
++        true
++    }
++}
++
++/// wasm-experiment: runs one queued task on the calling thread; false when none is queued.
++#[cfg(target_family = "wasm")]
++pub fn run_pending_one() -> bool {
++    inline::run_one()
++}
+diff --git a/src/threading/WaitGroup.rs b/src/threading/WaitGroup.rs
+index e33d4db8..7bc0b8cc 100644
+--- a/src/threading/WaitGroup.rs
++++ b/src/threading/WaitGroup.rs
+@@ -97,6 +97,22 @@ impl WaitGroup {
+ 
+     /// Once this returns every [`finish_raw`](Self::finish_raw) is done; the group may be freed.
+     pub fn wait(&self) {
++        // wasm-experiment: no threads; run queued pool tasks on this thread until done.
++        #[cfg(target_family = "wasm")]
++        {
++            while self.raw_count.load(Ordering::Acquire) > 0 {
++                if !crate::thread_pool::run_pending_one() {
++                    panic!("WaitGroup::wait would block forever (no queued tasks)");
++                }
++            }
++            return;
++        }
++        #[cfg(not(target_family = "wasm"))]
++        self.wait_blocking()
++    }
++
++    #[cfg(not(target_family = "wasm"))]
++    fn wait_blocking(&self) {
+         self.mutex.lock();
+         // crate::Mutex is a raw lock/unlock wrapper (no RAII guard), so unlock
+         // is called explicitly at scope exit below.

@@ -1,0 +1,125 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Stefan Kopco <hey@oddcelot.dev>
+Date: Wed, 28 Oct 2026 19:27:56 +0100
+Subject: [PATCH] sys: wasm get_fd_path from remembered open() paths
+
+---
+ src/sys/lib.rs       | 10 +++++--
+ src/sys/wasm_impl.rs | 67 +++++++++++++++++++++++++++++++++++++++++++-
+ src/sys/wasm_libc.rs |  1 +
+ 3 files changed, 75 insertions(+), 3 deletions(-)
+
+diff --git a/src/sys/lib.rs b/src/sys/lib.rs
+index 8ac7796f..2f78a930 100644
+--- a/src/sys/lib.rs
++++ b/src/sys/lib.rs
+@@ -7761,8 +7761,14 @@ pub fn get_fd_path<'a>(fd: Fd, out: &'a mut bun_paths::PathBuffer) -> Maybe<&'a
+         windows
+     )))]
+     {
+-        let _ = (fd, out);
+-        Err(Error::from_code_int(libc::ENOSYS, Tag::readlink))
++        // wasm-experiment: the wasm backend remembers the path each fd was opened with.
++        #[cfg(target_family = "wasm")]
++        return wasm_impl::get_fd_path(fd, out);
++        #[cfg(not(target_family = "wasm"))]
++        {
++            let _ = (fd, out);
++            Err(Error::from_code_int(libc::ENOSYS, Tag::readlink))
++        }
+     }
+ }
+ 
+diff --git a/src/sys/wasm_impl.rs b/src/sys/wasm_impl.rs
+index 29864c26..e88db101 100644
+--- a/src/sys/wasm_impl.rs
++++ b/src/sys/wasm_impl.rs
+@@ -122,10 +122,75 @@ pub fn openat(dir: impl AsFd, path: &ZStr, flags: i32, mode: Mode) -> Maybe<Fd>
+     let p = path.as_bytes();
+     // SAFETY: `p` is valid for `p.len()` bytes.
+     let rc = unsafe { host::open(dir.as_fd().native(), p.as_ptr(), p.len(), flags, mode) };
+-    ret_p(rc, Tag::open, p).map(|fd| Fd::from_native(fd as _))
++    let fd = ret_p(rc, Tag::open, p).map(|fd| Fd::from_native(fd as _))?;
++    fd_paths::record(dir.as_fd(), fd, p);
++    Ok(fd)
++}
++
++/// `get_fd_path` for wasm: the host has no `/proc/self/fd`, so remember each fd's absolute path.
++mod fd_paths {
++    use super::*;
++    use std::collections::BTreeMap;
++    use std::sync::Mutex;
++
++    static PATHS: Mutex<BTreeMap<i32, Vec<u8>>> = Mutex::new(BTreeMap::new());
++
++    pub(super) fn record(dir: Fd, fd: Fd, path: &[u8]) {
++        let mut joined: Vec<u8> = Vec::new();
++        if path.first() != Some(&b'/') {
++            let base = if dir == Fd::cwd() {
++                let mut buf = [0u8; 4096];
++                getcwd(&mut buf).map(|n| buf[..n].to_vec()).unwrap_or_else(|_| b"/".to_vec())
++            } else {
++                PATHS.lock().unwrap().get(&dir.native()).cloned().unwrap_or_else(|| b"/".to_vec())
++            };
++            joined.extend_from_slice(&base);
++            joined.push(b'/');
++        }
++        joined.extend_from_slice(path);
++        let mut out: Vec<&[u8]> = Vec::new();
++        for seg in joined.split(|c| *c == b'/') {
++            match seg {
++                b"" | b"." => {}
++                b".." => {
++                    out.pop();
++                }
++                s => out.push(s),
++            }
++        }
++        let mut abs = Vec::with_capacity(joined.len());
++        for seg in &out {
++            abs.push(b'/');
++            abs.extend_from_slice(seg);
++        }
++        if abs.is_empty() {
++            abs.push(b'/');
++        }
++        PATHS.lock().unwrap().insert(fd.native(), abs);
++    }
++
++    pub(super) fn forget(fd: Fd) {
++        PATHS.lock().unwrap().remove(&fd.native());
++    }
++
++    pub(super) fn get(fd: Fd) -> Option<Vec<u8>> {
++        PATHS.lock().unwrap().get(&fd.native()).cloned()
++    }
++}
++
++pub(crate) fn get_fd_path<'a>(fd: Fd, out: &'a mut bun_paths::PathBuffer) -> Maybe<&'a mut [u8]> {
++    match fd_paths::get(fd) {
++        Some(p) if p.len() <= out.0.len() => {
++            out.0[..p.len()].copy_from_slice(&p);
++            Ok(&mut out.0[..p.len()])
++        }
++        Some(_) => Err(Error::from_code(E::ENAMETOOLONG, Tag::readlink)),
++        None => Err(Error::from_code(E::EBADF, Tag::readlink).with_fd(fd)),
++    }
+ }
+ 
+ pub fn close(fd: Fd) -> Maybe<()> {
++    fd_paths::forget(fd);
+     // SAFETY: plain integer call.
+     ret_fd(unsafe { host::close(fd.native()) }, Tag::close, fd).map(|_| ())
+ }
+diff --git a/src/sys/wasm_libc.rs b/src/sys/wasm_libc.rs
+index 7202fdb5..7d4e6b1e 100644
+--- a/src/sys/wasm_libc.rs
++++ b/src/sys/wasm_libc.rs
+@@ -96,6 +96,7 @@ pub(crate) const O_SYNC: c_int = 0o4010000;
+ pub(crate) const O_NOFOLLOW: c_int = 0o400000;
+ pub(crate) const SEEK_CUR: c_int = 1;
+ pub(crate) const AT_REMOVEDIR: c_int = 0x200;
++#[allow(dead_code)] // wasm-experiment: was used by get_fd_path's fallback
+ pub(crate) const ENOSYS: c_int = 38;
+ pub(crate) type in_port_t = u16;
+ 
