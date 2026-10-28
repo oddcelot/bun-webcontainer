@@ -54,6 +54,17 @@ const exampleName = params.get("example") ?? "";
 const repoParam = params.get("repo") ?? "";
 const repo = repoParam ? parseRepo(repoParam) : null;
 if (repoParam && !repo) log("error", `[github] not a GitHub repo: ${repoParam}`);
+/** Selects this page's project in the picker (`shared`: it came from a share link). */
+function showProject(shared: boolean) {
+  const selected = repoParam ? `repo:${repoParam}` : exampleName;
+  const extra: [string, string][] = [];
+  if (repoParam && !(repoParam in repoExamples)) extra.push([`GitHub: ${repoParam}`, selected]);
+  if (shared) extra.push(["Shared project", "#shared"]);
+  session.setProject({ selected: shared ? "#shared" : repoParam || exampleName in examples ? selected : "", extra });
+}
+// Right away, from the URL: a repo can take a while to fetch, and the picker shouldn't say "Confetti demo" meanwhile.
+showProject(isShareLink(location.hash));
+
 // A share link (#code=…) carries the project itself; it wins over ?repo= and ?example=.
 let shared = false;
 if (isShareLink(location.hash)) {
@@ -87,13 +98,8 @@ function openProject(value: string) {
   location.assign(url);
 }
 
-{
-  const selected = repoParam ? `repo:${repoParam}` : exampleName;
-  const extra: [string, string][] = [];
-  if (repoParam && !(repoParam in repoExamples)) extra.push([`GitHub: ${repoParam}`, selected]);
-  if (shared) extra.push(["Shared project", "#shared"]);
-  session.setProject({ selected: shared ? "#shared" : repoParam || exampleName in examples ? selected : "", extra });
-}
+// A damaged share link fell back to the demo.
+if (isShareLink(location.hash) && !shared) showProject(false);
 if (canRun) await setupServiceWorker();
 const semver = canRun ? await loadSemver() : undefined;
 const runner = canRun ? new Runner(vfs, log) : undefined;
