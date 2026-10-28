@@ -1,5 +1,5 @@
 import { File } from "@pierre/diffs";
-import { Editor } from "@pierre/diffs/edit";
+import { Editor, type Marker } from "@pierre/diffs/edit";
 import { onTheme, themeName } from "../theme";
 import type { CodeEditor } from "./types";
 
@@ -16,6 +16,7 @@ export function createPierre(parent: HTMLElement): CodeEditor {
   let path = "";
   let listener: (text: string) => void = () => {};
   let theme = themeName();
+  let markers: Marker[] = [];
 
   onTheme((next) => {
     if (next === theme) return;
@@ -35,6 +36,7 @@ export function createPierre(parent: HTMLElement): CodeEditor {
 
   function show(nextPath: string, nextText: string | null) {
     close();
+    if (nextPath !== path) markers = [];
     path = nextPath;
     text = nextText ?? "";
     view = new File({
@@ -50,6 +52,7 @@ export function createPierre(parent: HTMLElement): CodeEditor {
     if (nextText === null) return;
     editor = new Editor("file");
     finish = editor.edit(view);
+    if (markers.length) editor.setMarkers(markers);
   }
 
   return {
@@ -60,11 +63,22 @@ export function createPierre(parent: HTMLElement): CodeEditor {
     update(nextText) {
       if (nextText !== text) show(path, nextText);
     },
+    setDiagnostics(diagnostics) {
+      markers = diagnostics.map((d) => ({
+        severity: d.severity,
+        message: d.message,
+        source: "bun",
+        start: { line: d.line - 1, character: d.column - 1 },
+        end: { line: d.line - 1, character: d.column - 1 + Math.max(d.length, 1) },
+      }));
+      editor?.setMarkers(markers);
+    },
     getText: () => editor?.getText() ?? text,
     clear() {
       close();
       host.replaceChildren();
       path = text = "";
+      markers = [];
       listener = () => {};
     },
     destroy() {

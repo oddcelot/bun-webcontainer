@@ -81,7 +81,7 @@ function packageType(vfs: VFS, path: string): string | undefined {
 }
 
 /** `compilerOptions` of the nearest tsconfig.json above `path` (comments and trailing commas allowed; no `extends`). */
-function tsconfigFor(vfs: VFS, path: string): TsconfigFlags {
+export function tsconfigFor(vfs: VFS, path: string): TsconfigFlags {
   for (let dir = dirname(path); ; dir = dirname(dir)) {
     const text = vfs.readText(dir ? `${dir}/tsconfig.json` : "tsconfig.json");
     if (text !== undefined) {

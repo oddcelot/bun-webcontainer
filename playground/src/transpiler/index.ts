@@ -12,6 +12,24 @@ type Exports = {
   output_free(out: bigint): void;
 };
 
+/** One parser message. `line`/`column` are 1-based and `column`/`length` count UTF-8 bytes (see transpile-wasm's `format_json`). */
+export type Diagnostic = {
+  severity: "error" | "warning";
+  text: string;
+  line?: number;
+  column?: number;
+  length?: number;
+  notes: { text: string; line?: number; column?: number; length?: number }[];
+};
+
+/** Thrown when Bun's parser rejects the source; `message` is the messages' text, one per line. */
+export class TranspileError extends Error {
+  constructor(message: string, readonly diagnostics: Diagnostic[]) {
+    super(message);
+    this.name = "TranspileError";
+  }
+}
+
 /** tsconfig `compilerOptions` the output depends on (bits of transpile-wasm's `flags`). */
 export type TsconfigFlags = { experimentalDecorators?: boolean; emitDecoratorMetadata?: boolean };
 
@@ -73,7 +91,7 @@ export async function transpile(source: string, path: string, tsconfig: Tsconfig
   };
   const [pp, pl] = put(path);
   const [sp, sl] = put(source);
-  const flags = (tsconfig.experimentalDecorators ? 1 : 0) | (tsconfig.emitDecoratorMetadata ? 2 : 0);
+  const flags = (tsconfig.experimentalDecorators ? 1 : 0) | (tsconfig.emitDecoratorMetadata ? 2 : 0) | 4; // 4: errors as JSON
   const loader = LOADERS[path.slice(path.lastIndexOf(".") + 1)] ?? 0;
   current = resolve;
   resolveError = undefined;
@@ -91,7 +109,16 @@ export async function transpile(source: string, path: string, tsconfig: Tsconfig
     const ptr = Number(view.getBigUint64(at + 8, true));
     const len = Number(view.getBigUint64(at + 16, true));
     const text = dec.decode(new Uint8Array(w.memory.buffer, ptr, len));
-    if (status !== 0n) throw new Error(text.trim() || "transpile failed");
+    if (status !== 0n) {
+      let diagnostics: Diagnostic[] = [];
+      try {
+        diagnostics = (JSON.parse(text) as { diagnostics: Diagnostic[] }).diagnostics;
+      } catch {
+        // Not JSON (e.g. "print failed"): keep the text.
+        throw new Error(text.trim() || "transpile failed");
+      }
+      throw new TranspileError(diagnostics.map((d) => d.text).join("\n") || "transpile failed", diagnostics);
+    }
     return text;
   } finally {
     w.output_free(out);
