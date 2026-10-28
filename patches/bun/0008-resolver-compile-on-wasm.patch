@@ -1,0 +1,63 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Stefan Kopco <hey@oddcelot.dev>
+Date: Wed, 28 Oct 2026 18:28:22 +0100
+Subject: [PATCH] resolver: compile on wasm
+
+---
+ src/resolver/fs/stat_hash.rs | 2 +-
+ src/resolver/lib.rs          | 8 ++++++--
+ src/resolver/resolver.rs     | 2 +-
+ 3 files changed, 8 insertions(+), 4 deletions(-)
+
+diff --git a/src/resolver/fs/stat_hash.rs b/src/resolver/fs/stat_hash.rs
+index fedfe150..0cb7ffe5 100644
+--- a/src/resolver/fs/stat_hash.rs
++++ b/src/resolver/fs/stat_hash.rs
+@@ -18,7 +18,7 @@ pub struct StatHash {
+ fn stat_mtime(s: &Stat) -> Timespec {
+     // The `libc` crate flattens BSD/Darwin `st_mtimespec` into
+     // `st_mtime`/`st_mtime_nsec` so the access is uniform on all `unix`.
+-    #[cfg(unix)]
++    #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+     {
+         Timespec {
+             sec: s.st_mtime,
+diff --git a/src/resolver/lib.rs b/src/resolver/lib.rs
+index be65fc7a..20f78341 100644
+--- a/src/resolver/lib.rs
++++ b/src/resolver/lib.rs
+@@ -1627,7 +1627,7 @@ pub mod fs {
+             // `st_mtime_nsec` (ns). The `libc` crate flattens BSD/Darwin
+             // `st_mtimespec` into `st_mtime`/`st_mtime_nsec`, so the access is
+             // uniform on all `unix`.
+-            #[cfg(unix)]
++            #[cfg(any(unix, target_family = "wasm"))] // wasm-experiment
+             let mtime: i128 = (stat.st_mtime as i128) * NS_PER_S + stat.st_mtime_nsec as i128;
+             #[cfg(windows)]
+             let mtime: i128 = (stat.mtim.sec as i128) * NS_PER_S + stat.mtim.nsec as i128;
+@@ -2205,7 +2205,11 @@ pub mod cache {
+             // A single let-expression avoids `mem::zeroed()` on a
+             // type that may have niche (NonZero) fields.
+             let file_handle: bun_sys::File = if let Some(f) = _file_handle {
+-                bun_sys::lseek(f, 0, libc::SEEK_SET).map_err(crate::Error::from)?;
++                #[cfg(not(target_family = "wasm"))]
++                const SEEK_SET: i32 = libc::SEEK_SET;
++                #[cfg(target_family = "wasm")] // wasm-experiment: libc crate lacks it here
++                const SEEK_SET: i32 = 0;
++                bun_sys::lseek(f, 0, SEEK_SET).map_err(crate::Error::from)?;
+                 bun_sys::File::from_fd(f)
+             } else if feature_flags::STORE_FILE_DESCRIPTORS && dirname_fd.is_valid() {
+                 match bun_sys::openat_a(
+diff --git a/src/resolver/resolver.rs b/src/resolver/resolver.rs
+index 067192e0..f490f520 100644
+--- a/src/resolver/resolver.rs
++++ b/src/resolver/resolver.rs
+@@ -4499,7 +4499,7 @@ impl<'a> Resolver<'a> {
+                     path[nul_at] = 0;
+                     let sentinel = bun_core::ZStr::from_buf(path, nul_at);
+ 
+-                    #[cfg(unix)]
++                    #[cfg(not(windows))] // wasm-experiment: was cfg(unix)
+                     let open_req: crate::CrateResult<FD> = {
+                         bun_sys::open_dir_absolute_z(
+                             sentinel,

@@ -1,0 +1,36 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Stefan Kopco <hey@oddcelot.dev>
+Date: Wed, 28 Oct 2026 18:34:00 +0100
+Subject: [PATCH] perf: wasm Timer reads 0 instead of trapping
+
+---
+ src/perf/system_timer.rs | 9 ++++-----
+ 1 file changed, 4 insertions(+), 5 deletions(-)
+
+diff --git a/src/perf/system_timer.rs b/src/perf/system_timer.rs
+index aa0e9e2a..e998effa 100644
+--- a/src/perf/system_timer.rs
++++ b/src/perf/system_timer.rs
+@@ -10,18 +10,17 @@ impl Timer {
+         Ok(Self)
+     }
+ 
+-    // Tracing is never enabled in WASM; keep the fn signatures and trap at
+-    // runtime instead of using `compile_error!` (which fires unconditionally).
++    // wasm-experiment: tracing is off, but the resolver resets its timer on every resolve; no clock here.
+     pub fn read(&self) -> u64 {
+-        unreachable!("FeatureFlags.tracing should be disabled in WASM");
++        0
+     }
+ 
+     pub fn lap(&mut self) -> u64 {
+-        unreachable!("FeatureFlags.tracing should be disabled in WASM");
++        0
+     }
+ 
+     pub fn reset(&mut self) -> u64 {
+-        unreachable!("FeatureFlags.tracing should be disabled in WASM");
++        0
+     }
+ }
+ 
