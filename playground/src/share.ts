@@ -44,9 +44,9 @@ const SECRET = /(^|\/)(\.env(\.(?!example$|sample$|template$)[^/]+)?|\.npmrc|\.n
 /** Over this, some chat apps cut a link off; Share tries without bun.lock, then suggests GitHub. */
 export const LONG_LINK = 32 * 1024;
 /** The shortener keeps up to ~64 KB of packed project (worker/index.ts); a link past this can't be shortened. */
-const MAX_SHORT = Math.ceil((64 * 1024 * 4) / 3) + 256;
+export const MAX_SHORT = Math.ceil((64 * 1024 * 4) / 3) + 256;
 
-type Link = {
+export type Link = {
   url: string;
   files: number;
   /** Binary files, which can't travel in a link. */
@@ -108,19 +108,18 @@ export async function loadShareLink(vfs: VFS, hash: string): Promise<number> {
 
 const escapeAttr = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
 
-/**
- * The Share menu (a popover under the Share button): copy the link, a Markdown badge for a README, or the same
- * badge as HTML. The link is built when the menu opens, so it carries the files as they are then.
- */
-export function mountShareMenu(menu: HTMLElement, vfs: VFS, log: (level: string, text: string) => void) {
-  const badge = new URL(`${BASE}badge.svg`, location.origin).href;
-  let link: Awaited<ReturnType<typeof shareLink>> | undefined;
-  const size = menu.querySelector<HTMLElement>("[data-share-size]")!;
-  const lead = menu.querySelector<HTMLElement>("[data-share-lead]")!;
-  const notes = menu.querySelector<HTMLElement>("[data-share-notes]")!;
-  const leadText = lead.textContent!;
-  /** What the link leaves out, and whether it's long: one line each. */
-  const noteLines = (l: Link) => [
+export const badgeUrl = () => new URL(`${BASE}badge.svg`, location.origin).href;
+
+/** What the clipboard gets for each Share menu entry, given the link. */
+export const formats = {
+  link: (url: string) => url,
+  markdown: (url: string) => `[![Open in runbun](${badgeUrl()})](${url})`,
+  html: (url: string) => `<a href="${escapeAttr(url)}"><img src="${badgeUrl()}" alt="Open in runbun" width="150" height="28"></a>`,
+};
+
+/** What the link leaves out, and whether it's long: one line each. */
+export const noteLines = (l: Link) =>
+  [
     l.secrets.length ? `Left out, as they may hold secrets: ${l.secrets.join(", ")}` : "",
     l.skipped ? `Left out: ${l.skipped} binary ${l.skipped === 1 ? "file" : "files"} (images, fonts, …)` : "",
     l.droppedLock ? "Left out bun.lock to keep the link short: versions are resolved from package.json." : "",
@@ -128,87 +127,12 @@ export function mountShareMenu(menu: HTMLElement, vfs: VFS, log: (level: string,
       ? "Long link: some chat apps cut these off. For a project this size, push it to GitHub and share it from there (?repo=)."
       : "",
   ].filter(Boolean);
-  const shortItem = menu.querySelector<HTMLButtonElement>('[data-share="short"]')!;
-  const shortSub = shortItem.querySelector<HTMLElement>(".sub")!;
-  const shortSubText = shortSub.textContent!;
 
-  /**
-   * Opt-in: stores the packed project on runbun.dev (worker/index.ts) and copies runbun.dev/s/<id>. The clipboard
-   * gets a promise of the text, so the write still counts as part of the click while the request runs.
-   */
-  async function copyShort(item: HTMLButtonElement, label: HTMLElement, idle: string, l: Link) {
-    const payload = l.url.slice(l.url.indexOf(PREFIX) + PREFIX.length);
-    const shortUrl = fetch(`${BASE}api/short`, { method: "POST", body: payload }).then(async (res) => {
-      const body = (await res.json().catch(() => ({}))) as { path?: string; error?: string };
-      if (!res.ok || !body.path) throw new Error(body.error ?? `the shortener answered ${res.status}`);
-      return new URL(body.path, location.origin).href;
-    });
-    label.textContent = "Shortening…";
-    let result: string;
-    try {
-      await navigator.clipboard.write([new ClipboardItem({ "text/plain": shortUrl.then((u) => new Blob([u], { type: "text/plain" })) })]);
-      result = await shortUrl;
-      log("sys", `[share] short link copied: ${result} (a copy of the project is stored on runbun.dev)`);
-      label.textContent = "Copied";
-    } catch (e) {
-      const why = e instanceof Error ? e.message : String(e);
-      log("error", `[share] no short link: ${/fetch|JSON|answered 404/.test(why) ? "the shortener isn't reachable here (it runs on runbun.dev)" : why}`);
-      label.textContent = "Couldn't shorten";
-    }
-    item.dataset.copied = "";
-    setTimeout(() => {
-      delete item.dataset.copied;
-      label.textContent = idle;
-    }, 1600);
-  }
-
-  const formats: Record<string, (url: string) => string> = {
-    link: (url) => url,
-    markdown: (url) => `[![Open in runbun](${badge})](${url})`,
-    html: (url) => `<a href="${escapeAttr(url)}"><img src="${badge}" alt="Open in runbun" width="150" height="28"></a>`,
-  };
-
-  menu.addEventListener("beforetoggle", async (e) => {
-    if ((e as ToggleEvent).newState !== "open") return;
-    size.textContent = "…";
-    link = await shareLink(vfs);
-    if (link.short) {
-      lead.textContent = `A short link to ${link.short}. Edit a file and the link carries your copy instead.`;
-      size.textContent = link.url.replace(/^https?:\/\//, "");
-    } else {
-      lead.textContent = leadText;
-      size.textContent = `${link.files} files · ${(link.url.length / 1024).toFixed(1)} KB`;
-    }
-    shortItem.hidden = !!link.short;
-    shortItem.disabled = link.url.length > MAX_SHORT;
-    shortSub.textContent = shortItem.disabled ? "Too large for a short link: share it from GitHub" : shortSubText;
-    const lines = noteLines(link);
-    notes.replaceChildren(...lines.map((t) => Object.assign(document.createElement("li"), { textContent: t })));
-    notes.hidden = !lines.length;
-    notes.classList.toggle("warn", link.url.length > LONG_LINK);
-  });
-
-  for (const item of menu.querySelectorAll<HTMLButtonElement>("[data-share]")) {
-    const label = item.querySelector<HTMLElement>(".title")!;
-    const idle = label.textContent!;
-    item.onclick = async () => {
-      link ??= await shareLink(vfs);
-      const kind = item.dataset.share!;
-      if (kind === "short") return copyShort(item, label, idle, link);
-      const text = formats[kind](link.url);
-      // The address bar shows the link too, so it can be copied from there or bookmarked.
-      history.replaceState(null, "", link.url);
-      let copied = true;
-      await navigator.clipboard.writeText(text).catch(() => (copied = false));
-      const what = kind === "link" ? "link" : kind === "markdown" ? "Markdown badge" : "HTML badge";
-      log("sys", `[share] ${copied ? `${what} copied` : "copying failed; the link is in the address bar"}: ${size.textContent}`);
-      for (const line of noteLines(link)) log(link.url.length > LONG_LINK && line.startsWith("Long") ? "warn" : "sys", `[share] ${line}`);
-      item.dataset.copied = "";
-      label.textContent = copied ? "Copied" : "Couldn't copy";
-      setTimeout(() => {
-        delete item.dataset.copied;
-        label.textContent = idle;
-      }, 1400);
-    };
-  }
+/** Stores the packed project on runbun.dev (worker/index.ts) and returns runbun.dev/s/<id>. */
+export async function shortLink(l: Link): Promise<string> {
+  const payload = l.url.slice(l.url.indexOf(PREFIX) + PREFIX.length);
+  const res = await fetch(`${BASE}api/short`, { method: "POST", body: payload });
+  const body = (await res.json().catch(() => ({}))) as { path?: string; error?: string };
+  if (!res.ok || !body.path) throw new Error(body.error ?? `the shortener answered ${res.status}`);
+  return new URL(body.path, location.origin).href;
 }

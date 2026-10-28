@@ -52,29 +52,9 @@
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
+    <!-- src/ui/Header.tsx renders the header; this is what crawlers and no-JS visitors see. -->
     <header>
       <h1 class="title"><img src="/src/bun-logo.svg" alt="" width="23" height="20" /><span class="sr-only">runbun.dev: Bun in your browser</span><span id="title" aria-hidden="true">Bun playground</span></h1>
-      <button id="run"><i class="i-lucide-play" aria-hidden="true"></i> Run</button>
-      <button id="share" popovertarget="share-menu" title="Share this project"><i class="i-lucide-share-2" aria-hidden="true"></i> Share</button>
-      <div id="share-menu" popover>
-        <p class="lead"><span data-share-lead>The project travels in the link: nothing is uploaded, unless you pick a short link.</span> <span data-share-size></span></p>
-        <ul class="notes" data-share-notes hidden></ul>
-        <button data-share="link"><i class="i-lucide-link" aria-hidden="true"></i><span><span class="title">Copy link</span><span class="sub">Send it in a chat, open it anywhere</span></span></button>
-        <button data-share="short"><i class="i-lucide-link-2" aria-hidden="true"></i><span><span class="title">Copy short link</span><span class="sub">runbun.dev/s/…: stores a copy on runbun.dev</span></span></button>
-        <button data-share="markdown"><i class="i-lucide-file-text" aria-hidden="true"></i><span><span class="title">Copy README badge</span><span class="sub">Markdown, for GitHub</span><img src="/badge.svg" alt="Open in runbun" width="150" height="28" /></span></button>
-        <button data-share="html"><i class="i-lucide-code" aria-hidden="true"></i><span><span class="title">Copy HTML badge</span><span class="sub">For a website or blog post</span></span></button>
-      </div>
-      <button id="install" title="bun install"><i class="i-lucide-download" aria-hidden="true"></i><span class="label">bun install</span></button>
-      <button id="newfile" title="New file"><i class="i-lucide-file-plus" aria-hidden="true"></i><span class="label">New file</span></button>
-      <button id="openfolder" title="Open folder"><i class="i-lucide-folder-open" aria-hidden="true"></i><span class="label">Open folder</span></button>
-      <button id="openrepo" title="Open GitHub repo"><i class="i-lucide-github" aria-hidden="true"></i><span class="label">Open GitHub repo</span></button>
-      <select id="example" title="Example project">
-        <option value="">Confetti demo</option>
-      </select>
-      <input id="folderinput" type="file" webkitdirectory multiple hidden />
-      <span id="status" role="status" data-state="idle">Stopped</span>
-      <span id="modes" role="group" aria-label="Color scheme"></span>
-      <select id="theme" title="Theme"></select>
     </header>
     <main>
       <nav id="tree"></nav>

@@ -1,0 +1,42 @@
+import { For, createMemo, from } from "solid-js";
+import type { ColorMode } from "@pierre/theming";
+import { FAMILIES, familyOf, pickFamily, setColorMode, watchTheme } from "../theme";
+
+const MODES: [ColorMode, string, string][] = [
+  ["system", "i-lucide-monitor", "System"],
+  ["light", "i-lucide-sun", "Light"],
+  ["dark", "i-lucide-moon", "Dark"],
+];
+
+/** A system/light/dark toggle and the theme families. */
+export function ThemePicker() {
+  const theme = createMemo(() => from(watchTheme));
+  return (
+    <>
+      <span id="modes" role="group" aria-label="Color scheme">
+        <For each={MODES}>
+          {([mode, icon, label]) => (
+            <button
+              type="button"
+              title={`${label} color scheme`}
+              aria-label={`${label} color scheme`}
+              aria-pressed={theme().mode === mode ? "true" : "false"}
+              onClick={() => setColorMode(mode)}
+            >
+              <i class={icon} aria-hidden="true" />
+            </button>
+          )}
+        </For>
+      </span>
+      <select id="theme" title="Theme" value={familyOf(theme())} onChange={(e) => pickFamily(e.currentTarget.value)}>
+        <For each={Object.entries(FAMILIES)}>
+          {([label, list]) => (
+            <optgroup label={label}>
+              <For each={list}>{([name, light]) => <option value={light}>{name}</option>}</For>
+            </optgroup>
+          )}
+        </For>
+      </select>
+    </>
+  );
+}

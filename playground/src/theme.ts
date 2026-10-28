@@ -7,7 +7,7 @@ import { themes } from "@pierre/theming/themes";
 const VARS_KEY = "theme-vars";
 
 /** Themes that come in both schemes: [name, light variant, dark variant]. */
-const FAMILIES: Record<string, [string, string, string][]> = {
+export const FAMILIES: Record<string, [string, string, string][]> = {
   Pierre: [
     ["Pierre", "pierre-light", "pierre-dark"],
     ["Pierre Soft", "pierre-light-soft", "pierre-dark-soft"],
@@ -134,52 +134,26 @@ export function onTheme(fn: (name: string, theme: ThemeLike) => void) {
   if (applied) fn(themeName(), applied);
 }
 
-const MODES: [ColorMode, string, string][] = [
-  ["system", "i-lucide-monitor", "System"],
-  ["light", "i-lucide-sun", "Light"],
-  ["dark", "i-lucide-moon", "Dark"],
-];
+const families = Object.values(FAMILIES).flat();
 
-/** A system/light/dark toggle into `modes`, and the theme families into `select`. */
-export function mountThemePicker(modes: HTMLElement, select: HTMLSelectElement) {
-  const buttons = MODES.map(([mode, icon, label]) => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.title = `${label} color scheme`;
-    b.setAttribute("aria-label", b.title);
-    b.innerHTML = `<i class="${icon}" aria-hidden="true"></i>`;
-    b.onclick = () => controller.setColorMode(mode);
-    return b;
-  });
-  modes.replaceChildren(...buttons);
-
-  const families = Object.values(FAMILIES).flat();
-  select.replaceChildren(
-    ...Object.entries(FAMILIES).map(([label, list]) => {
-      const group = Object.assign(document.createElement("optgroup"), { label });
-      group.append(...list.map(([name, light]) => new Option(name, light)));
-      return group;
-    }),
-  );
-  let picking = false;
-  const pick = (light: string) => {
-    const [, , dark] = families.find((f) => f[1] === light)!;
-    picking = true; // the pair is half-set between the two calls
-    controller.setThemeNameForScheme("light", light);
-    picking = false;
-    controller.setThemeNameForScheme("dark", dark);
-  };
-  select.onchange = () => pick(select.value);
-
-  const render = () => {
-    if (picking) return;
-    const { mode, lightThemeName, darkThemeName } = controller.getState();
-    buttons.forEach((b, i) => b.setAttribute("aria-pressed", String(MODES[i][0] === mode)));
-    const family = families.find((f) => f[1] === lightThemeName && f[2] === darkThemeName);
-    // A saved pair that isn't a family (e.g. from an older version): fall back to the light side's family, or Pierre.
-    if (!family) return pick(families.find((f) => f[1] === lightThemeName)?.[1] ?? "pierre-light");
-    select.value = family[1];
-  };
-  controller.subscribe(render);
-  render();
+/** Sets both halves of a theme family, given its light variant. */
+export function pickFamily(light: string) {
+  const [, , dark] = families.find((f) => f[1] === light)!;
+  controller.setThemeNameForScheme("light", light);
+  controller.setThemeNameForScheme("dark", dark);
 }
+
+/** The family (by light variant) of the current pair, if it is one. */
+export const familyOf = (s: { lightThemeName: string; darkThemeName: string }) =>
+  families.find((f) => f[1] === s.lightThemeName && f[2] === s.darkThemeName)?.[1];
+
+// A saved pair that isn't a family (e.g. from an older version): fall back to the light side's family, or Pierre.
+if (!familyOf(controller.getState())) pickFamily(families.find((f) => f[1] === controller.getState().lightThemeName)?.[1] ?? "pierre-light");
+
+export type ThemeState = ReturnType<typeof controller.getState>;
+/** Theme state, for `from()`: emits the current state, then every change. */
+export const watchTheme = (next: (s: ThemeState) => void) => {
+  next(controller.getState());
+  return controller.subscribe(() => next(controller.getState()));
+};
+export const setColorMode = (mode: ColorMode) => controller.setColorMode(mode);

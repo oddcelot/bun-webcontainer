@@ -1,11 +1,17 @@
-import { render, type JSX } from "@solidjs/web";
-import { Title } from "./Title";
+import { render } from "@solidjs/web";
+import { AppContext, type App } from "./app";
+import { Header } from "./Header";
 
-// render() appends; index.html keeps static fallback text for crawlers and no-JS visitors.
-function mount(id: string, view: () => JSX.Element) {
-  const root = document.getElementById(id)!;
+/** Renders the header into index.html's <header>, replacing its static fallback (render() appends). */
+export function mountHeader(app: App) {
+  const root = document.querySelector("header")!;
   root.replaceChildren();
-  render(view, root);
+  return render(
+    () => (
+      <AppContext value={app}>
+        <Header />
+      </AppContext>
+    ),
+    root,
+  );
 }
-
-mount("title", () => <Title />);

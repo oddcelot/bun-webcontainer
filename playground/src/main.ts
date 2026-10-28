@@ -3,7 +3,8 @@ import { BASE } from "./base";
 import { seedDemo } from "./demo";
 import { examples, loadExample, repoExamples } from "./examples";
 import { loadRepo, parseRepo, repoQuery } from "./github";
-import { isShareLink, loadShareLink, mountShareMenu, rememberSource } from "./share";
+import { createRoot } from "solid-js";
+import { isShareLink, loadShareLink, rememberSource } from "./share";
 import { createPierre } from "./editors/pierre";
 import { mountDiagnostics } from "./diagnostics";
 import { bunInstall } from "./install";
@@ -14,8 +15,8 @@ import { mountPreview } from "./preview";
 import { loadSemver } from "./semver";
 import { checkSupport, showUnsupported } from "./support";
 import { VFS } from "./vfs";
-import "./ui/mount";
-import { mountThemePicker } from "./theme";
+import { mountHeader } from "./ui/mount";
+import { createSession, type Status } from "./ui/session";
 import { mountConsole } from "./console";
 import { createShell, scriptEntry } from "./shell";
 
@@ -31,13 +32,7 @@ const terminal = mountConsole($("console"), {
   onInterrupt: () => stop(),
   onClear: () => clearConsole(),
 });
-const statusEl = $("status");
-type Status = "idle" | "busy" | "running" | "error";
-let status: [Status, string] = ["idle", "Stopped"];
-function setStatus(state: Status, text: string) {
-  statusEl.dataset.state = state;
-  statusEl.textContent = text;
-}
+const session = createRoot(() => createSession(canRun));
 
 const counts = { lines: 0, error: 0, warn: 0 };
 function showCounts() {
@@ -72,6 +67,7 @@ async function setupServiceWorker() {
 }
 
 const vfs = new VFS();
+mountHeader({ session, vfs, log, run: () => run(), install, openProject, newFile, openFolder, repoParam: new URLSearchParams(location.search).get("repo") ?? "" });
 const params = new URLSearchParams(location.search);
 const exampleName = params.get("example") ?? "";
 const repoParam = params.get("repo") ?? "";
@@ -110,24 +106,18 @@ function openProject(value: string) {
   location.assign(url);
 }
 
-const exampleSelect = $<HTMLSelectElement>("example");
-for (const [name, label] of Object.entries(examples)) exampleSelect.add(new Option(label, name));
-for (const [name, label] of Object.entries(repoExamples)) exampleSelect.add(new Option(label, `repo:${name}`));
-const selected = repoParam ? `repo:${repoParam}` : exampleName;
-if (repoParam && !(repoParam in repoExamples)) exampleSelect.add(new Option(`GitHub: ${repoParam}`, selected));
-if (shared) exampleSelect.add(new Option("Shared project", "#shared"));
-exampleSelect.value = shared ? "#shared" : repoParam || exampleName in examples ? selected : "";
-exampleSelect.onchange = () => exampleSelect.value !== "#shared" && openProject(exampleSelect.value);
-$("openrepo").onclick = () => {
-  const input = prompt("GitHub repo (owner/repo, owner/repo@ref or a github.com URL)", repoParam || "oddcelot/bun-elysia-demo");
-  if (input) openProject(`repo:${input.trim()}`);
-};
+{
+  const selected = repoParam ? `repo:${repoParam}` : exampleName;
+  const extra: [string, string][] = [];
+  if (repoParam && !(repoParam in repoExamples)) extra.push([`GitHub: ${repoParam}`, selected]);
+  if (shared) extra.push(["Shared project", "#shared"]);
+  session.setProject({ selected: shared ? "#shared" : repoParam || exampleName in examples ? selected : "", extra });
+}
 if (canRun) await setupServiceWorker();
 const semver = canRun ? await loadSemver() : undefined;
 const runner = canRun ? new Runner(vfs, log) : undefined;
 const cantRun = () => log("error", "this browser can't run code here; see the banner above the editor");
 
-mountThemePicker($("modes"), $<HTMLSelectElement>("theme"));
 const editorEl = $("editor");
 const editor = createPierre(editorEl);
 const check = mountDiagnostics(vfs, editor);
@@ -174,45 +164,38 @@ function entryFile(): string {
 
 async function run(entry = entryFile()) {
   if (!runner) return cantRun();
-  const btn = $<HTMLButtonElement>("run");
-  btn.disabled = true;
-  setStatus("busy", "Starting…");
-  log("sys", `[run] ${entry}`);
-  try {
-    await runner.start(entry);
-    preview.reload();
-    status = ["running", `Running ${entry}`];
-  } catch (e) {
-    log("error", String(e));
-    status = ["error", "Failed to start"];
-  }
-  setStatus(...status);
-  btn.disabled = false;
+  await session.task("run", "Starting…", async (): Promise<Status> => {
+    log("sys", `[run] ${entry}`);
+    try {
+      await runner.start(entry);
+      preview.reload();
+      return { state: "running", text: `Running ${entry}` };
+    } catch (e) {
+      log("error", String(e));
+      return { state: "error", text: "Failed to start" };
+    }
+  });
 }
 
 async function install() {
   if (!semver) return cantRun();
-  const btn = $<HTMLButtonElement>("install");
-  btn.disabled = true;
-  setStatus("busy", "Installing…");
-  log("sys", "[bun install]");
-  try {
-    const n = await bunInstall(vfs, semver, log);
-    log("sys", `[bun install] ${n} packages installed`);
-  } catch (e) {
-    log("error", String(e));
-  }
-  // A running server keeps running through an install.
-  setStatus(...status);
-  btn.disabled = false;
+  // A running server keeps running through an install, so the status goes back to what it was.
+  await session.task("install", "Installing…", async () => {
+    log("sys", "[bun install]");
+    try {
+      const n = await bunInstall(vfs, semver, log);
+      log("sys", `[bun install] ${n} packages installed`);
+    } catch (e) {
+      log("error", String(e));
+    }
+  });
 }
 
 function stop() {
-  if (status[0] !== "running") return;
+  if (session.settled().state !== "running") return;
   runner?.stop();
   log("sys", "[stopped]");
-  status = ["idle", "Stopped"];
-  setStatus(...status);
+  session.setStatus({ state: "idle", text: "Stopped" });
 }
 
 function clearConsole() {
@@ -224,20 +207,14 @@ function clearConsole() {
 const exec = createShell({ vfs, log, run, install, stop, clear: clearConsole });
 
 const preview = mountPreview();
-$("run").onclick = () => run();
-$("install").onclick = install;
 if (!canRun)
-  for (const el of [$("run"), $("install"), ...document.querySelectorAll("#request button, #request input, #request select")])
+  for (const el of document.querySelectorAll("#request button, #request input, #request select"))
     Object.assign(el, { disabled: true, title: "This browser can't run code here" });
-mountShareMenu($("share-menu"), vfs, log);
 $("clear").onclick = () => {
   clearConsole();
   terminal.focus();
 };
-$("openfolder").onclick = () => $("folderinput").click();
-$<HTMLInputElement>("folderinput").onchange = async (e) => {
-  const files = [...((e.target as HTMLInputElement).files ?? [])];
-  if (!files.length) return;
+async function openFolder(files: File[]) {
   runner?.stop();
   tabs.closeAll();
   vfs.clear();
@@ -254,17 +231,16 @@ $<HTMLInputElement>("folderinput").onchange = async (e) => {
     vfs.write(rel, data);
     n++;
   }
-  (e.target as HTMLInputElement).value = "";
   fileTree.reset();
   log("sys", `[open] ${files[0].webkitRelativePath.split("/")[0] || "files"}: ${n} files (node_modules skipped)`);
   openFile(entryFile());
-};
-$("newfile").onclick = () => {
-  const name = prompt("File path", "new.ts");
-  if (!name) return;
-  vfs.write(name, "");
-  openFile(name);
-};
+}
+
+function newFile(path: string) {
+  vfs.write(path, "");
+  openFile(path);
+}
+session.setReady(true);
 
 /** Like StackBlitz: install on load when a dependency is missing from node_modules. */
 function missingDeps(): boolean {
