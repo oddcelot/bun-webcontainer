@@ -31,13 +31,19 @@ setHostVfs(vfs);
 setFs(vfs, (op, ...args) => post({ type: "vfs", op, args }));
 setStdio((level, text) => post({ type: "console", level, text }));
 g.__nodeBuiltins = builtins;
+/**
+ * `import(url)` that the host Vite leaves alone: in dev it rewrites computed imports in the playground's own code to
+ * add `?import`, and the same module imported statically elsewhere would load a second time.
+ */
+const importUrl = new Function("url", "options", "return import(url, options)") as (url: string, options?: ImportCallOptions) => Promise<unknown>;
+
 /** `import(expr)` in served modules (see rewriteMeta): `file:` URLs and paths, as Bun takes them, load from the VFS. */
 g.__dynamicImport = (from: string, spec: unknown, options?: ImportCallOptions) => {
   const s = String(spec);
   const builtin = s.replace(/^node:/, "");
-  if (builtin in builtins) return import(/* @vite-ignore */ `${BASE}__vfs/__node/${builtin}`);
+  if (builtin in builtins) return importUrl(`${BASE}__vfs/__node/${builtin}`);
   const path = /^(file:|\/|\.)/.test(s) && decodeURIComponent(new URL(s, from).pathname);
-  return import(/* @vite-ignore */ path ? `${BASE}__vfs/${norm(path)}` : s, options);
+  return importUrl(path ? `${BASE}__vfs/${norm(path)}` : s, options);
 };
 g.process = process;
 g.global ??= globalThis;
@@ -465,7 +471,7 @@ self.addEventListener("message", async (e: MessageEvent) => {
   vfs.load(e.data.files, e.data.dirs);
   await booted;
   try {
-    await import(/* @vite-ignore */ `${BASE}__vfs/${e.data.entry}`);
+    await importUrl(`${BASE}__vfs/${e.data.entry}`);
   } catch (err) {
     post({ type: "console", level: "error", text: fmt(err) });
   }
