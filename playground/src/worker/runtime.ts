@@ -377,6 +377,15 @@ async function write(path: string, data: unknown): Promise<number> {
 }
 
 type BuildArtifact = Blob & { path: string; kind: "entry-point" | "chunk" | "asset" | "sourcemap"; loader: string; hash: string | null; sourcemap: BuildArtifact | null };
+/** Bun's Blobs have `json()` and `bytes()`; the browser's may not. */
+class ArtifactBlob extends Blob {
+  async json() {
+    return JSON.parse(await this.text());
+  }
+  async bytes() {
+    return new Uint8Array(await this.arrayBuffer());
+  }
+}
 type BuildOptions = {
   entrypoints: string[];
   outdir?: string;
@@ -439,7 +448,7 @@ async function build(opts: BuildOptions) {
   for (const o of res.outputs) {
     const rel = o.path.replace(/^\.\//, "");
     const loader = o.loader.toLowerCase();
-    const blob = new Blob([o.contents], { type: mimeOf(rel) });
+    const blob = new ArtifactBlob([o.contents], { type: mimeOf(rel) });
     const path = outdir ? nodePath.join(outdir, rel) : `./${rel}`;
     outputs.push(Object.assign(blob, { path, kind: o.kind as BuildArtifact["kind"], loader, hash: o.hash && o.hash !== "0" ? o.hash : null, sourcemap: null as BuildArtifact | null }));
   }
