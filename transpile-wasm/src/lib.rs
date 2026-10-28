@@ -26,6 +26,20 @@ pub const EMIT_DECORATOR_METADATA: u32 = 2;
 
 /// Transpiled JS on success; formatted diagnostics on failure.
 pub fn transpile(path: &[u8], source: &[u8], loader: Loader, flags: u32) -> Result<Vec<u8>, Vec<u8>> {
+    transpile_with(path, source, loader, flags, None)
+}
+
+/// Replaces an import record's specifier: `(specifier, kind)` -> `Some(new)` or `None` to keep it.
+pub type Resolver<'r> = &'r mut dyn FnMut(&[u8], u32) -> Option<Vec<u8>>;
+
+/// Record kinds passed to the resolver (`bun_ast::ImportKind`).
+pub const KIND_STMT: u32 = 2;
+pub const KIND_DYNAMIC: u32 = 4;
+
+/// `transpile`, with each `import`/`export ... from`/`import("x")` specifier (from Bun's import records, so
+/// never text inside strings, templates or comments) passed through `resolve` before printing.
+/// `require()` and `require.resolve()` records are left alone.
+pub fn transpile_with(path: &[u8], source: &[u8], loader: Loader, flags: u32, resolve: Option<Resolver>) -> Result<Vec<u8>, Vec<u8>> {
     let arena = Arena::new();
     let mut ast_alloc = bun_ast::ASTMemoryAllocator::borrowing(&arena);
     let _ast_scope = ast_alloc.enter();
@@ -56,6 +70,18 @@ pub fn transpile(path: &[u8], source: &[u8], loader: Loader, flags: u32) -> Resu
         Ok(_) | Err(_) => return Err(format_log(&log)),
     };
     let mut ast = *ast;
+
+    if let Some(resolve) = resolve {
+        for record in ast.import_records.iter_mut() {
+            let kind = record.kind as u32;
+            if (kind != KIND_STMT && kind != KIND_DYNAMIC) || record.flags.contains(bun_ast::ImportRecordFlags::IS_UNUSED) {
+                continue;
+            }
+            if let Some(new) = resolve(record.path.text, kind) {
+                record.path.text = arena.alloc_slice_copy(&new);
+            }
+        }
+    }
 
     let symbols = bun_ast::symbol::Map::init_with_one_list(
         core::mem::replace(&mut ast.symbols, bun_alloc::ArenaVec::new_in(&arena))
@@ -139,6 +165,18 @@ pub unsafe extern "C" fn transpile_flags_c(
     loader: u32,
     flags: u32,
 ) -> *mut Output {
+    unsafe { run(path, path_len, src, src_len, loader, flags, None) }
+}
+
+unsafe fn run(
+    path: *const u8,
+    path_len: usize,
+    src: *const u8,
+    src_len: usize,
+    loader: u32,
+    flags: u32,
+    resolve: Option<Resolver>,
+) -> *mut Output {
     let slice = |p: *const u8, n: usize| if n == 0 { &[][..] } else { unsafe { core::slice::from_raw_parts(p, n) } };
     let loader = match loader {
         0 => Loader::Js,
@@ -147,7 +185,7 @@ pub unsafe extern "C" fn transpile_flags_c(
         3 => Loader::Tsx,
         _ => return Box::into_raw(Box::new(Output { status: 2, ptr: core::ptr::null_mut(), len: 0 })),
     };
-    let (status, bytes) = match transpile(slice(path, path_len), slice(src, src_len), loader, flags) {
+    let (status, bytes) = match transpile_with(slice(path, path_len), slice(src, src_len), loader, flags, resolve) {
         Ok(b) => (0, b),
         Err(b) => (1, b),
     };
@@ -155,6 +193,50 @@ pub unsafe extern "C" fn transpile_flags_c(
     let (ptr, len) = (bytes.as_mut_ptr(), bytes.len());
     core::mem::forget(bytes);
     Box::into_raw(Box::new(Output { status, ptr, len }))
+}
+
+// ── Host resolver ABI (`transpile_resolve_c`) ──
+//
+// The module imports `env.resolve_specifier(ptr: usize, len: usize, kind: u32) -> usize` (usize = i64 on wasm64).
+// `ptr`/`len` is the UTF-8 specifier as written, valid only during the call; `kind` is 2 (static import or
+// `export ... from`) or 4 (`import("literal")`). The host returns 0 to keep it, or a pointer from this module's
+// `alloc(8 + n)` holding `n` as a little-endian u64 followed by `n` bytes of UTF-8 replacement. The transpiler
+// copies the bytes and frees the buffer. Memory may grow during `alloc`, so the host must re-view `memory.buffer`.
+#[cfg(target_family = "wasm")]
+#[link(wasm_import_module = "env")]
+unsafe extern "C" {
+    #[link_name = "resolve_specifier"]
+    fn host_resolve_specifier(ptr: *const u8, len: usize, kind: u32) -> usize;
+}
+#[cfg(not(target_family = "wasm"))]
+unsafe fn host_resolve_specifier(_: *const u8, _: usize, _: u32) -> usize {
+    0
+}
+
+/// `transpile_flags_c` that rewrites import specifiers through the host's `env.resolve_specifier`.
+///
+/// # Safety
+/// Both input ranges must be readable; the host import must follow the ABI above.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn transpile_resolve_c(
+    path: *const u8,
+    path_len: usize,
+    src: *const u8,
+    src_len: usize,
+    loader: u32,
+    flags: u32,
+) -> *mut Output {
+    let mut host = |spec: &[u8], kind: u32| -> Option<Vec<u8>> {
+        let p = unsafe { host_resolve_specifier(spec.as_ptr(), spec.len(), kind) };
+        if p == 0 {
+            return None;
+        }
+        let n = unsafe { core::ptr::read_unaligned(p as *const u64) } as usize;
+        let out = unsafe { core::slice::from_raw_parts((p + 8) as *const u8, n) }.to_vec();
+        unsafe { dealloc(p as *mut u8, 8 + n) };
+        Some(out)
+    };
+    unsafe { run(path, path_len, src, src_len, loader, flags, Some(&mut host)) }
 }
 
 /// # Safety
