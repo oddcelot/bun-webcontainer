@@ -23,6 +23,8 @@ pub enum Loader {
 /// tsconfig `compilerOptions` that change the output, as bits of `transpile_flags_c`'s `flags`.
 pub const EXPERIMENTAL_DECORATORS: u32 = 1;
 pub const EMIT_DECORATOR_METADATA: u32 = 2;
+/// Not a tsconfig option: on failure, `Output.ptr` holds the diagnostics as JSON (see `format_json`) instead of text.
+pub const DIAGNOSTICS_JSON: u32 = 4;
 
 /// Transpiled JS on success; formatted diagnostics on failure.
 pub fn transpile(path: &[u8], source: &[u8], loader: Loader, flags: u32) -> Result<Vec<u8>, Vec<u8>> {
@@ -67,7 +69,9 @@ pub fn transpile_with(path: &[u8], source: &[u8], loader: Loader, flags: u32, re
     let parsed = Parser::init(opts, &mut log, &src, &define, &arena).and_then(|p| p.parse());
     let ast = match parsed {
         Ok(bun_js_parser::Result::Ast(ast)) if log.errors == 0 => ast,
-        Ok(_) | Err(_) => return Err(format_log(&log)),
+        Ok(_) | Err(_) => {
+            return Err(if flags & DIAGNOSTICS_JSON != 0 { format_json(&log) } else { format_log(&log) });
+        }
     };
     let mut ast = *ast;
 
@@ -108,6 +112,68 @@ fn format_log(log: &bun_ast::Log) -> Vec<u8> {
         out.extend_from_slice(&msg.data.text);
         out.push(b'\n');
     }
+    out
+}
+
+fn json_str(out: &mut Vec<u8>, s: &[u8]) {
+    out.push(b'"');
+    for ch in String::from_utf8_lossy(s).chars() {
+        match ch {
+            '"' => out.extend_from_slice(b"\\\""),
+            '\\' => out.extend_from_slice(b"\\\\"),
+            '\n' => out.extend_from_slice(b"\\n"),
+            '\r' => out.extend_from_slice(b"\\r"),
+            '\t' => out.extend_from_slice(b"\\t"),
+            c if (c as u32) < 0x20 => out.extend_from_slice(format!("\\u{:04x}", c as u32).as_bytes()),
+            c => out.extend_from_slice(c.encode_utf8(&mut [0; 4]).as_bytes()),
+        }
+    }
+    out.push(b'"');
+}
+
+fn json_data(out: &mut Vec<u8>, d: &bun_ast::Data) {
+    out.extend_from_slice(b"\"text\":");
+    json_str(out, &d.text);
+    match &d.location {
+        // `line` and `column` are 1-based (Bun's `Location.column` doc says 0-based but the parser emits 1-based), `length` is 0 for "one character"; `column` and `length` count UTF-8 bytes.
+        Some(l) if l.line > 0 => {
+            out.extend_from_slice(format!(",\"line\":{},\"column\":{},\"length\":{}", l.line, l.column, l.length).as_bytes())
+        }
+        _ => {}
+    }
+}
+
+/// `{"diagnostics":[{"severity":"error"|"warning","text":..,"line"?:..,"column"?:..,"length"?:..,"notes":[{"text":..,"line"?..}]}]}`
+/// for the messages of `Kind::Err`/`Kind::Warn` (notes and debug/verbose messages are skipped as top-level entries).
+fn format_json(log: &bun_ast::Log) -> Vec<u8> {
+    let mut out = b"{\"diagnostics\":[".to_vec();
+    let mut first = true;
+    for msg in log.msgs.iter() {
+        let severity: &[u8] = match msg.kind {
+            bun_ast::Kind::Err => b"error",
+            bun_ast::Kind::Warn => b"warning",
+            _ => continue,
+        };
+        if !first {
+            out.push(b',');
+        }
+        first = false;
+        out.extend_from_slice(b"{\"severity\":\"");
+        out.extend_from_slice(severity);
+        out.extend_from_slice(b"\",");
+        json_data(&mut out, &msg.data);
+        out.extend_from_slice(b",\"notes\":[");
+        for (i, note) in msg.notes.iter().enumerate() {
+            if i > 0 {
+                out.push(b',');
+            }
+            out.push(b'{');
+            json_data(&mut out, note);
+            out.push(b'}');
+        }
+        out.extend_from_slice(b"]}");
+    }
+    out.extend_from_slice(b"]}");
     out
 }
 
@@ -152,7 +218,7 @@ pub unsafe extern "C" fn transpile_c(
     unsafe { transpile_flags_c(path, path_len, src, src_len, loader, 0) }
 }
 
-/// `transpile_c` with tsconfig flags (`EXPERIMENTAL_DECORATORS`, `EMIT_DECORATOR_METADATA`).
+/// `transpile_c` with tsconfig flags (`EXPERIMENTAL_DECORATORS`, `EMIT_DECORATOR_METADATA`) and `DIAGNOSTICS_JSON`.
 ///
 /// # Safety
 /// Both input ranges must be readable.
