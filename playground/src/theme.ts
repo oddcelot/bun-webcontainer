@@ -96,6 +96,9 @@ function chromeVars(theme: ThemeLike): Record<string, string | undefined> {
 function applyVars(vars: Record<string, string | undefined>) {
   const style = document.documentElement.style;
   for (const [k, v] of Object.entries(vars)) v ? style.setProperty(k, v) : style.removeProperty(k);
+  // Mobile browser chrome matches the header.
+  const panel = getComputedStyle(document.documentElement).getPropertyValue("--panel").trim();
+  if (panel) document.querySelector('meta[name="theme-color"]')?.setAttribute("content", panel);
 }
 
 // The last theme's variables, so the page doesn't flash the defaults while the theme loads.

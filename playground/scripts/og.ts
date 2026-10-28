@@ -1,5 +1,5 @@
-// Generates the social card (public/og.png, 1200x630) and the favicons (public/favicon.svg,
-// public/apple-touch-icon.png) with Satori + resvg. Run `bun run og` after changing the copy or the logo;
+// Generates the social card (public/og.png, 1200x630) and the icons (favicon.svg, favicon.ico,
+// favicon-32x32.png, apple-touch-icon.png, icon-192.png, icon-512.png in public/) with Satori + resvg. Run `bun run og` after changing the copy or the logo;
 // the outputs are committed.
 import { Resvg } from "@resvg/resvg-js";
 import satori from "satori";
@@ -73,5 +73,39 @@ const touch = h("div", { width: 180, height: 180, alignItems: "center", justifyC
 ]);
 writeFileSync(root + "public/apple-touch-icon.png", png(await satori(touch as never, { width: 180, height: 180, fonts: [...fonts] }), 180));
 
+// The logo centered in a transparent square (it's 80x70), for favicons and the web manifest.
+const square = async (size: number) => {
+  const w = Math.round(size * 0.96);
+  const el = h("div", { width: size, height: size, alignItems: "center", justifyContent: "center" }, [
+    h("img", {}, undefined, { src: logo, width: w, height: Math.round((w * 70) / 80) }),
+  ]);
+  return png(await satori(el as never, { width: size, height: size, fonts: [...fonts] }), size);
+};
+
+/** An .ico of PNG images (Vista+ format): Google Search doesn't use SVG favicons. */
+function ico(images: [size: number, data: Buffer][]): Buffer {
+  const header = Buffer.alloc(6 + 16 * images.length);
+  header.writeUInt16LE(1, 2); // type: icon
+  header.writeUInt16LE(images.length, 4);
+  let offset = header.length;
+  images.forEach(([size, data], i) => {
+    const e = 6 + 16 * i;
+    header.writeUInt8(size % 256, e); // 0 means 256
+    header.writeUInt8(size % 256, e + 1);
+    header.writeUInt16LE(1, e + 4); // color planes
+    header.writeUInt16LE(32, e + 6); // bits per pixel
+    header.writeUInt32LE(data.length, e + 8);
+    header.writeUInt32LE(offset, e + 12);
+    offset += data.length;
+  });
+  return Buffer.concat([header, ...images.map(([, d]) => d)]);
+}
+
+const sizes = Object.fromEntries(await Promise.all([16, 32, 48, 192, 512].map(async (n) => [n, await square(n)] as const)));
+writeFileSync(root + "public/favicon.ico", ico([16, 32, 48].map((n) => [n, sizes[n]])));
+writeFileSync(root + "public/favicon-32x32.png", sizes[32]);
+writeFileSync(root + "public/icon-192.png", sizes[192]);
+writeFileSync(root + "public/icon-512.png", sizes[512]);
+
 copyFileSync(root + "src/bun-logo.svg", root + "public/favicon.svg");
-console.log("wrote public/og.png, public/apple-touch-icon.png, public/favicon.svg");
+console.log("wrote public/og.png, favicon.svg, favicon.ico, favicon-32x32.png, apple-touch-icon.png, icon-192.png, icon-512.png");
