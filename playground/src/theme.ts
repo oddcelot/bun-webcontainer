@@ -1,11 +1,43 @@
 import { createThemeCatalog, createThemeController, type ColorMode, type ThemeLike } from "@pierre/theming";
 import { colorUtils, normalizeThemeColors } from "@pierre/theming/color";
 import { themes } from "@pierre/theming/themes";
-import { bundledThemesInfo } from "shiki/themes";
 
-// A color mode (system/light/dark) plus one theme per scheme; the active theme (any Pierre or Shiki
-// theme) colors the editor, the file tree and the app chrome.
+// A color mode (system/light/dark) plus a theme family; the family's variant for the scheme in
+// effect colors the editor, the file tree and the app chrome.
 const VARS_KEY = "theme-vars";
+
+/** Themes that come in both schemes: [name, light variant, dark variant]. */
+const FAMILIES: Record<string, [string, string, string][]> = {
+  Pierre: [
+    ["Pierre", "pierre-light", "pierre-dark"],
+    ["Pierre Soft", "pierre-light-soft", "pierre-dark-soft"],
+    ["Pierre Vibrant", "pierre-light-vibrant", "pierre-dark-vibrant"],
+    ["Pierre Protanopia & Deuteranopia", "pierre-light-protanopia-deuteranopia", "pierre-dark-protanopia-deuteranopia"],
+    ["Pierre Tritanopia", "pierre-light-tritanopia", "pierre-dark-tritanopia"],
+  ],
+  Shiki: [
+    ["Ayu", "ayu-light", "ayu-dark"],
+    ["Catppuccin", "catppuccin-latte", "catppuccin-mocha"],
+    ["Everforest", "everforest-light", "everforest-dark"],
+    ["GitHub", "github-light", "github-dark"],
+    ["GitHub Default", "github-light-default", "github-dark-default"],
+    ["GitHub High Contrast", "github-light-high-contrast", "github-dark-high-contrast"],
+    ["Gruvbox Hard", "gruvbox-light-hard", "gruvbox-dark-hard"],
+    ["Gruvbox Medium", "gruvbox-light-medium", "gruvbox-dark-medium"],
+    ["Gruvbox Soft", "gruvbox-light-soft", "gruvbox-dark-soft"],
+    ["Horizon", "horizon-bright", "horizon"],
+    ["Kanagawa", "kanagawa-lotus", "kanagawa-wave"],
+    ["Material", "material-theme-lighter", "material-theme"],
+    ["Min", "min-light", "min-dark"],
+    ["Night Owl", "night-owl-light", "night-owl"],
+    ["One", "one-light", "one-dark-pro"],
+    ["Rosé Pine", "rose-pine-dawn", "rose-pine"],
+    ["Slack", "slack-ochin", "slack-dark"],
+    ["Solarized", "solarized-light", "solarized-dark"],
+    ["Visual Studio", "light-plus", "dark-plus"],
+    ["Vitesse", "vitesse-light", "vitesse-dark"],
+  ],
+};
 
 const controller = createThemeController({
   catalog: createThemeCatalog({ themes, defaultLightThemeName: "pierre-light", defaultDarkThemeName: "pierre-dark" }),
@@ -78,10 +110,7 @@ const MODES: [ColorMode, string, string][] = [
   ["dark", "i-lucide-moon", "Dark"],
 ];
 
-/**
- * A system/light/dark toggle into `modes`, and into `select` the themes for the scheme in effect
- * (Pierre's first). Picking one sets it for that scheme.
- */
+/** A system/light/dark toggle into `modes`, and the theme families into `select`. */
 export function mountThemePicker(modes: HTMLElement, select: HTMLSelectElement) {
   const buttons = MODES.map(([mode, icon, label]) => {
     const b = document.createElement("button");
@@ -94,26 +123,33 @@ export function mountThemePicker(modes: HTMLElement, select: HTMLSelectElement) 
   });
   modes.replaceChildren(...buttons);
 
-  const shikiNames = new Map(bundledThemesInfo.map((t) => [t.id, t.displayName]));
-  let shown: string | undefined;
-  const render = () => {
-    const { mode, resolvedColorScheme: scheme } = controller.getState();
-    buttons.forEach((b, i) => b.setAttribute("aria-pressed", String(MODES[i][0] === mode)));
-    if (scheme !== shown) {
-      shown = scheme;
-      const groups = new Map<string, HTMLOptGroupElement>();
-      for (const t of themes.getThemes({ colorScheme: scheme })) {
-        const label = t.collection === "pierre" ? "Pierre" : "Shiki";
-        let group = groups.get(label);
-        if (!group) groups.set(label, (group = Object.assign(document.createElement("optgroup"), { label })));
-        group.append(new Option(t.displayName ?? shikiNames.get(t.name) ?? t.name, t.name));
-      }
-      select.replaceChildren(...groups.values());
-      select.title = `${scheme === "light" ? "Light" : "Dark"} theme`;
-    }
-    select.value = themeName();
+  const families = Object.values(FAMILIES).flat();
+  select.replaceChildren(
+    ...Object.entries(FAMILIES).map(([label, list]) => {
+      const group = Object.assign(document.createElement("optgroup"), { label });
+      group.append(...list.map(([name, light]) => new Option(name, light)));
+      return group;
+    }),
+  );
+  let picking = false;
+  const pick = (light: string) => {
+    const [, , dark] = families.find((f) => f[1] === light)!;
+    picking = true; // the pair is half-set between the two calls
+    controller.setThemeNameForScheme("light", light);
+    picking = false;
+    controller.setThemeNameForScheme("dark", dark);
   };
-  select.onchange = () => controller.setThemeNameForScheme(controller.getState().resolvedColorScheme, select.value);
+  select.onchange = () => pick(select.value);
+
+  const render = () => {
+    if (picking) return;
+    const { mode, lightThemeName, darkThemeName } = controller.getState();
+    buttons.forEach((b, i) => b.setAttribute("aria-pressed", String(MODES[i][0] === mode)));
+    const family = families.find((f) => f[1] === lightThemeName && f[2] === darkThemeName);
+    // A saved pair that isn't a family (e.g. from an older version): fall back to the light side's family, or Pierre.
+    if (!family) return pick(families.find((f) => f[1] === lightThemeName)?.[1] ?? "pierre-light");
+    select.value = family[1];
+  };
   controller.subscribe(render);
   render();
 }
