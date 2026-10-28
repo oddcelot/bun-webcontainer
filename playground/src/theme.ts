@@ -89,6 +89,7 @@ function chromeVars(theme: ThemeLike): Record<string, string | undefined> {
     "--error": c["terminal.ansiRed"] ?? c["editorError.foreground"],
     "--warn": c["terminal.ansiYellow"] ?? c["editorWarning.foreground"],
     "--info": c["terminal.ansiBlue"] ?? c["editorInfo.foreground"],
+    "--ok": c["terminal.ansiGreen"] ?? c["gitDecoration.addedResourceForeground"],
   };
 }
 

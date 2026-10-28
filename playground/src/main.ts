@@ -23,6 +23,12 @@ if (!supportsMemory64()) {
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const consoleEl = $("console");
 const statusEl = $("status");
+type Status = "idle" | "busy" | "running" | "error";
+let status: [Status, string] = ["idle", "Stopped"];
+function setStatus(state: Status, text: string) {
+  statusEl.dataset.state = state;
+  statusEl.textContent = text;
+}
 
 function log(level: string, text: string) {
   const line = document.createElement("div");
@@ -118,19 +124,25 @@ function entryFile(): string {
 async function run() {
   const btn = $<HTMLButtonElement>("run");
   btn.disabled = true;
-  statusEl.textContent = "starting...";
+  setStatus("busy", "Starting…");
   const entry = entryFile();
   log("sys", `[run] ${entry}`);
-  await runner.start(entry);
-  preview.reload();
-  statusEl.textContent = "running";
+  try {
+    await runner.start(entry);
+    preview.reload();
+    status = ["running", `Running ${entry}`];
+  } catch (e) {
+    log("error", String(e));
+    status = ["error", "Failed to start"];
+  }
+  setStatus(...status);
   btn.disabled = false;
 }
 
 async function install() {
   const btn = $<HTMLButtonElement>("install");
   btn.disabled = true;
-  statusEl.textContent = "installing...";
+  setStatus("busy", "Installing…");
   log("sys", "[bun install]");
   try {
     const n = await bunInstall(vfs, semver, log);
@@ -138,7 +150,8 @@ async function install() {
   } catch (e) {
     log("error", String(e));
   }
-  statusEl.textContent = "";
+  // A running server keeps running through an install.
+  setStatus(...status);
   btn.disabled = false;
 }
 

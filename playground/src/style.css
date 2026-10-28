@@ -10,6 +10,7 @@
   --error: #ff2e3f;
   --warn: #ffca00;
   --info: #009fff;
+  --ok: #0dbe4e;
   --control: color-mix(in srgb, var(--fg) 9%, var(--panel));
   --control-hover: color-mix(in srgb, var(--fg) 16%, var(--panel));
   --control-border: color-mix(in srgb, var(--fg) 18%, var(--panel));
@@ -28,7 +29,15 @@ header button:disabled { opacity: 0.5; cursor: default; }
 #modes button:last-child { border-radius: 0 4px 4px 0; }
 #modes button[aria-pressed="true"] { background: var(--control-hover); color: var(--accent); }
 .title { display: inline-flex; align-items: center; gap: 6px; }
-#status { margin-left: auto; color: var(--muted); }
+#status { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px 2px 7px; border: 1px solid var(--control-border); border-radius: 999px; color: var(--muted); white-space: nowrap; --dot: var(--muted); }
+#status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--dot); }
+#status[data-state="busy"] { --dot: var(--warn); color: var(--fg); }
+#status[data-state="busy"]::before { animation: status-pulse 1s ease-in-out infinite alternate; }
+#status[data-state="running"] { --dot: var(--ok); color: var(--fg); border-color: color-mix(in srgb, var(--ok) 45%, var(--panel)); background: color-mix(in srgb, var(--ok) 12%, var(--panel)); }
+#status[data-state="running"]::before { box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent); }
+#status[data-state="error"] { --dot: var(--error); color: var(--error); border-color: color-mix(in srgb, var(--error) 45%, var(--panel)); }
+@keyframes status-pulse { to { opacity: 0.3; } }
+@media (prefers-reduced-motion: reduce) { #status[data-state="busy"]::before { animation: none; } }
 main { flex: 1; min-height: 0; display: grid; grid-template-columns: 200px 1fr 1fr; }
 #tree { min-height: 0; border-right: 1px solid var(--border); }
 #editor { min-width: 0; overflow: hidden; }
