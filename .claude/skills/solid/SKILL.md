@@ -2,15 +2,15 @@
 name: solid
 description:
   Use when writing or changing SolidJS 2 code in playground/src/ui (any .tsx in the playground),
-  porting a piece of the hand-built DOM interface to Solid, or debugging Solid dev warnings,
-  reactivity, stores, async boundaries, refs, or the Solid Vite plugin. Solid 2 is not 1.x and
+  or debugging Solid dev warnings, reactivity, stores, async boundaries, refs, or the Solid Vite
+  plugin. Solid 2 is not 1.x and
   not React; read this before generating Solid code.
 ---
 
 # Solid 2 in the playground
 
-The playground interface is moving from hand-built DOM (`index.html` + `src/*.ts`) to Solid 2
-(epic `bwc-k4r` in beads). New UI code lives in `playground/src/ui/`.
+The playground interface is Solid 2 (moved from hand-built DOM in epic `bwc-k4r`). UI code lives in
+`playground/src/ui/`.
 
 **Training data is mostly Solid 1.x and React. Both are wrong here.** Before writing code, read
 [references/CHEATSHEET.md](references/CHEATSHEET.md) (its last section, the "footgun list", at
@@ -71,9 +71,10 @@ checks below.
 
 ## Conventions for this codebase
 
-- **Mounting while migrating:** `src/ui/mount.tsx` mounts components into existing elements with
-  `mount(id, view)`. `render()` appends, so `mount` clears the static fallback first. Once the
-  page is all Solid, collapse to one `render(() => <App />, root)`.
+- **Layout:** `src/ui/App.tsx` is the whole page, rendered once into `<body>` by `mountUI`
+  (`src/ui/mount.tsx`), which first removes index.html's static header (kept for crawlers;
+  `render()` appends). `main.ts` creates the stores (`session.ts`, `workspace.ts`, `previews.ts`)
+  in a `createRoot` and passes them with its actions through `AppContext` (`context.ts`).
 - **Engine stays plain TypeScript.** `VFS`, `Runner`, the worker, shell, install, share encoding
   are not UI; don't rewrite them as components. Bridge their events into Solid instead:
   - push events (`vfs.onChange`, runner logs): subscribe in `onSettled` and write into a store or
