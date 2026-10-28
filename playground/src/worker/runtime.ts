@@ -2,7 +2,7 @@ import { BASE } from "../base";
 import { loadSemver } from "../semver";
 import { dirname, norm, VFS } from "../vfs";
 import { builtins, installTimers, setFs, setStdio } from "./node";
-import "./hostPackages";
+import { setHostVfs } from "./hostPackages";
 import { fsError } from "./node/errors";
 import { hooks } from "./node/serve";
 import nodePath from "./node/path";
@@ -27,9 +27,24 @@ const post = (msg: unknown, transfer: Transferable[] = []) => (self as unknown a
 // The worker's copy of the page VFS (sent with "start"); node:fs and Bun.file read it synchronously, and
 // writes are mirrored to the page.
 const vfs = new VFS();
+setHostVfs(vfs);
 setFs(vfs, (op, ...args) => post({ type: "vfs", op, args }));
 setStdio((level, text) => post({ type: "console", level, text }));
 g.__nodeBuiltins = builtins;
+/**
+ * `import(url)` that the host Vite leaves alone: in dev it rewrites computed imports in the playground's own code to
+ * add `?import`, and the same module imported statically elsewhere would load a second time.
+ */
+const importUrl = new Function("url", "options", "return import(url, options)") as (url: string, options?: ImportCallOptions) => Promise<unknown>;
+
+/** `import(expr)` in served modules (see rewriteMeta): `file:` URLs and paths, as Bun takes them, load from the VFS. */
+g.__dynamicImport = (from: string, spec: unknown, options?: ImportCallOptions) => {
+  const s = String(spec);
+  const builtin = s.replace(/^node:/, "");
+  if (builtin in builtins) return importUrl(`${BASE}__vfs/__node/${builtin}`);
+  const path = /^(file:|\/|\.)/.test(s) && decodeURIComponent(new URL(s, from).pathname);
+  return importUrl(path ? `${BASE}__vfs/${norm(path)}` : s, options);
+};
 g.process = process;
 g.global ??= globalThis;
 g.Buffer ??= (builtins.buffer as { Buffer: unknown }).Buffer;
@@ -383,6 +398,21 @@ async function build(opts: { entrypoints: string[]; outdir?: string; naming?: st
   return { success: true, outputs, logs: [] };
 }
 
+/**
+ * Bun's fetch reads `file:` URLs from disk; here, from the VFS (napi-rs wasm bindings fetch their .wasm this way).
+ * A relative URL is invalid, as in Bun: the worker's own URL would make it a request to the playground.
+ */
+const networkFetch = globalThis.fetch;
+globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+  const url = input instanceof Request ? input.url : String(input);
+  if (!URL.canParse(url)) throw Object.assign(new TypeError("fetch() URL is invalid"), { code: "ERR_INVALID_URL" });
+  if (!url.startsWith("file:")) return networkFetch(input, init);
+  const path = norm(decodeURIComponent(new URL(url).pathname));
+  const data = vfs.readBytes(path);
+  if (data === undefined) throw new TypeError(`fetch failed: no such file /${path}`);
+  return new Response(data.slice());
+};
+
 async function main() {
   const semver = await loadSemver();
   g.Bun = {
@@ -445,7 +475,7 @@ self.addEventListener("message", async (e: MessageEvent) => {
   vfs.load(e.data.files, e.data.dirs);
   await booted;
   try {
-    await import(/* @vite-ignore */ `${BASE}__vfs/${e.data.entry}`);
+    await importUrl(`${BASE}__vfs/${e.data.entry}`);
   } catch (err) {
     post({ type: "console", level: "error", text: fmt(err) });
   }

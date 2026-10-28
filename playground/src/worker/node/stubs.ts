@@ -19,7 +19,7 @@ export const dns = stubModule("dns", "resolve resolve4 resolve6 reverse setServe
   getDefaultResultOrder: () => "verbatim",
 });
 
-export const http2 = stubModule("http2", "connect createServer createSecureServer getDefaultSettings getPackedSettings getUnpackedSettings", { constants: {}, sensitiveHeaders: Symbol("nodejs.http2.sensitiveHeaders") });
+export const http2 = stubModule("http2", "connect createServer createSecureServer getDefaultSettings getPackedSettings getUnpackedSettings Http2ServerRequest Http2ServerResponse", { constants: {}, sensitiveHeaders: Symbol("nodejs.http2.sensitiveHeaders") });
 export const tls = stubModule("tls", "connect createServer createSecureContext checkServerIdentity getCiphers TLSSocket Server", { DEFAULT_MIN_VERSION: "TLSv1.2", DEFAULT_MAX_VERSION: "TLSv1.3", rootCertificates: [] });
 export const child_process = stubModule("child_process", "spawn exec execFile fork spawnSync execSync execFileSync ChildProcess");
 export const zlib = stubModule("zlib", "createGzip createGunzip createDeflate createInflate createDeflateRaw createInflateRaw createBrotliCompress createBrotliDecompress createUnzip gzip gunzip deflate inflate deflateRaw inflateRaw brotliCompress brotliDecompress unzip gzipSync gunzipSync deflateSync inflateSync deflateRawSync inflateRawSync brotliCompressSync brotliDecompressSync unzipSync crc32", { constants: {} });

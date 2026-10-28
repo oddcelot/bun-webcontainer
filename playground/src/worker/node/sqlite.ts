@@ -9,7 +9,7 @@ let SQL: SqlJsStatic | undefined;
 (globalThis as Record<string, unknown>).__loadBunSqlite = async () => {
   if (SQL) return;
   const { default: init } = await import("sql.js");
-  SQL = await init({ locateFile: () => wasmUrl });
+  SQL = await init({ locateFile: () => new URL(wasmUrl, location.href).href });
 };
 
 type Params = unknown[] | Record<string, unknown>;

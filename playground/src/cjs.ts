@@ -1,7 +1,7 @@
-// CommonJS → ESM for modules served from /__vfs/. `require("x")` with a literal specifier becomes a hoisted
-// static import, so dependencies load before the body runs; anything else throws at call time.
+// CommonJS → ESM for modules served from /__vfs/. `require("x")` with a literal specifier that resolves becomes a
+// static import, so dependencies are loaded up front (and run when required); anything else throws at call time.
 
-const ESM_SYNTAX = /(^|[\n;])\s*(import\s*[\w{*'"]|export\s*[{*]|export\s+\w)/;
+const ESM_SYNTAX = /(^|[\n;])\s*(import(\s+[\w{*]|\s*[{*'"])|export\s*[{*]|export\s+\w)/;
 const REQUIRE = /\brequire\s*\(\s*(["'])([^"'\n]+)\1\s*\)/g;
 
 /** Whole-line comments (`// x`, ` * x`), so `require()` in doc comments isn't hoisted into an import (and a cycle). */
@@ -15,7 +15,7 @@ export function isCommonJS(path: string, source: string, packageType: string | u
 }
 
 /** Names a CommonJS module assigns on `exports`, as far as a static scan can tell (like cjs-module-lexer). */
-function exportNames(source: string): string[] {
+export function exportNames(source: string): string[] {
   const names = new Set<string>();
   for (const m of source.matchAll(/\b(?:module\.)?exports\.([A-Za-z_$][\w$]*)\s*=[^=]/g)) names.add(m[1]);
   for (const m of source.matchAll(/Object\.defineProperty\(\s*(?:module\.)?exports\s*,\s*["']([A-Za-z_$][\w$]*)["']/g)) names.add(m[1]);
@@ -26,26 +26,69 @@ function exportNames(source: string): string[] {
   return [...names];
 }
 
-export function wrapCommonJS(path: string, source: string): string {
-  const specs = [...new Set([...source.replace(COMMENT_LINE, "").matchAll(REQUIRE)].map((m) => m[2]))];
-  const imports = specs.map((s, i) => `import * as __req${i} from ${JSON.stringify(s)};`).join("\n");
-  const table = specs.map((s, i) => `${JSON.stringify(s)}: __req${i}`).join(", ");
-  const names = exportNames(source);
+/**
+ * Specifiers of modules a CommonJS module re-exports wholesale, as cjs-module-lexer finds them: Babel's
+ * `Object.keys(_x).forEach(...)` over `var _x = require("y")`, TypeScript's `__exportStar(require("y"), exports)`
+ * and `module.exports = require("y")`.
+ */
+export function reexports(source: string): string[] {
+  const vars = new Map<string, string>();
+  for (const m of source.matchAll(/\b(?:var|let|const)\s+([\w$]+)\s*=\s*require\(\s*(["'])([^"'\n]+)\2\s*\)/g)) vars.set(m[1], m[3]);
+  const out = new Set<string>();
+  for (const m of source.matchAll(/\bObject\.keys\(\s*([\w$]+)\s*\)\.forEach\(/g)) if (vars.has(m[1])) out.add(vars.get(m[1])!);
+  for (const m of source.matchAll(/\b__exportStar\(\s*require\(\s*(["'])([^"'\n]+)\1\s*\)/g)) out.add(m[2]);
+  for (const m of source.matchAll(/\bmodule\.exports\s*=\s*require\(\s*(["'])([^"'\n]+)\1\s*\)/g)) out.add(m[2]);
+  return [...out];
+}
+
+/**
+ * The module that holds a CommonJS file's body, served at `/__vfs/__cjs/<path>`: the body runs when first required,
+ * as in Node, so in a require cycle the importer gets the exports filled in so far. Nothing runs when the module is
+ * evaluated: that order (dependencies first) isn't Node's. `depUrl(spec)` is the URL a literal require loads, null
+ * if it can't load (an optional dependency), which then throws when called.
+ */
+export function wrapCommonJS(path: string, source: string, depUrl: (spec: string) => string | null): string {
+  const deps = [...new Set([...source.replace(COMMENT_LINE, "").matchAll(REQUIRE)].map((m) => m[2]))].flatMap((s) => {
+    const url = depUrl(s);
+    return url ? [[s, url]] : [];
+  });
+  const imports = deps.map(([, url], i) => `import * as __req${i} from ${JSON.stringify(url)};`).join("\n");
+  const table = deps.map(([s], i) => `${JSON.stringify(s)}: __req${i}`).join(", ");
   const dir = path.split("/").slice(0, -1).join("/");
+  // Function declarations: a require in a cycle can call __cjsModule() before this module is evaluated.
+  // Wrapped CommonJS and JSON export __cjsModule(), built-ins __cjs; anything else is an ES namespace.
   return `${imports}
-const __required = { ${table} };
-// A wrapped CommonJS module exports its module.exports as __cjs; anything else is an ES namespace.
-const require = (id) => {
-  if (!(id in __required)) throw new Error("require(" + JSON.stringify(id) + "): only literal require() calls are supported (in ${path})");
-  const ns = __required[id];
-  return "__cjs" in ns ? ns.__cjs : id.endsWith(".json") ? ns.default : ns;
-};
-const module = { exports: {} };
-(function (exports, require, module, __filename, __dirname) {
+function require(id) {
+  const required = { ${table} };
+  if (!(id in required)) throw Object.assign(new Error("Cannot find module " + JSON.stringify(id) + " from ${path} (only literal require() calls of installed modules are supported)"), { code: "MODULE_NOT_FOUND" });
+  const ns = required[id];
+  return "__cjsModule" in ns ? ns.__cjsModule().exports : "__cjs" in ns ? ns.__cjs : ns;
+}
+var module;
+export function __cjsModule() {
+  if (module) return module;
+  module = { exports: {} };
+  (function (exports, require, module, __filename, __dirname) {
 ${source}
-}).call(module.exports, module.exports, require, module, ${JSON.stringify("/" + path)}, ${JSON.stringify("/" + dir)});
+  }).call(module.exports, module.exports, require, module, ${JSON.stringify("/" + path)}, ${JSON.stringify("/" + dir)});
+  return module;
+}
+`;
+}
+
+/**
+ * What ES modules import for a CommonJS file: runs its body (`bodyUrl`, see wrapCommonJS) and exports the result,
+ * `names` (exportNames, and those of re-exported modules) as named exports.
+ */
+export function commonJSFacade(names: string[], bodyUrl: string): string {
+  return `import * as __body from ${JSON.stringify(bodyUrl)};
+const module = __body.__cjsModule();
+export function __cjsModule() {
+  return __body.__cjsModule();
+}
 export const __cjs = module.exports;
 export default module.exports && module.exports.__esModule && "default" in module.exports ? module.exports.default : module.exports;
-${names.length ? `export const { ${names.join(", ")} } = module.exports;` : ""}
+${names.length ? `const { ${names.map((n, i) => `${n}: __e${i}`).join(", ")} } = module.exports;
+export { ${names.map((n, i) => `__e${i} as ${n}`).join(", ")} };` : ""}
 `;
 }
