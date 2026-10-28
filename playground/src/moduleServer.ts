@@ -1,5 +1,5 @@
 import { BASE } from "./base";
-import { isCommonJS, wrapCommonJS } from "./cjs";
+import { commonJSFacade, exportNames as commonJSExportNames, isCommonJS, reexports, wrapCommonJS } from "./cjs";
 import bunWrap from "./bunWrap.js?raw";
 import { transpile, type TsconfigFlags } from "./transpiler";
 import { dirname, norm, type VFS } from "./vfs";
@@ -343,6 +343,36 @@ export default ${hostNames[spec].includes("default") ? "__m.default" : "__m"};
 ${names.length ? `export const { ${names.join(", ")} } = __m;` : ""}`;
 }
 
+/** Export names of a CommonJS file, with those of the CommonJS files it re-exports. */
+function commonJSNames(vfs: VFS, path: string, src: string, seen = new Set<string>()): string[] {
+  seen.add(path);
+  const names = new Set(commonJSExportNames(src));
+  for (const spec of reexports(src)) {
+    const t = resolveTarget(vfs, spec, dirname(path));
+    const dep = t && !t.startsWith("__") && !seen.has(t) ? vfs.readText(t) : undefined;
+    if (dep !== undefined && isCommonJS(t!, dep, packageType(vfs, t!))) for (const n of commonJSNames(vfs, t!, dep, seen)) names.add(n);
+  }
+  return [...names];
+}
+
+/** The body of a CommonJS file (see wrapCommonJS); requires of other CommonJS files load their bodies too. */
+function serveCommonJS(vfs: VFS, path: string, onError: (msg: string) => void, target: ModuleTarget): ModuleResponse {
+  const src = vfs.readText(path);
+  if (src === undefined) {
+    onError(`module not found: ${path}`);
+    return { status: 404, body: `Not found: ${path}` };
+  }
+  CONDITIONS = TARGET_CONDITIONS[target];
+  const dir = dirname(path);
+  const code = wrapCommonJS(path, src, (spec) => {
+    const t = resolveTarget(vfs, spec, dir);
+    if (t === null || t.startsWith("__")) return t && `${BASE}__vfs/${t}`;
+    const dep = vfs.readText(t);
+    return `${BASE}__vfs/${dep !== undefined && isCommonJS(t, dep, packageType(vfs, t)) ? "__cjs/" : ""}${t}`;
+  });
+  return { status: 200, body: rewriteImports(vfs, rewriteMeta(code, path, target === "bun"), dir) };
+}
+
 export async function serveModule(vfs: VFS, rawPath: string, onError: (msg: string) => void, target: ModuleTarget = "browser"): Promise<ModuleResponse> {
   const path = norm(rawPath);
   if (path.startsWith("__node/")) return { status: 200, body: builtinModule(path.slice(7)) };
@@ -353,6 +383,7 @@ export async function serveModule(vfs: VFS, rawPath: string, onError: (msg: stri
     onError(msg);
     return { status: 404, body: msg };
   }
+  if (path.startsWith("__cjs/")) return serveCommonJS(vfs, path.slice(6), onError, target);
   const src = vfs.readText(path);
   if (src === undefined) {
     onError(`module not found: ${path}`);
@@ -362,9 +393,13 @@ export async function serveModule(vfs: VFS, rawPath: string, onError: (msg: stri
     let code: string;
     if (path.endsWith(".html")) return { status: 200, body: `export default ${JSON.stringify({ __htmlImport: path })};` };
     if (path.endsWith(".css")) return { status: 200, body: src };
-    if (path.endsWith(".json")) code = `export default ${src}`;
+    // __cjsModule() as wrapped CommonJS has it: a require() can run before this module is evaluated.
+    if (path.endsWith(".json")) code = `var __m;\nexport function __cjsModule() {\n  return (__m ??= { exports: ${src} });\n}\nexport default __cjsModule().exports;`;
     else if (/\.(ts|tsx|jsx)$/.test(path)) code = await transpile(src, path, tsconfigFor(vfs, path));
-    else if (isCommonJS(path, src, packageType(vfs, path))) code = wrapCommonJS(path, src);
+    else if (isCommonJS(path, src, packageType(vfs, path))) {
+      CONDITIONS = TARGET_CONDITIONS[target];
+      return { status: 200, body: commonJSFacade(commonJSNames(vfs, path, src), `${BASE}__vfs/__cjs/${path}`) };
+    }
     else code = src;
     CONDITIONS = TARGET_CONDITIONS[target];
     return { status: 200, body: rewriteImports(vfs, rewriteMeta(hoistMetaRequire(vfs, hoistRequires(vfs, code, dirname(path)), dirname(path)), path, target === "bun"), dirname(path)) };
