@@ -1,5 +1,6 @@
 ---
 import Counter from "../components/Counter.tsx";
+import ServerCard from "../components/ServerCard.tsx";
 import { getCount } from "../lib/count";
 
 // Rendered on each request (server-side rendering), so the count is current.
@@ -16,13 +17,25 @@ const rendered = new Date().toLocaleTimeString();
   </head>
   <body>
     <h1>Astro + Solid</h1>
-    <p>Rendered by Astro on the server at {rendered}, running on Bun {Bun.version}. The count was {count}.</p>
+    <p>Rendered by Astro on the server at {rendered}, running on Bun {Bun.version}.</p>
     <Counter client:load initial={count} />
+    <ServerCard
+      rows={[
+        ["Count at render", String(count)],
+        ["Rendered at", rendered],
+        ["Runtime", `Bun ${Bun.version}`],
+      ]}
+    />
     <p><a href="/api/count">GET /api/count</a></p>
-    <style>
+    <!-- Global: scoped styles only reach elements in this file, not the Solid components' markup. -->
+    <style is:global>
       body { font-family: system-ui; padding: 1rem; }
       .counter { display: flex; gap: 0.5rem; align-items: center; }
       button { font-size: 1.1rem; padding: 0.2rem 0.8rem; }
+      .card { margin-top: 1rem; padding: 0.5rem 1rem; border: 1px solid #ccc; border-radius: 8px; max-width: 24rem; }
+      .card h2 { font-size: 1rem; }
+      .card dl { display: grid; grid-template-columns: auto 1fr; gap: 0.25rem 1rem; }
+      .card dd { margin: 0; }
     </style>
   </body>
 </html>
