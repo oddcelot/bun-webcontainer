@@ -30,12 +30,26 @@ function setStatus(state: Status, text: string) {
   statusEl.textContent = text;
 }
 
+const counts = { lines: 0, error: 0, warn: 0 };
+function showCounts() {
+  $("console-count").textContent = String(counts.lines);
+  for (const [id, n] of [["console-errors", counts.error], ["console-warns", counts.warn]] as const) {
+    const chip = $(id);
+    chip.hidden = n === 0;
+    chip.lastElementChild!.textContent = String(n);
+  }
+  $<HTMLButtonElement>("clear").disabled = counts.lines === 0;
+}
+
 function log(level: string, text: string) {
   const line = document.createElement("div");
   line.className = level;
   line.textContent = text;
   consoleEl.append(line);
   consoleEl.scrollTop = consoleEl.scrollHeight;
+  counts.lines++;
+  if (level === "error" || level === "warn") counts[level]++;
+  showCounts();
 }
 
 async function setupServiceWorker() {
@@ -158,7 +172,11 @@ async function install() {
 const preview = mountPreview();
 $("run").onclick = run;
 $("install").onclick = install;
-$("clear").onclick = () => consoleEl.replaceChildren();
+$("clear").onclick = () => {
+  consoleEl.replaceChildren();
+  Object.assign(counts, { lines: 0, error: 0, warn: 0 });
+  showCounts();
+};
 $("openfolder").onclick = () => $("folderinput").click();
 $<HTMLInputElement>("folderinput").onchange = async (e) => {
   const files = [...((e.target as HTMLInputElement).files ?? [])];

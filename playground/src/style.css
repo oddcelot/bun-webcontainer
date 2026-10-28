@@ -60,9 +60,18 @@ main { flex: 1; min-height: 0; display: grid; grid-template-columns: 200px 1fr 1
 #response { flex: 1; overflow: auto; margin: 0; padding: 6px 8px; font: 12px ui-monospace, monospace; white-space: pre-wrap; }
 #response.error { color: var(--error); }
 #console-wrap { display: flex; flex-direction: column; min-height: 0; border-top: 1px solid var(--border); }
-#console-head { display: flex; justify-content: space-between; padding: 4px 8px; background: var(--panel); color: var(--muted); }
-#console { flex: 1; overflow: auto; padding: 4px 8px; font: 12px ui-monospace, monospace; white-space: pre-wrap; }
-#console .warn { color: var(--warn); }
-#console .error { color: var(--error); }
+#console-head { display: flex; align-items: center; gap: 6px; padding: 4px 8px; background: var(--panel); border-bottom: 1px solid var(--border); color: var(--muted); }
+#console-head .label { color: var(--fg); font-weight: 600; }
+#console-head .chip { display: inline-flex; align-items: center; gap: 3px; min-width: 1.6em; justify-content: center; padding: 0 6px; border-radius: 999px; background: var(--control); font: 11px/16px ui-monospace, monospace; }
+#console-head .chip[hidden] { display: none; }
+#console-head .chip.error { color: var(--error); background: color-mix(in srgb, var(--error) 14%, var(--panel)); }
+#console-head .chip.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, var(--panel)); }
+#clear { margin-left: auto; padding: 4px 6px; }
+#clear:hover:not(:disabled) { background: var(--control-hover); }
+#clear:disabled { opacity: 0.4; cursor: default; }
+#console { flex: 1; overflow: auto; padding: 2px 0; font: 12px/1.5 ui-monospace, monospace; white-space: pre-wrap; }
+#console > div { padding: 1px 8px; border-left: 2px solid transparent; }
+#console .warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 8%, transparent); border-left-color: var(--warn); }
+#console .error { color: var(--error); background: color-mix(in srgb, var(--error) 8%, transparent); border-left-color: var(--error); }
 #console .sys { color: var(--info); }
 .unsupported { max-width: 36rem; margin: 4rem auto; padding: 0 1rem; line-height: 1.5; }
