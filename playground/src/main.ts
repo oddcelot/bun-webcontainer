@@ -2,8 +2,8 @@ import "virtual:uno.css";
 import { BASE } from "./base";
 import { seedDemo } from "./demo";
 import { examples, loadExample, repoExamples } from "./examples";
-import { loadRepo, parseRepo } from "./github";
-import { isShareLink, loadShareLink, mountShareMenu } from "./share";
+import { loadRepo, parseRepo, repoQuery } from "./github";
+import { isShareLink, loadShareLink, mountShareMenu, rememberSource } from "./share";
 import { createPierre } from "./editors/pierre";
 import { bunInstall } from "./install";
 import { Runner } from "./runner";
@@ -89,7 +89,15 @@ if (isShareLink(location.hash)) {
     vfs.clear();
   }
 }
-if (!shared && !(repo ? await loadRepo(vfs, repo, log) : exampleName && (await loadExample(vfs, exampleName)))) seedDemo(vfs);
+if (!shared) {
+  // While these files stay unchanged, Share links to where they came from instead of packing them.
+  if (repo && (await loadRepo(vfs, repo, log))) rememberSource(vfs, `?repo=${repoQuery(repo)}`, `${repoQuery(repo)} on GitHub`);
+  else if (!repo && exampleName && (await loadExample(vfs, exampleName))) rememberSource(vfs, `?example=${exampleName}`, `the ${examples[exampleName] ?? exampleName} example`);
+  else {
+    seedDemo(vfs);
+    rememberSource(vfs, "", "the demo");
+  }
+}
 
 /** Reloads with `?example=` or `?repo=` (picker values for repos are `repo:<owner/repo>`). */
 function openProject(value: string) {

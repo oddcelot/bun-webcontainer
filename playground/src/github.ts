@@ -14,6 +14,13 @@ export function parseRepo(input: string): Repo | null {
   return { owner: m[1], repo: m[2], ref: m[3] ?? m[4] ?? "HEAD", dir: (m[5] ?? "").replace(/^\//, "") };
 }
 
+/** The `?repo=` value for a repo, in the shortest form parseRepo reads back. */
+export function repoQuery(r: Repo): string {
+  const base = `${r.owner}/${r.repo}`;
+  if (r.dir) return `${base}/tree/${r.ref}/${r.dir}`;
+  return r.ref === "HEAD" ? base : `${base}@${r.ref}`;
+}
+
 /**
  * Loads a public GitHub repo (or a directory of it) into the VFS: one API call lists the tree, files come from
  * raw.githubusercontent.com. Both send CORS headers; codeload's tarballs don't. node_modules and .git are skipped.

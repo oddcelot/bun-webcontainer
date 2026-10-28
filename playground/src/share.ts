@@ -21,8 +21,35 @@ const fromBase64Url = (s: string) => Uint8Array.from(atob(s.replace(/-/g, "+").r
 
 export const isShareLink = (hash: string) => hash.startsWith(PREFIX);
 
-/** The current project as a link to this page. Binary files can't travel in it and are skipped. */
-export async function shareLink(vfs: VFS): Promise<{ url: string; files: number; skipped: number }> {
+/** Where the project came from: the query that loads it again (`?repo=…`, `?example=…`, "" for the demo). */
+type Source = { query: string; label: string; files: Map<string, string> };
+let source: Source | undefined;
+const projectFiles = (vfs: VFS) => [...vfs.files].filter(([path]) => !SKIP.test(path));
+
+/**
+ * Call right after a project loads from a repo, an example or the demo. While its files stay as they were, Share
+ * gives the short link that loads them again instead of packing them into the URL.
+ */
+export function rememberSource(vfs: VFS, query: string, label: string) {
+  source = { query, label, files: new Map(projectFiles(vfs).map(([p, d]) => [p, typeof d === "string" ? d : `\0${d.length}`])) };
+}
+
+const unchanged = (vfs: VFS, s: Source) => {
+  const now = projectFiles(vfs);
+  return now.length === s.files.size && now.every(([p, d]) => s.files.get(p) === (typeof d === "string" ? d : `\0${d.length}`));
+};
+
+type Link = { url: string; files: number; skipped: number; short?: string };
+
+/**
+ * The current project as a link to this page: the short link to where it came from while it's unchanged, else
+ * its text files packed into the hash (binary files can't travel in it and are skipped).
+ */
+export async function shareLink(vfs: VFS): Promise<Link> {
+  if (source && unchanged(vfs, source)) {
+    const url = new URL(BASE + source.query, location.origin);
+    return { url: url.href, files: source.files.size, skipped: 0, short: source.label };
+  }
   const files: Record<string, string> = {};
   let skipped = 0;
   for (const [path, data] of vfs.files) {
@@ -57,6 +84,8 @@ export function mountShareMenu(menu: HTMLElement, vfs: VFS, log: (level: string,
   const badge = new URL(`${BASE}badge.svg`, location.origin).href;
   let link: Awaited<ReturnType<typeof shareLink>> | undefined;
   const size = menu.querySelector<HTMLElement>("[data-share-size]")!;
+  const lead = menu.querySelector<HTMLElement>("[data-share-lead]")!;
+  const leadText = lead.textContent!;
   const formats: Record<string, (url: string) => string> = {
     link: (url) => url,
     markdown: (url) => `[![Open in runbun](${badge})](${url})`,
@@ -67,8 +96,14 @@ export function mountShareMenu(menu: HTMLElement, vfs: VFS, log: (level: string,
     if ((e as ToggleEvent).newState !== "open") return;
     size.textContent = "…";
     link = await shareLink(vfs);
-    const kb = (link.url.length / 1024).toFixed(1);
-    size.textContent = `${link.files} files · ${kb} KB${link.skipped ? ` · ${link.skipped} binary left out` : ""}`;
+    if (link.short) {
+      lead.textContent = `A short link to ${link.short}. Edit a file and the link carries your copy instead.`;
+      size.textContent = link.url.replace(/^https?:\/\//, "");
+    } else {
+      lead.textContent = leadText;
+      const kb = (link.url.length / 1024).toFixed(1);
+      size.textContent = `${link.files} files · ${kb} KB${link.skipped ? ` · ${link.skipped} binary left out` : ""}`;
+    }
   });
 
   for (const item of menu.querySelectorAll<HTMLButtonElement>("[data-share]")) {
