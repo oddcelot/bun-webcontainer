@@ -1,46 +1,59 @@
 import { BASE } from "./base";
 
 const PREFIX = `${BASE}__preview`;
-// Corners pointing out (expand) or in (restore).
-const ICON = (d: string) =>
-  `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
-const EXPAND = ICON("M1 5V1h4M9 1h4v4M13 9v4H9M5 13H1V9");
-const RESTORE = ICON("M5 1v4H1M13 5H9V1M9 13V9h4M1 9h4v4");
+const EXPAND = `<i class="i-lucide-maximize-2" aria-hidden="true"></i>`;
+const RESTORE = `<i class="i-lucide-minimize-2" aria-hidden="true"></i>`;
 
 // Added by sw.js to every preview response, not sent by the user's server.
 const SW_HEADERS = new Set(["cross-origin-embedder-policy", "cross-origin-resource-policy"]);
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
+/** One preview tab: its own request, and the page (kept loaded while hidden) or response it shows. */
+interface Tab {
+  method: string;
+  path: string;
+  body: string;
+  view: "frame" | "response";
+  frame: HTMLIFrameElement;
+  response: HTMLPreElement;
+}
+
 /**
  * Request bar over the preview: any method and path against the running server. HTML GETs load in
  * the iframe (so pages, scripts and links work); everything else shows status, headers and body.
+ * Several previews can be open as tabs; the request bar acts on the active one.
  */
 export function mountPreview() {
-  const frame = $<HTMLIFrameElement>("preview");
-  const responseEl = $("response");
+  const strip = $("preview-tabs");
+  const views = $("preview-views");
   const method = $<HTMLSelectElement>("req-method");
   const path = $<HTMLInputElement>("req-path");
   const body = $<HTMLTextAreaElement>("req-body");
+  const tabs: Tab[] = [];
+  let active!: Tab;
 
   const normalize = (p: string) => (p.startsWith("/") ? p : `/${p}`);
-  const show = (el: "frame" | "response") => {
-    frame.hidden = el !== "frame";
-    responseEl.hidden = el !== "response";
-  };
+  const syncBody = () => (body.hidden = method.value === "GET" || method.value === "HEAD");
 
-  function load(p: string) {
-    show("frame");
-    frame.contentWindow!.location.replace(PREFIX + normalize(p));
+  function show(tab: Tab, view: Tab["view"]) {
+    tab.view = view;
+    tab.frame.hidden = tab !== active || view !== "frame";
+    tab.response.hidden = tab !== active || view !== "response";
   }
 
-  async function send(m = method.value) {
-    const p = normalize(path.value.trim() || "/");
+  function load(tab: Tab, p: string) {
+    show(tab, "frame");
+    tab.frame.contentWindow!.location.replace(PREFIX + normalize(p));
+  }
+
+  async function send(tab: Tab, m = tab.method) {
+    const p = normalize(tab.path.trim() || "/");
     const init: RequestInit = { method: m };
-    if (m !== "GET" && m !== "HEAD" && body.value) {
-      init.body = body.value;
+    if (m !== "GET" && m !== "HEAD" && tab.body) {
+      init.body = tab.body;
       let json = true;
       try {
-        JSON.parse(body.value);
+        JSON.parse(tab.body);
       } catch {
         json = false;
       }
@@ -49,7 +62,7 @@ export function mountPreview() {
     const res = await fetch(PREFIX + p, init);
     const type = res.headers.get("content-type") ?? "";
     // The iframe refetches the page; a second GET is the price of real navigation.
-    if (m === "GET" && type.startsWith("text/html")) return load(p);
+    if (m === "GET" && type.startsWith("text/html")) return load(tab, p);
     let text = await res.text();
     if (/[/+]json\b/.test(type)) {
       try {
@@ -61,25 +74,120 @@ export function mountPreview() {
       .map(([k, v]) => `${k}: ${v}`)
       .join("\n");
     const status = `${res.status} ${res.statusText}`.trim();
-    responseEl.textContent = `${m} ${p}\n${status}\n${head}\n\n${text}`;
-    responseEl.className = res.ok ? "" : "error";
-    show("response");
+    tab.response.textContent = `${m} ${p}\n${status}\n${head}\n\n${text}`;
+    tab.response.className = "preview-response" + (res.ok ? "" : " error");
+    show(tab, "response");
   }
 
-  const syncBody = () => (body.hidden = method.value === "GET" || method.value === "HEAD");
-  method.onchange = syncBody;
-  syncBody();
-  const request = (m?: string) =>
-    send(m).catch((err) => {
-      responseEl.textContent = String(err);
-      responseEl.className = "error";
-      show("response");
+  const request = (tab: Tab, m?: string) =>
+    send(tab, m).catch((err) => {
+      tab.response.textContent = String(err);
+      tab.response.className = "preview-response error";
+      show(tab, "response");
     });
+
+  function render() {
+    strip.replaceChildren(
+      ...tabs.map((tab) => {
+        const el = document.createElement("div");
+        el.className = "tab";
+        el.role = "tab";
+        el.title = tab.frame.contentDocument?.title || `${tab.method} ${tab.path}`;
+        el.tabIndex = tab === active ? 0 : -1;
+        el.setAttribute("aria-selected", String(tab === active));
+        if (tab.method !== "GET") el.append(Object.assign(document.createElement("span"), { className: "method", textContent: tab.method }));
+        el.append(Object.assign(document.createElement("span"), { className: "name", textContent: tab.path }));
+        if (tabs.length > 1) {
+          const close = document.createElement("button");
+          close.className = "close";
+          close.title = close.ariaLabel = `Close ${tab.path}`;
+          close.tabIndex = -1;
+          close.innerHTML = `<i class="i-lucide-x" aria-hidden="true"></i>`;
+          close.onclick = (e) => {
+            e.stopPropagation();
+            closeTab(tab);
+          };
+          el.append(close);
+          el.onauxclick = (e) => e.button === 1 && closeTab(tab);
+        }
+        el.onclick = () => activate(tab);
+        return el;
+      }),
+      Object.assign(document.createElement("button"), {
+        className: "add",
+        type: "button",
+        title: "New preview",
+        ariaLabel: "New preview",
+        innerHTML: `<i class="i-lucide-plus" aria-hidden="true"></i>`,
+        onclick: () => request(openTab()),
+      }),
+    );
+    strip.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }
+
+  /** The request bar's fields belong to the active tab. */
+  function save() {
+    if (!active) return;
+    active.method = method.value;
+    active.path = path.value;
+    active.body = body.value;
+  }
+
+  function activate(tab: Tab) {
+    save();
+    const prev = active;
+    active = tab;
+    if (prev) show(prev, prev.view);
+    show(tab, tab.view);
+    method.value = tab.method;
+    path.value = tab.path;
+    body.value = tab.body;
+    syncBody();
+    render();
+  }
+
+  function openTab(p = "/"): Tab {
+    const frame = Object.assign(document.createElement("iframe"), { className: "preview-frame", title: "preview" });
+    const response = Object.assign(document.createElement("pre"), { className: "preview-response", hidden: true });
+    const tab: Tab = { method: "GET", path: p, body: "", view: "frame", frame, response };
+    frame.onload = () => {
+      const win = frame.contentWindow;
+      const loc = win?.location;
+      // Keep the path in sync when the page navigates itself (links, forms, redirects).
+      if (loc?.pathname.startsWith(PREFIX)) {
+        tab.path = loc.pathname.slice(PREFIX.length) + loc.search;
+        if (tab === active) path.value = tab.path;
+        render();
+      }
+      // Keys pressed in the page stay in the frame; same origin, so listen there too.
+      win?.addEventListener("keydown", onKey);
+    };
+    views.append(frame, response);
+    tabs.splice(active ? tabs.indexOf(active) + 1 : tabs.length, 0, tab);
+    activate(tab);
+    return tab;
+  }
+
+  function closeTab(tab: Tab) {
+    if (tabs.length === 1) return;
+    const i = tabs.indexOf(tab);
+    tabs.splice(i, 1);
+    tab.frame.remove();
+    tab.response.remove();
+    if (tab === active) {
+      active = undefined!; // don't save the bar into the closed tab
+      activate(tabs[i] ?? tabs[i - 1]);
+    } else render();
+  }
+
+  method.onchange = syncBody;
   $<HTMLFormElement>("request").onsubmit = (e) => {
     e.preventDefault();
-    request();
+    save();
+    render();
+    request(active);
   };
-  // Keep the path in sync when the page navigates itself (links, forms, redirects).
+
   const wrap = $("preview-wrap");
   const backdrop = $("preview-backdrop");
   const expandBtn = $<HTMLButtonElement>("expand");
@@ -98,14 +206,13 @@ export function mountPreview() {
   };
   addEventListener("keydown", onKey);
 
-  frame.onload = () => {
-    const win = frame.contentWindow;
-    const loc = win?.location;
-    if (loc?.pathname.startsWith(PREFIX)) path.value = loc.pathname.slice(PREFIX.length) + loc.search;
-    // Keys pressed in the page stay in the frame; same origin, so listen there too.
-    win?.addEventListener("keydown", onKey);
-  };
+  openTab();
 
-  /** After Run: GET the current path again. */
-  return { reload: () => request("GET") };
+  return {
+    /** After Run: tabs showing a page or a GET response load again; a POST and the like isn't replayed. */
+    reload() {
+      save();
+      for (const tab of tabs) if (tab.view === "frame" || tab.method === "GET") request(tab, "GET");
+    },
+  };
 }

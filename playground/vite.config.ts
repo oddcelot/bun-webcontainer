@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import UnoCSS from "unocss/vite";
 import { defineConfig, type Plugin } from "vite";
 
 const isolation = {
@@ -41,7 +42,7 @@ function emnapiNotNode(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [hostPackageNames(), emnapiNotNode()],
+  plugins: [UnoCSS(), hostPackageNames(), emnapiNotNode()],
   build: { target: "esnext" },
   // In builds, worker bundles (the runtime and rolldown's wasi worker) only get worker.plugins.
   worker: { format: "es", plugins: () => [emnapiNotNode()] },

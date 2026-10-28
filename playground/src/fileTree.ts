@@ -5,31 +5,18 @@ import {
   type FileTreeDirectoryHandle,
   type FileTreeItemHandle,
 } from "@pierre/trees";
+import { onTheme } from "./theme";
 import type { VFS } from "./vfs";
-
-// Mirrors the editor chrome in style.css (One Dark).
-const theme = themeToTreeStyles({
-  type: "dark",
-  bg: "#1b1d23",
-  fg: "#d7dae0",
-  colors: {
-    "sideBar.background": "#1b1d23",
-    "sideBar.foreground": "#d7dae0",
-    "sideBar.border": "#2c2f36",
-    "list.hoverBackground": "#262a31",
-    "list.activeSelectionBackground": "#2f3542",
-    "list.activeSelectionForeground": "#ffffff",
-    "list.focusOutline": "#528bff",
-    "input.background": "#14161a",
-    "input.border": "#3a3f4a",
-  },
-});
 
 const isDirectory = (item: FileTreeItemHandle | null): item is FileTreeDirectoryHandle => item?.isDirectory() === true;
 
 /** The VFS as a @pierre/trees file tree. Selecting a file calls `onOpen`. */
 export function mountFileTree(mount: HTMLElement, vfs: VFS, onOpen: (path: string) => void) {
+  let open: ReadonlySet<string> = new Set();
   const tree = new FileTree({
+    // A dot on files open in a tab.
+    renderRowDecoration: ({ item }) =>
+      item.kind === "file" && open.has(item.path) ? { text: "●", title: "Open in a tab" } : null,
     paths: [...vfs.files.keys()],
     initialExpansion: "closed",
     search: true,
@@ -38,7 +25,9 @@ export function mountFileTree(mount: HTMLElement, vfs: VFS, onOpen: (path: strin
     // @pierre/trees 1.0.0-beta.6 shows the truncation marker when the measure cell is `height > 1lh`;
     // at non-100% page zoom a single line measures a hair over 1lh, so every label gets "…".
     // A truncated label wraps to 2+ lines, so 1.5lh keeps real truncation working.
-    unsafeCSS: `@container measure (height <= 1.5lh) { [data-truncate-marker] { opacity: 0; } }`,
+    // The open-file dot: small and quiet.
+    unsafeCSS: `@container measure (height <= 1.5lh) { [data-truncate-marker] { opacity: 0; } }
+      [data-item-section="decoration"] { font-size: 5px; color: var(--muted); opacity: 0.8; }`,
     onSelectionChange(paths) {
       const [path] = paths;
       if (paths.length === 1 && vfs.files.has(path)) onOpen(path);
@@ -48,21 +37,24 @@ export function mountFileTree(mount: HTMLElement, vfs: VFS, onOpen: (path: strin
   const host = tree.getFileTreeContainer();
   if (host) {
     host.style.height = "100%";
-    for (const [k, v] of Object.entries(theme)) host.style.setProperty(k, v);
+    onTheme((_, theme) => {
+      for (const [k, v] of Object.entries(themeToTreeStyles(theme))) host.style.setProperty(k, v);
+    });
   }
 
-  // An install writes thousands of files; add them in one batch per frame.
-  let pending: FileTreeBatchOperation[] = [];
-  vfs.onChange(({ path, created }) => {
-    if (!created) return;
-    if (!pending.length) {
+  // An install writes thousands of files; apply them in one batch per frame.
+  const pending = new Map<string, FileTreeBatchOperation & { type: "add" | "remove" }>();
+  vfs.onChange(({ path, created, removed }) => {
+    if (!created && !removed) return;
+    if (!pending.size) {
       requestAnimationFrame(() => {
-        const ops = pending;
-        pending = [];
-        tree.batch(ops.filter((op) => op.type === "add" && tree.getItem(op.path) === null));
+        // The last change per path wins (a file written and removed in one frame isn't added).
+        const ops = [...pending.values()].filter((op) => (op.type === "add") === (tree.getItem(op.path) === null));
+        pending.clear();
+        tree.batch(ops);
       });
     }
-    pending.push({ type: "add", path });
+    pending.set(path, { type: removed ? "remove" : "add", path });
   });
 
   return {
@@ -83,7 +75,12 @@ export function mountFileTree(mount: HTMLElement, vfs: VFS, onOpen: (path: strin
       item.select();
       tree.scrollToPath(path);
     },
-    /** Replaces every path, e.g. after the VFS was cleared and refilled. */
+    /** Marks the files open in tabs. */
+    setOpen(paths: ReadonlySet<string>) {
+      open = paths;
+      tree.setIcons("standard"); // re-renders the rows, decorations included
+    },
+        /** Replaces every path, e.g. after the VFS was cleared and refilled. */
     reset() {
       tree.resetPaths([...vfs.files.keys()]);
     },

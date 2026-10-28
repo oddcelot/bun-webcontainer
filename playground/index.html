@@ -7,44 +7,50 @@
   </head>
   <body>
     <header>
-      <strong>Bun playground</strong>
-      <button id="run">Run</button>
-      <button id="install">bun install</button>
-      <button id="newfile">New file</button>
-      <button id="openfolder">Open folder</button>
-      <button id="openrepo">Open GitHub repo</button>
+      <strong class="title"><img src="/src/bun-logo.svg" alt="" width="23" height="20" /><span id="title">Bun playground</span></strong>
+      <button id="run"><i class="i-lucide-play" aria-hidden="true"></i> Run</button>
+      <button id="install" title="bun install"><i class="i-lucide-download" aria-hidden="true"></i><span class="label">bun install</span></button>
+      <button id="newfile" title="New file"><i class="i-lucide-file-plus" aria-hidden="true"></i><span class="label">New file</span></button>
+      <button id="openfolder" title="Open folder"><i class="i-lucide-folder-open" aria-hidden="true"></i><span class="label">Open folder</span></button>
+      <button id="openrepo" title="Open GitHub repo"><i class="i-lucide-github" aria-hidden="true"></i><span class="label">Open GitHub repo</span></button>
       <select id="example" title="Example project">
         <option value="">Confetti demo</option>
       </select>
       <input id="folderinput" type="file" webkitdirectory multiple hidden />
-      <label class="editorkind">Editor
-        <select id="editorkind">
-          <option value="codemirror">CodeMirror</option>
-          <option value="pierre">Pierre (@pierre/diffs)</option>
-        </select>
-      </label>
-      <span id="status"></span>
+      <span id="status" role="status" data-state="idle">Stopped</span>
+      <span id="modes" role="group" aria-label="Color scheme"></span>
+      <select id="theme" title="Theme"></select>
     </header>
     <main>
       <nav id="tree"></nav>
-      <section id="editor"></section>
+      <section id="editor-pane">
+        <div id="tabs" class="tabs" role="tablist" aria-label="Open files"></div>
+        <div id="editor"></div>
+      </section>
       <div id="right">
         <div id="preview-backdrop" hidden></div>
         <div id="preview-wrap">
+          <div id="preview-tabs" class="tabs" role="tablist" aria-label="Previews"></div>
           <form id="request">
             <select id="req-method" title="Method">
               <option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option>
             </select>
             <input id="req-path" value="/" spellcheck="false" title="Path on the running server" />
-            <button>Send</button>
+            <button><i class="i-lucide-send" aria-hidden="true"></i> Send</button>
             <button type="button" id="expand" title="Expand preview (Esc)" aria-pressed="false"></button>
           </form>
           <textarea id="req-body" spellcheck="false" placeholder="Request body (JSON is sent as application/json)"></textarea>
-          <iframe id="preview" title="preview"></iframe>
-          <pre id="response" hidden></pre>
+          <div id="preview-views"></div>
         </div>
         <div id="console-wrap">
-          <div id="console-head">Console <button id="clear">clear</button></div>
+          <div id="console-head">
+            <i class="i-lucide-square-terminal" aria-hidden="true"></i>
+            <span class="label">Console</span>
+            <span id="console-count" class="chip" title="Lines">0</span>
+            <span id="console-errors" class="chip error" title="Errors" hidden><i class="i-lucide-circle-x" aria-hidden="true"></i><span></span></span>
+            <span id="console-warns" class="chip warn" title="Warnings" hidden><i class="i-lucide-triangle-alert" aria-hidden="true"></i><span></span></span>
+            <button id="clear" title="Clear console" aria-label="Clear console" disabled><i class="i-lucide-trash-2" aria-hidden="true"></i></button>
+          </div>
           <div id="console"></div>
         </div>
       </div>

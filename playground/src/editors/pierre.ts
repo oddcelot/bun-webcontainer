@@ -1,5 +1,6 @@
 import { File } from "@pierre/diffs";
 import { Editor } from "@pierre/diffs/edit";
+import { onTheme, themeName } from "../theme";
 import type { CodeEditor } from "./types";
 
 /** @pierre/diffs edit mode: a highlighted `File` surface with an `Editor` attached. */
@@ -14,6 +15,15 @@ export function createPierre(parent: HTMLElement): CodeEditor {
   let text = "";
   let path = "";
   let listener: (text: string) => void = () => {};
+  let theme = themeName();
+
+  onTheme((next) => {
+    if (next === theme) return;
+    theme = next;
+    if (!view) return;
+    view.setOptions({ ...view.options, theme });
+    view.onThemeChange();
+  });
 
   function close() {
     finish?.();
@@ -28,7 +38,7 @@ export function createPierre(parent: HTMLElement): CodeEditor {
     path = nextPath;
     text = nextText ?? "";
     view = new File({
-      theme: "pierre-dark",
+      theme,
       onEditChange(event) {
         text = event.file.contents;
         listener(text);
@@ -51,6 +61,12 @@ export function createPierre(parent: HTMLElement): CodeEditor {
       if (nextText !== text) show(path, nextText);
     },
     getText: () => editor?.getText() ?? text,
+    clear() {
+      close();
+      host.replaceChildren();
+      path = text = "";
+      listener = () => {};
+    },
     destroy() {
       close();
       host.remove();

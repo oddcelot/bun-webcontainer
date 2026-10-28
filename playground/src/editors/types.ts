@@ -4,7 +4,7 @@ export interface CodeEditor {
   /** The file changed outside the editor (e.g. `Bun.write`); show `text` if it differs. */
   update(text: string): void;
   getText(): string;
+  /** Show no file (the last tab was closed). */
+  clear(): void;
   destroy(): void;
 }
-
-export type EditorKind = "codemirror" | "pierre";

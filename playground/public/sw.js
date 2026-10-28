@@ -56,15 +56,20 @@ async function servePreview(req, url, path = (url.pathname.slice(PREVIEW.length)
   if (location?.startsWith("/") && !location.startsWith("//") && !location.startsWith(PREVIEW)) headers.set("location", PREVIEW + location);
   let out = r.body;
   if (!nullBody && headers.get("content-type")?.startsWith("text/html")) {
-    out = withWebSocketShim(new TextDecoder().decode(out));
+    out = withPreviewScripts(new TextDecoder().decode(out));
     headers.delete("content-length");
   }
   return new Response(nullBody ? null : out, isolated({ status: r.status, statusText: r.statusText, headers }));
 }
 
-/** Runs first in every preview page: same-host WebSockets go to the worker's `Bun.serve` instead of the network. */
-function withWebSocketShim(html) {
-  const script = `<script>(${previewWebSocket})(${JSON.stringify(PREVIEW)})</script>`;
+/**
+ * Runs first in every preview page: same-host WebSockets go to the worker's `Bun.serve` instead of the
+ * network, and the page follows the playground's color scheme toggle.
+ */
+function withPreviewScripts(html) {
+  const script =
+    `<script>(${previewWebSocket})(${JSON.stringify(PREVIEW)})</script>` +
+    `<script>(${previewColorScheme})()</script>`;
   const head = html.match(/<head\b[^>]*>/i);
   if (head) return html.slice(0, head.index + head[0].length) + script + html.slice(head.index + head[0].length);
   const doctype = html.match(/^\s*<!doctype[^>]*>/i);
@@ -72,6 +77,39 @@ function withWebSocketShim(html) {
 }
 
 // Serialized into the page, so it may only use what it declares.
+// The playground's mode (theme.ts): system leaves the page to the OS preference; light or dark narrows a page
+// that supports both schemes, or declares none, to that one. `prefers-color-scheme` still follows the OS:
+// no page can set it for a frame.
+function previewColorScheme() {
+  const meta = Object.assign(document.createElement("meta"), { name: "color-scheme" });
+  const style = document.createElement("style");
+  const apply = (mode) => {
+    meta.content = mode === "light" || mode === "dark" ? mode : "light dark";
+    style.textContent = meta.content.includes(" ") ? "" : `:root { color-scheme: ${meta.content} !important; }`;
+  };
+  try {
+    apply(JSON.parse(localStorage.getItem("theme-selection") ?? "{}").mode);
+  } catch {
+    apply("system");
+  }
+  document.head.append(meta, style);
+  const channel = new BroadcastChannel("bun-color-scheme");
+  channel.onmessage = (e) => apply(e.data);
+  // A page that supports only one scheme keeps it.
+  addEventListener("load", () => {
+    style.sheet.disabled = true;
+    const css = getComputedStyle(document.documentElement).colorScheme;
+    style.sheet.disabled = false;
+    const own = [...document.querySelectorAll('meta[name="color-scheme"]')].find((m) => m !== meta)?.content;
+    const declared = css !== "normal" ? css : own;
+    if (declared && !(declared.includes("light") && declared.includes("dark"))) {
+      meta.remove();
+      style.remove();
+      channel.close();
+    }
+  });
+}
+
 function previewWebSocket(prefix) {
   const Native = window.WebSocket;
   /** Connected sockets, each with what drops it. */

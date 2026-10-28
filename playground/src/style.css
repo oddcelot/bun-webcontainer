@@ -1,38 +1,97 @@
+/* Set from the chosen theme by theme.ts; the rest derive from these. Defaults: pierre-dark. */
+:root {
+  color-scheme: dark;
+  --bg: #0a0a0a;
+  --fg: #fafafa;
+  --panel: #171717;
+  --border: color-mix(in srgb, var(--fg) 14%, var(--bg));
+  --muted: color-mix(in srgb, var(--fg) 60%, var(--bg));
+  --accent: #009fff;
+  --error: #ff2e3f;
+  --warn: #ffca00;
+  --info: #009fff;
+  --ok: #0dbe4e;
+  --control: color-mix(in srgb, var(--fg) 9%, var(--panel));
+  --control-hover: color-mix(in srgb, var(--fg) 16%, var(--panel));
+  --control-border: color-mix(in srgb, var(--fg) 18%, var(--panel));
+}
 * { box-sizing: border-box; }
-html, body { height: 100%; margin: 0; background: #1b1d23; color: #d7dae0; font: 13px system-ui, sans-serif; }
+html, body { height: 100%; margin: 0; background: var(--bg); color: var(--fg); font: 13px system-ui, sans-serif; }
 body { display: flex; flex-direction: column; }
-header { display: flex; gap: 8px; align-items: center; padding: 6px 10px; background: #14161a; border-bottom: 1px solid #2c2f36; }
-header button, #clear { background: #2c313a; color: inherit; border: 1px solid #3a3f4a; border-radius: 4px; padding: 4px 10px; cursor: pointer; }
-header button:hover { background: #3a404c; }
+header { display: flex; gap: 8px; align-items: center; padding: 6px 10px; background: var(--panel); border-bottom: 1px solid var(--border); }
+header button, #clear, #request button { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+header button, #clear { background: var(--control); color: inherit; border: 1px solid var(--control-border); border-radius: 4px; padding: 4px 10px; cursor: pointer; }
+header button:hover { background: var(--control-hover); }
 header button:disabled { opacity: 0.5; cursor: default; }
-#status { color: #8b919e; }
+#modes { display: inline-flex; }
+#modes button { padding: 4px 7px; border-radius: 0; margin-left: -1px; }
+#modes button:first-child { border-radius: 4px 0 0 4px; margin-left: 0; }
+#modes button:last-child { border-radius: 0 4px 4px 0; }
+#modes button[aria-pressed="true"] { background: var(--control-hover); color: var(--accent); }
+.title { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+#example { min-width: 6rem; flex: 0 1 14rem; }
+/* Narrow windows: the secondary actions show their icon only (the label stays as the tooltip and accessible name). */
+@media (max-width: 1320px) {
+  header button .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  header button:has(.label) { padding: 4px 8px; }
+}
+#status { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px 2px 7px; border: 1px solid var(--control-border); border-radius: 999px; color: var(--muted); white-space: nowrap; --dot: var(--muted); }
+#status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--dot); }
+#status[data-state="busy"] { --dot: var(--warn); color: var(--fg); }
+#status[data-state="busy"]::before { animation: status-pulse 1s ease-in-out infinite alternate; }
+#status[data-state="running"] { --dot: var(--ok); color: var(--fg); border-color: color-mix(in srgb, var(--ok) 45%, var(--panel)); background: color-mix(in srgb, var(--ok) 12%, var(--panel)); }
+#status[data-state="running"]::before { box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent); }
+#status[data-state="error"] { --dot: var(--error); color: var(--error); border-color: color-mix(in srgb, var(--error) 45%, var(--panel)); }
+@keyframes status-pulse { to { opacity: 0.3; } }
+@media (prefers-reduced-motion: reduce) { #status[data-state="busy"]::before { animation: none; } }
 main { flex: 1; min-height: 0; display: grid; grid-template-columns: 200px 1fr 1fr; }
-#tree { min-height: 0; border-right: 1px solid #2c2f36; }
-#editor { min-width: 0; overflow: hidden; }
-#editor .cm-editor { height: 100%; }
-#editor .pierre-host { height: 100%; overflow: auto; background: #0a0a0a; /* pierre-dark editor background */ }
-.editorkind { margin-left: auto; color: #8b919e; display: flex; gap: 6px; align-items: center; }
-#example, .editorkind select { background: #2c313a; color: #d7dae0; border: 1px solid #3a3f4a; border-radius: 4px; padding: 3px 6px; }
-#right { display: grid; grid-template-rows: 1fr 1fr; min-width: 0; min-height: 0; border-left: 1px solid #2c2f36; }
+#tree { min-height: 0; border-right: 1px solid var(--border); }
+#editor-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+#editor { flex: 1; min-height: 0; overflow: hidden; }
+#editor[data-empty]::before { content: "No file open"; display: grid; place-items: center; height: 100%; color: var(--muted); }
+.tabs { display: flex; overflow-x: auto; scrollbar-width: thin; background: var(--panel); border-bottom: 1px solid var(--border); }
+#tabs:empty { display: none; }
+.tabs .tab { display: flex; align-items: center; gap: 6px; min-width: 6rem; padding: 5px 6px 5px 12px; border-right: 1px solid var(--border); color: var(--muted); cursor: pointer; white-space: nowrap; user-select: none; box-shadow: inset 0 2px transparent; }
+.tabs .tab:hover { color: var(--fg); }
+.tabs .tab[aria-selected="true"] { background: var(--bg); color: var(--fg); box-shadow: inset 0 2px var(--accent); }
+.tabs .tab:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.tabs .name { flex: 1; }
+.tabs .dir { font-size: 11px; opacity: 0.7; }
+.tabs .close { display: grid; place-items: center; padding: 2px; border: 0; border-radius: 3px; background: none; color: inherit; cursor: pointer; opacity: 0; }
+.tabs .tab:hover .close, .tabs .tab[aria-selected="true"] .close { opacity: 0.7; }
+.tabs .close:hover { opacity: 1; background: var(--control-hover); }
+#editor .pierre-host { height: 100%; overflow: auto; background: var(--bg); }
+#example, #theme { background: var(--control); color: var(--fg); border: 1px solid var(--control-border); border-radius: 4px; padding: 3px 6px; }
+#right { display: grid; grid-template-rows: 1fr 1fr; min-width: 0; min-height: 0; border-left: 1px solid var(--border); }
 #preview-wrap { display: flex; flex-direction: column; min-height: 0; }
 /* Expanded: almost the whole window, over the playground; the frame stays where it is, so it doesn't reload. */
-#preview-wrap.expanded { position: fixed; inset: 2.5vh 2.5vw; z-index: 20; background: #1b1d23; border: 1px solid #3a3f4a; border-radius: 8px; overflow: hidden; box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6); }
+#preview-wrap.expanded { position: fixed; inset: 2.5vh 2.5vw; z-index: 20; background: var(--bg); border: 1px solid var(--control-border); border-radius: 8px; overflow: hidden; box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6); }
 #preview-backdrop { position: fixed; inset: 0; z-index: 19; background: rgba(0, 0, 0, 0.55); }
 #preview-backdrop[hidden] { display: none; }
-#request { display: flex; gap: 6px; padding: 4px 8px; background: #14161a; border-bottom: 1px solid #2c2f36; }
-#request select, #request input, #req-body { background: #2c313a; color: #d7dae0; border: 1px solid #3a3f4a; border-radius: 4px; padding: 3px 6px; font: 12px ui-monospace, monospace; }
+#request { display: flex; gap: 6px; padding: 4px 8px; background: var(--panel); border-bottom: 1px solid var(--border); }
+#request select, #request input, #req-body { background: var(--control); color: var(--fg); border: 1px solid var(--control-border); border-radius: 4px; padding: 3px 6px; font: 12px ui-monospace, monospace; }
 #req-path { flex: 1; min-width: 0; }
-#request button { background: #2c313a; color: inherit; border: 1px solid #3a3f4a; border-radius: 4px; padding: 3px 10px; cursor: pointer; }
+#request button { background: var(--control); color: inherit; border: 1px solid var(--control-border); border-radius: 4px; padding: 3px 10px; cursor: pointer; }
 #expand { display: grid; place-items: center; padding: 0 8px; }
 #req-body { height: 5em; margin: 0; border-radius: 0; border-width: 0 0 1px; resize: vertical; }
-#preview { flex: 1; width: 100%; border: 0; background: white; }
-#preview[hidden], #req-body[hidden] { display: none; }
-#response { flex: 1; overflow: auto; margin: 0; padding: 6px 8px; font: 12px ui-monospace, monospace; white-space: pre-wrap; }
-#response.error { color: #e06c75; }
-#console-wrap { display: flex; flex-direction: column; min-height: 0; border-top: 1px solid #2c2f36; }
-#console-head { display: flex; justify-content: space-between; padding: 4px 8px; background: #14161a; color: #8b919e; }
-#console { flex: 1; overflow: auto; padding: 4px 8px; font: 12px ui-monospace, monospace; white-space: pre-wrap; }
-#console .warn { color: #e5c07b; }
-#console .error { color: #e06c75; }
-#console .sys { color: #61afef; }
+#preview-views { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.preview-frame { flex: 1; width: 100%; border: 0; }
+.preview-frame[hidden], .preview-response[hidden], #req-body[hidden] { display: none; }
+.preview-response { flex: 1; overflow: auto; margin: 0; padding: 6px 8px; font: 12px ui-monospace, monospace; white-space: pre-wrap; }
+.preview-response.error { color: var(--error); }
+#preview-tabs .method { font: 10px/1 ui-monospace, monospace; padding: 2px 4px; border-radius: 3px; background: var(--control); }
+#preview-tabs .add { display: grid; place-items: center; padding: 0 10px; border: 0; background: none; color: var(--muted); cursor: pointer; }
+#preview-tabs .add:hover { color: var(--fg); background: var(--control-hover); }
+#console-wrap { display: flex; flex-direction: column; min-height: 0; border-top: 1px solid var(--border); }
+#console-head { display: flex; align-items: center; gap: 6px; padding: 4px 8px; background: var(--panel); border-bottom: 1px solid var(--border); color: var(--muted); }
+#console-head .label { color: var(--fg); font-weight: 600; }
+#console-head .chip { display: inline-flex; align-items: center; gap: 3px; min-width: 1.6em; justify-content: center; padding: 0 6px; border-radius: 999px; background: var(--control); font: 11px/16px ui-monospace, monospace; }
+#console-head .chip[hidden] { display: none; }
+#console-head .chip.error { color: var(--error); background: color-mix(in srgb, var(--error) 14%, var(--panel)); }
+#console-head .chip.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, var(--panel)); }
+#clear { margin-left: auto; padding: 4px 6px; }
+#clear:hover:not(:disabled) { background: var(--control-hover); }
+#clear:disabled { opacity: 0.4; cursor: default; }
+/* A Ghostty terminal (console.ts) draws the lines. */
+#console { flex: 1; min-height: 0; overflow: hidden; padding: 4px 0 0 8px; }
 .unsupported { max-width: 36rem; margin: 4rem auto; padding: 0 1rem; line-height: 1.5; }

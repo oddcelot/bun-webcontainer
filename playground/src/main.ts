@@ -1,16 +1,21 @@
+import "virtual:uno.css";
 import { BASE } from "./base";
 import { seedDemo } from "./demo";
 import { examples, loadExample, repoExamples } from "./examples";
 import { loadRepo, parseRepo } from "./github";
-import { createCodeMirror } from "./editors/codemirror";
-import type { CodeEditor, EditorKind } from "./editors/types";
+import { createPierre } from "./editors/pierre";
 import { bunInstall } from "./install";
 import { Runner } from "./runner";
 import { mountFileTree } from "./fileTree";
+import { mountTabs } from "./tabs";
 import { mountPreview } from "./preview";
 import { loadSemver } from "./semver";
 import { showUnsupported, supportsMemory64 } from "./support";
 import { VFS } from "./vfs";
+import "./title";
+import { mountThemePicker } from "./theme";
+import { mountConsole } from "./console";
+import { createShell, scriptEntry } from "./shell";
 
 if (!supportsMemory64()) {
   showUnsupported();
@@ -19,15 +24,36 @@ if (!supportsMemory64()) {
 }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
-const consoleEl = $("console");
+// The shell (below) needs the runner and VFS, which come later.
+const terminal = mountConsole($("console"), {
+  onCommand: (line) => exec(line),
+  onInterrupt: () => stop(),
+  onClear: () => clearConsole(),
+});
 const statusEl = $("status");
+type Status = "idle" | "busy" | "running" | "error";
+let status: [Status, string] = ["idle", "Stopped"];
+function setStatus(state: Status, text: string) {
+  statusEl.dataset.state = state;
+  statusEl.textContent = text;
+}
+
+const counts = { lines: 0, error: 0, warn: 0 };
+function showCounts() {
+  $("console-count").textContent = String(counts.lines);
+  for (const [id, n] of [["console-errors", counts.error], ["console-warns", counts.warn]] as const) {
+    const chip = $(id);
+    chip.hidden = n === 0;
+    chip.lastElementChild!.textContent = String(n);
+  }
+  $<HTMLButtonElement>("clear").disabled = counts.lines === 0;
+}
 
 function log(level: string, text: string) {
-  const line = document.createElement("div");
-  line.className = level;
-  line.textContent = text;
-  consoleEl.append(line);
-  consoleEl.scrollTop = consoleEl.scrollHeight;
+  terminal.log(level, text);
+  counts.lines++;
+  if (level === "error" || level === "warn") counts[level]++;
+  showCounts();
 }
 
 async function setupServiceWorker() {
@@ -77,77 +103,68 @@ await setupServiceWorker();
 const semver = await loadSemver();
 const runner = new Runner(vfs, log);
 
-let current = "index.ts";
+mountThemePicker($("modes"), $<HTMLSelectElement>("theme"));
 const editorEl = $("editor");
-let editorKind: EditorKind = localStorage.getItem("editor") === "pierre" ? "pierre" : "codemirror";
-/** Pierre (Shiki + edit mode) loads only when chosen. */
-async function editorFactory(kind: EditorKind): Promise<(parent: HTMLElement) => CodeEditor> {
-  return kind === "pierre" ? (await import("./editors/pierre")).createPierre : createCodeMirror;
-}
-let editor: CodeEditor = (await editorFactory(editorKind))(editorEl);
+const editor = createPierre(editorEl);
+let current: string | null = null;
 
-function openFile(path: string) {
-  current = path;
-  const data = vfs.read(path);
-  editor.open(path, typeof data === "string" ? data : null, (text) => {
-    if (current === path) vfs.write(path, text);
-  });
-  fileTree.reveal(path);
-}
-
-async function switchEditor(kind: EditorKind) {
-  if (kind === editorKind) return;
-  editorKind = kind;
-  localStorage.setItem("editor", kind);
-  const create = await editorFactory(kind);
-  editor.destroy();
-  editorEl.replaceChildren();
-  editor = create(editorEl);
-  openFile(current);
-}
+const tabs = mountTabs($("tabs"), {
+  onActivate(path) {
+    current = path;
+    editorEl.toggleAttribute("data-empty", !path);
+    if (!path) return editor.clear();
+    const data = vfs.read(path);
+    editor.open(path, typeof data === "string" ? data : null, (text) => {
+      if (current === path) vfs.write(path, text);
+    });
+    fileTree.reveal(path);
+  },
+  onChange: (open) => fileTree.setOpen(open),
+});
+const openFile = (path: string) => tabs.open(path);
 
 const fileTree = mountFileTree($("tree"), vfs, (path) => {
   if (path !== current) openFile(path);
 });
 
-vfs.onChange(({ path, created }) => {
+vfs.onChange(({ path, created, removed }) => {
+  if (removed) return tabs.close(path);
   if (!created && path === current) {
     const d = vfs.read(path);
     if (typeof d === "string") editor.update(d);
   }
 });
 
-const editorSelect = $<HTMLSelectElement>("editorkind");
-editorSelect.value = editorKind;
-editorSelect.onchange = () => switchEditor(editorSelect.value as EditorKind);
-
 function entryFile(): string {
   try {
     const pkg = JSON.parse(vfs.readText("package.json") ?? "{}") as { module?: string; main?: string; scripts?: Record<string, string> };
-    // `"dev": "bun --watch src/dev.ts"`: the file a `bun [flags] <file>` script runs.
-    const script = (s?: string) => s?.match(/^bun\s+(?:(?:run\s+)?--?[\w-]+(?:=\S+)?\s+)*(?:run\s+)?(\S+\.[cm]?[jt]sx?)\b/)?.[1];
-    for (const e of [pkg.module, pkg.main, script(pkg.scripts?.dev), script(pkg.scripts?.start)])
+    for (const e of [pkg.module, pkg.main, scriptEntry(pkg.scripts?.dev), scriptEntry(pkg.scripts?.start)])
       if (e && vfs.files.has(e.replace(/^\.\//, ""))) return e.replace(/^\.\//, "");
   } catch {}
   return ["index.ts", "index.tsx", "index.js", "src/index.ts"].find((f) => vfs.files.has(f)) ?? "index.ts";
 }
 
-async function run() {
+async function run(entry = entryFile()) {
   const btn = $<HTMLButtonElement>("run");
   btn.disabled = true;
-  statusEl.textContent = "starting...";
-  const entry = entryFile();
+  setStatus("busy", "Starting…");
   log("sys", `[run] ${entry}`);
-  await runner.start(entry);
-  preview.reload();
-  statusEl.textContent = "running";
+  try {
+    await runner.start(entry);
+    preview.reload();
+    status = ["running", `Running ${entry}`];
+  } catch (e) {
+    log("error", String(e));
+    status = ["error", "Failed to start"];
+  }
+  setStatus(...status);
   btn.disabled = false;
 }
 
 async function install() {
   const btn = $<HTMLButtonElement>("install");
   btn.disabled = true;
-  statusEl.textContent = "installing...";
+  setStatus("busy", "Installing…");
   log("sys", "[bun install]");
   try {
     const n = await bunInstall(vfs, semver, log);
@@ -155,19 +172,40 @@ async function install() {
   } catch (e) {
     log("error", String(e));
   }
-  statusEl.textContent = "";
+  // A running server keeps running through an install.
+  setStatus(...status);
   btn.disabled = false;
 }
 
+function stop() {
+  if (status[0] !== "running") return;
+  runner.stop();
+  log("sys", "[stopped]");
+  status = ["idle", "Stopped"];
+  setStatus(...status);
+}
+
+function clearConsole() {
+  terminal.clear();
+  Object.assign(counts, { lines: 0, error: 0, warn: 0 });
+  showCounts();
+}
+
+const exec = createShell({ vfs, log, run, install, stop, clear: clearConsole });
+
 const preview = mountPreview();
-$("run").onclick = run;
+$("run").onclick = () => run();
 $("install").onclick = install;
-$("clear").onclick = () => consoleEl.replaceChildren();
+$("clear").onclick = () => {
+  clearConsole();
+  terminal.focus();
+};
 $("openfolder").onclick = () => $("folderinput").click();
 $<HTMLInputElement>("folderinput").onchange = async (e) => {
   const files = [...((e.target as HTMLInputElement).files ?? [])];
   if (!files.length) return;
   runner.stop();
+  tabs.closeAll();
   vfs.clear();
   const dec = new TextDecoder("utf-8", { fatal: true });
   let n = 0;
