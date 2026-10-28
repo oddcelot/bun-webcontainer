@@ -1,6 +1,6 @@
-import { For, createMemo, from } from "solid-js";
+import { For, createSignal, onSettled } from "solid-js";
 import type { ColorMode } from "@pierre/theming";
-import { FAMILIES, familyOf, pickFamily, setColorMode, watchTheme } from "../theme";
+import { FAMILIES, familyOf, pickFamily, setColorMode, themeState, watchTheme } from "../theme";
 
 const MODES: [ColorMode, string, string][] = [
   ["system", "i-lucide-monitor", "System"],
@@ -10,7 +10,10 @@ const MODES: [ColorMode, string, string][] = [
 
 /** A system/light/dark toggle and the theme families. */
 export function ThemePicker() {
-  const theme = createMemo(() => from(watchTheme));
+  // A plain signal, not an async `from()` stream: picking a family sets the light and dark halves in turn, and
+  // as a stream those updates could leave the select blank. Both writes land in one batch here.
+  const [theme, setTheme] = createSignal(themeState());
+  onSettled(() => watchTheme((s) => setTheme({ ...s })));
   return (
     <>
       <span id="modes" role="group" aria-label="Color scheme">

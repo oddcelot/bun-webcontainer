@@ -152,7 +152,8 @@ export const familyOf = (s: { lightThemeName: string; darkThemeName: string }) =
 if (!familyOf(controller.getState())) pickFamily(families.find((f) => f[1] === controller.getState().lightThemeName)?.[1] ?? "pierre-light");
 
 export type ThemeState = ReturnType<typeof controller.getState>;
-/** Theme state, for `from()`: emits the current state, then every change. */
+export const themeState = () => controller.getState();
+/** Calls `next` with the current theme state, then on every change. Returns the unsubscribe. */
 export const watchTheme = (next: (s: ThemeState) => void) => {
   next(controller.getState());
   return controller.subscribe(() => next(controller.getState()));
