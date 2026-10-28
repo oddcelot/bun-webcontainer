@@ -2,10 +2,12 @@ import { createContext } from "solid-js";
 import type { LogFn } from "../runner";
 import type { VFS } from "../vfs";
 import type { Session } from "./session";
+import type { Workspace } from "./workspace";
 
 /** What the UI needs from main.ts, which still owns the engine (VFS, runner, tabs, file tree). */
 export type App = {
   session: Session;
+  workspace: Workspace;
   vfs: VFS;
   log: LogFn;
   run(): void;

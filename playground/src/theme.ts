@@ -128,10 +128,11 @@ controller.subscribe(() => {
   previewScheme.postMessage(mode);
 });
 
-/** Calls `fn` with the current theme once it's resolved, and again on every change. */
+/** Calls `fn` with the current theme once it's resolved, and again on every change. Returns the unsubscribe. */
 export function onTheme(fn: (name: string, theme: ThemeLike) => void) {
   listeners.add(fn);
   if (applied) fn(themeName(), applied);
+  return () => void listeners.delete(fn);
 }
 
 const families = Object.values(FAMILIES).flat();

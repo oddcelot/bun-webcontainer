@@ -3,20 +3,19 @@ import { BASE } from "./base";
 import { seedDemo } from "./demo";
 import { examples, loadExample, repoExamples } from "./examples";
 import { loadRepo, parseRepo, repoQuery } from "./github";
-import { createRoot } from "solid-js";
+import { createEffect, createRoot } from "solid-js";
 import { isShareLink, loadShareLink, rememberSource } from "./share";
 import { createPierre } from "./editors/pierre";
 import { mountDiagnostics } from "./diagnostics";
 import { bunInstall } from "./install";
 import { Runner } from "./runner";
-import { mountFileTree } from "./fileTree";
-import { mountTabs } from "./tabs";
 import { mountPreview } from "./preview";
 import { loadSemver } from "./semver";
 import { checkSupport, showUnsupported } from "./support";
 import { VFS } from "./vfs";
-import { mountHeader } from "./ui/mount";
+import { mountUI } from "./ui/mount";
 import { createSession, type Status } from "./ui/session";
+import { createWorkspace } from "./ui/workspace";
 import { mountConsole } from "./console";
 import { createShell, scriptEntry } from "./shell";
 
@@ -32,7 +31,7 @@ const terminal = mountConsole($("console"), {
   onInterrupt: () => stop(),
   onClear: () => clearConsole(),
 });
-const session = createRoot(() => createSession(canRun));
+const [session, workspace] = createRoot(() => [createSession(canRun), createWorkspace()] as const);
 
 const counts = { lines: 0, error: 0, warn: 0 };
 function showCounts() {
@@ -67,7 +66,7 @@ async function setupServiceWorker() {
 }
 
 const vfs = new VFS();
-mountHeader({ session, vfs, log, run: () => run(), install, openProject, newFile, openFolder, repoParam: new URLSearchParams(location.search).get("repo") ?? "" });
+mountUI({ session, workspace, vfs, log, run: () => run(), install, openProject, newFile, openFolder, repoParam: new URLSearchParams(location.search).get("repo") ?? "" });
 const params = new URLSearchParams(location.search);
 const exampleName = params.get("example") ?? "";
 const repoParam = params.get("repo") ?? "";
@@ -123,30 +122,32 @@ const editor = createPierre(editorEl);
 const check = mountDiagnostics(vfs, editor);
 let current: string | null = null;
 
-const tabs = mountTabs($("tabs"), {
-  onActivate(path) {
-    current = path;
-    editorEl.toggleAttribute("data-empty", !path);
-    if (!path) return editor.clear(), check(null, null);
-    const data = vfs.read(path);
-    editor.open(path, typeof data === "string" ? data : null, (text) => {
-      if (current !== path) return;
-      vfs.write(path, text);
-      check(path, text);
-    });
-    check(path, typeof data === "string" ? data : null);
-    fileTree.reveal(path);
-  },
-  onChange: (open) => fileTree.setOpen(open),
-});
-const openFile = (path: string) => tabs.open(path);
-
-const fileTree = mountFileTree($("tree"), vfs, (path) => {
-  if (path !== current) openFile(path);
-});
+// The editor shows the active tab.
+createRoot(() =>
+  createEffect(
+    () => workspace.state.active,
+    (path) => {
+      current = path;
+      editorEl.toggleAttribute("data-empty", !path);
+      if (!path) {
+        editor.clear();
+        check(null, null);
+        return;
+      }
+      const data = vfs.read(path);
+      editor.open(path, typeof data === "string" ? data : null, (text) => {
+        if (current !== path) return;
+        vfs.write(path, text);
+        check(path, text);
+      });
+      check(path, typeof data === "string" ? data : null);
+    },
+  ),
+);
+const openFile = (path: string) => workspace.open(path);
 
 vfs.onChange(({ path, created, removed }) => {
-  if (removed) return tabs.close(path);
+  if (removed) return workspace.close(path);
   if (!created && path === current) {
     const d = vfs.read(path);
     if (typeof d === "string") (editor.update(d), check(path, d));
@@ -216,7 +217,7 @@ $("clear").onclick = () => {
 };
 async function openFolder(files: File[]) {
   runner?.stop();
-  tabs.closeAll();
+  workspace.closeAll();
   vfs.clear();
   const dec = new TextDecoder("utf-8", { fatal: true });
   let n = 0;
@@ -231,7 +232,7 @@ async function openFolder(files: File[]) {
     vfs.write(rel, data);
     n++;
   }
-  fileTree.reset();
+  workspace.reloadTree();
   log("sys", `[open] ${files[0].webkitRelativePath.split("/")[0] || "files"}: ${n} files (node_modules skipped)`);
   openFile(entryFile());
 }

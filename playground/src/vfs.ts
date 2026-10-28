@@ -24,8 +24,10 @@ export class VFS {
   private listeners = new Set<(e: VfsEvent) => void>();
   private dirListeners = new Set<(path: string, removed: boolean) => void>();
 
+  /** Returns the unsubscribe. */
   onChange(fn: (e: VfsEvent) => void) {
     this.listeners.add(fn);
+    return () => void this.listeners.delete(fn);
   }
 
   /** Fires when a directory is created or removed (file events don't cover empty directories). */
