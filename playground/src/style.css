@@ -22,6 +22,11 @@ header button, #clear, #request button { display: inline-flex; align-items: cent
 header button, #clear { background: var(--control); color: inherit; border: 1px solid var(--control-border); border-radius: 4px; padding: 4px 10px; cursor: pointer; }
 header button:hover { background: var(--control-hover); }
 header button:disabled { opacity: 0.5; cursor: default; }
+#modes { display: inline-flex; }
+#modes button { padding: 4px 7px; border-radius: 0; margin-left: -1px; }
+#modes button:first-child { border-radius: 4px 0 0 4px; margin-left: 0; }
+#modes button:last-child { border-radius: 0 4px 4px 0; }
+#modes button[aria-pressed="true"] { background: var(--control-hover); color: var(--accent); }
 .title { display: inline-flex; align-items: center; gap: 6px; }
 #status { margin-left: auto; color: var(--muted); }
 main { flex: 1; min-height: 0; display: grid; grid-template-columns: 200px 1fr 1fr; }

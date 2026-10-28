@@ -1,22 +1,31 @@
-import { resolveTheme, type DiffsTheme } from "@pierre/diffs";
+import { createThemeCatalog, createThemeController, type ColorMode, type ThemeLike } from "@pierre/theming";
 import { colorUtils, normalizeThemeColors } from "@pierre/theming/color";
 import { themes } from "@pierre/theming/themes";
 import { bundledThemesInfo } from "shiki/themes";
 
-// One theme (any Pierre or Shiki theme) colors the editor, the file tree and the app chrome.
-const KEY = "theme";
+// A color mode (system/light/dark) plus one theme per scheme; the active theme (any Pierre or Shiki
+// theme) colors the editor, the file tree and the app chrome.
 const VARS_KEY = "theme-vars";
-const DEFAULT = "pierre-dark";
 
-let name = themes.getThemeNames().includes(localStorage.getItem(KEY) ?? "") ? localStorage.getItem(KEY)! : DEFAULT;
-let resolved: DiffsTheme | undefined;
-const listeners = new Set<(name: string, theme: DiffsTheme) => void>();
+const controller = createThemeController({
+  catalog: createThemeCatalog({ themes, defaultLightThemeName: "pierre-light", defaultDarkThemeName: "pierre-dark" }),
+  defaultMode: "system",
+  storageKey: "theme-selection",
+});
+const listeners = new Set<(name: string, theme: ThemeLike) => void>();
+let applied: ThemeLike | undefined;
+
+/** The theme name for the scheme in effect (`system` resolved against the OS). */
+export function themeName() {
+  const s = controller.getState();
+  return s.resolvedColorScheme === "light" ? s.lightThemeName : s.darkThemeName;
+}
 
 /** App chrome variables (see style.css); unset ones fall back to mixes of --bg and --fg. */
-function chromeVars(theme: DiffsTheme): Record<string, string | undefined> {
+function chromeVars(theme: ThemeLike): Record<string, string | undefined> {
   const c = normalizeThemeColors(theme).colors ?? {};
-  const bg = c["editor.background"] ?? theme.bg;
-  const fg = c["editor.foreground"] ?? theme.fg;
+  const bg = c["editor.background"] ?? theme.bg ?? "";
+  const fg = c["editor.foreground"] ?? theme.fg ?? "";
   const panel = c["sideBar.background"];
   // Many themes (pierre-dark too) draw borders in a surface color; those would vanish here.
   let border: string | undefined = c["panel.border"] ?? c["sideBar.border"] ?? c["editorGroup.border"];
@@ -45,39 +54,66 @@ try {
   applyVars(JSON.parse(localStorage.getItem(VARS_KEY) ?? "{}"));
 } catch {}
 
-export const themeName = () => name;
+function sync() {
+  const { resolvedTheme, pendingThemeResolution } = controller.getState();
+  if (!resolvedTheme || pendingThemeResolution || resolvedTheme === applied) return;
+  applied = resolvedTheme;
+  const vars = chromeVars(resolvedTheme);
+  applyVars(vars);
+  localStorage.setItem(VARS_KEY, JSON.stringify(vars));
+  for (const fn of listeners) fn(themeName(), resolvedTheme);
+}
+controller.subscribe(sync);
+sync();
 
 /** Calls `fn` with the current theme once it's resolved, and again on every change. */
-export function onTheme(fn: (name: string, theme: DiffsTheme) => void) {
+export function onTheme(fn: (name: string, theme: ThemeLike) => void) {
   listeners.add(fn);
-  if (resolved) fn(name, resolved);
+  if (applied) fn(themeName(), applied);
 }
 
-export async function setTheme(next: string) {
-  name = next;
-  const theme = await resolveTheme(next);
-  if (name !== next) return; // a later pick won
-  resolved = theme;
-  const vars = chromeVars(theme);
-  applyVars(vars);
-  localStorage.setItem(KEY, next);
-  localStorage.setItem(VARS_KEY, JSON.stringify(vars));
-  for (const fn of listeners) fn(next, theme);
-}
+const MODES: [ColorMode, string, string][] = [
+  ["system", "i-lucide-monitor", "System"],
+  ["light", "i-lucide-sun", "Light"],
+  ["dark", "i-lucide-moon", "Dark"],
+];
 
-/** Fills `select` with every theme (Pierre's, then Shiki's dark and light ones) and switches on change. */
-export function mountThemePicker(select: HTMLSelectElement) {
+/**
+ * A system/light/dark toggle into `modes`, and into `select` the themes for the scheme in effect
+ * (Pierre's first). Picking one sets it for that scheme.
+ */
+export function mountThemePicker(modes: HTMLElement, select: HTMLSelectElement) {
+  const buttons = MODES.map(([mode, icon, label]) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.title = `${label} color scheme`;
+    b.setAttribute("aria-label", b.title);
+    b.innerHTML = `<i class="${icon}" aria-hidden="true"></i>`;
+    b.onclick = () => controller.setColorMode(mode);
+    return b;
+  });
+  modes.replaceChildren(...buttons);
+
   const shikiNames = new Map(bundledThemesInfo.map((t) => [t.id, t.displayName]));
-  const groups = new Map<string, HTMLOptGroupElement>();
-  for (const t of themes.getThemes()) {
-    const label = t.collection === "pierre" ? "Pierre" : t.colorScheme === "light" ? "Light" : "Dark";
-    let group = groups.get(label);
-    if (!group) groups.set(label, (group = Object.assign(document.createElement("optgroup"), { label })));
-    group.append(new Option(t.displayName ?? shikiNames.get(t.name) ?? t.name, t.name));
-  }
-  select.replaceChildren(...groups.values());
-  select.value = name;
-  select.onchange = () => setTheme(select.value);
+  let shown: string | undefined;
+  const render = () => {
+    const { mode, resolvedColorScheme: scheme } = controller.getState();
+    buttons.forEach((b, i) => b.setAttribute("aria-pressed", String(MODES[i][0] === mode)));
+    if (scheme !== shown) {
+      shown = scheme;
+      const groups = new Map<string, HTMLOptGroupElement>();
+      for (const t of themes.getThemes({ colorScheme: scheme })) {
+        const label = t.collection === "pierre" ? "Pierre" : "Shiki";
+        let group = groups.get(label);
+        if (!group) groups.set(label, (group = Object.assign(document.createElement("optgroup"), { label })));
+        group.append(new Option(t.displayName ?? shikiNames.get(t.name) ?? t.name, t.name));
+      }
+      select.replaceChildren(...groups.values());
+      select.title = `${scheme === "light" ? "Light" : "Dark"} theme`;
+    }
+    select.value = themeName();
+  };
+  select.onchange = () => controller.setThemeNameForScheme(controller.getState().resolvedColorScheme, select.value);
+  controller.subscribe(render);
+  render();
 }
-
-setTheme(name);

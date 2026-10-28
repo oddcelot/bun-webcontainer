@@ -80,7 +80,7 @@ const semver = await loadSemver();
 const runner = new Runner(vfs, log);
 
 let current = "index.ts";
-mountThemePicker($<HTMLSelectElement>("theme"));
+mountThemePicker($("modes"), $<HTMLSelectElement>("theme"));
 const editorEl = $("editor");
 const editor = createPierre(editorEl);
 
