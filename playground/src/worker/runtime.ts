@@ -398,10 +398,14 @@ async function build(opts: { entrypoints: string[]; outdir?: string; naming?: st
   return { success: true, outputs, logs: [] };
 }
 
-/** Bun's fetch reads `file:` URLs from disk; here, from the VFS (napi-rs wasm bindings fetch their .wasm this way). */
+/**
+ * Bun's fetch reads `file:` URLs from disk; here, from the VFS (napi-rs wasm bindings fetch their .wasm this way).
+ * A relative URL is invalid, as in Bun: the worker's own URL would make it a request to the playground.
+ */
 const networkFetch = globalThis.fetch;
 globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = input instanceof Request ? input.url : String(input);
+  if (!URL.canParse(url)) throw Object.assign(new TypeError("fetch() URL is invalid"), { code: "ERR_INVALID_URL" });
   if (!url.startsWith("file:")) return networkFetch(input, init);
   const path = norm(decodeURIComponent(new URL(url).pathname));
   const data = vfs.readBytes(path);

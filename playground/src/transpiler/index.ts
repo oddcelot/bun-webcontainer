@@ -19,7 +19,7 @@ const LOADERS: Record<string, number> = { js: 0, mjs: 0, jsx: 1, ts: 2, mts: 2, 
 let ready: Promise<Exports> | undefined;
 
 async function load(): Promise<Exports> {
-  const res = await fetch(`${BASE}bun_transpile_wasm.wasm`);
+  const res = await fetch(new URL(`${BASE}bun_transpile_wasm.wasm`, location.href));
   const { instance } = await WebAssembly.instantiate(await res.arrayBuffer(), {});
   return instance.exports as unknown as Exports;
 }
