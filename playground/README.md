@@ -31,6 +31,7 @@ The picker's "Astro + Solid" (`fixtures/astro-solid-demo`) runs an Astro 7 dev s
     src/moduleServer.ts   VFS path -> JS: transpile TS/JSX, rewrite relative + bare specifiers to /__vfs/...
     src/transpiler/       Bun's transpiler as wasm64 (../transpile-wasm): transpile(source, path) => Promise<string>
     src/editors/          pierre.ts: @pierre/diffs File + edit-mode Editor behind the CodeEditor interface
+    src/tabs.ts           open files as tabs above the editor; open ones get a dot in the file tree
     src/fileTree.ts       @pierre/trees file tree over the VFS (search, icons); selecting a file opens it
     src/console.ts        console pane: an xterm.js terminal (lazy; fit, links, graphemes addons) with a line-editing prompt
     src/shell.ts          its commands: bun run/<file>/install/add/remove, ls, cat, clear, help

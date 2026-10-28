@@ -7,6 +7,7 @@ import { createPierre } from "./editors/pierre";
 import { bunInstall } from "./install";
 import { Runner } from "./runner";
 import { mountFileTree } from "./fileTree";
+import { mountTabs } from "./tabs";
 import { mountPreview } from "./preview";
 import { loadSemver } from "./semver";
 import { showUnsupported, supportsMemory64 } from "./support";
@@ -102,25 +103,32 @@ await setupServiceWorker();
 const semver = await loadSemver();
 const runner = new Runner(vfs, log);
 
-let current = "index.ts";
 mountThemePicker($("modes"), $<HTMLSelectElement>("theme"));
 const editorEl = $("editor");
 const editor = createPierre(editorEl);
+let current: string | null = null;
 
-function openFile(path: string) {
-  current = path;
-  const data = vfs.read(path);
-  editor.open(path, typeof data === "string" ? data : null, (text) => {
-    if (current === path) vfs.write(path, text);
-  });
-  fileTree.reveal(path);
-}
+const tabs = mountTabs($("tabs"), {
+  onActivate(path) {
+    current = path;
+    editorEl.toggleAttribute("data-empty", !path);
+    if (!path) return editor.clear();
+    const data = vfs.read(path);
+    editor.open(path, typeof data === "string" ? data : null, (text) => {
+      if (current === path) vfs.write(path, text);
+    });
+    fileTree.reveal(path);
+  },
+  onChange: (open) => fileTree.setOpen(open),
+});
+const openFile = (path: string) => tabs.open(path);
 
 const fileTree = mountFileTree($("tree"), vfs, (path) => {
   if (path !== current) openFile(path);
 });
 
-vfs.onChange(({ path, created }) => {
+vfs.onChange(({ path, created, removed }) => {
+  if (removed) return tabs.close(path);
   if (!created && path === current) {
     const d = vfs.read(path);
     if (typeof d === "string") editor.update(d);
@@ -197,6 +205,7 @@ $<HTMLInputElement>("folderinput").onchange = async (e) => {
   const files = [...((e.target as HTMLInputElement).files ?? [])];
   if (!files.length) return;
   runner.stop();
+  tabs.closeAll();
   vfs.clear();
   const dec = new TextDecoder("utf-8", { fatal: true });
   let n = 0;

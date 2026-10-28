@@ -61,6 +61,12 @@ export function createPierre(parent: HTMLElement): CodeEditor {
       if (nextText !== text) show(path, nextText);
     },
     getText: () => editor?.getText() ?? text,
+    clear() {
+      close();
+      host.replaceChildren();
+      path = text = "";
+      listener = () => {};
+    },
     destroy() {
       close();
       host.remove();

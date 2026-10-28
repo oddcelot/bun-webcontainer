@@ -40,7 +40,19 @@ header button:disabled { opacity: 0.5; cursor: default; }
 @media (prefers-reduced-motion: reduce) { #status[data-state="busy"]::before { animation: none; } }
 main { flex: 1; min-height: 0; display: grid; grid-template-columns: 200px 1fr 1fr; }
 #tree { min-height: 0; border-right: 1px solid var(--border); }
-#editor { min-width: 0; overflow: hidden; }
+#editor-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+#editor { flex: 1; min-height: 0; overflow: hidden; }
+#editor[data-empty]::before { content: "No file open"; display: grid; place-items: center; height: 100%; color: var(--muted); }
+#tabs { display: flex; overflow-x: auto; scrollbar-width: thin; background: var(--panel); border-bottom: 1px solid var(--border); }
+#tabs:empty { display: none; }
+#tabs .tab { display: flex; align-items: center; gap: 6px; padding: 5px 6px 5px 12px; border-right: 1px solid var(--border); color: var(--muted); cursor: pointer; white-space: nowrap; user-select: none; box-shadow: inset 0 2px transparent; }
+#tabs .tab:hover { color: var(--fg); }
+#tabs .tab[aria-selected="true"] { background: var(--bg); color: var(--fg); box-shadow: inset 0 2px var(--accent); }
+#tabs .tab:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+#tabs .dir { font-size: 11px; opacity: 0.7; }
+#tabs .close { display: grid; place-items: center; padding: 2px; border: 0; border-radius: 3px; background: none; color: inherit; cursor: pointer; opacity: 0; }
+#tabs .tab:hover .close, #tabs .tab[aria-selected="true"] .close { opacity: 0.7; }
+#tabs .close:hover { opacity: 1; background: var(--control-hover); }
 #editor .pierre-host { height: 100%; overflow: auto; background: var(--bg); }
 #example, #theme { background: var(--control); color: var(--fg); border: 1px solid var(--control-border); border-radius: 4px; padding: 3px 6px; }
 #right { display: grid; grid-template-rows: 1fr 1fr; min-width: 0; min-height: 0; border-left: 1px solid var(--border); }
