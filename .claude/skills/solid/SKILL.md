@@ -1,0 +1,115 @@
+---
+name: solid
+description:
+  Use when writing or changing SolidJS 2 code in playground/src/ui (any .tsx in the playground),
+  porting a piece of the hand-built DOM interface to Solid, or debugging Solid dev warnings,
+  reactivity, stores, async boundaries, refs, or the Solid Vite plugin. Solid 2 is not 1.x and
+  not React; read this before generating Solid code.
+---
+
+# Solid 2 in the playground
+
+The playground interface is moving from hand-built DOM (`index.html` + `src/*.ts`) to Solid 2
+(epic `bwc-k4r` in beads). New UI code lives in `playground/src/ui/`.
+
+**Training data is mostly Solid 1.x and React. Both are wrong here.** Before writing code, read
+[references/CHEATSHEET.md](references/CHEATSHEET.md) (its last section, the "footgun list", at
+minimum). Check anything unclear against the references below, not memory.
+
+## Versions and packages
+
+Pinned exact (release candidate; the Solid docs ask for exact pins):
+
+| Package                | Version          | Holds                                                                   |
+| ---------------------- | ---------------- | ----------------------------------------------------------------------- |
+| `solid-js`             | `2.0.0-rc.19`    | signals, memos, effects, stores, control flow, context, `action`, async |
+| `@solidjs/web`         | `2.0.0-rc.19`    | `render`, `Portal`, `dynamic`, the JSX types (`JSX`, `ComponentProps`)  |
+| `@solidjs/vite-plugin` | `3.0.0-next.52`  | Vite 8 plugin; compiles JSX with the Oxc-based `@solidjs/compiler`      |
+
+`solid-js/web`, `solid-js/store`, `vite-plugin-solid` and `jsxImportSource: "solid-js"` are 1.x;
+don't use them. `tsconfig.json` has `"jsx": "preserve"` and `"jsxImportSource": "@solidjs/web"`.
+Bumping Solid: update all three together, re-vendor `references/` from the matching tag
+(`documentation/solid-2.0/` and `packages/solid/CHEATSHEET.md` in solidjs/solid), and re-run the
+checks below.
+
+## The rules that bite most
+
+- **Reads lag writes.** `setX(v); x()` still returns the old value until the microtask flush
+  (or `flush()`). No `batch`.
+- **`createEffect(compute, apply)`** is the only form. Compute tracks and returns a value; apply
+  does side effects and returns its cleanup. No `on()`, no single-function effect.
+- **No writes in owned scope.** Setting a signal or store inside a memo, effect compute or
+  component body throws in dev (`untrack` doesn't help). Write from event handlers, `onSettled`,
+  effect apply, or `action`s.
+- **Props are values.** Pass `value={count()}`, not `value={count}`. Read `props.x`; never
+  destructure props or read them at the top of a component body.
+- **Lifecycle:** `onSettled(() => { ...; return cleanup })` replaces `onMount` + `onCleanup`.
+  Ref callbacks are unowned: no `onCleanup` or primitives inside them.
+- **Stores:** `setStore(s => { s.a.b = 1; s.list.push(x) })` (draft-first; `produce` is gone),
+  `snapshot(store)` for plain values, `reconcile(data, "id")` to merge fetched data.
+- **Lists:** `<For each>` gives `(item, i)` with `item` a value and `i()` an accessor;
+  `<For keyed={false}>` gives `item()` an accessor and `i` a number. `Index` is gone.
+  Function children of `For`/`Show`/`Match` are owners, not tracking scopes: read accessors in JSX.
+- **Async:** a memo may return a Promise; wrap readers in `<Loading>`. `isPending(() => x())`
+  for "updating…". `<Errored>` catches. No `createResource`, `Suspense`, `ErrorBoundary`.
+- **DOM:** `class={["base", { active: on() }]}` (no `classList`, no string-building), lowercase
+  attributes (`tabindex`), camelCase events bound once (`onClick={e => (c() ? a : b)(e)}` to
+  switch), `ref={[a, b(opts)]}` directive factories (no `use:`), booleans are presence/absence.
+- **Context is the provider:** `<Ctx value={...}>`. A default-less `createContext<T>()` makes
+  `useContext` return `T` and throw without a provider; no `useX` wrapper hooks.
+
+## Conventions for this codebase
+
+- **Mounting while migrating:** `src/ui/mount.tsx` mounts components into existing elements with
+  `mount(id, view)`. `render()` appends, so `mount` clears the static fallback first. Once the
+  page is all Solid, collapse to one `render(() => <App />, root)`.
+- **Engine stays plain TypeScript.** `VFS`, `Runner`, the worker, shell, install, share encoding
+  are not UI; don't rewrite them as components. Bridge their events into Solid instead:
+  - push events (`vfs.onChange`, runner logs): subscribe in `onSettled` and write into a store or
+    signal, returning the unsubscribe; or `createMemo(() => from(subscribeFn))` for a
+    latest-value stream.
+  - one-shot async (loading an example, fetching a repo): an `action(function* () {...})`, with
+    `Loading`/`isPending` for UI state rather than hand-rolled status flags.
+- **App state** (status, open tabs, console counts, theme) lives in a store created inside `App`
+  and handed down with a default-less context, not at module scope.
+- **Imperative islands** (xterm console, `@pierre/diffs` editors, `@pierre/trees`, the preview
+  iframes): a component owns a `let el!: HTMLDivElement` ref, creates the instance in
+  `onSettled` and returns its `dispose`; push reactive inputs with
+  `createEffect(() => props.x, x => instance.set(x))`. Use a ref directive factory when the
+  behavior is reused on several elements. See the project's `trees` and `diffs` skills for those
+  APIs.
+- **Icons and styles:** UnoCSS scans `.tsx`, so `<i class="i-lucide-play" aria-hidden="true" />`
+  works as before. Keep the existing class names and `style.css`; this port changes structure,
+  not the look.
+- **Accessibility:** keep the roles, `aria-*`, `popover`/`popovertarget` and `hidden` semantics
+  the current markup has.
+
+## Checking work
+
+```bash
+(cd playground && bunx tsc --noEmit && bun run build)
+(cd playground && bun run dev)   # port may not be 5173 if another server holds it; read the log
+```
+
+In Chrome: the page loads, Run starts the demo and the preview shows, and the console has no Solid
+dev warnings or errors. Each diagnostic has a code; look it up in
+[references/08-dev-diagnostics.md](references/08-dev-diagnostics.md).
+
+## References (vendored, rc.19)
+
+| Topic                                              | File                                                                               |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| One-page API + 1.x corrections                     | [CHEATSHEET.md](references/CHEATSHEET.md)                                          |
+| 1.x → 2.0 migration, rename/removal map            | [MIGRATION.md](references/MIGRATION.md)                                            |
+| Batching, `flush`, split effects, `onSettled`      | [01-reactivity-batching-effects.md](references/01-reactivity-batching-effects.md) |
+| Derived signals, ownership, `createRoot`, context  | [02-signals-derived-ownership.md](references/02-signals-derived-ownership.md)     |
+| `For`/`Repeat`/`Show`/`Switch`/`Loading`/`Errored` | [03-control-flow.md](references/03-control-flow.md)                               |
+| Stores, `reconcile`, `createProjection`, `deep`    | [04-stores.md](references/04-stores.md)                                           |
+| Async memos, `isPending`, `latest`, `refresh`      | [05-async-data.md](references/05-async-data.md)                                   |
+| `action`, `createOptimistic(Store)`, `affects`     | [06-actions-optimistic.md](references/06-actions-optimistic.md)                   |
+| Attributes, events, `class`, refs, directives      | [07-dom.md](references/07-dom.md)                                                 |
+| Dev warnings and their codes                       | [08-dev-diagnostics.md](references/08-dev-diagnostics.md)                         |
+| JSX types and `jsxImportSource`                    | [09-typescript-jsx.md](references/09-typescript-jsx.md)                           |
+
+Server functions, server components and SSR (RFCs 10–12) are left out: the playground is a
+client-only app.
