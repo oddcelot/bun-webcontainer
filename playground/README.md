@@ -23,15 +23,14 @@ The picker's "Astro + Solid" (`fixtures/astro-solid-demo`) runs an Astro 7 dev s
 
 ## Architecture
 
-    src/main.ts           UI: file tree, CodeMirror, console pane, buttons, SW registration
+    src/main.ts           UI: file tree, editor, console pane, buttons, SW registration
     src/vfs.ts            in-memory Map FS (read/write/list/exists/mkdir)
     src/github.ts         ?repo=: public GitHub repo -> VFS (API tree listing + raw.githubusercontent.com)
     src/demo.ts           seed project (index.ts, util.ts, package.json)
     src/runner.ts         owns the worker; bridges SW messages and worker RPC
     src/moduleServer.ts   VFS path -> JS: transpile TS/JSX, rewrite relative + bare specifiers to /__vfs/...
     src/transpiler/       Bun's transpiler as wasm64 (../transpile-wasm): transpile(source, path) => Promise<string>
-    src/editors/          swappable editor (header "Editor" switch, remembered in localStorage):
-                            codemirror.ts (default) and pierre.ts (@pierre/diffs File + edit-mode Editor, lazy-loaded)
+    src/editors/          pierre.ts: @pierre/diffs File + edit-mode Editor behind the CodeEditor interface
     src/fileTree.ts       @pierre/trees file tree over the VFS (search, icons, One Dark theme); selecting a file opens it
     src/install.ts        no lockfile: registry fetch, semver pick (wasm), flat node_modules
     src/lockfile.ts       bun.lock (text format; tested with lockfileVersion 2 from Bun 1.4.4): locked versions, nested node_modules, sha512 integrity check

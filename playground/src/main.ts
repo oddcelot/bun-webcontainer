@@ -2,8 +2,7 @@ import { BASE } from "./base";
 import { seedDemo } from "./demo";
 import { examples, loadExample, repoExamples } from "./examples";
 import { loadRepo, parseRepo } from "./github";
-import { createCodeMirror } from "./editors/codemirror";
-import type { CodeEditor, EditorKind } from "./editors/types";
+import { createPierre } from "./editors/pierre";
 import { bunInstall } from "./install";
 import { Runner } from "./runner";
 import { mountFileTree } from "./fileTree";
@@ -79,12 +78,7 @@ const runner = new Runner(vfs, log);
 
 let current = "index.ts";
 const editorEl = $("editor");
-let editorKind: EditorKind = localStorage.getItem("editor") === "pierre" ? "pierre" : "codemirror";
-/** Pierre (Shiki + edit mode) loads only when chosen. */
-async function editorFactory(kind: EditorKind): Promise<(parent: HTMLElement) => CodeEditor> {
-  return kind === "pierre" ? (await import("./editors/pierre")).createPierre : createCodeMirror;
-}
-let editor: CodeEditor = (await editorFactory(editorKind))(editorEl);
+const editor = createPierre(editorEl);
 
 function openFile(path: string) {
   current = path;
@@ -93,17 +87,6 @@ function openFile(path: string) {
     if (current === path) vfs.write(path, text);
   });
   fileTree.reveal(path);
-}
-
-async function switchEditor(kind: EditorKind) {
-  if (kind === editorKind) return;
-  editorKind = kind;
-  localStorage.setItem("editor", kind);
-  const create = await editorFactory(kind);
-  editor.destroy();
-  editorEl.replaceChildren();
-  editor = create(editorEl);
-  openFile(current);
 }
 
 const fileTree = mountFileTree($("tree"), vfs, (path) => {
@@ -116,10 +99,6 @@ vfs.onChange(({ path, created }) => {
     if (typeof d === "string") editor.update(d);
   }
 });
-
-const editorSelect = $<HTMLSelectElement>("editorkind");
-editorSelect.value = editorKind;
-editorSelect.onchange = () => switchEditor(editorSelect.value as EditorKind);
 
 function entryFile(): string {
   try {

@@ -6,5 +6,3 @@ export interface CodeEditor {
   getText(): string;
   destroy(): void;
 }
-
-export type EditorKind = "codemirror" | "pierre";
