@@ -30,6 +30,14 @@ const vfs = new VFS();
 setFs(vfs, (op, ...args) => post({ type: "vfs", op, args }));
 setStdio((level, text) => post({ type: "console", level, text }));
 g.__nodeBuiltins = builtins;
+/** `import(expr)` in served modules (see rewriteMeta): `file:` URLs and paths, as Bun takes them, load from the VFS. */
+g.__dynamicImport = (from: string, spec: unknown, options?: ImportCallOptions) => {
+  const s = String(spec);
+  const builtin = s.replace(/^node:/, "");
+  if (builtin in builtins) return import(/* @vite-ignore */ `${BASE}__vfs/__node/${builtin}`);
+  const path = /^(file:|\/|\.)/.test(s) && decodeURIComponent(new URL(s, from).pathname);
+  return import(/* @vite-ignore */ path ? `${BASE}__vfs/${norm(path)}` : s, options);
+};
 g.process = process;
 g.global ??= globalThis;
 g.Buffer ??= (builtins.buffer as { Buffer: unknown }).Buffer;

@@ -54,7 +54,7 @@ Checked in Chrome only (via chrome-devtools MCP): Memory64 wasm instantiates and
 
 - CommonJS in `node_modules` is wrapped as ESM (src/cjs.ts): literal `require("x")` calls only, named exports found by a static scan of `exports.x =` patterns. `child_process`, `zlib`, `vm`, `readline` etc. are stubs that throw when called; `fs` has no symlinks and its watchers never fire.
 - `process` and `Bun.env` are minimal shims (env, argv, cwd, nextTick, listeners that never fire); `Bun.serve`'s server has `reload` but `upgrade` returns false (no WebSockets); same for `http` servers (`upgrade` never fires).
-- Import rewriting is regex-based (can touch import-like text inside strings).
+- Import rewriting is regex-based over a tokenizer that skips strings, templates, comments and regex literals (a heuristic: `/` after `)` counts as division).
 - Pierre editor: renders every line (no virtualization yet; `VirtualizedFile` would be needed for very large files) and has no autocomplete; undo history resets when switching files or editors.
 - HTML imports are not bundled: each script/stylesheet loads as its own module from /__vfs/ (CSS is served as plain CSS; no CSS imports from JS).
 - Install without a lockfile: dependencies, devDependencies and optionalDependencies, flat, first version wins; it doesn't write a `bun.lock`.

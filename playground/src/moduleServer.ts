@@ -200,56 +200,55 @@ ${code.replace(/\bimport\.meta\.require\b/g, "__metaRequire")}`;
 // start or after whitespace, punctuation or an operator: not inside strings like `"@import"` or `"extensionless-import"`.
 const SPEC_RE = /((?<=^|[\s;{}()[\],=?!&|+*<>~^%])(?:from\s*|import\s*\(\s*|import\s*))(["'])([^"'\n]+)\2/g;
 
+/** Where `spec` imported from `dir` is served, relative to `/__vfs/`; null if it doesn't resolve. */
+function resolveTarget(vfs: VFS, spec: string, dir: string): string | null {
+  const builtin = spec.replace(/^node:/, "");
+  if (spec === "bun:wrap") return "__bun/wrap";
+  if (spec in hostNames) {
+    checkHostVersion(vfs);
+    return `__host/${spec}`;
+  }
+  if (spec.startsWith("node:") || builtin in builtins) return builtin in builtins ? `__node/${builtin}` : null;
+  if (spec.startsWith(".")) return resolveFile(vfs, norm(`${dir}/${spec}`));
+  if (spec.startsWith("/")) return resolveFile(vfs, norm(spec));
+  if (spec.startsWith("#")) return resolveImports(vfs, spec, dir);
+  return resolveBare(vfs, spec, dir);
+}
+
+/** Specifiers of import statements and `import("x")` in code; not in strings or templates (code generators have them). */
 function rewriteImports(vfs: VFS, code: string, dir: string): string {
-  return code.replace(SPEC_RE, (m, pre: string, q: string, spec: string) => {
-    if (/^(https?:|data:|blob:)/.test(spec) || spec.startsWith(`${BASE}__vfs/`)) return m;
-    const builtin = spec.replace(/^node:/, "");
-    if (spec === "bun:wrap") return `${pre}${q}${BASE}__vfs/__bun/wrap${q}`;
-    if (spec in hostNames) {
-      checkHostVersion(vfs);
-      return `${pre}${q}${BASE}__vfs/__host/${spec}${q}`;
-    }
-    const target =
-      spec.startsWith("node:") || builtin in builtins
-        ? builtin in builtins
-          ? `__node/${builtin}`
-          : null
-        : spec.startsWith(".")
-          ? resolveFile(vfs, norm(`${dir}/${spec}`))
-          : spec.startsWith("/")
-            ? resolveFile(vfs, norm(spec))
-            : spec.startsWith("#")
-              ? resolveImports(vfs, spec, dir)
-              : resolveBare(vfs, spec, dir);
-    return `${pre}${q}${BASE}__vfs/${target ?? `__unresolved__/${encodeURIComponent(spec)}`}${q}`;
+  const literal = literalRanges(code);
+  return code.replace(SPEC_RE, (m, pre: string, q: string, spec: string, offset: number) => {
+    if (inRanges(literal, offset) || /^(https?:|data:|blob:)/.test(spec) || spec.startsWith(`${BASE}__vfs/`)) return m;
+    return `${pre}${q}${BASE}__vfs/${resolveTarget(vfs, spec, dir) ?? `__unresolved__/${encodeURIComponent(spec)}`}${q}`;
   });
 }
 
 const REGEX_AFTER = /(?:^|[^\w$.])(?:return|typeof|case|in|of|delete|void|throw|new|else|do|yield|await)$/;
-const META_RE = /^import\.meta\.(url|dirname|filename)\b/;
 
-/** `import.meta.url` & co. point at a `file:` URL of the module's VFS path, as Node and Bun have them. Only code is touched, not strings, templates, comments or regex literals. */
-function rewriteMeta(code: string, path: string): string {
-  const value = { url: `file:///${path}`, dirname: "/" + dirname(path), filename: "/" + path };
+/** Sorted `[start, end)` ranges of strings, template text, comments and regex literals: everything that isn't code. */
+function literalRanges(code: string): [number, number][] {
+  const ranges: [number, number][] = [];
   const n = code.length;
   const stack: number[] = []; // brace depths at which an open template literal resumes
   let depth = 0;
-  let out = "";
-  let last = 0;
   let i = 0;
   let prev = ""; // last significant code character
   const template = () => {
+    const from = i;
     for (; i < n; i++) {
       if (code[i] === "\\") i++;
-      else if (code[i] === "`") return void i++;
+      else if (code[i] === "`") return void ranges.push([from, ++i]);
       else if (code[i] === "$" && code[i + 1] === "{") {
         stack.push(depth++);
-        return void (i += 2);
+        return void ranges.push([from, (i += 2)]);
       }
     }
+    ranges.push([from, n]);
   };
   while (i < n) {
     const c = code[i];
+    const from = i;
     if (c === "/" && code[i + 1] === "/") i = code.indexOf("\n", i) < 0 ? n : code.indexOf("\n", i);
     else if (c === "/" && code[i + 1] === "*") i = code.indexOf("*/", i + 2) < 0 ? n : code.indexOf("*/", i + 2) + 2;
     else if (c === '"' || c === "'") {
@@ -259,28 +258,19 @@ function rewriteMeta(code: string, path: string): string {
     } else if (c === "`") {
       i++;
       template();
+      ranges.at(-1)![0] = from;
       prev = "`";
+      continue;
     } else if (c === "/" && (!prev || !/[\w$)\]}"'`]/.test(prev) || REGEX_AFTER.test(code.slice(Math.max(0, i - 12), i).trimEnd()))) {
       for (i++; i < n && code[i] !== "/" && code[i] !== "\n"; i += code[i] === "\\" ? 2 : 1) if (code[i] === "[") for (i++; i < n && code[i] !== "]" && code[i] !== "\n"; i += code[i] === "\\" ? 2 : 1);
       i++;
       prev = "/";
     } else {
-      if (c === "i" && !/[\w$.]/.test(prev) && code.startsWith("import.meta.", i)) {
-        const m = META_RE.exec(code.slice(i, i + 24));
-        if (m) {
-          out += code.slice(last, i) + JSON.stringify(value[m[1] as keyof typeof value]);
-          i += m[0].length;
-          last = i;
-          prev = '"';
-          continue;
-        }
-      }
       if (c === "{") depth++;
       else if (c === "}") {
         depth--;
         if (stack.length && stack[stack.length - 1] === depth) {
           stack.pop();
-          i++;
           template();
           prev = "`";
           continue;
@@ -288,9 +278,50 @@ function rewriteMeta(code: string, path: string): string {
       }
       if (!/\s/.test(c)) prev = c;
       i++;
+      continue;
     }
+    ranges.push([from, Math.min(i, n)]);
   }
-  return out + code.slice(last);
+  return ranges;
+}
+
+/** Whether `pos` lies in one of the sorted `ranges`. */
+function inRanges(ranges: [number, number][], pos: number): boolean {
+  let lo = 0;
+  let hi = ranges.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (pos < ranges[mid][0]) hi = mid - 1;
+    else if (pos >= ranges[mid][1]) lo = mid + 1;
+    else return true;
+  }
+  return false;
+}
+
+/** Whether the parameter list that starts before `from` is followed by a body: `import(url) {` is a method named import. */
+function isMethod(code: string, from: number): boolean {
+  let depth = 1;
+  let i = from;
+  for (; i < code.length && depth; i++) depth += code[i] === "(" ? 1 : code[i] === ")" ? -1 : 0;
+  return /^\s*\{/.test(code.slice(i, i + 32));
+}
+
+const META_RE = /(?<![\w$.])import\.meta\.(url|dirname|filename)\b|(?<![\w$.])import\s*\(\s*(?!["'\s])/g;
+
+/**
+ * `import.meta.url` & co. point at a `file:` URL of the module's VFS path, as Node and Bun have them. With
+ * `dynamicImports`, `import(expr)` with a computed specifier goes through the worker's `__dynamicImport`, which loads
+ * `file:` URLs and paths from the VFS (literal ones are resolved by rewriteImports). Only code is touched, not strings,
+ * templates, comments or regex literals.
+ */
+function rewriteMeta(code: string, path: string, dynamicImports: boolean): string {
+  const value = { url: `file:///${path}`, dirname: "/" + dirname(path), filename: "/" + path };
+  const literal = literalRanges(code);
+  return code.replace(META_RE, (m, meta: keyof typeof value | undefined, offset: number) => {
+    if (inRanges(literal, offset)) return m;
+    if (meta) return JSON.stringify(value[meta]);
+    return dynamicImports && !isMethod(code, offset + m.length) ? `globalThis.__dynamicImport(${JSON.stringify(value.url)}, ` : m;
+  });
 }
 
 /** The module for a Node built-in: the worker registers the real object as `globalThis.__nodeBuiltins`. */
@@ -336,7 +367,7 @@ export async function serveModule(vfs: VFS, rawPath: string, onError: (msg: stri
     else if (isCommonJS(path, src, packageType(vfs, path))) code = wrapCommonJS(path, src);
     else code = src;
     CONDITIONS = TARGET_CONDITIONS[target];
-    return { status: 200, body: rewriteImports(vfs, rewriteMeta(hoistMetaRequire(vfs, hoistRequires(vfs, code, dirname(path)), dirname(path)), path), dirname(path)) };
+    return { status: 200, body: rewriteImports(vfs, rewriteMeta(hoistMetaRequire(vfs, hoistRequires(vfs, code, dirname(path)), dirname(path)), path, target === "bun"), dirname(path)) };
   } catch (e) {
     const msg = `${path}: ${e instanceof Error ? e.message : String(e)}`;
     onError(msg);
