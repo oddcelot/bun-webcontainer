@@ -13,6 +13,7 @@ import { showUnsupported, supportsMemory64 } from "./support";
 import { VFS } from "./vfs";
 import "./title";
 import { mountThemePicker } from "./theme";
+import { mountConsole } from "./console";
 
 if (!supportsMemory64()) {
   showUnsupported();
@@ -21,7 +22,7 @@ if (!supportsMemory64()) {
 }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
-const consoleEl = $("console");
+const terminal = mountConsole($("console"));
 const statusEl = $("status");
 type Status = "idle" | "busy" | "running" | "error";
 let status: [Status, string] = ["idle", "Stopped"];
@@ -42,11 +43,7 @@ function showCounts() {
 }
 
 function log(level: string, text: string) {
-  const line = document.createElement("div");
-  line.className = level;
-  line.textContent = text;
-  consoleEl.append(line);
-  consoleEl.scrollTop = consoleEl.scrollHeight;
+  terminal.log(level, text);
   counts.lines++;
   if (level === "error" || level === "warn") counts[level]++;
   showCounts();
@@ -173,7 +170,7 @@ const preview = mountPreview();
 $("run").onclick = run;
 $("install").onclick = install;
 $("clear").onclick = () => {
-  consoleEl.replaceChildren();
+  terminal.clear();
   Object.assign(counts, { lines: 0, error: 0, warn: 0 });
   showCounts();
 };

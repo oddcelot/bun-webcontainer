@@ -69,9 +69,6 @@ main { flex: 1; min-height: 0; display: grid; grid-template-columns: 200px 1fr 1
 #clear { margin-left: auto; padding: 4px 6px; }
 #clear:hover:not(:disabled) { background: var(--control-hover); }
 #clear:disabled { opacity: 0.4; cursor: default; }
-#console { flex: 1; overflow: auto; padding: 2px 0; font: 12px/1.5 ui-monospace, monospace; white-space: pre-wrap; }
-#console > div { padding: 1px 8px; border-left: 2px solid transparent; }
-#console .warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 8%, transparent); border-left-color: var(--warn); }
-#console .error { color: var(--error); background: color-mix(in srgb, var(--error) 8%, transparent); border-left-color: var(--error); }
-#console .sys { color: var(--info); }
+/* A Ghostty terminal (console.ts) draws the lines. */
+#console { flex: 1; min-height: 0; overflow: hidden; padding: 4px 0 0 8px; }
 .unsupported { max-width: 36rem; margin: 4rem auto; padding: 0 1rem; line-height: 1.5; }
