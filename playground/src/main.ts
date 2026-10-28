@@ -8,7 +8,7 @@ import { isShareLink, loadShareLink, rememberSource } from "./share";
 import { bunInstall } from "./install";
 import { Runner } from "./runner";
 import { loadSemver } from "./semver";
-import { checkSupport, showUnsupported } from "./support";
+import { checkSupport } from "./support";
 import { VFS } from "./vfs";
 import { mountUI } from "./ui/mount";
 import { createSession, type Status } from "./ui/session";
@@ -20,9 +20,6 @@ import { createShell, scriptEntry } from "./shell";
 const support = checkSupport();
 /** False when a requirement is missing: the interface still loads, but nothing that runs code starts. */
 const canRun = support.every((c) => c.ok);
-if (!canRun) showUnsupported(support, document.querySelector("main")!);
-
-const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 // The shell (below) needs the runner and VFS, which come later.
 const terminal = createConsole({
   onCommand: (line) => exec(line),
@@ -51,7 +48,7 @@ async function setupServiceWorker() {
 }
 
 const vfs = new VFS();
-mountUI({ session, workspace, previews, terminal, clearConsole, vfs, log, run: () => run(), install, openProject, newFile, openFolder, repoParam: new URLSearchParams(location.search).get("repo") ?? "" });
+mountUI({ session, support, workspace, previews, terminal, clearConsole, vfs, log, run: () => run(), install, openProject, newFile, openFolder, repoParam: new URLSearchParams(location.search).get("repo") ?? "" });
 const params = new URLSearchParams(location.search);
 const exampleName = params.get("example") ?? "";
 const repoParam = params.get("repo") ?? "";

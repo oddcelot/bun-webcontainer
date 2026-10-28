@@ -1,30 +1,16 @@
-import { render, type JSX } from "@solidjs/web";
-import { AppContext, type App } from "./app";
-import { Console } from "./Console";
-import { FileTree } from "./FileTree";
-import { Header } from "./Header";
-import { Preview } from "./Preview";
-import { EditorPane } from "./EditorPane";
+import { render } from "@solidjs/web";
+import { App } from "./App";
+import { AppContext, type App as AppApi } from "./context";
 
-/**
- * Renders the Solid parts of the page into index.html's elements. render() appends, so each element's static
- * content is cleared first.
- */
-export function mountUI(app: App) {
-  const into = (selector: string, view: () => JSX.Element) => {
-    const root = document.querySelector<HTMLElement>(selector)!;
-    root.replaceChildren();
-    render(() => <AppContext value={app}>{view()}</AppContext>, root);
-  };
-  into("header", () => <Header />);
-  into("#tree", () => <FileTree />);
-  into("#editor-pane", () => <EditorPane />);
-  into("#right", () => (
-    <>
-      <Preview />
-      <div id="console-wrap">
-        <Console />
-      </div>
-    </>
-  ));
+/** Renders the page into <body>, replacing index.html's static header (kept there for crawlers and no-JS visitors). */
+export function mountUI(app: AppApi) {
+  document.querySelector("body > header")?.remove();
+  return render(
+    () => (
+      <AppContext value={app}>
+        <App />
+      </AppContext>
+    ),
+    document.body,
+  );
 }

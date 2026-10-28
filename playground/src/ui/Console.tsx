@@ -1,5 +1,5 @@
 import { Show, onSettled, useContext } from "solid-js";
-import { AppContext } from "./app";
+import { AppContext } from "./context";
 
 /** The console pane: its header (line, error and warning counts, Clear) over the terminal. */
 export function Console() {

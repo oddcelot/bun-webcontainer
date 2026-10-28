@@ -1,5 +1,5 @@
 import { For, createEffect, createMemo, flush, useContext } from "solid-js";
-import { AppContext } from "./app";
+import { AppContext } from "./context";
 
 const name = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 

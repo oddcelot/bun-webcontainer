@@ -1,6 +1,6 @@
 import { For, Show, createEffect, onSettled, untrack, useContext } from "solid-js";
 import type { Card } from "../preview";
-import { AppContext } from "./app";
+import { AppContext } from "./context";
 import type { PreviewTab } from "./previews";
 
 const CANT_RUN = "This browser can't run code here";

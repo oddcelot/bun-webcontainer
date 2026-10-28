@@ -2,7 +2,7 @@ import { createEffect, onSettled, useContext } from "solid-js";
 import { mountDiagnostics } from "../diagnostics";
 import { createPierre } from "../editors/pierre";
 import type { CodeEditor } from "../editors/types";
-import { AppContext } from "./app";
+import { AppContext } from "./context";
 import { Tabs } from "./Tabs";
 
 /** The open-file tabs over the editor, which shows the active tab and writes edits back to the VFS. */

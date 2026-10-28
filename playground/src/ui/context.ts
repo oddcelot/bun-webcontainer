@@ -1,6 +1,7 @@
 import { createContext } from "solid-js";
 import type { createConsole } from "../console";
 import type { LogFn } from "../runner";
+import type { Check } from "../support";
 import type { VFS } from "../vfs";
 import type { Previews } from "./previews";
 import type { Session } from "./session";
@@ -9,6 +10,8 @@ import type { Workspace } from "./workspace";
 /** What the UI needs from main.ts, which still owns the engine (VFS, runner, tabs, file tree). */
 export type App = {
   session: Session;
+  /** What the browser supports; `session.canRun` is false when any check fails. */
+  support: Check[];
   workspace: Workspace;
   previews: Previews;
   /** The console's terminal; the Console pane attaches it. */

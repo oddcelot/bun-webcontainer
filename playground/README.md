@@ -24,21 +24,24 @@ The picker's "Astro + Solid" (`fixtures/astro-solid-demo`) runs an Astro 7 dev s
 
 ## Architecture
 
-    src/main.ts           UI: file tree, editor, console pane, buttons, SW registration
+    src/main.ts           startup: loads the project, SW registration, runner, install; hands the UI a session and actions
+    src/ui/               the interface in Solid 2 (see .claude/skills/solid): App.tsx lays out the page; session.ts (status,
+                          run/install actions, console counts), workspace.ts (open tabs) and previews.ts (preview tabs) are
+                          the stores main.ts creates; context.ts is what the components get from it
     src/vfs.ts            in-memory Map FS (read/write/list/exists/mkdir)
-    src/share.ts          Share menu: copy the link (the project's text files, no node_modules, deflated into #code=), a README badge (Markdown) or HTML; opening the link restores them
+    src/share.ts          share links (the UI is ui/ShareMenu.tsx): copy the link (the project's text files, no node_modules, deflated into #code=), a README badge (Markdown) or HTML; opening the link restores them
     src/github.ts         ?repo=: public GitHub repo -> VFS (API tree listing + raw.githubusercontent.com)
     src/demo.ts           seed project (index.ts, util.ts, package.json)
     src/runner.ts         owns the worker; bridges SW messages and worker RPC
     src/moduleServer.ts   VFS path -> JS: transpile TS/JSX, rewrite relative + bare specifiers to /__vfs/...
     src/transpiler/       Bun's transpiler as wasm64 (../transpile-wasm): transpile(source, path) => Promise<string>
     src/editors/          pierre.ts: @pierre/diffs File + edit-mode Editor behind the CodeEditor interface
-    src/preview.ts        preview pane: request bar (any method/path) and tabs, each with its own route and iframe
-    src/tabs.ts           open files as tabs above the editor; open ones get a dot in the file tree
-    src/fileTree.ts       @pierre/trees file tree over the VFS (search, icons); selecting a file opens it
-    src/console.ts        console pane: an xterm.js terminal (lazy; fit, links, graphemes addons) with a line-editing prompt
+    src/preview.ts        requests to the running server for the preview (ui/Preview.tsx: request bar, tabs, one iframe each)
+    src/ui/Tabs.tsx       open files as tabs above the editor; open ones get a dot in the file tree
+    src/ui/FileTree.tsx   @pierre/trees file tree over the VFS (search, icons); selecting a file opens it
+    src/console.ts        the console's xterm.js terminal (lazy; fit, links, graphemes addons) with a line-editing prompt; ui/Console.tsx attaches it
     src/shell.ts          its commands: bun run/<file>/install/add/remove, ls, cat, clear, help
-    src/theme.ts          system/light/dark toggle + a theme family (light and dark variant; @pierre/theming controller): the active variant colors the editor, tree (themeToTreeStyles) and chrome (CSS variables)
+    src/theme.ts          color mode (system/light/dark) + a theme family (picker: ui/ThemePicker.tsx) (light and dark variant; @pierre/theming controller): the active variant colors the editor, tree (themeToTreeStyles) and chrome (CSS variables)
     src/install.ts        no lockfile: registry fetch, semver pick (wasm), flat node_modules
     src/lockfile.ts       bun.lock (text format; tested with lockfileVersion 2 from Bun 1.4.4): locked versions, nested node_modules, sha512 integrity check
     src/semver.ts         loader for public/bun_semver_wasm.wasm (wasm64, BigInt pointers)

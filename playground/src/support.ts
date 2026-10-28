@@ -2,7 +2,7 @@
 // marks i64 addressing. Browsers without Memory64 reject it.
 const MEMORY64_MODULE = new Uint8Array([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x05, 0x03, 0x01, 0x04, 0x00]);
 
-type Check = { name: string; ok: boolean; why: string };
+export type Check = { name: string; ok: boolean; why: string };
 
 function memory64(): boolean {
   try {
@@ -53,7 +53,7 @@ export function checkSupport(): Check[] {
 }
 
 /** Advice for the engine at hand when Memory64 is the missing piece. */
-function engineHint(checks: Check[]): string {
+export function engineHint(checks: Check[]): string {
   if (checks.find((c) => c.name === "WebAssembly Memory64")?.ok) return "";
   const ua = navigator.userAgent;
   const webkit = /AppleWebKit/.test(ua) && !/Chrome|Chromium|Edg\//.test(ua);
@@ -61,25 +61,4 @@ function engineHint(checks: Check[]): string {
     return "On iOS and iPadOS every browser uses Safari's engine (WebKit), which hasn't shipped Memory64 yet (Safari 27 lacks it). Try a desktop with Chrome or Firefox.";
   if (webkit) return "Safari hasn't shipped Memory64 yet (Safari 27 lacks it; WebKit's development builds have it). Use Chrome 133+ or Firefox 134+.";
   return "Update your browser: Chrome 133+ and Firefox 134+ support it.";
-}
-
-const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
-
-/**
- * A banner above the editor saying what's missing: editing, examples and sharing still work, but nothing can run
- * (the module server and the program need Bun's wasm, a service worker and module workers).
- */
-export function showUnsupported(checks: Check[], before: Element) {
-  const missing = checks.filter((c) => !c.ok);
-  const box = document.createElement("details");
-  box.className = "unsupported";
-  const rows = checks
-    .map((c) => `<li data-ok="${c.ok}"><strong>${c.ok ? "✓" : "✗"} ${esc(c.name)}</strong>${c.ok ? "" : ` <span>${esc(c.why)}</span>`}</li>`)
-    .join("");
-  const hint = engineHint(checks);
-  box.innerHTML = `<summary><strong>This browser can't run code here</strong> (missing: ${esc(missing.map((c) => c.name).join(", "))}).
-You can still edit files, open examples and share links.</summary>
-<ul>${rows}</ul>${hint ? `<p>${esc(hint)}</p>` : ""}
-<p class="ua">${esc(navigator.userAgent)}</p>`;
-  before.before(box);
 }

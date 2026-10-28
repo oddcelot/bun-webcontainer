@@ -1,7 +1,7 @@
 import { Loading, Show, For, action, createMemo, createOptimistic, createSignal, resolve, useContext } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { LONG_LINK, MAX_SHORT, badgeUrl, formats, noteLines, shareLink, shortLink, type Link } from "../share";
-import { AppContext } from "./app";
+import { AppContext } from "./context";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 

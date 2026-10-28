@@ -1,7 +1,7 @@
 import { For, useContext } from "solid-js";
 import logo from "../bun-logo.svg";
 import { examples, repoExamples } from "../examples";
-import { AppContext } from "./app";
+import { AppContext } from "./context";
 import { ShareMenu } from "./ShareMenu";
 import { ThemePicker } from "./ThemePicker";
 import { Title } from "./Title";

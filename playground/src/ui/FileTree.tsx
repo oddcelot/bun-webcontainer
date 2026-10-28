@@ -7,7 +7,7 @@ import {
   type FileTreeItemHandle,
 } from "@pierre/trees";
 import { onTheme } from "../theme";
-import { AppContext } from "./app";
+import { AppContext } from "./context";
 
 const isDirectory = (item: FileTreeItemHandle | null): item is FileTreeDirectoryHandle => item?.isDirectory() === true;
 
