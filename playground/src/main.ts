@@ -1,3 +1,4 @@
+import "virtual:uno.css";
 import { BASE } from "./base";
 import { seedDemo } from "./demo";
 import { examples, loadExample, repoExamples } from "./examples";

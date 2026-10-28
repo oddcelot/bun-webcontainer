@@ -8,11 +8,11 @@
   <body>
     <header>
       <strong>Bun playground</strong>
-      <button id="run">Run</button>
-      <button id="install">bun install</button>
-      <button id="newfile">New file</button>
-      <button id="openfolder">Open folder</button>
-      <button id="openrepo">Open GitHub repo</button>
+      <button id="run"><i class="i-lucide-play" aria-hidden="true"></i> Run</button>
+      <button id="install"><i class="i-lucide-download" aria-hidden="true"></i> bun install</button>
+      <button id="newfile"><i class="i-lucide-file-plus" aria-hidden="true"></i> New file</button>
+      <button id="openfolder"><i class="i-lucide-folder-open" aria-hidden="true"></i> Open folder</button>
+      <button id="openrepo"><i class="i-lucide-github" aria-hidden="true"></i> Open GitHub repo</button>
       <select id="example" title="Example project">
         <option value="">Confetti demo</option>
       </select>
@@ -30,7 +30,7 @@
               <option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option>
             </select>
             <input id="req-path" value="/" spellcheck="false" title="Path on the running server" />
-            <button>Send</button>
+            <button><i class="i-lucide-send" aria-hidden="true"></i> Send</button>
             <button type="button" id="expand" title="Expand preview (Esc)" aria-pressed="false"></button>
           </form>
           <textarea id="req-body" spellcheck="false" placeholder="Request body (JSON is sent as application/json)"></textarea>
@@ -38,7 +38,7 @@
           <pre id="response" hidden></pre>
         </div>
         <div id="console-wrap">
-          <div id="console-head">Console <button id="clear">clear</button></div>
+          <div id="console-head">Console <button id="clear"><i class="i-lucide-eraser" aria-hidden="true"></i> clear</button></div>
           <div id="console"></div>
         </div>
       </div>

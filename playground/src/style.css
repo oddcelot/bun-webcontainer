@@ -2,6 +2,7 @@
 html, body { height: 100%; margin: 0; background: #1b1d23; color: #d7dae0; font: 13px system-ui, sans-serif; }
 body { display: flex; flex-direction: column; }
 header { display: flex; gap: 8px; align-items: center; padding: 6px 10px; background: #14161a; border-bottom: 1px solid #2c2f36; }
+header button, #clear, #request button { display: inline-flex; align-items: center; gap: 5px; }
 header button, #clear { background: #2c313a; color: inherit; border: 1px solid #3a3f4a; border-radius: 4px; padding: 4px 10px; cursor: pointer; }
 header button:hover { background: #3a404c; }
 header button:disabled { opacity: 0.5; cursor: default; }

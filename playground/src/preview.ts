@@ -1,11 +1,8 @@
 import { BASE } from "./base";
 
 const PREFIX = `${BASE}__preview`;
-// Corners pointing out (expand) or in (restore).
-const ICON = (d: string) =>
-  `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
-const EXPAND = ICON("M1 5V1h4M9 1h4v4M13 9v4H9M5 13H1V9");
-const RESTORE = ICON("M5 1v4H1M13 5H9V1M9 13V9h4M1 9h4v4");
+const EXPAND = `<i class="i-lucide-maximize-2" aria-hidden="true"></i>`;
+const RESTORE = `<i class="i-lucide-minimize-2" aria-hidden="true"></i>`;
 
 // Added by sw.js to every preview response, not sent by the user's server.
 const SW_HEADERS = new Set(["cross-origin-embedder-policy", "cross-origin-resource-policy"]);
