@@ -53,6 +53,11 @@ checks below.
 - **Lists:** `<For each>` gives `(item, i)` with `item` a value and `i()` an accessor;
   `<For keyed={false}>` gives `item()` an accessor and `i` a number. `Index` is gone.
   Function children of `For`/`Show`/`Match` are owners, not tracking scopes: read accessors in JSX.
+- **Actions hold their frame.** Every write flushed together with an action's writes (including
+  ones from a microtask that runs before Solid's flush) stays invisible until the action settles.
+  For long work whose progress must show live (console counts during Run), start the action, call
+  `flush()`, then start the work and hand the action its promise; see `task` in
+  `playground/src/ui/session.ts`.
 - **Async:** a memo may return a Promise; wrap readers in `<Loading>`. `isPending(() => x())`
   for "updating…". `<Errored>` catches. No `createResource`, `Suspense`, `ErrorBoundary`.
 - **DOM:** `class={["base", { active: on() }]}` (no `classList`, no string-building), lowercase
