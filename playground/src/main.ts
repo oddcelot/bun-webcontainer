@@ -5,6 +5,7 @@ import { examples, loadExample, repoExamples } from "./examples";
 import { loadRepo, parseRepo, repoQuery } from "./github";
 import { isShareLink, loadShareLink, mountShareMenu, rememberSource } from "./share";
 import { createPierre } from "./editors/pierre";
+import { mountDiagnostics } from "./diagnostics";
 import { bunInstall } from "./install";
 import { Runner } from "./runner";
 import { mountFileTree } from "./fileTree";
@@ -129,17 +130,21 @@ const runner = new Runner(vfs, log);
 mountThemePicker($("modes"), $<HTMLSelectElement>("theme"));
 const editorEl = $("editor");
 const editor = createPierre(editorEl);
+const check = mountDiagnostics(vfs, editor);
 let current: string | null = null;
 
 const tabs = mountTabs($("tabs"), {
   onActivate(path) {
     current = path;
     editorEl.toggleAttribute("data-empty", !path);
-    if (!path) return editor.clear();
+    if (!path) return editor.clear(), check(null, null);
     const data = vfs.read(path);
     editor.open(path, typeof data === "string" ? data : null, (text) => {
-      if (current === path) vfs.write(path, text);
+      if (current !== path) return;
+      vfs.write(path, text);
+      check(path, text);
     });
+    check(path, typeof data === "string" ? data : null);
     fileTree.reveal(path);
   },
   onChange: (open) => fileTree.setOpen(open),
@@ -154,7 +159,7 @@ vfs.onChange(({ path, created, removed }) => {
   if (removed) return tabs.close(path);
   if (!created && path === current) {
     const d = vfs.read(path);
-    if (typeof d === "string") editor.update(d);
+    if (typeof d === "string") (editor.update(d), check(path, d));
   }
 });
 
