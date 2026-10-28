@@ -26,6 +26,7 @@ The picker's "Astro + Solid" (`fixtures/astro-solid-demo`) runs an Astro 7 dev s
 
     src/main.ts           UI: file tree, editor, console pane, buttons, SW registration
     src/vfs.ts            in-memory Map FS (read/write/list/exists/mkdir)
+    src/share.ts          Share: the project's text files (no node_modules) deflated into the URL #code= hash; opening the link restores them
     src/github.ts         ?repo=: public GitHub repo -> VFS (API tree listing + raw.githubusercontent.com)
     src/demo.ts           seed project (index.ts, util.ts, package.json)
     src/runner.ts         owns the worker; bridges SW messages and worker RPC

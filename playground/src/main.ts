@@ -3,6 +3,7 @@ import { BASE } from "./base";
 import { seedDemo } from "./demo";
 import { examples, loadExample, repoExamples } from "./examples";
 import { loadRepo, parseRepo } from "./github";
+import { isShareLink, loadShareLink, shareLink } from "./share";
 import { createPierre } from "./editors/pierre";
 import { bunInstall } from "./install";
 import { Runner } from "./runner";
@@ -76,11 +77,24 @@ const exampleName = params.get("example") ?? "";
 const repoParam = params.get("repo") ?? "";
 const repo = repoParam ? parseRepo(repoParam) : null;
 if (repoParam && !repo) log("error", `[github] not a GitHub repo: ${repoParam}`);
-if (!(repo ? await loadRepo(vfs, repo, log) : exampleName && (await loadExample(vfs, exampleName)))) seedDemo(vfs);
+// A share link (#code=…) carries the project itself; it wins over ?repo= and ?example=.
+let shared = false;
+if (isShareLink(location.hash)) {
+  try {
+    const n = await loadShareLink(vfs, location.hash);
+    log("sys", `[share] opened a shared project: ${n} files`);
+    shared = true;
+  } catch (e) {
+    log("error", "[share] this link is damaged or incomplete; opening the demo");
+    vfs.clear();
+  }
+}
+if (!shared && !(repo ? await loadRepo(vfs, repo, log) : exampleName && (await loadExample(vfs, exampleName)))) seedDemo(vfs);
 
 /** Reloads with `?example=` or `?repo=` (picker values for repos are `repo:<owner/repo>`). */
 function openProject(value: string) {
   const url = new URL(location.href);
+  url.hash = "";
   url.searchParams.delete("example");
   url.searchParams.delete("repo");
   if (value.startsWith("repo:")) url.searchParams.set("repo", value.slice(5));
@@ -93,8 +107,9 @@ for (const [name, label] of Object.entries(examples)) exampleSelect.add(new Opti
 for (const [name, label] of Object.entries(repoExamples)) exampleSelect.add(new Option(label, `repo:${name}`));
 const selected = repoParam ? `repo:${repoParam}` : exampleName;
 if (repoParam && !(repoParam in repoExamples)) exampleSelect.add(new Option(`GitHub: ${repoParam}`, selected));
-exampleSelect.value = repoParam || exampleName in examples ? selected : "";
-exampleSelect.onchange = () => openProject(exampleSelect.value);
+if (shared) exampleSelect.add(new Option("Shared project", "#shared"));
+exampleSelect.value = shared ? "#shared" : repoParam || exampleName in examples ? selected : "";
+exampleSelect.onchange = () => exampleSelect.value !== "#shared" && openProject(exampleSelect.value);
 $("openrepo").onclick = () => {
   const input = prompt("GitHub repo (owner/repo, owner/repo@ref or a github.com URL)", repoParam || "oddcelot/bun-elysia-demo");
   if (input) openProject(`repo:${input.trim()}`);
@@ -196,6 +211,20 @@ const exec = createShell({ vfs, log, run, install, stop, clear: clearConsole });
 const preview = mountPreview();
 $("run").onclick = () => run();
 $("install").onclick = install;
+const shareBtn = $<HTMLButtonElement>("share");
+const shareLabel = shareBtn.innerHTML;
+shareBtn.onclick = async () => {
+  const { url, files, skipped } = await shareLink(vfs);
+  // The address bar shows the link too, so it can be copied from there or bookmarked.
+  history.replaceState(null, "", url);
+  let copied = true;
+  await navigator.clipboard.writeText(url).catch(() => (copied = false));
+  const kb = (url.length / 1024).toFixed(1);
+  log("sys", `[share] ${copied ? "link copied" : "link is in the address bar"}: ${files} files, ${kb} KB${skipped ? `, ${skipped} binary files left out` : ""}`);
+  if (url.length > 32 * 1024) log("warn", "[share] a link this long may get cut off by some chat apps");
+  shareBtn.innerHTML = `<i class="i-lucide-check" aria-hidden="true"></i> ${copied ? "Copied" : "In address bar"}`;
+  setTimeout(() => (shareBtn.innerHTML = shareLabel), 1600);
+};
 $("clear").onclick = () => {
   clearConsole();
   terminal.focus();
