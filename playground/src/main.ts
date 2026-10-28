@@ -16,7 +16,7 @@ import { VFS } from "./vfs";
 import { mountUI } from "./ui/mount";
 import { createSession, type Status } from "./ui/session";
 import { createWorkspace } from "./ui/workspace";
-import { mountConsole } from "./console";
+import { createConsole } from "./console";
 import { createShell, scriptEntry } from "./shell";
 
 const support = checkSupport();
@@ -26,29 +26,16 @@ if (!canRun) showUnsupported(support, document.querySelector("main")!);
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 // The shell (below) needs the runner and VFS, which come later.
-const terminal = mountConsole($("console"), {
+const terminal = createConsole({
   onCommand: (line) => exec(line),
   onInterrupt: () => stop(),
   onClear: () => clearConsole(),
 });
 const [session, workspace] = createRoot(() => [createSession(canRun), createWorkspace()] as const);
 
-const counts = { lines: 0, error: 0, warn: 0 };
-function showCounts() {
-  $("console-count").textContent = String(counts.lines);
-  for (const [id, n] of [["console-errors", counts.error], ["console-warns", counts.warn]] as const) {
-    const chip = $(id);
-    chip.hidden = n === 0;
-    chip.lastElementChild!.textContent = String(n);
-  }
-  $<HTMLButtonElement>("clear").disabled = counts.lines === 0;
-}
-
 function log(level: string, text: string) {
   terminal.log(level, text);
-  counts.lines++;
-  if (level === "error" || level === "warn") counts[level]++;
-  showCounts();
+  session.countLine(level);
 }
 
 async function setupServiceWorker() {
@@ -66,7 +53,7 @@ async function setupServiceWorker() {
 }
 
 const vfs = new VFS();
-mountUI({ session, workspace, vfs, log, run: () => run(), install, openProject, newFile, openFolder, repoParam: new URLSearchParams(location.search).get("repo") ?? "" });
+mountUI({ session, workspace, terminal, clearConsole, vfs, log, run: () => run(), install, openProject, newFile, openFolder, repoParam: new URLSearchParams(location.search).get("repo") ?? "" });
 const params = new URLSearchParams(location.search);
 const exampleName = params.get("example") ?? "";
 const repoParam = params.get("repo") ?? "";
@@ -201,8 +188,7 @@ function stop() {
 
 function clearConsole() {
   terminal.clear();
-  Object.assign(counts, { lines: 0, error: 0, warn: 0 });
-  showCounts();
+  session.resetCounts();
 }
 
 const exec = createShell({ vfs, log, run, install, stop, clear: clearConsole });
@@ -211,10 +197,6 @@ const preview = mountPreview();
 if (!canRun)
   for (const el of document.querySelectorAll("#request button, #request input, #request select"))
     Object.assign(el, { disabled: true, title: "This browser can't run code here" });
-$("clear").onclick = () => {
-  clearConsole();
-  terminal.focus();
-};
 async function openFolder(files: File[]) {
   runner?.stop();
   workspace.closeAll();

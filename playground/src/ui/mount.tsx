@@ -1,5 +1,6 @@
 import { render, type JSX } from "@solidjs/web";
 import { AppContext, type App } from "./app";
+import { Console } from "./Console";
 import { FileTree } from "./FileTree";
 import { Header } from "./Header";
 import { Tabs } from "./Tabs";
@@ -17,4 +18,5 @@ export function mountUI(app: App) {
   into("header", () => <Header />);
   into("#tree", () => <FileTree />);
   into("#tabs", () => <Tabs />);
+  into("#console-wrap", () => <Console />);
 }

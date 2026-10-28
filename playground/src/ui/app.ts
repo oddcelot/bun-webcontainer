@@ -1,4 +1,5 @@
 import { createContext } from "solid-js";
+import type { createConsole } from "../console";
 import type { LogFn } from "../runner";
 import type { VFS } from "../vfs";
 import type { Session } from "./session";
@@ -8,6 +9,9 @@ import type { Workspace } from "./workspace";
 export type App = {
   session: Session;
   workspace: Workspace;
+  /** The console's terminal; the Console pane attaches it. */
+  terminal: ReturnType<typeof createConsole>;
+  clearConsole(): void;
   vfs: VFS;
   log: LogFn;
   run(): void;

@@ -2,8 +2,8 @@ import type { ITheme, Terminal } from "@xterm/xterm";
 import type { ThemeLike } from "@pierre/theming";
 import { onTheme } from "./theme";
 
-// The console pane as an xterm.js terminal, so ANSI output renders. xterm loads after the page is up; lines
-// logged before that are written once it's open.
+// The console pane as an xterm.js terminal, so ANSI output renders. xterm loads once the pane is attached;
+// lines logged before that are written once it's open.
 
 const LEVEL_SGR: Record<string, string> = { error: "31", warn: "33", sys: "34" };
 const MAX_LINES = 5000;
@@ -63,8 +63,7 @@ const TOKENS = /\x1b\[[0-9;]*[A-Za-z~]|\x1bO[A-Z]|[\s\S]/gu;
  * entered line; the prompt comes back when it settles. Output logged meanwhile prints above the prompt.
  * Ctrl+C on an empty line calls `onInterrupt` (stop the server, like a shell's SIGINT).
  */
-export function mountConsole(
-  el: HTMLElement,
+export function createConsole(
   { onCommand, onInterrupt, onClear }: { onCommand: (line: string) => Promise<void>; onInterrupt: () => void; onClear: () => void },
 ) {
   const lines: string[] = [];
@@ -157,23 +156,20 @@ export function mountConsole(
     redraw();
   }
 
-  const xterm = Promise.all([
-    import("@xterm/xterm"),
-    import("@xterm/addon-fit"),
-    import("@xterm/addon-web-links"),
-    import("@xterm/addon-unicode-graphemes"),
-    import("@xterm/xterm/css/xterm.css"),
-  ]);
-  // Opens on the first theme; later ones (and any that arrive while xterm loads) restyle it in place.
+  const xterm = () =>
+    Promise.all([
+      import("@xterm/xterm"),
+      import("@xterm/addon-fit"),
+      import("@xterm/addon-web-links"),
+      import("@xterm/addon-unicode-graphemes"),
+      import("@xterm/xterm/css/xterm.css"),
+    ]);
   let latest: ThemeLike | undefined;
-  let opening: Promise<void> | undefined;
-  onTheme((_, theme) => {
-    latest = theme;
-    if (term) term.options.theme = terminalTheme(theme);
-    else opening ??= open();
-  });
-  async function open() {
-    const [{ Terminal }, { FitAddon }, { WebLinksAddon }, { UnicodeGraphemesAddon }] = await xterm;
+  let resize: ResizeObserver | undefined;
+
+  async function open(el: HTMLElement, attached: () => boolean) {
+    const [{ Terminal }, { FitAddon }, { WebLinksAddon }, { UnicodeGraphemesAddon }] = await xterm();
+    if (!attached()) return;
     const next = new Terminal({
       theme: terminalTheme(latest!),
       fontSize: 12,
@@ -188,7 +184,8 @@ export function mountConsole(
     for (const addon of [fit, new WebLinksAddon(), new UnicodeGraphemesAddon()]) next.loadAddon(addon);
     next.open(el);
     fit.fit();
-    new ResizeObserver(() => fit.fit()).observe(el);
+    resize = new ResizeObserver(() => fit.fit());
+    resize.observe(el);
     next.onData((data) => {
       for (const [t] of data.matchAll(TOKENS)) key(t);
     });
@@ -199,6 +196,23 @@ export function mountConsole(
   }
 
   const api = {
+    /** Opens the terminal in `el` (on the first theme; later ones restyle it in place). Returns the detach. */
+    attach(el: HTMLElement) {
+      let attached = true;
+      let opening: Promise<void> | undefined;
+      const untheme = onTheme((_, theme) => {
+        latest = theme;
+        if (term) term.options.theme = terminalTheme(theme);
+        else opening ??= open(el, () => attached);
+      });
+      return () => {
+        attached = false;
+        untheme();
+        resize?.disconnect();
+        term?.dispose();
+        term = undefined;
+      };
+    },
     log(level: string, text: string) {
       const line = format(level, text);
       if (!term) return void push(line);
