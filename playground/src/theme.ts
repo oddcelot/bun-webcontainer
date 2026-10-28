@@ -98,6 +98,15 @@ function sync() {
 controller.subscribe(sync);
 sync();
 
+// Preview pages follow the mode (previewColorScheme in sw.js).
+const previewScheme = new BroadcastChannel("bun-color-scheme");
+let mode = controller.getState().mode;
+controller.subscribe(() => {
+  if (controller.getState().mode === mode) return;
+  mode = controller.getState().mode;
+  previewScheme.postMessage(mode);
+});
+
 /** Calls `fn` with the current theme once it's resolved, and again on every change. */
 export function onTheme(fn: (name: string, theme: ThemeLike) => void) {
   listeners.add(fn);

@@ -46,7 +46,7 @@ main { flex: 1; min-height: 0; display: grid; grid-template-columns: 200px 1fr 1
 #request button { background: var(--control); color: inherit; border: 1px solid var(--control-border); border-radius: 4px; padding: 3px 10px; cursor: pointer; }
 #expand { display: grid; place-items: center; padding: 0 8px; }
 #req-body { height: 5em; margin: 0; border-radius: 0; border-width: 0 0 1px; resize: vertical; }
-#preview { flex: 1; width: 100%; border: 0; background: white; }
+#preview { flex: 1; width: 100%; border: 0; }
 #preview[hidden], #req-body[hidden] { display: none; }
 #response { flex: 1; overflow: auto; margin: 0; padding: 6px 8px; font: 12px ui-monospace, monospace; white-space: pre-wrap; }
 #response.error { color: var(--error); }
