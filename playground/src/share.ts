@@ -39,30 +39,60 @@ const unchanged = (vfs: VFS, s: Source) => {
   return now.length === s.files.size && now.every(([p, d]) => s.files.get(p) === (typeof d === "string" ? d : `\0${d.length}`));
 };
 
-type Link = { url: string; files: number; skipped: number; short?: string };
+/** Files that usually hold secrets: never packed into a link (templates like .env.example are fine). */
+const SECRET = /(^|\/)(\.env(\.(?!example$|sample$|template$)[^/]+)?|\.npmrc|\.netrc|[^/]+\.(pem|key|p12|pfx)|id_(rsa|ed25519|ecdsa))$/;
+/** Over this, some chat apps cut a link off; Share tries without bun.lock, then suggests GitHub. */
+export const LONG_LINK = 32 * 1024;
 
-/**
- * The current project as a link to this page: the short link to where it came from while it's unchanged, else
- * its text files packed into the hash (binary files can't travel in it and are skipped).
- */
-export async function shareLink(vfs: VFS): Promise<Link> {
-  if (source && unchanged(vfs, source)) {
-    const url = new URL(BASE + source.query, location.origin);
-    return { url: url.href, files: source.files.size, skipped: 0, short: source.label };
-  }
-  const files: Record<string, string> = {};
-  let skipped = 0;
-  for (const [path, data] of vfs.files) {
-    if (SKIP.test(path)) continue;
-    if (typeof data === "string") files[path] = data;
-    else skipped++;
-  }
+type Link = {
+  url: string;
+  files: number;
+  /** Binary files, which can't travel in a link. */
+  skipped: number;
+  /** Secret files that were left out, by path. */
+  secrets: string[];
+  /** bun.lock was left out to keep the link short; versions are resolved from package.json again. */
+  droppedLock: boolean;
+  /** Set for a short link: what it points to. */
+  short?: string;
+};
+
+async function pack(files: Record<string, string>): Promise<string> {
   const payload: Payload = { v: 1, files };
   const packed = await pipe(new TextEncoder().encode(JSON.stringify(payload)), new CompressionStream("deflate-raw"));
   const url = new URL(location.href);
   url.search = "";
   url.hash = PREFIX.slice(1) + toBase64Url(packed);
-  return { url: url.href, files: Object.keys(files).length, skipped };
+  return url.href;
+}
+
+/**
+ * The current project as a link to this page: the short link to where it came from while it's unchanged, else
+ * its text files packed into the hash. Binary and secret files are left out; when the link would be long and
+ * there's a bun.lock, it's left out too (the install resolves versions from package.json then).
+ */
+export async function shareLink(vfs: VFS): Promise<Link> {
+  if (source && unchanged(vfs, source)) {
+    const url = new URL(BASE + source.query, location.origin);
+    return { url: url.href, files: source.files.size, skipped: 0, secrets: [], droppedLock: false, short: source.label };
+  }
+  const files: Record<string, string> = {};
+  const secrets: string[] = [];
+  let skipped = 0;
+  for (const [path, data] of vfs.files) {
+    if (SKIP.test(path)) continue;
+    if (SECRET.test(path)) secrets.push(path);
+    else if (typeof data === "string") files[path] = data;
+    else skipped++;
+  }
+  let url = await pack(files);
+  let droppedLock = false;
+  if (url.length > LONG_LINK && "bun.lock" in files && "package.json" in files) {
+    const { "bun.lock": _, ...rest } = files;
+    url = await pack(rest);
+    droppedLock = true;
+  }
+  return { url, files: Object.keys(files).length - (droppedLock ? 1 : 0), skipped, secrets, droppedLock };
 }
 
 /** Fills the VFS from a share link's hash; returns the number of files. Throws on a damaged link. */
@@ -85,7 +115,17 @@ export function mountShareMenu(menu: HTMLElement, vfs: VFS, log: (level: string,
   let link: Awaited<ReturnType<typeof shareLink>> | undefined;
   const size = menu.querySelector<HTMLElement>("[data-share-size]")!;
   const lead = menu.querySelector<HTMLElement>("[data-share-lead]")!;
+  const notes = menu.querySelector<HTMLElement>("[data-share-notes]")!;
   const leadText = lead.textContent!;
+  /** What the link leaves out, and whether it's long: one line each. */
+  const noteLines = (l: Link) => [
+    l.secrets.length ? `Left out, as they may hold secrets: ${l.secrets.join(", ")}` : "",
+    l.skipped ? `Left out: ${l.skipped} binary ${l.skipped === 1 ? "file" : "files"} (images, fonts, …)` : "",
+    l.droppedLock ? "Left out bun.lock to keep the link short: versions are resolved from package.json." : "",
+    l.url.length > LONG_LINK
+      ? "Long link: some chat apps cut these off. For a project this size, push it to GitHub and share it from there (?repo=)."
+      : "",
+  ].filter(Boolean);
   const formats: Record<string, (url: string) => string> = {
     link: (url) => url,
     markdown: (url) => `[![Open in runbun](${badge})](${url})`,
@@ -101,9 +141,12 @@ export function mountShareMenu(menu: HTMLElement, vfs: VFS, log: (level: string,
       size.textContent = link.url.replace(/^https?:\/\//, "");
     } else {
       lead.textContent = leadText;
-      const kb = (link.url.length / 1024).toFixed(1);
-      size.textContent = `${link.files} files · ${kb} KB${link.skipped ? ` · ${link.skipped} binary left out` : ""}`;
+      size.textContent = `${link.files} files · ${(link.url.length / 1024).toFixed(1)} KB`;
     }
+    const lines = noteLines(link);
+    notes.replaceChildren(...lines.map((t) => Object.assign(document.createElement("li"), { textContent: t })));
+    notes.hidden = !lines.length;
+    notes.classList.toggle("warn", link.url.length > LONG_LINK);
   });
 
   for (const item of menu.querySelectorAll<HTMLButtonElement>("[data-share]")) {
@@ -119,7 +162,7 @@ export function mountShareMenu(menu: HTMLElement, vfs: VFS, log: (level: string,
       await navigator.clipboard.writeText(text).catch(() => (copied = false));
       const what = kind === "link" ? "link" : kind === "markdown" ? "Markdown badge" : "HTML badge";
       log("sys", `[share] ${copied ? `${what} copied` : "copying failed; the link is in the address bar"}: ${size.textContent}`);
-      if (link.url.length > 32 * 1024) log("warn", "[share] a link this long may get cut off by some chat apps");
+      for (const line of noteLines(link)) log(link.url.length > LONG_LINK && line.startsWith("Long") ? "warn" : "sys", `[share] ${line}`);
       item.dataset.copied = "";
       label.textContent = copied ? "Copied" : "Couldn't copy";
       setTimeout(() => {

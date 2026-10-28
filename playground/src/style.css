@@ -28,6 +28,9 @@ header button:disabled { opacity: 0.5; cursor: default; }
 #share-menu { position-anchor: --share; inset: auto; top: anchor(bottom); left: anchor(left); margin: 6px 0 0; width: 330px; padding: 6px; border: 1px solid var(--control-border); border-radius: 8px; background: var(--panel); color: var(--fg); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35); }
 #share-menu .lead { margin: 6px 8px 8px; font-size: 12px; line-height: 1.4; color: var(--muted); }
 #share-menu .lead [data-share-size] { display: block; font: 11px ui-monospace, monospace; margin-top: 2px; }
+#share-menu .notes { margin: 0 8px 8px; padding: 6px 8px 6px 22px; border-radius: 6px; background: var(--control); font-size: 12px; line-height: 1.4; color: var(--muted); }
+#share-menu .notes[hidden] { display: none; }
+#share-menu .notes.warn { color: var(--fg); background: color-mix(in srgb, var(--warn) 14%, var(--panel)); }
 #share-menu button { display: flex; align-items: flex-start; gap: 10px; width: 100%; padding: 8px; border: 0; border-radius: 6px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 #share-menu button:hover, #share-menu button:focus-visible { background: var(--control); outline: none; }
 #share-menu button > i { margin-top: 2px; flex-shrink: 0; }
