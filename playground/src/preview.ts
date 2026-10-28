@@ -15,7 +15,7 @@ interface Tab {
   body: string;
   view: "frame" | "response";
   frame: HTMLIFrameElement;
-  response: HTMLPreElement;
+  response: HTMLDivElement;
 }
 
 /**
@@ -73,18 +73,24 @@ export function mountPreview() {
       .filter(([k]) => !SW_HEADERS.has(k))
       .map(([k, v]) => `${k}: ${v}`)
       .join("\n");
-    const status = `${res.status} ${res.statusText}`.trim();
-    tab.response.textContent = `${m} ${p}\n${status}\n${head}\n\n${text}`;
-    tab.response.className = "preview-response" + (res.ok ? "" : " error");
+    respond(tab, res.ok, `${m} ${p}`, `${res.status} ${res.statusText}`.trim(), head, text);
+  }
+
+  /** The response card: status pill and request line, headers, then the body in a box (red when it failed). */
+  function respond(tab: Tab, ok: boolean, line: string, status: string, head: string, text: string) {
+    const el = (tag: string, className: string, textContent: string) => Object.assign(document.createElement(tag), { className, textContent });
+    const top = el("div", "status-line", "");
+    if (status) top.append(el("span", "status", status));
+    top.append(el("span", "line", line));
+    tab.response.replaceChildren(top);
+    if (head) tab.response.append(el("pre", "headers", head));
+    if (text) tab.response.append(el("pre", "body", text));
+    tab.response.className = "preview-response" + (ok ? "" : " error");
     show(tab, "response");
   }
 
   const request = (tab: Tab, m?: string) =>
-    send(tab, m).catch((err) => {
-      tab.response.textContent = String(err);
-      tab.response.className = "preview-response error";
-      show(tab, "response");
-    });
+    send(tab, m).catch((err) => respond(tab, false, `${m ?? tab.method} ${tab.path}`, "", "", String(err)));
 
   function render() {
     strip.replaceChildren(
@@ -148,7 +154,7 @@ export function mountPreview() {
 
   function openTab(p = "/"): Tab {
     const frame = Object.assign(document.createElement("iframe"), { className: "preview-frame", title: "preview" });
-    const response = Object.assign(document.createElement("pre"), { className: "preview-response", hidden: true });
+    const response = Object.assign(document.createElement("div"), { className: "preview-response", hidden: true });
     const tab: Tab = { method: "GET", path: p, body: "", view: "frame", frame, response };
     frame.onload = () => {
       const win = frame.contentWindow;
