@@ -46,7 +46,11 @@ W="-Zbuild-std=std,panic_abort --target wasm64-unknown-unknown --release"
   `bun_alloc/wasm_libc.rs` supplies `malloc`/`free`/`strlen`. It is mounted as `crate::libc`,
   which shadows the empty `libc` crate on this target.
 - **Syscalls.** `sys/wasm_impl.rs` is a third `bun_sys` backend, next to the POSIX and Windows
-  ones, and every operation returns ENOSYS. `sys/wasm_libc.rs` holds the Linux-valued types and
+  ones. The core file ops (open/read/write/pread/pwrite/lseek/close, stat family, mkdir, unlink,
+  rename, getcwd, directory iteration) call `bun_sys_host_*` symbols (ABI at the top of
+  `wasm_impl.rs`); the rest return ENOSYS. `sys-host/` defines those symbols as `bun_sys.*` wasm
+  imports (feature `imports`, served by `playground/src/worker/sysHost.ts`) or as -ENOSYS stubs
+  (keeps transpile-wasm/semver-wasm import-free). `sys/wasm_libc.rs` holds the Linux-valued types and
   constants that `bun_sys` names through `libc::`. **This is the future kernel boundary:**
   `wasm_impl.rs` is where calls into the playground's VFS (host imports) go.
 - **The rest.** wasm branches for OS ladders in `bun_core`, `errno` (Linux numbering), `io`,

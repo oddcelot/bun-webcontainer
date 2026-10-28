@@ -1,0 +1,8 @@
+[package]
+name = "bun_sys_host"
+version = "0.0.0"
+edition = "2024"
+
+[features]
+# Forward the `bun_sys_host_*` symbols to wasm imports `bun_sys.*` (sysHost.ts). Off: -ENOSYS stubs.
+imports = []

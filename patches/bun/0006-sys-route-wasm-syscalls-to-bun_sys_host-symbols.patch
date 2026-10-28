@@ -1,0 +1,430 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Stefan Kopco <hey@oddcelot.dev>
+Date: Wed, 28 Oct 2026 18:10:27 +0100
+Subject: [PATCH] sys: route wasm syscalls to bun_sys_host symbols
+
+open/read/write/pread/pwrite/lseek/close, the stat family, mkdir, unlink, rename, getcwd and
+directory iteration call extern bun_sys_host_* symbols (ABI documented in wasm_impl.rs) instead of
+returning ENOSYS. Fd::close closes through the host too. The final wasm crate defines the symbols.
+---
+ src/sys/asm_impl.rs  |   0
+ src/sys/fd.rs        |   2 +-
+ src/sys/lib.rs       |  45 +++++++-
+ src/sys/wasm_impl.rs | 243 ++++++++++++++++++++++++++++++++++---------
+ 4 files changed, 233 insertions(+), 57 deletions(-)
+ create mode 100644 src/sys/asm_impl.rs
+
+diff --git a/src/sys/asm_impl.rs b/src/sys/asm_impl.rs
+new file mode 100644
+index 00000000..e69de29b
+diff --git a/src/sys/fd.rs b/src/sys/fd.rs
+index 38bd831d..252c0696 100644
+--- a/src/sys/fd.rs
++++ b/src/sys/fd.rs
+@@ -119,7 +119,7 @@ impl FdExt for Fd {
+             }
+             #[cfg(target_family = "wasm")] // wasm-experiment
+             {
+-                None
++                sys::close(self).err()
+             }
+             #[cfg(target_os = "freebsd")]
+             {
+diff --git a/src/sys/lib.rs b/src/sys/lib.rs
+index d5f5db09..8ac7796f 100644
+--- a/src/sys/lib.rs
++++ b/src/sys/lib.rs
+@@ -511,15 +511,52 @@ pub mod dir_iterator {
+ 
+     // ── wasm ─────────────────────────────────────────────────────────────
+     #[cfg(target_family = "wasm")] // wasm-experiment
+-    struct State;
++    struct State {
++        buf: AlignedBuf,
++        index: usize,
++        end_index: usize,
++    }
+     #[cfg(target_family = "wasm")] // wasm-experiment
+     impl State {
+         #[inline]
+         fn new() -> State {
+-            State
++            State { buf: AlignedBuf::uninit(), index: 0, end_index: 0 }
+         }
+-        fn next(&mut self, _dir: Fd) -> Result<Option<IteratorResult>> {
+-            Err(Error::from_code(super::E::ENOSYS, Tag::getdents64))
++        /// Records come from the host as `[d_type u8][0][name_len u16 LE][name][NUL]` (wasm_impl.rs).
++        fn next(&mut self, dir: Fd) -> Result<Option<IteratorResult>> {
++            loop {
++                if self.index >= self.end_index {
++                    // SAFETY: `buf` is BUF_SIZE writable bytes; the host initializes `[0..n]`.
++                    let buf = unsafe { core::slice::from_raw_parts_mut(self.buf.as_mut_ptr(), BUF_SIZE) };
++                    let n = super::getdents_host(dir, buf)?;
++                    if n == 0 {
++                        return Ok(None);
++                    }
++                    self.index = 0;
++                    self.end_index = n;
++                }
++                // SAFETY: the host initialized `[0..end_index]`, and `end_index <= BUF_SIZE`.
++                let filled = unsafe { self.buf.filled(self.end_index) };
++                let i = self.index;
++                if i + 5 > filled.len() {
++                    return Err(Error::from_code(super::E::EINVAL, Tag::getdents64));
++                }
++                let name_len = u16::from_le_bytes([filled[i + 2], filled[i + 3]]) as usize;
++                if i + 4 + name_len + 1 > filled.len() || filled[i + 4 + name_len] != 0 {
++                    return Err(Error::from_code(super::E::EINVAL, Tag::getdents64));
++                }
++                self.index = i + 4 + name_len + 1;
++                let kind = match filled[i] {
++                    4 => EntryKind::Directory,
++                    8 => EntryKind::File,
++                    _ => EntryKind::Unknown,
++                };
++                return Ok(Some(IteratorResult {
++                    name: Name::borrow(&filled[i + 4..i + 4 + name_len]),
++                    kind,
++                    ino: 0,
++                }));
++            }
+         }
+     }
+ 
+diff --git a/src/sys/wasm_impl.rs b/src/sys/wasm_impl.rs
+index 3a29a4b7..29864c26 100644
+--- a/src/sys/wasm_impl.rs
++++ b/src/sys/wasm_impl.rs
+@@ -1,93 +1,224 @@
+-//! wasm-experiment: syscall surface for `target_family = "wasm"`. Every operation reports ENOSYS
+-//! until it is wired to a host-provided filesystem.
++//! wasm-experiment: syscall surface for `target_family = "wasm"`. The core file operations call
++//! `bun_sys_host_*` symbols; everything else reports ENOSYS.
++//!
++//! # Host ABI (wasm64)
++//!
++//! bun_sys only *declares* the symbols below (`bun_sys_host_<name>`); the final wasm crate has to
++//! define them, like the other C stand-ins. `sys-host/` (outer repo) does: its `imports` feature
++//! forwards each to a wasm import `bun_sys.<name>`, implemented over the playground VFS by
++//! `playground/src/worker/sysHost.ts`; without the feature they return `-ENOSYS`, so a crate that
++//! never touches the filesystem stays import-free (transpile-wasm, semver-wasm).
++//!
++//! Linux numbering for errno, `O_*`, `AT_*` and the `stat` layout (see `wasm_libc.rs`).
++//! Pointers and lengths are `usize` (i64); `fd`, `dirfd`, `flags`, `mode`, `whence` are i32;
++//! offsets are i64. Every import returns i64: `>= 0` is the result, `< 0` is `-errno`.
++//! Paths are passed as `(ptr, len)` UTF-8, without NUL. `dirfd == AT_FDCWD (-100)` means the cwd,
++//! which is the VFS root "/"; absolute paths are relative to that root too.
++//!
++//! ```text
++//! open(dirfd, path, len, flags, mode)            -> fd
++//! close(fd)                                      -> 0
++//! read(fd, buf, len) / write(fd, buf, len)       -> bytes transferred
++//! pread(fd, buf, len, off) / pwrite(...)         -> bytes transferred (position untouched)
++//! lseek(fd, off, whence)                         -> new position
++//! stat(dirfd, path, len, flags, out)             -> 0   flags & AT_SYMLINK_NOFOLLOW (0x100): lstat
++//! fstat(fd, out)                                 -> 0
++//! mkdir(dirfd, path, len, mode, recursive)       -> 0   recursive != 0: like `mkdir -p`
++//! unlink(dirfd, path, len, flags)                -> 0   flags & AT_REMOVEDIR (0x200): rmdir
++//! rename(fromdir, from, flen, todir, to, tlen)   -> 0
++//! getdents(fd, buf, len)                         -> bytes of records written; 0 = end
++//! getcwd(buf, len)                               -> length written (no NUL)
++//! ```
++//!
++//! `out` of `stat`/`fstat` is a 120-byte little-endian `libc::stat` (wasm_libc.rs), `#[repr(C)]`:
++//! dev u64 @0, ino u64 @8, nlink u64 @16, mode u32 @24, uid u32 @28, gid u32 @32, rdev u64 @40,
++//! size i64 @48, blksize i64 @56, blocks i64 @64, atime i64/nsec i64 @72/@80, mtime @88/@96,
++//! ctime @104/@112.
++//!
++//! `getdents` fills `buf` with packed records `[d_type u8][0 u8][name_len u16 LE][name][NUL]`
++//! (`d_type`: 4 = dir, 8 = file) and keeps a cursor per open directory fd.
+ 
+ use super::*;
++use core::mem::MaybeUninit;
++
++mod host {
++    unsafe extern "C" {
++        #[link_name = "bun_sys_host_open"]
++        pub(super) fn open(dirfd: i32, path: *const u8, len: usize, flags: i32, mode: u32) -> i64;
++        #[link_name = "bun_sys_host_close"]
++        pub(super) fn close(fd: i32) -> i64;
++        #[link_name = "bun_sys_host_read"]
++        pub(super) fn read(fd: i32, buf: *mut u8, len: usize) -> i64;
++        #[link_name = "bun_sys_host_write"]
++        pub(super) fn write(fd: i32, buf: *const u8, len: usize) -> i64;
++        #[link_name = "bun_sys_host_pread"]
++        pub(super) fn pread(fd: i32, buf: *mut u8, len: usize, off: i64) -> i64;
++        #[link_name = "bun_sys_host_pwrite"]
++        pub(super) fn pwrite(fd: i32, buf: *const u8, len: usize, off: i64) -> i64;
++        #[link_name = "bun_sys_host_lseek"]
++        pub(super) fn lseek(fd: i32, off: i64, whence: i32) -> i64;
++        #[link_name = "bun_sys_host_stat"]
++        pub(super) fn stat(dirfd: i32, path: *const u8, len: usize, flags: i32, out: *mut u8) -> i64;
++        #[link_name = "bun_sys_host_fstat"]
++        pub(super) fn fstat(fd: i32, out: *mut u8) -> i64;
++        #[link_name = "bun_sys_host_mkdir"]
++        pub(super) fn mkdir(dirfd: i32, path: *const u8, len: usize, mode: u32, recursive: i32) -> i64;
++        #[link_name = "bun_sys_host_unlink"]
++        pub(super) fn unlink(dirfd: i32, path: *const u8, len: usize, flags: i32) -> i64;
++        #[link_name = "bun_sys_host_rename"]
++        pub(super) fn rename(from_dir: i32, from: *const u8, flen: usize, to_dir: i32, to: *const u8, tlen: usize) -> i64;
++        #[link_name = "bun_sys_host_getdents"]
++        pub(super) fn getdents(fd: i32, buf: *mut u8, len: usize) -> i64;
++        #[link_name = "bun_sys_host_getcwd"]
++        pub(super) fn getcwd(buf: *mut u8, len: usize) -> i64;
++    }
++}
++
++const _: () = assert!(core::mem::size_of::<Stat>() == 120);
++const AT_SYMLINK_NOFOLLOW: i32 = 0x100;
++const AT_REMOVEDIR: i32 = 0x200;
+ 
+ #[inline]
+ fn enosys(tag: Tag) -> Error {
+     Error::from_code(E::ENOSYS, tag)
+ }
+ 
++/// `-errno` / result convention of the host imports.
++#[inline]
++fn ret(rc: i64, tag: Tag) -> Maybe<usize> {
++    if rc < 0 { Err(Error::from_code_int((-rc) as core::ffi::c_int, tag)) } else { Ok(rc as usize) }
++}
++
++#[inline]
++fn ret_p(rc: i64, tag: Tag, path: &[u8]) -> Maybe<usize> {
++    ret(rc, tag).map_err(|e| e.with_path(path))
++}
++
++#[inline]
++fn ret_fd(rc: i64, tag: Tag, fd: Fd) -> Maybe<usize> {
++    ret(rc, tag).map_err(|e| e.with_fd(fd))
++}
++
++fn stat_via(tag: Tag, path: &[u8], call: impl FnOnce(*mut u8) -> i64) -> Maybe<Stat> {
++    let mut st = MaybeUninit::<Stat>::uninit();
++    ret_p(call(st.as_mut_ptr().cast()), tag, path)?;
++    // SAFETY: the host wrote the full 120-byte struct on success.
++    Ok(unsafe { st.assume_init() })
++}
++
++/// One batch of directory records (format in the module docs); used by the `sys::dir` iterator.
++pub(crate) fn getdents_host(dir: Fd, buf: &mut [u8]) -> Maybe<usize> {
++    // SAFETY: `buf` is valid for `buf.len()` bytes.
++    ret_fd(unsafe { host::getdents(dir.native(), buf.as_mut_ptr(), buf.len()) }, Tag::getdents64, dir)
++}
++
+ pub type FcntlInt = isize;
+ 
+-pub fn open(_path: &ZStr, _flags: i32, _mode: Mode) -> Maybe<Fd> {
+-    Err(enosys(Tag::open))
++pub fn open(path: &ZStr, flags: i32, mode: Mode) -> Maybe<Fd> {
++    openat(Fd::cwd(), path, flags, mode)
+ }
+ 
+-pub fn openat(_dir: impl AsFd, _path: &ZStr, _flags: i32, _mode: Mode) -> Maybe<Fd> {
+-    Err(enosys(Tag::open))
++pub fn openat(dir: impl AsFd, path: &ZStr, flags: i32, mode: Mode) -> Maybe<Fd> {
++    let p = path.as_bytes();
++    // SAFETY: `p` is valid for `p.len()` bytes.
++    let rc = unsafe { host::open(dir.as_fd().native(), p.as_ptr(), p.len(), flags, mode) };
++    ret_p(rc, Tag::open, p).map(|fd| Fd::from_native(fd as _))
+ }
+ 
+-pub fn close(_fd: Fd) -> Maybe<()> {
+-    Err(enosys(Tag::close))
++pub fn close(fd: Fd) -> Maybe<()> {
++    // SAFETY: plain integer call.
++    ret_fd(unsafe { host::close(fd.native()) }, Tag::close, fd).map(|_| ())
+ }
+ 
+-pub fn read(_fd: Fd, _buf: &mut [u8]) -> Maybe<usize> {
+-    Err(enosys(Tag::read))
++pub fn read(fd: Fd, buf: &mut [u8]) -> Maybe<usize> {
++    // SAFETY: `buf` is valid for `buf.len()` bytes.
++    ret_fd(unsafe { host::read(fd.native(), buf.as_mut_ptr(), buf.len()) }, Tag::read, fd)
+ }
+ 
+-pub fn write(_fd: Fd, _buf: &[u8]) -> Maybe<usize> {
+-    Err(enosys(Tag::write))
++pub fn write(fd: Fd, buf: &[u8]) -> Maybe<usize> {
++    // SAFETY: `buf` is valid for `buf.len()` bytes.
++    ret_fd(unsafe { host::write(fd.native(), buf.as_ptr(), buf.len()) }, Tag::write, fd)
+ }
+ 
+-pub fn pread(_fd: Fd, _buf: &mut [u8], _off: i64) -> Maybe<usize> {
+-    Err(enosys(Tag::pread))
++pub fn pread(fd: Fd, buf: &mut [u8], off: i64) -> Maybe<usize> {
++    // SAFETY: `buf` is valid for `buf.len()` bytes.
++    ret_fd(unsafe { host::pread(fd.native(), buf.as_mut_ptr(), buf.len(), off) }, Tag::pread, fd)
+ }
+ 
+-pub fn pwrite(_fd: Fd, _buf: &[u8], _off: i64) -> Maybe<usize> {
+-    Err(enosys(Tag::pwrite))
++pub fn pwrite(fd: Fd, buf: &[u8], off: i64) -> Maybe<usize> {
++    // SAFETY: `buf` is valid for `buf.len()` bytes.
++    ret_fd(unsafe { host::pwrite(fd.native(), buf.as_ptr(), buf.len(), off) }, Tag::pwrite, fd)
+ }
+ 
+-pub fn stat(_path: &ZStr) -> Maybe<Stat> {
+-    Err(enosys(Tag::stat))
++pub fn stat(path: &ZStr) -> Maybe<Stat> {
++    let p = path.as_bytes();
++    // SAFETY: `p` is valid for `p.len()` bytes; the out pointer is 120 writable bytes.
++    stat_via(Tag::stat, p, |out| unsafe { host::stat(Fd::cwd().native(), p.as_ptr(), p.len(), 0, out) })
+ }
+ 
+-pub fn fstat(_fd: Fd) -> Maybe<Stat> {
+-    Err(enosys(Tag::fstat))
++pub fn fstat(fd: Fd) -> Maybe<Stat> {
++    let mut st = MaybeUninit::<Stat>::uninit();
++    // SAFETY: `st` is 120 writable bytes.
++    ret_fd(unsafe { host::fstat(fd.native(), st.as_mut_ptr().cast()) }, Tag::fstat, fd)?;
++    // SAFETY: the host wrote the full struct on success.
++    Ok(unsafe { st.assume_init() })
+ }
+ 
+-pub fn lstat(_path: &ZStr) -> Maybe<Stat> {
+-    Err(enosys(Tag::lstat))
++pub fn lstat(path: &ZStr) -> Maybe<Stat> {
++    let p = path.as_bytes();
++    // SAFETY: `p` is valid for `p.len()` bytes; the out pointer is 120 writable bytes.
++    stat_via(Tag::lstat, p, |out| unsafe { host::stat(Fd::cwd().native(), p.as_ptr(), p.len(), AT_SYMLINK_NOFOLLOW, out) })
+ }
+ 
+-pub fn mkdir(_path: &ZStr, _mode: Mode) -> Maybe<()> {
+-    Err(enosys(Tag::mkdir))
++pub fn mkdir(path: &ZStr, mode: Mode) -> Maybe<()> {
++    mkdirat(Fd::cwd(), path, mode)
+ }
+ 
+-pub fn mkdirat(_dir: impl AsFd, _path: &ZStr, _mode: Mode) -> Maybe<()> {
+-    Err(enosys(Tag::mkdir))
++pub fn mkdirat(dir: impl AsFd, path: &ZStr, mode: Mode) -> Maybe<()> {
++    mkdir_host(dir.as_fd(), path.as_bytes(), mode, false)
+ }
+ 
+-pub(crate) fn mkdir_recursive_at(_dir: impl AsFd, _sub_path: &[u8]) -> Maybe<()> {
+-    Err(enosys(Tag::mkdir))
++fn mkdir_host(dir: Fd, path: &[u8], mode: Mode, recursive: bool) -> Maybe<()> {
++    // SAFETY: `path` is valid for `path.len()` bytes.
++    let rc = unsafe { host::mkdir(dir.native(), path.as_ptr(), path.len(), mode, recursive as i32) };
++    ret_p(rc, Tag::mkdir, path).map(|_| ())
+ }
+ 
+-pub fn mkdir_recursive_at_mode(_dir: Fd, _sub_path: &[u8], _mode: Mode) -> Maybe<()> {
+-    Err(enosys(Tag::mkdir))
++pub(crate) fn mkdir_recursive_at(dir: impl AsFd, sub_path: &[u8]) -> Maybe<()> {
++    mkdir_host(dir.as_fd(), sub_path, 0o777, true)
+ }
+ 
+-pub fn unlink(_path: &ZStr) -> Maybe<()> {
+-    Err(enosys(Tag::unlink))
++pub fn mkdir_recursive_at_mode(dir: Fd, sub_path: &[u8], mode: Mode) -> Maybe<()> {
++    mkdir_host(dir, sub_path, mode, true)
+ }
+ 
+-pub fn rename(_from: &ZStr, _to: &ZStr) -> Maybe<()> {
+-    Err(enosys(Tag::rename))
++pub fn unlink(path: &ZStr) -> Maybe<()> {
++    unlinkat_with_flags(Fd::cwd(), path, 0)
+ }
+ 
+-pub fn renameat(_from_dir: impl AsFd, _from: &ZStr, _to_dir: impl AsFd, _to: &ZStr) -> Maybe<()> {
+-    Err(enosys(Tag::rename))
++pub fn rename(from: &ZStr, to: &ZStr) -> Maybe<()> {
++    renameat(Fd::cwd(), from, Fd::cwd(), to)
++}
++
++pub fn renameat(from_dir: impl AsFd, from: &ZStr, to_dir: impl AsFd, to: &ZStr) -> Maybe<()> {
++    let (f, t) = (from.as_bytes(), to.as_bytes());
++    // SAFETY: both ranges are valid for their lengths.
++    let rc = unsafe { host::rename(from_dir.as_fd().native(), f.as_ptr(), f.len(), to_dir.as_fd().native(), t.as_ptr(), t.len()) };
++    ret(rc, Tag::rename).map(|_| ()).map_err(|e| e.with_path_dest(f, t))
+ }
+ 
+ pub fn renameat2(_from_dir: Fd, _from: &ZStr, _to_dir: Fd, _to: &ZStr, _mode: RenameMode) -> Maybe<()> {
+     Err(enosys(Tag::rename))
+ }
+ 
+-pub fn unlinkat_with_flags(_dir: Fd, _path: &ZStr, _flags: i32) -> Maybe<()> {
+-    Err(enosys(Tag::unlink))
++pub fn unlinkat_with_flags(dir: Fd, path: &ZStr, flags: i32) -> Maybe<()> {
++    let p = path.as_bytes();
++    // SAFETY: `p` is valid for `p.len()` bytes.
++    ret_p(unsafe { host::unlink(dir.native(), p.as_ptr(), p.len(), flags & AT_REMOVEDIR) }, Tag::unlink, p).map(|_| ())
+ }
+ 
+-pub fn unlinkat(_dir: impl AsFd, _path: &ZStr) -> Maybe<()> {
+-    Err(enosys(Tag::unlink))
++pub fn unlinkat(dir: impl AsFd, path: &ZStr) -> Maybe<()> {
++    unlinkat_with_flags(dir.as_fd(), path, 0)
+ }
+ 
+ pub fn symlink(_target: &ZStr, _link: &ZStr) -> Maybe<()> {
+@@ -126,8 +257,13 @@ pub fn flock(_fd: Fd, _mode: FileLockMode, _nonblocking: bool) -> Maybe<bool> {
+     Err(enosys(Tag::flock))
+ }
+ 
+-pub fn getcwd(_buf: &mut [u8]) -> Maybe<usize> {
+-    Err(enosys(Tag::getcwd))
++pub fn getcwd(buf: &mut [u8]) -> Maybe<usize> {
++    // SAFETY: `buf` is valid for `buf.len()` bytes.
++    let n = ret(unsafe { host::getcwd(buf.as_mut_ptr(), buf.len()) }, Tag::getcwd)?;
++    if n < buf.len() {
++        buf[n] = 0; // like libc getcwd, NUL-terminate
++    }
++    Ok(n)
+ }
+ 
+ pub fn linkat(_src_dir: impl AsFd, _src: &ZStr, _dest_dir: impl AsFd, _dest: &ZStr) -> Maybe<()> {
+@@ -162,8 +298,10 @@ pub fn lchown(_path: &ZStr, _uid: u32, _gid: u32) -> Maybe<()> {
+     Err(enosys(Tag::lchown))
+ }
+ 
+-pub fn fstatat(_fd: impl AsFd, _path: &ZStr) -> Maybe<Stat> {
+-    Err(enosys(Tag::fstatat))
++pub fn fstatat(dir: impl AsFd, path: &ZStr) -> Maybe<Stat> {
++    let (d, p) = (dir.as_fd().native(), path.as_bytes());
++    // SAFETY: `p` is valid for `p.len()` bytes; the out pointer is 120 writable bytes.
++    stat_via(Tag::fstatat, p, |out| unsafe { host::stat(d, p.as_ptr(), p.len(), 0, out) })
+ }
+ 
+ pub fn access(_path: &ZStr, _mode: i32) -> Maybe<()> {
+@@ -186,20 +324,20 @@ pub fn lutimens(_path: &ZStr, _atime: TimeLike, _mtime: TimeLike) -> Maybe<()> {
+     Err(enosys(Tag::futimens))
+ }
+ 
+-pub fn exists_z(_path: &ZStr) -> bool {
+-    false
++pub fn exists_z(path: &ZStr) -> bool {
++    stat(path).is_ok()
+ }
+ 
+-pub fn exists_at(_dir: impl AsFd, _sub: &ZStr) -> bool {
+-    false
++pub fn exists_at(dir: impl AsFd, sub: &ZStr) -> bool {
++    fstatat(dir, sub).is_ok()
+ }
+ 
+ pub fn is_executable_file_path(_path: &ZStr) -> bool {
+     false
+ }
+ 
+-pub fn get_file_size(_fd: Fd) -> Maybe<u64> {
+-    Err(enosys(Tag::fstat))
++pub fn get_file_size(fd: Fd) -> Maybe<u64> {
++    fstat(fd).map(|st| st.st_size as u64)
+ }
+ 
+ pub fn realpath<'a>(_path: &ZStr, _buf: &'a mut bun_core::PathBuffer) -> Maybe<&'a [u8]> {
+@@ -226,8 +364,9 @@ pub fn fsync(_fd: Fd) -> Maybe<()> {
+     Err(enosys(Tag::fsync))
+ }
+ 
+-pub fn lseek(_fd: Fd, _offset: i64, _whence: i32) -> Maybe<i64> {
+-    Err(enosys(Tag::lseek))
++pub fn lseek(fd: Fd, offset: i64, whence: i32) -> Maybe<i64> {
++    // SAFETY: plain integer call.
++    ret_fd(unsafe { host::lseek(fd.native(), offset, whence) }, Tag::lseek, fd).map(|n| n as i64)
+ }
+ 
+ pub fn chdir(_path: &ZStr) -> Maybe<()> {

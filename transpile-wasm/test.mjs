@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from "node:fs";
 
 const wasm = readFileSync(new URL("./target/wasm64-unknown-unknown/release/bun_transpile_wasm.wasm", import.meta.url));
 const t0 = performance.now();
-const { instance } = await WebAssembly.instantiate(wasm, {});
+const { instance } = await WebAssembly.instantiate(wasm, { env: { resolve_specifier: () => 0n } });
 console.log(`instantiate ${(performance.now() - t0).toFixed(1)} ms, imports: ${WebAssembly.Module.imports(new WebAssembly.Module(wasm)).length}`);
 const w = instance.exports;
 const enc = new TextEncoder(), dec = new TextDecoder();

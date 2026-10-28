@@ -67,6 +67,7 @@ scripts/w64.sh <crate>...                  # wasm64 compile check of bun crates
 W="-Zbuild-std=std,panic_abort --target wasm64-unknown-unknown --release"
 (cd semver-wasm && cargo build $W && node test.mjs && node diff.mjs)
 (cd transpile-wasm && cargo build $W && node test.mjs)   # diff vs `bun build --no-bundle` on corpus/
+(cd sys-wasm && cargo build $W && node test.mjs)         # bun_sys over the VFS (node >= 24; bun lacks Memory64)
 (cd shim-test && cargo +nightly-2026-09-15 test)
 (cd playground && bunx tsc --noEmit && bun run dev)      # verify in Chrome (Memory64)
 ```

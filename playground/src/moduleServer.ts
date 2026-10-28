@@ -1,7 +1,7 @@
 import { BASE } from "./base";
 import { commonJSFacade, exportNames as commonJSExportNames, isCommonJS, reexports, wrapCommonJS } from "./cjs";
 import bunWrap from "./bunWrap.js?raw";
-import { transpile, type TsconfigFlags } from "./transpiler";
+import { transpile, type Resolver, type TsconfigFlags } from "./transpiler";
 import { dirname, norm, type VFS } from "./vfs";
 import hostNames, { version as hostVersion } from "virtual:host-package-names";
 import { builtins, exportNames } from "./worker/node";
@@ -160,7 +160,7 @@ const CREATE_REQUIRE = /\bcreateRequire\(import\.meta\.url\)/g;
  * does); others fall through. Relative ones only for JSON: hoisting runs a module even if its require() never does.
  * Literal `require.resolve` calls are resolved here too.
  */
-function hoistRequires(vfs: VFS, code: string, dir: string): string {
+function hoistRequires(vfs: VFS, code: string, dir: string, url: (spec: string) => string): string {
   if (!code.includes("createRequire(import.meta.url)")) return code;
   // Literal `require.resolve("x")` becomes the path it resolves to.
   code = code.replace(/(?<![\w$.])(?:__)?require\.resolve\(\s*(["'])([^"'\n]+)\1\s*\)/g, (m, _q: string, s: string) => {
@@ -169,7 +169,7 @@ function hoistRequires(vfs: VFS, code: string, dir: string): string {
   });
   const specs = [...new Set([...code.matchAll(/(?<![\w$.])(?:__)?require\(\s*(["'])([^"'\n]+)\1\s*\)/g)].map((m) => m[2]))].filter((s) => !(s.replace(/^node:/, "") in builtins) && (s.startsWith(".") ? s.endsWith(".json") && resolveFile(vfs, norm(`${dir}/${s}`)) : resolveBare(vfs, s, dir)));
   if (!specs.length) return code;
-  const imports = specs.map((s, i) => `import * as __h${i} from ${JSON.stringify(s)};`).join("");
+  const imports = specs.map((s, i) => `import * as __h${i} from ${JSON.stringify(url(s))};`).join("");
   const table = specs.map((s, i) => `${JSON.stringify(s)}: __h${i}`).join(", ");
   return `${imports}const __hoisted = { ${table} };
 const __withHoisted = (r) => Object.assign((id) => (id in __hoisted ? ("__cjs" in __hoisted[id] ? __hoisted[id].__cjs : id.endsWith(".json") ? __hoisted[id].default : __hoisted[id]) : r(id)), r);
@@ -180,11 +180,11 @@ ${code.replace(CREATE_REQUIRE, "__withHoisted($&)")}`;
  * Bun has a synchronous `import.meta.require` (Vite uses it for `ws`). Literal specifiers that resolve become static
  * imports; Node built-ins and `bun:<spec>` fallbacks come from the registry; anything else throws when called.
  */
-function hoistMetaRequire(vfs: VFS, code: string, dir: string): string {
+function hoistMetaRequire(vfs: VFS, code: string, dir: string, url: (spec: string) => string): string {
   if (!code.includes("import.meta.require")) return code;
   const lits = [...new Set([...code.matchAll(/\bimport\.meta\.require\(\s*"([^"\n]+)"\s*\)/g)].map((m) => m[1]))];
   const specs = lits.filter((s) => !(s.replace(/^node:/, "") in builtins) && (s.startsWith(".") ? resolveFile(vfs, norm(`${dir}/${s}`)) : resolveBare(vfs, s, dir)));
-  const imports = specs.map((s, i) => `import * as __mr${i} from ${JSON.stringify(s)};`).join("");
+  const imports = specs.map((s, i) => `import * as __mr${i} from ${JSON.stringify(url(s))};`).join("");
   const table = specs.map((s, i) => `${JSON.stringify(s)}: __mr${i}`).join(", ");
   return `${imports}const __metaRequire = ((t, b) => (id) => {
   const n = String(id).replace(/^node:/, "");
@@ -195,10 +195,6 @@ function hoistMetaRequire(vfs: VFS, code: string, dir: string): string {
 })({ ${table} }, globalThis.__nodeBuiltins);
 ${code.replace(/\bimport\.meta\.require\b/g, "__metaRequire")}`;
 }
-
-// The keywords may touch a quote in minified code (`import"lit"`, `export*from"x"`), so a keyword counts only at the
-// start or after whitespace, punctuation or an operator: not inside strings like `"@import"` or `"extensionless-import"`.
-const SPEC_RE = /((?<=^|[\s;{}()[\],=?!&|+*<>~^%])(?:from\s*|import\s*\(\s*|import\s*))(["'])([^"'\n]+)\2/g;
 
 /** Where `spec` imported from `dir` is served, relative to `/__vfs/`; null if it doesn't resolve. */
 function resolveTarget(vfs: VFS, spec: string, dir: string): string | null {
@@ -215,13 +211,18 @@ function resolveTarget(vfs: VFS, spec: string, dir: string): string | null {
   return resolveBare(vfs, spec, dir);
 }
 
-/** Specifiers of import statements and `import("x")` in code; not in strings or templates (code generators have them). */
-function rewriteImports(vfs: VFS, code: string, dir: string): string {
-  const literal = literalRanges(code);
-  return code.replace(SPEC_RE, (m, pre: string, q: string, spec: string, offset: number) => {
-    if (inRanges(literal, offset) || /^(https?:|data:|blob:)/.test(spec) || spec.startsWith(`${BASE}__vfs/`)) return m;
-    return `${pre}${q}${BASE}__vfs/${resolveTarget(vfs, spec, dir) ?? `__unresolved__/${encodeURIComponent(spec)}`}${q}`;
-  });
+/** The transpiler's resolver: where each specifier in a module of `dir` is served. */
+function resolver(vfs: VFS, dir: string): Resolver {
+  const url = specifierUrl(vfs, dir);
+  return (spec) => url(spec);
+}
+
+/** The URL a module imported as `spec` from `dir` is served at; remote and already-final specifiers stay as written. */
+function specifierUrl(vfs: VFS, dir: string): (spec: string) => string | null {
+  return (spec) => {
+    if (/^(https?:|data:|blob:)/.test(spec) || spec.startsWith(`${BASE}__vfs/`)) return null;
+    return `${BASE}__vfs/${resolveTarget(vfs, spec, dir) ?? `__unresolved__/${encodeURIComponent(spec)}`}`;
+  };
 }
 
 const REGEX_AFTER = /(?:^|[^\w$.])(?:return|typeof|case|in|of|delete|void|throw|new|else|do|yield|await)$/;
@@ -311,7 +312,7 @@ const META_RE = /(?<![\w$.])import\.meta\.(url|dirname|filename)\b|(?<![\w$.])im
 /**
  * `import.meta.url` & co. point at a `file:` URL of the module's VFS path, as Node and Bun have them. With
  * `dynamicImports`, `import(expr)` with a computed specifier goes through the worker's `__dynamicImport`, which loads
- * `file:` URLs and paths from the VFS (literal ones are resolved by rewriteImports). Only code is touched, not strings,
+ * `file:` URLs and paths from the VFS (literal ones are resolved from the transpiler's import records). Only code is touched, not strings,
  * templates, comments or regex literals.
  */
 function rewriteMeta(code: string, path: string, dynamicImports: boolean): string {
@@ -363,7 +364,7 @@ function commonJSNames(vfs: VFS, path: string, src: string, seen = new Set<strin
 }
 
 /** The body of a CommonJS file (see wrapCommonJS); requires of other CommonJS files load their bodies too. */
-function serveCommonJS(vfs: VFS, path: string, onError: (msg: string) => void, target: ModuleTarget): ModuleResponse {
+async function serveCommonJS(vfs: VFS, path: string, onError: (msg: string) => void, target: ModuleTarget): Promise<ModuleResponse> {
   const src = vfs.readText(path);
   if (src === undefined) {
     onError(`module not found: ${path}`);
@@ -377,7 +378,14 @@ function serveCommonJS(vfs: VFS, path: string, onError: (msg: string) => void, t
     const dep = vfs.readText(t);
     return `${BASE}__vfs/${dep !== undefined && isCommonJS(t, dep, packageType(vfs, t)) ? "__cjs/" : ""}${t}`;
   });
-  return { status: 200, body: rewriteImports(vfs, rewriteMeta(code, path, target === "bun"), dir) };
+  // The body is plain source: its `import("x")` calls still need their specifiers resolved.
+  try {
+    return { status: 200, body: await transpile(rewriteMeta(code, path, target === "bun"), `${path}.js`, {}, resolver(vfs, dir)) };
+  } catch (e) {
+    const msg = `${path}: ${e instanceof Error ? e.message : String(e)}`;
+    onError(msg);
+    return { status: 500, body: msg };
+  }
 }
 
 export async function serveModule(vfs: VFS, rawPath: string, onError: (msg: string) => void, target: ModuleTarget = "browser"): Promise<ModuleResponse> {
@@ -404,14 +412,25 @@ export async function serveModule(vfs: VFS, rawPath: string, onError: (msg: stri
     if (path.endsWith(".css")) return { status: 200, body: src };
     // __cjsModule() as wrapped CommonJS has it: a require() can run before this module is evaluated.
     if (path.endsWith(".json")) code = `var __m;\nexport function __cjsModule() {\n  return (__m ??= { exports: ${src} });\n}\nexport default __cjsModule().exports;`;
-    else if (/\.(ts|tsx|jsx)$/.test(path)) code = await transpile(src, path, tsconfigFor(vfs, path));
+    else if (/\.(ts|tsx|jsx)$/.test(path)) {
+      CONDITIONS = TARGET_CONDITIONS[target];
+      code = await transpile(src, path, tsconfigFor(vfs, path), resolver(vfs, dirname(path)));
+    }
     else if (isCommonJS(path, src, packageType(vfs, path))) {
       CONDITIONS = TARGET_CONDITIONS[target];
       return { status: 200, body: commonJSFacade(commonJSNames(vfs, path, src), `${BASE}__vfs/__cjs/${path}`) };
     }
-    else code = src;
+    else {
+      // Plain ES module: Bun's parser finds the specifiers, as `bun build --no-bundle` does.
+      CONDITIONS = TARGET_CONDITIONS[target];
+      code = await transpile(src, path, {}, resolver(vfs, dirname(path)));
+    }
     CONDITIONS = TARGET_CONDITIONS[target];
-    return { status: 200, body: rewriteImports(vfs, rewriteMeta(hoistMetaRequire(vfs, hoistRequires(vfs, code, dirname(path)), dirname(path)), path, target === "bun"), dirname(path)) };
+    // The hoisted imports are final URLs already (the transpiler leaves those alone).
+    const dir = dirname(path);
+    const url = specifierUrl(vfs, dir);
+    const final = (spec: string) => url(spec) ?? spec;
+    return { status: 200, body: rewriteMeta(hoistMetaRequire(vfs, hoistRequires(vfs, code, dir, final), dir, final), path, target === "bun") };
   } catch (e) {
     const msg = `${path}: ${e instanceof Error ? e.message : String(e)}`;
     onError(msg);
