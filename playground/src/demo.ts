@@ -48,8 +48,12 @@ document.querySelector<HTMLButtonElement>("#party")!.onclick = party;
 party();
 `;
 
-const stylesCss = `body { font-family: system-ui; padding: 1rem; }
-button { font-size: 1.1rem; padding: 0.4rem 0.9rem; cursor: pointer; }
+// System colors (Canvas, ButtonFace, AccentColor, ...) follow color-scheme, so this needs no dark-mode rules.
+const stylesCss = `:root { color-scheme: light dark; }
+body { font-family: system-ui; padding: 1rem; background: Canvas; color: CanvasText; }
+p { color: GrayText; }
+button { font-size: 1.1rem; padding: 0.4rem 0.9rem; cursor: pointer; border: 1px solid ButtonBorder; border-radius: 6px; background: ButtonFace; color: ButtonText; }
+button { background: AccentColor; color: AccentColorText; border-color: AccentColor; }
 `;
 
 const pkg = `{
