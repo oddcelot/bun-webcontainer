@@ -56,6 +56,10 @@ checks below.
 - **Lists:** `<For each>` gives `(item, i)` with `item` a value and `i()` an accessor;
   `<For keyed={false}>` gives `item()` an accessor and `i` a number. `Index` is gone.
   Function children of `For`/`Show`/`Match` are owners, not tracking scopes: read accessors in JSX.
+- **A throw in an effect's apply halts the whole page** (`REACTIVITY_HALTED`: no update runs
+  again). createEffect's `error` option does not catch it; it only covers the compute step.
+  Wrap applies that call into libraries with `guarded()` (`playground/src/ui/guarded.ts`).
+  Errors that were harmless in a click handler become fatal once they run in an effect.
 - **Actions hold their frame.** Every write flushed together with an action's writes (including
   ones from a microtask that runs before Solid's flush) stays invisible until the action settles.
   For long work whose progress must show live (console counts during Run), start the action, call
