@@ -32,7 +32,7 @@ The picker's "Astro + Solid" (`fixtures/astro-solid-demo`) runs an Astro 7 dev s
     src/transpiler/       Bun's transpiler as wasm64 (../transpile-wasm): transpile(source, path) => Promise<string>
     src/editors/          pierre.ts: @pierre/diffs File + edit-mode Editor behind the CodeEditor interface
     src/fileTree.ts       @pierre/trees file tree over the VFS (search, icons); selecting a file opens it
-    src/console.ts        console pane: a Ghostty terminal (ghostty-web, lazy) with a line-editing prompt
+    src/console.ts        console pane: an xterm.js terminal (lazy; fit, links, graphemes addons) with a line-editing prompt
     src/shell.ts          its commands: bun run/<file>/install/add/remove, ls, cat, clear, help
     src/theme.ts          system/light/dark toggle + a theme family (light and dark variant; @pierre/theming controller): the active variant colors the editor, tree (themeToTreeStyles) and chrome (CSS variables)
     src/install.ts        no lockfile: registry fetch, semver pick (wasm), flat node_modules

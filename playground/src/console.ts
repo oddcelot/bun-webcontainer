@@ -1,33 +1,37 @@
-import type { ITheme, Terminal } from "ghostty-web";
+import type { ITheme, Terminal } from "@xterm/xterm";
 import type { ThemeLike } from "@pierre/theming";
 import { onTheme } from "./theme";
 
-// The console pane as a Ghostty terminal (ghostty-web: Ghostty's VT core as wasm), so ANSI output renders.
-// The module (~680 kB, wasm inlined) loads after the page is up; lines logged before that are replayed.
+// The console pane as an xterm.js terminal, so ANSI output renders. xterm loads after the page is up; lines
+// logged before that are written once it's open.
 
 const LEVEL_SGR: Record<string, string> = { error: "31", warn: "33", sys: "34" };
 const MAX_LINES = 5000;
 
-/** ghostty-web reads hex only; the canvas turns any CSS color (`color(display-p3 ...)` too) into one. */
-function toHex(color: string | undefined): string | undefined {
-  if (!color) return undefined;
+/**
+ * xterm's DOM renderer keeps CSS colors as written (`color(display-p3 ...)` too), but its parser throws on
+ * translucent colors other than hex and rgba(); turn those into rgba().
+ */
+function cssColor(color: string | undefined): string | undefined {
+  color = color?.trim();
+  if (!color || /^(#|rgba?\()/i.test(color)) return color || undefined;
   const ctx = document.createElement("canvas").getContext("2d", { willReadFrequently: true })!;
   ctx.fillStyle = color;
   ctx.fillRect(0, 0, 1, 1);
-  const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
-  return "#" + [r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("");
+  const [r, g, b, a] = ctx.getImageData(0, 0, 1, 1).data;
+  return a === 255 ? color : `rgba(${r}, ${g}, ${b}, ${(a / 255).toFixed(3)})`;
 }
 
 /** Background and foreground match the other panes (style.css's --bg/--fg); the palette is the theme's ANSI colors. */
 function terminalTheme(theme: ThemeLike): ITheme {
   const c = theme.colors ?? {};
   const root = getComputedStyle(document.documentElement);
-  const ansi = (name: string) => toHex(c[`terminal.ansi${name}`]);
+  const ansi = (name: string) => cssColor(c[`terminal.ansi${name}`]);
   return {
-    background: toHex(root.getPropertyValue("--bg")),
-    foreground: toHex(root.getPropertyValue("--fg")),
-    cursor: toHex(root.getPropertyValue("--fg")),
-    selectionBackground: toHex(c["terminal.selectionBackground"] ?? c["editor.selectionBackground"]),
+    background: cssColor(root.getPropertyValue("--bg")),
+    foreground: cssColor(root.getPropertyValue("--fg")),
+    cursor: cssColor(root.getPropertyValue("--fg")),
+    selectionBackground: cssColor(c["terminal.selectionBackground"] ?? c["editor.selectionBackground"]),
     black: ansi("Black"),
     red: ansi("Red"),
     green: ansi("Green"),
@@ -84,7 +88,6 @@ export function mountConsole(
   async function enter() {
     const line = input.trim();
     term?.write("\r\x1b[2K" + PROMPT + input + "\r\n");
-    push(PROMPT + input + "\r\n");
     input = "";
     cursor = 0;
     if (line && history.at(-1) !== line) history.push(line);
@@ -154,41 +157,51 @@ export function mountConsole(
     redraw();
   }
 
-  const ghostty = import("ghostty-web").then(async (m) => (await m.init(), m));
-  // ghostty-web doesn't apply theme changes to an open terminal yet: open a new one and replay.
-  onTheme(async (_, theme) => {
-    const { Terminal, FitAddon } = await ghostty;
-    const focused = !!term && el.contains(document.activeElement);
-    term?.dispose();
-    el.replaceChildren();
+  const xterm = Promise.all([
+    import("@xterm/xterm"),
+    import("@xterm/addon-fit"),
+    import("@xterm/addon-web-links"),
+    import("@xterm/addon-unicode-graphemes"),
+    import("@xterm/xterm/css/xterm.css"),
+  ]);
+  // Opens on the first theme; later ones (and any that arrive while xterm loads) restyle it in place.
+  let latest: ThemeLike | undefined;
+  let opening: Promise<void> | undefined;
+  onTheme((_, theme) => {
+    latest = theme;
+    if (term) term.options.theme = terminalTheme(theme);
+    else opening ??= open();
+  });
+  async function open() {
+    const [{ Terminal }, { FitAddon }, { WebLinksAddon }, { UnicodeGraphemesAddon }] = await xterm;
     const next = new Terminal({
-      theme: terminalTheme(theme),
+      theme: terminalTheme(latest!),
       fontSize: 12,
       fontFamily: "Menlo, Consolas, 'DejaVu Sans Mono', monospace",
       convertEol: true,
       cursorBlink: true,
       cursorStyle: "bar",
       scrollback: MAX_LINES,
+      allowProposedApi: true, // the graphemes addon sets unicode.activeVersion
     });
     const fit = new FitAddon();
-    next.loadAddon(fit);
+    for (const addon of [fit, new WebLinksAddon(), new UnicodeGraphemesAddon()]) next.loadAddon(addon);
     next.open(el);
     fit.fit();
-    fit.observeResize();
+    new ResizeObserver(() => fit.fit()).observe(el);
     next.onData((data) => {
       for (const [t] of data.matchAll(TOKENS)) key(t);
     });
-    // An empty write throws in ghostty-web 0.4 (a zero-length allocation lands past wasm memory).
     if (lines.length) next.write(lines.join(""));
+    lines.length = 0;
     term = next;
     redraw();
-    if (focused) next.focus();
-  });
+  }
 
   const api = {
     log(level: string, text: string) {
       const line = format(level, text);
-      push(line);
+      if (!term) return void push(line);
       // Above the prompt: clear its row, print, draw it again.
       term?.write((busy ? "" : "\r\x1b[2K") + line);
       redraw();
