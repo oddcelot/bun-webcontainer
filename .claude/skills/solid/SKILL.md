@@ -81,9 +81,10 @@ checks below.
   in a `createRoot` and passes them with its actions through `AppContext` (`context.ts`).
 - **Engine stays plain TypeScript.** `VFS`, `Runner`, the worker, shell, install, share encoding
   are not UI; don't rewrite them as components. Bridge their events into Solid instead:
-  - push events (`vfs.onChange`, runner logs): subscribe in `onSettled` and write into a store or
-    signal, returning the unsubscribe; or `createMemo(() => from(subscribeFn))` for a
-    latest-value stream.
+  - push events (`vfs.onChange`, runner logs, the theme controller): subscribe in `onSettled` and
+    write into a store or signal, returning the unsubscribe. Avoid `createMemo(() => from(...))`
+    for state that a click changes in several synchronous steps: the theme picker built that way
+    showed a blank select after some picks (see `ui/ThemePicker.tsx`).
   - one-shot async (loading an example, fetching a repo): an `action(function* () {...})`, with
     `Loading`/`isPending` for UI state rather than hand-rolled status flags.
 - **App state** (status, open tabs, console counts, theme) lives in a store created inside `App`
