@@ -470,6 +470,16 @@ async function main() {
 
 const booted = main();
 
+// Page-side edits made after "start" (editor, file tree, installs). Applied straight to the VFS: only node:fs and
+// Bun.write mirror back to the page, so this isn't echoed.
+self.addEventListener("message", (e: MessageEvent) => {
+  const m = e.data;
+  if (m.type !== "vfs") return;
+  if (m.op === "write") vfs.write(m.path, m.data);
+  else if (m.op === "mkdir") vfs.mkdir(m.path);
+  else if (m.op === "remove") vfs.remove(m.path);
+});
+
 self.addEventListener("message", async (e: MessageEvent) => {
   if (e.data.type !== "start") return;
   vfs.load(e.data.files, e.data.dirs);

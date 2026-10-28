@@ -15,6 +15,20 @@ export class Runner {
     private log: LogFn,
   ) {
     navigator.serviceWorker.onmessage = (e) => this.onSw(e);
+    // Keep the worker's copy of the VFS coherent with edits made on the page while it runs.
+    vfs.onChange(({ path, removed }) => {
+      if (removed) this.mirror("remove", path);
+      else this.mirror("write", path, vfs.read(path));
+    });
+    vfs.onDir((path, removed) => this.mirror(removed ? "remove" : "mkdir", path));
+  }
+
+  /** True while applying a worker-originated op to the page VFS, so it isn't echoed back. */
+  private applying = false;
+
+  private mirror(op: "write" | "mkdir" | "remove", path: string, data?: unknown) {
+    if (this.applying || !this.worker) return;
+    this.worker.postMessage({ type: "vfs", op, path, data }); // cloned, not transferred: the page keeps its data
   }
 
   private async onSw(e: MessageEvent) {
@@ -59,10 +73,15 @@ export class Runner {
           resolve();
         } else if (m.type === "vfs") {
           const [a, b] = m.args;
-          if (m.op === "write") this.vfs.write(a, b);
-          else if (m.op === "mkdir") this.vfs.mkdir(a);
-          else if (m.op === "remove") this.vfs.remove(a);
-          else if (m.op === "rename") this.vfs.rename(a, b);
+          this.applying = true;
+          try {
+            if (m.op === "write") this.vfs.write(a, b);
+            else if (m.op === "mkdir") this.vfs.mkdir(a);
+            else if (m.op === "remove") this.vfs.remove(a);
+            else if (m.op === "rename") this.vfs.rename(a, b);
+          } finally {
+            this.applying = false;
+          }
         }
       };
       worker.onerror = (e) => {

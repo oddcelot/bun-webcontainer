@@ -22,9 +22,15 @@ export class VFS {
   /** Last write time (ms) per file; files without one count as written at startup. */
   readonly mtimes = new Map<string, number>();
   private listeners = new Set<(e: VfsEvent) => void>();
+  private dirListeners = new Set<(path: string, removed: boolean) => void>();
 
   onChange(fn: (e: VfsEvent) => void) {
     this.listeners.add(fn);
+  }
+
+  /** Fires when a directory is created or removed (file events don't cover empty directories). */
+  onDir(fn: (path: string, removed: boolean) => void) {
+    this.dirListeners.add(fn);
   }
 
   read(path: string): FileData | undefined {
@@ -94,7 +100,10 @@ export class VFS {
       this.mtimes.delete(k);
       for (const fn of this.listeners) fn({ path: k, created: false, removed: true });
     }
-    for (const d of [...this.dirs]) if (d === p || d.startsWith(pre)) this.dirs.delete(d);
+    for (const d of [...this.dirs]) if (d === p || d.startsWith(pre)) {
+      this.dirs.delete(d);
+      for (const fn of this.dirListeners) fn(d, true);
+    }
   }
 
   /** Moves a file, or a directory with everything below it. */
@@ -110,13 +119,19 @@ export class VFS {
     }
     for (const d of [...this.dirs]) if (d === a || d.startsWith(pre)) {
       this.dirs.delete(d);
+      for (const fn of this.dirListeners) fn(d, true);
       this.mkdir(b + d.slice(a.length));
     }
   }
 
   mkdir(path: string) {
     const parts = norm(path).split("/").filter(Boolean);
-    for (let i = 1; i <= parts.length; i++) this.dirs.add(parts.slice(0, i).join("/"));
+    for (let i = 1; i <= parts.length; i++) {
+      const d = parts.slice(0, i).join("/");
+      if (this.dirs.has(d)) continue;
+      this.dirs.add(d);
+      for (const fn of this.dirListeners) fn(d, false);
+    }
   }
 
   exists(path: string): boolean {
