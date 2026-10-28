@@ -3,6 +3,7 @@ import { copyFileSync, mkdirSync } from "node:fs";
 const files = [
   ["../../semver-wasm/target/wasm64-unknown-unknown/release/bun_semver_wasm.wasm", "bun_semver_wasm.wasm"],
   ["../../transpile-wasm/target/wasm64-unknown-unknown/release/bun_transpile_wasm.wasm", "bun_transpile_wasm.wasm"],
+  ["../../bundle-wasm/target/wasm64-unknown-unknown/release/bun_bundle_wasm.wasm", "bun_bundle_wasm.wasm"],
 ];
 // Bun's runtime helpers, which transpiled code imports as "bun:wrap" (legacy decorators and the like). Tracked in
 // src/ so the playground builds without bun/; refreshed from the pinned checkout when there is one.
