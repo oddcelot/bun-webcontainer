@@ -34,6 +34,24 @@ export function createPierre(parent: HTMLElement): CodeEditor {
     view = undefined;
   }
 
+  /** Whether the current editor shows markers (a fresh one shows none). */
+  let shown = false;
+  /**
+   * The editor sets up its text document a few frames after `edit()` and throws on markers before that, so
+   * markers wait for it. Clearing markers that aren't shown is skipped.
+   */
+  function applyMarkers(frames = 30) {
+    const current = editor;
+    if (!current || (!markers.length && !shown)) return;
+    try {
+      current.setMarkers(markers);
+      shown = markers.length > 0;
+    } catch (e) {
+      if (!frames) return console.warn("[editor] markers dropped:", e);
+      requestAnimationFrame(() => editor === current && applyMarkers(frames - 1));
+    }
+  }
+
   function show(nextPath: string, nextText: string | null) {
     close();
     if (nextPath !== path) markers = [];
@@ -51,8 +69,9 @@ export function createPierre(parent: HTMLElement): CodeEditor {
     view.render({ containerWrapper: host, file: { name: path, contents: nextText ?? "(binary file)" } });
     if (nextText === null) return;
     editor = new Editor("file");
+    shown = false;
     finish = editor.edit(view);
-    if (markers.length) editor.setMarkers(markers);
+    if (markers.length) applyMarkers();
   }
 
   return {
@@ -71,7 +90,7 @@ export function createPierre(parent: HTMLElement): CodeEditor {
         start: { line: d.line - 1, character: d.column - 1 },
         end: { line: d.line - 1, character: d.column - 1 + Math.max(d.length, 1) },
       }));
-      editor?.setMarkers(markers);
+      applyMarkers();
     },
     getText: () => editor?.getText() ?? text,
     clear() {

@@ -3,6 +3,7 @@ import { mountDiagnostics } from "../diagnostics";
 import { createPierre } from "../editors/pierre";
 import type { CodeEditor } from "../editors/types";
 import { AppContext } from "./context";
+import { guarded } from "./guarded";
 import { Tabs } from "./Tabs";
 
 /** The open-file tabs over the editor, which shows the active tab and writes edits back to the VFS. */
@@ -16,7 +17,7 @@ export function EditorPane() {
 
   createEffect(
     () => ws.state.active,
-    (path) => {
+    guarded("editor", (path) => {
       editor ??= createPierre(el);
       check ??= mountDiagnostics(vfs, editor);
       current = path;
@@ -33,7 +34,7 @@ export function EditorPane() {
         check!(path, next);
       });
       check(path, text);
-    },
+    }),
   );
 
   onSettled(() => {

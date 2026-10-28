@@ -8,6 +8,7 @@ import {
 } from "@pierre/trees";
 import { onTheme } from "../theme";
 import { AppContext } from "./context";
+import { guarded } from "./guarded";
 
 const isDirectory = (item: FileTreeItemHandle | null): item is FileTreeDirectoryHandle => item?.isDirectory() === true;
 
@@ -91,23 +92,23 @@ export function FileTree() {
 
   createEffect(
     () => [...ws.state.open],
-    (paths) => {
+    guarded("file tree", (paths) => {
       open = new Set(paths);
       tree.setIcons("standard"); // re-renders the rows, decorations included
-    },
+    }),
   );
   createEffect(
     () => ws.state.active,
-    (path) => {
+    guarded("file tree", (path) => {
       active = path;
       if (path) reveal(path);
-    },
+    }),
   );
   createEffect(
     () => ws.state.treeVersion,
-    () => {
+    guarded("file tree", () => {
       tree.resetPaths([...vfs.files.keys()]);
-    },
+    }),
     { defer: true },
   );
 
