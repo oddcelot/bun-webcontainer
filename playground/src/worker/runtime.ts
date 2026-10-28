@@ -203,9 +203,25 @@ function createInstance(opts: ServeOptions): Instance {
  * server must see; a standalone `Headers` keeps them.
  */
 function serverRequest(path: string, init: { method?: string; body?: BodyInit | null }, headers: [string, string][]) {
+  headers = headers.map(([k, v]) => [k, k === "origin" || k === "referer" ? asPageOrigin(v) : v]);
   // The init's headers too: body methods (`formData()`) read the Request's own content-type.
   const req = new Request(self.location.origin + path, { ...init, headers });
   return Object.defineProperty(req, "headers", { value: new Headers(headers) });
+}
+
+/**
+ * Preview pages are the app at its server's URL (`http://localhost:3000`), so their Origin and Referer say so,
+ * not the playground's origin: servers that admit only loopback origins (devframe's RPC socket) accept them on a
+ * deployed playground too, as they would locally.
+ */
+function asPageOrigin(value: string): string {
+  const inst = previewServer();
+  const own = self.location.origin;
+  if (!inst || !value.startsWith(own)) return value;
+  const { hostname, port } = inst.server as { hostname: string; port: number };
+  const page = `http://${hostname === "0.0.0.0" || hostname === "::" ? "localhost" : hostname}:${port}`;
+  const rest = value.slice(own.length);
+  return page + (rest.startsWith(`${BASE}__preview`) ? rest.slice(`${BASE}__preview`.length) || "/" : rest);
 }
 
 /** A page's WebSocket: a GET with `upgrade: websocket` through the server's handler, which may accept it. */
