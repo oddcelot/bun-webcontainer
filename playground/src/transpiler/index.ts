@@ -15,7 +15,7 @@ type Exports = {
 /** tsconfig `compilerOptions` the output depends on (bits of transpile-wasm's `flags`). */
 export type TsconfigFlags = { experimentalDecorators?: boolean; emitDecoratorMetadata?: boolean };
 
-const LOADERS: Record<string, number> = { js: 0, mjs: 0, jsx: 1, ts: 2, mts: 2, tsx: 3 };
+const LOADERS: Record<string, number> = { js: 0, mjs: 0, jsx: 1, ts: 2, mts: 2, cts: 2, tsx: 3 };
 
 /** Import kinds the resolver is asked about (bun_ast::ImportKind): `import`/`export ... from`, and `import("literal")`. */
 export type ImportKind = "stmt" | "dynamic";
