@@ -1,6 +1,8 @@
 #!/bin/sh
 # Fails when bun/ has changes that patches/bun/ doesn't record. No-op without a bun/ checkout.
 set -eu
+# A hook inherits the outer commit's git environment (`commit -a` sets GIT_INDEX_FILE to a temp index); bun/ is its own repo.
+unset GIT_INDEX_FILE GIT_DIR GIT_WORK_TREE GIT_PREFIX
 root=$(cd "$(dirname "$0")/.." && pwd)
 . "$root/scripts/bun-pins.sh"
 bun="$root/bun"
