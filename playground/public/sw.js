@@ -19,6 +19,15 @@ async function host() {
   return all.find((c) => !new URL(c.url).pathname.startsWith(PREVIEW));
 }
 
+/**
+ * The window client with this id, if any. Not clients.get(): Firefox makes it wait until the client is execution-ready,
+ * and a module worker isn't until its imports have loaded, so asking about the worker's own imports deadlocks.
+ */
+async function windowClient(id) {
+  if (!id) return undefined;
+  return (await self.clients.matchAll({ type: "window", includeUncontrolled: true })).find((c) => c.id === id);
+}
+
 async function ask(msg) {
   const client = await host();
   if (!client) throw new Error("playground page not found");
@@ -32,8 +41,7 @@ async function ask(msg) {
 async function serveModule(url, clientId) {
   const path = decodeURIComponent(url.pathname.slice(VFS.length));
   // The worker runs the program (Bun's runtime conditions); a page gets the browser's.
-  const client = clientId && (await self.clients.get(clientId));
-  const r = await ask({ type: "module", path, target: client?.type === "window" ? "browser" : "bun" });
+  const r = await ask({ type: "module", path, target: (await windowClient(clientId)) ? "browser" : "bun" });
   const type = url.pathname.endsWith(".css") ? "text/css" : "text/javascript";
   return new Response(r.body, isolated({
     status: r.status,
@@ -221,7 +229,7 @@ self.addEventListener("fetch", (e) => {
 
 // The preview page is the app's origin: its absolute requests (`fetch("/api/hello")`) go to Bun.serve.
 async function fromPreviewOrNetwork(e) {
-  const client = await self.clients.get(e.clientId);
+  const client = await windowClient(e.clientId);
   if (client && new URL(client.url).pathname.startsWith(PREVIEW)) {
     const url = new URL(e.request.url);
     return servePreview(e.request, url, url.pathname + url.search);
