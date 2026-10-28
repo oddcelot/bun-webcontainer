@@ -2,6 +2,7 @@ import { BASE } from "../base";
 import { loadSemver } from "../semver";
 import { dirname, norm, VFS } from "../vfs";
 import { builtins, installTimers, setFs, setStdio } from "./node";
+import { bundle, type BundleConfig, type BundleLog } from "./bundler";
 import { setHostVfs } from "./hostPackages";
 import { fsError } from "./node/errors";
 import { hooks } from "./node/serve";
@@ -375,27 +376,76 @@ async function write(path: string, data: unknown): Promise<number> {
   return typeof out === "string" ? new TextEncoder().encode(out).length : out.byteLength;
 }
 
-type BuildArtifact = Blob & { path: string; kind: "entry-point"; loader: "js"; hash: null; sourcemap: null };
+type BuildArtifact = Blob & { path: string; kind: "entry-point" | "chunk" | "asset" | "sourcemap"; loader: string; hash: string | null; sourcemap: BuildArtifact | null };
+type BuildOptions = {
+  entrypoints: string[];
+  outdir?: string;
+  target?: "browser" | "bun" | "node";
+  format?: "esm" | "cjs" | "iife";
+  minify?: boolean | { whitespace?: boolean; syntax?: boolean; identifiers?: boolean };
+  splitting?: boolean;
+  sourcemap?: boolean | "none" | "inline" | "external" | "linked";
+  naming?: string | { entry?: string; chunk?: string; asset?: string };
+  publicPath?: string;
+  external?: string[];
+  define?: Record<string, string>;
+  conditions?: string[] | string;
+  banner?: string;
+  footer?: string;
+  plugins?: unknown[];
+  throw?: boolean;
+};
+
+const MIME: Record<string, string> = { js: "text/javascript;charset=utf-8", mjs: "text/javascript;charset=utf-8", css: "text/css;charset=utf-8", html: "text/html;charset=utf-8", json: "application/json;charset=utf-8", map: "application/json;charset=utf-8", svg: "image/svg+xml", png: "image/png", jpg: "image/jpeg", wasm: "application/wasm", txt: "text/plain;charset=utf-8" };
+const mimeOf = (path: string) => MIME[path.slice(path.lastIndexOf(".") + 1)] ?? "";
+const buildLog = (l: BundleLog) =>
+  Object.assign(new Error(l.message), { name: "BuildMessage", level: l.level, message: l.message, position: l.file ? { file: l.file, line: l.line, column: l.column } : null });
+const formatLog = (l: BundleLog) => `${l.level}: ${l.message}${l.file ? `\n    at ${l.file}:${l.line}:${l.column}` : ""}`;
 
 /**
- * `Bun.build` without a bundler (bwc-6yq.6): each entry point becomes a module that imports its source from the
- * module server, which transpiles it and its imports on request. Enough for a dev server that serves the
- * output to a page; `outdir` gets the same stubs.
+ * `Bun.build` through Bun's own bundler (compiled to wasm, see bundler.ts). Outputs are Blobs in memory; with
+ * `outdir` they are also written to the VFS through `write`, so the page sees them. Failures throw an
+ * AggregateError of the logs, as in Bun, unless `throw: false`.
  */
-async function build(opts: { entrypoints: string[]; outdir?: string; naming?: string }) {
-  const outputs: BuildArtifact[] = [];
-  for (const entry of opts.entrypoints) {
-    const src = norm(nodePath.resolve(entry.startsWith("file:") ? new URL(entry).pathname : entry));
-    if (!vfs.files.has(src)) {
-      const message = `Could not resolve: "${entry}"`;
-      return { success: false, outputs: [], logs: [Object.assign(new Error(message), { level: "error", message })] };
-    }
-    const name = (opts.naming ?? "[name].[ext]").replace("[dir]/", "").replace("[name]", nodePath.basename(src).replace(/\.[^.]+$/, "")).replace("[hash]", "dev").replace("[ext]", "js");
-    const blob = new Blob([`import ${JSON.stringify(`${BASE}__vfs/${src}`)};\n`], { type: "text/javascript;charset=utf-8" });
-    outputs.push(Object.assign(blob, { path: `./${name}`, kind: "entry-point" as const, loader: "js" as const, hash: null, sourcemap: null }));
-    if (opts.outdir) await write(nodePath.join(opts.outdir, name), blob);
+async function build(opts: BuildOptions) {
+  if (opts.plugins?.length) console.warn("Bun.build: plugins are not supported and are ignored");
+  const entryPoints = (opts.entrypoints ?? []).map((e) => "/" + norm(nodePath.resolve(e.startsWith("file:") ? new URL(e).pathname : e)));
+  const sm = opts.sourcemap;
+  const config: BundleConfig = {
+    cwd: "/",
+    entryPoints,
+    target: opts.target,
+    format: opts.format,
+    minify: opts.minify,
+    splitting: opts.splitting,
+    external: opts.external,
+    define: opts.define,
+    conditions: typeof opts.conditions === "string" ? [opts.conditions] : opts.conditions,
+    sourcemap: sm === true ? "linked" : sm === false ? "none" : sm,
+    naming: typeof opts.naming === "string" ? { entry: opts.naming } : opts.naming,
+    publicPath: opts.publicPath,
+    banner: opts.banner,
+    footer: opts.footer,
+  };
+  const outdir = opts.outdir ? "/" + norm(nodePath.resolve(opts.outdir)) : undefined;
+  if (outdir) config.outdir = outdir;
+  const res = await bundle(vfs, config);
+  const logs = res.logs.map(buildLog);
+  if (!res.success) {
+    if (opts.throw === false) return { success: false, outputs: [] as BuildArtifact[], logs };
+    throw Object.assign(new AggregateError(logs, "Bundle failed"), { name: "AggregateError" });
   }
-  return { success: true, outputs, logs: [] };
+  const outputs: BuildArtifact[] = [];
+  for (const o of res.outputs) {
+    const rel = o.path.replace(/^\.\//, "");
+    const loader = o.loader.toLowerCase();
+    const blob = new Blob([o.contents], { type: mimeOf(rel) });
+    const path = outdir ? nodePath.join(outdir, rel) : `./${rel}`;
+    outputs.push(Object.assign(blob, { path, kind: o.kind as BuildArtifact["kind"], loader, hash: o.hash && o.hash !== "0" ? o.hash : null, sourcemap: null as BuildArtifact | null }));
+  }
+  for (const o of outputs) o.sourcemap = outputs.find((m) => m.kind === "sourcemap" && m.path === `${o.path}.map`) ?? null;
+  if (outdir) for (const o of outputs) await write(o.path, o);
+  return { success: true, outputs, logs };
 }
 
 /**
