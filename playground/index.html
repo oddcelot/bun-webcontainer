@@ -20,6 +20,25 @@
         for (const [k, v] of Object.entries(JSON.parse(localStorage.getItem("theme-vars") || "{}"))) if (v) document.documentElement.style.setProperty(k, v);
       } catch {}
     </script>
+    <!--
+      A different name on every visit, shown in the header and the tab title from the first paint. Switching projects
+      reloads the page too, so the name lives in the tab's session storage and is picked again (never the same one)
+      only on a real reload or in a new tab. src/ui/Title.tsx shows the stored name.
+    -->
+    <script>
+      try {
+        const titles = ["Bun Away", "Always Bunning", "Bun and Done", "Hot Cross Bun", "Bun in the Oven", "Bun Shot", "Bundle of Joy", "Bun Voyage", "On the Bun"];
+        const reload = performance.getEntriesByType("navigation")[0]?.type === "reload";
+        let title = sessionStorage.getItem("title");
+        if (!title || reload || !titles.includes(title)) {
+          const pool = titles.filter((t) => t !== title);
+          title = pool[Math.floor(Math.random() * pool.length)];
+          sessionStorage.setItem("title", title);
+        }
+        // The tab keeps the site name, so bookmarks and search results stay recognizable.
+        document.title = `${title} · runbun.dev`;
+      } catch {}
+    </script>
 
     <!-- Social cards need absolute URLs: these point at the runbun.dev deploy. The images come from `bun run og`. -->
     <meta property="og:type" content="website" />
@@ -61,6 +80,11 @@
     <!-- src/ui/App.tsx renders the page; this header is what crawlers and no-JS visitors see. -->
     <header>
       <h1 class="title"><img src="/src/bun-logo.svg" alt="" width="23" height="20" /><span class="sr-only">runbun.dev: Bun in your browser</span><span id="title" aria-hidden="true">Bun playground</span></h1>
+      <script>
+        try {
+          document.getElementById("title").textContent = sessionStorage.getItem("title") || "Bun playground";
+        } catch {}
+      </script>
     </header>
     <script type="module" src="/src/main.ts"></script>
   </body>
