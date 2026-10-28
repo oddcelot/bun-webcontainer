@@ -45,6 +45,7 @@ const controller = createThemeController({
   storageKey: "theme-selection",
 });
 const listeners = new Set<(name: string, theme: ThemeLike) => void>();
+let source: ThemeLike | undefined;
 let applied: ThemeLike | undefined;
 
 /** The theme name for the scheme in effect (`system` resolved against the OS). */
@@ -52,6 +53,20 @@ export function themeName() {
   const s = controller.getState();
   return s.resolvedColorScheme === "light" ? s.lightThemeName : s.darkThemeName;
 }
+
+/**
+ * Shiki swaps colors it can't use as-is (`color(display-p3 ...)` in the Pierre Vibrant themes) for
+ * placeholders like `#00000001` and keeps the real ones in `colorReplacements`; the UI wants the real ones.
+ */
+function withRealColors(theme: ThemeLike & { colorReplacements?: Record<string, string> }): ThemeLike {
+  const map = theme.colorReplacements;
+  if (!map) return theme;
+  const real = (v: string | undefined) => (v && map[v.toLowerCase()]) || v;
+  const colors = Object.fromEntries(Object.entries(theme.colors ?? {}).map(([k, v]) => [k, real(v)!]));
+  return { ...theme, fg: real(theme.fg), bg: real(theme.bg), colors };
+}
+
+const isHex = (v: string | undefined) => !!v && /^#[0-9a-f]{3,8}$/i.test(v);
 
 /** App chrome variables (see style.css); unset ones fall back to mixes of --bg and --fg. */
 function chromeVars(theme: ThemeLike): Record<string, string | undefined> {
@@ -61,15 +76,16 @@ function chromeVars(theme: ThemeLike): Record<string, string | undefined> {
   const panel = c["sideBar.background"];
   // Many themes (pierre-dark too) draw borders in a surface color; those would vanish here.
   let border: string | undefined = c["panel.border"] ?? c["sideBar.border"] ?? c["editorGroup.border"];
-  if (border && [bg, panel].some((s) => s && colorUtils.surfacesMatch(border, s))) border = undefined;
+  if (border && [bg, panel].some((s) => s && (s === border || colorUtils.surfacesMatch(border, s)))) border = undefined;
   return {
     "color-scheme": theme.type,
     "--bg": bg,
     "--fg": fg,
     "--panel": panel,
     "--border": border,
-    "--muted": colorUtils.deriveMutedFg(fg, bg),
-    "--accent": c["focusBorder"] ?? c["button.background"],
+    // The color math reads hex only; other colors get style.css's mix.
+    "--muted": isHex(fg) && isHex(bg) ? colorUtils.deriveMutedFg(fg, bg) : undefined,
+    "--accent": [c["focusBorder"], c["button.background"]].find((v) => v && !colorUtils.isFullyTransparent(v)),
     "--error": c["terminal.ansiRed"] ?? c["editorError.foreground"],
     "--warn": c["terminal.ansiYellow"] ?? c["editorWarning.foreground"],
     "--info": c["terminal.ansiBlue"] ?? c["editorInfo.foreground"],
@@ -88,12 +104,13 @@ try {
 
 function sync() {
   const { resolvedTheme, pendingThemeResolution } = controller.getState();
-  if (!resolvedTheme || pendingThemeResolution || resolvedTheme === applied) return;
-  applied = resolvedTheme;
-  const vars = chromeVars(resolvedTheme);
+  if (!resolvedTheme || pendingThemeResolution || resolvedTheme === source) return;
+  source = resolvedTheme;
+  applied = withRealColors(resolvedTheme);
+  const vars = chromeVars(applied);
   applyVars(vars);
   localStorage.setItem(VARS_KEY, JSON.stringify(vars));
-  for (const fn of listeners) fn(themeName(), resolvedTheme);
+  for (const fn of listeners) fn(themeName(), applied);
 }
 controller.subscribe(sync);
 sync();
