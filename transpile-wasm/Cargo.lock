@@ -513,6 +513,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "bun_sys_host"
+version = "0.0.0"
+
+[[package]]
 name = "bun_threading"
 version = "0.0.0"
 dependencies = [
@@ -538,6 +542,7 @@ dependencies = [
  "bun_core",
  "bun_js_parser",
  "bun_js_printer",
+ "bun_sys_host",
  "bun_threading",
  "libc",
 ]

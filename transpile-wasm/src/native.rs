@@ -2,6 +2,9 @@
 //! artifact. Most come from upstream's `src/sema/standalone/native.rs` (written for parser-only
 //! binaries); `extra` adds the ones it doesn't cover.
 
+// bun_sys declares bun_sys_host_* (syscalls); this crate never calls them, the stubs fail with ENOSYS.
+use bun_sys_host as _;
+
 #[allow(dead_code, unused_imports, unsafe_op_in_unsafe_fn)]
 #[path = "../../bun/src/sema/standalone/native.rs"]
 mod sema_native;
