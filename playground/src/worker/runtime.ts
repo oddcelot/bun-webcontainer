@@ -475,7 +475,12 @@ self.addEventListener("message", async (e: MessageEvent) => {
   vfs.load(e.data.files, e.data.dirs);
   await booted;
   try {
-    await importUrl(`${BASE}__vfs/${e.data.entry}`);
+    const mod = (await importUrl(`${BASE}__vfs/${e.data.entry}`)) as { default?: ServeOptions };
+    // Bun serves an entry whose default export has a fetch handler (Hono's `export default app`), unless that
+    // port is already served (Elysia's `export default app.listen(3000)`).
+    const def = mod.default;
+    const port = Number(def?.port ?? env.PORT ?? env.BUN_PORT ?? 3000);
+    if (typeof def?.fetch === "function" && !servers.some((s) => s.server === def || s.port === port)) createInstance(def);
   } catch (err) {
     post({ type: "console", level: "error", text: fmt(err) });
   }
