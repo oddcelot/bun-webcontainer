@@ -36,8 +36,15 @@ function splitKey(key: string): string[] {
   return names;
 }
 
-/** No native binary runs in the browser, so any `os`/`cpu`/`libc` restriction means "doesn't match this host". */
-export const platformRestricted = (m?: { os?: unknown; cpu?: unknown; libc?: unknown }): boolean => !!m && !!(m.os || m.cpu || m.libc);
+/** `cpu` of a wasm32 package: npm's `"wasm32"`, or `"none"` in bun.lock (no CPU Bun knows). */
+const WASM32 = new Set(["wasm32", "none"]);
+
+/**
+ * No native binary runs in the browser, so any `os`/`cpu`/`libc` restriction means "doesn't match this host", except
+ * wasm32 alone: napi-rs ships those bindings for exactly this.
+ */
+export const platformRestricted = (m?: { os?: unknown; cpu?: unknown; libc?: unknown }): boolean =>
+  !!m && !!(m.os || m.libc || (m.cpu && ![m.cpu].flat().every((c) => WASM32.has(String(c)))));
 
 function parseIdent(ident: string): { name: string; version: string } | null {
   const at = ident.lastIndexOf("@");

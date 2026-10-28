@@ -383,6 +383,17 @@ async function build(opts: { entrypoints: string[]; outdir?: string; naming?: st
   return { success: true, outputs, logs: [] };
 }
 
+/** Bun's fetch reads `file:` URLs from disk; here, from the VFS (napi-rs wasm bindings fetch their .wasm this way). */
+const networkFetch = globalThis.fetch;
+globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+  const url = input instanceof Request ? input.url : String(input);
+  if (!url.startsWith("file:")) return networkFetch(input, init);
+  const path = norm(decodeURIComponent(new URL(url).pathname));
+  const data = vfs.readBytes(path);
+  if (data === undefined) throw new TypeError(`fetch failed: no such file /${path}`);
+  return new Response(data.slice());
+};
+
 async function main() {
   const semver = await loadSemver();
   g.Bun = {

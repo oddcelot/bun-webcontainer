@@ -130,7 +130,9 @@ function resolveBare(vfs: VFS, spec: string, fromDir: string): string | null {
   const base = findPackage(vfs, name, fromDir);
   if (base === null) return null;
   const text = vfs.readText(`${base}/package.json`)!;
-  const pkg = JSON.parse(text) as { exports?: unknown; module?: string; main?: string };
+  const pkg = JSON.parse(text) as { exports?: unknown; module?: string; main?: string; browser?: unknown };
+  // napi-rs wasm bindings: the Node entry needs node:wasi and worker_threads, the browser one runs anywhere here.
+  if (name.endsWith("-wasm32-wasi") && sub === "." && typeof pkg.browser === "string") return resolveFile(vfs, norm(`${base}/${pkg.browser}`));
   if (pkg.exports !== undefined) {
     const t = pickExport(pkg.exports, sub);
     return t ? resolveFile(vfs, norm(`${base}/${t}`)) : null;
@@ -153,17 +155,24 @@ function checkHostVersion(vfs: VFS) {
 const CREATE_REQUIRE = /\bcreateRequire\(import\.meta\.url\)/g;
 
 /**
- * Bundles like Vite's call `__require("x")` on a `createRequire(import.meta.url)`. Literal `__require` specifiers that
- * resolve become static imports, and the created require serves them (as wrapped CommonJS does); others fall through.
+ * Bundles like Vite's call `__require("x")` on a `createRequire(import.meta.url)`; napi-rs loaders and others `require("x")`.
+ * Literal specifiers that resolve become static imports, and the created require serves them (as wrapped CommonJS
+ * does); others fall through. Relative ones only for JSON: hoisting runs a module even if its require() never does.
+ * Literal `require.resolve` calls are resolved here too.
  */
 function hoistRequires(vfs: VFS, code: string, dir: string): string {
   if (!code.includes("createRequire(import.meta.url)")) return code;
-  const specs = [...new Set([...code.matchAll(/\b__require\(\s*"([^"\n]+)"\s*\)/g)].map((m) => m[1]))].filter((s) => !s.startsWith(".") && !(s.replace(/^node:/, "") in builtins) && resolveBare(vfs, s, dir));
+  // Literal `require.resolve("x")` becomes the path it resolves to.
+  code = code.replace(/(?<![\w$.])(?:__)?require\.resolve\(\s*(["'])([^"'\n]+)\1\s*\)/g, (m, _q: string, s: string) => {
+    const p = s.startsWith(".") ? resolveFile(vfs, norm(`${dir}/${s}`)) : s.replace(/^node:/, "") in builtins ? null : resolveBare(vfs, s, dir);
+    return p ? JSON.stringify("/" + p) : m;
+  });
+  const specs = [...new Set([...code.matchAll(/(?<![\w$.])(?:__)?require\(\s*(["'])([^"'\n]+)\1\s*\)/g)].map((m) => m[2]))].filter((s) => !(s.replace(/^node:/, "") in builtins) && (s.startsWith(".") ? s.endsWith(".json") && resolveFile(vfs, norm(`${dir}/${s}`)) : resolveBare(vfs, s, dir)));
   if (!specs.length) return code;
   const imports = specs.map((s, i) => `import * as __h${i} from ${JSON.stringify(s)};`).join("");
   const table = specs.map((s, i) => `${JSON.stringify(s)}: __h${i}`).join(", ");
   return `${imports}const __hoisted = { ${table} };
-const __withHoisted = (r) => Object.assign((id) => (id in __hoisted ? ("__cjs" in __hoisted[id] ? __hoisted[id].__cjs : __hoisted[id]) : r(id)), r);
+const __withHoisted = (r) => Object.assign((id) => (id in __hoisted ? ("__cjs" in __hoisted[id] ? __hoisted[id].__cjs : id.endsWith(".json") ? __hoisted[id].default : __hoisted[id]) : r(id)), r);
 ${code.replace(CREATE_REQUIRE, "__withHoisted($&)")}`;
 }
 
