@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import solid from "@solidjs/vite-plugin";
 import UnoCSS from "unocss/vite";
 import { defineConfig, type Plugin } from "vite";
 
@@ -42,7 +43,7 @@ function emnapiNotNode(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [UnoCSS(), hostPackageNames(), emnapiNotNode()],
+  plugins: [UnoCSS(), solid(), hostPackageNames(), emnapiNotNode()],
   build: { target: "esnext" },
   // In builds, worker bundles (the runtime and rolldown's wasi worker) only get worker.plugins.
   worker: { format: "es", plugins: () => [emnapiNotNode()] },

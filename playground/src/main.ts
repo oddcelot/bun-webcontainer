@@ -14,7 +14,7 @@ import { mountPreview } from "./preview";
 import { loadSemver } from "./semver";
 import { checkSupport, showUnsupported } from "./support";
 import { VFS } from "./vfs";
-import "./title";
+import "./ui/mount";
 import { mountThemePicker } from "./theme";
 import { mountConsole } from "./console";
 import { createShell, scriptEntry } from "./shell";
