@@ -7,6 +7,7 @@ type Exports = {
   memory: WebAssembly.Memory;
   alloc(len: bigint): bigint;
   dealloc(ptr: bigint, len: bigint): void;
+  transpile_resolve_c(pathPtr: bigint, pathLen: bigint, srcPtr: bigint, srcLen: bigint, loader: number, flags: number): bigint;
   transpile_flags_c(pathPtr: bigint, pathLen: bigint, srcPtr: bigint, srcLen: bigint, loader: number, flags: number): bigint;
   output_free(out: bigint): void;
 };
@@ -16,18 +17,52 @@ export type TsconfigFlags = { experimentalDecorators?: boolean; emitDecoratorMet
 
 const LOADERS: Record<string, number> = { js: 0, mjs: 0, jsx: 1, ts: 2, mts: 2, tsx: 3 };
 
+/** Import kinds the resolver is asked about (bun_ast::ImportKind): `import`/`export ... from`, and `import("literal")`. */
+export type ImportKind = "stmt" | "dynamic";
+
+/** Returns the specifier to print instead, or null to keep it. */
+export type Resolver = (specifier: string, kind: ImportKind) => string | null;
+
 let ready: Promise<Exports> | undefined;
+// The wasm import is global to the instance; calls are synchronous, so the current call's resolver lives here.
+let current: Resolver | undefined;
+let resolveError: unknown;
 
 async function load(): Promise<Exports> {
   const res = await fetch(new URL(`${BASE}bun_transpile_wasm.wasm`, location.href));
-  const { instance } = await WebAssembly.instantiate(await res.arrayBuffer(), {});
-  return instance.exports as unknown as Exports;
+  let w: Exports;
+  // ABI: see transpile-wasm/src/lib.rs ("Host resolver ABI"). Returns 0 (keep) or alloc'd [u64 len][utf-8 bytes].
+  const env = {
+    resolve_specifier(ptr: bigint, len: bigint, kind: number): bigint {
+      try {
+        const spec = dec.decode(new Uint8Array(w.memory.buffer, Number(ptr), Number(len)));
+        const r = current?.(spec, kind === 4 ? "dynamic" : "stmt");
+        if (r == null || r === spec) return 0n;
+        const b = enc.encode(r);
+        const p = w.alloc(BigInt(8 + b.length));
+        new DataView(w.memory.buffer).setBigUint64(Number(p), BigInt(b.length), true);
+        new Uint8Array(w.memory.buffer, Number(p) + 8, b.length).set(b);
+        return p;
+      } catch (e) {
+        // Don't unwind through wasm frames: keep the specifier and rethrow once the call returns.
+        resolveError ??= e;
+        return 0n;
+      }
+    },
+  };
+  const { instance } = await WebAssembly.instantiate(await res.arrayBuffer(), { env });
+  w = instance.exports as unknown as Exports;
+  return w;
 }
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
-export async function transpile(source: string, path: string, tsconfig: TsconfigFlags = {}): Promise<string> {
+/**
+ * JS/TS to browser JS. With `resolve`, every import specifier Bun's parser found (static import, `export ... from`,
+ * `import("literal")`; never `require()` or text in strings/comments) is replaced by its result before printing.
+ */
+export async function transpile(source: string, path: string, tsconfig: TsconfigFlags = {}, resolve?: Resolver): Promise<string> {
   const w = await (ready ??= load());
   const put = (s: string): [bigint, bigint] => {
     const b = enc.encode(s);
@@ -39,8 +74,17 @@ export async function transpile(source: string, path: string, tsconfig: Tsconfig
   const [pp, pl] = put(path);
   const [sp, sl] = put(source);
   const flags = (tsconfig.experimentalDecorators ? 1 : 0) | (tsconfig.emitDecoratorMetadata ? 2 : 0);
-  const out = w.transpile_flags_c(pp, pl, sp, sl, LOADERS[path.slice(path.lastIndexOf(".") + 1)] ?? 0, flags);
+  const loader = LOADERS[path.slice(path.lastIndexOf(".") + 1)] ?? 0;
+  current = resolve;
+  resolveError = undefined;
+  let out: bigint;
   try {
+    out = resolve ? w.transpile_resolve_c(pp, pl, sp, sl, loader, flags) : w.transpile_flags_c(pp, pl, sp, sl, loader, flags);
+  } finally {
+    current = undefined;
+  }
+  try {
+    if (resolveError !== undefined) throw resolveError;
     const view = new DataView(w.memory.buffer);
     const at = Number(out);
     const status = view.getBigUint64(at, true);
