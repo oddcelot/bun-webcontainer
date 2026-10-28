@@ -1,3 +1,4 @@
 node_modules
 dist
 public/bun_semver_wasm.wasm
+worker/worker-configuration.d.ts

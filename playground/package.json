@@ -8,7 +8,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "og": "bun scripts/og.ts"
+    "og": "bun scripts/og.ts",
+    "typecheck:worker": "wrangler types worker/worker-configuration.d.ts && tsc -p worker"
   },
   "dependencies": {
     "@napi-rs/wasm-runtime": "1.2.5",

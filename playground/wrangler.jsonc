@@ -1,8 +1,17 @@
-// Static assets only: everything runs in the browser. public/_headers (copied into dist/) sets COOP/COEP.
+// Everything runs in the browser from static assets (public/_headers, copied into dist/, sets COOP/COEP).
+// The Worker only handles opt-in short links: POST /api/short and GET /s/<id> (worker/index.ts).
 {
   "name": "bun-playground",
   "compatibility_date": "2026-10-28",
-  "assets": { "directory": "./dist" },
+  "main": "worker/index.ts",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*", "/s/*"]
+  },
+  "kv_namespaces": [{ "binding": "LINKS", "id": "af919e62d9334718b4e63cf62eb5bb28" }],
+  // New short links per client IP: 10 a minute keeps the Free plan's 1,000 KV writes a day for real use.
+  "ratelimits": [{ "name": "CREATE_LIMIT", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } }],
   "routes": [{ "pattern": "runbun.dev", "custom_domain": true }],
   "workers_dev": true
 }

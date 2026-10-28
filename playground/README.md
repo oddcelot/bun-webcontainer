@@ -92,7 +92,12 @@ The page must be cross-origin isolated (`Cross-Origin-Opener-Policy: same-origin
 `Cross-Origin-Embedder-Policy: credentialless`). `public/_headers` sets them on Cloudflare (Pages, and Workers
 static assets) and Netlify; hosts that can't send headers (GitHub Pages) need a COOP/COEP service-worker workaround.
 
-Cloudflare Workers: `wrangler.jsonc` deploys `dist/` as static assets with no Worker script:
-`bun run build && bunx wrangler deploy`. It serves on the custom domain https://runbun.dev and on
-https://bun-playground.oddcelot.workers.dev (`workers_dev`); a fork deploying under its own account should
-drop or replace the `routes` entry.
+Cloudflare Workers: `wrangler.jsonc` deploys `dist/` as static assets: `bun run build && bunx wrangler deploy`.
+It serves on the custom domain https://runbun.dev and on https://bun-playground.oddcelot.workers.dev (`workers_dev`).
+A small Worker (`worker/index.ts`) runs first only on `/api/*` and `/s/*`, for opt-in short links: `POST /api/short`
+stores a share payload in the `LINKS` KV namespace under a content-hash id (rate-limited per IP by `CREATE_LIMIT`,
+capped at ~64 KB packed) and `GET /s/<id>` redirects to `/#code=…`; everything else is the static site. It fits the
+Workers Free plan (1,000 new links and 100,000 opens a day). `bun run typecheck:worker` regenerates its types; locally,
+`bunx wrangler dev --local` runs it (pass `--compatibility-date` if your workerd is older than `wrangler.jsonc`'s).
+A fork deploying under its own account should drop or replace the `routes` entry and create its own KV namespace
+(`bunx wrangler kv namespace create runbun-links`).

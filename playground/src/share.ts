@@ -43,6 +43,8 @@ const unchanged = (vfs: VFS, s: Source) => {
 const SECRET = /(^|\/)(\.env(\.(?!example$|sample$|template$)[^/]+)?|\.npmrc|\.netrc|[^/]+\.(pem|key|p12|pfx)|id_(rsa|ed25519|ecdsa))$/;
 /** Over this, some chat apps cut a link off; Share tries without bun.lock, then suggests GitHub. */
 export const LONG_LINK = 32 * 1024;
+/** The shortener keeps up to ~64 KB of packed project (worker/index.ts); a link past this can't be shortened. */
+const MAX_SHORT = Math.ceil((64 * 1024 * 4) / 3) + 256;
 
 type Link = {
   url: string;
@@ -126,6 +128,40 @@ export function mountShareMenu(menu: HTMLElement, vfs: VFS, log: (level: string,
       ? "Long link: some chat apps cut these off. For a project this size, push it to GitHub and share it from there (?repo=)."
       : "",
   ].filter(Boolean);
+  const shortItem = menu.querySelector<HTMLButtonElement>('[data-share="short"]')!;
+  const shortSub = shortItem.querySelector<HTMLElement>(".sub")!;
+  const shortSubText = shortSub.textContent!;
+
+  /**
+   * Opt-in: stores the packed project on runbun.dev (worker/index.ts) and copies runbun.dev/s/<id>. The clipboard
+   * gets a promise of the text, so the write still counts as part of the click while the request runs.
+   */
+  async function copyShort(item: HTMLButtonElement, label: HTMLElement, idle: string, l: Link) {
+    const payload = l.url.slice(l.url.indexOf(PREFIX) + PREFIX.length);
+    const shortUrl = fetch(`${BASE}api/short`, { method: "POST", body: payload }).then(async (res) => {
+      const body = (await res.json().catch(() => ({}))) as { path?: string; error?: string };
+      if (!res.ok || !body.path) throw new Error(body.error ?? `the shortener answered ${res.status}`);
+      return new URL(body.path, location.origin).href;
+    });
+    label.textContent = "Shortening…";
+    let result: string;
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ "text/plain": shortUrl.then((u) => new Blob([u], { type: "text/plain" })) })]);
+      result = await shortUrl;
+      log("sys", `[share] short link copied: ${result} (a copy of the project is stored on runbun.dev)`);
+      label.textContent = "Copied";
+    } catch (e) {
+      const why = e instanceof Error ? e.message : String(e);
+      log("error", `[share] no short link: ${/fetch|JSON|answered 404/.test(why) ? "the shortener isn't reachable here (it runs on runbun.dev)" : why}`);
+      label.textContent = "Couldn't shorten";
+    }
+    item.dataset.copied = "";
+    setTimeout(() => {
+      delete item.dataset.copied;
+      label.textContent = idle;
+    }, 1600);
+  }
+
   const formats: Record<string, (url: string) => string> = {
     link: (url) => url,
     markdown: (url) => `[![Open in runbun](${badge})](${url})`,
@@ -143,6 +179,9 @@ export function mountShareMenu(menu: HTMLElement, vfs: VFS, log: (level: string,
       lead.textContent = leadText;
       size.textContent = `${link.files} files · ${(link.url.length / 1024).toFixed(1)} KB`;
     }
+    shortItem.hidden = !!link.short;
+    shortItem.disabled = link.url.length > MAX_SHORT;
+    shortSub.textContent = shortItem.disabled ? "Too large for a short link: share it from GitHub" : shortSubText;
     const lines = noteLines(link);
     notes.replaceChildren(...lines.map((t) => Object.assign(document.createElement("li"), { textContent: t })));
     notes.hidden = !lines.length;
@@ -155,6 +194,7 @@ export function mountShareMenu(menu: HTMLElement, vfs: VFS, log: (level: string,
     item.onclick = async () => {
       link ??= await shareLink(vfs);
       const kind = item.dataset.share!;
+      if (kind === "short") return copyShort(item, label, idle, link);
       const text = formats[kind](link.url);
       // The address bar shows the link too, so it can be copied from there or bookmarked.
       history.replaceState(null, "", link.url);
