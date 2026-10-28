@@ -20,6 +20,7 @@ export const examples: Record<string, string> = {
 export const repoExamples: Record<string, string> = {
   "oddcelot/bun-elysia-demo": "Elysia (from GitHub)",
   "https://github.com/oddcelot/lit-devtools/tree/main/examples/elysia": "Lit SSR guestbook (from GitHub)",
+  "https://github.com/honojs/starter/tree/main/templates/bun": "Hono (from GitHub)",
 };
 
 /** Loads `fixtures/<name>/` into the VFS; false if there is no such example. */
