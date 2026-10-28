@@ -35,9 +35,12 @@ checks below.
 ## The rules that bite most
 
 - **Reads lag writes.** `setX(v); x()` still returns the old value until the microtask flush
-  (or `flush()`). No `batch`.
+  (or `flush()`). No `batch`. A later store setter's draft does see earlier unflushed writes, so
+  derive the next state inside the setter, not from a read.
 - **`createEffect(compute, apply)`** is the only form. Compute tracks and returns a value; apply
-  does side effects and returns its cleanup. No `on()`, no single-function effect.
+  does side effects and returns its cleanup. No `on()`, no single-function effect. Whatever
+  apply returns is called as cleanup, so `v => list.push(v)` crashes the scheduler (`u is not a
+  function`) on the next run: give apply a block body.
 - **No writes in owned scope.** Setting a signal or store inside a memo, effect compute or
   component body throws in dev (`untrack` doesn't help). Write from event handlers, `onSettled`,
   effect apply, or `action`s.
@@ -93,7 +96,11 @@ checks below.
 
 In Chrome: the page loads, Run starts the demo and the preview shows, and the console has no Solid
 dev warnings or errors. Each diagnostic has a code; look it up in
-[references/08-dev-diagnostics.md](references/08-dev-diagnostics.md).
+[references/08-dev-diagnostics.md](references/08-dev-diagnostics.md) or in the repair guide
+`solid-js` ships at `playground/node_modules/solid-js/skills/reactivity-diagnostics/SKILL.md`
+(the warnings link to it). A common one here: an imperative library callback fired from inside an
+effect's apply (e.g. `tree.select()` → `onSelectionChange`) that reads a store is
+`STRICT_READ_UNTRACKED`; keep the value the effect applied in a local and read that.
 
 ## References (vendored, rc.19)
 
