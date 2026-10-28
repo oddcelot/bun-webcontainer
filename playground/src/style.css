@@ -98,8 +98,14 @@ main { flex: 1; min-height: 0; display: grid; grid-template-columns: 200px 1fr 1
 #preview-views { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .preview-frame { flex: 1; width: 100%; border: 0; }
 .preview-frame[hidden], .preview-response[hidden], #req-body[hidden] { display: none; }
-.preview-response { flex: 1; overflow: auto; margin: 0; padding: 6px 8px; font: 12px ui-monospace, monospace; white-space: pre-wrap; }
-.preview-response.error { color: var(--error); }
+.preview-response { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 8px; padding: 10px; font: 12px/1.5 ui-monospace, monospace; }
+.preview-response pre { margin: 0; font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
+.preview-response .status-line { display: flex; align-items: center; gap: 8px; }
+.preview-response .status { padding: 1px 8px; border-radius: 999px; font-weight: 600; color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, var(--panel)); }
+.preview-response .headers { color: var(--muted); }
+.preview-response .body { padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); }
+.preview-response.error .status { color: var(--error); background: color-mix(in srgb, var(--error) 14%, var(--panel)); }
+.preview-response.error .body { color: var(--error); border-color: color-mix(in srgb, var(--error) 45%, var(--panel)); background: color-mix(in srgb, var(--error) 8%, var(--panel)); }
 #preview-tabs .method { font: 10px/1 ui-monospace, monospace; padding: 2px 4px; border-radius: 3px; background: var(--control); }
 #preview-tabs .add { display: grid; place-items: center; padding: 0 10px; border: 0; background: none; color: var(--muted); cursor: pointer; }
 #preview-tabs .add:hover { color: var(--fg); background: var(--control-hover); }
