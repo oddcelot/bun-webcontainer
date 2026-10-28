@@ -42,14 +42,17 @@ checks below.
   apply returns is called as cleanup, so `v => list.push(v)` crashes the scheduler (`u is not a
   function`) on the next run: give apply a block body.
 - **No writes in owned scope.** Setting a signal or store inside a memo, effect compute or
-  component body throws in dev (`untrack` doesn't help). Write from event handlers, `onSettled`,
-  effect apply, or `action`s.
+  component body throws in dev (`untrack` doesn't help), and so does setup code run inside
+  `createRoot` (seed the initial value instead of calling a setter). Write from event handlers,
+  `onSettled`, effect apply, or `action`s.
 - **Props are values.** Pass `value={count()}`, not `value={count}`. Read `props.x`; never
   destructure props or read them at the top of a component body.
 - **Lifecycle:** `onSettled(() => { ...; return cleanup })` replaces `onMount` + `onCleanup`.
   Ref callbacks are unowned: no `onCleanup` or primitives inside them.
 - **Stores:** `setStore(s => { s.a.b = 1; s.list.push(x) })` (draft-first; `produce` is gone),
-  `snapshot(store)` for plain values, `reconcile(data, "id")` to merge fetched data.
+  `snapshot(store)` for plain values, `reconcile(data, "id")` to merge fetched data. Assigning a
+  fresh object over an existing one (`t.response = card`) warns `IMMUTABLE_UPDATE_IN_STORE`; use
+  `reconcile(card)(t.response)`.
 - **Lists:** `<For each>` gives `(item, i)` with `item` a value and `i()` an accessor;
   `<For keyed={false}>` gives `item()` an accessor and `i` a number. `Index` is gone.
   Function children of `For`/`Show`/`Match` are owners, not tracking scopes: read accessors in JSX.
