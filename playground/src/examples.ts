@@ -1,8 +1,8 @@
 import type { VFS } from "./vfs";
 
-// Top-level project files of each fixture, bundled as text. Their node_modules are never included;
-// "bun install" fetches packages from the lockfile.
-const files = import.meta.glob<string>("../fixtures/*/{package.json,bun.lock,*.ts,*.tsx,*.js,*.html,*.css}", {
+// Project files of each fixture (top level and src/), bundled as text. Their node_modules are never
+// included; "bun install" fetches packages from the lockfile.
+const files = import.meta.glob<string>("../fixtures/*/{package.json,tsconfig.json,bun.lock,*.ts,*.tsx,*.js,*.mjs,*.html,*.css,src/**/*}", {
   query: "?raw",
   import: "default",
 });
@@ -13,6 +13,7 @@ export const examples: Record<string, string> = {
   "node-demo": "node:* built-ins",
   "lockfile-demo": "bun.lock + nested node_modules",
   "vite-demo": "Vite (probe)",
+  "astro-solid-demo": "Astro + Solid",
 };
 
 /** Public GitHub repos in the picker, loaded with `?repo=` (see github.ts). */

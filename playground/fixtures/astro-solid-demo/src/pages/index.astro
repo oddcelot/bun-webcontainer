@@ -1,0 +1,22 @@
+---
+import Counter from "../components/Counter.tsx";
+
+const rendered = new Date().toLocaleTimeString();
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Astro + Solid</title>
+  </head>
+  <body>
+    <h1>Astro + Solid</h1>
+    <p>Rendered by Astro on the server at {rendered}, running on Bun {Bun.version}.</p>
+    <Counter client:load start={5} />
+    <style>
+      body { font-family: system-ui; padding: 1rem; }
+      .counter { display: flex; gap: 0.5rem; align-items: center; }
+      button { font-size: 1.1rem; padding: 0.2rem 0.8rem; }
+    </style>
+  </body>
+</html>
