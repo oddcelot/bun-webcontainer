@@ -28,7 +28,9 @@ header button:disabled { opacity: 0.5; cursor: default; }
 #modes button:first-child { border-radius: 4px 0 0 4px; margin-left: 0; }
 #modes button:last-child { border-radius: 0 4px 4px 0; }
 #modes button[aria-pressed="true"] { background: var(--control-hover); color: var(--accent); }
-.title { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.title { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: inherit; white-space: nowrap; }
+/* Read by screen readers and crawlers, not shown: the h1's stable name next to the random visible one. */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 #example { min-width: 6rem; flex: 0 1 14rem; }
 /* Narrow windows: the secondary actions show their icon only (the label stays as the tooltip and accessible name). */
 @media (max-width: 1320px) {

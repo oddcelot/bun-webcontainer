@@ -11,4 +11,7 @@ const titles = [
   "On the Bun",
 ];
 
-document.title = document.getElementById("title")!.textContent = titles[Math.floor(Math.random() * titles.length)];
+const title = titles[Math.floor(Math.random() * titles.length)];
+document.getElementById("title")!.textContent = title;
+// The tab keeps the site name, so bookmarks and search results stay recognizable.
+document.title = `${title} · runbun.dev`;
