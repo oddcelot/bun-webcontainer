@@ -12,15 +12,16 @@ import { mountFileTree } from "./fileTree";
 import { mountTabs } from "./tabs";
 import { mountPreview } from "./preview";
 import { loadSemver } from "./semver";
-import { showUnsupported, supportsMemory64 } from "./support";
+import { checkSupport, showUnsupported } from "./support";
 import { VFS } from "./vfs";
 import "./title";
 import { mountThemePicker } from "./theme";
 import { mountConsole } from "./console";
 import { createShell, scriptEntry } from "./shell";
 
-if (!supportsMemory64()) {
-  showUnsupported();
+const support = checkSupport();
+if (support.some((c) => !c.ok)) {
+  showUnsupported(support);
   // Stop here without an error: nothing below can work, and the page already explains why.
   await new Promise<never>(() => {});
 }

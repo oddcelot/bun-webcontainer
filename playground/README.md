@@ -86,7 +86,7 @@ Checked in Chrome only (via chrome-devtools MCP): Memory64 wasm instantiates and
 `bun run build` writes a static site to `dist/` (the prebuild step copies both `.wasm` files from the
 local Rust builds, so build them first). Any static HTTPS host works. For a sub-path, build with
 `bunx vite build --base=/sub/path/`; the service worker derives its paths from its own URL.
-Browsers without WebAssembly Memory64 (Safari as of late 2025) get an explanation instead of the app.
+Browsers missing a requirement (WebAssembly Memory64, which Safari 27 and every iOS browser still lack; a secure context; service workers; module workers) get a page listing what passed and what failed instead of the app.
 
 The page must be cross-origin isolated (`Cross-Origin-Opener-Policy: same-origin`,
 `Cross-Origin-Embedder-Policy: credentialless`). `public/_headers` sets them on Cloudflare (Pages, and Workers
