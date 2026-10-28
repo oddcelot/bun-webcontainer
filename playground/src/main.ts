@@ -165,6 +165,7 @@ function clearConsole() {
 const exec = createShell({ vfs, log, run, install, stop, clear: clearConsole });
 
 async function openFolder(files: File[]) {
+  await session.started;
   runner?.stop();
   workspace.closeAll();
   vfs.clear();
@@ -186,11 +187,12 @@ async function openFolder(files: File[]) {
   openFile(entryFile());
 }
 
-function newFile(path: string) {
+async function newFile(path: string) {
+  await session.started;
   vfs.write(path, "");
   openFile(path);
 }
-session.setReady(true);
+session.markReady();
 
 /** Like StackBlitz: install on load when a dependency is missing from node_modules. */
 function missingDeps(): boolean {

@@ -24,7 +24,7 @@ export type App = {
   /** Reloads with `?example=` or `?repo=` (picker values for repos are `repo:<owner/repo>`). */
   openProject(value: string): void;
   /** Creates an empty file and opens it. */
-  newFile(path: string): void;
+  newFile(path: string): Promise<void>;
   openFolder(files: File[]): void;
   /** The `?repo=` the page was opened with, as the repo prompt's default. */
   repoParam: string;

@@ -32,7 +32,8 @@ export function Header() {
           <Title />
         </span>
       </h1>
-      <button id="run" disabled={!s.canRun || !s.ready() || !!s.busy.run} title={s.canRun ? undefined : CANT_RUN} onClick={() => app.run()}>
+      {/* Startup installs and runs the project itself, so Run and Install ignore clicks until it's done (no greying out meanwhile). */}
+      <button id="run" disabled={!s.canRun || !!s.busy.run} title={s.canRun ? undefined : CANT_RUN} onClick={() => s.ready() && app.run()}>
         <i class="i-lucide-play" aria-hidden="true" /> Run
       </button>
       <button id="share" popovertarget="share-menu" title="Share this project">
@@ -41,18 +42,18 @@ export function Header() {
       <ShareMenu />
       <button
         id="install"
-        disabled={!s.canRun || !s.ready() || !!s.busy.install}
+        disabled={!s.canRun || !!s.busy.install}
         title={s.canRun ? "bun install" : CANT_RUN}
-        onClick={() => app.install()}
+        onClick={() => s.ready() && app.install()}
       >
         <i class="i-lucide-download" aria-hidden="true" />
         <span class="label">bun install</span>
       </button>
-      <button id="newfile" title="New file" disabled={!s.ready()} onClick={newFile}>
+      <button id="newfile" title="New file" onClick={newFile}>
         <i class="i-lucide-file-plus" aria-hidden="true" />
         <span class="label">New file</span>
       </button>
-      <button id="openfolder" title="Open folder" disabled={!s.ready()} onClick={() => folderInput.click()}>
+      <button id="openfolder" title="Open folder" onClick={() => folderInput.click()}>
         <i class="i-lucide-folder-open" aria-hidden="true" />
         <span class="label">Open folder</span>
       </button>

@@ -38,6 +38,8 @@
         // The tab keeps the site name, so bookmarks and search results stay recognizable.
         document.title = `${title} · runbun.dev`;
       } catch {}
+      // Hides the static header until the app renders its own (see style.css); without JavaScript it stays visible.
+      document.documentElement.dataset.booting = "";
     </script>
 
     <!-- Social cards need absolute URLs: these point at the runbun.dev deploy. The images come from `bun run og`. -->

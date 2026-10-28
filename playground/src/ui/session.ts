@@ -5,11 +5,14 @@ export type Task = "run" | "install";
 
 /** What the header shows about the program: create it inside a root (main.ts) and pass it to the UI. */
 export function createSession(canRun: boolean) {
-  const [status, setStatus] = createSignal<Status>({ state: "idle", text: "Stopped" });
+  // Startup runs the project when the browser can, so say so from the first frame instead of "Stopped".
+  const [status, setStatus] = createSignal<Status>(canRun ? { state: "busy", text: "Starting…" } : { state: "idle", text: "Stopped" });
   // While a task is in flight these show "Starting…" and a disabled button; both revert when it settles.
   const [shown, setShown] = createOptimistic(() => status());
   const [busy, setBusy] = createOptimisticStore<Partial<Record<Task, boolean>>>({});
   const [ready, setReady] = createSignal(false);
+  let resolveStarted!: () => void;
+  const started = new Promise<void>((r) => (resolveStarted = r));
   const [counts, setCounts] = createStore({ lines: 0, error: 0, warn: 0 });
   const [project, setProject] = createSignal({ selected: "", extra: [] as [label: string, value: string][] });
 
@@ -42,9 +45,14 @@ export function createSession(canRun: boolean) {
     setStatus,
     busy,
     task,
-    /** False until main.ts has wired the runner, tabs and file tree; buttons that need them stay disabled. */
+    /** False until main.ts has set up the runner and loaded the project. */
     ready,
-    setReady,
+    /** Resolves once ready: actions clicked during startup wait for it instead of disabling their buttons. */
+    started,
+    markReady() {
+      setReady(true);
+      resolveStarted();
+    },
     /** Console lines, and how many of them are errors and warnings. */
     counts,
     countLine(level: string) {

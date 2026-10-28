@@ -22,7 +22,16 @@ header { display: flex; gap: 8px; align-items: center; padding: 6px 10px; backgr
 header button, #clear, #request button { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 header button, #clear { background: var(--control); color: inherit; border: 1px solid var(--control-border); border-radius: 4px; padding: 4px 10px; cursor: pointer; }
 header button:hover { background: var(--control-hover); }
-header button:disabled { opacity: 0.5; cursor: default; }
+/* Dim only when a button stays disabled a moment (an install, a slow start), so a quick run doesn't flicker. */
+header button { transition: opacity 0.12s; }
+header button:disabled { opacity: 0.5; cursor: default; transition: opacity 0.12s 0.3s; }
+/*
+ * While the app boots, index.html's static header stays invisible: with nothing to paint, the browser keeps showing
+ * the previous page (e.g. before a project switch) until the real header renders (mountUI drops data-booting).
+ * If the app never mounts, the static header shows after a few seconds anyway.
+ */
+html[data-booting] body > header > * { visibility: hidden; animation: boot-fallback 0s 3s forwards; }
+@keyframes boot-fallback { to { visibility: visible; } }
 /* Share menu: a popover anchored under the Share button. */
 #share { anchor-name: --share; }
 #share-menu { position-anchor: --share; inset: auto; top: anchor(bottom); left: anchor(left); margin: 6px 0 0; width: 330px; padding: 6px; border: 1px solid var(--control-border); border-radius: 8px; background: var(--panel); color: var(--fg); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35); }

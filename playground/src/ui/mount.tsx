@@ -5,7 +5,7 @@ import { AppContext, type App as AppApi } from "./context";
 /** Renders the page into <body>, replacing index.html's static header (kept there for crawlers and no-JS visitors). */
 export function mountUI(app: AppApi) {
   document.querySelector("body > header")?.remove();
-  return render(
+  const dispose = render(
     () => (
       <AppContext value={app}>
         <App />
@@ -13,4 +13,6 @@ export function mountUI(app: AppApi) {
     ),
     document.body,
   );
+  delete document.documentElement.dataset.booting;
+  return dispose;
 }
