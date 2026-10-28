@@ -302,15 +302,67 @@ async function serveHtml(imp: HtmlImport): Promise<Response> {
   return new Response(out, { headers: { "content-type": "text/html; charset=utf-8" } });
 }
 
+/** Where bundled HTML imports serve their chunks and assets from (Bun's dev server uses the same prefix). */
+const ASSET_PREFIX = "/_bun/";
+type Asset = { body: string; type: string };
+type HtmlBundle = { html: string; assets: Map<string, Asset> } | null;
+/** Bundles per HTML file; any VFS change drops them all, so the next request bundles again. */
+const htmlBundles = new Map<string, Promise<HtmlBundle>>();
+/** Served files of the current bundles, by URL path. */
+const bundledAssets = new Map<string, Asset>();
+vfs.onChange(() => {
+  htmlBundles.clear();
+  bundledAssets.clear();
+});
+
+/**
+ * Bundles an HTML import with Bun's bundler (browser target, scripts and stylesheets become hashed chunks under
+ * ASSET_PREFIX). Null when bundling fails; the errors go to the console.
+ */
+function bundleHtml(imp: HtmlImport): Promise<HtmlBundle> {
+  let p = htmlBundles.get(imp.__htmlImport);
+  if (p) return p;
+  p = (async (): Promise<HtmlBundle> => {
+    const res = await bundle(vfs, { cwd: "/", entryPoints: ["/" + norm(imp.__htmlImport)], target: "browser", format: "esm", outdir: "/__bundle", publicPath: ASSET_PREFIX, sourcemap: "none", minify: false });
+    for (const l of res.logs) if (l.level === "error" || l.level === "warning") console[l.level === "error" ? "error" : "warn"](`[bundler] ${formatLog(l)}`);
+    const page = res.outputs.find((o) => o.loader.toLowerCase() === "html");
+    if (!res.success || !page) return null;
+    const assets = new Map<string, Asset>();
+    for (const o of res.outputs) {
+      if (o === page) continue;
+      const rel = o.path.replace(/^\.\//, "");
+      assets.set(ASSET_PREFIX + rel, { body: o.contents, type: mimeOf(rel) });
+    }
+    return { html: page.contents, assets };
+  })().catch((e) => {
+    console.error("[bundler]", e);
+    return null;
+  });
+  htmlBundles.set(imp.__htmlImport, p);
+  p.then((b) => {
+    // Only while this bundle is still the current one (an edit may have cleared the cache meanwhile).
+    if (b && htmlBundles.get(imp.__htmlImport) === p) for (const [k, v] of b.assets) bundledAssets.set(k, v);
+  });
+  return p;
+}
+
+async function serveBundledHtml(imp: HtmlImport): Promise<Response> {
+  const b = await bundleHtml(imp);
+  if (!b) return serveHtml(imp);
+  return new Response(b.html, { headers: { "content-type": "text/html; charset=utf-8" } });
+}
+
 async function dispatch(inst: Instance, req: Request): Promise<Response> {
   const { routes, handler, server } = inst;
   const path = new URL(req.url).pathname;
+  const asset = bundledAssets.get(path);
+  if (asset && (req.method === "GET" || req.method === "HEAD")) return new Response(asset.body, { headers: { "content-type": asset.type } });
   for (const [pattern, value] of Object.entries(routes)) {
     const params = matchRoute(pattern, path);
     if (!params) continue;
     Object.assign(req, { params });
     if (value instanceof Response) return value.clone();
-    if (isHtmlImport(value)) return serveHtml(value);
+    if (isHtmlImport(value)) return serveBundledHtml(value);
     if (typeof value === "function") return value(req, server);
     const byMethod = value[req.method];
     if (byMethod) return byMethod instanceof Response ? byMethod.clone() : byMethod(req, server);

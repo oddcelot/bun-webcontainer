@@ -12,6 +12,7 @@ A StackBlitz/WebContainers-style "Bun" in the browser. User code runs in the bro
 |---|---|
 | `bun_semver` → wasm64 | done: 51 KB, 0 imports, matches Bun 1.4.4 on 648/648 cases |
 | `bun_js_parser` + `bun_js_printer` → wasm64 | done: 4.1 MB, 0 imports, output byte-identical to `bun build --no-bundle --target=browser` on the corpus, 3–13 ms/file, no memory growth over 2000 runs |
+| `bun_bundler` → wasm64 (`bundle-wasm/`) | done: ~10 MB, imports only `bun_sys.*` (served from the VFS), single-threaded, one fresh instance per bundle; the playground runs `Bun.build` and bundles `Bun.serve` HTML imports with it (~75 ms cold incl. wasm compile, ~8 ms warm for the demo) |
 | Playground (`playground/`) | working in Chrome: editor, VFS, worker runtime with `Bun` shim, service-worker preview for `Bun.serve`, `bun install` from npm via semver wasm, **transpiling with Bun's wasm transpiler** |
 
 ## Layout
