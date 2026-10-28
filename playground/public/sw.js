@@ -98,8 +98,14 @@ function previewWebSocket(prefix) {
     #queue = Promise.resolve();
     constructor(url, protocols) {
       const u = new URL(url, location.href);
-      // The page's own host is the preview server; `localhost:<port>` may be another Bun.serve in the worker.
-      const local = u.host === location.host ? undefined : ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname) ? Number(u.port || 80) : null;
+      // The page's own host is the preview server; another port on it, or on localhost, may be another Bun.serve in
+      // the worker (devframe connects to `${location.hostname}:${port}`, which is runbun.dev:<port> when deployed).
+      const local =
+        u.host === location.host
+          ? undefined
+          : u.hostname === location.hostname || ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname)
+            ? Number(u.port || (u.protocol === "wss:" || u.protocol === "https:" ? 443 : 80))
+            : null;
       if (local === null) return new Native(url, protocols);
       super();
       u.protocol = u.protocol === "https:" || u.protocol === "wss:" ? "wss:" : "ws:";
