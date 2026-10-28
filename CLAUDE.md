@@ -68,6 +68,7 @@ W="-Zbuild-std=std,panic_abort --target wasm64-unknown-unknown --release"
 (cd semver-wasm && cargo build $W && node test.mjs && node diff.mjs)
 (cd transpile-wasm && cargo build $W && node test.mjs)   # diff vs `bun build --no-bundle` on corpus/
 (cd sys-wasm && cargo build $W && node test.mjs)         # bun_sys over the VFS (node >= 24; bun lacks Memory64)
+(cd resolve-wasm && cargo build $W && node test.mjs)     # bun_resolver over the VFS vs JS resolver and bun (node >= 24)
 (cd shim-test && cargo +nightly-2026-09-15 test)
 (cd playground && bunx tsc --noEmit && bun run dev)      # verify in Chrome (Memory64)
 ```
