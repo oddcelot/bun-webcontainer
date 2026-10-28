@@ -56,7 +56,7 @@ header button:disabled { opacity: 0.5; cursor: default; }
   header button .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   header button:has(.label) { padding: 4px 8px; }
 }
-#status { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px 2px 7px; border: 1px solid var(--control-border); border-radius: 999px; color: var(--muted); white-space: nowrap; --dot: var(--muted); }
+#status { margin-left: auto; min-width: 7.5em; justify-content: center; display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px 2px 7px; border: 1px solid var(--control-border); border-radius: 999px; color: var(--muted); white-space: nowrap; --dot: var(--muted); }
 #status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--dot); }
 #status[data-state="busy"] { --dot: var(--warn); color: var(--fg); }
 #status[data-state="busy"]::before { animation: status-pulse 1s ease-in-out infinite alternate; }
@@ -68,8 +68,9 @@ header button:disabled { opacity: 0.5; cursor: default; }
 main { flex: 1; min-height: 0; display: grid; grid-template-columns: 200px 1fr 1fr; }
 #tree { min-height: 0; border-right: 1px solid var(--border); }
 #editor-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-#editor { flex: 1; min-height: 0; overflow: hidden; }
-#editor[data-empty]::before { content: "No file open"; display: grid; place-items: center; height: 100%; color: var(--muted); }
+#editor { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+/* Over the editor surface, not above it: the surface stays put when a file opens. */
+#editor[data-empty]::before { content: "No file open"; position: absolute; inset: 0; z-index: 1; display: grid; place-items: center; background: var(--bg); color: var(--muted); }
 .tabs { display: flex; overflow-x: auto; scrollbar-width: thin; background: var(--panel); border-bottom: 1px solid var(--border); }
 #tabs:empty { display: none; }
 .tabs .tab { display: flex; align-items: center; gap: 6px; min-width: 6rem; padding: 5px 6px 5px 12px; border-right: 1px solid var(--border); color: var(--muted); cursor: pointer; white-space: nowrap; user-select: none; box-shadow: inset 0 2px transparent; }
