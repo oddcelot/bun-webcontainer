@@ -1,0 +1,7 @@
+# /__preview/ and /__vfs/ only exist inside a visitor's browser (the service worker serves them).
+User-agent: *
+Allow: /
+Disallow: /__preview/
+Disallow: /__vfs/
+
+Sitemap: https://runbun.dev/sitemap.xml
