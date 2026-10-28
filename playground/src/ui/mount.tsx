@@ -3,7 +3,7 @@ import { AppContext, type App } from "./app";
 import { Console } from "./Console";
 import { FileTree } from "./FileTree";
 import { Header } from "./Header";
-import { Tabs } from "./Tabs";
+import { EditorPane } from "./EditorPane";
 
 /**
  * Renders the Solid parts of the page into index.html's elements. render() appends, so each element's static
@@ -17,6 +17,6 @@ export function mountUI(app: App) {
   };
   into("header", () => <Header />);
   into("#tree", () => <FileTree />);
-  into("#tabs", () => <Tabs />);
+  into("#editor-pane", () => <EditorPane />);
   into("#console-wrap", () => <Console />);
 }

@@ -3,10 +3,8 @@ import { BASE } from "./base";
 import { seedDemo } from "./demo";
 import { examples, loadExample, repoExamples } from "./examples";
 import { loadRepo, parseRepo, repoQuery } from "./github";
-import { createEffect, createRoot } from "solid-js";
+import { createRoot } from "solid-js";
 import { isShareLink, loadShareLink, rememberSource } from "./share";
-import { createPierre } from "./editors/pierre";
-import { mountDiagnostics } from "./diagnostics";
 import { bunInstall } from "./install";
 import { Runner } from "./runner";
 import { mountPreview } from "./preview";
@@ -104,41 +102,11 @@ const semver = canRun ? await loadSemver() : undefined;
 const runner = canRun ? new Runner(vfs, log) : undefined;
 const cantRun = () => log("error", "this browser can't run code here; see the banner above the editor");
 
-const editorEl = $("editor");
-const editor = createPierre(editorEl);
-const check = mountDiagnostics(vfs, editor);
-let current: string | null = null;
 
-// The editor shows the active tab.
-createRoot(() =>
-  createEffect(
-    () => workspace.state.active,
-    (path) => {
-      current = path;
-      editorEl.toggleAttribute("data-empty", !path);
-      if (!path) {
-        editor.clear();
-        check(null, null);
-        return;
-      }
-      const data = vfs.read(path);
-      editor.open(path, typeof data === "string" ? data : null, (text) => {
-        if (current !== path) return;
-        vfs.write(path, text);
-        check(path, text);
-      });
-      check(path, typeof data === "string" ? data : null);
-    },
-  ),
-);
 const openFile = (path: string) => workspace.open(path);
 
-vfs.onChange(({ path, created, removed }) => {
-  if (removed) return workspace.close(path);
-  if (!created && path === current) {
-    const d = vfs.read(path);
-    if (typeof d === "string") (editor.update(d), check(path, d));
-  }
+vfs.onChange(({ path, removed }) => {
+  if (removed) workspace.close(path);
 });
 
 function entryFile(): string {

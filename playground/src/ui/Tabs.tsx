@@ -3,7 +3,7 @@ import { AppContext } from "./app";
 
 const name = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 
-/** Open files as tabs above the editor (rendered into index.html's #tabs tablist). Middle-click, the ×, Delete or Ctrl/Cmd+W closes a tab; arrows move between them. */
+/** Open files as tabs above the editor (rendered into EditorPane's #tabs tablist). Middle-click, the ×, Delete or Ctrl/Cmd+W closes a tab; arrows move between them. */
 export function Tabs() {
   const { workspace: ws } = useContext(AppContext);
   const selected = () => document.querySelector<HTMLElement>('#tabs [aria-selected="true"]');
