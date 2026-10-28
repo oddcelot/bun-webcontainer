@@ -16,7 +16,7 @@ export function mountFileTree(mount: HTMLElement, vfs: VFS, onOpen: (path: strin
   const tree = new FileTree({
     // A dot on files open in a tab.
     renderRowDecoration: ({ item }) =>
-      item.kind === "file" && open.has(item.path) ? { text: "●", title: "Open in a tab", parts: [{ text: "●", color: "var(--accent)" }] } : null,
+      item.kind === "file" && open.has(item.path) ? { text: "●", title: "Open in a tab" } : null,
     paths: [...vfs.files.keys()],
     initialExpansion: "closed",
     search: true,
@@ -25,7 +25,9 @@ export function mountFileTree(mount: HTMLElement, vfs: VFS, onOpen: (path: strin
     // @pierre/trees 1.0.0-beta.6 shows the truncation marker when the measure cell is `height > 1lh`;
     // at non-100% page zoom a single line measures a hair over 1lh, so every label gets "…".
     // A truncated label wraps to 2+ lines, so 1.5lh keeps real truncation working.
-    unsafeCSS: `@container measure (height <= 1.5lh) { [data-truncate-marker] { opacity: 0; } }`,
+    // The open-file dot: small and quiet.
+    unsafeCSS: `@container measure (height <= 1.5lh) { [data-truncate-marker] { opacity: 0; } }
+      [data-item-section="decoration"] { font-size: 5px; color: var(--muted); opacity: 0.8; }`,
     onSelectionChange(paths) {
       const [path] = paths;
       if (paths.length === 1 && vfs.files.has(path)) onOpen(path);
