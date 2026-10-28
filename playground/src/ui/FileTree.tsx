@@ -10,6 +10,8 @@ import { onTheme } from "../theme";
 import { AppContext } from "./context";
 import { guarded } from "./guarded";
 
+const TREE_VARS_KEY = "tree-vars";
+
 const isDirectory = (item: FileTreeItemHandle | null): item is FileTreeDirectoryHandle => item?.isDirectory() === true;
 
 /** The VFS as a @pierre/trees file tree. Selecting a file opens it in a tab; files open in tabs get a dot. */
@@ -63,8 +65,17 @@ export function FileTree() {
     tree.render({ containerWrapper: host });
     const el = tree.getFileTreeContainer();
     if (el) el.style.height = "100%";
+    const applyStyles = (styles: Record<string, string>) => {
+      for (const [k, v] of Object.entries(styles)) el?.style.setProperty(k, v);
+    };
+    // The last theme's tree colors until this one resolves, so the tree doesn't flash its dark default.
+    try {
+      applyStyles(JSON.parse(localStorage.getItem(TREE_VARS_KEY) ?? "{}"));
+    } catch {}
     const untheme = onTheme((_, theme) => {
-      for (const [k, v] of Object.entries(themeToTreeStyles(theme))) el?.style.setProperty(k, v);
+      const styles = themeToTreeStyles(theme) as Record<string, string>;
+      applyStyles(styles);
+      localStorage.setItem(TREE_VARS_KEY, JSON.stringify(styles));
     });
 
     // An install writes thousands of files; apply them in one batch per frame.

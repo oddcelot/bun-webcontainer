@@ -14,6 +14,12 @@
     <link rel="manifest" href="/site.webmanifest" />
     <!-- theme.ts keeps this on the active theme's panel color. -->
     <meta name="theme-color" content="#171717" />
+    <!-- The last theme's colors (theme.ts saves them), applied before the first paint so a reload, e.g. switching projects, doesn't flash style.css's dark defaults. -->
+    <script>
+      try {
+        for (const [k, v] of Object.entries(JSON.parse(localStorage.getItem("theme-vars") || "{}"))) if (v) document.documentElement.style.setProperty(k, v);
+      } catch {}
+    </script>
 
     <!-- Social cards need absolute URLs: these point at the runbun.dev deploy. The images come from `bun run og`. -->
     <meta property="og:type" content="website" />
