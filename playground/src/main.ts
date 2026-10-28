@@ -3,7 +3,7 @@ import { BASE } from "./base";
 import { seedDemo } from "./demo";
 import { examples, loadExample, repoExamples } from "./examples";
 import { loadRepo, parseRepo } from "./github";
-import { isShareLink, loadShareLink, shareLink } from "./share";
+import { isShareLink, loadShareLink, mountShareMenu } from "./share";
 import { createPierre } from "./editors/pierre";
 import { bunInstall } from "./install";
 import { Runner } from "./runner";
@@ -211,20 +211,7 @@ const exec = createShell({ vfs, log, run, install, stop, clear: clearConsole });
 const preview = mountPreview();
 $("run").onclick = () => run();
 $("install").onclick = install;
-const shareBtn = $<HTMLButtonElement>("share");
-const shareLabel = shareBtn.innerHTML;
-shareBtn.onclick = async () => {
-  const { url, files, skipped } = await shareLink(vfs);
-  // The address bar shows the link too, so it can be copied from there or bookmarked.
-  history.replaceState(null, "", url);
-  let copied = true;
-  await navigator.clipboard.writeText(url).catch(() => (copied = false));
-  const kb = (url.length / 1024).toFixed(1);
-  log("sys", `[share] ${copied ? "link copied" : "link is in the address bar"}: ${files} files, ${kb} KB${skipped ? `, ${skipped} binary files left out` : ""}`);
-  if (url.length > 32 * 1024) log("warn", "[share] a link this long may get cut off by some chat apps");
-  shareBtn.innerHTML = `<i class="i-lucide-check" aria-hidden="true"></i> ${copied ? "Copied" : "In address bar"}`;
-  setTimeout(() => (shareBtn.innerHTML = shareLabel), 1600);
-};
+mountShareMenu($("share-menu"), vfs, log);
 $("clear").onclick = () => {
   clearConsole();
   terminal.focus();

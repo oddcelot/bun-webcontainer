@@ -23,6 +23,19 @@ header button, #clear, #request button { display: inline-flex; align-items: cent
 header button, #clear { background: var(--control); color: inherit; border: 1px solid var(--control-border); border-radius: 4px; padding: 4px 10px; cursor: pointer; }
 header button:hover { background: var(--control-hover); }
 header button:disabled { opacity: 0.5; cursor: default; }
+/* Share menu: a popover anchored under the Share button. */
+#share { anchor-name: --share; }
+#share-menu { position-anchor: --share; inset: auto; top: anchor(bottom); left: anchor(left); margin: 6px 0 0; width: 330px; padding: 6px; border: 1px solid var(--control-border); border-radius: 8px; background: var(--panel); color: var(--fg); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35); }
+#share-menu .lead { margin: 6px 8px 8px; font-size: 12px; line-height: 1.4; color: var(--muted); }
+#share-menu .lead [data-share-size] { display: block; font: 11px ui-monospace, monospace; margin-top: 2px; }
+#share-menu button { display: flex; align-items: flex-start; gap: 10px; width: 100%; padding: 8px; border: 0; border-radius: 6px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+#share-menu button:hover, #share-menu button:focus-visible { background: var(--control); outline: none; }
+#share-menu button > i { margin-top: 2px; flex-shrink: 0; }
+#share-menu button > span { display: flex; flex-direction: column; gap: 2px; }
+#share-menu .title { font-weight: 600; }
+#share-menu .sub { font-size: 12px; color: var(--muted); }
+#share-menu img { margin-top: 6px; }
+#share-menu [data-copied] .title { color: var(--ok); }
 #modes { display: inline-flex; }
 #modes button { padding: 4px 7px; border-radius: 0; margin-left: -1px; }
 #modes button:first-child { border-radius: 4px 0 0 4px; margin-left: 0; }
