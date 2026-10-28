@@ -31,6 +31,14 @@ export default greet("lazy").text;
   "src/other.ts": `import { greet } from "./greet";
 console.log("other", greet("o"));
 `,
+  "src/styles.css": "@import './base.css';\n.a { color: red; & .b { margin: 0 } }\n",
+  "src/base.css": ".base { background: url(./pixel.png) }\n",
+  "src/pixel.png": "PNGDATA",
+  "src/data.json": '{"x":1,"y":[1,2]}',
+  "src/note.txt": "hello",
+  "src/assets.ts": "import d from './data.json'; import './styles.css'; import txt from './note.txt' with { type: 'text' }; console.log(d, txt);",
+  "src/index.html": '<html><head><link rel="stylesheet" href="./styles.css"></head><body><script type="module" src="./greet-main.ts"></script></body></html>',
+  "src/greet-main.ts": "import { greet } from './greet'; console.log(greet('html'));",
   "node_modules/mathlib/package.json": JSON.stringify({
     name: "mathlib",
     version: "1.0.0",
@@ -142,6 +150,31 @@ test("multiple entry points + code splitting", () => {
       assert.equal(norm(o.contents), norm(native), o.path);
     }
   }
+});
+
+// Same bundle through native `bun build --outdir`, compared file by file (hashes in names are content hashes).
+function compareOutdir(name, entries, config, flags = []) {
+  test(`${name}: wasm == native bun build`, () => {
+    const r = wasmBundle({ entryPoints: entries, outdir: "out", format: "esm", target: "browser", ...config });
+    assert.ok(r.success, JSON.stringify(r.logs));
+    if (!hasBun) return;
+    rmSync(join(disk, "out"), { recursive: true, force: true });
+    const n = spawnSync("bun", ["build", ...entries, "--outdir=out", "--target=browser", "--format=esm", ...flags], { cwd: disk, encoding: "utf8" });
+    assert.equal(n.status, 0, n.stderr);
+    for (const o of r.outputs) assert.equal(norm(o.contents), norm(readFileSync(join(disk, "out", o.path), "utf8")), o.path);
+    console.log("     outputs:", r.outputs.map((o) => o.path).join(" "));
+  });
+}
+compareOutdir("css entry", ["src/styles.css"], {});
+compareOutdir("json/text/css imports from ts", ["src/assets.ts"], {});
+compareOutdir("html entry", ["src/index.html"], {});
+compareOutdir("html entry, minified", ["src/index.html"], { minify: true }, ["--minify"]);
+
+test("write: true writes into the VFS and returns no contents", () => {
+  const r = wasmBundle({ entryPoints: ["src/greet.ts"], outdir: "/wrote", write: true });
+  assert.ok(r.success, JSON.stringify(r.logs));
+  assert.equal(r.outputs[0].value, "saved");
+  assert.match(vfs.readText("wrote/greet.js"), /hello /);
 });
 
 test("missing import reports a log error", () => {
