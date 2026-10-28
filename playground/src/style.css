@@ -49,16 +49,17 @@ main { flex: 1; min-height: 0; display: grid; grid-template-columns: 200px 1fr 1
 #editor-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 #editor { flex: 1; min-height: 0; overflow: hidden; }
 #editor[data-empty]::before { content: "No file open"; display: grid; place-items: center; height: 100%; color: var(--muted); }
-#tabs { display: flex; overflow-x: auto; scrollbar-width: thin; background: var(--panel); border-bottom: 1px solid var(--border); }
+.tabs { display: flex; overflow-x: auto; scrollbar-width: thin; background: var(--panel); border-bottom: 1px solid var(--border); }
 #tabs:empty { display: none; }
-#tabs .tab { display: flex; align-items: center; gap: 6px; padding: 5px 6px 5px 12px; border-right: 1px solid var(--border); color: var(--muted); cursor: pointer; white-space: nowrap; user-select: none; box-shadow: inset 0 2px transparent; }
-#tabs .tab:hover { color: var(--fg); }
-#tabs .tab[aria-selected="true"] { background: var(--bg); color: var(--fg); box-shadow: inset 0 2px var(--accent); }
-#tabs .tab:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
-#tabs .dir { font-size: 11px; opacity: 0.7; }
-#tabs .close { display: grid; place-items: center; padding: 2px; border: 0; border-radius: 3px; background: none; color: inherit; cursor: pointer; opacity: 0; }
-#tabs .tab:hover .close, #tabs .tab[aria-selected="true"] .close { opacity: 0.7; }
-#tabs .close:hover { opacity: 1; background: var(--control-hover); }
+.tabs .tab { display: flex; align-items: center; gap: 6px; min-width: 6rem; padding: 5px 6px 5px 12px; border-right: 1px solid var(--border); color: var(--muted); cursor: pointer; white-space: nowrap; user-select: none; box-shadow: inset 0 2px transparent; }
+.tabs .tab:hover { color: var(--fg); }
+.tabs .tab[aria-selected="true"] { background: var(--bg); color: var(--fg); box-shadow: inset 0 2px var(--accent); }
+.tabs .tab:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.tabs .name { flex: 1; }
+.tabs .dir { font-size: 11px; opacity: 0.7; }
+.tabs .close { display: grid; place-items: center; padding: 2px; border: 0; border-radius: 3px; background: none; color: inherit; cursor: pointer; opacity: 0; }
+.tabs .tab:hover .close, .tabs .tab[aria-selected="true"] .close { opacity: 0.7; }
+.tabs .close:hover { opacity: 1; background: var(--control-hover); }
 #editor .pierre-host { height: 100%; overflow: auto; background: var(--bg); }
 #example, #theme { background: var(--control); color: var(--fg); border: 1px solid var(--control-border); border-radius: 4px; padding: 3px 6px; }
 #right { display: grid; grid-template-rows: 1fr 1fr; min-width: 0; min-height: 0; border-left: 1px solid var(--border); }
@@ -73,10 +74,14 @@ main { flex: 1; min-height: 0; display: grid; grid-template-columns: 200px 1fr 1
 #request button { background: var(--control); color: inherit; border: 1px solid var(--control-border); border-radius: 4px; padding: 3px 10px; cursor: pointer; }
 #expand { display: grid; place-items: center; padding: 0 8px; }
 #req-body { height: 5em; margin: 0; border-radius: 0; border-width: 0 0 1px; resize: vertical; }
-#preview { flex: 1; width: 100%; border: 0; }
-#preview[hidden], #req-body[hidden] { display: none; }
-#response { flex: 1; overflow: auto; margin: 0; padding: 6px 8px; font: 12px ui-monospace, monospace; white-space: pre-wrap; }
-#response.error { color: var(--error); }
+#preview-views { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.preview-frame { flex: 1; width: 100%; border: 0; }
+.preview-frame[hidden], .preview-response[hidden], #req-body[hidden] { display: none; }
+.preview-response { flex: 1; overflow: auto; margin: 0; padding: 6px 8px; font: 12px ui-monospace, monospace; white-space: pre-wrap; }
+.preview-response.error { color: var(--error); }
+#preview-tabs .method { font: 10px/1 ui-monospace, monospace; padding: 2px 4px; border-radius: 3px; background: var(--control); }
+#preview-tabs .add { display: grid; place-items: center; padding: 0 10px; border: 0; background: none; color: var(--muted); cursor: pointer; }
+#preview-tabs .add:hover { color: var(--fg); background: var(--control-hover); }
 #console-wrap { display: flex; flex-direction: column; min-height: 0; border-top: 1px solid var(--border); }
 #console-head { display: flex; align-items: center; gap: 6px; padding: 4px 8px; background: var(--panel); border-bottom: 1px solid var(--border); color: var(--muted); }
 #console-head .label { color: var(--fg); font-weight: 600; }

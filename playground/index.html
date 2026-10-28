@@ -24,12 +24,13 @@
     <main>
       <nav id="tree"></nav>
       <section id="editor-pane">
-        <div id="tabs" role="tablist" aria-label="Open files"></div>
+        <div id="tabs" class="tabs" role="tablist" aria-label="Open files"></div>
         <div id="editor"></div>
       </section>
       <div id="right">
         <div id="preview-backdrop" hidden></div>
         <div id="preview-wrap">
+          <div id="preview-tabs" class="tabs" role="tablist" aria-label="Previews"></div>
           <form id="request">
             <select id="req-method" title="Method">
               <option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option>
@@ -39,8 +40,7 @@
             <button type="button" id="expand" title="Expand preview (Esc)" aria-pressed="false"></button>
           </form>
           <textarea id="req-body" spellcheck="false" placeholder="Request body (JSON is sent as application/json)"></textarea>
-          <iframe id="preview" title="preview"></iframe>
-          <pre id="response" hidden></pre>
+          <div id="preview-views"></div>
         </div>
         <div id="console-wrap">
           <div id="console-head">
