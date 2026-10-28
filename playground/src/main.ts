@@ -2,8 +2,8 @@ import "virtual:uno.css";
 import { BASE } from "./base";
 import { seedDemo } from "./demo";
 import { examples, loadExample, repoExamples } from "./examples";
-import { loadRepo, parseRepo } from "./github";
-import { isShareLink, loadShareLink, shareLink } from "./share";
+import { loadRepo, parseRepo, repoQuery } from "./github";
+import { isShareLink, loadShareLink, mountShareMenu, rememberSource } from "./share";
 import { createPierre } from "./editors/pierre";
 import { bunInstall } from "./install";
 import { Runner } from "./runner";
@@ -89,7 +89,15 @@ if (isShareLink(location.hash)) {
     vfs.clear();
   }
 }
-if (!shared && !(repo ? await loadRepo(vfs, repo, log) : exampleName && (await loadExample(vfs, exampleName)))) seedDemo(vfs);
+if (!shared) {
+  // While these files stay unchanged, Share links to where they came from instead of packing them.
+  if (repo && (await loadRepo(vfs, repo, log))) rememberSource(vfs, `?repo=${repoQuery(repo)}`, `${repoQuery(repo)} on GitHub`);
+  else if (!repo && exampleName && (await loadExample(vfs, exampleName))) rememberSource(vfs, `?example=${exampleName}`, `the ${examples[exampleName] ?? exampleName} example`);
+  else {
+    seedDemo(vfs);
+    rememberSource(vfs, "", "the demo");
+  }
+}
 
 /** Reloads with `?example=` or `?repo=` (picker values for repos are `repo:<owner/repo>`). */
 function openProject(value: string) {
@@ -211,20 +219,7 @@ const exec = createShell({ vfs, log, run, install, stop, clear: clearConsole });
 const preview = mountPreview();
 $("run").onclick = () => run();
 $("install").onclick = install;
-const shareBtn = $<HTMLButtonElement>("share");
-const shareLabel = shareBtn.innerHTML;
-shareBtn.onclick = async () => {
-  const { url, files, skipped } = await shareLink(vfs);
-  // The address bar shows the link too, so it can be copied from there or bookmarked.
-  history.replaceState(null, "", url);
-  let copied = true;
-  await navigator.clipboard.writeText(url).catch(() => (copied = false));
-  const kb = (url.length / 1024).toFixed(1);
-  log("sys", `[share] ${copied ? "link copied" : "link is in the address bar"}: ${files} files, ${kb} KB${skipped ? `, ${skipped} binary files left out` : ""}`);
-  if (url.length > 32 * 1024) log("warn", "[share] a link this long may get cut off by some chat apps");
-  shareBtn.innerHTML = `<i class="i-lucide-check" aria-hidden="true"></i> ${copied ? "Copied" : "In address bar"}`;
-  setTimeout(() => (shareBtn.innerHTML = shareLabel), 1600);
-};
+mountShareMenu($("share-menu"), vfs, log);
 $("clear").onclick = () => {
   clearConsole();
   terminal.focus();

@@ -1,4 +1,4 @@
-// Generates the social card (public/og.png, 1200x630) and the icons (favicon.svg, favicon.ico,
+// Generates the social card (public/og.png, 1200x630), the README badge (public/badge.svg) and the icons (favicon.svg, favicon.ico,
 // favicon-32x32.png, apple-touch-icon.png, icon-192.png, icon-512.png in public/) with Satori + resvg. Run `bun run og` after changing the copy or the logo;
 // the outputs are committed.
 import { Resvg } from "@resvg/resvg-js";
@@ -67,6 +67,17 @@ const png = (svg: string, width: number) => new Resvg(svg, { fitTo: { mode: "wid
 
 writeFileSync(root + "public/og.png", png(await satori(card as never, { width: 1200, height: 630, fonts: [...fonts] }), 1200));
 
+// "Open in runbun" badge for READMEs (public/badge.svg, linked from Share → Markdown/HTML). Satori turns the text into
+// paths, so it looks the same wherever GitHub or anyone else shows it, without fonts.
+const badge = h("div", { width: 150, height: 28, borderRadius: 6, overflow: "hidden", background: "#2a2c33" }, [
+  h("div", { width: 32, height: 28, alignItems: "center", justifyContent: "center", background: C.bun }, [
+    h("img", {}, undefined, { src: logo, width: 22, height: 19 }),
+  ]),
+  h("div", { flex: 1, alignItems: "center", justifyContent: "center", color: C.bun, fontSize: 13, fontWeight: 700, letterSpacing: 0.2 }, "Open in runbun"),
+]);
+const badgeFonts = [{ name: "Inter", weight: 700 as const, data: read("node_modules/@fontsource/inter/files/inter-latin-700-normal.woff") }];
+writeFileSync(root + "public/badge.svg", await satori(badge as never, { width: 150, height: 28, fonts: badgeFonts }));
+
 // iOS home screen icon: the logo on Bun's cream, with room around it (iOS rounds the corners).
 const touch = h("div", { width: 180, height: 180, alignItems: "center", justifyContent: "center", background: C.bun }, [
   h("img", {}, undefined, { src: logo, width: 132, height: 116 }),
@@ -108,4 +119,4 @@ writeFileSync(root + "public/icon-192.png", sizes[192]);
 writeFileSync(root + "public/icon-512.png", sizes[512]);
 
 copyFileSync(root + "src/bun-logo.svg", root + "public/favicon.svg");
-console.log("wrote public/og.png, favicon.svg, favicon.ico, favicon-32x32.png, apple-touch-icon.png, icon-192.png, icon-512.png");
+console.log("wrote public/og.png, badge.svg, favicon.svg, favicon.ico, favicon-32x32.png, apple-touch-icon.png, icon-192.png, icon-512.png");
