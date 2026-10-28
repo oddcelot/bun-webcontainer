@@ -14,6 +14,7 @@ import { VFS } from "./vfs";
 import "./title";
 import { mountThemePicker } from "./theme";
 import { mountConsole } from "./console";
+import { createShell, scriptEntry } from "./shell";
 
 if (!supportsMemory64()) {
   showUnsupported();
@@ -22,7 +23,12 @@ if (!supportsMemory64()) {
 }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
-const terminal = mountConsole($("console"));
+// The shell (below) needs the runner and VFS, which come later.
+const terminal = mountConsole($("console"), {
+  onCommand: (line) => exec(line),
+  onInterrupt: () => stop(),
+  onClear: () => clearConsole(),
+});
 const statusEl = $("status");
 type Status = "idle" | "busy" | "running" | "error";
 let status: [Status, string] = ["idle", "Stopped"];
@@ -124,19 +130,16 @@ vfs.onChange(({ path, created }) => {
 function entryFile(): string {
   try {
     const pkg = JSON.parse(vfs.readText("package.json") ?? "{}") as { module?: string; main?: string; scripts?: Record<string, string> };
-    // `"dev": "bun --watch src/dev.ts"`: the file a `bun [flags] <file>` script runs.
-    const script = (s?: string) => s?.match(/^bun\s+(?:(?:run\s+)?--?[\w-]+(?:=\S+)?\s+)*(?:run\s+)?(\S+\.[cm]?[jt]sx?)\b/)?.[1];
-    for (const e of [pkg.module, pkg.main, script(pkg.scripts?.dev), script(pkg.scripts?.start)])
+    for (const e of [pkg.module, pkg.main, scriptEntry(pkg.scripts?.dev), scriptEntry(pkg.scripts?.start)])
       if (e && vfs.files.has(e.replace(/^\.\//, ""))) return e.replace(/^\.\//, "");
   } catch {}
   return ["index.ts", "index.tsx", "index.js", "src/index.ts"].find((f) => vfs.files.has(f)) ?? "index.ts";
 }
 
-async function run() {
+async function run(entry = entryFile()) {
   const btn = $<HTMLButtonElement>("run");
   btn.disabled = true;
   setStatus("busy", "Starting…");
-  const entry = entryFile();
   log("sys", `[run] ${entry}`);
   try {
     await runner.start(entry);
@@ -166,13 +169,28 @@ async function install() {
   btn.disabled = false;
 }
 
-const preview = mountPreview();
-$("run").onclick = run;
-$("install").onclick = install;
-$("clear").onclick = () => {
+function stop() {
+  if (status[0] !== "running") return;
+  runner.stop();
+  log("sys", "[stopped]");
+  status = ["idle", "Stopped"];
+  setStatus(...status);
+}
+
+function clearConsole() {
   terminal.clear();
   Object.assign(counts, { lines: 0, error: 0, warn: 0 });
   showCounts();
+}
+
+const exec = createShell({ vfs, log, run, install, stop, clear: clearConsole });
+
+const preview = mountPreview();
+$("run").onclick = () => run();
+$("install").onclick = install;
+$("clear").onclick = () => {
+  clearConsole();
+  terminal.focus();
 };
 $("openfolder").onclick = () => $("folderinput").click();
 $<HTMLInputElement>("folderinput").onchange = async (e) => {
