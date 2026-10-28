@@ -121,8 +121,9 @@ main { flex: 1; min-height: 0; display: grid; grid-template-columns: 200px 1fr 1
 #clear:disabled { opacity: 0.4; cursor: default; }
 /* A Ghostty terminal (console.ts) draws the lines. */
 #console { flex: 1; min-height: 0; overflow: hidden; padding: 4px 0 0 8px; }
-.unsupported { max-width: 36rem; margin: 4rem auto; padding: 0 1rem; line-height: 1.5; }
-.unsupported ul { list-style: none; padding: 0; }
+.unsupported { padding: 6px 10px; font-size: 0.85rem; line-height: 1.5; background: color-mix(in srgb, #e5484d 14%, var(--panel)); border-bottom: 1px solid var(--border); }
+.unsupported summary { cursor: pointer; }
+.unsupported ul { list-style: none; padding: 0; margin: 0.4rem 0; }
 .unsupported li { margin: 0.4rem 0; }
 .unsupported li[data-ok="false"] strong { color: #e5484d; }
 .unsupported li span { display: block; opacity: 0.8; }

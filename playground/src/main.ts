@@ -20,11 +20,9 @@ import { mountConsole } from "./console";
 import { createShell, scriptEntry } from "./shell";
 
 const support = checkSupport();
-if (support.some((c) => !c.ok)) {
-  showUnsupported(support);
-  // Stop here without an error: nothing below can work, and the page already explains why.
-  await new Promise<never>(() => {});
-}
+/** False when a requirement is missing: the interface still loads, but nothing that runs code starts. */
+const canRun = support.every((c) => c.ok);
+if (!canRun) showUnsupported(support, document.querySelector("main")!);
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 // The shell (below) needs the runner and VFS, which come later.
@@ -124,9 +122,10 @@ $("openrepo").onclick = () => {
   const input = prompt("GitHub repo (owner/repo, owner/repo@ref or a github.com URL)", repoParam || "oddcelot/bun-elysia-demo");
   if (input) openProject(`repo:${input.trim()}`);
 };
-await setupServiceWorker();
-const semver = await loadSemver();
-const runner = new Runner(vfs, log);
+if (canRun) await setupServiceWorker();
+const semver = canRun ? await loadSemver() : undefined;
+const runner = canRun ? new Runner(vfs, log) : undefined;
+const cantRun = () => log("error", "this browser can't run code here; see the banner above the editor");
 
 mountThemePicker($("modes"), $<HTMLSelectElement>("theme"));
 const editorEl = $("editor");
@@ -174,6 +173,7 @@ function entryFile(): string {
 }
 
 async function run(entry = entryFile()) {
+  if (!runner) return cantRun();
   const btn = $<HTMLButtonElement>("run");
   btn.disabled = true;
   setStatus("busy", "Starting…");
@@ -191,6 +191,7 @@ async function run(entry = entryFile()) {
 }
 
 async function install() {
+  if (!semver) return cantRun();
   const btn = $<HTMLButtonElement>("install");
   btn.disabled = true;
   setStatus("busy", "Installing…");
@@ -208,7 +209,7 @@ async function install() {
 
 function stop() {
   if (status[0] !== "running") return;
-  runner.stop();
+  runner?.stop();
   log("sys", "[stopped]");
   status = ["idle", "Stopped"];
   setStatus(...status);
@@ -225,6 +226,9 @@ const exec = createShell({ vfs, log, run, install, stop, clear: clearConsole });
 const preview = mountPreview();
 $("run").onclick = () => run();
 $("install").onclick = install;
+if (!canRun)
+  for (const el of [$("run"), $("install"), ...document.querySelectorAll("#request button, #request input, #request select")])
+    Object.assign(el, { disabled: true, title: "This browser can't run code here" });
 mountShareMenu($("share-menu"), vfs, log);
 $("clear").onclick = () => {
   clearConsole();
@@ -234,7 +238,7 @@ $("openfolder").onclick = () => $("folderinput").click();
 $<HTMLInputElement>("folderinput").onchange = async (e) => {
   const files = [...((e.target as HTMLInputElement).files ?? [])];
   if (!files.length) return;
-  runner.stop();
+  runner?.stop();
   tabs.closeAll();
   vfs.clear();
   const dec = new TextDecoder("utf-8", { fatal: true });
@@ -273,6 +277,8 @@ function missingDeps(): boolean {
 }
 
 openFile(entryFile());
-if (missingDeps()) await install();
-await run();
+if (canRun) {
+  if (missingDeps()) await install();
+  await run();
+}
 Object.assign(window, { vfs, semver });

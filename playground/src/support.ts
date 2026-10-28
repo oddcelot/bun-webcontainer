@@ -65,16 +65,21 @@ function engineHint(checks: Check[]): string {
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 
-/** Replaces the app with what's missing; nothing below main.ts's check can work without it. */
-export function showUnsupported(checks: Check[]) {
-  const box = document.createElement("div");
+/**
+ * A banner above the editor saying what's missing: editing, examples and sharing still work, but nothing can run
+ * (the module server and the program need Bun's wasm, a service worker and module workers).
+ */
+export function showUnsupported(checks: Check[], before: Element) {
+  const missing = checks.filter((c) => !c.ok);
+  const box = document.createElement("details");
   box.className = "unsupported";
   const rows = checks
     .map((c) => `<li data-ok="${c.ok}"><strong>${c.ok ? "✓" : "✗"} ${esc(c.name)}</strong>${c.ok ? "" : ` <span>${esc(c.why)}</span>`}</li>`)
     .join("");
   const hint = engineHint(checks);
-  box.innerHTML = `<h2>This browser can't run the playground</h2>
+  box.innerHTML = `<summary><strong>This browser can't run code here</strong> (missing: ${esc(missing.map((c) => c.name).join(", "))}).
+You can still edit files, open examples and share links.</summary>
 <ul>${rows}</ul>${hint ? `<p>${esc(hint)}</p>` : ""}
 <p class="ua">${esc(navigator.userAgent)}</p>`;
-  document.body.replaceChildren(box);
+  before.before(box);
 }
