@@ -69,9 +69,9 @@ Servers answer requests from the [preview](/guides/features/#preview), not from 
 - ✅ `test`/`it`/`describe` with `.skip`, `.only`, `.todo`, `.each`, `.if`, `.skipIf`, `.todoIf`
 - ✅ `beforeAll`, `beforeEach`, `afterEach`, `afterAll`, `setDefaultTimeout`
 - ✅ `mock()`, `spyOn()`, `jest.fn`, `jest.spyOn`
-- ✅ `expect` with `.not`, `.resolves`, `.rejects`, asymmetric matchers (`anything`, `any`, `objectContaining`, `arrayContaining`, `stringContaining`, `stringMatching`) and the common matchers (`toBe`, `toEqual`, `toStrictEqual`, `toThrow`, `toMatchObject`, `toHaveProperty`, `toHaveBeenCalledWith`, …)
+- ✅ `expect` with `.not`, `.resolves`, `.rejects`, asymmetric matchers (`anything`, `any`, `objectContaining`, `arrayContaining`, `stringContaining`, `stringMatching`) and the common matchers (`toBe`, `toEqual`, `toStrictEqual`, `toThrow`, `toMatchObject`, `toHaveProperty`, `toHaveBeenCalledWith`, …), plus Bun's extras (`toBeEmpty`, `toBeOneOf`, `toSatisfy`, `toStartWith`, `toEndWith`, `toInclude`, `toBeArray`, `toBeString`, `toBeNumber`, `toBeFunction`, `toHaveReturned*`, …)
 - ❌ Snapshots, fake timers, `setSystemTime`, `mock.module`, `jest.mock`, `expect.extend`, `expect.assertions`, coverage, `test.concurrent`, `test.failing`
-- ❌ Matchers `toBeEmpty`, `toBeOneOf`, `toSatisfy`, `toStartWith`, `toEndWith`, `toBeArray`, `toBeString`, `toBeFunction`, `toHaveReturned*`. Unknown matchers throw "is not supported here".
+- Unknown matchers throw "is not supported here".
 - `bun test` takes name filters but no flags.
 
 ## `import.meta` and globals
