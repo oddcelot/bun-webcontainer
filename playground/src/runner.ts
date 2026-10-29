@@ -3,8 +3,16 @@ import type { VFS } from "./vfs";
 
 /** Tells preview pages (see previewWebSocket in sw.js) that their WebSockets' server is gone. */
 const previewChannel = new BroadcastChannel("bun-preview");
-/** A plain-text answer to a service worker request (the shape the worker's responses have too). */
+/** A plain-text answer to a module request. */
 const textResponse = (status: number, text: string) => ({ status, statusText: "", headers: [["content-type", "text/plain"]], body: new TextEncoder().encode(text).buffer });
+
+/** A plain-text answer to a preview request, in the worker's streamed shape (sendResponse in worker/runtime.ts). */
+function sendText(port: MessagePort, status: number, text: string) {
+  const data = new TextEncoder().encode(text).buffer;
+  port.postMessage({ type: "head", status, statusText: "", headers: [["content-type", "text/plain"]] });
+  port.postMessage({ type: "chunk", data }, [data]);
+  port.postMessage({ type: "end" });
+}
 
 export type LogFn = (level: string, text: string) => void;
 
@@ -33,8 +41,11 @@ export class Runner {
     this.worker.postMessage({ type: "vfs", op, path, data }); // cloned, not transferred: the page keeps its data
   }
 
-  /** Preview requests the worker hasn't answered yet: a stopped worker never will, so stop() answers them. */
-  private pending = new Set<MessagePort>();
+  /**
+   * Preview responses still on their way from the worker, by the service worker's port; true once the head went out.
+   * A stopped worker never finishes them, so stop() does.
+   */
+  private pending = new Map<MessagePort, boolean>();
 
   private async onSw(e: MessageEvent) {
     const port = e.ports[0];
@@ -47,14 +58,21 @@ export class Runner {
       }
     } else if (m.type === "preview") {
       await this.ready;
-      if (!this.worker) return port.postMessage(textResponse(503, "No server running. Press Run."));
-      // Relayed instead of handing the worker `port`, so an unanswered request can still be answered.
+      if (!this.worker) return sendText(port, 503, "No server running. Press Run.");
+      // Relayed instead of handing the worker `port`, so an unfinished response can still be ended.
       const { port1, port2 } = new MessageChannel();
-      this.pending.add(port);
-      port1.onmessage = (r) => {
-        port1.close();
-        if (this.pending.delete(port)) port.postMessage(r.data, r.data.body instanceof ArrayBuffer ? [r.data.body] : []);
+      this.pending.set(port, false);
+      port1.onmessage = ({ data }) => {
+        if (!this.pending.has(port)) return;
+        port.postMessage(data, data.type === "chunk" ? [data.data] : []);
+        if (data.type === "head") this.pending.set(port, true);
+        else if (data.type === "end" || data.type === "error") {
+          this.pending.delete(port);
+          port1.close();
+        }
       };
+      // A cancel from the service worker (the page went away) goes on to the worker.
+      port.onmessage = ({ data }) => port1.postMessage(data);
       this.worker.postMessage({ type: "request", req: m.req }, [port2]);
     } else if (m.type === "ws") {
       await this.ready;
@@ -64,7 +82,10 @@ export class Runner {
   }
 
   stop() {
-    for (const port of this.pending) port.postMessage(textResponse(503, "The server stopped before it answered."));
+    for (const [port, started] of this.pending) {
+      if (started) port.postMessage({ type: "error", message: "The server stopped." });
+      else sendText(port, 503, "The server stopped before it answered.");
+    }
     this.pending.clear();
     if (this.worker) previewChannel.postMessage("stopped");
     this.worker?.terminate();

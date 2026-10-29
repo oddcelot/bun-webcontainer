@@ -352,6 +352,33 @@ async function serveBundledHtml(imp: HtmlImport): Promise<Response> {
   return new Response(b.html, { headers: { "content-type": "text/html; charset=utf-8" } });
 }
 
+/**
+ * A preview response goes back as it's produced (SSE, streamed HTML): `head`, then a `chunk` per piece of the body,
+ * then `end`, or `error` if the body fails. A `cancel` from the other end (the page went away) cancels the body.
+ */
+async function sendResponse(port: MessagePort, res: Response) {
+  port.postMessage({ type: "head", status: res.status, statusText: res.statusText, headers: [...res.headers] });
+  if (!res.body) return port.postMessage({ type: "end" });
+  const reader = res.body.getReader();
+  port.onmessage = (e) => {
+    if (e.data?.type === "cancel") reader.cancel().catch(() => {});
+  };
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const data = (value as Uint8Array).slice().buffer;
+      port.postMessage({ type: "chunk", data }, [data]);
+    }
+    port.postMessage({ type: "end" });
+  } catch (err) {
+    port.postMessage({ type: "error", message: fmt(err) });
+  }
+  port.onmessage = null;
+}
+
+const sendText = (port: MessagePort, status: number, text: string) => sendResponse(port, new Response(text, { status, headers: { "content-type": "text/plain" } }));
+
 async function dispatch(inst: Instance, req: Request): Promise<Response> {
   const { routes, handler, server } = inst;
   const path = new URL(req.url).pathname;
@@ -550,21 +577,17 @@ async function main() {
     const m = e.data;
     if (m.type === "request") {
       const port = e.ports[0];
+      let res: Response;
       try {
         const inst = previewServer();
-        if (!inst) {
-          port.postMessage({ status: 503, statusText: "", headers: [], body: new TextEncoder().encode("No Bun.serve handler registered").buffer });
-          return;
-        }
+        if (!inst) return sendText(port, 503, "No Bun.serve handler registered");
         const r = m.req;
-        const req = serverRequest(r.path, { method: r.method, body: r.body }, r.headers);
-        const res = await dispatch(inst, req);
-        const body = await res.arrayBuffer();
-        port.postMessage({ status: res.status, statusText: res.statusText, headers: [...res.headers], body }, [body]);
+        res = await dispatch(inst, serverRequest(r.path, { method: r.method, body: r.body }, r.headers));
       } catch (err) {
         console.error(err);
-        port.postMessage({ status: 500, statusText: "", headers: [["content-type", "text/plain"]], body: new TextEncoder().encode(fmt(err)).buffer });
+        return sendText(port, 500, fmt(err));
       }
+      await sendResponse(port, res);
     } else if (m.type === "ws") {
       const port = e.ports[0];
       const inst = m.port === undefined ? previewServer() : servers.find((s) => s.port === m.port);

@@ -29,11 +29,11 @@ async function windowClient(id) {
 }
 
 /**
- * How long a module or preview request waits for the page. A fetch that never settles keeps this worker busy, and a
- * new sw.js stays "waiting" behind it despite skipWaiting(); a response that never ends couldn't show anyway (the
- * preview buffers whole responses).
+ * How long a module request, or a preview response's head, waits for the page. A fetch that never settles keeps this
+ * worker busy, and a new sw.js stays "waiting" behind it despite skipWaiting().
  */
 const ASK_TIMEOUT = 30_000;
+const timedOut = () => `No answer from the playground within ${ASK_TIMEOUT / 1000}s`;
 
 async function ask(msg) {
   const client = await host();
@@ -42,11 +42,50 @@ async function ask(msg) {
     const ch = new MessageChannel();
     const timer = setTimeout(() => {
       ch.port1.close();
-      resolve({ status: 504, statusText: "", headers: [["content-type", "text/plain"]], body: new TextEncoder().encode(`No answer from the playground within ${ASK_TIMEOUT / 1000}s`).buffer });
+      resolve({ status: 504, statusText: "", headers: [["content-type", "text/plain"]], body: new TextEncoder().encode(timedOut()).buffer });
     }, ASK_TIMEOUT);
     ch.port1.onmessage = (e) => {
       clearTimeout(timer);
       resolve(e.data);
+    };
+    client.postMessage(msg, [ch.port2]);
+  });
+}
+
+/**
+ * A preview request: resolves with the response's head and its body as a stream, fed as the server produces it
+ * (`head`, `chunk`…, `end` or `error`; see sendResponse in worker/runtime.ts). Cancelling the stream tells the server.
+ */
+async function askStream(msg) {
+  const client = await host();
+  if (!client) throw new Error("playground page not found");
+  const ch = new MessageChannel();
+  const port = ch.port1;
+  let ctrl;
+  const body = new ReadableStream({
+    start: (c) => void (ctrl = c),
+    cancel: () => {
+      port.postMessage({ type: "cancel" });
+      port.close();
+    },
+  });
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      port.close();
+      ctrl.enqueue(new TextEncoder().encode(timedOut()));
+      ctrl.close();
+      resolve({ head: { status: 504, statusText: "", headers: [["content-type", "text/plain"]] }, body });
+    }, ASK_TIMEOUT);
+    port.onmessage = ({ data }) => {
+      if (data.type === "head") {
+        clearTimeout(timer);
+        resolve({ head: data, body });
+      } else if (data.type === "chunk") ctrl.enqueue(new Uint8Array(data.data));
+      else {
+        port.close();
+        if (data.type === "end") ctrl.close();
+        else ctrl.error(new Error(data.message));
+      }
     };
     client.postMessage(msg, [ch.port2]);
   });
@@ -66,22 +105,26 @@ async function serveModule(url, clientId) {
 async function servePreview(req, url, path = (url.pathname.slice(PREVIEW.length) || "/") + url.search) {
   const hasBody = req.method !== "GET" && req.method !== "HEAD";
   const body = hasBody ? await req.arrayBuffer() : null;
-  const r = await ask({
+  const { head, body: stream } = await askStream({
     type: "preview",
     // A 304 would reach the page as an empty response (we answer from memory, nothing is cached), so never ask for one.
     req: { path, method: req.method, headers: [...req.headers].filter(([k]) => k !== "if-none-match" && k !== "if-modified-since"), body },
   });
-  const nullBody = [101, 204, 205, 304].includes(r.status);
-  const headers = new Headers(r.headers);
+  const nullBody = [101, 204, 205, 304].includes(head.status);
+  const headers = new Headers(head.headers);
   // Redirects to an absolute path stay inside the preview (`redirect("/")` from a form post).
   const location = headers.get("location");
   if (location?.startsWith("/") && !location.startsWith("//") && !location.startsWith(PREVIEW)) headers.set("location", PREVIEW + location);
-  let out = r.body;
-  if (!nullBody && headers.get("content-type")?.startsWith("text/html")) {
-    out = withPreviewScripts(new TextDecoder().decode(out));
+  let out = stream;
+  if (nullBody) {
+    out = null;
+    stream.cancel().catch(() => {});
+  } else if (headers.get("content-type")?.startsWith("text/html")) {
+    // The preview scripts go into <head>, so an HTML page is read whole first.
+    out = withPreviewScripts(await new Response(stream).text());
     headers.delete("content-length");
   }
-  return new Response(nullBody ? null : out, isolated({ status: r.status, statusText: r.statusText, headers }));
+  return new Response(out, isolated({ status: head.status, statusText: head.statusText, headers }));
 }
 
 /**
