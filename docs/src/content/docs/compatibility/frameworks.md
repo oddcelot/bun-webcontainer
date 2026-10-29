@@ -13,7 +13,7 @@ These ship as examples in the playground (project picker → Examples). Unless n
 | [Elysia 2 (rc)](https://runbun.dev/?example=elysia2-demo) | ✅ Works | Same check as above. |
 | [Hono](https://runbun.dev/?repo=honojs/starter/tree/main/templates/bun) | ✅ Works | Bun starter template, from GitHub. Installs and serves `Hello Hono!`. |
 | [Lit SSR + Elysia](https://runbun.dev/?repo=oddcelot/lit-devtools/tree/main/examples/elysia) | ✅ Works | Streams Lit SSR, hydrates, uses `bun:sqlite` and WebSockets. |
-| [Astro + Solid](https://runbun.dev/?example=astro-solid-demo) | 🟡 Partial | Astro 7 dev server, on-demand pages, a hydrated Solid island and an API route. HMR and the dev toolbar are off. |
+| [Astro + Solid](https://runbun.dev/?example=astro-solid-demo) | ✅ Works | Astro 7 dev server with its default config: on-demand pages, a hydrated Solid island, an API route, the dev toolbar, and HMR (Solid edits swap in place, `.astro` edits reload the page). |
 | [Vite](https://runbun.dev/?example=vite-demo) | ✅ Works | Vite 8 dev server, started from a script with `createServer()`. HMR works over the preview's WebSocket: CSS edits apply in place, other edits reload the page as Vite decides. |
 | [Node built-ins demo](https://runbun.dev/?example=node-demo) | ✅ Works | Output matches real Bun. |
 | [`bun.lock` demo](https://runbun.dev/?example=lockfile-demo) | ✅ Works | Nested installs from a lockfile. |
