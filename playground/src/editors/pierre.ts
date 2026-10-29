@@ -59,6 +59,8 @@ export function createPierre(parent: HTMLElement): CodeEditor {
     text = nextText ?? "";
     view = new File({
       theme,
+      // The tab above already names the file.
+      disableFileHeader: true,
       // style.css's thin scrollbars: scrollbar-width doesn't inherit into the shadow root (the color does).
       // The code area fills the pane (style.css stretches the host), so clicks below the last line land in the
       // editor and the horizontal scrollbar sits at the bottom; align-content keeps the line rows from stretching.
