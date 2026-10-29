@@ -53,4 +53,4 @@ Built-ins import with or without the `node:` prefix. Labels are explained on the
 | `vm` | ⚪ Stub | |
 | `wasi` | ❌ Missing | |
 | `worker_threads` | 🟡 Partial | `isMainThread`, `MessageChannel`, `BroadcastChannel`. `new Worker()` throws. |
-| `zlib` | ⚪ Stub | All functions throw. Web `CompressionStream` works. |
+| `zlib` | 🟡 Partial | gzip, deflate (zlib and raw) and `unzip`: sync, callback and stream APIs, `crc32`, `constants`. Brotli functions throw. |

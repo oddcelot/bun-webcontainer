@@ -1,7 +1,7 @@
 import assert from "./assert";
 import buffer from "./buffer";
 import crypto from "./crypto";
-import { diagnostics_channel, async_hooks, child_process, cluster, constants, dns, http2, inspector, readline, tls, v8, vm, zlib } from "./stubs";
+import { diagnostics_channel, async_hooks, child_process, cluster, constants, dns, http2, inspector, readline, tls, v8, vm } from "./stubs";
 import events from "./events";
 import fs from "./fs";
 import http, { https } from "./http";
@@ -23,6 +23,7 @@ import tty from "./tty";
 import url from "./url";
 import util from "./util";
 import worker_threads from "./worker_threads";
+import zlib from "./zlib";
 
 /** node:stream/web re-exports the web stream classes, which are globals here. */
 const streamWeb = Object.fromEntries(
