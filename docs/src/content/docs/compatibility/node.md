@@ -16,7 +16,7 @@ Built-ins import with or without the `node:` prefix. Labels are explained on the
 | `cluster` | ⚪ Stub | `isPrimary` is `true`; `fork` throws. |
 | `console` | 🟡 Partial | The global `console`. No `Console` class. |
 | `constants` | ⚪ Stub | Empty object. |
-| `crypto` | 🟡 Partial | `createHash`/`createHmac` (md5, sha1, sha224, sha256, sha384, sha512), `hash`, `randomBytes`, `randomUUID`, `randomInt`, `getRandomValues`, `timingSafeEqual`, `webcrypto`/`subtle`. No ciphers, `pbkdf2`, `scrypt`, `sign`/`verify`, `KeyObject`, `generateKey*`. |
+| `crypto` | 🟡 Partial | `createHash`/`createHmac` (md5, ripemd160, sha1, sha2, sha3, blake2), `hash`, `pbkdf2`, `scrypt` (sync and callback), `randomBytes`, `randomUUID`, `randomInt`, `getRandomValues`, `timingSafeEqual`, `webcrypto`/`subtle`. No ciphers, `sign`/`verify`, `KeyObject`, `generateKey*`. |
 | `dgram` | ❌ Missing | |
 | `diagnostics_channel` | ⚪ Stub | Subscribers never receive messages. |
 | `dns`, `dns/promises` | 🟡 Partial | `lookup` resolves only `localhost`. |
