@@ -28,12 +28,26 @@ async function windowClient(id) {
   return (await self.clients.matchAll({ type: "window", includeUncontrolled: true })).find((c) => c.id === id);
 }
 
+/**
+ * How long a module or preview request waits for the page. A fetch that never settles keeps this worker busy, and a
+ * new sw.js stays "waiting" behind it despite skipWaiting(); a response that never ends couldn't show anyway (the
+ * preview buffers whole responses).
+ */
+const ASK_TIMEOUT = 30_000;
+
 async function ask(msg) {
   const client = await host();
   if (!client) throw new Error("playground page not found");
   return new Promise((resolve) => {
     const ch = new MessageChannel();
-    ch.port1.onmessage = (e) => resolve(e.data);
+    const timer = setTimeout(() => {
+      ch.port1.close();
+      resolve({ status: 504, statusText: "", headers: [["content-type", "text/plain"]], body: new TextEncoder().encode(`No answer from the playground within ${ASK_TIMEOUT / 1000}s`).buffer });
+    }, ASK_TIMEOUT);
+    ch.port1.onmessage = (e) => {
+      clearTimeout(timer);
+      resolve(e.data);
+    };
     client.postMessage(msg, [ch.port2]);
   });
 }

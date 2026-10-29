@@ -3,6 +3,8 @@ import type { VFS } from "./vfs";
 
 /** Tells preview pages (see previewWebSocket in sw.js) that their WebSockets' server is gone. */
 const previewChannel = new BroadcastChannel("bun-preview");
+/** A plain-text answer to a service worker request (the shape the worker's responses have too). */
+const textResponse = (status: number, text: string) => ({ status, statusText: "", headers: [["content-type", "text/plain"]], body: new TextEncoder().encode(text).buffer });
 
 export type LogFn = (level: string, text: string) => void;
 
@@ -31,18 +33,29 @@ export class Runner {
     this.worker.postMessage({ type: "vfs", op, path, data }); // cloned, not transferred: the page keeps its data
   }
 
+  /** Preview requests the worker hasn't answered yet: a stopped worker never will, so stop() answers them. */
+  private pending = new Set<MessagePort>();
+
   private async onSw(e: MessageEvent) {
     const port = e.ports[0];
     const m = e.data;
     if (m.type === "module") {
-      port.postMessage(await serveModule(this.vfs, m.path, (msg) => this.log("error", msg), m.target));
+      try {
+        port.postMessage(await serveModule(this.vfs, m.path, (msg) => this.log("error", msg), m.target));
+      } catch (err) {
+        port.postMessage(textResponse(500, String(err)));
+      }
     } else if (m.type === "preview") {
       await this.ready;
-      if (!this.worker) {
-        port.postMessage({ status: 503, statusText: "", headers: [["content-type", "text/plain"]], body: new TextEncoder().encode("No server running. Press Run.").buffer });
-        return;
-      }
-      this.worker.postMessage({ type: "request", req: m.req }, [port]);
+      if (!this.worker) return port.postMessage(textResponse(503, "No server running. Press Run."));
+      // Relayed instead of handing the worker `port`, so an unanswered request can still be answered.
+      const { port1, port2 } = new MessageChannel();
+      this.pending.add(port);
+      port1.onmessage = (r) => {
+        port1.close();
+        if (this.pending.delete(port)) port.postMessage(r.data, r.data.body instanceof ArrayBuffer ? [r.data.body] : []);
+      };
+      this.worker.postMessage({ type: "request", req: m.req }, [port2]);
     } else if (m.type === "ws") {
       await this.ready;
       if (!this.worker) return port.postMessage({ type: "close", code: 1011, reason: "No server running" });
@@ -51,6 +64,8 @@ export class Runner {
   }
 
   stop() {
+    for (const port of this.pending) port.postMessage(textResponse(503, "The server stopped before it answered."));
+    this.pending.clear();
     if (this.worker) previewChannel.postMessage("stopped");
     this.worker?.terminate();
     this.worker = undefined;
