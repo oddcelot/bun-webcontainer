@@ -60,7 +60,12 @@ export function createPierre(parent: HTMLElement): CodeEditor {
     view = new File({
       theme,
       // style.css's thin scrollbars: scrollbar-width doesn't inherit into the shadow root (the color does).
-      unsafeCSS: "* { scrollbar-width: thin; }",
+      // The code area fills the pane (style.css stretches the host), so clicks below the last line land in the
+      // editor and the horizontal scrollbar sits at the bottom; align-content keeps the line rows from stretching.
+      unsafeCSS: `* { scrollbar-width: thin; }
+        :host { display: flex; flex-direction: column; }
+        pre { flex: 1 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); }
+        code { align-self: stretch; align-content: start; }`,
       onEditChange(event) {
         text = event.file.contents;
         listener(text);
