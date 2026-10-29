@@ -21,23 +21,6 @@ git -C "$dir" checkout -q -b "$BUN_BRANCH" FETCH_HEAD
 git -C "$dir" -c user.name="$(git config user.name || echo setup-bun)" -c user.email="$(git config user.email || echo setup-bun@localhost)" \
   am -q --committer-date-is-author-date "$root"/patches/bun/*.patch
 
-# cargo resolves the whole workspace, so these path dependencies must exist even though
-# nothing we build uses them. Bun's own build also applies patches to them; we don't need those.
-mkdir -p "$dir/vendor/lolhtml" "$dir/vendor/rust-argon2"
-curl -fsSL "https://github.com/oven-sh/lol-html/archive/$LOLHTML_COMMIT.tar.gz" | tar xz --strip-components=1 -C "$dir/vendor/lolhtml"
-curl -fsSL "https://github.com/sru-systems/rust-argon2/archive/$ARGON2_COMMIT.tar.gz" | tar xz --strip-components=1 -C "$dir/vendor/rust-argon2"
-
-# Generated inputs that `bun bd --configure-only` would write.
-mkdir -p "$dir/build/debug/codegen"
-cp "$root/build_options.rs" "$dir/build/debug/codegen/"
-(cd "$dir" && bun -e '
-import { generateJsonByteClass } from "./scripts/build/jsonByteClass.ts";
-import { generateXmlByteClass } from "./scripts/build/xmlByteClass.ts";
-const cfg = { codegenDir: process.cwd() + "/build/debug/codegen" };
-generateJsonByteClass(cfg);
-generateXmlByteClass(cfg);')
-
-# Minimal install; letting rust-toolchain.toml auto-install pulls ~11 cross targets, miri and clippy.
-rustup toolchain list | grep -q "^$TOOLCHAIN" || rustup toolchain install "$TOOLCHAIN" --profile minimal -c rust-src
+"$root/scripts/bun-prepare.sh" "$dir"
 
 echo "setup-bun: ready at $dir ($BUN_BRANCH = upstream $BUN_COMMIT + $(ls "$root"/patches/bun/*.patch | wc -l | tr -d ' ') patches)"
