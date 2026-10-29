@@ -118,6 +118,8 @@ export function FileTree() {
     guarded("file tree", (path) => {
       active = path;
       if (path) reveal(path);
+      // No tab left: drop the closed file's selection, or clicking it again wouldn't be a change and wouldn't open it.
+      else for (const p of tree.getSelectedPaths()) tree.getItem(p)?.deselect();
     }),
   );
   createEffect(
