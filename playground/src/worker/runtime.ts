@@ -5,7 +5,7 @@ import { builtins, installTimers, setFs, setStdio } from "./node";
 import { bundle, type BundleConfig, type BundleLog } from "./bundler";
 import { setHostVfs } from "./hostPackages";
 import { fsError } from "./node/errors";
-import { hooks } from "./node/serve";
+import { hooks, type NodeSocket } from "./node/serve";
 import nodePath from "./node/path";
 import process, { env } from "./node/process";
 
@@ -70,9 +70,15 @@ const previewServer = () => servers.find((s) => !s.ephemeral) ?? servers[0];
 const stopServer = (inst: Instance) => servers.splice(servers.indexOf(inst) >>> 0, 1);
 
 let nodeServer: Instance | undefined;
+/** A node:http server's accepted WebSockets carry their `ws` connection as data (see upgradeRequests). */
+const nodeSockets: WebSocketHandlers = {
+  open: (ws) => (ws.data as NodeSocket).open(ws),
+  message: (ws, m) => (ws.data as NodeSocket).message(m),
+  close: (ws, code, reason) => (ws.data as NodeSocket).close(code, reason),
+};
 hooks.set = (h) => {
   if (nodeServer) stopServer(nodeServer);
-  nodeServer = h ? createInstance({ fetch: h }) : undefined;
+  nodeServer = h ? createInstance({ fetch: h, websocket: nodeSockets }) : undefined;
 };
 hooks.get = () => nodeServer?.handler;
 
