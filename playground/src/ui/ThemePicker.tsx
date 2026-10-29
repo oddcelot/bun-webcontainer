@@ -24,7 +24,7 @@ export function ThemePicker() {
               title={`${label} color scheme`}
               aria-label={`${label} color scheme`}
               aria-pressed={theme().mode === mode ? "true" : "false"}
-              onClick={(e) => switchTheme(() => setColorMode(mode), e.currentTarget)}
+              onClick={() => switchTheme(() => setColorMode(mode))}
             >
               <i class={icon} aria-hidden="true" />
             </button>
@@ -36,8 +36,8 @@ export function ThemePicker() {
         title="Theme"
         value={familyOf(theme())}
         onChange={(e) => {
-          const select = e.currentTarget;
-          switchTheme(() => pickFamily(select.value), select);
+          const light = e.currentTarget.value;
+          switchTheme(() => pickFamily(light));
         }}
       >
         <For each={Object.entries(FAMILIES)}>

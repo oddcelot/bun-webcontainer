@@ -199,10 +199,10 @@ function coverWidth(x: number, y: number) {
 
 /**
  * Runs a theme change (a color mode or family pick) as a view transition: the new colors reveal in the shape of the
- * Bun logo, growing at a steady pace from just below `from` (the control that was used) until it covers the window.
- * Without View Transitions, or with reduced motion, the change applies at once.
+ * Bun logo, growing at a steady pace from the middle of the window until it covers it. Without View Transitions, or
+ * with reduced motion, the change applies at once.
  */
-export function switchTheme(change: () => void, from?: Element) {
+export function switchTheme(change: () => void) {
   if (!("startViewTransition" in document) || matchMedia("(prefers-reduced-motion: reduce)").matches) return change();
   const transition = document.startViewTransition(async () => {
     change();
@@ -212,12 +212,6 @@ export function switchTheme(change: () => void, from?: Element) {
     // What repaints later (the editor) still shows up: the new side of the transition is live.
     await Promise.resolve();
   });
-  const box = from?.getBoundingClientRect();
-  // Small and whole first, under the control (kept inside the window), so the shape reads as the logo.
-  // It starts just below the control (kept inside the window) and grows at a steady pace to centered on the window,
-  // as large as it takes to cover it.
-  const startX = Math.min(Math.max(box ? box.left + box.width / 2 : innerWidth / 2, 8), innerWidth - 8);
-  const startY = box ? box.bottom + 6 : 8;
   const mx = innerWidth / 2;
   const my = innerHeight / 2;
   const w = coverWidth(mx, my);
@@ -226,14 +220,19 @@ export function switchTheme(change: () => void, from?: Element) {
   document.documentElement.classList.add("theme-switch");
   transition.finished.finally(() => document.documentElement.classList.remove("theme-switch"));
   transition.ready
-    .then(() =>
-      document.documentElement.animate(
+    .then(() => {
+      const reveal = document.documentElement.animate(
         {
           maskSize: ["0px 0px", `${w}px ${h}px`],
-          maskPosition: [`${startX}px ${startY}px`, `${mx - MASK.cx * w}px ${my - MASK.cy * h}px`],
+          // The body's middle stays on the window's middle as it grows.
+          maskPosition: [`${mx}px ${my}px`, `${mx - MASK.cx * w}px ${my - MASK.cy * h}px`],
         },
-        { duration: 700, easing: "linear", pseudoElement: "::view-transition-new(root)" },
-      ),
-    )
+        // `forwards`: the transition is torn down a frame after the animation ends, and without it the mask falls
+        // back to style.css's 0 size for that frame, flashing the old theme. Cancelled once the transition is
+        // done, or the filled animation would outlive it and override the next switch's mask.
+        { duration: 700, easing: "linear", fill: "forwards", pseudoElement: "::view-transition-new(root)" },
+      );
+      transition.finished.finally(() => reveal.cancel());
+    })
     .catch(() => {}); // skipped transitions (e.g. a second switch mid-animation) still apply the change
 }
