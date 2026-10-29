@@ -65,11 +65,11 @@ export async function discard(id: string): Promise<void> {
 /**
  * Mirrors the VFS into OPFS (`projects/<id>/`), write-behind: changes are collected and flushed after a short
  * pause. `all` saves every file now (a project just loaded from its source). Only the tab holding the project's
- * lock writes. Never throws; returns a function that stops saving.
+ * lock writes. Never throws; returns a function that stops saving and settles once a flush in progress is done.
  */
-export async function attach(id: string, vfs: VFS, log: Log, all: boolean): Promise<() => void> {
+export async function attach(id: string, vfs: VFS, log: Log, all: boolean): Promise<() => Promise<void>> {
   let stopped = false;
-  const stop = () => {
+  const stop = async () => {
     stopped = true;
   };
   try {
@@ -182,6 +182,7 @@ export async function attach(id: string, vfs: VFS, log: Log, all: boolean): Prom
       clearTimeout(timer);
       document.removeEventListener("visibilitychange", onHide);
       removeEventListener("pagehide", onHide);
+      return chain;
     };
   } catch (e) {
     log("warn", `[storage] saving is unavailable (${e}); this project won't be kept across reloads`);

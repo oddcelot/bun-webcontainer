@@ -76,7 +76,7 @@ const projectId = isShareLink(location.hash)
     : exampleName
       ? `example:${exampleName}`
       : "demo";
-let stopSaving = () => {};
+let stopSaving = async () => {};
 // Saved files win over the source; without rememberSource, Share packs them.
 const restored = projectId ? await restore(projectId, vfs, log) : 0;
 if (restored) log("sys", `[storage] restored ${restored} saved files`);
@@ -188,7 +188,8 @@ function clearConsole() {
 }
 
 async function reset() {
-  stopSaving();
+  // A write still in flight would recreate the directory after the discard.
+  await stopSaving();
   if (projectId) await discard(projectId).catch((e) => log("error", `[storage] reset failed: ${e}`));
   location.reload();
 }
@@ -197,7 +198,7 @@ const exec = createShell({ vfs, log, run, install, stop, clear: clearConsole, re
 
 async function openFolder(files: File[]) {
   await session.started;
-  stopSaving();
+  void stopSaving();
   runner?.stop();
   workspace.closeAll();
   vfs.clear();
