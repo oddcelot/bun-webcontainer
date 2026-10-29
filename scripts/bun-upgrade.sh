@@ -70,7 +70,11 @@ check() {
       bad=$((bad + 1))
       files=$(git -C "$tmp" diff --name-only --diff-filter=U | tr '\n' ' ')
       say "  ✗ $(basename "$p"): ${files:-does not apply}"
-      git -C "$tmp" am --skip >/dev/null 2>&1 || git -C "$tmp" am --abort >/dev/null 2>&1 || true
+      # Back to before this patch, whatever state the failed am left (git versions differ after a
+      # modify/delete conflict), so the next patch is tried on its own.
+      git_id -C "$tmp" am --abort >/dev/null 2>&1 || true
+      git -C "$tmp" reset -q --hard
+      rm -rf "$tmp/.git/rebase-apply"
     fi
   done
   pin_changes "$tmp"
