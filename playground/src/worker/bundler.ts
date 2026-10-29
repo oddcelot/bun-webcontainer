@@ -34,7 +34,8 @@ export interface BundleOutput {
   kind: string;
   loader: string;
   hash: string;
-  contents: string;
+  /** Text, or the raw bytes for outputs that aren't UTF-8 (images, wasm). */
+  contents: string | Uint8Array<ArrayBuffer>;
 }
 
 export interface BundleResult {
@@ -102,5 +103,10 @@ export async function bundle(vfs: VFS, config: BundleConfig): Promise<BundleResu
   const text = dec.decode(new Uint8Array(memory.buffer, Number(ptr), Number(n)));
   w.output_free(out);
   if (status !== 0n) return failure(text);
-  return JSON.parse(text) as BundleResult;
+  const res = JSON.parse(text) as BundleResult;
+  for (const o of res.outputs as (BundleOutput & { encoding?: "base64" })[]) {
+    if (o.encoding === "base64") o.contents = Uint8Array.from(atob(o.contents as string), (c) => c.charCodeAt(0));
+    delete o.encoding;
+  }
+  return res;
 }

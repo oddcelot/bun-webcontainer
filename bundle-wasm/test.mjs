@@ -190,6 +190,19 @@ test("inline sourcemap", () => {
   assert.match(r.outputs[0].contents, /sourceMappingURL=data:application\/json;base64,/);
 });
 
+test("binary assets come back as base64 bytes", () => {
+  const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff, 0xfe, 0x80, 0xc3, 0x28]);
+  vfs.write("src/logo.png", png);
+  vfs.write("src/img.ts", `import logo from "./logo.png";\nconsole.log(logo);\n`);
+  const r = wasmBundle({ entryPoints: ["src/img.ts"], outdir: "/out" });
+  assert.ok(r.success, JSON.stringify(r.logs));
+  const asset = r.outputs.find((o) => o.path.endsWith(".png"));
+  assert.ok(asset, JSON.stringify(r.outputs.map((o) => o.path)));
+  assert.equal(asset.encoding, "base64");
+  assert.deepEqual(new Uint8Array(Buffer.from(asset.contents, "base64")), png);
+  assert.equal(r.outputs.find((o) => o.path.endsWith(".js")).encoding, undefined);
+});
+
 if (disk) rmSync(disk, { recursive: true, force: true });
 if (failed) { console.log(`${failed} failed`); process.exit(1); }
 console.log("all passed");

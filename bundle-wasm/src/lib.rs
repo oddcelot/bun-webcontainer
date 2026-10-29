@@ -9,8 +9,9 @@
 //! `{cwd, entryPoints[], target: "browser"|"bun"|"node", format: "esm"|"cjs"|"iife", minify:
 //!   bool | {whitespace, syntax, identifiers}, splitting, outdir, write (default false: outputs are returned in memory), external[], define{}, conditions[],
 //!   sourcemap: "none"|"inline"|"external"|"linked", naming{entry,chunk,asset}, publicPath, banner, footer}`
-//! Result JSON: `{success, outputs: [{path, kind, loader, hash, contents}], logs: [{level, message,
-//!   file, line, column}]}`.
+//! Result JSON: `{success, outputs: [{path, kind, loader, hash, contents, encoding?}], logs: [{level,
+//!   message, file, line, column}]}`. `contents` is text, or base64 with `encoding: "base64"` when the
+//!   output isn't valid UTF-8 (images, wasm and other binary assets).
 
 #![feature(linkage)]
 
@@ -200,20 +201,28 @@ fn run(
         .map(|f| {
             use bun_bundler::output_file::Value;
             let (contents, value) = match &f.value {
-                Value::Buffer { bytes } => (String::from_utf8_lossy(bytes).into_owned(), "buffer"),
-                Value::Saved(_) => (String::new(), "saved"),
-                Value::Copy(_) => (String::new(), "copy"),
-                Value::Noop => (String::new(), "noop"),
+                Value::Buffer { bytes } => (&bytes[..], "buffer"),
+                Value::Saved(_) => (&[][..], "saved"),
+                Value::Copy(_) => (&[][..], "copy"),
+                Value::Noop => (&[][..], "noop"),
             };
             let kind: &'static str = f.output_kind.into();
-            json!({
+            let mut o = json!({
                 "path": String::from_utf8_lossy(&f.dest_path),
                 "kind": kind,
                 "loader": format!("{:?}", f.loader),
                 "hash": format!("{}", f.hash),
                 "value": value,
-                "contents": contents,
-            })
+            });
+            match core::str::from_utf8(contents) {
+                Ok(text) => o["contents"] = text.into(),
+                Err(_) => {
+                    // base64 output is ASCII
+                    o["contents"] = String::from_utf8(bun_base64::encode_alloc(contents)).unwrap().into();
+                    o["encoding"] = "base64".into();
+                }
+            }
+            o
         })
         .collect())
 }
