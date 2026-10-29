@@ -1,0 +1,78 @@
+# Nightly: is there a newer Bun release, and do our patches (patches/bun/) still apply to it?
+# Opens one issue per new release with scripts/bun-upgrade.sh --check's report; fails (and GitHub emails) if the
+# check itself breaks. A manual run can check a given tag; it only prints the issue it would open.
+name: Bun release check
+
+on:
+  schedule:
+    - cron: "0 3 * * *" # 03:00 UTC
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Check this release tag instead of the latest (dry run: prints the issue, opens none)"
+        required: false
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency: bun-release-check
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check
+        id: check
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          set +e
+          sh scripts/bun-upgrade.sh --check ${TAG:+"$TAG"} 2>&1 | tee check.txt
+          code=${PIPESTATUS[0]}
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          # 0 up to date, 2 newer release and the patches apply, 3 newer release with conflicts, 1 error.
+          [ "$code" != 1 ]
+
+      - name: Report
+        if: steps.check.outputs.code == '2' || steps.check.outputs.code == '3'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CODE: ${{ steps.check.outputs.code }}
+          DRY_RUN: ${{ inputs.tag != '' }}
+        run: |
+          tag=$(grep -oE 'bun-v[0-9]+\.[0-9]+\.[0-9]+' check.txt | head -1)
+          if [ "$CODE" = 2 ]; then
+            title="Bun $tag is out: patches apply cleanly"
+          else
+            title="Bun $tag is out: $(grep -oE '[0-9]+ of [0-9]+ patches conflict' check.txt | head -1)"
+          fi
+          {
+            echo "The nightly check found **$tag** and tried \`patches/bun/\` on it ($(date -u +%Y-%m-%d))."
+            echo
+            echo '```'
+            cat check.txt
+            echo '```'
+            echo
+            echo "Release notes: https://github.com/oven-sh/bun/releases/tag/$tag"
+            echo
+            echo "To upgrade in a local checkout:"
+            echo
+            echo "1. \`scripts/bun-upgrade.sh $tag\`"
+            echo "2. On a conflict: resolve it in \`bun/\`, \`git -C bun rebase --continue\`, then \`scripts/bun-upgrade.sh --finish\`"
+            echo "3. \`bun upgrade\`, so native bun matches for the comparison tests"
+            echo "4. Review \`git status\` and commit as \`bun: upgrade to $tag\`"
+          } > issue.md
+          if [ "$DRY_RUN" = true ]; then
+            echo "Dry run; would open: $title"
+            cat issue.md
+            exit 0
+          fi
+          if [ "$(gh issue list --state all --search "$tag in:title" --json number --jq length)" != 0 ]; then
+            echo "An issue for $tag already exists."
+            exit 0
+          fi
+          gh issue create --title "$title" --body-file issue.md
