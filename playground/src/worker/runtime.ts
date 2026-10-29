@@ -8,6 +8,7 @@ import { fsError } from "./node/errors";
 import { hooks, type NodeSocket } from "./node/serve";
 import nodePath from "./node/path";
 import process, { env } from "./node/process";
+import { runTestFiles } from "./node/test";
 
 type Handler = (req: Request, server: unknown) => Response | Promise<Response>;
 type HtmlImport = { __htmlImport: string };
@@ -653,6 +654,12 @@ self.addEventListener("message", async (e: MessageEvent) => {
   if (e.data.type !== "start") return;
   vfs.load(e.data.files, e.data.dirs);
   await booted;
+  if (e.data.tests) {
+    // `bun test`: load and run each file instead of an entry.
+    const failed = await runTestFiles(e.data.tests, (f) => importUrl(`${BASE}__vfs/${f}`), (g.Bun as { version: string }).version).catch((err) => (post({ type: "console", level: "error", text: fmt(err) }), 1));
+    post({ type: "ready", failed });
+    return;
+  }
   try {
     const mod = (await importUrl(`${BASE}__vfs/${e.data.entry}`)) as { default?: ServeOptions };
     // Bun serves an entry whose default export has a fetch handler (Hono's `export default app`), unless that

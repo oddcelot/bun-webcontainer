@@ -146,10 +146,14 @@ function entryFile(): string {
   return ["index.ts", "index.tsx", "index.js", "src/index.ts"].find((f) => vfs.files.has(f)) ?? "index.ts";
 }
 
+/** What the last Run started, to start it again after `bun test` (which replaces the server). */
+let lastEntry: string | undefined;
+
 async function run(entry = entryFile()) {
   if (!runner) return cantRun();
   await session.task("run", "Starting…", async (): Promise<Status> => {
     log("sys", `[run] ${entry}`);
+    lastEntry = entry;
     try {
       await runner.start(entry);
       previews.reload();
@@ -175,6 +179,19 @@ async function install() {
   });
 }
 
+/** `bun test`: a fresh worker runs the files; a server that was running is started again afterwards. */
+async function test(files: string[]): Promise<number> {
+  if (!runner) return cantRun(), 0;
+  const wasRunning = session.settled().state === "running";
+  let failed = 0;
+  await session.task("run", "Testing…", async (): Promise<Status> => {
+    failed = await runner.runTests(files);
+    return failed ? { state: "error", text: `${failed} test${failed === 1 ? "" : "s"} failed` } : { state: "idle", text: "Tests passed" };
+  });
+  if (wasRunning) await run(lastEntry);
+  return failed;
+}
+
 function stop() {
   if (session.settled().state !== "running") return;
   runner?.stop();
@@ -194,7 +211,7 @@ async function reset() {
   location.reload();
 }
 
-const exec = createShell({ vfs, log, run, install, stop, clear: clearConsole, reset, cookies: runner?.cookies });
+const exec = createShell({ vfs, log, run, install, test, stop, clear: clearConsole, reset, cookies: runner?.cookies });
 
 async function openFolder(files: File[]) {
   await session.started;
