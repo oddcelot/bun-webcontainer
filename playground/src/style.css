@@ -14,8 +14,14 @@
   --control: color-mix(in srgb, var(--fg) 9%, var(--panel));
   --control-hover: color-mix(in srgb, var(--fg) 16%, var(--panel));
   --control-border: color-mix(in srgb, var(--fg) 18%, var(--panel));
+  --scrollbar: color-mix(in srgb, var(--fg) 22%, transparent);
+  --scrollbar-hover: color-mix(in srgb, var(--fg) 38%, transparent);
 }
 * { box-sizing: border-box; }
+/* Thin scrollbars in the theme's colors; the thumb darkens while the pointer is over its pane. console.ts gives
+ * xterm's own scrollbar the same colors. */
+* { scrollbar-width: thin; scrollbar-color: var(--scrollbar) transparent; }
+*:hover { scrollbar-color: var(--scrollbar-hover) transparent; }
 html, body { height: 100%; margin: 0; background: var(--bg); color: var(--fg); font: 13px system-ui, sans-serif; }
 body { display: flex; flex-direction: column; }
 header { display: flex; gap: 8px; align-items: center; padding: 6px 10px; background: var(--panel); border-bottom: 1px solid var(--border); }
@@ -128,7 +134,7 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
 #editor { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 /* Over the editor surface, not above it: the surface stays put when a file opens. */
 #editor[data-empty]::before { content: "No file open"; position: absolute; inset: 0; z-index: 1; display: grid; place-items: center; background: var(--bg); color: var(--muted); }
-.tabs { display: flex; overflow-x: auto; scrollbar-width: thin; background: var(--panel); border-bottom: 1px solid var(--border); }
+.tabs { display: flex; overflow-x: auto; background: var(--panel); border-bottom: 1px solid var(--border); }
 #tabs:empty { display: none; }
 /* Tabs size to their name up to 26rem (about 42 characters) (then "…"; the tooltip has the full path) and don't shrink: a full bar scrolls. */
 .tabs .tab { display: flex; flex: 0 0 auto; align-items: center; gap: 6px; min-width: 6rem; max-width: 26rem; padding: 5px 6px 5px 12px; border-right: 1px solid var(--border); color: var(--muted); cursor: pointer; white-space: nowrap; user-select: none; box-shadow: inset 0 2px transparent; }

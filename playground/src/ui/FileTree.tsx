@@ -34,8 +34,10 @@ export function FileTree() {
     // at non-100% page zoom a single line measures a hair over 1lh, so every label gets "…".
     // A truncated label wraps to 2+ lines, so 1.5lh keeps real truncation working.
     // The open-file dot: small and quiet.
+    // style.css's thin scrollbars: scrollbar-width doesn't inherit into the shadow root (the color does).
     unsafeCSS: `@container measure (height <= 1.5lh) { [data-truncate-marker] { opacity: 0; } }
-      [data-item-section="decoration"] { font-size: 5px; color: var(--muted); opacity: 0.8; }`,
+      [data-item-section="decoration"] { font-size: 5px; color: var(--muted); opacity: 0.8; }
+      * { scrollbar-width: thin; }`,
     onSelectionChange(paths) {
       const [path] = paths;
       if (paths.length === 1 && vfs.files.has(path) && path !== active) ws.open(path);

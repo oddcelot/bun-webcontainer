@@ -22,6 +22,15 @@ function cssColor(color: string | undefined): string | undefined {
   return a === 255 ? color : `rgba(${r}, ${g}, ${b}, ${(a / 255).toFixed(3)})`;
 }
 
+/** `color` at `alpha` opacity, as rgba (xterm's theme takes plain colors, not color-mix()). */
+function withAlpha(color: string, alpha: number): string | undefined {
+  const ctx = document.createElement("canvas").getContext("2d", { willReadFrequently: true })!;
+  ctx.fillStyle = color.trim();
+  ctx.fillRect(0, 0, 1, 1);
+  const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 /** Background and foreground match the other panes (style.css's --bg/--fg); the palette is the theme's ANSI colors. */
 function terminalTheme(theme: ThemeLike): ITheme {
   const c = theme.colors ?? {};
@@ -32,6 +41,10 @@ function terminalTheme(theme: ThemeLike): ITheme {
     foreground: cssColor(root.getPropertyValue("--fg")),
     cursor: cssColor(root.getPropertyValue("--fg")),
     selectionBackground: cssColor(c["terminal.selectionBackground"] ?? c["editor.selectionBackground"]),
+    // style.css's --scrollbar and --scrollbar-hover.
+    scrollbarSliderBackground: withAlpha(root.getPropertyValue("--fg"), 0.22),
+    scrollbarSliderHoverBackground: withAlpha(root.getPropertyValue("--fg"), 0.38),
+    scrollbarSliderActiveBackground: withAlpha(root.getPropertyValue("--fg"), 0.5),
     black: ansi("Black"),
     red: ansi("Red"),
     green: ansi("Green"),
@@ -179,6 +192,9 @@ export function createConsole(
       cursorStyle: "bar",
       scrollback: MAX_LINES,
       allowProposedApi: true, // the graphemes addon sets unicode.activeVersion
+      // Sizes the scrollbar too (xterm's default is 14px), matching the other panes' thin ones. Nothing draws
+      // decorations, so the ruler itself stays empty.
+      overviewRuler: { width: 8 },
     });
     const fit = new FitAddon();
     for (const addon of [fit, new WebLinksAddon(), new UnicodeGraphemesAddon()]) next.loadAddon(addon);

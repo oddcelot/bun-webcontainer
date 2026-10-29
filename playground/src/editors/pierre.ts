@@ -59,6 +59,8 @@ export function createPierre(parent: HTMLElement): CodeEditor {
     text = nextText ?? "";
     view = new File({
       theme,
+      // style.css's thin scrollbars: scrollbar-width doesn't inherit into the shadow root (the color does).
+      unsafeCSS: "* { scrollbar-width: thin; }",
       onEditChange(event) {
         text = event.file.contents;
         listener(text);
