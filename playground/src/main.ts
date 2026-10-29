@@ -16,6 +16,7 @@ import { createPreviews } from "./ui/previews";
 import { createWorkspace } from "./ui/workspace";
 import { createConsole } from "./console";
 import { createShell, scriptEntry } from "./shell";
+import { attach, discard, restore, shareProjectId } from "./persist";
 
 const support = checkSupport();
 /** False when a requirement is missing: the interface still loads, but nothing that runs code starts. */
@@ -65,27 +66,51 @@ function showProject(shared: boolean) {
 // Right away, from the URL: a repo can take a while to fetch, and the picker shouldn't say "Confetti demo" meanwhile.
 showProject(isShareLink(location.hash));
 
+// Where this page's project is saved in OPFS (null: a bad ?repo=, which opens the demo unsaved).
+const projectId = isShareLink(location.hash)
+  ? await shareProjectId(location.hash)
+  : repoParam
+    ? repo
+      ? `repo:${repoQuery(repo)}`
+      : null
+    : exampleName
+      ? `example:${exampleName}`
+      : "demo";
+let stopSaving = async () => {};
+// Saved files win over the source; without rememberSource, Share packs them.
+const restored = projectId ? await restore(projectId, vfs, log) : 0;
+if (restored) log("sys", `[storage] restored ${restored} saved files`);
+/** True when the source loaded as asked: a fallback demo must not overwrite the saved project. */
+let loaded = false;
+
 // A share link (#code=…) carries the project itself; it wins over ?repo= and ?example=.
 let shared = false;
-if (isShareLink(location.hash)) {
+if (!restored && isShareLink(location.hash)) {
   try {
     const n = await loadShareLink(vfs, location.hash);
     log("sys", `[share] opened a shared project: ${n} files`);
     shared = true;
+    loaded = true;
   } catch (e) {
     log("error", "[share] this link is damaged or incomplete; opening the demo");
     vfs.clear();
   }
 }
-if (!shared) {
+if (!shared && !restored) {
   // While these files stay unchanged, Share links to where they came from instead of packing them.
-  if (repo && (await loadRepo(vfs, repo, log))) rememberSource(vfs, `?repo=${repoQuery(repo)}`, `${repoQuery(repo)} on GitHub`);
-  else if (!repo && exampleName && (await loadExample(vfs, exampleName))) rememberSource(vfs, `?example=${exampleName}`, `the ${examples[exampleName] ?? exampleName} example`);
-  else {
+  if (repo && (await loadRepo(vfs, repo, log))) {
+    rememberSource(vfs, `?repo=${repoQuery(repo)}`, `${repoQuery(repo)} on GitHub`);
+    loaded = true;
+  } else if (!repo && exampleName && (await loadExample(vfs, exampleName))) {
+    rememberSource(vfs, `?example=${exampleName}`, `the ${examples[exampleName] ?? exampleName} example`);
+    loaded = true;
+  } else {
     seedDemo(vfs);
     rememberSource(vfs, "", "the demo");
+    loaded = projectId === "demo";
   }
 }
+if (projectId && (restored || loaded)) stopSaving = await attach(projectId, vfs, log, !restored);
 
 /** Reloads with `?example=` or `?repo=` (picker values for repos are `repo:<owner/repo>`). */
 function openProject(value: string) {
@@ -162,10 +187,18 @@ function clearConsole() {
   session.resetCounts();
 }
 
-const exec = createShell({ vfs, log, run, install, stop, clear: clearConsole });
+async function reset() {
+  // A write still in flight would recreate the directory after the discard.
+  await stopSaving();
+  if (projectId) await discard(projectId).catch((e) => log("error", `[storage] reset failed: ${e}`));
+  location.reload();
+}
+
+const exec = createShell({ vfs, log, run, install, stop, clear: clearConsole, reset });
 
 async function openFolder(files: File[]) {
   await session.started;
+  void stopSaving();
   runner?.stop();
   workspace.closeAll();
   vfs.clear();

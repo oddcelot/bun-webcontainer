@@ -10,6 +10,7 @@ crate-type = ["cdylib", "rlib"]
 bun_bundler = { path = "../bun/src/bundler" }
 bun_resolver = { path = "../bun/src/resolver" }
 bun_ast = { path = "../bun/src/ast" }
+bun_base64 = { path = "../bun/src/base64" }
 bun_alloc = { path = "../bun/src/bun_alloc" }
 bun_core = { path = "../bun/src/bun_core" }
 bun_collections = { path = "../bun/src/collections" }

@@ -304,7 +304,7 @@ async function serveHtml(imp: HtmlImport): Promise<Response> {
 
 /** Where bundled HTML imports serve their chunks and assets from (Bun's dev server uses the same prefix). */
 const ASSET_PREFIX = "/_bun/";
-type Asset = { body: string; type: string };
+type Asset = { body: string | Uint8Array<ArrayBuffer>; type: string };
 type HtmlBundle = { html: string; assets: Map<string, Asset> } | null;
 /** Bundles per HTML file; any VFS change drops them all, so the next request bundles again. */
 const htmlBundles = new Map<string, Promise<HtmlBundle>>();
@@ -333,7 +333,7 @@ function bundleHtml(imp: HtmlImport): Promise<HtmlBundle> {
       const rel = o.path.replace(/^\.\//, "");
       assets.set(ASSET_PREFIX + rel, { body: o.contents, type: mimeOf(rel) });
     }
-    return { html: page.contents, assets };
+    return { html: page.contents as string, assets };
   })().catch((e) => {
     console.error("[bundler]", e);
     return null;

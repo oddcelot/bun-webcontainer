@@ -106,6 +106,7 @@ dependencies = [
  "bstr",
  "bun_alloc",
  "bun_ast",
+ "bun_base64",
  "bun_bundler",
  "bun_collections",
  "bun_core",

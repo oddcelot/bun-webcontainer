@@ -1,7 +1,8 @@
-import { Show, useContext } from "solid-js";
+import { Show, createSignal, useContext } from "solid-js";
 import { Select } from "@kobalte/core/select";
 import { examples, repoExamples } from "../examples";
 import { AppContext } from "./context";
+import { PromptDialog } from "./PromptDialog";
 
 type Project = { label: string; value: string; icon?: string };
 
@@ -59,16 +60,14 @@ function Picker(props: { groups: Group[]; current: (list: Group[]) => Project | 
   const s = app.session;
   let folderInput!: HTMLInputElement;
 
-  function openRepo() {
-    const input = prompt("GitHub repo (owner/repo, owner/repo@ref or a github.com URL)", app.repoParam || "oddcelot/bun-elysia-demo");
-    if (input) app.openProject(`repo:${input.trim()}`);
-  }
+  const [asking, setAsking] = createSignal(false);
 
   function pick(p: Project | null) {
     // The select stays on the current project (value is controlled) unless the page navigates away.
     if (!p) return;
     if (p.value === OPEN_FOLDER) return folderInput.click();
-    if (p.value === OPEN_REPO) return openRepo();
+    // Once the Select has closed and handed focus back to its trigger, or that would win over the dialog.
+    if (p.value === OPEN_REPO) return void setTimeout(() => setAsking(true));
     // A shared project lives in the link only: picking it again has nothing to load.
     if (p.value !== "#shared" && fromPicker(p.value) !== s.project().selected) app.openProject(fromPicker(p.value));
   }
@@ -107,6 +106,17 @@ function Picker(props: { groups: Group[]; current: (list: Group[]) => Project | 
           </Select.Content>
         </Select.Portal>
       </Select>
+      <PromptDialog
+        open={asking()}
+        onOpenChange={setAsking}
+        title="Open a GitHub repo"
+        description="owner/repo, owner/repo@ref or a github.com URL"
+        label="Repository"
+        initial={app.repoParam || "oddcelot/bun-elysia-demo"}
+        submit="Open"
+        onSubmit={(input) => app.openProject(`repo:${input}`)}
+        returnFocus={() => document.getElementById("example")}
+      />
       <input
         ref={folderInput}
         id="folderinput"
