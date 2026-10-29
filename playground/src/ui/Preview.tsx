@@ -2,6 +2,7 @@ import { For, Show, createEffect, onSettled, untrack, useContext } from "solid-j
 import { Select } from "@kobalte/core/select";
 import { Tabs } from "@kobalte/core/tabs";
 import { TabItem, useTabValue } from "./Tabs";
+import { BASE } from "../base";
 import type { Card } from "../preview";
 import { AppContext } from "./context";
 import type { PreviewTab } from "./previews";
@@ -100,6 +101,19 @@ export function Preview() {
           <button disabled={disabled} title={disabled ? CANT_RUN : "Send"}>
             <i class="i-lucide-send" aria-hidden="true" />
             <span class="label">Send</span>
+          </button>
+          <button
+            type="button"
+            id="open-tab"
+            title={disabled ? CANT_RUN : "Open in a new tab (the server keeps running here)"}
+            aria-label="Open in a new tab"
+            disabled={disabled}
+            onClick={() => {
+              const path = active().path.trim() || "/";
+              window.open(`${BASE}__preview${path.startsWith("/") ? path : `/${path}`}`, "_blank", "noopener");
+            }}
+          >
+            <i class="i-lucide-external-link" aria-hidden="true" />
           </button>
           <button
             type="button"

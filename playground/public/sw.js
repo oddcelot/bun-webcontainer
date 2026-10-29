@@ -102,14 +102,26 @@ async function serveModule(url, clientId) {
   }));
 }
 
+const NO_PLAYGROUND = `<!doctype html><meta name="color-scheme" content="light dark"><title>Preview unavailable</title>
+<body style="font: 15px system-ui, sans-serif; max-width: 34rem; margin: 15vh auto; padding: 0 1rem; line-height: 1.5">
+<h1 style="font-size: 1.3rem">The playground isn't open</h1>
+<p>This preview's server runs in the playground's tab. Open <a href="${BASE}">the playground</a>, press Run, then reload this page.</p>`;
+
 async function servePreview(req, url, path = (url.pathname.slice(PREVIEW.length) || "/") + url.search) {
   const hasBody = req.method !== "GET" && req.method !== "HEAD";
   const body = hasBody ? await req.arrayBuffer() : null;
-  const { head, body: stream } = await askStream({
-    type: "preview",
-    // A 304 would reach the page as an empty response (we answer from memory, nothing is cached), so never ask for one.
-    req: { path, method: req.method, headers: [...req.headers].filter(([k]) => k !== "if-none-match" && k !== "if-modified-since"), body },
-  });
+  let asked;
+  try {
+    asked = await askStream({
+      type: "preview",
+      // A 304 would reach the page as an empty response (we answer from memory, nothing is cached), so never ask for one.
+      req: { path, method: req.method, headers: [...req.headers].filter(([k]) => k !== "if-none-match" && k !== "if-modified-since"), body },
+    });
+  } catch {
+    // The server runs in the playground's tab: a preview opened in its own tab needs that one open.
+    return new Response(NO_PLAYGROUND, isolated({ status: 503, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } }));
+  }
+  const { head, body: stream } = asked;
   const nullBody = [101, 204, 205, 304].includes(head.status);
   const headers = new Headers(head.headers);
   // Redirects to an absolute path stay inside the preview (`redirect("/")` from a form post).
@@ -292,6 +304,12 @@ async function fromPreviewOrNetwork(e) {
   const client = await windowClient(e.clientId);
   if (client && new URL(client.url).pathname.startsWith(PREVIEW)) {
     const url = new URL(e.request.url);
+    if (e.request.mode === "navigate") {
+      // A preview in its own tab following a link out of /__preview: with no playground open there's no server, so
+      // it's the playground being opened; otherwise it's the app's own page, as for the iframe above.
+      if (!(await host())) return fetch(e.request);
+      if (e.request.method === "GET") return Response.redirect(PREVIEW + url.pathname + url.search, 302);
+    }
     return servePreview(e.request, url, url.pathname + url.search);
   }
   return fetch(e.request);

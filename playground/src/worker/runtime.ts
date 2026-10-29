@@ -5,7 +5,7 @@ import { builtins, installTimers, setFs, setStdio } from "./node";
 import { bundle, type BundleConfig, type BundleLog } from "./bundler";
 import { setHostVfs } from "./hostPackages";
 import { fsError } from "./node/errors";
-import { hooks } from "./node/serve";
+import { hooks, type NodeSocket } from "./node/serve";
 import nodePath from "./node/path";
 import process, { env } from "./node/process";
 
@@ -70,9 +70,15 @@ const previewServer = () => servers.find((s) => !s.ephemeral) ?? servers[0];
 const stopServer = (inst: Instance) => servers.splice(servers.indexOf(inst) >>> 0, 1);
 
 let nodeServer: Instance | undefined;
+/** A node:http server's accepted WebSockets carry their `ws` connection as data (see upgradeRequests). */
+const nodeSockets: WebSocketHandlers = {
+  open: (ws) => (ws.data as NodeSocket).open(ws),
+  message: (ws, m) => (ws.data as NodeSocket).message(m),
+  close: (ws, code, reason) => (ws.data as NodeSocket).close(code, reason),
+};
 hooks.set = (h) => {
   if (nodeServer) stopServer(nodeServer);
-  nodeServer = h ? createInstance({ fetch: h }) : undefined;
+  nodeServer = h ? createInstance({ fetch: h, websocket: nodeSockets }) : undefined;
 };
 hooks.get = () => nodeServer?.handler;
 
@@ -213,6 +219,35 @@ function createInstance(opts: ServeOptions): Instance {
   servers.push(inst);
   return inst;
 }
+
+/**
+ * Server-side Responses. `new Response()` drops forbidden header names (Set-Cookie), which a server must send; a
+ * standalone `Headers` keeps them, so responses get one built from their init, plus what Response adds itself
+ * (a string body's content-type, a form's boundary). `instanceof Response` still holds for the browser's own
+ * responses (`fetch()` results).
+ */
+const NativeResponse = Response;
+class ServerResponse extends NativeResponse {
+  constructor(body?: BodyInit | null, init?: ResponseInit) {
+    super(body, init);
+    const headers = new Headers(init?.headers);
+    for (const [k, v] of super.headers) if (!headers.has(k)) headers.set(k, v);
+    Object.defineProperty(this, "headers", { value: headers });
+  }
+  static [Symbol.hasInstance](x: unknown) {
+    return x instanceof NativeResponse;
+  }
+  static json(data: unknown, init?: ResponseInit) {
+    const r = new ServerResponse(JSON.stringify(data), init);
+    if (!new Headers(init?.headers).has("content-type")) r.headers.set("content-type", "application/json");
+    return r;
+  }
+  clone(): Response {
+    const c = super.clone();
+    return Object.defineProperty(c, "headers", { value: new Headers(this.headers) });
+  }
+}
+self.Response = ServerResponse as typeof Response;
 
 /**
  * A server-side Request. `new Request()` drops forbidden header names (Cookie, Origin, Upgrade, Sec-*), which a

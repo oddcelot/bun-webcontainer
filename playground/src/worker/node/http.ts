@@ -1,7 +1,7 @@
 import { Buffer } from "buffer";
 import EventEmitter from "events";
 import { Server as NetServer, Socket } from "./net";
-import { hooks, type FetchHandler } from "./serve";
+import { hooks, upgradeRequests, type FetchHandler } from "./serve";
 import { Readable, Writable } from "./stream";
 
 type Any = any;
@@ -251,11 +251,17 @@ export class Server extends (NetServer as Any) {
     if (l) this.on("request", l);
   }
   onListen() {
-    const handler: FetchHandler = async (req) => {
+    const handler: FetchHandler = async (req, bun) => {
       const addr = this.address();
       const socket = new Socket();
       socket.encrypted = this.encrypted;
       const incoming = await IncomingMessage.from(req, socket, `localhost:${addr?.port}`);
+      // A page's WebSocket (see openSocket in the runtime): "upgrade" listeners take it, `ws` accepts it.
+      if (req.headers.get("upgrade")?.toLowerCase() === "websocket" && this.listenerCount("upgrade")) {
+        upgradeRequests.set(incoming, (data) => (bun as { upgrade(r: Request, o: object): boolean }).upgrade(req, { data }));
+        this.emit("upgrade", incoming, socket, Buffer.alloc(0));
+        return new Response(null);
+      }
       return new Promise<Response>((resolve, reject) => {
         const res = new ServerResponse(incoming, (r) => {
           resolve(r);

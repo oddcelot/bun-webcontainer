@@ -1,3 +1,4 @@
+import { CookieJar } from "./cookieJar";
 import { serveModule } from "./moduleServer";
 import type { VFS } from "./vfs";
 
@@ -46,6 +47,16 @@ export class Runner {
    * A stopped worker never finishes them, so stop() does.
    */
   private pending = new Map<MessagePort, boolean>();
+  /** The preview host's cookies; kept across Runs, as a browser keeps them across server restarts. */
+  readonly cookies = new CookieJar();
+
+  /** Request headers with the jar's Cookie in place of any the request brought. */
+  private withCookies(path: string, headers: [string, string][]) {
+    const out = headers.filter(([k]) => k.toLowerCase() !== "cookie");
+    const cookie = this.cookies.header(path);
+    if (cookie) out.push(["cookie", cookie]);
+    return out;
+  }
 
   private async onSw(e: MessageEvent) {
     const port = e.ports[0];
@@ -64,6 +75,11 @@ export class Runner {
       this.pending.set(port, false);
       port1.onmessage = ({ data }) => {
         if (!this.pending.has(port)) return;
+        if (data.type === "head") {
+          const headers = data.headers as [string, string][];
+          this.cookies.store(m.req.path, headers.filter(([k]) => k.toLowerCase() === "set-cookie").map(([, v]) => v));
+          data = { ...data, headers: headers.filter(([k]) => k.toLowerCase() !== "set-cookie") };
+        }
         port.postMessage(data, data.type === "chunk" ? [data.data] : []);
         if (data.type === "head") this.pending.set(port, true);
         else if (data.type === "end" || data.type === "error") {
@@ -73,11 +89,11 @@ export class Runner {
       };
       // A cancel from the service worker (the page went away) goes on to the worker.
       port.onmessage = ({ data }) => port1.postMessage(data);
-      this.worker.postMessage({ type: "request", req: m.req }, [port2]);
+      this.worker.postMessage({ type: "request", req: { ...m.req, headers: this.withCookies(m.req.path, m.req.headers) } }, [port2]);
     } else if (m.type === "ws") {
       await this.ready;
       if (!this.worker) return port.postMessage({ type: "close", code: 1011, reason: "No server running" });
-      this.worker.postMessage(m, [port]);
+      this.worker.postMessage({ ...m, headers: this.withCookies(m.path, m.headers) }, [port]);
     }
   }
 
