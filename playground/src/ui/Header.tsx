@@ -11,12 +11,6 @@ const CANT_RUN = "This browser can't run code here";
 export function Header() {
   const app = useContext(AppContext);
   const s = app.session;
-  let folderInput!: HTMLInputElement;
-
-  function openRepo() {
-    const input = prompt("GitHub repo (owner/repo, owner/repo@ref or a github.com URL)", app.repoParam || "oddcelot/bun-elysia-demo");
-    if (input) app.openProject(`repo:${input.trim()}`);
-  }
 
   function newFile() {
     const name = prompt("File path", "new.ts");
@@ -53,28 +47,7 @@ export function Header() {
         <i class="i-lucide-file-plus" aria-hidden="true" />
         <span class="label">New file</span>
       </button>
-      <button id="openfolder" title="Open folder" onClick={() => folderInput.click()}>
-        <i class="i-lucide-folder-open" aria-hidden="true" />
-        <span class="label">Open folder</span>
-      </button>
-      <button id="openrepo" title="Open GitHub repo" onClick={openRepo}>
-        <i class="i-lucide-github" aria-hidden="true" />
-        <span class="label">Open GitHub repo</span>
-      </button>
       <ProjectPicker />
-      <input
-        ref={folderInput}
-        id="folderinput"
-        type="file"
-        webkitdirectory
-        multiple
-        hidden
-        onChange={(e) => {
-          const files = [...(e.currentTarget.files ?? [])];
-          e.currentTarget.value = "";
-          if (files.length) app.openFolder(files);
-        }}
-      />
       <span id="status" role="status" data-state={s.status().state} title={s.status().text}>
         <span class="text">{s.status().text}</span>
       </span>
