@@ -201,7 +201,12 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
 #preview-backdrop { position: fixed; inset: 0; z-index: 19; background: rgba(0, 0, 0, 0.55); }
 #preview-backdrop[hidden] { display: none; }
 #request { display: flex; gap: 6px; min-width: 0; padding: 4px 8px; background: var(--panel); border-bottom: 1px solid var(--border); }
-#request select, #request input, #req-body { background: var(--control); color: var(--fg); border: 1px solid var(--control-border); border-radius: 6px; padding: 3px 6px; font: 12px ui-monospace, monospace; }
+#request input, #req-body { background: var(--control); color: var(--fg); border: 1px solid var(--control-border); border-radius: 6px; padding: 3px 6px; font: 12px ui-monospace, monospace; }
+/* The method Select: the request bar's mono face and height, its list as narrow as the longest method. */
+#request #req-method { padding: 3px 6px; font: 12px ui-monospace, monospace; }
+#request #req-method:disabled { opacity: 0.5; cursor: default; }
+.method-menu { min-width: 0; }
+.method-menu .select-option { font: 12px ui-monospace, monospace; }
 #req-path { flex: 1; min-width: 0; }
 /* A narrow preview column: Send shows its icon only (the label stays as the tooltip and accessible name). */
 #preview-wrap { container-type: inline-size; }

@@ -1,4 +1,5 @@
 import { For, Show, createEffect, onSettled, untrack, useContext } from "solid-js";
+import { Select } from "@kobalte/core/select";
 import type { Card } from "../preview";
 import { AppContext } from "./context";
 import type { PreviewTab } from "./previews";
@@ -52,15 +53,35 @@ export function Preview() {
             p.request(s.active);
           }}
         >
-          <select
-            id="req-method"
-            title={disabled ? CANT_RUN : "Method"}
-            disabled={disabled}
+          <Select<string>
+            options={METHODS}
             value={active().method}
-            onChange={(e) => p.edit(s.active, "method", e.currentTarget.value)}
+            onChange={(m) => m && p.edit(s.active, "method", m)}
+            disabled={disabled}
+            disallowEmptySelection
+            placement="bottom-start"
+            gutter={6}
+            itemComponent={(props) => (
+              <Select.Item item={props.item} class="select-option">
+                <Select.ItemLabel class="name">{props.item.rawValue}</Select.ItemLabel>
+                <Select.ItemIndicator class="check">
+                  <i class="i-lucide-check" aria-hidden="true" />
+                </Select.ItemIndicator>
+              </Select.Item>
+            )}
           >
-            <For each={METHODS}>{(m) => <option>{m}</option>}</For>
-          </select>
+            <Select.Trigger id="req-method" class="select-trigger" title={disabled ? CANT_RUN : "Method"} aria-label="Method">
+              <Select.Value<string> class="value">{(state) => <span class="name">{state.selectedOption()}</span>}</Select.Value>
+              <Select.Icon class="chevron">
+                <i class="i-lucide-chevron-down" aria-hidden="true" />
+              </Select.Icon>
+            </Select.Trigger>
+            <Select.Portal>
+              <Select.Content class="select-menu method-menu">
+                <Select.Listbox class="select-list" />
+              </Select.Content>
+            </Select.Portal>
+          </Select>
           <input
             id="req-path"
             spellcheck={false}
