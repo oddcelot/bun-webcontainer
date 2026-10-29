@@ -11,9 +11,10 @@ Bun's own parser and printer, compiled to WebAssembly. Output matches `bun build
 
 - ✅ `.ts`, `.tsx`, `.jsx`, `.mts`, `.cts`, `.js`, `.mjs`
 - ✅ JSX with Bun's defaults (React automatic runtime)
+- ✅ `/** @jsxImportSource preact */` pragma comments
 - ✅ Legacy decorators with `experimentalDecorators` and `emitDecoratorMetadata` in `tsconfig.json`
 - ✅ Top-level `await`
-- ❌ `tsconfig.json` `paths`, `baseUrl`, `jsx`, `jsxImportSource` and `extends` are not read
+- ❌ `tsconfig.json` `paths`, `baseUrl`, `jsx`, `jsxImportSource` and `extends` are not read (use the pragma for another JSX runtime)
 - ❌ No type checking
 
 ## Module resolution
@@ -23,7 +24,8 @@ Bun's own parser and printer, compiled to WebAssembly. Output matches `bun build
 - ✅ Conditions: `bun`, `node`, `import`, `development`, `default` for server code; `browser`, `module`, `import`, `development`, `default` for code in the preview page
 - ✅ `#imports` from the nearest `package.json`
 - ✅ JSON imports
-- ✅ CSS imported from code that goes through an HTML import (bundled)
+- ✅ CSS imported from code that goes through an HTML import (bundled), or through Vite
+- ❌ `import "./x.css"` in server code fails to load (Bun gives an empty module)
 - ✅ `http:`/`https:` imports are left to the browser
 - `rolldown` is replaced by the playground's own `@rolldown/browser`, since the native binding can't load
 
