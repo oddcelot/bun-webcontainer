@@ -37,7 +37,8 @@ html, body { height: 100%; margin: 0; background: var(--canvas); color: var(--fg
 body { display: flex; flex-direction: column; }
 header { display: flex; gap: 8px; align-items: center; padding: 6px 10px 4px; }
 header button, #clear, #request button { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
-header button, header .select-trigger, #status { height: var(--control-height); }
+/* By id: the share menu is in the header too, and its items mustn't take this height. */
+#example, #run, #run-more, #status, #share, #theme { height: var(--control-height); }
 /* Run and its menu (bun install): one control split in two. */
 #run-group { display: inline-flex; }
 #run { border-radius: 6px 0 0 6px; }
@@ -58,9 +59,9 @@ html.theme-switch::view-transition-new(root) { mask: url("./bun-mask.svg") no-re
  */
 html[data-booting] body > header > * { visibility: hidden; animation: boot-fallback 0s 3s forwards; }
 @keyframes boot-fallback { to { visibility: visible; } }
-/* Share menu: a popover anchored under the Share button. */
+/* Share menu: a popover anchored under the Share button, right edges aligned (the button sits at the header's right). */
 #share { anchor-name: --share; margin-left: auto; }
-#share-menu { position-anchor: --share; inset: auto; top: anchor(bottom); left: anchor(left); margin: 6px 0 0; width: 330px; padding: 6px; border: 1px solid var(--control-border); border-radius: calc(var(--inner-radius) + 6px + 1px); background: var(--panel); color: var(--fg); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35); }
+#share-menu { position-anchor: --share; inset: auto; top: anchor(bottom); right: anchor(right); position-try-fallbacks: flip-inline; margin: 6px 0 0; width: 330px; padding: 6px; border: 1px solid var(--control-border); border-radius: calc(var(--inner-radius) + 6px + 1px); background: var(--panel); color: var(--fg); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35); }
 #share-menu .lead { margin: 6px 8px 8px; font-size: 12px; line-height: 1.4; color: var(--muted); }
 #share-menu .lead [data-share-size] { display: block; font: 11px ui-monospace, monospace; margin-top: 2px; }
 #share-menu .notes { margin: 0 8px 8px; padding: 6px 8px 6px 22px; border-radius: 6px; background: var(--control); font-size: 12px; line-height: 1.4; color: var(--muted); }
