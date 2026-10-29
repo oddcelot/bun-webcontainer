@@ -15,6 +15,7 @@ JSC-independent Rust crates compiled to wasm64 (Memory64) plus JS shims for the 
 | `patches/bun/` | Every change to upstream Bun as a patch series (one commit each), cfg-gated and marked `// wasm-experiment` |
 | `scripts/setup-bun.sh` | Recreates `bun/`: pinned commit + `patches/bun/` as commits on `wasm-experiment`, vendored crates, codegen |
 | `scripts/export-bun-patches.sh` | Exports `bun/`'s `wasm-experiment` commits to `patches/bun/` (pre-commit checks they match) |
+| `scripts/bun-upgrade.sh` | Follows Bun releases: `--check` reports a newer release and whether `patches/bun/` applies; `[tag]` rebases `bun/` onto it and updates pins, toolchains and the reported version |
 | `scripts/w64.sh` | wasm64 compile check of Bun crates |
 | `HANDOFF.md` | How the port works, findings, next steps |
 

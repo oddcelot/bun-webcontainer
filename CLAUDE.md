@@ -63,17 +63,21 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 ```bash
 scripts/setup-bun.sh                       # recreate bun/ (pinned commit + patches/bun/ via git am); bun/ is not tracked
 scripts/export-bun-patches.sh              # after committing in bun/ on wasm-experiment
+scripts/bun-upgrade.sh --check             # newer Bun release? do patches/bun/ still apply? (changes nothing)
+scripts/bun-upgrade.sh [tag]               # rebase bun/ onto a release (default: latest); on conflict resolve, then --finish
 scripts/w64.sh <crate>...                  # wasm64 compile check of bun crates
 W="-Zbuild-std=std,panic_abort --target wasm64-unknown-unknown --release"
 (cd semver-wasm && cargo build $W && node test.mjs && node diff.mjs)
 (cd transpile-wasm && cargo build $W && node test.mjs)   # diff vs `bun build --no-bundle` on corpus/
 (cd sys-wasm && cargo build $W && node test.mjs)         # bun_sys over the VFS (node >= 24; bun lacks Memory64)
 (cd resolve-wasm && cargo build $W && node test.mjs)     # bun_resolver over the VFS vs JS resolver and bun (node >= 24)
-(cd shim-test && cargo +nightly-2026-09-15 test)
+(cd shim-test && cargo +$TOOLCHAIN test)         # TOOLCHAIN from scripts/bun-pins.sh
 (cd playground && bunx tsc --noEmit && bun run dev)      # verify in Chrome (Memory64)
 ```
 
-Use `cargo +nightly-2026-09-15` inside `bun/` (don't let its rust-toolchain.toml auto-install 11 targets).
+Use `cargo +$TOOLCHAIN` (the nightly in `scripts/bun-pins.sh`) inside `bun/` (don't let its rust-toolchain.toml
+auto-install 11 targets). Follow Bun releases, not main: upgrade with `scripts/bun-upgrade.sh`, which also updates
+the pins, the wrapper crates' toolchains and the playground's reported version.
 
 ## Architecture Overview
 

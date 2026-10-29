@@ -18,7 +18,7 @@ A StackBlitz/WebContainers-style "Bun" in the browser. User code runs in the bro
 ## Layout
 
 ```
-bun/                     untracked; scripts/setup-bun.sh recreates it (upstream @ 79420086 + patches/bun/ on branch wasm-experiment + vendor/ + codegen)
+bun/                     untracked; scripts/setup-bun.sh recreates it (upstream @ BUN_COMMIT in scripts/bun-pins.sh + patches/bun/ on branch wasm-experiment + vendor/ + codegen)
 patches/bun/             the bun changes as 5 commits (git format-patch), every hunk cfg-gated, marked `// wasm-experiment`
 build_options.rs         copy to bun/build/debug/codegen/
 scripts/w64.sh crate...  wasm64 compile check of bun crates (errors in short form)
