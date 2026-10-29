@@ -95,6 +95,13 @@ main [data-kb-resizable-root] { height: 100%; }
 .resize-handle { position: relative; z-index: 5; padding: 0; border: 0; background: none; outline: none; }
 .resize-handle[data-orientation="horizontal"] { width: 6px; margin: 0 -3px; }
 .resize-handle[data-orientation="vertical"] { height: 6px; margin: -3px 0; }
+/*
+ * Kobalte links two handles into a draggable crossing only when one ends within 1px of the other's edge, so the
+ * preview/console handle starts where the column handle beside it ends rather than under it.
+ */
+#right .resize-handle[data-orientation="vertical"] { margin-left: 3px; }
+/* The crossing's grab box sits left of that handle, over the column border; Kobalte's inline overflow would clip it. */
+#right, #right > [data-kb-resizable-root] { overflow: visible !important; }
 .resize-handle::after { content: ""; position: absolute; inset: 0; margin: auto; background: var(--border); transition: background-color 0.1s; }
 .resize-handle[data-orientation="horizontal"]::after { width: 1px; }
 .resize-handle[data-orientation="vertical"]::after { height: 1px; }
