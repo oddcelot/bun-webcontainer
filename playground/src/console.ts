@@ -180,7 +180,7 @@ export function createConsole(
   let latest: ThemeLike | undefined;
   let resize: ResizeObserver | undefined;
 
-  async function open(el: HTMLElement, attached: () => boolean) {
+  async function open(el: HTMLElement, attached: () => boolean): Promise<Terminal | undefined> {
     const [{ Terminal }, { FitAddon }, { WebLinksAddon }, { UnicodeGraphemesAddon }] = await xterm();
     if (!attached()) return;
     const next = new Terminal({
@@ -205,33 +205,47 @@ export function createConsole(
     next.onData((data) => {
       for (const [t] of data.matchAll(TOKENS)) key(t);
     });
+    // The transcript replays into every terminal that opens, so output logged before it (or into one that
+    // was replaced) isn't lost.
     if (lines.length) next.write(lines.join(""));
-    lines.length = 0;
     term = next;
     redraw();
+    return next;
   }
 
+  let detach: (() => void) | undefined;
+
   const api = {
-    /** Opens the terminal in `el` (on the first theme; later ones restyle it in place). Returns the detach. */
+    /**
+     * Opens the terminal in `el` (on the first theme; later ones restyle it in place). Returns the detach.
+     * One element at a time: Solid can run the pane's setup for a render it then discards, and a new attach
+     * replaces the last, so the terminal that receives output and themes is the one on screen.
+     */
     attach(el: HTMLElement) {
+      detach?.();
       let attached = true;
-      let opening: Promise<void> | undefined;
+      let mine: Terminal | undefined;
+      let opening: Promise<unknown> | undefined;
       const untheme = onTheme((_, theme) => {
         latest = theme;
-        if (term) term.options.theme = terminalTheme(theme);
-        else opening ??= open(el, () => attached);
+        if (mine) mine.options.theme = terminalTheme(theme);
+        else opening ??= open(el, () => attached).then((t) => void (mine = t));
       });
-      return () => {
+      const off = () => {
+        if (!attached) return;
         attached = false;
         untheme();
         resize?.disconnect();
-        term?.dispose();
-        term = undefined;
+        mine?.dispose();
+        if (term === mine) term = undefined;
+        if (detach === off) detach = undefined;
       };
+      return (detach = off);
     },
     log(level: string, text: string) {
       const line = format(level, text);
-      if (!term) return void push(line);
+      push(line);
+      if (!term) return;
       // Above the prompt: clear its row, print, draw it again.
       term?.write((busy ? "" : "\r\x1b[2K") + line);
       redraw();
