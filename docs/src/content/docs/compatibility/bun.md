@@ -27,7 +27,8 @@ Reported version: `Bun.version` is `1.4.4-browser`. Labels are explained on the 
 | `Bun.gc` | ⚪ Stub | Does nothing. |
 | `Bun.spawn`, `Bun.spawnSync`, `Bun.$` | ❌ Missing | No processes in the browser. |
 | `Bun.CryptoHasher` | ✅ Works | md5, ripemd160, sha1, sha2, sha3, blake2; HMAC with a key; `copy`, static `hash`. No md4 or shake. |
-| `Bun.password`, `Bun.hash` | ❌ Missing | Use `Bun.CryptoHasher`, `node:crypto` or `crypto.subtle`. |
+| `Bun.hash` | 🟡 Partial | `wyhash` (the default), `adler32`, `crc32`, `xxHash32`, `xxHash64`, `murmur32v2`, `murmur32v3`, `murmur64v2`, all matching Bun's output. `cityHash32`, `cityHash64`, `xxHash3` and `rapidhash` throw. |
+| `Bun.password` | ❌ Missing | Use `Bun.CryptoHasher`, `node:crypto` or `crypto.subtle`. |
 | `Bun.Glob`, `Bun.Transpiler` | ❌ Missing | |
 | `Bun.resolveSync`, `Bun.stdin` | ❌ Missing | |
 | `Bun.sql`, `Bun.redis`, `Bun.s3` | ❌ Missing | |

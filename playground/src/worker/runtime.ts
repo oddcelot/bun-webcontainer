@@ -4,6 +4,7 @@ import { dirname, norm, VFS } from "../vfs";
 import { BUN_NAMES, builtins, installTimers, setFs, setStdio } from "./node";
 import { bundle, type BundleConfig, type BundleLog } from "./bundler";
 import { setHostVfs } from "./hostPackages";
+import { hash } from "./hash";
 import { CryptoHasher } from "./node/crypto";
 import { fsError } from "./node/errors";
 import { hooks, type NodeSocket } from "./node/serve";
@@ -742,6 +743,7 @@ async function main() {
     serve: (opts: ServeOptions) => createInstance(opts).server,
     build,
     CryptoHasher,
+    hash,
     // Bun's deflate is raw (no zlib header), like its inflate.
     gzipSync: (d: Compressible, o?: { level?: number }) => fflate.gzipSync(compressible(d), level(o)),
     gunzipSync: (d: Compressible) => fflate.gunzipSync(compressible(d)),
