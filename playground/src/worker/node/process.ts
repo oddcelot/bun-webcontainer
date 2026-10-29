@@ -1,4 +1,5 @@
 import EventEmitter from "events";
+import { BUN_VERSION } from "../bunVersion";
 
 type Sink = (level: "log" | "error", text: string) => void;
 
@@ -84,7 +85,7 @@ const process: Record<string, any> = Object.assign(new EventEmitter(), {
   platform: "linux",
   arch: "x64",
   version: "v24.3.0",
-  versions: { node: "24.3.0", bun: "1.4.4-browser", v8: "13.6.233.10-node.18", uv: "1.51.0", modules: "137" },
+  versions: { node: "24.3.0", bun: `${BUN_VERSION}-browser`, v8: "13.6.233.10-node.18", uv: "1.51.0", modules: "137" },
   release: { name: "node", lts: "Krypton" },
   features: {},
   config: { variables: {} },

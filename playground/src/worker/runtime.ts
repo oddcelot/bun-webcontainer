@@ -10,6 +10,7 @@ import { flushDatabases } from "./node/sqlite";
 import nodePath from "./node/path";
 import process, { env } from "./node/process";
 import { runTestFiles } from "./node/test";
+import { BUN_VERSION } from "./bunVersion";
 
 type Handler = (req: Request, server: unknown) => Response | Promise<Response>;
 type HtmlImport = { __htmlImport: string };
@@ -591,7 +592,7 @@ globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
 async function main() {
   const semver = await loadSemver();
   g.Bun = {
-    version: "1.4.4-browser",
+    version: `${BUN_VERSION}-browser`,
     env,
     gc: () => {},
     sleep: (ms: number) => new Promise((r) => setTimeout(r, ms)),
