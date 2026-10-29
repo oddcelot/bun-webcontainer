@@ -1,7 +1,7 @@
-import { For, useContext } from "solid-js";
+import { useContext } from "solid-js";
 import logo from "../bun-logo.svg";
-import { examples, repoExamples } from "../examples";
 import { AppContext } from "./context";
+import { ProjectPicker } from "./ProjectPicker";
 import { ShareMenu } from "./ShareMenu";
 import { ThemePicker } from "./ThemePicker";
 import { Title } from "./Title";
@@ -61,17 +61,7 @@ export function Header() {
         <i class="i-lucide-github" aria-hidden="true" />
         <span class="label">Open GitHub repo</span>
       </button>
-      <select
-        id="example"
-        title="Example project"
-        value={s.project().selected}
-        onChange={(e) => e.currentTarget.value !== "#shared" && app.openProject(e.currentTarget.value)}
-      >
-        <option value="">Confetti demo</option>
-        <For each={Object.entries(examples)}>{([name, label]) => <option value={name}>{label}</option>}</For>
-        <For each={Object.entries(repoExamples)}>{([name, label]) => <option value={`repo:${name}`}>{label}</option>}</For>
-        <For each={s.project().extra}>{([label, value]) => <option value={value}>{label}</option>}</For>
-      </select>
+      <ProjectPicker />
       <input
         ref={folderInput}
         id="folderinput"

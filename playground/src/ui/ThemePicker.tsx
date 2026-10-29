@@ -95,7 +95,7 @@ export function ThemePicker() {
         placement="bottom-end"
         gutter={6}
         itemComponent={(p) => (
-          <Select.Item item={p.item} class="theme-option" onFocus={() => preview(p.item.rawValue)}>
+          <Select.Item item={p.item} class="select-option" onFocus={() => preview(p.item.rawValue)}>
             <Swatch light={p.item.rawValue.light} />
             <Select.ItemLabel class="name">{p.item.rawValue.name}</Select.ItemLabel>
             <Select.ItemIndicator class="check">
@@ -103,9 +103,9 @@ export function ThemePicker() {
             </Select.ItemIndicator>
           </Select.Item>
         )}
-        sectionComponent={(p) => <Select.Section class="theme-section">{p.section.rawValue.label}</Select.Section>}
+        sectionComponent={(p) => <Select.Section class="select-section">{p.section.rawValue.label}</Select.Section>}
       >
-        <Select.Trigger id="theme" title="Theme" aria-label="Theme">
+        <Select.Trigger id="theme" class="select-trigger" title="Theme" aria-label="Theme">
           <Select.Value<Family> class="value">
             {(state) => (
               <>
@@ -119,8 +119,8 @@ export function ThemePicker() {
           </Select.Icon>
         </Select.Trigger>
         <Select.Portal>
-          <Select.Content class="theme-menu">
-            <Select.Listbox class="theme-list" />
+          <Select.Content class="select-menu">
+            <Select.Listbox class="select-list" />
           </Select.Content>
         </Select.Portal>
       </Select>
