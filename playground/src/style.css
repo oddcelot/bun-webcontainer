@@ -85,9 +85,25 @@ html[data-booting] body > header > * { visibility: hidden; animation: boot-fallb
 #status[data-state="error"] { --dot: var(--error); color: var(--error); border-color: color-mix(in srgb, var(--error) 45%, var(--panel)); }
 @keyframes status-pulse { to { opacity: 0.3; } }
 @media (prefers-reduced-motion: reduce) { #status[data-state="busy"]::before { animation: none; } }
-main { flex: 1; min-height: 0; display: grid; grid-template-columns: 200px 1fr 1fr; }
-#tree { min-height: 0; border-right: 1px solid var(--border); }
-#editor-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+main { flex: 1; min-height: 0; }
+main [data-kb-resizable-root] { height: 100%; }
+#tree { height: 100%; }
+/*
+ * Draggable borders between the panes: a 1px line with a wider hit area that overlaps its neighbours (negative
+ * margins, net zero), so the handles take no room from the panels' fractional sizes. The accent shows while hovered or dragged.
+ */
+.resize-handle { position: relative; z-index: 5; padding: 0; border: 0; background: none; outline: none; }
+.resize-handle[data-orientation="horizontal"] { width: 6px; margin: 0 -3px; }
+.resize-handle[data-orientation="vertical"] { height: 6px; margin: -3px 0; }
+.resize-handle::after { content: ""; position: absolute; inset: 0; margin: auto; background: var(--border); transition: background-color 0.1s; }
+.resize-handle[data-orientation="horizontal"]::after { width: 1px; }
+.resize-handle[data-orientation="vertical"]::after { height: 1px; }
+.resize-handle[data-active]::after, .resize-handle:focus-visible::after { background: var(--accent); }
+.resize-handle[data-orientation="horizontal"][data-active]::after, .resize-handle[data-orientation="horizontal"]:focus-visible::after { width: 3px; }
+.resize-handle[data-orientation="vertical"][data-active]::after, .resize-handle[data-orientation="vertical"]:focus-visible::after { height: 3px; }
+/* Frames under the pointer would swallow the drag's pointer events. */
+body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
+#editor-pane { height: 100%; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 #editor { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 /* Over the editor surface, not above it: the surface stays put when a file opens. */
 #editor[data-empty]::before { content: "No file open"; position: absolute; inset: 0; z-index: 1; display: grid; place-items: center; background: var(--bg); color: var(--muted); }
@@ -106,8 +122,8 @@ main { flex: 1; min-height: 0; display: grid; grid-template-columns: 200px 1fr 1
 .tabs .close:hover { opacity: 1; background: var(--control-hover); }
 #editor .pierre-host { height: 100%; overflow: auto; background: var(--bg); }
 #example, #theme { background: var(--control); color: var(--fg); border: 1px solid var(--control-border); border-radius: 4px; padding: 3px 6px; }
-#right { display: grid; grid-template-rows: 1fr 1fr; min-width: 0; min-height: 0; border-left: 1px solid var(--border); }
-#preview-wrap { display: flex; flex-direction: column; min-height: 0; }
+#preview-panel { display: flex; flex-direction: column; }
+#preview-wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 /* Expanded: almost the whole window, over the playground; the frame stays where it is, so it doesn't reload. */
 #preview-wrap.expanded { position: fixed; inset: 2.5vh 2.5vw; z-index: 20; background: var(--bg); border: 1px solid var(--control-border); border-radius: 8px; overflow: hidden; box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6); }
 #preview-backdrop { position: fixed; inset: 0; z-index: 19; background: rgba(0, 0, 0, 0.55); }
@@ -132,7 +148,7 @@ main { flex: 1; min-height: 0; display: grid; grid-template-columns: 200px 1fr 1
 #preview-tabs .method { flex-shrink: 0; font: 10px/1 ui-monospace, monospace; padding: 2px 4px; border-radius: 3px; background: var(--control); }
 #preview-tabs .add { display: grid; place-items: center; padding: 0 10px; border: 0; background: none; color: var(--muted); cursor: pointer; }
 #preview-tabs .add:hover { color: var(--fg); background: var(--control-hover); }
-#console-wrap { display: flex; flex-direction: column; min-height: 0; border-top: 1px solid var(--border); }
+#console-wrap { display: flex; flex-direction: column; min-height: 0; }
 #console-head { display: flex; align-items: center; gap: 6px; padding: 4px 8px; background: var(--panel); border-bottom: 1px solid var(--border); color: var(--muted); }
 #console-head .label { color: var(--fg); font-weight: 600; }
 #console-head .chip { display: inline-flex; align-items: center; gap: 3px; min-width: 1.6em; justify-content: center; padding: 0 6px; border-radius: 999px; background: var(--control); font: 11px/16px ui-monospace, monospace; }

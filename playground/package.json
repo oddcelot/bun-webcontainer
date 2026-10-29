@@ -13,6 +13,7 @@
     "typecheck:worker": "wrangler types worker/worker-configuration.d.ts && tsc -p worker"
   },
   "dependencies": {
+    "@kobalte/core": "2.0.0-alpha.4",
     "@napi-rs/wasm-runtime": "1.2.5",
     "@noble/hashes": "^2.4.0",
     "@pierre/diffs": "^1.6.2",
