@@ -105,6 +105,14 @@ export class Statement<R = unknown, P extends unknown[] = any[]> {
   finalize(): void {}
 }
 
+/** File databases still open: flushed when the worker is about to be stopped (see flushDatabases). */
+const openFiles = new Set<Database>();
+
+/** Writes every open file database back now; the runtime calls this before Run/Stop terminates the worker. */
+export function flushDatabases() {
+  for (const db of openFiles) db.flush();
+}
+
 export class Database {
   _raw: SqlJsDb;
   _strict: boolean;
@@ -141,6 +149,7 @@ export class Database {
       this._raw = new SQL.Database(bytes?.byteLength ? bytes : undefined);
       if (!readonly) {
         this.file = key;
+        openFiles.add(this);
         if (!bytes) this.touch(); // Bun creates the file on open
       }
     }
@@ -218,6 +227,7 @@ export class Database {
 
   close(): void {
     this.flush();
+    openFiles.delete(this);
     this._raw.close();
   }
 }

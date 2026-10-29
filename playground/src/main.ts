@@ -194,7 +194,7 @@ async function test(files: string[]): Promise<number> {
 
 function stop() {
   if (session.settled().state !== "running") return;
-  runner?.stop();
+  void runner?.stop();
   log("sys", "[stopped]");
   session.setStatus({ state: "idle", text: "Stopped" });
 }
@@ -216,7 +216,8 @@ const exec = createShell({ vfs, log, run, install, test, stop, clear: clearConso
 async function openFolder(files: File[]) {
   await session.started;
   void stopSaving();
-  runner?.stop();
+  // Finished before the clear: a database flushed afterwards would land in the opened folder.
+  await runner?.stop();
   workspace.closeAll();
   vfs.clear();
   const dec = new TextDecoder("utf-8", { fatal: true });

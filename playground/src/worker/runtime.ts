@@ -6,6 +6,7 @@ import { bundle, type BundleConfig, type BundleLog } from "./bundler";
 import { setHostVfs } from "./hostPackages";
 import { fsError } from "./node/errors";
 import { hooks, type NodeSocket } from "./node/serve";
+import { flushDatabases } from "./node/sqlite";
 import nodePath from "./node/path";
 import process, { env } from "./node/process";
 import { runTestFiles } from "./node/test";
@@ -639,6 +640,18 @@ async function main() {
 }
 
 const booted = main();
+
+// The page is about to terminate this worker (Run, Stop, bun test): write open databases back first. Their bytes go
+// to the page as "vfs" messages, which arrive before "flushed".
+self.addEventListener("message", (e: MessageEvent) => {
+  if (e.data?.type !== "flush") return;
+  try {
+    flushDatabases();
+  } catch (err) {
+    post({ type: "console", level: "error", text: fmt(err) });
+  }
+  post({ type: "flushed" });
+});
 
 // Page-side edits made after "start" (editor, file tree, installs). Applied straight to the VFS: only node:fs and
 // Bun.write mirror back to the page, so this isn't echoed.

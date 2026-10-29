@@ -15,6 +15,9 @@ function sendText(port: MessagePort, status: number, text: string) {
   port.postMessage({ type: "end" });
 }
 
+/** How long a stopping worker gets to write its databases back. */
+const FLUSH_TIMEOUT = 500;
+
 export type LogFn = (level: string, text: string) => void;
 
 export class Runner {
@@ -97,15 +100,30 @@ export class Runner {
     }
   }
 
-  stop() {
+  /**
+   * Stops the worker. It first gets a moment to write open databases back (their bytes arrive as "vfs" messages),
+   * so a Run or Stop doesn't drop a program's last writes; a worker that doesn't answer in time is terminated anyway.
+   */
+  async stop() {
+    const worker = this.worker;
+    this.worker = undefined;
     for (const [port, started] of this.pending) {
       if (started) port.postMessage({ type: "error", message: "The server stopped." });
       else sendText(port, 503, "The server stopped before it answered.");
     }
     this.pending.clear();
-    if (this.worker) previewChannel.postMessage("stopped");
-    this.worker?.terminate();
-    this.worker = undefined;
+    if (!worker) return;
+    previewChannel.postMessage("stopped");
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, FLUSH_TIMEOUT);
+      worker.addEventListener("message", (e) => {
+        if (e.data?.type !== "flushed") return;
+        clearTimeout(timer);
+        resolve();
+      });
+      worker.postMessage({ type: "flush" });
+    });
+    worker.terminate();
   }
 
   /** Failed tests of the last `runTests`. */
@@ -114,12 +132,15 @@ export class Runner {
   /** `bun test`: runs test files in a fresh worker (replacing any server) and resolves when the run is over. */
   async runTests(files: string[]): Promise<number> {
     await this.start("", files);
-    this.stop();
+    await this.stop();
     return this.failed;
   }
 
-  start(entry: string, tests?: string[]): Promise<void> {
-    this.stop();
+  async start(entry: string, tests?: string[]): Promise<void> {
+    // Before the new worker copies the VFS, so it sees the old one's last database writes. Again if another start
+    // got its worker going meanwhile (Run pressed twice), so none is left running unseen.
+    do await this.stop();
+    while (this.worker);
     const worker = new Worker(new URL("./worker/runtime.ts", import.meta.url), { type: "module" });
     this.worker = worker;
     this.ready = new Promise<void>((resolve) => {
