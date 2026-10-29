@@ -280,7 +280,7 @@ export function switchTheme(change: () => void) {
         // `forwards`: the transition is torn down a frame after the animation ends, and without it the mask falls
         // back to style.css's 0 size for that frame, flashing the old theme. Cancelled once the transition is
         // done, or the filled animation would outlive it and override the next switch's mask.
-        { duration: 400, easing: "linear", fill: "forwards", pseudoElement: "::view-transition-new(root)" },
+        { duration: 250, easing: "linear", fill: "forwards", pseudoElement: "::view-transition-new(root)" },
       );
       transition.finished.finally(() => reveal.cancel());
     })
