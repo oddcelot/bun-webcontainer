@@ -12,11 +12,6 @@ export function Header() {
   const app = useContext(AppContext);
   const s = app.session;
 
-  function newFile() {
-    const name = prompt("File path", "new.ts");
-    if (name) app.newFile(name);
-  }
-
   return (
     <>
       <h1 class="title">
@@ -42,10 +37,6 @@ export function Header() {
       >
         <i class="i-lucide-download" aria-hidden="true" />
         <span class="label">bun install</span>
-      </button>
-      <button id="newfile" title="New file" onClick={newFile}>
-        <i class="i-lucide-file-plus" aria-hidden="true" />
-        <span class="label">New file</span>
       </button>
       <ProjectPicker />
       <span id="status" role="status" data-state={s.status().state} title={s.status().text}>

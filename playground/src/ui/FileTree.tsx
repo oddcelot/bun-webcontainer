@@ -16,7 +16,8 @@ const isDirectory = (item: FileTreeItemHandle | null): item is FileTreeDirectory
 
 /** The VFS as a @pierre/trees file tree. Selecting a file opens it in a tab; files open in tabs get a dot. */
 export function FileTree() {
-  const { vfs, workspace: ws } = useContext(AppContext);
+  const app = useContext(AppContext);
+  const { vfs, workspace: ws } = app;
   let host!: HTMLDivElement;
   let open: ReadonlySet<string> = new Set();
   // The active tab, as last applied. Selecting it below calls onSelectionChange from inside that effect.
@@ -35,12 +36,13 @@ export function FileTree() {
     // A truncated label wraps to 2+ lines, so 1.5lh keeps real truncation working.
     // The open-file dot: small and quiet.
     // style.css's thin scrollbars: scrollbar-width doesn't inherit into the shadow root (the color does).
-    // The search box sits in the pane like the tabs in the others: style.css's --pad in, a concentric corner.
+    // The search box sits in the pane like the tabs in the others: style.css's --pad in, a concentric corner. Its
+    // right end leaves room for the New file button.
     unsafeCSS: `@container measure (height <= 1.5lh) { [data-truncate-marker] { opacity: 0; } }
       [data-item-section="decoration"] { font-size: 5px; color: var(--muted); opacity: 0.8; }
       * { scrollbar-width: thin; }
-      [data-file-tree-search-container] { padding: var(--pad) var(--pad) 4px; }
-      [data-file-tree-search-input] { border-radius: var(--inner-radius); }`,
+      [data-file-tree-search-container] { padding: var(--pad) calc(2 * var(--pad) + var(--control-height)) 4px var(--pad); }
+      [data-file-tree-search-input] { flex: 1; min-width: 0; border-radius: var(--inner-radius); }`,
     onSelectionChange(paths) {
       const [path] = paths;
       if (paths.length === 1 && vfs.files.has(path) && path !== active) ws.open(path);
@@ -130,5 +132,17 @@ export function FileTree() {
     { defer: true },
   );
 
-  return <div ref={host} style={{ height: "100%" }} />;
+  function newFile() {
+    const name = prompt("File path", "new.ts");
+    if (name) app.newFile(name);
+  }
+
+  return (
+    <>
+      <div ref={host} style={{ height: "100%" }} />
+      <button id="newfile" type="button" title="New file" aria-label="New file" onClick={newFile}>
+        <i class="i-lucide-file-plus" aria-hidden="true" />
+      </button>
+    </>
+  );
 }
