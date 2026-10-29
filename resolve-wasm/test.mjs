@@ -1,9 +1,8 @@
-// Runs the resolve-wasm module against a playground-VFS fixture through the `bun_sys` host imports,
-// and compares with the playground's JS resolver (moduleServer.ts) and, if `bun` is on PATH, with
-// real Bun (`Bun.resolveSync` over the same fixture written to disk).
+// Runs the resolve-wasm module (what the playground's module server resolves with) against a
+// playground-VFS fixture through the `bun_sys` host imports, and compares with real Bun
+// (`Bun.resolveSync` over the same fixture written to disk) if `bun` is on PATH.
 // Run with node >= 24 (Memory64 + native .ts type stripping; bun lacks Memory64):  node test.mjs
 import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
-import { stripTypeScriptTypes } from "node:module";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, dirname as pdirname } from "node:path";
@@ -101,30 +100,7 @@ function wasmResolve(spec, dir, { kind = "import", target = "browser", conds = "
   return status === 0n ? { ok: text } : { err: text };
 }
 
-// The playground's JS resolver, sliced out of moduleServer.ts (it has Vite-only imports, so it can't be imported).
-const src = readFileSync(here("../playground/src/moduleServer.ts"), "utf8");
-const slice = src.slice(src.indexOf("const EXTS"), src.indexOf("let warned"));
-const js = stripTypeScriptTypes(
-  `import { dirname, norm } from ${JSON.stringify(here("../playground/src/vfs.ts").href)};
-${slice}
-export const setConditions = (c) => { CONDITIONS = TARGET_CONDITIONS[c]; };
-export function resolve(vfs, spec, dir) {
-  if (spec.startsWith(".")) return resolveFile(vfs, norm(\`\${dir}/\${spec}\`));
-  if (spec.startsWith("/")) return resolveFile(vfs, norm(spec));
-  if (spec.startsWith("#")) return resolveImports(vfs, spec, dir);
-  return resolveBare(vfs, spec, dir);
-}`,
-);
 const tmp = mkdtempSync(join(tmpdir(), "resolve-wasm-"));
-const jsPath = join(tmp, "js-resolver.mjs");
-writeFileSync(jsPath, js);
-const jsr = await import(jsPath);
-function jsResolve(spec, dir, target) {
-  jsr.setConditions(target === "bun" ? "bun" : "browser");
-  const r = jsr.resolve(vfs, spec, dir.replace(/^\//, ""));
-  return r === null ? { err: "null" } : { ok: "/" + r };
-}
-
 // Real Bun over the same fixture on disk.
 const disk = join(tmp, "fx");
 for (const [p, c] of Object.entries(files)) {
@@ -139,7 +115,7 @@ function bunResolve(spec, dir) {
   return o.startsWith("ERR") ? { err: o } : { ok: o.slice(o.indexOf("/fx/") + 3) };
 }
 
-// [spec, dir, wasm options, expected path (null = not found), compare with JS resolver?, compare with Bun?]
+// [spec, dir, wasm options, expected path (null = not found), (unused), compare with Bun?]
 const cases = [
   ["./a", "/src", {}, "/src/a.ts", 1, 1],
   ["./a.ts", "/src", {}, "/src/a.ts", 1, 1],
@@ -184,7 +160,7 @@ const cases = [
 let failed = 0;
 const mismatches = [];
 const show = (r) => ("ok" in r ? r.ok : `(${r.err.split("\n")[0].slice(0, 60)})`);
-for (const [spec, dir, opts, expected, vsJs, vsBun] of cases) {
+for (const [spec, dir, opts, expected, , vsBun] of cases) {
   const label = `${spec} from ${dir} ${JSON.stringify(opts)}`;
   const got = wasmResolve(spec, dir, opts);
   const want = expected === null ? { err: "" } : { ok: expected };
@@ -195,10 +171,6 @@ for (const [spec, dir, opts, expected, vsJs, vsBun] of cases) {
     continue;
   }
   const notes = [];
-  if (vsJs) {
-    const j = jsResolve(spec, dir, opts.target);
-    if (show(j) !== (expected ?? show(j)) && (expected !== null || "ok" in j)) mismatches.push(`JS resolver: ${label}: js=${show(j)} wasm=${show(got)}`);
-  }
   if (vsBun && hasBun) {
     const b = bunResolve(spec, dir.replace(/^\//, ""));
     const same = expected === null ? "err" in b : b.ok === expected;
@@ -233,5 +205,5 @@ rmSync(tmp, { recursive: true, force: true });
 
 console.log(hasBun ? "" : "(bun not on PATH: skipped native comparison)");
 for (const m of mismatches) console.log("MISMATCH " + m);
-console.log(`${cases.length - failed}/${cases.length} cases pass, ${mismatches.length} mismatches vs JS resolver/bun`);
+console.log(`${cases.length - failed}/${cases.length} cases pass, ${mismatches.length} mismatches vs bun`);
 process.exit(failed ? 1 : 0);

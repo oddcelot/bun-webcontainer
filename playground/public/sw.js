@@ -95,7 +95,8 @@ async function serveModule(url, clientId) {
   const path = decodeURIComponent(url.pathname.slice(VFS.length));
   // The worker runs the program (Bun's runtime conditions); a page gets the browser's.
   const r = await ask({ type: "module", path, target: (await windowClient(clientId)) ? "browser" : "bun" });
-  const type = url.pathname.endsWith(".css") ? "text/css" : "text/javascript";
+  // A stylesheet as a `<link>` loads it, CSS imported from code is a module (`__css/<path>`).
+  const type = url.pathname.endsWith(".css") && !path.startsWith("__css/") ? "text/css" : "text/javascript";
   return new Response(r.body, isolated({
     status: r.status,
     headers: { "content-type": `${type}; charset=utf-8`, "cache-control": "no-store" },

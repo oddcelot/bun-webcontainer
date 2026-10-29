@@ -23,6 +23,7 @@ export class VFS {
   readonly mtimes = new Map<string, number>();
   private listeners = new Set<(e: VfsEvent) => void>();
   private dirListeners = new Set<(path: string, removed: boolean) => void>();
+  private clearListeners = new Set<() => void>();
 
   /** Returns the unsubscribe. */
   onChange(fn: (e: VfsEvent) => void) {
@@ -33,6 +34,11 @@ export class VFS {
   /** Fires when a directory is created or removed (file events don't cover empty directories). */
   onDir(fn: (path: string, removed: boolean) => void) {
     this.dirListeners.add(fn);
+  }
+
+  /** Fires after `clear` (and so `load`), which drop everything without per-file events. */
+  onClear(fn: () => void) {
+    this.clearListeners.add(fn);
   }
 
   read(path: string): FileData | undefined {
@@ -63,6 +69,7 @@ export class VFS {
     this.files.clear();
     this.dirs.clear();
     this.mtimes.clear();
+    for (const fn of this.clearListeners) fn();
   }
 
   /** Replaces the contents with another VFS's snapshot (the worker's copy of the page VFS). */
