@@ -86,6 +86,12 @@ export function onTheme(fn: (name: string, theme: ThemeLike) => void) {
 
 const families = Object.values(FAMILIES).flat();
 
+// Every family's themes into the controller's cache once the page is idle: a cached theme applies in the same call,
+// so picking or previewing one in the theme picker shows at once instead of waiting for its module to load.
+(window.requestIdleCallback ?? ((fn: () => void) => setTimeout(fn, 1000)))(() => {
+  controller.resolver.resolveThemes(families.flatMap(([, light, dark]) => [light, dark])).catch(() => {});
+});
+
 /** Sets both halves of a theme family, given its light variant. */
 export function pickFamily(light: string) {
   const [, , dark] = families.find((f) => f[1] === light)!;

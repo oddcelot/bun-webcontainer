@@ -38,18 +38,12 @@ export function ThemePicker() {
   onSettled(() => watchTheme((s) => setTheme({ ...s })));
   const current = () => ALL.find((f) => f.light === familyOf(theme())) ?? null;
 
-  // Live preview: the family under the pointer or keyboard focus applies (after a short pause, so running down the
-  // list doesn't restyle the editor for each one) without the reveal; closing without a pick puts the old one back.
+  // Live preview: the family under the pointer or keyboard focus applies right away (theme.ts preloads them all),
+  // without the reveal; closing without a pick puts the old one back.
   // While open, the select shows the family it opened with, so the check mark and focus don't follow the preview.
   const [opened, setOpened] = createSignal<Family | null>(null);
   let picked = false;
-  let pending: ReturnType<typeof setTimeout> | undefined;
-  const preview = (f: Family) => {
-    clearTimeout(pending);
-    pending = setTimeout(() => pickFamily(f.light), 120);
-  };
   const onOpenChange = (open: boolean) => {
-    clearTimeout(pending);
     if (open) {
       picked = false;
       setOpened(current());
@@ -87,7 +81,6 @@ export function ThemePicker() {
         onChange={(f) => {
           if (!f) return;
           picked = true;
-          clearTimeout(pending);
           // Previewed already: no reveal for a change that's on screen.
           if (familyOf(themeState()) === f.light) return;
           switchTheme(() => pickFamily(f.light));
@@ -95,7 +88,7 @@ export function ThemePicker() {
         placement="bottom-end"
         gutter={6}
         itemComponent={(p) => (
-          <Select.Item item={p.item} class="select-option" onFocus={() => preview(p.item.rawValue)}>
+          <Select.Item item={p.item} class="select-option" onFocus={() => pickFamily(p.item.rawValue.light)}>
             <Swatch light={p.item.rawValue.light} />
             <Select.ItemLabel class="name">{p.item.rawValue.name}</Select.ItemLabel>
             <Select.ItemIndicator class="check">
