@@ -48,7 +48,7 @@ export class Runner {
    */
   private pending = new Map<MessagePort, boolean>();
   /** The preview host's cookies; kept across Runs, as a browser keeps them across server restarts. */
-  private cookies = new CookieJar();
+  readonly cookies = new CookieJar();
 
   /** Request headers with the jar's Cookie in place of any the request brought. */
   private withCookies(path: string, headers: [string, string][]) {

@@ -194,7 +194,7 @@ async function reset() {
   location.reload();
 }
 
-const exec = createShell({ vfs, log, run, install, stop, clear: clearConsole, reset });
+const exec = createShell({ vfs, log, run, install, stop, clear: clearConsole, reset, cookies: runner?.cookies });
 
 async function openFolder(files: File[]) {
   await session.started;

@@ -1,3 +1,4 @@
+import type { CookieJar } from "./cookieJar";
 import type { VFS } from "./vfs";
 
 type Log = (level: string, text: string) => void;
@@ -13,6 +14,8 @@ export interface ShellHost {
   clear(): void;
   /** Forget this project's saved files and reload it from its source. */
   reset(): Promise<void>;
+  /** The preview servers' cookies (absent when this browser can't run code). */
+  cookies?: CookieJar;
 }
 
 type Pkg = { scripts?: Record<string, string>; dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
@@ -28,6 +31,7 @@ bun add <pkg> [-d]     add (dev) dependencies
 bun remove <pkg>       remove dependencies
 ls [dir]  cat <file>  clear  help
 reset                  discard saved files, reload from source
+cookies [clear]        list (or delete) the preview's cookies
 
 ↑/↓ history  Ctrl+C clear line or stop server
 Ctrl+L clear console`;
@@ -35,6 +39,19 @@ Ctrl+L clear console`;
 export function createShell(host: ShellHost) {
   const { vfs, log } = host;
   const fail = (text: string) => log("error", text);
+
+  function cookies(sub?: string) {
+    const jar = host.cookies;
+    if (!jar) return fail("cookies: this browser can't run code");
+    if (sub === "clear") return jar.clear(), log("sys", "[cookies] cleared");
+    if (sub) return fail(`cookies: unknown option ${sub}`);
+    const all = jar.list();
+    if (!all.length) return log("log", "(no cookies)");
+    for (const c of all) {
+      const expires = c.expires === Infinity ? "session" : `expires ${new Date(c.expires).toISOString()}`;
+      log("log", `${c.name}=${c.value}  path=${c.path}  ${expires}`);
+    }
+  }
 
   function readPkg(): Pkg | undefined {
     try {
@@ -120,6 +137,7 @@ export function createShell(host: ShellHost) {
     try {
       if (cmd === "help") return log("log", HELP);
       if (cmd === "reset") return await host.reset();
+      if (cmd === "cookies") return cookies(args[0]);
       if (cmd === "clear") return host.clear();
       if (cmd === "ls") return ls(args[0]);
       if (cmd === "cat") return cat(args[0]);

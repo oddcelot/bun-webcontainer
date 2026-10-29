@@ -1,7 +1,7 @@
 // Preview servers can't use the browser's cookies: a service worker's synthesized responses can't set them, and the
 // requests it intercepts don't carry them. So the page keeps them, like a browser would for the preview's host.
 
-type Cookie = { name: string; value: string; path: string; expires: number };
+export type Cookie = { name: string; value: string; path: string; expires: number };
 
 /** RFC 6265 default-path: the request path up to its last "/". */
 const defaultPath = (reqPath: string) => {
@@ -41,6 +41,16 @@ export class CookieJar {
       if (c.expires <= Date.now()) this.cookies.delete(key);
       else this.cookies.set(key, c);
     }
+  }
+
+  /** The cookies currently kept (expired ones dropped). */
+  list(): Readonly<Cookie>[] {
+    this.header("/");
+    return [...this.cookies.values()];
+  }
+
+  clear() {
+    this.cookies.clear();
   }
 
   /** The Cookie header for a request to `reqPath`, or undefined when no cookie applies. Longer paths go first. */
