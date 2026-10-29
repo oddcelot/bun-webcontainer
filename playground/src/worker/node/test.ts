@@ -45,8 +45,8 @@ function diff(expected: unknown, received: unknown): string {
   let j = 0;
   while (i < a.length || j < b.length) {
     if (i < a.length && j < b.length && a[i] === b[j]) out.push({ sign: " ", text: a[i++] }), j++;
-    else if (j < b.length && (i === a.length || lcs[i][j + 1] >= lcs[i + 1][j])) out.push({ sign: "+", text: b[j++] });
-    else out.push({ sign: "-", text: a[i++] });
+    else if (i < a.length && (j === b.length || lcs[i + 1][j] >= lcs[i][j + 1])) out.push({ sign: "-", text: a[i++] });
+    else out.push({ sign: "+", text: b[j++] });
   }
   const keep = out.map((l, k) => l.sign !== " " || out.slice(Math.max(0, k - 2), k + 3).some((x) => x.sign !== " "));
   const lines: string[] = [];
