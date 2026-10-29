@@ -151,6 +151,7 @@ let lastEntry: string | undefined;
 
 async function run(entry = entryFile()) {
   if (!runner) return cantRun();
+  workspace.saveAll();
   await session.task("run", "Starting…", async (): Promise<Status> => {
     log("sys", `[run] ${entry}`);
     lastEntry = entry;
@@ -167,6 +168,7 @@ async function run(entry = entryFile()) {
 
 async function install() {
   if (!semver) return cantRun();
+  workspace.saveAll();
   // A running server keeps running through an install, so the status goes back to what it was.
   await session.task("install", "Installing…", async () => {
     log("sys", "[bun install]");
@@ -182,6 +184,7 @@ async function install() {
 /** `bun test`: a fresh worker runs the files; a server that was running is started again afterwards. */
 async function test(files: string[]): Promise<number> {
   if (!runner) return cantRun(), 0;
+  workspace.saveAll();
   const wasRunning = session.settled().state === "running";
   let failed = 0;
   await session.task("run", "Testing…", async (): Promise<Status> => {
