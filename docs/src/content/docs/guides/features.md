@@ -1,0 +1,86 @@
+---
+title: Features
+description: "A tour of the playground: editor, console, running code, preview, installs and projects."
+sidebar:
+  order: 2
+---
+
+## Editor and files
+
+- Syntax-highlighted editor with themes and light/dark mode
+- File tree with search and a "New file" button
+- Tabs for open files: close with the × button, <kbd>Delete</kbd>, or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>W</kbd>
+- Resizable panes
+- **Open folder** loads a folder from your computer (skips `node_modules` and `.git`)
+
+Not yet: autocomplete, type checking, renaming or deleting files from the tree. Very large files are slow, because every line is rendered.
+
+## Console
+
+A terminal with colors, clickable links, history (<kbd>↑</kbd>/<kbd>↓</kbd>) and line editing (<kbd>Ctrl</kbd>+<kbd>A</kbd>/<kbd>E</kbd>/<kbd>U</kbd>). <kbd>Ctrl</kbd>+<kbd>C</kbd> on an empty line stops the server; <kbd>Ctrl</kbd>+<kbd>L</kbd> clears.
+
+| Command | Does |
+|---|---|
+| `bun run <script\|file>`, `bun <file>` | Run a `package.json` script or a file |
+| `bun test [filter…]` | Run `*.test.*` / `*.spec.*` files with [`bun:test`](/compatibility/bun/#buntest) |
+| `bun install` (`i`) | Install dependencies |
+| `bun add <pkg[@range]> [-d]` (`a`) | Add a dependency |
+| `bun remove <pkg>` (`rm`) | Remove a dependency |
+| `ls [dir]`, `cat <file>` | List a folder, print a file |
+| `cookies [clear]` | List or clear the preview's cookies |
+| `reset` | Throw away your changes and reload the project from its source |
+| `clear`, `help` | |
+
+The console is not a full shell: no quotes, pipes, `&&`, `bunx`, or file commands like `mkdir` and `mv`.
+
+## Running code
+
+**Run** starts your code in a Web Worker. It runs the first of:
+
+1. `module` or `main` in `package.json`
+2. the file in `scripts.dev` or `scripts.start` (`"dev": "bun --watch src/index.ts"` works)
+3. `index.ts`, `index.tsx`, `index.js` or `src/index.ts`
+
+- Press **Run** again to restart. Stop with <kbd>Ctrl</kbd>+<kbd>C</kbd> or the stop action.
+- Edits reach the running code: the next import or request sees them, and `fs.watch` fires. The server isn't restarted automatically: `--watch` and `--hot` are ignored.
+- Scripts must have the form `bun <file>`. Scripts like `vite`, `astro dev` or `tsc && …` can't run; start those tools from a file instead (see [Frameworks](/compatibility/frameworks/)).
+
+## Preview
+
+When your code starts a server (`Bun.serve`, `node:http`, or `export default { fetch }`), the preview shows it.
+
+- **Request bar:** send any method, path and body. HTML responses open in the page; anything else shows status, headers and the body (JSON is formatted).
+- **Tabs:** several previews at once.
+- **Open in a new tab:** the page gets its own browser tab, still served by the playground (keep the playground tab open).
+- **Requests stay inside:** `fetch("/api/x")`, links, forms and redirects from the preview page reach your server.
+- **WebSockets:** the preview page's `WebSocket` connects to your server (`Bun.serve` `upgrade`, `node:http` `upgrade`, the `ws` package). `localhost:<port>` URLs pick the server on that port.
+- **Streaming:** streamed responses and Server-Sent Events arrive as they're sent.
+- **Cookies:** kept across restarts; see them with `cookies`.
+- **HTML imports:** `import page from "./index.html"` in `Bun.serve` routes is bundled with Bun's bundler.
+- The preview follows the playground's light/dark mode.
+
+Limits: the server isn't reachable from outside the browser, there's no HTTP caching (conditional requests are dropped), and only the preview page can open WebSockets to it.
+
+## Installing packages
+
+Dependencies install automatically when a project opens with missing packages. `bun install` uses `bun.lock` when there is one. Details and limits are in [Toolchain](/compatibility/toolchain/#bun-install).
+
+## Projects
+
+- **Saved as you type**, in your browser. See [Storage and persistence](/guides/storage/).
+- **Share:** the Share menu copies a link with the whole project in the URL (nothing is uploaded), a Markdown badge, or HTML. `node_modules`, `.git`, binary files and secrets (`.env`, keys, `.npmrc`) are left out. Very long links can be shortened to `runbun.dev/s/<id>`.
+- **GitHub:** open any public repo, branch or subfolder from the project picker or with `?repo=`. Up to 500 files; GitHub allows 60 imports an hour per IP.
+- **Examples:** Elysia, Hono, Astro + Solid, Vite, Lit SSR and more in the project picker.
+- **One tab per project:** a second tab with the same project can't save its changes.
+
+### Links
+
+| URL | Opens |
+|---|---|
+| `runbun.dev` | The demo project |
+| `?example=<name>` | A bundled example, e.g. `?example=elysia-demo` |
+| `?repo=owner/repo` | A GitHub repo. Also `owner/repo@ref`, a github.com URL, or `…/tree/<ref>/<dir>` |
+| `#code=…` | A shared project |
+| `/s/<id>` | A short share link |
+
+Your saved changes win over the link's source; use `reset` to start over from it.

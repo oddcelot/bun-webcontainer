@@ -1,0 +1,8 @@
+// Static docs site on docs.runbun.dev; no Worker code, only assets.
+{
+  "name": "bun-playground-docs",
+  "compatibility_date": "2026-10-28",
+  "assets": { "directory": "./dist", "not_found_handling": "404-page" },
+  "routes": [{ "pattern": "docs.runbun.dev", "custom_domain": true }],
+  "workers_dev": true
+}
