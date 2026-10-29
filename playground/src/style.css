@@ -69,7 +69,9 @@ html[data-booting] body > header > * { visibility: hidden; animation: boot-fallb
   header button:has(.label) { padding: 4px 8px; }
 }
 #status { margin-left: auto; min-width: 7.5em; justify-content: center; display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px 2px 7px; border: 1px solid var(--control-border); border-radius: 999px; color: var(--muted); white-space: nowrap; --dot: var(--muted); }
-#status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--dot); }
+/* In a narrow header the text gives way ("…", full text in the tooltip); the dot keeps its size. */
+#status .text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+#status::before { content: ""; flex-shrink: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--dot); }
 #status[data-state="busy"] { --dot: var(--warn); color: var(--fg); }
 #status[data-state="busy"]::before { animation: status-pulse 1s ease-in-out infinite alternate; }
 #status[data-state="running"] { --dot: var(--ok); color: var(--fg); border-color: color-mix(in srgb, var(--ok) 45%, var(--panel)); background: color-mix(in srgb, var(--ok) 12%, var(--panel)); }

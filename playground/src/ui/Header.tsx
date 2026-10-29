@@ -85,8 +85,8 @@ export function Header() {
           if (files.length) app.openFolder(files);
         }}
       />
-      <span id="status" role="status" data-state={s.status().state}>
-        {s.status().text}
+      <span id="status" role="status" data-state={s.status().state} title={s.status().text}>
+        <span class="text">{s.status().text}</span>
       </span>
       <ThemePicker />
     </>
