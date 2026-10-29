@@ -230,15 +230,22 @@ function createInstance(opts: ServeOptions): Instance {
 /**
  * Server-side Responses. `new Response()` drops forbidden header names (Set-Cookie), which a server must send; a
  * standalone `Headers` keeps them, so responses get one built from their init, plus what Response adds itself
- * (a string body's content-type, a form's boundary). `instanceof Response` still holds for the browser's own
- * responses (`fetch()` results).
+ * (a form's boundary). `instanceof Response` still holds for the browser's own responses (`fetch()` results).
+ * Content types follow Bun: a string body has none until it is served (then `text/plain;charset=utf-8`, see
+ * servedHeaders), and `Response.json()` says `application/json;charset=utf-8`.
  */
 const NativeResponse = Response;
+const textBodies = new WeakSet<Response>();
+const hasType = (init?: ResponseInit) => new Headers(init?.headers).has("content-type");
 class ServerResponse extends NativeResponse {
   constructor(body?: BodyInit | null, init?: ResponseInit) {
     super(body, init);
     const headers = new Headers(init?.headers);
     for (const [k, v] of super.headers) if (!headers.has(k)) headers.set(k, v);
+    if (typeof body === "string" && !hasType(init)) {
+      headers.delete("content-type");
+      textBodies.add(this);
+    }
     Object.defineProperty(this, "headers", { value: headers });
   }
   static [Symbol.hasInstance](x: unknown) {
@@ -246,15 +253,23 @@ class ServerResponse extends NativeResponse {
   }
   static json(data: unknown, init?: ResponseInit) {
     const r = new ServerResponse(JSON.stringify(data), init);
-    if (!new Headers(init?.headers).has("content-type")) r.headers.set("content-type", "application/json");
+    if (!hasType(init)) r.headers.set("content-type", "application/json;charset=utf-8");
     return r;
   }
   clone(): Response {
     const c = super.clone();
+    if (textBodies.has(this)) textBodies.add(c);
     return Object.defineProperty(c, "headers", { value: new Headers(this.headers) });
   }
 }
 self.Response = ServerResponse as typeof Response;
+
+/** The headers Bun.serve sends for `res`. */
+function servedHeaders(res: Response): [string, string][] {
+  const headers = [...res.headers];
+  if (textBodies.has(res) && !res.headers.has("content-type")) headers.push(["content-type", "text/plain;charset=utf-8"]);
+  return headers;
+}
 
 /**
  * A server-side Request. `new Request()` drops forbidden header names (Cookie, Origin, Upgrade, Sec-*), which a
@@ -399,7 +414,7 @@ async function serveBundledHtml(imp: HtmlImport): Promise<Response> {
  * then `end`, or `error` if the body fails. A `cancel` from the other end (the page went away) cancels the body.
  */
 async function sendResponse(port: MessagePort, res: Response) {
-  port.postMessage({ type: "head", status: res.status, statusText: res.statusText, headers: [...res.headers] });
+  port.postMessage({ type: "head", status: res.status, statusText: res.statusText, headers: servedHeaders(res) });
   if (!res.body) return port.postMessage({ type: "end" });
   const reader = res.body.getReader();
   port.onmessage = (e) => {
