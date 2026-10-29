@@ -60,11 +60,11 @@ html[data-booting] body > header > * { visibility: hidden; animation: boot-fallb
 #modes button:last-child { border-radius: 0 4px 4px 0; }
 /*
  * Pressed: the icon keeps the text color (an accent icon can be fainter than its neighbours); the mark is an accent
- * line, inset from the sides so it stays straight inside the outer buttons' rounded corners.
+ * line on the bottom edge, inset from the sides (past the 4px corner radius) so it stays straight on the outer buttons.
  */
 #modes button { position: relative; }
 #modes button[aria-pressed="true"] { background: var(--control-hover); }
-#modes button[aria-pressed="true"]::after { content: ""; position: absolute; left: 5px; right: 5px; bottom: 2px; height: 2px; border-radius: 1px; background: var(--accent); }
+#modes button[aria-pressed="true"]::after { content: ""; position: absolute; left: 5px; right: 5px; bottom: 0; height: 2px; border-radius: 1px 1px 0 0; background: var(--accent); }
 .title { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: inherit; white-space: nowrap; }
 /* Read by screen readers and crawlers, not shown: the h1's stable name next to the random visible one. */
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
