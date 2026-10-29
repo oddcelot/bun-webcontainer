@@ -11,10 +11,10 @@ These ship as examples in the playground (project picker → Examples). Unless n
 |---|---|---|
 | [Elysia](https://runbun.dev/?example=elysia-demo) 1.4 | ✅ Works | Every route returns the same status and body as real Bun. |
 | [Elysia 2 (rc)](https://runbun.dev/?example=elysia2-demo) | ✅ Works | Same check as above. |
-| [Hono](https://runbun.dev/?repo=honojs/starter/tree/main/templates/bun) | ❔ Untested | Bun starter template, from GitHub. Listed as an example; no recorded check yet. |
+| [Hono](https://runbun.dev/?repo=honojs/starter/tree/main/templates/bun) | ✅ Works | Bun starter template, from GitHub. Installs and serves `Hello Hono!`. |
 | [Lit SSR + Elysia](https://runbun.dev/?repo=oddcelot/lit-devtools/tree/main/examples/elysia) | ✅ Works | Streams Lit SSR, hydrates, uses `bun:sqlite` and WebSockets. |
 | [Astro + Solid](https://runbun.dev/?example=astro-solid-demo) | 🟡 Partial | Astro 7 dev server, on-demand pages, a hydrated Solid island and an API route. HMR and the dev toolbar are off. |
-| [Vite](https://runbun.dev/?example=vite-demo) | 🟡 Partial | Vite 8 dev server, started from a script with `createServer()`. HMR connects over the preview's WebSocket; not yet tested end to end. |
+| [Vite](https://runbun.dev/?example=vite-demo) | ✅ Works | Vite 8 dev server, started from a script with `createServer()`. HMR works over the preview's WebSocket: CSS edits apply in place, other edits reload the page as Vite decides. |
 | [Node built-ins demo](https://runbun.dev/?example=node-demo) | ✅ Works | Output matches real Bun. |
 | [`bun.lock` demo](https://runbun.dev/?example=lockfile-demo) | ✅ Works | Nested installs from a lockfile. |
 
@@ -22,7 +22,7 @@ These ship as examples in the playground (project picker → Examples). Unless n
 
 - **CLI scripts.** Only `"script": "bun <file>"` runs. Start the dev server from a file instead (for example `createServer()` in Vite, `dev()` in Astro).
 - **Native bindings** without a wasm fallback.
-- **Child processes** (`child_process`, `Bun.spawn`) and `zlib`.
+- **Child processes** (`child_process`, `Bun.spawn`).
 - **Install scripts**, which never run.
 
 Tried something? [Tell us](https://github.com/oddcelot/bun-webcontainer/issues) whether it worked.
