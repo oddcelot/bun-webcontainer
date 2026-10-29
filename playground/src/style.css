@@ -180,17 +180,22 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
 .tabs { display: flex; gap: 4px; padding: var(--pad); overflow-x: auto; background: var(--bg); border-bottom: 1px solid var(--border); }
 #tabs:empty { display: none; }
 /* Tabs size to their name up to 26rem (about 42 characters) (then "…"; the tooltip has the full path) and don't shrink: a full bar scrolls. */
+.tabs-root { display: contents; }
+.tabs .tablist, .tabs.tablist { display: flex; gap: 4px; }
+.tabs .tablist { flex: 0 0 auto; }
 .tabs .tab { position: relative; display: flex; flex: 0 0 auto; align-items: center; gap: 6px; min-width: 6rem; max-width: 26rem; padding: 4px 6px 4px 10px; border-radius: var(--inner-radius); color: var(--muted); cursor: pointer; white-space: nowrap; user-select: none; }
 .tabs .tab:hover { color: var(--fg); background: var(--control); }
-.tabs .tab[aria-selected="true"] { background: var(--control-hover); color: var(--fg); }
+.tabs .tab[data-selected] { background: var(--control-hover); color: var(--fg); }
 /* The same mark as the pressed color-scheme button: an accent line on the bottom edge, inset past the corners. */
-.tabs .tab[aria-selected="true"]::after { content: ""; position: absolute; left: 7px; right: 7px; bottom: 0; height: 2px; border-radius: 1px 1px 0 0; background: var(--accent); }
-.tabs .tab:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.tabs .tab[data-selected]::after { content: ""; position: absolute; left: 7px; right: 7px; bottom: 0; height: 2px; border-radius: 1px 1px 0 0; background: var(--accent); }
+.tabs .tab:has(:focus-visible) { outline: 1px solid var(--accent); outline-offset: -1px; }
+/* Kobalte's trigger is the tab's label: a bare button inside the tab box, which draws the tab. */
+.tabs .tab-trigger { display: flex; flex: 1 1 auto; align-items: center; gap: 6px; min-width: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; outline: none; white-space: nowrap; }
 .tabs .name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* The folder hint gives way before the name does. */
 .tabs .dir { flex: 0 1000 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 11px; opacity: 0.7; }
 .tabs .close { flex-shrink: 0; display: grid; place-items: center; padding: 2px; border: 0; border-radius: calc(var(--inner-radius) - 4px); background: none; color: inherit; cursor: pointer; opacity: 0; }
-.tabs .tab:hover .close, .tabs .tab[aria-selected="true"] .close { opacity: 0.7; }
+.tabs .tab:hover .close, .tabs .tab[data-selected] .close, .tabs .tab:focus-within .close { opacity: 0.7; }
 .tabs .close:hover { opacity: 1; background: var(--control-hover); }
 #editor .pierre-host { height: 100%; overflow: auto; background: var(--bg); }
 #editor diffs-container { min-height: 100%; }

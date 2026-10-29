@@ -1,5 +1,7 @@
 import { For, Show, createEffect, onSettled, untrack, useContext } from "solid-js";
 import { Select } from "@kobalte/core/select";
+import { Tabs } from "@kobalte/core/tabs";
+import { TabItem, useTabValue } from "./Tabs";
 import type { Card } from "../preview";
 import { AppContext } from "./context";
 import type { PreviewTab } from "./previews";
@@ -20,6 +22,7 @@ export function Preview() {
   // iframes in the order they were opened: moving an iframe in the DOM reloads it.
   const byAge = () => [...s.tabs].sort((a, b) => a.id - b.id);
   const disabled = !app.session.canRun;
+  const tabValue = useTabValue(() => String(s.active));
 
   // Keys pressed in a page stay in its frame; frames forward Escape here too (see onLoad).
   const onKey = (e: KeyboardEvent) => {
@@ -40,12 +43,16 @@ export function Preview() {
     <>
       <div id="preview-backdrop" hidden={!s.expanded} onClick={() => p.setExpanded(false)} />
       <div id="preview-wrap" class={{ expanded: s.expanded }}>
-        <div id="preview-tabs" class="tabs" role="tablist" aria-label="Previews">
-          <For each={s.tabs}>{(tab) => <PreviewTabItem tab={tab} />}</For>
-          <button class="add" type="button" title="New preview" aria-label="New preview" onClick={() => p.request(p.open())}>
-            <i class="i-lucide-plus" aria-hidden="true" />
-          </button>
-        </div>
+        <Tabs class="tabs-root" value={tabValue()} onChange={(id) => id !== tabValue() && p.activate(Number(id))}>
+          <div id="preview-tabs" class="tabs">
+            <Tabs.List class="tablist" aria-label="Previews">
+              <For each={s.tabs}>{(tab) => <PreviewTabItem tab={tab} />}</For>
+            </Tabs.List>
+            <button class="add" type="button" title="New preview" aria-label="New preview" onClick={() => p.request(p.open())}>
+              <i class="i-lucide-plus" aria-hidden="true" />
+            </button>
+          </div>
+        </Tabs>
         <form
           id="request"
           onSubmit={(e) => {
@@ -142,37 +149,20 @@ export function Preview() {
 
 function PreviewTabItem(props: { tab: PreviewTab }) {
   const { previews: p } = useContext(AppContext);
-  const selected = () => props.tab.id === p.state.active;
   const closable = () => p.state.tabs.length > 1;
   return (
-    <div
-      class="tab"
-      role="tab"
+    <TabItem
+      value={String(props.tab.id)}
+      selected={props.tab.id === p.state.active}
       title={props.tab.title || `${props.tab.method} ${props.tab.path}`}
-      tabindex={selected() ? 0 : -1}
-      aria-selected={selected() ? "true" : "false"}
-      onClick={() => p.activate(props.tab.id)}
-      onAuxClick={(e) => e.button === 1 && closable() && p.close(props.tab.id)}
+      onClose={closable() ? () => p.close(props.tab.id) : undefined}
+      closeLabel={`Close ${props.tab.path}`}
     >
       <Show when={props.tab.method !== "GET"}>
         <span class="method">{props.tab.method}</span>
       </Show>
       <span class="name">{props.tab.path}</span>
-      <Show when={closable()}>
-        <button
-          class="close"
-          title={`Close ${props.tab.path}`}
-          aria-label={`Close ${props.tab.path}`}
-          tabindex={-1}
-          onClick={(e) => {
-            e.stopPropagation();
-            p.close(props.tab.id);
-          }}
-        >
-          <i class="i-lucide-x" aria-hidden="true" />
-        </button>
-      </Show>
-    </div>
+    </TabItem>
   );
 }
 
