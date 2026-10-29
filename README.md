@@ -6,6 +6,7 @@ JSC-independent Rust crates compiled to wasm64 (Memory64) plus JS shims for the 
 | Path | What |
 |---|---|
 | `playground/` | The app: editor, file tree, VFS, worker runtime, `Bun.serve` preview, `bun install` (see its README) |
+| `docs/` | Docs site (Astro Starlight) for docs.runbun.dev: features and compatibility |
 | `transpile-wasm/` | Bun's transpiler (`bun_js_parser` + `bun_js_printer`) as wasm64 |
 | `semver-wasm/` | `bun_semver` as wasm64 |
 | `sys-wasm/` | probe: `bun_sys` file ops on wasm64 through host imports over the playground VFS |

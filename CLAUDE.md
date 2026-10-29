@@ -73,6 +73,7 @@ W="-Zbuild-std=std,panic_abort --target wasm64-unknown-unknown --release"
 (cd resolve-wasm && cargo build $W && node test.mjs)     # bun_resolver over the VFS vs JS resolver and bun (node >= 24)
 (cd shim-test && cargo +$TOOLCHAIN test)         # TOOLCHAIN from scripts/bun-pins.sh
 (cd playground && bunx tsc --noEmit && bun run dev)      # verify in Chrome (Memory64)
+(cd docs && bun run check && bun run build)               # docs site; `bun run deploy` publishes docs.runbun.dev
 ```
 
 Use `cargo +$TOOLCHAIN` (the nightly in `scripts/bun-pins.sh`) inside `bun/` (don't let its rust-toolchain.toml
