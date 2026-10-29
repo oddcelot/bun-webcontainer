@@ -115,6 +115,18 @@ function sync() {
   applyVars(vars);
   localStorage.setItem(VARS_KEY, JSON.stringify(vars));
   for (const fn of listeners) fn(themeName(), applied);
+  for (const resolve of appliedWaiters.splice(0)) resolve();
+}
+
+const appliedWaiters: (() => void)[] = [];
+/** Resolves once the theme the controller asks for is applied (themes load lazily), or right away if it is. */
+function themeApplied(timeout = 1500): Promise<void> {
+  const { resolvedTheme, pendingThemeResolution } = controller.getState();
+  if (!pendingThemeResolution && resolvedTheme === source) return Promise.resolve();
+  return new Promise((resolve) => {
+    appliedWaiters.push(resolve);
+    setTimeout(resolve, timeout); // a theme that never loads doesn't hold the page
+  });
 }
 controller.subscribe(sync);
 sync();
@@ -159,3 +171,31 @@ export const watchTheme = (next: (s: ThemeState) => void) => {
   return controller.subscribe(() => next(controller.getState()));
 };
 export const setColorMode = (mode: ColorMode) => controller.setColorMode(mode);
+
+/**
+ * Runs a theme change (a color mode or family pick) as a view transition: the new colors reveal in a circle growing
+ * from `from`, the control that was used. Without View Transitions, or with reduced motion, it applies at once.
+ */
+export function switchTheme(change: () => void, from?: Element) {
+  if (!("startViewTransition" in document) || matchMedia("(prefers-reduced-motion: reduce)").matches) return change();
+  const transition = document.startViewTransition(async () => {
+    change();
+    await themeApplied();
+    // A microtask for Solid to render the picker's new state. Not a frame: requestAnimationFrame doesn't fire
+    // while the browser waits for this callback, so awaiting one stalls the transition until its 4s timeout.
+    // What repaints later (the editor) still shows up: the new side of the transition is live.
+    await Promise.resolve();
+  });
+  const box = from?.getBoundingClientRect();
+  const x = box ? box.left + box.width / 2 : innerWidth / 2;
+  const y = box ? box.top + box.height / 2 : 0;
+  const radius = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+  transition.ready
+    .then(() =>
+      document.documentElement.animate(
+        { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${radius}px at ${x}px ${y}px)`] },
+        { duration: 450, easing: "cubic-bezier(0.4, 0, 0.2, 1)", pseudoElement: "::view-transition-new(root)" },
+      ),
+    )
+    .catch(() => {}); // skipped transitions (e.g. a second switch mid-animation) still apply the change
+}

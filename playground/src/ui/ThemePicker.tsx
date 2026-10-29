@@ -1,6 +1,6 @@
 import { For, createSignal, onSettled } from "solid-js";
 import type { ColorMode } from "@pierre/theming";
-import { FAMILIES, familyOf, pickFamily, setColorMode, themeState, watchTheme } from "../theme";
+import { FAMILIES, familyOf, pickFamily, setColorMode, switchTheme, themeState, watchTheme } from "../theme";
 
 const MODES: [ColorMode, string, string][] = [
   ["system", "i-lucide-monitor", "System"],
@@ -24,14 +24,22 @@ export function ThemePicker() {
               title={`${label} color scheme`}
               aria-label={`${label} color scheme`}
               aria-pressed={theme().mode === mode ? "true" : "false"}
-              onClick={() => setColorMode(mode)}
+              onClick={(e) => switchTheme(() => setColorMode(mode), e.currentTarget)}
             >
               <i class={icon} aria-hidden="true" />
             </button>
           )}
         </For>
       </span>
-      <select id="theme" title="Theme" value={familyOf(theme())} onChange={(e) => pickFamily(e.currentTarget.value)}>
+      <select
+        id="theme"
+        title="Theme"
+        value={familyOf(theme())}
+        onChange={(e) => {
+          const select = e.currentTarget;
+          switchTheme(() => pickFamily(select.value), select);
+        }}
+      >
         <For each={Object.entries(FAMILIES)}>
           {([label, list]) => (
             <optgroup label={label}>
