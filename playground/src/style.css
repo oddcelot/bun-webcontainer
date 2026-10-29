@@ -142,6 +142,9 @@ main [data-kb-resizable-root] { height: 100%; }
 #right .resize-handle[data-orientation="vertical"] { margin-left: 3px; }
 /* The crossing's grab box sits left of that handle, over the column border; Kobalte's inline overflow would clip it. */
 #right, #right > [data-kb-resizable-root] { overflow: visible !important; }
+/* Visible overflow also brings back the flex default of min-width/min-height: auto, which kept the column from
+ * shrinking below its contents' width and pushed the request bar and console buttons off the screen. */
+#right, #right > [data-kb-resizable-root] { min-width: 0; min-height: 0; }
 .resize-handle::after { content: ""; position: absolute; inset: 0; margin: auto; border-radius: 2px; background: transparent; transition: background-color 0.1s; }
 .resize-handle[data-orientation="horizontal"]::after { width: 3px; height: calc(100% - 2 * var(--radius)); }
 .resize-handle[data-orientation="vertical"]::after { height: 3px; width: calc(100% - 2 * var(--radius)); }
@@ -175,10 +178,16 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
 #preview-wrap.expanded { position: fixed; inset: 2.5vh 2.5vw; z-index: 20; background: var(--bg); border: 1px solid var(--control-border); border-radius: var(--radius); overflow: hidden; box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6); }
 #preview-backdrop { position: fixed; inset: 0; z-index: 19; background: rgba(0, 0, 0, 0.55); }
 #preview-backdrop[hidden] { display: none; }
-#request { display: flex; gap: 6px; padding: 4px 8px; background: var(--panel); border-bottom: 1px solid var(--border); }
+#request { display: flex; gap: 6px; min-width: 0; padding: 4px 8px; background: var(--panel); border-bottom: 1px solid var(--border); }
 #request select, #request input, #req-body { background: var(--control); color: var(--fg); border: 1px solid var(--control-border); border-radius: 6px; padding: 3px 6px; font: 12px ui-monospace, monospace; }
 #req-path { flex: 1; min-width: 0; }
-#request button { background: var(--control); color: inherit; border: 1px solid var(--control-border); border-radius: 4px; padding: 3px 10px; cursor: pointer; }
+/* A narrow preview column: Send shows its icon only (the label stays as the tooltip and accessible name). */
+#preview-wrap { container-type: inline-size; }
+@container (width < 340px) {
+  #request button .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  #request button { padding: 3px 8px; }
+}
+#request button { background: var(--control); color: inherit; border: 1px solid var(--control-border); border-radius: 6px; padding: 3px 10px; cursor: pointer; }
 #expand { display: grid; place-items: center; padding: 0 8px; }
 #req-body { height: 5em; margin: 0; border-radius: 0; border-width: 0 0 1px; resize: vertical; }
 #preview-views { flex: 1; min-height: 0; display: flex; flex-direction: column; }

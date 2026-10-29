@@ -69,8 +69,9 @@ export function Preview() {
             value={active().path}
             onInput={(e) => p.edit(s.active, "path", e.currentTarget.value)}
           />
-          <button disabled={disabled} title={disabled ? CANT_RUN : undefined}>
-            <i class="i-lucide-send" aria-hidden="true" /> Send
+          <button disabled={disabled} title={disabled ? CANT_RUN : "Send"}>
+            <i class="i-lucide-send" aria-hidden="true" />
+            <span class="label">Send</span>
           </button>
           <button
             type="button"
