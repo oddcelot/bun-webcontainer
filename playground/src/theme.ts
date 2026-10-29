@@ -172,9 +172,28 @@ export const watchTheme = (next: (s: ThemeState) => void) => {
 };
 export const setColorMode = (mode: ColorMode) => controller.setColorMode(mode);
 
+/** The mask's shape (bun-mask.svg, the logo's outline): its aspect, and where the body's middle sits in it. */
+const MASK = { aspect: 66.25 / 76, cx: 38 / 76, cy: 35.7 / 66.25 };
 /**
- * Runs a theme change (a color mode or family pick) as a view transition: the new colors reveal in a circle growing
- * from `from`, the control that was used. Without View Transitions, or with reduced motion, it applies at once.
+ * How wide the mask must be for the bun to cover the window from (x, y). The body is close to an ellipse with
+ * half-axes of 0.49 × width across and 0.45 × height below the middle (above, it reaches further), with a margin.
+ */
+function coverWidth(x: number, y: number) {
+  const a = 0.49;
+  const b = 0.45 * MASK.aspect;
+  const corners = [
+    [x, y],
+    [innerWidth - x, y],
+    [x, innerHeight - y],
+    [innerWidth - x, innerHeight - y],
+  ];
+  return 1.1 * Math.max(...corners.map(([dx, dy]) => Math.hypot(dx / a, dy / b)));
+}
+
+/**
+ * Runs a theme change (a color mode or family pick) as a view transition: the new colors reveal in the shape of the
+ * Bun logo, which pops out whole just below `from` (the control that was used), then grows over the middle of the
+ * window until it covers it. Without View Transitions, or with reduced motion, the change applies at once.
  */
 export function switchTheme(change: () => void, from?: Element) {
   if (!("startViewTransition" in document) || matchMedia("(prefers-reduced-motion: reduce)").matches) return change();
@@ -187,14 +206,32 @@ export function switchTheme(change: () => void, from?: Element) {
     await Promise.resolve();
   });
   const box = from?.getBoundingClientRect();
-  const x = box ? box.left + box.width / 2 : innerWidth / 2;
-  const y = box ? box.top + box.height / 2 : 0;
-  const radius = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+  // Small and whole first, under the control (kept inside the window), so the shape reads as the logo.
+  const small = Math.min(220, innerWidth * 0.3);
+  const smallLeft = Math.min(Math.max((box ? box.left + box.width / 2 : innerWidth / 2) - small / 2, 8), innerWidth - small - 8);
+  const smallTop = box ? box.bottom + 6 : 8;
+  // Then centered on the window, as large as it takes to cover it.
+  const mx = innerWidth / 2;
+  const my = innerHeight / 2;
+  const w = coverWidth(mx, my);
+  const h = w * MASK.aspect;
+  // style.css gives the new layer the mask while this class is on.
+  document.documentElement.classList.add("theme-switch");
+  transition.finished.finally(() => document.documentElement.classList.remove("theme-switch"));
   transition.ready
     .then(() =>
       document.documentElement.animate(
-        { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${radius}px at ${x}px ${y}px)`] },
-        { duration: 450, easing: "cubic-bezier(0.4, 0, 0.2, 1)", pseudoElement: "::view-transition-new(root)" },
+        [
+          { maskSize: "0px 0px", maskPosition: `${smallLeft + small / 2}px ${smallTop}px`, easing: "cubic-bezier(0.2, 0, 0, 1)" },
+          {
+            offset: 0.35,
+            maskSize: `${small}px ${small * MASK.aspect}px`,
+            maskPosition: `${smallLeft}px ${smallTop}px`,
+            easing: "cubic-bezier(0.5, 0, 0.9, 0.5)",
+          },
+          { maskSize: `${w}px ${h}px`, maskPosition: `${mx - MASK.cx * w}px ${my - MASK.cy * h}px` },
+        ],
+        { duration: 750, pseudoElement: "::view-transition-new(root)" },
       ),
     )
     .catch(() => {}); // skipped transitions (e.g. a second switch mid-animation) still apply the change

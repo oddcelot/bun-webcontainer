@@ -25,8 +25,9 @@ header button:hover { background: var(--control-hover); }
 /* Dim only when a button stays disabled a moment (an install, a slow start), so a quick run doesn't flicker. */
 header button { transition: opacity 0.12s; }
 header button:disabled { opacity: 0.5; cursor: default; transition: opacity 0.12s 0.3s; }
-/* Theme switches reveal the new colors in a circle (theme.ts animates it), instead of the default crossfade. */
+/* Theme switches reveal the new colors in the shape of the Bun logo (theme.ts animates it), instead of a crossfade. */
 ::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+html.theme-switch::view-transition-new(root) { mask: url("./bun-mask.svg") no-repeat 0 0 / 0 0; }
 /*
  * While the app boots, index.html's static header stays invisible: with nothing to paint, the browser keeps showing
  * the previous page (e.g. before a project switch) until the real header renders (mountUI drops data-booting).
