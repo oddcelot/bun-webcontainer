@@ -515,8 +515,39 @@ const constants = {
   COPYFILE_FICLONE_FORCE: 4,
 };
 
+type Watch = { key: string; recursive: boolean; emit: (type: "rename" | "change", rel: string) => void };
+const watches = new Set<Watch>();
+let subscribed: VFS | undefined;
+
+/** Routes VFS changes to the registered watchers; cheap when nothing is watched (installs write thousands of files). */
+function fanOut(k: string, type: "rename" | "change") {
+  if (!watches.size) return;
+  for (const w of watches) {
+    if (k === w.key) w.emit(type, path.basename(k));
+    else if (k.startsWith(w.key ? w.key + "/" : "")) {
+      const rel = k.slice(w.key ? w.key.length + 1 : 0);
+      if (w.recursive || !rel.includes("/")) w.emit(type, rel);
+    }
+  }
+}
+function subscribe() {
+  if (subscribed === vfs) return;
+  subscribed = vfs;
+  vfs.onChange((e) => fanOut(e.path, e.created || e.removed ? "rename" : "change"));
+  vfs.onDir((d) => fanOut(d, "rename"));
+}
+
 class FSWatcher extends EventEmitter {
+  private w?: Watch;
+  /** @internal */
+  start(key: string, recursive: boolean) {
+    subscribe();
+    this.w = { key, recursive, emit: (type, rel) => setTimeout(() => this.emit("change", type, rel), 0) };
+    watches.add(this.w);
+  }
   close() {
+    if (this.w) watches.delete(this.w);
+    this.w = undefined;
     this.emit("close");
   }
   ref() {
@@ -528,11 +559,45 @@ class FSWatcher extends EventEmitter {
 }
 
 const watch = (p: unknown, a?: unknown, b?: unknown) => {
-  toPath(p);
+  const key = keyOf(toPath(p));
   const w = new FSWatcher();
+  const opts = typeof a === "object" && a ? (a as { recursive?: boolean }) : {};
   const listener = typeof a === "function" ? a : b;
   if (typeof listener === "function") w.on("change", listener as () => void);
+  if (!exists(key)) throw fsError("ENOENT", "watch", toPath(p));
+  w.start(key, !!opts.recursive);
   return w;
+};
+
+type StatListener = (cur: Stats, prev: Stats) => void;
+const statWatchers = new Map<string, Map<StatListener, Watch>>();
+/** Polling `fs.watchFile`: the listener gets (current, previous) stats when the file changes or goes missing. */
+const watchFile = (p: unknown, a?: unknown, b?: unknown) => {
+  const key = keyOf(toPath(p));
+  const listener = (typeof a === "function" ? a : b) as StatListener;
+  subscribe();
+  let prev = statSync(key, { throwIfNoEntry: false }) ?? (new Stats(false, 0, 0, ""));
+  const w: Watch = {
+    key,
+    recursive: false,
+    emit: () =>
+      setTimeout(() => {
+        const cur = statSync(key, { throwIfNoEntry: false }) ?? (new Stats(false, 0, 0, ""));
+        const last = prev;
+        prev = cur;
+        listener(cur, last);
+      }, 0),
+  };
+  watches.add(w);
+  if (!statWatchers.has(key)) statWatchers.set(key, new Map());
+  statWatchers.get(key)!.set(listener, w);
+  return new FSWatcher();
+};
+const unwatchFile = (p: unknown, listener?: StatListener) => {
+  const key = keyOf(toPath(p));
+  const m = statWatchers.get(key);
+  if (!m) return;
+  for (const [l, w] of [...m]) if (!listener || l === listener) (watches.delete(w), m.delete(l));
 };
 
 class ReadStream extends (Readable as Any) {
@@ -725,8 +790,8 @@ Object.assign(fs, callbacks, {
   createReadStream: (p: unknown, o?: Any) => new ReadStream(p, o),
   createWriteStream: (p: unknown, o?: Any) => new WriteStream(p, o),
   watch,
-  watchFile: watch,
-  unwatchFile() {},
+  watchFile,
+  unwatchFile,
 });
 
 const promises: Record<string, any> = { constants };

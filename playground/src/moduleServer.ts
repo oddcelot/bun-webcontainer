@@ -299,6 +299,14 @@ function inRanges(ranges: [number, number][], pos: number): boolean {
   return false;
 }
 
+/**
+ * chokidar (bundled in Vite) tracks a watched root "/" as a child of itself (`basename("/")` is ""), then sees that
+ * child missing on the first directory read and reports every file unlinked. Skip the empty name there.
+ */
+function patchChokidar(code: string): string {
+  return code.includes("_handleRead(") ? code.replace(/(\bitem\s*!==\s*directory\s*&&)(\s*!current\.has\(item\))/, "$1 item !== \"\" &&$2") : code;
+}
+
 /** Whether the parameter list that starts before `from` is followed by a body: `import(url) {` is a method named import. */
 function isMethod(code: string, from: number): boolean {
   let depth = 1;
@@ -430,7 +438,7 @@ export async function serveModule(vfs: VFS, rawPath: string, onError: (msg: stri
     const dir = dirname(path);
     const url = specifierUrl(vfs, dir);
     const final = (spec: string) => url(spec) ?? spec;
-    return { status: 200, body: rewriteMeta(hoistMetaRequire(vfs, hoistRequires(vfs, code, dir, final), dir, final), path, target === "bun") };
+    return { status: 200, body: rewriteMeta(hoistMetaRequire(vfs, hoistRequires(vfs, patchChokidar(code), dir, final), dir, final), path, target === "bun") };
   } catch (e) {
     const msg = `${path}: ${e instanceof Error ? e.message : String(e)}`;
     onError(msg);
