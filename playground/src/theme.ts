@@ -61,9 +61,11 @@ export function themeName() {
 function withRealColors(theme: ThemeLike & { colorReplacements?: Record<string, string> }): ThemeLike {
   const map = theme.colorReplacements;
   if (!map) return theme;
-  const real = (v: string | undefined) => (v && map[v.toLowerCase()]) || v;
-  const colors = Object.fromEntries(Object.entries(theme.colors ?? {}).map(([k, v]) => [k, real(v)!]));
-  return { ...theme, fg: real(theme.fg), bg: real(theme.bg), colors };
+  // Only strings: some themes carry other values (github-dark-high-contrast has an array of colors for
+  // symbolIcon.constantForeground), and a throw here keeps the theme from applying at all.
+  const real = (v: unknown) => (typeof v === "string" && map[v.toLowerCase()]) || v;
+  const colors = Object.fromEntries(Object.entries(theme.colors ?? {}).map(([k, v]) => [k, real(v) as string]));
+  return { ...theme, fg: real(theme.fg) as string | undefined, bg: real(theme.bg) as string | undefined, colors };
 }
 
 const isHex = (v: string | undefined) => !!v && /^#[0-9a-f]{3,8}$/i.test(v);
