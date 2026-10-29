@@ -7,28 +7,29 @@ sidebar:
 
 Reported version: `Bun.version` is `1.4.4-browser`. Labels are explained on the [overview](/compatibility/).
 
-:::caution
-Use the `Bun` global. `import { serve } from "bun"` doesn't resolve yet.
-:::
-
 ## The `Bun` global
 
 | API | Status | Notes |
 |---|---|---|
 | `Bun.serve` | 🟡 Partial | `fetch`, `routes`, WebSockets, streaming. See [below](#bunserve). |
 | `Bun.file` | 🟡 Partial | `exists`, `text`, `json`, `bytes`, `arrayBuffer`, `name`. Not a `Blob`: no `size`, `type`, `stream`, `slice`, `writer`, `delete`. |
-| `Bun.write` | 🟡 Partial | Destination must be a path. Accepts strings, `BunFile`, `Blob`, `Response`, `ArrayBuffer`, typed arrays. Creates parent folders. |
+| `Bun.write` | 🟡 Partial | Destination is a path, `file:` URL, `BunFile`, `Bun.stdout` or `Bun.stderr` (file descriptors aren't). Accepts strings, `BunFile`, `Blob`, `Response`, `ArrayBuffer`, typed arrays. Creates parent folders. |
 | `Bun.build` | 🟡 Partial | Bun's real bundler, as wasm (~10 MB, loaded on first use). Supports `entrypoints`, `outdir`, `target`, `format`, `minify`, `splitting`, `sourcemap`, `naming`, `publicPath`, `external`, `define`, `conditions`, `banner`, `footer`, `throw`. `plugins` are ignored with a warning; `loader`, `env`, `packages`, `drop`, `compile`, `root` aren't supported. |
 | `Bun.env` | ✅ Works | Same object as `process.env`; starts as `{ NODE_ENV: "development" }`. `.env` files aren't loaded. |
 | `Bun.version` | ✅ Works | `Bun.revision` is missing. |
 | `Bun.semver` | ✅ Works | `order` and `satisfies`, from Bun's own semver code. |
 | `Bun.sleep` | ✅ Works | `sleepSync` is missing. |
 | `Bun.nanoseconds` | ✅ Works | Browser clock resolution. |
+| `Bun.inspect`, `Bun.deepEquals`, `Bun.escapeHTML` | ✅ Works | `inspect` is `node:util`'s, without colors. |
+| `Bun.main`, `Bun.argv` | ✅ Works | `Bun.main` is the entry's path; `Bun.argv` is `["bun", main]`, as `process.argv`. |
+| `Bun.stdout`, `Bun.stderr` | 🟡 Partial | Work as `Bun.write` destinations and print to the console. No `writer()`. |
+| `Bun.which` | ⚪ Stub | Returns `null`: there are no executables. |
 | `Bun.gc` | ⚪ Stub | Does nothing. |
 | `Bun.spawn`, `Bun.spawnSync`, `Bun.$` | ❌ Missing | No processes in the browser. |
-| `Bun.password`, `Bun.hash`, `Bun.CryptoHasher` | ❌ Missing | Use `node:crypto` or `crypto.subtle`. |
-| `Bun.Glob`, `Bun.Transpiler`, `Bun.inspect`, `Bun.deepEquals`, `Bun.escapeHTML` | ❌ Missing | |
-| `Bun.which`, `Bun.resolveSync`, `Bun.main`, `Bun.argv`, `Bun.stdin`/`stdout`/`stderr` | ❌ Missing | |
+| `Bun.CryptoHasher` | ✅ Works | md5, ripemd160, sha1, sha2, sha3, blake2; HMAC with a key; `copy`, static `hash`. No md4 or shake. |
+| `Bun.password`, `Bun.hash` | ❌ Missing | Use `Bun.CryptoHasher`, `node:crypto` or `crypto.subtle`. |
+| `Bun.Glob`, `Bun.Transpiler` | ❌ Missing | |
+| `Bun.resolveSync`, `Bun.stdin` | ❌ Missing | |
 | `Bun.sql`, `Bun.redis`, `Bun.s3` | ❌ Missing | |
 | `Bun.connect`, `Bun.listen`, `Bun.udpSocket`, `Bun.dns` | ❌ Missing | No raw sockets in the browser. |
 | `Bun.gzipSync`, `Bun.deflateSync`, `Bun.zstd*` | ❌ Missing | |
@@ -62,16 +63,16 @@ Servers answer requests from the [preview](/guides/features/#preview), not from 
 | `bun:sqlite` | 🟡 Partial | Built on sql.js. `Database` with `query`, `prepare`, `run`, `transaction`, `serialize`, `close`; statements with `all`, `get`, `values`, `run`, `iterate`. File databases are saved to the project. Missing: `Statement.as()`, `Database.deserialize`, `loadExtension`, `safeIntegers`, `SQLiteError`. |
 | `bun:test` | 🟡 Partial | Run with `bun test` in the console. See [below](#buntest). |
 | `bun:ffi`, `bun:jsc` | ❌ Missing | |
-| `bun` (as an import) | ❌ Missing | Use the `Bun` global. |
+| `bun` | ✅ Works | `import { serve } from "bun"` and the default export are the `Bun` global. |
 
 ### `bun:test`
 
 - ✅ `test`/`it`/`describe` with `.skip`, `.only`, `.todo`, `.each`, `.if`, `.skipIf`, `.todoIf`
 - ✅ `beforeAll`, `beforeEach`, `afterEach`, `afterAll`, `setDefaultTimeout`
 - ✅ `mock()`, `spyOn()`, `jest.fn`, `jest.spyOn`
-- ✅ `expect` with `.not`, `.resolves`, `.rejects`, asymmetric matchers (`anything`, `any`, `objectContaining`, `arrayContaining`, `stringContaining`, `stringMatching`) and the common matchers (`toBe`, `toEqual`, `toStrictEqual`, `toThrow`, `toMatchObject`, `toHaveProperty`, `toHaveBeenCalledWith`, …)
+- ✅ `expect` with `.not`, `.resolves`, `.rejects`, asymmetric matchers (`anything`, `any`, `objectContaining`, `arrayContaining`, `stringContaining`, `stringMatching`) and the common matchers (`toBe`, `toEqual`, `toStrictEqual`, `toThrow`, `toMatchObject`, `toHaveProperty`, `toHaveBeenCalledWith`, …), plus Bun's extras (`toBeEmpty`, `toBeOneOf`, `toSatisfy`, `toStartWith`, `toEndWith`, `toInclude`, `toBeArray`, `toBeString`, `toBeNumber`, `toBeFunction`, `toHaveReturned*`, …)
 - ❌ Snapshots, fake timers, `setSystemTime`, `mock.module`, `jest.mock`, `expect.extend`, `expect.assertions`, coverage, `test.concurrent`, `test.failing`
-- ❌ Matchers `toBeEmpty`, `toBeOneOf`, `toSatisfy`, `toStartWith`, `toEndWith`, `toBeArray`, `toBeString`, `toBeFunction`, `toHaveReturned*`. Unknown matchers throw "is not supported here".
+- Unknown matchers throw "is not supported here".
 - `bun test` takes name filters but no flags.
 
 ## `import.meta` and globals
@@ -80,7 +81,8 @@ Servers answer requests from the [preview](/guides/features/#preview), not from 
 |---|---|---|
 | `import.meta.url`, `dirname`, `filename` | ✅ Works | `file:///<path>` in the project. |
 | `import.meta.require` | 🟡 Partial | String literals only (`import.meta.require("x")`). |
-| `import.meta.dir`, `file`, `path`, `main`, `resolve`, `env` | ❌ Missing | |
+| `import.meta.dir`, `file`, `path`, `main`, `env` | ✅ Works | `env` is `process.env`. In browser code (HTML imports), only `url`, `dirname` and `filename` are filled in. |
+| `import.meta.resolve` | ❌ Missing | The browser's own returns the served URL, not a project path. |
 | `import(expr)` with a computed path | ✅ Works | |
 | `fetch("file:///…")` | ✅ Works | Reads project files. Relative URLs throw. Other URLs go to the network, subject to CORS. |
 | `process`, `Buffer`, `global`, timers | ✅ Works | See [Node built-ins](/compatibility/node/). |

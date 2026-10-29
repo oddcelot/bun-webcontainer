@@ -168,6 +168,33 @@ const matchers: Record<string, (r: any, ...a: any[]) => Result | ((ctx: Ctx) => 
 matchers.toBeTrue = (r) => ({ pass: r === true, expected: true, received: r });
 matchers.toBeFalse = (r) => ({ pass: r === false, expected: false, received: r });
 matchers.toHaveBeenCalledOnce = (r) => matchers.toHaveBeenCalledTimes(r, 1);
+const returnsOf = (v: unknown) => {
+  callsOf(v);
+  return (v as { mock: { results: { type: string; value: unknown }[] } }).mock.results.filter((x) => x.type === "return").map((x) => x.value);
+};
+const sizeOf = (v: unknown) =>
+  typeof v === "string" || Array.isArray(v) ? v.length : v instanceof Map || v instanceof Set ? v.size : v !== null && typeof v === "object" ? Object.keys(v).length : undefined;
+Object.assign(matchers, {
+  toBeEmpty: (r: unknown) => ({ pass: sizeOf(r) === 0, received: r, label: "Expected empty" }),
+  toBeOneOf: (r: unknown, e: unknown[]) => ({ pass: [...e].some((x) => equals(x, r)), expected: e, received: r, label: "Expected one of" }),
+  toSatisfy: (r: unknown, fn: (v: unknown) => unknown) => ({ pass: !!fn(r), received: r, label: "Expected to satisfy" }),
+  toStartWith: (r: unknown, e: string) => ({ pass: typeof r === "string" && r.startsWith(e), expected: e, received: r, label: "Expected to start with" }),
+  toEndWith: (r: unknown, e: string) => ({ pass: typeof r === "string" && r.endsWith(e), expected: e, received: r, label: "Expected to end with" }),
+  toInclude: (r: unknown, e: string) => ({ pass: typeof r === "string" && r.includes(e), expected: e, received: r, label: "Expected to include" }),
+  toBeArray: (r: unknown) => ({ pass: Array.isArray(r), received: r, label: "Expected array" }),
+  toBeArrayOfSize: (r: unknown, n: number) => ({ pass: Array.isArray(r) && r.length === n, expected: n, received: lenOf(r), label: "Expected array of size" }),
+  toBeString: (r: unknown) => ({ pass: typeof r === "string", received: r, label: "Expected string" }),
+  toBeNumber: (r: unknown) => ({ pass: typeof r === "number", received: r, label: "Expected number" }),
+  toBeInteger: (r: unknown) => ({ pass: Number.isInteger(r), received: r, label: "Expected integer" }),
+  toBeBoolean: (r: unknown) => ({ pass: typeof r === "boolean", received: r, label: "Expected boolean" }),
+  toBeFunction: (r: unknown) => ({ pass: typeof r === "function", received: r, label: "Expected function" }),
+  toBeObject: (r: unknown) => ({ pass: r !== null && typeof r === "object", received: r, label: "Expected object" }),
+  toHaveReturned: (r: unknown) => ({ pass: returnsOf(r).length > 0, received: returnsOf(r).length, label: "Expected number of returns >= 1\nReceived number of returns" }),
+  toHaveReturnedTimes: (r: unknown, n: number) => ({ pass: returnsOf(r).length === n, expected: n, received: returnsOf(r).length, label: "Expected number of returns", rlabel: "Received number of returns" }),
+  toHaveReturnedWith: (r: unknown, e: unknown) => ({ pass: returnsOf(r).some((v) => equals(v, e)), expected: e, received: returnsOf(r) }),
+  toHaveLastReturnedWith: (r: unknown, e: unknown) => ({ pass: equals(returnsOf(r).at(-1), e), expected: e, received: returnsOf(r).at(-1) }),
+  toHaveNthReturnedWith: (r: unknown, n: number, e: unknown) => ({ pass: equals(returnsOf(r)[n - 1], e), expected: e, received: returnsOf(r)[n - 1] }),
+});
 
 function check(name: string, recv: unknown, args: unknown[], not: boolean, ctx: Ctx) {
   expectCalls++;
