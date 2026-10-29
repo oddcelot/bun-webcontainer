@@ -13,15 +13,18 @@ Bun's own parser and printer, compiled to WebAssembly. Output matches `bun build
 - ✅ JSX with Bun's defaults (React automatic runtime)
 - ✅ Legacy decorators with `experimentalDecorators` and `emitDecoratorMetadata` in `tsconfig.json`
 - ✅ Top-level `await`
-- ❌ `tsconfig.json` `paths`, `baseUrl`, `jsx`, `jsxImportSource` and `extends` are not read
+- ❌ `tsconfig.json` `jsx` and `jsxImportSource` are not read by the transpiler (`paths` and `baseUrl` are, by the resolver)
 - ❌ No type checking
 
 ## Module resolution
 
-- ✅ Relative imports, with `.ts .tsx .js .jsx .mjs .json` and `index.*` tried in that order
-- ✅ Packages from `node_modules`, walking up folders: `exports` (nested conditions, arrays, `./*` patterns), then `module`, then `main`
-- ✅ Conditions: `bun`, `node`, `import`, `development`, `default` for server code; `browser`, `module`, `import`, `development`, `default` for code in the preview page
+Bun's own resolver, compiled to WebAssembly (~900 KB, loaded with the first module), over the project's files.
+
+- ✅ Relative and absolute imports, with Bun's extension order (`.tsx` and `.ts` before `.js`) and `index.*`
+- ✅ Packages from `node_modules`, walking up folders: `exports` (nested conditions, arrays, `./*` patterns), then the main fields (`module`, `main` for server code; `browser`, `module`, `main` for the page)
+- ✅ Conditions: `bun`, `node`, `import` or `require`, `development`, `default` for server code; `browser`, `module`, `import`, `development`, `default` for code in the preview page
 - ✅ `#imports` from the nearest `package.json`
+- ✅ `tsconfig.json` `paths` and `baseUrl`
 - ✅ JSON imports
 - ✅ CSS imported from code that goes through an HTML import (bundled)
 - ✅ CSS imported from server code (`import "./x.css"`, also `.module.css`) is `{}`, as in Bun's runtime. In a page served without bundling, it is linked as a stylesheet and CSS module class names map to themselves.

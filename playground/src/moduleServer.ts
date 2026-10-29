@@ -2,67 +2,24 @@ import { BASE } from "./base";
 import { commonJSFacade, exportNames as commonJSExportNames, isCommonJS, reexports, wrapCommonJS } from "./cjs";
 import bunWrap from "./bunWrap.js?raw";
 import { transpile, type Resolver, type TsconfigFlags } from "./transpiler";
+import { loadResolver, resolve, type ResolveKind } from "./resolver";
 import { dirname, norm, type VFS } from "./vfs";
 import hostNames, { version as hostVersion } from "virtual:host-package-names";
 import { builtins, exportNames } from "./worker/node";
 
 export type ModuleResponse = { status: number; body: string };
 
-const EXTS = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".json"];
-/** Export conditions as Bun resolves them: its runtime for the worker, its dev server's for a page. */
-const TARGET_CONDITIONS = {
-  bun: new Set(["bun", "node", "import", "development", "default"]),
-  browser: new Set(["browser", "module", "import", "development", "default"]),
-};
-export type ModuleTarget = keyof typeof TARGET_CONDITIONS;
-/** For the resolution in progress; set by serveModule right before its synchronous rewrite. */
-let CONDITIONS = TARGET_CONDITIONS.browser;
+export type ModuleTarget = "bun" | "browser";
+/** For the resolution in progress (the worker gets Bun's runtime conditions, a page its dev server's); set by serveModule right before its synchronous rewrite. */
+let TARGET: ModuleTarget = "browser";
 
-function resolveFile(vfs: VFS, p: string): string | null {
-  if (vfs.files.has(p)) return p;
-  for (const e of EXTS) if (vfs.files.has(p + e)) return p + e;
-  for (const e of EXTS) if (vfs.files.has(`${p}/index${e}`)) return `${p}/index${e}`;
-  return null;
-}
-
-function pickTarget(t: unknown): string | null {
-  if (typeof t === "string") return t;
-  if (Array.isArray(t)) {
-    for (const x of t) {
-      const r = pickTarget(x);
-      if (r) return r;
-    }
-    return null;
-  }
-  if (t && typeof t === "object") {
-    for (const [k, v] of Object.entries(t)) {
-      if (!CONDITIONS.has(k)) continue;
-      const r = pickTarget(v);
-      if (r) return r;
-    }
-  }
-  return null;
-}
-
-/** An `exports`/`imports` map entry for `key`: exact, else the longest `prefix*suffix` pattern. */
-function lookup(map: Record<string, unknown>, key: string): string | null {
-  if (key in map) return pickTarget(map[key]);
-  let best: string | undefined;
-  for (const k of Object.keys(map)) {
-    const i = k.indexOf("*");
-    if (i < 0 || !key.startsWith(k.slice(0, i)) || !key.endsWith(k.slice(i + 1)) || key.length < k.length - 1) continue;
-    if (best === undefined || i > best.indexOf("*")) best = k;
-  }
-  if (best === undefined) return null;
-  const i = best.indexOf("*");
-  const t = pickTarget(map[best]);
-  return t && t.replaceAll("*", key.slice(i, key.length - (best.length - i - 1)));
-}
-
-function pickExport(exports: unknown, sub: string): string | null {
-  const isMap = exports && typeof exports === "object" && !Array.isArray(exports) && Object.keys(exports).some((k) => k.startsWith("."));
-  if (!isMap) return sub === "." ? pickTarget(exports) : null;
-  return lookup(exports as Record<string, unknown>, sub);
+/** Bun's resolver (see resolver.ts): the VFS path `spec` imported from `dir` resolves to, or null. */
+function resolveWith(vfs: VFS, spec: string, dir: string, kind: ResolveKind = "import"): string | null {
+  // napi-rs wasm bindings: the Node entry needs node:wasi and worker_threads, the browser one runs anywhere here.
+  const wasi = /^(?:@[^/]+\/)?[^/@][^/]*-wasm32-wasi$/.test(spec) ? findPackage(vfs, spec, dir) : null;
+  const browser = wasi && (JSON.parse(vfs.readText(`${wasi}/package.json`)!) as { browser?: unknown }).browser;
+  if (typeof browser === "string") return resolve(`./${browser.replace(/^\.\//, "")}`, wasi!, kind, TARGET);
+  return resolve(spec, dir, kind, TARGET);
 }
 
 /** `"type"` of the nearest package.json above `path`. */
@@ -108,40 +65,6 @@ function findPackage(vfs: VFS, name: string, fromDir: string): string | null {
   }
 }
 
-/** `#name` specifiers: the nearest package.json's `imports` field. */
-function resolveImports(vfs: VFS, spec: string, fromDir: string): string | null {
-  for (let dir = fromDir; ; dir = dirname(dir)) {
-    const text = vfs.readText(dir ? `${dir}/package.json` : "package.json");
-    if (text !== undefined) {
-      const imports = (JSON.parse(text) as { imports?: Record<string, unknown> }).imports;
-      if (!imports) return null;
-      const t = lookup(imports, spec);
-      if (!t) return null;
-      return t.startsWith(".") ? resolveFile(vfs, norm(`${dir}/${t}`)) : resolveBare(vfs, t, dir);
-    }
-    if (!dir) return null;
-  }
-}
-
-function resolveBare(vfs: VFS, spec: string, fromDir: string): string | null {
-  const parts = spec.split("/");
-  const name = spec.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0];
-  const sub = "." + spec.slice(name.length);
-  const base = findPackage(vfs, name, fromDir);
-  if (base === null) return null;
-  const text = vfs.readText(`${base}/package.json`)!;
-  const pkg = JSON.parse(text) as { exports?: unknown; module?: string; main?: string; browser?: unknown };
-  // napi-rs wasm bindings: the Node entry needs node:wasi and worker_threads, the browser one runs anywhere here.
-  if (name.endsWith("-wasm32-wasi") && sub === "." && typeof pkg.browser === "string") return resolveFile(vfs, norm(`${base}/${pkg.browser}`));
-  if (pkg.exports !== undefined) {
-    const t = pickExport(pkg.exports, sub);
-    return t ? resolveFile(vfs, norm(`${base}/${t}`)) : null;
-  }
-  if (sub !== ".") return resolveFile(vfs, norm(`${base}/${sub}`));
-  const entry = pkg.module ?? pkg.main ?? "index.js";
-  return resolveFile(vfs, norm(`${base}/${entry}`));
-}
-
 let warned = false;
 /** Warn once if the user's installed rolldown differs from the host's @rolldown/browser. */
 function checkHostVersion(vfs: VFS) {
@@ -164,10 +87,10 @@ function hoistRequires(vfs: VFS, code: string, dir: string, url: (spec: string) 
   if (!code.includes("createRequire(import.meta.url)")) return code;
   // Literal `require.resolve("x")` becomes the path it resolves to.
   code = code.replace(/(?<![\w$.])(?:__)?require\.resolve\(\s*(["'])([^"'\n]+)\1\s*\)/g, (m, _q: string, s: string) => {
-    const p = s.startsWith(".") ? resolveFile(vfs, norm(`${dir}/${s}`)) : s.replace(/^node:/, "") in builtins ? null : resolveBare(vfs, s, dir);
+    const p = s.replace(/^node:/, "") in builtins ? null : resolveWith(vfs, s, dir, "require");
     return p ? JSON.stringify("/" + p) : m;
   });
-  const specs = [...new Set([...code.matchAll(/(?<![\w$.])(?:__)?require\(\s*(["'])([^"'\n]+)\1\s*\)/g)].map((m) => m[2]))].filter((s) => !(s.replace(/^node:/, "") in builtins) && (s.startsWith(".") ? s.endsWith(".json") && resolveFile(vfs, norm(`${dir}/${s}`)) : resolveBare(vfs, s, dir)));
+  const specs = [...new Set([...code.matchAll(/(?<![\w$.])(?:__)?require\(\s*(["'])([^"'\n]+)\1\s*\)/g)].map((m) => m[2]))].filter((s) => !(s.replace(/^node:/, "") in builtins) && (!s.startsWith(".") || s.endsWith(".json")) && resolveWith(vfs, s, dir, "require"));
   if (!specs.length) return code;
   const imports = specs.map((s, i) => `import * as __h${i} from ${JSON.stringify(url(s))};`).join("");
   const table = specs.map((s, i) => `${JSON.stringify(s)}: __h${i}`).join(", ");
@@ -183,7 +106,7 @@ ${code.replace(CREATE_REQUIRE, "__withHoisted($&)")}`;
 function hoistMetaRequire(vfs: VFS, code: string, dir: string, url: (spec: string) => string): string {
   if (!code.includes("import.meta.require")) return code;
   const lits = [...new Set([...code.matchAll(/\bimport\.meta\.require\(\s*"([^"\n]+)"\s*\)/g)].map((m) => m[1]))];
-  const specs = lits.filter((s) => !(s.replace(/^node:/, "") in builtins) && (s.startsWith(".") ? resolveFile(vfs, norm(`${dir}/${s}`)) : resolveBare(vfs, s, dir)));
+  const specs = lits.filter((s) => !(s.replace(/^node:/, "") in builtins) && resolveWith(vfs, s, dir, "require"));
   const imports = specs.map((s, i) => `import * as __mr${i} from ${JSON.stringify(url(s))};`).join("");
   const table = specs.map((s, i) => `${JSON.stringify(s)}: __mr${i}`).join(", ");
   return `${imports}const __metaRequire = ((t, b) => (id) => {
@@ -197,12 +120,12 @@ ${code.replace(/\bimport\.meta\.require\b/g, "__metaRequire")}`;
 }
 
 /** Where `spec` imported from `dir` is served, relative to `/__vfs/`; null if it doesn't resolve. CSS imported from code is `__css/<path>` (see cssModule). */
-function resolveTarget(vfs: VFS, spec: string, dir: string): string | null {
-  const t = resolveSpecifier(vfs, spec, dir);
+function resolveTarget(vfs: VFS, spec: string, dir: string, kind: ResolveKind = "import"): string | null {
+  const t = resolveSpecifier(vfs, spec, dir, kind);
   return t?.endsWith(".css") ? `__css/${t}` : t;
 }
 
-function resolveSpecifier(vfs: VFS, spec: string, dir: string): string | null {
+function resolveSpecifier(vfs: VFS, spec: string, dir: string, kind: ResolveKind): string | null {
   const builtin = spec.replace(/^node:/, "");
   if (spec === "bun:wrap") return "__bun/wrap";
   if (spec in hostNames) {
@@ -210,10 +133,7 @@ function resolveSpecifier(vfs: VFS, spec: string, dir: string): string | null {
     return `__host/${spec}`;
   }
   if (spec.startsWith("node:") || builtin in builtins) return builtin in builtins ? `__node/${builtin}` : null;
-  if (spec.startsWith(".")) return resolveFile(vfs, norm(`${dir}/${spec}`));
-  if (spec.startsWith("/")) return resolveFile(vfs, norm(spec));
-  if (spec.startsWith("#")) return resolveImports(vfs, spec, dir);
-  return resolveBare(vfs, spec, dir);
+  return resolveWith(vfs, spec, dir, kind);
 }
 
 /** The transpiler's resolver: where each specifier in a module of `dir` is served. */
@@ -376,8 +296,8 @@ ${names.length ? `export const { ${names.join(", ")} } = m;` : ""}`;
 /** The host package whose installed entry file is `path`: Vite's module runner imports externals by file URL. */
 function hostEntry(vfs: VFS, path: string): string | undefined {
   if (!path.startsWith("node_modules/rolldown/")) return undefined;
-  CONDITIONS = TARGET_CONDITIONS.bun;
-  return Object.keys(hostNames).find((spec) => resolveBare(vfs, spec, "") === path);
+  TARGET = "bun";
+  return Object.keys(hostNames).find((spec) => resolveWith(vfs, spec, "") === path);
 }
 
 /** The module for a host package: the worker loads it on demand as `globalThis.__hostPackage(spec)`. */
@@ -407,10 +327,10 @@ async function serveCommonJS(vfs: VFS, path: string, onError: (msg: string) => v
     onError(`module not found: ${path}`);
     return { status: 404, body: `Not found: ${path}` };
   }
-  CONDITIONS = TARGET_CONDITIONS[target];
+  TARGET = target;
   const dir = dirname(path);
   const code = wrapCommonJS(path, src, (spec) => {
-    const t = resolveTarget(vfs, spec, dir);
+    const t = resolveTarget(vfs, spec, dir, "require");
     if (t === null || t.startsWith("__")) return t && `${BASE}__vfs/${t}`;
     const dep = vfs.readText(t);
     return `${BASE}__vfs/${dep !== undefined && isCommonJS(t, dep, packageType(vfs, t)) ? "__cjs/" : ""}${t}`;
@@ -427,6 +347,7 @@ async function serveCommonJS(vfs: VFS, path: string, onError: (msg: string) => v
 
 export async function serveModule(vfs: VFS, rawPath: string, onError: (msg: string) => void, target: ModuleTarget = "browser"): Promise<ModuleResponse> {
   const path = norm(rawPath);
+  await loadResolver(vfs);
   if (path.startsWith("__node/")) return { status: 200, body: builtinModule(path.slice(7)) };
   if (path.startsWith("__host/")) return { status: 200, body: hostModule(path.slice(7)) };
   if (path === "__bun/wrap") return { status: 200, body: bunWrap };
@@ -457,19 +378,19 @@ export async function serveModule(vfs: VFS, rawPath: string, onError: (msg: stri
     // __cjsModule() as wrapped CommonJS has it: a require() can run before this module is evaluated.
     if (path.endsWith(".json")) code = `var __m;\nexport function __cjsModule() {\n  return (__m ??= { exports: ${src} });\n}\nexport default __cjsModule().exports;`;
     else if (/\.(ts|tsx|jsx)$/.test(path)) {
-      CONDITIONS = TARGET_CONDITIONS[target];
+      TARGET = target;
       code = await transpile(src, path, tsconfigFor(vfs, path), resolver(vfs, dirname(path)));
     }
     else if (isCommonJS(path, src, packageType(vfs, path))) {
-      CONDITIONS = TARGET_CONDITIONS[target];
+      TARGET = target;
       return { status: 200, body: commonJSFacade(commonJSNames(vfs, path, src), `${BASE}__vfs/__cjs/${path}`) };
     }
     else {
       // Plain ES module: Bun's parser finds the specifiers, as `bun build --no-bundle` does.
-      CONDITIONS = TARGET_CONDITIONS[target];
+      TARGET = target;
       code = await transpile(src, path, {}, resolver(vfs, dirname(path)));
     }
-    CONDITIONS = TARGET_CONDITIONS[target];
+    TARGET = target;
     // The hoisted imports are final URLs already (the transpiler leaves those alone).
     const dir = dirname(path);
     const url = specifierUrl(vfs, dir);
