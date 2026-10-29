@@ -7,6 +7,7 @@ import fs from "./fs";
 import http, { https } from "./http";
 import net from "./net";
 import sqlite from "./sqlite";
+import test from "./test";
 import ws from "./ws";
 import { createModule } from "./module";
 import os from "./os";
@@ -65,6 +66,7 @@ export const builtins: Record<string, object> = {
   v8,
   vm,
   "bun:sqlite": sqlite,
+  "bun:test": test,
   "bun:ws": ws,
   worker_threads,
   zlib,

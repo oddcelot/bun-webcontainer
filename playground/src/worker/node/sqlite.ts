@@ -1,8 +1,12 @@
 // `bun:sqlite` on top of sql.js (SQLite compiled to wasm). sql.js loads asynchronously, so the wrapper module of
 // `bun:sqlite` awaits `globalThis.__loadBunSqlite()` first; after that `new Database()` is synchronous.
-// Limitation: every database lives in memory (the path is ignored), so data does not persist across runs.
+// File databases persist: the bytes are read from the worker's VFS on open and written back with `db.export()`
+// (debounced after a write, and on close). Writes go through the fs shim, so the page's file tree and OPFS mirror see them.
 import type { BindParams, Database as SqlJsDb, SqlJsStatic } from "sql.js";
 import wasmUrl from "sql.js/dist/sql-wasm.wasm?url";
+import { norm } from "../../vfs";
+import fs from "./fs";
+import path from "./path";
 
 let SQL: SqlJsStatic | undefined;
 
@@ -18,6 +22,13 @@ interface Options {
   readonly?: boolean;
   readwrite?: boolean;
   strict?: boolean;
+}
+
+const FLUSH_MS = 200;
+const isRead = (sql: string) => /^\s*(select|explain|values)\b|^\s*pragma\s+[\w.]+\s*(;|$)/i.test(sql);
+
+function cantOpen(): Error {
+  return Object.assign(new Error("unable to open database file"), { name: "SQLiteError", code: "SQLITE_CANTOPEN", errno: 14 });
 }
 
 const scalar = (v: unknown) => (v === undefined ? null : typeof v === "boolean" ? +v : v);
@@ -44,6 +55,7 @@ export class Statement<R = unknown, P extends unknown[] = any[]> {
   ) {}
 
   private each(params: unknown[], fn: (row: Record<string, unknown>) => boolean | void): void {
+    this.db._note(this.native);
     const s = this.db._raw.prepare(this.native);
     try {
       s.bind(bindings(params, this.db._strict));
@@ -97,11 +109,68 @@ export class Database {
   _raw: SqlJsDb;
   _strict: boolean;
   private cache = new Map<string, Statement>();
+  /** VFS key of the backing file; undefined for in-memory databases and readonly ones (which never write back). */
+  private file: string | undefined;
+  private dirty = false;
+  private inTx = false;
+  private timer: ReturnType<typeof setTimeout> | undefined;
 
-  constructor(_path: string | Uint8Array = ":memory:", options: number | Options = {}) {
+  constructor(filename: string | Uint8Array = ":memory:", options: number | Options = {}) {
     if (!SQL) throw new Error("bun:sqlite is not loaded yet");
-    this._strict = typeof options === "object" && !!options.strict;
-    this._raw = new SQL.Database(_path instanceof Uint8Array ? _path : undefined);
+    const o: Options = typeof options === "object" && options ? options : {};
+    this._strict = !!o.strict;
+    let readonly = o.readonly === true || o.readwrite === false;
+    let create = o.create ?? (o.readwrite !== true && !readonly);
+    if (typeof options === "number") {
+      // SQLITE_OPEN_READONLY = 1, SQLITE_OPEN_READWRITE = 2, SQLITE_OPEN_CREATE = 4
+      readonly = !!(options & 1);
+      create = !!(options & 4);
+    } else if (readonly && (o.create || o.readwrite)) throw new TypeError("Cannot use readonly together with create or readwrite");
+    if (filename instanceof Uint8Array || filename === "" || filename === ":memory:") {
+      this._raw = new SQL.Database(filename instanceof Uint8Array ? filename : undefined);
+    } else {
+      const key = norm(path.resolve(String(filename)));
+      let bytes: Uint8Array | undefined;
+      if (fs.existsSync(key)) {
+        try {
+          bytes = fs.readFileSync(key) as Uint8Array;
+        } catch {
+          throw cantOpen();
+        }
+      } else if (!create) throw cantOpen();
+      this._raw = new SQL.Database(bytes?.byteLength ? bytes : undefined);
+      if (!readonly) {
+        this.file = key;
+        if (!bytes) this.touch(); // Bun creates the file on open
+      }
+    }
+    if (readonly) this._raw.run("pragma query_only = 1");
+  }
+
+  private touch() {
+    this.dirty = true;
+    this.timer ??= setTimeout(() => this.flush(), FLUSH_MS);
+  }
+
+  /** Called with the SQL of everything that runs: reads leave the database clean. */
+  _note(sql: string) {
+    if (!this.file || isRead(sql)) return;
+    if (/^\s*(begin|savepoint)\b/i.test(sql)) this.inTx = true;
+    else if (/^\s*(commit|end|rollback)\b/i.test(sql)) this.inTx = false;
+    this.touch();
+  }
+
+  /** Write the database back to the VFS now. sql.js `export()` closes and reopens the connection, so skip it mid-transaction. */
+  flush() {
+    clearTimeout(this.timer);
+    this.timer = undefined;
+    if (!this.file || !this.dirty) return;
+    if (this.inTx) return void this.touch();
+    this.dirty = false;
+    const fk = this._raw.exec("pragma foreign_keys")[0]?.values[0][0];
+    const bytes = this._raw.export(); // also resets per-connection pragmas
+    if (fk) this._raw.run("pragma foreign_keys = on");
+    fs.writeFileSync(this.file, bytes);
   }
 
   _meta() {
@@ -110,6 +179,7 @@ export class Database {
   }
 
   run(sql: string, ...params: unknown[]) {
+    this._note(sql);
     if (!params.length) this._raw.run(sql);
     else this._raw.run(sql, bindings(params, this._strict));
     return this._meta();
@@ -133,6 +203,7 @@ export class Database {
       try {
         const r = fn(...args);
         this._raw.run("commit");
+        this._note("insert"); // the transaction wrote something
         return r;
       } catch (e) {
         this._raw.run("rollback");
@@ -146,6 +217,7 @@ export class Database {
   }
 
   close(): void {
+    this.flush();
     this._raw.close();
   }
 }

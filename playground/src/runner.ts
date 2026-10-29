@@ -108,12 +108,23 @@ export class Runner {
     this.worker = undefined;
   }
 
-  start(entry: string): Promise<void> {
+  /** Failed tests of the last `runTests`. */
+  failed = 0;
+
+  /** `bun test`: runs test files in a fresh worker (replacing any server) and resolves when the run is over. */
+  async runTests(files: string[]): Promise<number> {
+    await this.start("", files);
+    this.stop();
+    return this.failed;
+  }
+
+  start(entry: string, tests?: string[]): Promise<void> {
     this.stop();
     const worker = new Worker(new URL("./worker/runtime.ts", import.meta.url), { type: "module" });
     this.worker = worker;
     this.ready = new Promise<void>((resolve) => {
-      const timer = setTimeout(() => {
+      // A test run takes as long as it takes (each test has its own timeout).
+      const timer = tests ? undefined : setTimeout(() => {
         this.log("error", "worker start timed out");
         resolve();
       }, 15000);
@@ -122,6 +133,7 @@ export class Runner {
         if (m.type === "console") this.log(m.level, m.text);
         else if (m.type === "ready") {
           clearTimeout(timer);
+          this.failed = m.failed ?? 0;
           resolve();
         } else if (m.type === "vfs") {
           const [a, b] = m.args;
@@ -142,7 +154,7 @@ export class Runner {
         resolve();
       };
     });
-    worker.postMessage({ type: "start", entry, files: this.vfs.files, dirs: this.vfs.dirs });
+    worker.postMessage({ type: "start", entry, tests, files: this.vfs.files, dirs: this.vfs.dirs });
     return this.ready;
   }
 }

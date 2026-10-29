@@ -10,6 +10,8 @@ export interface ShellHost {
   /** Start the server on `entry` (the project's entry file when omitted). */
   run(entry?: string): Promise<void>;
   install(): Promise<void>;
+  /** Run these test files (`bun test`); resolves with the number of failed tests. */
+  test(files: string[]): Promise<number>;
   stop(): void;
   clear(): void;
   /** Forget this project's saved files and reload it from its source. */
@@ -24,8 +26,12 @@ type Pkg = { scripts?: Record<string, string>; dependencies?: Record<string, str
 export const scriptEntry = (s?: string) =>
   s?.match(/^bun\s+(?:(?:run\s+)?--?[\w-]+(?:=\S+)?\s+)*(?:run\s+)?(\S+\.[cm]?[jt]sx?)\b/)?.[1]?.replace(/^\.\//, "");
 
+/** Files `bun test` picks up: `*.test.*`, `*_test.*`, `*.spec.*`, `*_spec.*`, outside node_modules. */
+export const isTestFile = (path: string) => /(^|\/)[^/]+[._](test|spec)\.[cm]?[jt]sx?$/.test(path) && !/(^|\/)node_modules\//.test(path);
+
 const HELP = `bun run <script|file>  run a script or a file
 bun <file>             run a file
+bun test [filter...]   run *.test.ts, *.spec.ts… (stops the server meanwhile)
 bun install, bun i     install dependencies
 bun add <pkg> [-d]     add (dev) dependencies
 bun remove <pkg>       remove dependencies
@@ -72,6 +78,15 @@ export function createShell(host: ShellHost) {
     if (!entry || !vfs.files.has(entry)) return fail(`error: only "bun <file>" scripts can run here: "${script}"`);
     log("sys", `$ ${script}`);
     return host.run(entry);
+  }
+
+  async function test(args: string[]) {
+    const flag = args.find((a) => a.startsWith("-"));
+    if (flag) return fail(`error: bun test ${flag} is not supported here`);
+    const filters = args.map((a) => a.replace(/^\.\//, ""));
+    const files = [...vfs.files.keys()].filter((f) => isTestFile(f) && (!filters.length || filters.some((x) => f.includes(x)))).sort();
+    if (!files.length) return fail(`error: No tests found${filters.length ? ` matching ${filters.join(", ")}` : ""}!\n\nTest files match *.test.ts, *_test.ts, *.spec.ts or *_spec.ts (also .tsx .js .jsx), outside node_modules.`);
+    await host.test(files);
   }
 
   async function add(args: string[]) {
@@ -144,6 +159,7 @@ export function createShell(host: ShellHost) {
       if (cmd !== "bun") return fail(`${cmd}: command not found (try "help")`);
       const [sub, ...rest] = args;
       if (!sub || sub === "help" || sub === "--help") return log("log", HELP);
+      if (sub === "test") return await test(rest);
       if (sub === "run") return await runTarget(rest[0]);
       if (sub === "install" || sub === "i") return await host.install();
       if (sub === "add" || sub === "a") return await add(rest);
