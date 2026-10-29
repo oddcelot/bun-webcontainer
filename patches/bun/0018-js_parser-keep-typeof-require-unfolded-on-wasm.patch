@@ -1,0 +1,30 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Stefan Kopco <hey@oddcelot.dev>
+Date: Thu, 29 Oct 2026 09:59:29 +0100
+Subject: [PATCH] js_parser: keep typeof require unfolded on wasm
+
+Browsers have no global require, so folding it to "function" turns
+guards like emnapi's into a ReferenceError.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/js_parser/visit/visit_expr.rs | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/src/js_parser/visit/visit_expr.rs b/src/js_parser/visit/visit_expr.rs
+index 61e97b7a..29be03d1 100644
+--- a/src/js_parser/visit/visit_expr.rs
++++ b/src/js_parser/visit/visit_expr.rs
+@@ -1204,7 +1204,11 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
+                     .join_with_comma(e_.value);
+                 }
+ 
+-                if matches!(e_.value.data, Data::ERequireCallTarget) {
++                // wasm-experiment: browsers have no global `require`, so `typeof require` must
++                // stay a runtime check (emnapi guards `require` with it).
++                if cfg!(not(target_family = "wasm"))
++                    && matches!(e_.value.data, Data::ERequireCallTarget)
++                {
+                     p.ignore_usage_of_runtime_require();
+                     *e = p.new_expr(
+                         E::String {
