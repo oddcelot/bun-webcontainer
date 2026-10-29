@@ -80,7 +80,8 @@ Servers answer requests from the [preview](/guides/features/#preview), not from 
 |---|---|---|
 | `import.meta.url`, `dirname`, `filename` | ✅ Works | `file:///<path>` in the project. |
 | `import.meta.require` | 🟡 Partial | String literals only (`import.meta.require("x")`). |
-| `import.meta.dir`, `file`, `path`, `main`, `resolve`, `env` | ❌ Missing | |
+| `import.meta.dir`, `file`, `path`, `main`, `env` | ✅ Works | `env` is `process.env`. In browser code (HTML imports), only `url`, `dirname` and `filename` are filled in. |
+| `import.meta.resolve` | ❌ Missing | The browser's own returns the served URL, not a project path. |
 | `import(expr)` with a computed path | ✅ Works | |
 | `fetch("file:///…")` | ✅ Works | Reads project files. Relative URLs throw. Other URLs go to the network, subject to CORS. |
 | `process`, `Buffer`, `global`, timers | ✅ Works | See [Node built-ins](/compatibility/node/). |

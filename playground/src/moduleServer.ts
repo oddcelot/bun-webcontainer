@@ -315,21 +315,30 @@ function isMethod(code: string, from: number): boolean {
   return /^\s*\{/.test(code.slice(i, i + 32));
 }
 
-const META_RE = /(?<![\w$.])import\.meta\.(url|dirname|filename)\b|(?<![\w$.])import\s*\(\s*(?!["'\s])/g;
+const META_RE = /(?<![\w$.])import\.meta\.(url|dirname|filename|dir|file|path|env|main)\b|(?<![\w$.])import\s*\(\s*(?!["'\s])/g;
 
 /**
- * `import.meta.url` & co. point at a `file:` URL of the module's VFS path, as Node and Bun have them. With
- * `dynamicImports`, `import(expr)` with a computed specifier goes through the worker's `__dynamicImport`, which loads
- * `file:` URLs and paths from the VFS (literal ones are resolved from the transpiler's import records). Only code is touched, not strings,
- * templates, comments or regex literals.
+ * `import.meta.url` & co. point at a `file:` URL of the module's VFS path, as Node and Bun have them. For the `bun`
+ * target, Bun's own `dir`, `file`, `path`, `env` and `main` are filled in too, and `import(expr)` with a computed
+ * specifier goes through the worker's `__dynamicImport`, which loads `file:` URLs and paths from the VFS (literal
+ * ones are resolved from the transpiler's import records). Only code is touched, not strings, templates, comments
+ * or regex literals.
  */
-function rewriteMeta(code: string, path: string, dynamicImports: boolean): string {
-  const value = { url: `file:///${path}`, dirname: "/" + dirname(path), filename: "/" + path };
+function rewriteMeta(code: string, path: string, bun: boolean): string {
+  const value: Record<string, string> = { url: JSON.stringify(`file:///${path}`), dirname: JSON.stringify("/" + dirname(path)), filename: JSON.stringify("/" + path) };
+  if (bun)
+    Object.assign(value, {
+      dir: value.dirname,
+      path: value.filename,
+      file: JSON.stringify(path.slice(path.lastIndexOf("/") + 1)),
+      env: "globalThis.process.env",
+      main: `(globalThis.Bun.main === ${value.filename})`,
+    });
   const literal = literalRanges(code);
-  return code.replace(META_RE, (m, meta: keyof typeof value | undefined, offset: number) => {
+  return code.replace(META_RE, (m, meta: string | undefined, offset: number) => {
     if (inRanges(literal, offset)) return m;
-    if (meta) return JSON.stringify(value[meta]);
-    return dynamicImports && !isMethod(code, offset + m.length) ? `globalThis.__dynamicImport(${JSON.stringify(value.url)}, ` : m;
+    if (meta) return value[meta] ?? m;
+    return bun && !isMethod(code, offset + m.length) ? `globalThis.__dynamicImport(${value.url}, ` : m;
   });
 }
 
