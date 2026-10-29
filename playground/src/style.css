@@ -16,7 +16,13 @@
   --control-border: color-mix(in srgb, var(--fg) 18%, var(--panel));
   /* Behind the panes: a step from the panel toward the text color, so the cards (--bg) stand apart in either scheme. */
   --canvas: color-mix(in srgb, var(--fg) 7%, var(--panel));
+  /*
+   * Nested corners are concentric: an inner corner is the outer one minus the padding between them (plus any border
+   * the outer box draws). --radius is a pane's visible corner, --pad how far content sits inside it.
+   */
   --radius: 12px;
+  --pad: 6px;
+  --inner-radius: calc(var(--radius) - var(--pad));
   --scrollbar: color-mix(in srgb, var(--fg) 22%, transparent);
   --scrollbar-hover: color-mix(in srgb, var(--fg) 38%, transparent);
 }
@@ -46,13 +52,13 @@ html[data-booting] body > header > * { visibility: hidden; animation: boot-fallb
 @keyframes boot-fallback { to { visibility: visible; } }
 /* Share menu: a popover anchored under the Share button. */
 #share { anchor-name: --share; }
-#share-menu { position-anchor: --share; inset: auto; top: anchor(bottom); left: anchor(left); margin: 6px 0 0; width: 330px; padding: 6px; border: 1px solid var(--control-border); border-radius: 10px; background: var(--panel); color: var(--fg); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35); }
+#share-menu { position-anchor: --share; inset: auto; top: anchor(bottom); left: anchor(left); margin: 6px 0 0; width: 330px; padding: 6px; border: 1px solid var(--control-border); border-radius: calc(var(--inner-radius) + 6px + 1px); background: var(--panel); color: var(--fg); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35); }
 #share-menu .lead { margin: 6px 8px 8px; font-size: 12px; line-height: 1.4; color: var(--muted); }
 #share-menu .lead [data-share-size] { display: block; font: 11px ui-monospace, monospace; margin-top: 2px; }
 #share-menu .notes { margin: 0 8px 8px; padding: 6px 8px 6px 22px; border-radius: 6px; background: var(--control); font-size: 12px; line-height: 1.4; color: var(--muted); }
 #share-menu .notes[hidden] { display: none; }
 #share-menu .notes.warn { color: var(--fg); background: color-mix(in srgb, var(--warn) 14%, var(--panel)); }
-#share-menu button { display: flex; align-items: flex-start; gap: 10px; width: 100%; white-space: normal; padding: 8px; border: 0; border-radius: 6px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+#share-menu button { display: flex; align-items: flex-start; gap: 10px; width: 100%; white-space: normal; padding: 8px; border: 0; border-radius: var(--inner-radius); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 #share-menu button:hover, #share-menu button:focus-visible { background: var(--control); outline: none; }
 #share-menu button > i { margin-top: 2px; flex-shrink: 0; }
 #share-menu button > span { display: flex; flex-direction: column; gap: 2px; }
@@ -85,10 +91,10 @@ html[data-booting] body > header > * { visibility: hidden; animation: boot-fallb
 #theme .chevron { display: grid; color: var(--muted); }
 .swatch { display: inline-flex; flex-shrink: 0; width: 22px; height: 14px; overflow: hidden; border: 1px solid var(--control-border); border-radius: 3px; }
 .swatch > span { flex: 1; box-shadow: inset 0 -3px var(--swatch-accent, transparent); }
-.theme-menu { z-index: 30; min-width: 16rem; border: 1px solid var(--control-border); border-radius: 10px; background: var(--panel); color: var(--fg); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35); }
+.theme-menu { z-index: 30; min-width: 16rem; border: 1px solid var(--control-border); border-radius: calc(var(--inner-radius) + 4px + 1px); background: var(--panel); color: var(--fg); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35); }
 .theme-list { max-height: min(28rem, 70vh); overflow-y: auto; margin: 0; padding: 4px; list-style: none; outline: none; }
 .theme-section { padding: 8px 8px 4px; font-size: 11px; font-weight: 600; color: var(--muted); }
-.theme-option { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 5px; cursor: pointer; outline: none; }
+.theme-option { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: var(--inner-radius); cursor: pointer; outline: none; }
 .theme-option .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .theme-option[data-highlighted] { background: var(--control-hover); }
 .theme-option .check { display: grid; color: var(--accent); }
@@ -112,9 +118,10 @@ main { flex: 1; min-height: 0; padding: 0 4px 4px; }
 /*
  * The panes are cards with gaps between them. The gap is each pane's transparent border (the background stops at
  * the padding box, and so does overflow, along the inner curve): borders sit inside the size Kobalte gives a panel,
- * so the fractions still add up, and the handles stay centered in the gaps.
+ * so the fractions still add up, and the handles stay centered in the gaps. The visible corner is the padding box's,
+ * so the border's width goes on top of --radius.
  */
-[data-kb-resizable-panel]:not(#right) { border: 4px solid transparent; border-radius: var(--radius); background: var(--bg) padding-box; }
+[data-kb-resizable-panel]:not(#right) { border: 4px solid transparent; border-radius: calc(var(--radius) + 4px); background: var(--bg) padding-box; }
 main [data-kb-resizable-root] { height: 100%; }
 #tree { height: 100%; }
 /*
@@ -141,10 +148,10 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
 #editor { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 /* Over the editor surface, not above it: the surface stays put when a file opens. */
 #editor[data-empty]::before { content: "No file open"; position: absolute; inset: 0; z-index: 1; display: grid; place-items: center; background: var(--bg); color: var(--muted); }
-.tabs { display: flex; gap: 4px; padding: 6px; overflow-x: auto; background: var(--bg); border-bottom: 1px solid var(--border); }
+.tabs { display: flex; gap: 4px; padding: var(--pad); overflow-x: auto; background: var(--bg); border-bottom: 1px solid var(--border); }
 #tabs:empty { display: none; }
 /* Tabs size to their name up to 26rem (about 42 characters) (then "…"; the tooltip has the full path) and don't shrink: a full bar scrolls. */
-.tabs .tab { position: relative; display: flex; flex: 0 0 auto; align-items: center; gap: 6px; min-width: 6rem; max-width: 26rem; padding: 4px 6px 4px 10px; border-radius: 6px; color: var(--muted); cursor: pointer; white-space: nowrap; user-select: none; }
+.tabs .tab { position: relative; display: flex; flex: 0 0 auto; align-items: center; gap: 6px; min-width: 6rem; max-width: 26rem; padding: 4px 6px 4px 10px; border-radius: var(--inner-radius); color: var(--muted); cursor: pointer; white-space: nowrap; user-select: none; }
 .tabs .tab:hover { color: var(--fg); background: var(--control); }
 .tabs .tab[aria-selected="true"] { background: var(--control-hover); color: var(--fg); }
 /* The same mark as the pressed color-scheme button: an accent line on the bottom edge, inset past the corners. */
@@ -153,7 +160,7 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
 .tabs .name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* The folder hint gives way before the name does. */
 .tabs .dir { flex: 0 1000 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 11px; opacity: 0.7; }
-.tabs .close { flex-shrink: 0; display: grid; place-items: center; padding: 2px; border: 0; border-radius: 4px; background: none; color: inherit; cursor: pointer; opacity: 0; }
+.tabs .close { flex-shrink: 0; display: grid; place-items: center; padding: 2px; border: 0; border-radius: calc(var(--inner-radius) - 4px); background: none; color: inherit; cursor: pointer; opacity: 0; }
 .tabs .tab:hover .close, .tabs .tab[aria-selected="true"] .close { opacity: 0.7; }
 .tabs .close:hover { opacity: 1; background: var(--control-hover); }
 #editor .pierre-host { height: 100%; overflow: auto; background: var(--bg); }
@@ -183,7 +190,7 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
 .preview-response.error .status { color: var(--error); background: color-mix(in srgb, var(--error) 14%, var(--panel)); }
 .preview-response.error .body { color: var(--error); border-color: color-mix(in srgb, var(--error) 45%, var(--panel)); background: color-mix(in srgb, var(--error) 8%, var(--panel)); }
 #preview-tabs .method { flex-shrink: 0; font: 10px/1 ui-monospace, monospace; padding: 2px 4px; border-radius: 3px; background: var(--control); }
-#preview-tabs .add { flex-shrink: 0; display: grid; place-items: center; padding: 0 8px; border: 0; border-radius: 6px; background: none; color: var(--muted); cursor: pointer; }
+#preview-tabs .add { flex-shrink: 0; display: grid; place-items: center; padding: 0 8px; border: 0; border-radius: var(--inner-radius); background: none; color: var(--muted); cursor: pointer; }
 #preview-tabs .add:hover { color: var(--fg); background: var(--control-hover); }
 #console-wrap { display: flex; flex-direction: column; min-height: 0; }
 #console-head { display: flex; align-items: center; gap: 6px; padding: 4px 8px; background: var(--panel); border-bottom: 1px solid var(--border); color: var(--muted); }
