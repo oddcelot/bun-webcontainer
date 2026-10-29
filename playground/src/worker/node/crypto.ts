@@ -91,6 +91,37 @@ type ScryptOptions = { N?: number; cost?: number; r?: number; blockSize?: number
 const scryptOpts = (keylen: number, o: ScryptOptions = {}) => ({ N: o.N ?? o.cost ?? 16384, r: o.r ?? o.blockSize ?? 8, p: o.p ?? o.parallelization ?? 1, dkLen: keylen, maxmem: o.maxmem ?? 2 ** 32 });
 const settle = (p: Promise<Uint8Array>, cb: Callback) => p.then((k) => cb(null, Buffer.from(k)), (e) => cb(e));
 
+type Encoding = "hex" | "base64" | "base64url" | "latin1" | "binary" | "buffer";
+
+/** `Bun.CryptoHasher`: incremental hashing, or HMAC with a key. `digest()` without an encoding returns a Buffer. */
+export class CryptoHasher {
+  static readonly algorithms = Object.keys(HASHES);
+  static hash(alg: string, data: Data, enc?: Encoding) {
+    return new CryptoHasher(alg).update(data).digest(enc);
+  }
+  readonly algorithm: string;
+  readonly byteLength: number;
+  #h: Hash;
+  constructor(alg: string, key?: Data | Hash) {
+    this.algorithm = alg.toLowerCase();
+    const a = algo(alg);
+    this.byteLength = a.outputLen;
+    this.#h = key instanceof Hash ? key : key === undefined ? createHash(alg) : createHmac(alg, key);
+  }
+  update(data: Data, enc?: string) {
+    this.#h.update(data, enc);
+    return this;
+  }
+  digest(enc?: Encoding | Uint8Array) {
+    const out = this.#h.digest() as Buffer;
+    if (enc instanceof Uint8Array) return (enc.set(out), enc);
+    return enc ? encode(out, enc) : out;
+  }
+  copy() {
+    return new CryptoHasher(this.algorithm, this.#h.copy());
+  }
+}
+
 export default {
   createHash,
   createHmac,

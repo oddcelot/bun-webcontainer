@@ -4,6 +4,7 @@ import { dirname, norm, VFS } from "../vfs";
 import { BUN_NAMES, builtins, installTimers, setFs, setStdio } from "./node";
 import { bundle, type BundleConfig, type BundleLog } from "./bundler";
 import { setHostVfs } from "./hostPackages";
+import { CryptoHasher } from "./node/crypto";
 import { fsError } from "./node/errors";
 import { hooks, type NodeSocket } from "./node/serve";
 import { flushDatabases } from "./node/sqlite";
@@ -628,6 +629,7 @@ async function main() {
     write,
     serve: (opts: ServeOptions) => createInstance(opts).server,
     build,
+    CryptoHasher,
   };
   g.Bun = Object.assign(builtins.bun, bun);
 
