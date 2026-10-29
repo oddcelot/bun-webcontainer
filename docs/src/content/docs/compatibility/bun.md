@@ -17,18 +17,22 @@ Use the `Bun` global. `import { serve } from "bun"` doesn't resolve yet.
 |---|---|---|
 | `Bun.serve` | 🟡 Partial | `fetch`, `routes`, WebSockets, streaming. See [below](#bunserve). |
 | `Bun.file` | 🟡 Partial | `exists`, `text`, `json`, `bytes`, `arrayBuffer`, `name`. Not a `Blob`: no `size`, `type`, `stream`, `slice`, `writer`, `delete`. |
-| `Bun.write` | 🟡 Partial | Destination must be a path. Accepts strings, `BunFile`, `Blob`, `Response`, `ArrayBuffer`, typed arrays. Creates parent folders. |
+| `Bun.write` | 🟡 Partial | Destination is a path, `file:` URL, `BunFile`, `Bun.stdout` or `Bun.stderr` (file descriptors aren't). Accepts strings, `BunFile`, `Blob`, `Response`, `ArrayBuffer`, typed arrays. Creates parent folders. |
 | `Bun.build` | 🟡 Partial | Bun's real bundler, as wasm (~10 MB, loaded on first use). Supports `entrypoints`, `outdir`, `target`, `format`, `minify`, `splitting`, `sourcemap`, `naming`, `publicPath`, `external`, `define`, `conditions`, `banner`, `footer`, `throw`. `plugins` are ignored with a warning; `loader`, `env`, `packages`, `drop`, `compile`, `root` aren't supported. |
 | `Bun.env` | ✅ Works | Same object as `process.env`; starts as `{ NODE_ENV: "development" }`. `.env` files aren't loaded. |
 | `Bun.version` | ✅ Works | `Bun.revision` is missing. |
 | `Bun.semver` | ✅ Works | `order` and `satisfies`, from Bun's own semver code. |
 | `Bun.sleep` | ✅ Works | `sleepSync` is missing. |
 | `Bun.nanoseconds` | ✅ Works | Browser clock resolution. |
+| `Bun.inspect`, `Bun.deepEquals`, `Bun.escapeHTML` | ✅ Works | `inspect` is `node:util`'s, without colors. |
+| `Bun.main`, `Bun.argv` | ✅ Works | `Bun.main` is the entry's path; `Bun.argv` is `["bun", main]`, as `process.argv`. |
+| `Bun.stdout`, `Bun.stderr` | 🟡 Partial | Work as `Bun.write` destinations and print to the console. No `writer()`. |
+| `Bun.which` | ⚪ Stub | Returns `null`: there are no executables. |
 | `Bun.gc` | ⚪ Stub | Does nothing. |
 | `Bun.spawn`, `Bun.spawnSync`, `Bun.$` | ❌ Missing | No processes in the browser. |
 | `Bun.password`, `Bun.hash`, `Bun.CryptoHasher` | ❌ Missing | Use `node:crypto` or `crypto.subtle`. |
-| `Bun.Glob`, `Bun.Transpiler`, `Bun.inspect`, `Bun.deepEquals`, `Bun.escapeHTML` | ❌ Missing | |
-| `Bun.which`, `Bun.resolveSync`, `Bun.main`, `Bun.argv`, `Bun.stdin`/`stdout`/`stderr` | ❌ Missing | |
+| `Bun.Glob`, `Bun.Transpiler` | ❌ Missing | |
+| `Bun.resolveSync`, `Bun.stdin` | ❌ Missing | |
 | `Bun.sql`, `Bun.redis`, `Bun.s3` | ❌ Missing | |
 | `Bun.connect`, `Bun.listen`, `Bun.udpSocket`, `Bun.dns` | ❌ Missing | No raw sockets in the browser. |
 | `Bun.gzipSync`, `Bun.deflateSync`, `Bun.zstd*` | ❌ Missing | |

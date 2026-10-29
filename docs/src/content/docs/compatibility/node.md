@@ -32,7 +32,7 @@ Built-ins import with or without the `node:` prefix. Labels are explained on the
 | `os` | 🟡 Partial | Fixed values: Linux, x64, `/home/user`, `/tmp`. `cpus()` and `networkInterfaces()` are empty. |
 | `path`, `path/posix` | ✅ Works | POSIX only. `path.win32` behaves like POSIX; `path/win32` is missing. |
 | `perf_hooks` | 🟡 Partial | `performance`, `PerformanceObserver`. `monitorEventLoopDelay` reports zeros. |
-| `process` | 🟡 Partial | Reports Linux x64 and Node v24.3.0. `env`, `cwd`, `chdir`, `nextTick`, `hrtime`, `memoryUsage`, `uptime`. `stdout`/`stderr` go to the console. `argv` is `["bun"]`; `stdin` never emits; `exit` and `kill` throw. |
+| `process` | 🟡 Partial | Reports Linux x64 and Node v24.3.0. `env`, `cwd`, `chdir`, `nextTick`, `hrtime`, `memoryUsage`, `uptime`. `stdout`/`stderr` go to the console. `argv` is `["bun", entry]`; `stdin` never emits; `exit` and `kill` throw. |
 | `punycode` | ✅ Works | |
 | `querystring` | ✅ Works | |
 | `readline`, `readline/promises` | ⚪ Stub | |

@@ -9,6 +9,7 @@ import { hooks, type NodeSocket } from "./node/serve";
 import { flushDatabases } from "./node/sqlite";
 import nodePath from "./node/path";
 import process, { env } from "./node/process";
+import util, { isDeepStrictEqual } from "./node/util";
 import { runTestFiles } from "./node/test";
 import { BUN_VERSION } from "./bunVersion";
 
@@ -478,7 +479,11 @@ class BunFile {
   }
 }
 
-async function write(path: string, data: unknown): Promise<number> {
+/** `Bun.stdout`/`Bun.stderr`: write targets that go to the console pane. */
+const stdout = new BunFile("/dev/stdout");
+const stderr = new BunFile("/dev/stderr");
+
+async function write(dest: string | URL | BunFile, data: unknown): Promise<number> {
   let out: string | Uint8Array;
   if (typeof data === "string") out = data;
   else if (data instanceof BunFile) out = await data.bytes();
@@ -486,11 +491,17 @@ async function write(path: string, data: unknown): Promise<number> {
   else if (data instanceof ArrayBuffer) out = new Uint8Array(data);
   else if (ArrayBuffer.isView(data)) out = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
   else out = String(data);
+  const size = typeof out === "string" ? new TextEncoder().encode(out).length : out.byteLength;
+  if (dest === stdout || dest === stderr) {
+    (dest === stdout ? process.stdout : process.stderr).write(out);
+    return size;
+  }
+  const path = dest instanceof BunFile ? dest.name : dest instanceof URL ? decodeURIComponent(dest.pathname) : dest;
   const file = "/" + norm(nodePath.resolve(path));
   const fs = builtins.fs as { mkdirSync(p: string, o: object): void; writeFileSync(p: string, d: string | Uint8Array): void };
   fs.mkdirSync(nodePath.dirname(file), { recursive: true });
   fs.writeFileSync(file, out);
-  return typeof out === "string" ? new TextEncoder().encode(out).length : out.byteLength;
+  return size;
 }
 
 type BuildArtifact = Blob & { path: string; kind: "entry-point" | "chunk" | "asset" | "sourcemap"; loader: string; hash: string | null; sourcemap: BuildArtifact | null };
@@ -589,12 +600,24 @@ globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   return new Response(data.slice());
 };
 
+const HTML_ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#x27;" };
+/** `Bun.escapeHTML`: like Bun's, non-strings are stringified first. */
+const escapeHTML = (v: unknown) => String(v).replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
+
 async function main() {
   const semver = await loadSemver();
   g.Bun = {
     version: `${BUN_VERSION}-browser`,
     env,
     gc: () => {},
+    main: "",
+    argv: process.argv,
+    stdout,
+    stderr,
+    inspect: util.inspect,
+    deepEquals: (a: unknown, b: unknown, strict = false) => isDeepStrictEqual(a, b, strict),
+    escapeHTML,
+    which: () => null,
     sleep: (ms: number) => new Promise((r) => setTimeout(r, ms)),
     nanoseconds: () => Math.round(performance.now() * 1e6),
     semver: {
@@ -674,6 +697,7 @@ self.addEventListener("message", async (e: MessageEvent) => {
     post({ type: "ready", failed });
     return;
   }
+  (g.Bun as { main: string }).main = process.argv[1] = `/${e.data.entry}`;
   try {
     const mod = (await importUrl(`${BASE}__vfs/${e.data.entry}`)) as { default?: ServeOptions };
     // Bun serves an entry whose default export has a fetch handler (Hono's `export default app`), unless that
