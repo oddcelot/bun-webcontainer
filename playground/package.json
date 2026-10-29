@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "og": "bun scripts/og.ts",
-    "typecheck:worker": "wrangler types worker/worker-configuration.d.ts && tsc -p worker"
+    "typecheck:worker": "wrangler types worker/worker-configuration.d.ts && tsc -p worker",
+    "swatches": "bun scripts/theme-swatches.ts"
   },
   "dependencies": {
     "@kobalte/core": "2.0.0-alpha.4",
