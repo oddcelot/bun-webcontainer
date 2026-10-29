@@ -98,6 +98,11 @@ export function EditorTabs(props: { placeholder?: boolean }) {
             >
               <span class="name">{name(path)}</span>
               {clashes().get(name(path))! > 1 && path.includes("/") && <span class="dir">{path.slice(0, path.lastIndexOf("/"))}</span>}
+              <Show when={ws.state.dirty.includes(path)}>
+                <span class="unsaved" title="Unsaved changes (Ctrl/Cmd+S saves)" aria-label="unsaved">
+                  ●
+                </span>
+              </Show>
             </TabItem>
           )}
         </For>

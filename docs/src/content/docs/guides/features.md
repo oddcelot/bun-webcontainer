@@ -10,6 +10,7 @@ sidebar:
 - Syntax-highlighted editor with themes and light/dark mode
 - File tree with search and a "New file" button
 - Tabs for open files: close with the × button, <kbd>Delete</kbd>, or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>W</kbd>
+- **Auto-save** (on by default): edits are saved a moment after you stop typing. Switch it off in the tab bar to save with <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>S</kbd> instead; unsaved tabs show a dot, and Run, Install, `bun test` and Share save everything first.
 - Resizable panes
 - **Open folder** loads a folder from your computer (skips `node_modules` and `.git`)
 

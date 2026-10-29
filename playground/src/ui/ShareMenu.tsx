@@ -48,7 +48,12 @@ export function ShareMenu() {
   }
 
   return (
-    <div id="share-menu" popover onBeforeToggle={(e) => e.newState === "open" && setOpened((n) => n + 1)}>
+    <div id="share-menu" popover onBeforeToggle={(e) => {
+        if (e.newState !== "open") return;
+        // The link carries the VFS, so unsaved edits go in first.
+        app.workspace.saveAll();
+        setOpened((n) => n + 1);
+      }}>
       <Loading fallback={<p class="lead">…</p>}>
         <Show when={link()}>
           {(l) => (
