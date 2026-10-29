@@ -1,7 +1,7 @@
 import assert from "./assert";
 import buffer from "./buffer";
 import crypto from "./crypto";
-import { diagnostics_channel, async_hooks, child_process, cluster, constants, dns, http2, inspector, readline, tls, v8, vm, zlib } from "./stubs";
+import { diagnostics_channel, async_hooks, child_process, cluster, constants, dns, http2, inspector, readline, tls, v8, vm } from "./stubs";
 import events from "./events";
 import fs from "./fs";
 import http, { https } from "./http";
@@ -23,6 +23,7 @@ import tty from "./tty";
 import url from "./url";
 import util from "./util";
 import worker_threads from "./worker_threads";
+import zlib from "./zlib";
 
 /** node:stream/web re-exports the web stream classes, which are globals here. */
 const streamWeb = Object.fromEntries(
@@ -33,7 +34,7 @@ const streamWeb = Object.fromEntries(
 );
 
 /** What `Bun` has; runtime.ts types the global against this list. */
-export const BUN_NAMES = ["version", "env", "gc", "main", "argv", "stdout", "stderr", "inspect", "deepEquals", "escapeHTML", "which", "sleep", "nanoseconds", "semver", "file", "write", "serve", "build", "CryptoHasher"] as const;
+export const BUN_NAMES = ["version", "env", "gc", "main", "argv", "stdout", "stderr", "inspect", "deepEquals", "escapeHTML", "which", "sleep", "nanoseconds", "semver", "file", "write", "serve", "build", "CryptoHasher", "gzipSync", "gunzipSync", "deflateSync", "inflateSync", "hash"] as const;
 /** `import ... from "bun"`: the worker copies the `Bun` global in once it exists; the page only needs the names. */
 const bun: Record<string, unknown> = Object.fromEntries(BUN_NAMES.map((k) => [k, undefined]));
 

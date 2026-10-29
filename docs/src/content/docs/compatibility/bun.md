@@ -12,7 +12,7 @@ Reported version: `Bun.version` is `1.4.4-browser`. Labels are explained on the 
 | API | Status | Notes |
 |---|---|---|
 | `Bun.serve` | 🟡 Partial | `fetch`, `routes`, WebSockets, streaming. See [below](#bunserve). |
-| `Bun.file` | 🟡 Partial | `exists`, `text`, `json`, `bytes`, `arrayBuffer`, `name`. Not a `Blob`: no `size`, `type`, `stream`, `slice`, `writer`, `delete`. |
+| `Bun.file` | 🟡 Partial | A `Blob`: `size`, `type`, `slice`, `stream`, `text`, `json`, `bytes`, `arrayBuffer`, plus `exists`, `name`, `lastModified`, `write`, `writer`, `delete`. Reads are live, but `new Response(file)` sends the file as it was when `Bun.file()` was called. No file descriptors. |
 | `Bun.write` | 🟡 Partial | Destination is a path, `file:` URL, `BunFile`, `Bun.stdout` or `Bun.stderr` (file descriptors aren't). Accepts strings, `BunFile`, `Blob`, `Response`, `ArrayBuffer`, typed arrays. Creates parent folders. |
 | `Bun.build` | 🟡 Partial | Bun's real bundler, as wasm (~10 MB, loaded on first use). Supports `entrypoints`, `outdir`, `target`, `format`, `minify`, `splitting`, `sourcemap`, `naming`, `publicPath`, `external`, `define`, `conditions`, `banner`, `footer`, `throw`. `plugins` are ignored with a warning; `loader`, `env`, `packages`, `drop`, `compile`, `root` aren't supported. |
 | `Bun.env` | ✅ Works | Same object as `process.env`; starts as `{ NODE_ENV: "development" }`. `.env` files aren't loaded. |
@@ -27,12 +27,14 @@ Reported version: `Bun.version` is `1.4.4-browser`. Labels are explained on the 
 | `Bun.gc` | ⚪ Stub | Does nothing. |
 | `Bun.spawn`, `Bun.spawnSync`, `Bun.$` | ❌ Missing | No processes in the browser. |
 | `Bun.CryptoHasher` | ✅ Works | md5, ripemd160, sha1, sha2, sha3, blake2; HMAC with a key; `copy`, static `hash`. No md4 or shake. |
-| `Bun.password`, `Bun.hash` | ❌ Missing | Use `Bun.CryptoHasher`, `node:crypto` or `crypto.subtle`. |
+| `Bun.hash` | 🟡 Partial | `wyhash` (the default), `adler32`, `crc32`, `xxHash32`, `xxHash64`, `murmur32v2`, `murmur32v3`, `murmur64v2`, all matching Bun's output. `cityHash32`, `cityHash64`, `xxHash3` and `rapidhash` throw. |
+| `Bun.password` | ❌ Missing | Use `Bun.CryptoHasher`, `node:crypto` or `crypto.subtle`. |
 | `Bun.Glob`, `Bun.Transpiler` | ❌ Missing | |
 | `Bun.resolveSync`, `Bun.stdin` | ❌ Missing | |
 | `Bun.sql`, `Bun.redis`, `Bun.s3` | ❌ Missing | |
 | `Bun.connect`, `Bun.listen`, `Bun.udpSocket`, `Bun.dns` | ❌ Missing | No raw sockets in the browser. |
-| `Bun.gzipSync`, `Bun.deflateSync`, `Bun.zstd*` | ❌ Missing | |
+| `Bun.gzipSync`, `Bun.gunzipSync`, `Bun.deflateSync`, `Bun.inflateSync` | 🟡 Partial | `level` is the only option read. Deflate is raw, as in Bun. |
+| `Bun.zstd*` | ❌ Missing | |
 | `Bun.CookieMap`, `Bun.YAML`, `Bun.TOML`, `Bun.plugin`, `Bun.FileSystemRouter`, `Bun.mmap` | ❌ Missing | |
 | `HTMLRewriter` | ❌ Missing | |
 

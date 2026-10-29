@@ -1,4 +1,5 @@
 import { codeError } from "./errors";
+import { parseArgs } from "./parseArgs";
 
 const custom = Symbol.for("nodejs.util.inspect.custom");
 
@@ -279,6 +280,7 @@ const warned = new Set<string>();
 
 export default {
   format,
+  parseArgs,
   formatWithOptions: (_o: unknown, ...a: unknown[]) => format(...a),
   inspect,
   promisify,
