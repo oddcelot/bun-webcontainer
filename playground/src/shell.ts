@@ -11,6 +11,8 @@ export interface ShellHost {
   install(): Promise<void>;
   stop(): void;
   clear(): void;
+  /** Forget this project's saved files and reload it from its source. */
+  reset(): Promise<void>;
 }
 
 type Pkg = { scripts?: Record<string, string>; dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
@@ -25,6 +27,7 @@ bun install, bun i     install dependencies
 bun add <pkg> [-d]     add (dev) dependencies
 bun remove <pkg>       remove dependencies
 ls [dir]  cat <file>  clear  help
+reset                  discard saved files, reload from source
 
 ↑/↓ history  Ctrl+C clear line or stop server
 Ctrl+L clear console`;
@@ -116,6 +119,7 @@ export function createShell(host: ShellHost) {
     const [cmd, ...args] = line.split(/\s+/);
     try {
       if (cmd === "help") return log("log", HELP);
+      if (cmd === "reset") return await host.reset();
       if (cmd === "clear") return host.clear();
       if (cmd === "ls") return ls(args[0]);
       if (cmd === "cat") return cat(args[0]);
