@@ -131,12 +131,19 @@ function themeApplied(timeout = 1500): Promise<void> {
 controller.subscribe(sync);
 sync();
 
-// Preview pages follow the mode (previewColorScheme in sw.js).
+// Preview pages follow the mode (previewColorScheme in sw.js). The ones in this page's iframes switch right away,
+// so a theme view transition captures them in the new mode (a channel message arrives too late for that); the
+// channel reaches the rest, e.g. a preview opened in its own tab.
 const previewScheme = new BroadcastChannel("bun-color-scheme");
 let mode = controller.getState().mode;
 controller.subscribe(() => {
   if (controller.getState().mode === mode) return;
   mode = controller.getState().mode;
+  for (const frame of document.querySelectorAll("iframe")) {
+    try {
+      (frame.contentWindow as (Window & { __bunColorScheme?: (mode: string) => void }) | null)?.__bunColorScheme?.(mode);
+    } catch {} // not a preview (another origin)
+  }
   previewScheme.postMessage(mode);
 });
 
@@ -192,8 +199,8 @@ function coverWidth(x: number, y: number) {
 
 /**
  * Runs a theme change (a color mode or family pick) as a view transition: the new colors reveal in the shape of the
- * Bun logo, which pops out whole just below `from` (the control that was used), then grows over the middle of the
- * window until it covers it. Without View Transitions, or with reduced motion, the change applies at once.
+ * Bun logo, growing at a steady pace from just below `from` (the control that was used) until it covers the window.
+ * Without View Transitions, or with reduced motion, the change applies at once.
  */
 export function switchTheme(change: () => void, from?: Element) {
   if (!("startViewTransition" in document) || matchMedia("(prefers-reduced-motion: reduce)").matches) return change();
@@ -207,10 +214,10 @@ export function switchTheme(change: () => void, from?: Element) {
   });
   const box = from?.getBoundingClientRect();
   // Small and whole first, under the control (kept inside the window), so the shape reads as the logo.
-  const small = Math.min(220, innerWidth * 0.3);
-  const smallLeft = Math.min(Math.max((box ? box.left + box.width / 2 : innerWidth / 2) - small / 2, 8), innerWidth - small - 8);
-  const smallTop = box ? box.bottom + 6 : 8;
-  // Then centered on the window, as large as it takes to cover it.
+  // It starts just below the control (kept inside the window) and grows at a steady pace to centered on the window,
+  // as large as it takes to cover it.
+  const startX = Math.min(Math.max(box ? box.left + box.width / 2 : innerWidth / 2, 8), innerWidth - 8);
+  const startY = box ? box.bottom + 6 : 8;
   const mx = innerWidth / 2;
   const my = innerHeight / 2;
   const w = coverWidth(mx, my);
@@ -221,17 +228,11 @@ export function switchTheme(change: () => void, from?: Element) {
   transition.ready
     .then(() =>
       document.documentElement.animate(
-        [
-          { maskSize: "0px 0px", maskPosition: `${smallLeft + small / 2}px ${smallTop}px`, easing: "cubic-bezier(0.2, 0, 0, 1)" },
-          {
-            offset: 0.35,
-            maskSize: `${small}px ${small * MASK.aspect}px`,
-            maskPosition: `${smallLeft}px ${smallTop}px`,
-            easing: "cubic-bezier(0.5, 0, 0.9, 0.5)",
-          },
-          { maskSize: `${w}px ${h}px`, maskPosition: `${mx - MASK.cx * w}px ${my - MASK.cy * h}px` },
-        ],
-        { duration: 750, pseudoElement: "::view-transition-new(root)" },
+        {
+          maskSize: ["0px 0px", `${w}px ${h}px`],
+          maskPosition: [`${startX}px ${startY}px`, `${mx - MASK.cx * w}px ${my - MASK.cy * h}px`],
+        },
+        { duration: 700, easing: "linear", pseudoElement: "::view-transition-new(root)" },
       ),
     )
     .catch(() => {}); // skipped transitions (e.g. a second switch mid-animation) still apply the change

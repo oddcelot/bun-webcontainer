@@ -103,6 +103,8 @@ function previewColorScheme() {
   document.head.append(meta, style);
   const channel = new BroadcastChannel("bun-color-scheme");
   channel.onmessage = (e) => apply(e.data);
+  // The playground calls this directly on its preview iframes, so a theme transition captures them switched.
+  window.__bunColorScheme = apply;
   // A page that supports only one scheme keeps it.
   addEventListener("load", () => {
     style.sheet.disabled = true;
@@ -114,6 +116,7 @@ function previewColorScheme() {
       meta.remove();
       style.remove();
       channel.close();
+      delete window.__bunColorScheme;
     }
   });
 }
