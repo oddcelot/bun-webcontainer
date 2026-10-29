@@ -13,6 +13,7 @@ import process, { env } from "./node/process";
 import util, { isDeepStrictEqual } from "./node/util";
 import { runTestFiles } from "./node/test";
 import { BUN_VERSION } from "./bunVersion";
+import * as fflate from "fflate";
 
 type Handler = (req: Request, server: unknown) => Response | Promise<Response>;
 type HtmlImport = { __htmlImport: string };
@@ -605,6 +606,11 @@ const HTML_ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "
 /** `Bun.escapeHTML`: like Bun's, non-strings are stringified first. */
 const escapeHTML = (v: unknown) => String(v).replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
 
+type Compressible = string | ArrayBuffer | ArrayBufferView;
+const compressible = (d: Compressible) =>
+  typeof d === "string" ? new TextEncoder().encode(d) : d instanceof ArrayBuffer ? new Uint8Array(d) : new Uint8Array(d.buffer, d.byteOffset, d.byteLength);
+const level = (o?: { level?: number }) => ({ level: (o?.level === undefined || o.level < 0 ? 6 : Math.min(o.level, 9)) as fflate.DeflateOptions["level"] });
+
 async function main() {
   const semver = await loadSemver();
   const bun: Record<(typeof BUN_NAMES)[number], unknown> = {
@@ -630,6 +636,11 @@ async function main() {
     serve: (opts: ServeOptions) => createInstance(opts).server,
     build,
     CryptoHasher,
+    // Bun's deflate is raw (no zlib header), like its inflate.
+    gzipSync: (d: Compressible, o?: { level?: number }) => fflate.gzipSync(compressible(d), level(o)),
+    gunzipSync: (d: Compressible) => fflate.gunzipSync(compressible(d)),
+    deflateSync: (d: Compressible, o?: { level?: number }) => fflate.deflateSync(compressible(d), level(o)),
+    inflateSync: (d: Compressible) => fflate.inflateSync(compressible(d)),
   };
   g.Bun = Object.assign(builtins.bun, bun);
 

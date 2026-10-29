@@ -32,7 +32,8 @@ Reported version: `Bun.version` is `1.4.4-browser`. Labels are explained on the 
 | `Bun.resolveSync`, `Bun.stdin` | ❌ Missing | |
 | `Bun.sql`, `Bun.redis`, `Bun.s3` | ❌ Missing | |
 | `Bun.connect`, `Bun.listen`, `Bun.udpSocket`, `Bun.dns` | ❌ Missing | No raw sockets in the browser. |
-| `Bun.gzipSync`, `Bun.deflateSync`, `Bun.zstd*` | ❌ Missing | |
+| `Bun.gzipSync`, `Bun.gunzipSync`, `Bun.deflateSync`, `Bun.inflateSync` | 🟡 Partial | `level` is the only option read. Deflate is raw, as in Bun. |
+| `Bun.zstd*` | ❌ Missing | |
 | `Bun.CookieMap`, `Bun.YAML`, `Bun.TOML`, `Bun.plugin`, `Bun.FileSystemRouter`, `Bun.mmap` | ❌ Missing | |
 | `HTMLRewriter` | ❌ Missing | |
 
