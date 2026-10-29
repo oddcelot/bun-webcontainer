@@ -1,0 +1,28 @@
+---
+title: Frameworks
+description: Frameworks and projects known to run in the playground.
+sidebar:
+  order: 5
+---
+
+These ship as examples in the playground (project picker → Examples). Unless noted, they were checked in Chrome.
+
+| Project | Status | Notes |
+|---|---|---|
+| [Elysia](https://runbun.dev/?example=elysia-demo) 1.4 | ✅ Works | Every route returns the same status and body as real Bun. |
+| [Elysia 2 (rc)](https://runbun.dev/?example=elysia2-demo) | ✅ Works | Same check as above. |
+| [Hono](https://runbun.dev/?repo=honojs/starter/tree/main/templates/bun) | ❔ Untested | Bun starter template, from GitHub. Listed as an example; no recorded check yet. |
+| [Lit SSR + Elysia](https://runbun.dev/?repo=oddcelot/lit-devtools/tree/main/examples/elysia) | ✅ Works | Streams Lit SSR, hydrates, uses `bun:sqlite` and WebSockets. |
+| [Astro + Solid](https://runbun.dev/?example=astro-solid-demo) | 🟡 Partial | Astro 7 dev server, on-demand pages, a hydrated Solid island and an API route. HMR and the dev toolbar are off. |
+| [Vite](https://runbun.dev/?example=vite-demo) | 🟡 Partial | Vite 8 dev server, started from a script with `createServer()`. HMR connects over the preview's WebSocket; not yet tested end to end. |
+| [Node built-ins demo](https://runbun.dev/?example=node-demo) | ✅ Works | Output matches real Bun. |
+| [`bun.lock` demo](https://runbun.dev/?example=lockfile-demo) | ✅ Works | Nested installs from a lockfile. |
+
+## What usually blocks a framework
+
+- **CLI scripts.** Only `"script": "bun <file>"` runs. Start the dev server from a file instead (for example `createServer()` in Vite, `dev()` in Astro).
+- **Native bindings** without a wasm fallback.
+- **Child processes** (`child_process`, `Bun.spawn`) and `zlib`.
+- **Install scripts**, which never run.
+
+Tried something? [Tell us](https://github.com/oddcelot/bun-webcontainer/issues) whether it worked.
