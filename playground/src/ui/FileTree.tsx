@@ -1,4 +1,4 @@
-import { createEffect, onSettled, useContext } from "solid-js";
+import { createEffect, createSignal, onSettled, useContext } from "solid-js";
 import {
   FileTree as PierreTree,
   themeToTreeStyles,
@@ -9,6 +9,7 @@ import {
 import { onTheme } from "../theme";
 import { AppContext } from "./context";
 import { guarded } from "./guarded";
+import { PromptDialog } from "./PromptDialog";
 
 const TREE_VARS_KEY = "tree-vars";
 
@@ -132,17 +133,25 @@ export function FileTree() {
     { defer: true },
   );
 
-  function newFile() {
-    const name = prompt("File path", "new.ts");
-    if (name) app.newFile(name);
-  }
+  const [asking, setAsking] = createSignal(false);
+  let button!: HTMLButtonElement;
 
   return (
     <>
       <div ref={host} style={{ height: "100%" }} />
-      <button id="newfile" type="button" title="New file" aria-label="New file" onClick={newFile}>
+      <button ref={button} id="newfile" type="button" title="New file" aria-label="New file" onClick={() => setAsking(true)}>
         <i class="i-lucide-file-plus" aria-hidden="true" />
       </button>
+      <PromptDialog
+        open={asking()}
+        onOpenChange={setAsking}
+        title="New file"
+        label="File path"
+        initial="new.ts"
+        submit="Create"
+        onSubmit={(name) => app.newFile(name)}
+        returnFocus={() => button}
+      />
     </>
   );
 }
