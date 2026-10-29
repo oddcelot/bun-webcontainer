@@ -77,10 +77,14 @@ html[data-booting] body > header > * { visibility: hidden; animation: boot-fallb
 #share-menu button[hidden] { display: none; }
 #share-menu button:disabled { opacity: 0.5; cursor: default; }
 #share-menu button:disabled:hover { background: none; }
-#modes { display: inline-flex; }
-#modes button { padding: 0 7px; border-radius: 0; margin-left: -1px; }
-#modes button:first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
-#modes button:last-child { border-radius: 0 6px 6px 0; }
+/* Appearance popover: the color-scheme toggle over the theme list. Its padding is --pad, so the corners inside are --inner-radius. */
+.appearance { z-index: 30; width: 18rem; padding: var(--pad); border: 1px solid var(--control-border); border-radius: calc(var(--inner-radius) + var(--pad) + 1px); background: var(--panel); color: var(--fg); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35); }
+.appearance .select-list { max-height: min(24rem, 60vh); margin-top: var(--pad); padding: 0; }
+#modes { display: flex; }
+#modes button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: var(--control-height); padding: 0 7px; margin-left: -1px; border: 1px solid var(--control-border); border-radius: 0; background: var(--control); color: inherit; font: inherit; cursor: pointer; }
+#modes button:hover { background: var(--control-hover); }
+#modes button:first-child { border-radius: var(--inner-radius) 0 0 var(--inner-radius); margin-left: 0; }
+#modes button:last-child { border-radius: 0 var(--inner-radius) var(--inner-radius) 0; }
 /*
  * Pressed: the icon keeps the text color (an accent icon can be fainter than its neighbours); the mark is an accent
  * line on the bottom edge, inset from the sides (past the 6px corner radius) so it stays straight on the outer buttons.
@@ -92,7 +96,6 @@ html[data-booting] body > header > * { visibility: hidden; animation: boot-fallb
 /* Read by screen readers and crawlers, not shown: the h1's stable name next to the random visible one. */
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 #example { min-width: 6rem; flex: 0 1 14rem; }
-#theme { max-width: 16rem; }
 /* The project and theme pickers: Kobalte Selects whose lists open in a portal. */
 .select-trigger { display: inline-flex; align-items: center; gap: 6px; min-width: 0; padding: 0 8px; background: var(--control); color: var(--fg); border: 1px solid var(--control-border); border-radius: 6px; font: inherit; cursor: pointer; }
 .select-trigger .value { flex: 1; display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
@@ -107,11 +110,6 @@ html[data-booting] body > header > * { visibility: hidden; animation: boot-fallb
 .select-option .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .select-option[data-highlighted] { background: var(--control-hover); }
 .select-option .check { display: grid; color: var(--accent); }
-/* Narrow windows: the secondary actions show their icon only (the label stays as the tooltip and accessible name). */
-@media (max-width: 1320px) {
-  header button .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-  header button:has(.label) { padding: 0 8px; }
-}
 #status { min-width: 7.5em; justify-content: center; display: inline-flex; align-items: center; gap: 6px; padding: 0 9px 0 7px; border: 1px solid var(--control-border); border-radius: 999px; color: var(--muted); white-space: nowrap; --dot: var(--muted); }
 /* In a narrow header the text gives way ("…", full text in the tooltip); the dot keeps its size. */
 #status .text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }

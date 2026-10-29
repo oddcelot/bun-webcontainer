@@ -1,5 +1,6 @@
 import { For, createSignal, onSettled } from "solid-js";
-import { Select } from "@kobalte/core/select";
+import { Listbox } from "@kobalte/core/listbox";
+import { Popover } from "@kobalte/core/popover";
 import { ToggleGroup } from "@kobalte/core/toggle-group";
 import type { ColorMode } from "@pierre/theming";
 import { FAMILIES, familyOf, pickFamily, setColorMode, switchTheme, themeState, watchTheme } from "../theme";
@@ -30,93 +31,87 @@ function Swatch(props: { light: string }) {
   );
 }
 
-/** A system/light/dark toggle and the theme families. */
+/**
+ * Appearance: a swatch button opening the system/light/dark toggle over the theme families. A family under the pointer
+ * or keyboard focus previews at once (theme.ts preloads them all); clicking one keeps it, and closing the popover or
+ * moving the pointer off the list without one puts the kept family back.
+ */
 export function ThemePicker() {
   // A plain signal, not an async `from()` stream: picking a family sets the light and dark halves in turn, and
-  // as a stream those updates could leave the select blank. Both writes land in one batch here.
+  // as a stream those updates could leave the picker blank. Both writes land in one batch here.
   const [theme, setTheme] = createSignal(themeState());
   onSettled(() => watchTheme((s) => setTheme({ ...s })));
-  const current = () => ALL.find((f) => f.light === familyOf(theme())) ?? null;
+  const current = () => ALL.find((f) => f.light === familyOf(theme())) ?? ALL[0];
 
-  // Live preview: the family under the pointer or keyboard focus applies right away (theme.ts preloads them all),
-  // without the reveal; closing without a pick puts the old one back.
-  // While open, the select shows the family it opened with, so the check mark and focus don't follow the preview.
-  const [opened, setOpened] = createSignal<Family | null>(null);
-  let picked = false;
-  const onOpenChange = (open: boolean) => {
-    if (open) {
-      picked = false;
-      setOpened(current());
-    } else {
-      const start = opened();
-      if (!picked && start && familyOf(themeState()) !== start.light) pickFamily(start.light);
-      setOpened(null);
-    }
+  // The family a preview falls back to: the one shown when the popover opened, or the last one clicked.
+  // Set whenever the popover opens; nothing reads it before then.
+  const [kept, setKept] = createSignal("");
+  const restore = () => familyOf(themeState()) !== kept() && pickFamily(kept());
+  const [open, setOpen] = createSignal(false);
+  const onOpenChange = (next: boolean) => {
+    setOpen(next);
+    if (next) setKept(current().light);
+    else restore();
   };
+
   return (
-    <>
-      {/* One mode is always on: clicking the pressed one again (onChange(null)) changes nothing. */}
-      <ToggleGroup
-        as="span"
-        id="modes"
-        aria-label="Color scheme"
-        value={theme().mode}
-        onChange={(mode) => mode && switchTheme(() => setColorMode(mode as ColorMode))}
-      >
-        <For each={MODES}>
-          {([mode, icon, label]) => (
-            <ToggleGroup.Item value={mode} title={`${label} color scheme`} aria-label={`${label} color scheme`}>
-              <i class={icon} aria-hidden="true" />
-            </ToggleGroup.Item>
-          )}
-        </For>
-      </ToggleGroup>
-      <Select<Family, Group>
-        options={GROUPS}
-        optionValue="light"
-        optionTextValue="name"
-        optionGroupChildren="options"
-        value={opened() ?? current()}
-        onOpenChange={onOpenChange}
-        onChange={(f) => {
-          if (!f) return;
-          picked = true;
-          // Previewed already: no reveal for a change that's on screen.
-          if (familyOf(themeState()) === f.light) return;
-          switchTheme(() => pickFamily(f.light));
-        }}
-        placement="bottom-end"
-        gutter={6}
-        itemComponent={(p) => (
-          <Select.Item item={p.item} class="select-option" onFocus={() => pickFamily(p.item.rawValue.light)}>
-            <Swatch light={p.item.rawValue.light} />
-            <Select.ItemLabel class="name">{p.item.rawValue.name}</Select.ItemLabel>
-            <Select.ItemIndicator class="check">
-              <i class="i-lucide-check" aria-hidden="true" />
-            </Select.ItemIndicator>
-          </Select.Item>
-        )}
-        sectionComponent={(p) => <Select.Section class="select-section">{p.section.rawValue.label}</Select.Section>}
-      >
-        <Select.Trigger id="theme" class="select-trigger" title="Theme" aria-label="Theme">
-          <Select.Value<Family> class="value">
-            {(state) => (
-              <>
-                <Swatch light={state.selectedOption().light} />
-                <span class="name">{state.selectedOption().name}</span>
-              </>
+    <Popover placement="bottom-end" gutter={6} open={open()} onOpenChange={onOpenChange}>
+      <Popover.Trigger id="theme" class="select-trigger" title={`Appearance: ${current().name}, ${theme().mode}`} aria-label="Appearance">
+        <Swatch light={current().light} />
+        <i class={MODES.find(([m]) => m === theme().mode)?.[1]} aria-hidden="true" />
+        <i class="chevron i-lucide-chevron-down" aria-hidden="true" />
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content class="appearance">
+          {/* One mode is always on: clicking the pressed one again (onChange(null)) changes nothing. */}
+          <ToggleGroup
+            id="modes"
+            aria-label="Color scheme"
+            value={theme().mode}
+            onChange={(mode) => mode && switchTheme(() => setColorMode(mode as ColorMode))}
+          >
+            <For each={MODES}>
+              {([mode, icon, label]) => (
+                <ToggleGroup.Item value={mode} title={`${label} color scheme`}>
+                  <i class={icon} aria-hidden="true" />
+                  {label}
+                </ToggleGroup.Item>
+              )}
+            </For>
+          </ToggleGroup>
+          <Listbox<Family, Group>
+            class="select-list"
+            aria-label="Theme"
+            options={GROUPS}
+            optionValue="light"
+            optionTextValue="name"
+            optionGroupChildren="options"
+            value={[kept()]}
+            onChange={(keys) => {
+              const [light] = keys;
+              if (!light) return;
+              setKept(light);
+              pickFamily(light); // previewed already, unless picked from the keyboard without moving focus
+            }}
+            selectionMode="single"
+            disallowEmptySelection
+            shouldFocusOnHover
+            onPointerLeave={restore}
+            // The listbox keeps Escape to itself, so the popover wouldn't close.
+            onKeyDown={(e) => e.key === "Escape" && onOpenChange(false)}
+            renderItem={(item) => (
+              <Listbox.Item item={item} class="select-option" onFocus={() => pickFamily(item.rawValue.light)}>
+                <Swatch light={item.rawValue.light} />
+                <Listbox.ItemLabel class="name">{item.rawValue.name}</Listbox.ItemLabel>
+                <Listbox.ItemIndicator class="check">
+                  <i class="i-lucide-check" aria-hidden="true" />
+                </Listbox.ItemIndicator>
+              </Listbox.Item>
             )}
-          </Select.Value>
-          <Select.Icon class="chevron">
-            <i class="i-lucide-chevron-down" aria-hidden="true" />
-          </Select.Icon>
-        </Select.Trigger>
-        <Select.Portal>
-          <Select.Content class="select-menu">
-            <Select.Listbox class="select-list" />
-          </Select.Content>
-        </Select.Portal>
-      </Select>
-    </>
+            renderSection={(section) => <Listbox.Section class="select-section">{section.rawValue.label}</Listbox.Section>}
+          />
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover>
   );
 }
