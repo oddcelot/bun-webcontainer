@@ -456,28 +456,136 @@ for (const level of ["log", "info", "warn", "error", "debug"] as const) {
   };
 }
 
-class BunFile {
+const JS = "text/javascript;charset=utf-8";
+const MIME: Record<string, string> = {
+  js: JS,
+  mjs: JS,
+  cjs: JS,
+  ts: JS,
+  mts: JS,
+  cts: JS,
+  jsx: JS,
+  tsx: JS,
+  css: "text/css;charset=utf-8",
+  html: "text/html;charset=utf-8",
+  json: "application/json;charset=utf-8",
+  map: "application/json;charset=utf-8",
+  txt: "text/plain;charset=utf-8",
+  md: "text/markdown;charset=utf-8",
+  csv: "text/csv;charset=utf-8",
+  xml: "application/xml;charset=utf-8",
+  svg: "image/svg+xml",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  avif: "image/avif",
+  ico: "image/x-icon",
+  woff: "font/woff",
+  woff2: "font/woff2",
+  pdf: "application/pdf",
+  mp3: "audio/mpeg",
+  mp4: "video/mp4",
+  wasm: "application/wasm",
+};
+const mimeOf = (path: string) => MIME[path.slice(path.lastIndexOf(".") + 1)] ?? "";
+
+/**
+ * `Bun.file`: a Blob over a project file. Reads go to the VFS each time, as Bun's are lazy; the Blob's own bytes
+ * are the file when it was created, which is what `new Response(file)` and other native consumers send.
+ */
+class BunFile extends Blob {
   readonly name: string;
-  constructor(path: string) {
-    this.name = norm(nodePath.resolve(path));
+  readonly #start: number;
+  readonly #end: number | undefined;
+  constructor(path: string, type?: string, start = 0, end?: number) {
+    const name = norm(nodePath.resolve(path));
+    const data = vfs.readBytes(name);
+    super(data ? [data.slice(start, end)] : [], { type: type ?? (mimeOf(name) || "application/octet-stream") });
+    this.name = name;
+    this.#start = start;
+    this.#end = end;
+  }
+  get size() {
+    const d = vfs.readBytes(this.name);
+    return d ? Math.max(0, Math.min(this.#end ?? d.length, d.length) - this.#start) : 0;
+  }
+  get lastModified() {
+    return vfs.mtimes.get(this.name) ?? Date.now();
   }
   async exists() {
     return vfs.files.has(this.name);
   }
-  async bytes() {
+  #read() {
     const d = vfs.readBytes(this.name);
     if (d === undefined) throw fsError("ENOENT", "open", "/" + this.name);
-    return d.slice();
+    return d.slice(this.#start, this.#end);
+  }
+  async bytes() {
+    return this.#read();
   }
   async arrayBuffer() {
-    const b = await this.bytes();
-    return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
+    return this.#read().buffer as ArrayBuffer;
   }
   async text() {
-    return new TextDecoder().decode(await this.bytes());
+    return new TextDecoder().decode(this.#read());
   }
   async json() {
     return JSON.parse(await this.text());
+  }
+  stream() {
+    try {
+      return new Blob([this.#read()]).stream();
+    } catch (err) {
+      return new ReadableStream<Uint8Array<ArrayBuffer>>({ start: (c) => c.error(err) });
+    }
+  }
+  slice(start?: number | string, end?: number | string, type?: string): BunFile {
+    if (typeof start === "string") [start, type] = [undefined, start];
+    if (typeof end === "string") [end, type] = [undefined, end];
+    const size = this.size;
+    const at = (i: number | undefined, dflt: number) => (i === undefined ? dflt : i < 0 ? Math.max(size + i, 0) : Math.min(i, size));
+    const from = at(start, 0);
+    const to = Math.max(at(end, size), from);
+    return new BunFile("/" + this.name, type ?? "", this.#start + from, this.#start + to);
+  }
+  write(data: unknown) {
+    return write(this, data);
+  }
+  async delete() {
+    (builtins.fs as { rmSync(p: string): void }).rmSync("/" + this.name);
+  }
+  async unlink() {
+    return this.delete();
+  }
+  /** `FileSink`: buffers writes and saves them on `flush`/`end`, replacing the file. */
+  writer() {
+    const parts: Uint8Array[] = [];
+    let written = 0;
+    const flush = async () => {
+      const all = new Uint8Array(parts.reduce((n, p) => n + p.byteLength, 0));
+      let o = 0;
+      for (const p of parts) all.set(p, (o += p.byteLength) - p.byteLength);
+      await write(this, all);
+      return all.byteLength;
+    };
+    return {
+      write(chunk: string | ArrayBuffer | ArrayBufferView) {
+        const b = typeof chunk === "string" ? new TextEncoder().encode(chunk) : chunk instanceof ArrayBuffer ? new Uint8Array(chunk) : new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength).slice();
+        parts.push(b);
+        written += b.byteLength;
+        return b.byteLength;
+      },
+      flush,
+      end: flush,
+      ref() {},
+      unref() {},
+      start() {},
+      get written() {
+        return written;
+      },
+    };
   }
 }
 
@@ -535,8 +643,6 @@ type BuildOptions = {
   throw?: boolean;
 };
 
-const MIME: Record<string, string> = { js: "text/javascript;charset=utf-8", mjs: "text/javascript;charset=utf-8", css: "text/css;charset=utf-8", html: "text/html;charset=utf-8", json: "application/json;charset=utf-8", map: "application/json;charset=utf-8", svg: "image/svg+xml", png: "image/png", jpg: "image/jpeg", wasm: "application/wasm", txt: "text/plain;charset=utf-8" };
-const mimeOf = (path: string) => MIME[path.slice(path.lastIndexOf(".") + 1)] ?? "";
 const buildLog = (l: BundleLog) =>
   Object.assign(new Error(l.message), { name: "BuildMessage", level: l.level, message: l.message, position: l.file ? { file: l.file, line: l.line, column: l.column } : null });
 const formatLog = (l: BundleLog) => `${l.level}: ${l.message}${l.file ? `\n    at ${l.file}:${l.line}:${l.column}` : ""}`;
@@ -631,7 +737,7 @@ async function main() {
       order: semver.order,
       satisfies: semver.satisfies,
     },
-    file: (path: string) => new BunFile(path),
+    file: (path: string | URL, opts?: { type?: string }) => new BunFile(path instanceof URL ? decodeURIComponent(path.pathname) : path, opts?.type),
     write,
     serve: (opts: ServeOptions) => createInstance(opts).server,
     build,

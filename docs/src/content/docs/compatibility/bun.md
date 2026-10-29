@@ -12,7 +12,7 @@ Reported version: `Bun.version` is `1.4.4-browser`. Labels are explained on the 
 | API | Status | Notes |
 |---|---|---|
 | `Bun.serve` | 🟡 Partial | `fetch`, `routes`, WebSockets, streaming. See [below](#bunserve). |
-| `Bun.file` | 🟡 Partial | `exists`, `text`, `json`, `bytes`, `arrayBuffer`, `name`. Not a `Blob`: no `size`, `type`, `stream`, `slice`, `writer`, `delete`. |
+| `Bun.file` | 🟡 Partial | A `Blob`: `size`, `type`, `slice`, `stream`, `text`, `json`, `bytes`, `arrayBuffer`, plus `exists`, `name`, `lastModified`, `write`, `writer`, `delete`. Reads are live, but `new Response(file)` sends the file as it was when `Bun.file()` was called. No file descriptors. |
 | `Bun.write` | 🟡 Partial | Destination is a path, `file:` URL, `BunFile`, `Bun.stdout` or `Bun.stderr` (file descriptors aren't). Accepts strings, `BunFile`, `Blob`, `Response`, `ArrayBuffer`, typed arrays. Creates parent folders. |
 | `Bun.build` | 🟡 Partial | Bun's real bundler, as wasm (~10 MB, loaded on first use). Supports `entrypoints`, `outdir`, `target`, `format`, `minify`, `splitting`, `sourcemap`, `naming`, `publicPath`, `external`, `define`, `conditions`, `banner`, `footer`, `throw`. `plugins` are ignored with a warning; `loader`, `env`, `packages`, `drop`, `compile`, `root` aren't supported. |
 | `Bun.env` | ✅ Works | Same object as `process.env`; starts as `{ NODE_ENV: "development" }`. `.env` files aren't loaded. |
