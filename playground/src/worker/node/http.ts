@@ -116,6 +116,7 @@ export class OutgoingMessage extends (Writable as Any) {
   }
   flushHeaders() {
     this.headersSent = true;
+    (this as Any).commit?.();
   }
   setTimeout() {
     return this;
@@ -125,14 +126,23 @@ export class OutgoingMessage extends (Writable as Any) {
   uncork() {}
   destroy(err?: Error) {
     this.finished = true;
+    (this as Any).endStream?.();
     return super.destroy(err);
   }
 }
 
+/**
+ * A response goes out whole when the handler ends it in the same tick it first writes (`res.end(body)`, Express's
+ * `send`); one that's still open after its first write or flushHeaders() streams (SSE, progressive output).
+ */
 export class ServerResponse extends (OutgoingMessage as Any) {
   private chunks: Uint8Array[] = [];
   private done: (r: Response) => void;
   private method: string;
+  /** Set once the Response is handed over; `stream` is its body while it streams. */
+  private committed = false;
+  private stream?: ReadableStreamDefaultController<Uint8Array>;
+  private scheduled = false;
   constructor(req: Any, done: (r: Response) => void) {
     super();
     this.req = req;
@@ -161,7 +171,15 @@ export class ServerResponse extends (OutgoingMessage as Any) {
   detachSocket() {}
   _write(chunk: Any, enc: string, cb: (e?: Error) => void) {
     this.headersSent = true;
-    this.chunks.push(typeof chunk === "string" ? Buffer.from(chunk, enc as BufferEncoding) : chunk);
+    const bytes: Uint8Array = typeof chunk === "string" ? Buffer.from(chunk, enc as BufferEncoding) : chunk;
+    if (this.stream) this.stream.enqueue(bytes);
+    else if (!this.committed) {
+      this.chunks.push(bytes);
+      if (!this.scheduled) {
+        this.scheduled = true;
+        queueMicrotask(() => this.writableEnded || this.commit());
+      }
+    }
     cb();
   }
   _final(cb: () => void) {
@@ -171,14 +189,48 @@ export class ServerResponse extends (OutgoingMessage as Any) {
   get writableEnded() {
     return this.finished || (this as Any)._writableState?.ending === true;
   }
-  private respond() {
+  private head(): ResponseInit {
     const headers = new Headers();
     for (const [k, [, v]] of this._headers) for (const x of Array.isArray(v) ? v : [v]) headers.append(k, String(x));
+    return { status: this.statusCode, statusText: this.statusMessage || STATUS_CODES[this.statusCode] || "", headers };
+  }
+  private get bodyless() {
+    return nullBody(this.statusCode) || this.method === "HEAD";
+  }
+  /** Hands over a streaming Response: what was written so far, then each write as it comes. */
+  private commit() {
+    if (this.committed) return;
+    this.committed = true;
+    const body = this.bodyless
+      ? null
+      : new ReadableStream<Uint8Array>({
+          start: (c) => {
+            this.stream = c;
+            for (const b of this.chunks) c.enqueue(b);
+          },
+          // The client went away.
+          cancel: () => {
+            this.stream = undefined;
+            this.destroy();
+          },
+        });
+    this.chunks = [];
+    this.done(new Response(body, this.head()));
+  }
+  private endStream() {
+    try {
+      this.stream?.close();
+    } catch {}
+    this.stream = undefined;
+  }
+  private respond() {
+    if (this.committed) return this.endStream();
+    this.committed = true;
     const size = this.chunks.reduce((n, c) => n + c.byteLength, 0);
     const body = new Uint8Array(size);
     let o = 0;
     for (const c of this.chunks) body.set(c, o), (o += c.byteLength);
-    this.done(new Response(nullBody(this.statusCode) || this.method === "HEAD" ? null : body, { status: this.statusCode, statusText: this.statusMessage || STATUS_CODES[this.statusCode] || "", headers }));
+    this.done(new Response(this.bodyless ? null : body, this.head()));
   }
 }
 
