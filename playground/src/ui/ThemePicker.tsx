@@ -1,4 +1,5 @@
 import { For, createSignal, onSettled } from "solid-js";
+import { ToggleGroup } from "@kobalte/core/toggle-group";
 import type { ColorMode } from "@pierre/theming";
 import { FAMILIES, familyOf, pickFamily, setColorMode, switchTheme, themeState, watchTheme } from "../theme";
 
@@ -16,21 +17,22 @@ export function ThemePicker() {
   onSettled(() => watchTheme((s) => setTheme({ ...s })));
   return (
     <>
-      <span id="modes" role="group" aria-label="Color scheme">
+      {/* One mode is always on: clicking the pressed one again (onChange(null)) changes nothing. */}
+      <ToggleGroup
+        as="span"
+        id="modes"
+        aria-label="Color scheme"
+        value={theme().mode}
+        onChange={(mode) => mode && switchTheme(() => setColorMode(mode as ColorMode))}
+      >
         <For each={MODES}>
           {([mode, icon, label]) => (
-            <button
-              type="button"
-              title={`${label} color scheme`}
-              aria-label={`${label} color scheme`}
-              aria-pressed={theme().mode === mode ? "true" : "false"}
-              onClick={() => switchTheme(() => setColorMode(mode))}
-            >
+            <ToggleGroup.Item value={mode} title={`${label} color scheme`} aria-label={`${label} color scheme`}>
               <i class={icon} aria-hidden="true" />
-            </button>
+            </ToggleGroup.Item>
           )}
         </For>
-      </span>
+      </ToggleGroup>
       <select
         id="theme"
         title="Theme"
