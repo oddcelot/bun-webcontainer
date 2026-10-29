@@ -23,6 +23,8 @@
   --radius: 12px;
   --pad: 6px;
   --inner-radius: calc(var(--radius) - var(--pad));
+  /* Every control in the header is this tall, whatever its padding, font or border. */
+  --control-height: 28px;
   --scrollbar: color-mix(in srgb, var(--fg) 22%, transparent);
   --scrollbar-hover: color-mix(in srgb, var(--fg) 38%, transparent);
 }
@@ -35,7 +37,8 @@ html, body { height: 100%; margin: 0; background: var(--canvas); color: var(--fg
 body { display: flex; flex-direction: column; }
 header { display: flex; gap: 8px; align-items: center; padding: 6px 10px 4px; }
 header button, #clear, #request button { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
-header button, #clear { background: var(--control); color: inherit; border: 1px solid var(--control-border); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+header button, header .select-trigger, #status { height: var(--control-height); }
+header button, #clear { background: var(--control); color: inherit; border: 1px solid var(--control-border); border-radius: 6px; padding: 0 10px; cursor: pointer; }
 header button:hover { background: var(--control-hover); }
 /* Dim only when a button stays disabled a moment (an install, a slow start), so a quick run doesn't flicker. */
 header button { transition: opacity 0.12s; }
@@ -70,7 +73,7 @@ html[data-booting] body > header > * { visibility: hidden; animation: boot-fallb
 #share-menu button:disabled { opacity: 0.5; cursor: default; }
 #share-menu button:disabled:hover { background: none; }
 #modes { display: inline-flex; }
-#modes button { padding: 4px 7px; border-radius: 0; margin-left: -1px; }
+#modes button { padding: 0 7px; border-radius: 0; margin-left: -1px; }
 #modes button:first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
 #modes button:last-child { border-radius: 0 6px 6px 0; }
 /*
@@ -86,7 +89,7 @@ html[data-booting] body > header > * { visibility: hidden; animation: boot-fallb
 #example { min-width: 6rem; flex: 0 1 14rem; }
 #theme { max-width: 16rem; }
 /* The project and theme pickers: Kobalte Selects whose lists open in a portal. */
-.select-trigger { display: inline-flex; align-items: center; gap: 6px; min-width: 0; padding: 3px 6px; background: var(--control); color: var(--fg); border: 1px solid var(--control-border); border-radius: 6px; font: inherit; cursor: pointer; }
+.select-trigger { display: inline-flex; align-items: center; gap: 6px; min-width: 0; padding: 0 8px; background: var(--control); color: var(--fg); border: 1px solid var(--control-border); border-radius: 6px; font: inherit; cursor: pointer; }
 .select-trigger .value { flex: 1; display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
 .select-trigger .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .select-trigger .chevron { display: grid; color: var(--muted); }
@@ -102,9 +105,9 @@ html[data-booting] body > header > * { visibility: hidden; animation: boot-fallb
 /* Narrow windows: the secondary actions show their icon only (the label stays as the tooltip and accessible name). */
 @media (max-width: 1320px) {
   header button .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-  header button:has(.label) { padding: 4px 8px; }
+  header button:has(.label) { padding: 0 8px; }
 }
-#status { margin-left: auto; min-width: 7.5em; justify-content: center; display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px 2px 7px; border: 1px solid var(--control-border); border-radius: 999px; color: var(--muted); white-space: nowrap; --dot: var(--muted); }
+#status { margin-left: auto; min-width: 7.5em; justify-content: center; display: inline-flex; align-items: center; gap: 6px; padding: 0 9px 0 7px; border: 1px solid var(--control-border); border-radius: 999px; color: var(--muted); white-space: nowrap; --dot: var(--muted); }
 /* In a narrow header the text gives way ("…", full text in the tooltip); the dot keeps its size. */
 #status .text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 #status::before { content: ""; flex-shrink: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--dot); }
