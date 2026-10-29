@@ -24,6 +24,7 @@ Bun's own parser and printer, compiled to WebAssembly. Output matches `bun build
 - ✅ `#imports` from the nearest `package.json`
 - ✅ JSON imports
 - ✅ CSS imported from code that goes through an HTML import (bundled)
+- ✅ CSS imported from server code (`import "./x.css"`, also `.module.css`) is `{}`, as in Bun's runtime. In a page served without bundling, it is linked as a stylesheet and CSS module class names map to themselves.
 - ✅ `http:`/`https:` imports are left to the browser
 - `rolldown` is replaced by the playground's own `@rolldown/browser`, since the native binding can't load
 

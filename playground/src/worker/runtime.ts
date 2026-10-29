@@ -51,7 +51,9 @@ g.__dynamicImport = (from: string, spec: unknown, options?: ImportCallOptions) =
   const builtin = s.replace(/^node:/, "");
   if (builtin in builtins) return importUrl(`${BASE}__vfs/__node/${builtin}`);
   const path = /^(file:|\/|\.)/.test(s) && decodeURIComponent(new URL(s, from).pathname);
-  return importUrl(path ? `${BASE}__vfs/${norm(path)}` : s, options);
+  if (!path) return importUrl(s, options);
+  const file = norm(path);
+  return importUrl(`${BASE}__vfs/${file.endsWith(".css") ? "__css/" : ""}${file}`, options);
 };
 g.process = process;
 g.global ??= globalThis;

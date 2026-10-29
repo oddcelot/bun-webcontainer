@@ -196,8 +196,13 @@ function hoistMetaRequire(vfs: VFS, code: string, dir: string, url: (spec: strin
 ${code.replace(/\bimport\.meta\.require\b/g, "__metaRequire")}`;
 }
 
-/** Where `spec` imported from `dir` is served, relative to `/__vfs/`; null if it doesn't resolve. */
+/** Where `spec` imported from `dir` is served, relative to `/__vfs/`; null if it doesn't resolve. CSS imported from code is `__css/<path>` (see cssModule). */
 function resolveTarget(vfs: VFS, spec: string, dir: string): string | null {
+  const t = resolveSpecifier(vfs, spec, dir);
+  return t?.endsWith(".css") ? `__css/${t}` : t;
+}
+
+function resolveSpecifier(vfs: VFS, spec: string, dir: string): string | null {
   const builtin = spec.replace(/^node:/, "");
   if (spec === "bun:wrap") return "__bun/wrap";
   if (spec in hostNames) {
@@ -342,6 +347,21 @@ function rewriteMeta(code: string, path: string, bun: boolean): string {
   });
 }
 
+/**
+ * A stylesheet imported from code. On the server it is `{}`, as in Bun's runtime. In a page (bundled HTML imports
+ * handle their CSS themselves; this is the unbundled fallback) it links the stylesheet, and a CSS module's class
+ * names map to themselves.
+ */
+function cssModule(path: string, target: ModuleTarget): string {
+  if (target === "bun") return "const m = {};\nexport default m;\nexport const __esModule = true;\nexport const __cjs = m;";
+  const href = JSON.stringify(`${BASE}__vfs/${path}`);
+  const names = /\.module\.css$/.test(path) ? 'new Proxy({}, { get: (_, k) => (typeof k === "string" ? k : undefined) })' : "{}";
+  return `if (!document.querySelector(\`link[href=\${CSS.escape(${href})}]\`)) document.head.append(Object.assign(document.createElement("link"), { rel: "stylesheet", href: ${href} }));
+const m = ${names};
+export default m;
+export const __cjs = m;`;
+}
+
 /** The module for a Node built-in: the worker registers the real object as `globalThis.__nodeBuiltins`. */
 function builtinModule(name: string): string {
   const names = exportNames(name);
@@ -416,6 +436,13 @@ export async function serveModule(vfs: VFS, rawPath: string, onError: (msg: stri
     return { status: 404, body: msg };
   }
   if (path.startsWith("__cjs/")) return serveCommonJS(vfs, path.slice(6), onError, target);
+  if (path.startsWith("__css/")) {
+    if (!vfs.files.has(path.slice(6))) {
+      onError(`module not found: ${path.slice(6)}`);
+      return { status: 404, body: `Not found: ${path.slice(6)}` };
+    }
+    return { status: 200, body: cssModule(path.slice(6), target) };
+  }
   const host = hostEntry(vfs, path);
   if (host) return { status: 200, body: hostModule(host) };
   const src = vfs.readText(path);
