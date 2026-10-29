@@ -14,7 +14,7 @@ Built-ins import with or without the `node:` prefix. Labels are explained on the
 | `buffer` | ✅ Works | Includes `Blob`, `File`, `atob`, `btoa`, `isUtf8`, `isAscii`. |
 | `child_process` | ⚪ Stub | No processes in the browser. |
 | `cluster` | ⚪ Stub | `isPrimary` is `true`; `fork` throws. |
-| `console` | ❌ Missing | The global `console` works. |
+| `console` | 🟡 Partial | The global `console`. No `Console` class. |
 | `constants` | ⚪ Stub | Empty object. |
 | `crypto` | 🟡 Partial | `createHash`/`createHmac` (md5, sha1, sha224, sha256, sha384, sha512), `hash`, `randomBytes`, `randomUUID`, `randomInt`, `getRandomValues`, `timingSafeEqual`, `webcrypto`/`subtle`. No ciphers, `pbkdf2`, `scrypt`, `sign`/`verify`, `KeyObject`, `generateKey*`. |
 | `dgram` | ❌ Missing | |
@@ -33,15 +33,15 @@ Built-ins import with or without the `node:` prefix. Labels are explained on the
 | `path`, `path/posix` | ✅ Works | POSIX only. `path.win32` behaves like POSIX; `path/win32` is missing. |
 | `perf_hooks` | 🟡 Partial | `performance`, `PerformanceObserver`. `monitorEventLoopDelay` reports zeros. |
 | `process` | 🟡 Partial | Reports Linux x64 and Node v24.3.0. `env`, `cwd`, `chdir`, `nextTick`, `hrtime`, `memoryUsage`, `uptime`. `stdout`/`stderr` go to the console. `argv` is `["bun"]`; `stdin` never emits; `exit` and `kill` throw. |
-| `punycode` | ❌ Missing | |
+| `punycode` | ✅ Works | |
 | `querystring` | ✅ Works | |
 | `readline`, `readline/promises` | ⚪ Stub | |
 | `repl` | ❌ Missing | |
 | `sqlite` | ❌ Missing | Use [`bun:sqlite`](/compatibility/bun/#bun-modules). |
 | `stream`, `stream/promises` | ✅ Works | Based on `readable-stream`. `Readable.toWeb`/`fromWeb` are basic. |
-| `stream/web` | ❌ Missing | Web streams are globals. |
+| `stream/web` | ✅ Works | The browser's web stream classes. |
 | `string_decoder` | ✅ Works | |
-| `sys` | ❌ Missing | |
+| `sys` | 🟡 Partial | Same as `util`. |
 | `test` | ❌ Missing | Use [`bun:test`](/compatibility/bun/#buntest). |
 | `timers`, `timers/promises` | ✅ Works | `ref`, `unref`, `refresh`, promise timers with `AbortSignal`. |
 | `tls` | ⚪ Stub | |
