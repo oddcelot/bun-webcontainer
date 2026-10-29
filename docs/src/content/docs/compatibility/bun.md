@@ -7,10 +7,6 @@ sidebar:
 
 Reported version: `Bun.version` is `1.4.4-browser`. Labels are explained on the [overview](/compatibility/).
 
-:::caution
-Use the `Bun` global. `import { serve } from "bun"` doesn't resolve yet.
-:::
-
 ## The `Bun` global
 
 | API | Status | Notes |
@@ -66,7 +62,7 @@ Servers answer requests from the [preview](/guides/features/#preview), not from 
 | `bun:sqlite` | 🟡 Partial | Built on sql.js. `Database` with `query`, `prepare`, `run`, `transaction`, `serialize`, `close`; statements with `all`, `get`, `values`, `run`, `iterate`. File databases are saved to the project. Missing: `Statement.as()`, `Database.deserialize`, `loadExtension`, `safeIntegers`, `SQLiteError`. |
 | `bun:test` | 🟡 Partial | Run with `bun test` in the console. See [below](#buntest). |
 | `bun:ffi`, `bun:jsc` | ❌ Missing | |
-| `bun` (as an import) | ❌ Missing | Use the `Bun` global. |
+| `bun` | ✅ Works | `import { serve } from "bun"` and the default export are the `Bun` global. |
 
 ### `bun:test`
 

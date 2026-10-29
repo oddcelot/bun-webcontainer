@@ -32,6 +32,11 @@ const streamWeb = Object.fromEntries(
     .filter(([, v]) => v !== undefined),
 );
 
+/** What `Bun` has; runtime.ts types the global against this list. */
+export const BUN_NAMES = ["version", "env", "gc", "main", "argv", "stdout", "stderr", "inspect", "deepEquals", "escapeHTML", "which", "sleep", "nanoseconds", "semver", "file", "write", "serve", "build"] as const;
+/** `import ... from "bun"`: the worker copies the `Bun` global in once it exists; the page only needs the names. */
+const bun: Record<string, unknown> = Object.fromEntries(BUN_NAMES.map((k) => [k, undefined]));
+
 /** Node built-ins by specifier (without `node:`). Evaluating this must have no side effects: the page imports it for export names. */
 export const builtins: Record<string, object> = {
   assert,
@@ -78,6 +83,7 @@ export const builtins: Record<string, object> = {
   "util/types": util.types,
   v8,
   vm,
+  bun,
   "bun:sqlite": sqlite,
   "bun:test": test,
   "bun:ws": ws,

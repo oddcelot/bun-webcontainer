@@ -1,7 +1,7 @@
 import { BASE } from "../base";
 import { loadSemver } from "../semver";
 import { dirname, norm, VFS } from "../vfs";
-import { builtins, installTimers, setFs, setStdio } from "./node";
+import { BUN_NAMES, builtins, installTimers, setFs, setStdio } from "./node";
 import { bundle, type BundleConfig, type BundleLog } from "./bundler";
 import { setHostVfs } from "./hostPackages";
 import { fsError } from "./node/errors";
@@ -606,7 +606,7 @@ const escapeHTML = (v: unknown) => String(v).replace(/[&<>"']/g, (c) => HTML_ESC
 
 async function main() {
   const semver = await loadSemver();
-  g.Bun = {
+  const bun: Record<(typeof BUN_NAMES)[number], unknown> = {
     version: `${BUN_VERSION}-browser`,
     env,
     gc: () => {},
@@ -629,6 +629,7 @@ async function main() {
     serve: (opts: ServeOptions) => createInstance(opts).server,
     build,
   };
+  g.Bun = Object.assign(builtins.bun, bun);
 
   self.addEventListener("unhandledrejection", (e) => {
     post({ type: "console", level: "error", text: `Uncaught (in promise) ${fmt(e.reason)}` });
