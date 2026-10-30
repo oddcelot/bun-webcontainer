@@ -2,6 +2,7 @@
 const BASE = new URL("./", self.location.href).pathname;
 const VFS = `${BASE}__vfs/`;
 const PREVIEW = `${BASE}__preview`;
+const EMBED = new RegExp(`^${BASE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}embed(\\.html)?$`);
 
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
@@ -318,7 +319,8 @@ self.addEventListener("fetch", (e) => {
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith(VFS)) e.respondWith(serveModule(url, e.clientId));
   // A link, form or redirect in the preview frame that leaves `/__preview` (`<a href="/entries/2">`): same server.
-  else if (e.request.mode === "navigate" && e.request.destination === "iframe" && !url.pathname.startsWith(PREVIEW))
+  // Not the embed page (embed.html), which other pages frame.
+  else if (e.request.mode === "navigate" && e.request.destination === "iframe" && !url.pathname.startsWith(PREVIEW) && !EMBED.test(url.pathname))
     e.respondWith(leavePreview(e.request, url));
   else if (url.pathname === PREVIEW || url.pathname.startsWith(`${PREVIEW}/`)) e.respondWith(servePreview(e.request, url));
   else if (e.clientId) e.respondWith(fromPreviewOrNetwork(e));

@@ -3,3 +3,10 @@
 /*
   Cross-Origin-Opener-Policy: same-origin
   Cross-Origin-Embedder-Policy: credentialless
+
+# The embed (runbun.dev/embed, framed by other sites) and the <bun-playground> element they load as a module script.
+/embed
+  Cross-Origin-Resource-Policy: cross-origin
+/embed.js
+  Access-Control-Allow-Origin: *
+  Cross-Origin-Resource-Policy: cross-origin

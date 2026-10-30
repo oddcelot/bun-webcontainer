@@ -18,6 +18,7 @@ export default defineConfig({
       editLink: { baseUrl: "https://github.com/oddcelot/bun-webcontainer/edit/main/docs/" },
       sidebar: [
         { label: "Guides", items: [{ autogenerate: { directory: "guides" } }] },
+        { label: "Reference", items: [{ autogenerate: { directory: "reference" } }] },
         { label: "Compatibility", items: [{ autogenerate: { directory: "compatibility" } }] },
       ],
     }),

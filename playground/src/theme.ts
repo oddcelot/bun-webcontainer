@@ -7,11 +7,16 @@ export { FAMILIES };
 // A color mode (system/light/dark) plus a theme family; the family's variant for the scheme in
 // effect colors the editor, the file tree and the app chrome.
 const VARS_KEY = "theme-vars";
+/**
+ * An embed (embed.html marks its <html>) takes its theme from the host and keeps it to itself: runbun.dev shares its
+ * storage with embeds on docs.runbun.dev, so an embed saving its theme would change the playground's.
+ */
+const EMBEDDED = "embed" in document.documentElement.dataset;
 
 const controller = createThemeController({
   catalog: createThemeCatalog({ themes, defaultLightThemeName: "pierre-light", defaultDarkThemeName: "pierre-dark" }),
   defaultMode: "system",
-  storageKey: "theme-selection",
+  storageKey: EMBEDDED ? undefined : "theme-selection",
 });
 const listeners = new Set<(name: string, theme: ThemeLike) => void>();
 let source: ThemeLike | undefined;
@@ -33,7 +38,7 @@ function applyVars(vars: Record<string, string | undefined>) {
 
 // The last theme's variables, so the page doesn't flash the defaults while the theme loads.
 try {
-  applyVars(JSON.parse(localStorage.getItem(VARS_KEY) ?? "{}"));
+  if (!EMBEDDED) applyVars(JSON.parse(localStorage.getItem(VARS_KEY) ?? "{}"));
 } catch {}
 
 function sync() {
@@ -43,7 +48,7 @@ function sync() {
   applied = withRealColors(resolvedTheme);
   const vars = chromeVars(applied);
   applyVars(vars);
-  localStorage.setItem(VARS_KEY, JSON.stringify(vars));
+  if (!EMBEDDED) localStorage.setItem(VARS_KEY, JSON.stringify(vars));
   for (const fn of listeners) fn(themeName(), applied);
   for (const resolve of appliedWaiters.splice(0)) resolve();
 }
@@ -74,7 +79,8 @@ controller.subscribe(() => {
       (frame.contentWindow as (Window & { __bunColorScheme?: (mode: string) => void }) | null)?.__bunColorScheme?.(mode);
     } catch {} // not a preview (another origin)
   }
-  previewScheme.postMessage(mode);
+  // Other tabs' previews follow the playground's mode, not an embed's.
+  if (!EMBEDDED) previewScheme.postMessage(mode);
 });
 
 /** Calls `fn` with the current theme once it's resolved, and again on every change. Returns the unsubscribe. */
@@ -88,9 +94,13 @@ const families = Object.values(FAMILIES).flat();
 
 // Every family's themes into the controller's cache once the page is idle: a cached theme applies in the same call,
 // so picking or previewing one in the theme picker shows at once instead of waiting for its module to load.
-(window.requestIdleCallback ?? ((fn: () => void) => setTimeout(fn, 1000)))(() => {
+// An embed has no theme picker.
+if (!EMBEDDED) (window.requestIdleCallback ?? ((fn: () => void) => setTimeout(fn, 1000)))(() => {
   controller.resolver.resolveThemes(families.flatMap(([, light, dark]) => [light, dark])).catch(() => {});
 });
+
+/** True for a theme family's light variant (what `pickFamily` takes). */
+export const isFamily = (light: string) => families.some((f) => f[1] === light);
 
 /** Sets both halves of a theme family, given its light variant. */
 export function pickFamily(light: string) {

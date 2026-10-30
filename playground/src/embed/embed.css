@@ -1,0 +1,51 @@
+/* The embed's layout (ui/EmbedApp.tsx); panes keep style.css's look. */
+#embed { display: flex; flex-direction: column; height: 100%; }
+#embed-bar { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 5px 6px 5px 10px; white-space: nowrap; }
+#embed-bar .file { min-width: 0; overflow: hidden; text-overflow: ellipsis; font: 12px ui-monospace, monospace; }
+#embed-bar .spacer { flex: 1; }
+#embed-bar #status { height: 22px; min-width: 0; font-size: 11px; }
+#embed-bar button { display: inline-flex; align-items: center; gap: 5px; height: var(--control-height); padding: 0 10px; border: 1px solid var(--control-border); border-radius: 6px; background: var(--control); color: inherit; font: inherit; cursor: pointer; }
+#embed-bar button:hover:not(:disabled) { background: var(--control-hover); }
+#embed-bar button:disabled { opacity: 0.5; cursor: default; }
+#embed-bar .run { border-color: color-mix(in srgb, var(--accent) 60%, var(--panel)); background: color-mix(in srgb, var(--accent) 18%, var(--panel)); }
+#embed-bar .run:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 30%, var(--panel)); }
+#embed-bar .more { padding: 0 7px; }
+.embed-menu { min-width: 13rem; }
+.embed-menu .check { display: grid; place-items: center; width: 14px; color: var(--accent); }
+.embed-menu .cost { color: var(--muted); font-size: 11px; }
+.embed-menu .separator { height: 1px; margin: 4px; border: 0; background: var(--control-border); }
+
+/* Panes on a grid. Default (code mode): the editor, the console under it. */
+#embed-main { flex: 1; min-height: 0; display: grid; gap: 4px; padding: 0 4px 4px; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: "editor"; }
+#embed-main > .pane { min-width: 0; min-height: 0; overflow: hidden; border-radius: var(--radius); background: var(--bg); }
+#embed-main > .pane[hidden] { display: none; }
+#embed #tree { grid-area: tree; }
+#embed #editor-pane { grid-area: editor; }
+#embed #preview-panel { grid-area: preview; }
+#embed #console-wrap { grid-area: console; }
+#embed[data-editor][data-console]:not([data-side]) #embed-main { grid-template-rows: minmax(0, 1fr) 150px; grid-template-areas: "editor" "console"; }
+#embed[data-side] #embed-main { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "editor side"; }
+#embed[data-side][data-preview] #embed-main { grid-template-areas: "editor preview"; }
+#embed[data-side]:not([data-preview]) #embed-main { grid-template-areas: "editor console"; }
+#embed[data-side][data-preview][data-console] #embed-main { grid-template-rows: minmax(0, 3fr) minmax(0, 2fr); grid-template-areas: "editor preview" "editor console"; }
+/* A file tree before the rest. */
+#embed[data-tree] #embed-main { grid-template-columns: minmax(110px, 170px) minmax(0, 1fr); grid-template-areas: "tree editor"; }
+#embed[data-tree][data-console]:not([data-side]) #embed-main { grid-template-areas: "tree editor" "tree console"; }
+#embed[data-tree][data-side] #embed-main { grid-template-columns: minmax(110px, 170px) minmax(0, 1fr) minmax(0, 1fr); }
+#embed[data-tree][data-side][data-preview] #embed-main { grid-template-areas: "tree editor preview"; }
+#embed[data-tree][data-side]:not([data-preview]) #embed-main { grid-template-areas: "tree editor console"; }
+#embed[data-tree][data-side][data-preview][data-console] #embed-main { grid-template-areas: "tree editor preview" "tree editor console"; }
+/* Result mode: the preview (and the console under it), no editor. */
+#embed:not([data-editor]) #embed-main { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: "preview"; }
+#embed:not([data-editor]):not([data-preview]) #embed-main { grid-template-areas: "console"; }
+#embed:not([data-editor])[data-preview][data-console] #embed-main { grid-template-rows: minmax(0, 3fr) minmax(0, 2fr); grid-template-areas: "preview" "console"; }
+
+/* Narrow frames stack the side column under the editor, and drop the tree. */
+@media (max-width: 560px) {
+  #embed[data-side] #embed-main { grid-template-columns: minmax(0, 1fr) !important; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) !important; grid-template-areas: "editor" "preview" !important; }
+  #embed[data-side]:not([data-preview]) #embed-main { grid-template-areas: "editor" "console" !important; }
+  #embed[data-side][data-preview][data-console] #embed-main { grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) 120px !important; grid-template-areas: "editor" "preview" "console" !important; }
+  #embed[data-tree]:not([data-side]) #embed-main { grid-template-columns: minmax(0, 1fr); grid-template-areas: "editor" "console"; }
+  #embed[data-tree]:not([data-side]):not([data-console]) #embed-main { grid-template-areas: "editor"; }
+  #embed #tree { display: none; }
+}
