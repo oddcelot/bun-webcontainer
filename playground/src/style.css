@@ -152,7 +152,8 @@ html[data-booting] body > header > * { visibility: hidden; animation: boot-fallb
 .tooltip kbd { padding: 0 4px; border: 1px solid var(--control-border); border-radius: 4px; color: var(--muted); font: 11px/16px ui-monospace, monospace; }
 .tooltip-note { flex-basis: 100%; color: var(--muted); font-size: 11px; }
 @media (max-width: 640px) { #statusbar .language, #statusbar .cursor { display: none; } }
-#status { min-width: 7.5em; justify-content: center; display: inline-flex; align-items: center; gap: 6px; padding: 0 9px 0 7px; border: 1px solid var(--control-border); border-radius: 999px; color: var(--muted); white-space: nowrap; --dot: var(--muted); }
+/* The dot sits in the pill's round left end, 4px from the border all round (18px tall in the status bar, 8px dot). */
+#status { min-width: 7.5em; display: inline-flex; align-items: center; gap: 6px; padding: 0 9px 0 4px; border: 1px solid var(--control-border); border-radius: 999px; color: var(--muted); white-space: nowrap; --dot: var(--muted); }
 /* In a narrow header the text gives way ("…", full text in the tooltip); the dot keeps its size. */
 #status .text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 #status::before { content: ""; flex-shrink: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--dot); }
