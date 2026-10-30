@@ -15,7 +15,7 @@ iframe.wait{visibility:hidden}
 .poster[hidden]{display:none}
 .def{display:block;position:relative;min-height:100%;box-sizing:border-box}
 pre{margin:0;padding:12px 16px;font:13px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap}
-button{position:absolute;right:12px;bottom:12px;font:inherit;padding:6px 14px;border:1px solid GrayText;border-radius:6px;background:ButtonFace;color:ButtonText;cursor:pointer}`;
+.play{position:absolute;right:12px;bottom:12px;z-index:1;font:inherit;padding:6px 14px;border:1px solid GrayText;border-radius:6px;background:ButtonFace;color:ButtonText;cursor:pointer}`;
 
 type Pending = { resolve: (v: any) => void; reject: (e: Error) => void };
 
@@ -198,15 +198,21 @@ export class BunPlayground extends HTMLElement {
   /** The poster: a `poster` slot child, or (load=click) a default one built from the first inline file. */
   #renderPoster() {
     this.#poster.querySelector(".def")?.remove();
+    this.#poster.querySelector(".play")?.remove();
+    // Any poster that waits for a click says so.
+    if (this.getAttribute("load") === "click") {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "play";
+      btn.textContent = "▶ Run";
+      this.#poster.append(btn);
+    }
     if (this.querySelector(':scope > [slot="poster"]') || this.getAttribute("load") !== "click") return;
     const def = document.createElement("div");
     def.className = "def";
     const pre = document.createElement("pre");
     pre.textContent = Object.values(this.#files())[0] ?? "Bun playground";
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.textContent = "▶ Run";
-    def.append(pre, btn);
+    def.append(pre);
     this.#poster.prepend(def);
   }
 

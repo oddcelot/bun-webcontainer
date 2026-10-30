@@ -181,7 +181,11 @@ vfs.onChange(({ path, removed }) => {
 // The height the embed would like (`height="auto"` on <bun-playground>): the bar, the open file's lines (within
 // bounds) and the console when it sits under the editor.
 const LINE = 20;
+/** Heights for the modes that don't fit their content (embed-element/index.ts HEIGHTS). */
+const MODE_HEIGHT: Partial<Record<Mode, number>> = { console: 360, preview: 420, full: 600, result: 420 };
 function wantedHeight() {
+  const fixed = MODE_HEIGHT[embed.mode()];
+  if (fixed) return fixed;
   const path = workspace.state.active;
   const lines = Math.min(Math.max((path ? (vfs.readText(path) ?? "") : "").split("\n").length, 3), 30);
   const below = embed.has("console") && !embed.has("preview") && embed.mode() === "code";
@@ -207,7 +211,8 @@ emit("ready", { version: VERSION, bun: BUN_VERSION, canRun: pg.canRun, mode: emb
 if (!pg.canRun) emit("unsupported", { checks: pg.support });
 
 if (pg.canRun) {
-  if (embed.has("install") && pg.missingDeps()) await pg.install();
+  // Missing packages install before the first run whatever the mode; the `install` feature is the menu's action.
+  if ((embed.has("install") || options.autorun) && pg.missingDeps()) await pg.install();
   if (options.autorun) await pg.run();
   else session.setStatus({ state: "idle", text: "Ready" });
 }
