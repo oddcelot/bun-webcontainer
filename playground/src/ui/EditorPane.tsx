@@ -1,4 +1,4 @@
-import { createEffect, onSettled, useContext } from "solid-js";
+import { Show, createEffect, onSettled, useContext } from "solid-js";
 import { CHECKED, mountDiagnostics } from "../diagnostics";
 import { createPierre } from "../editors/pierre";
 import { formatChord, keysFor, matches } from "../keymap";
@@ -19,7 +19,10 @@ const SAVE_DELAY = 300;
  * Format (the format shortcut, Shift+Alt+F) runs `bun fmt` on the open file as one undoable edit.
  */
 export function EditorPane() {
-  const { vfs, workspace: ws, session, log } = useContext(AppContext);
+  const app = useContext(AppContext);
+  const { vfs, workspace: ws, log } = app;
+  // An embed loads the type checker (12 MB) and the formatter (9 MB) only once they're turned on.
+  const has = (name: "types" | "format" | "tabs" | "autosave" | "edit") => app.features?.has(name) ?? true;
   let el!: HTMLDivElement;
   let editor: CodeEditor | undefined;
   let check: ReturnType<typeof mountDiagnostics> | undefined;
@@ -42,10 +45,11 @@ export function EditorPane() {
   }
   ws.onSaveAll(saveAll);
   ws.onReveal((line, column) => editor?.reveal(line, column));
+  ws.onFormat(() => void formatOpenFile());
 
   async function formatOpenFile() {
     const path = current;
-    if (!path || !editor) return;
+    if (!path || !editor || !has("format")) return;
     try {
       const r = await fmt(vfs, path, editor.getText());
       if (path !== current) return;
@@ -64,16 +68,17 @@ export function EditorPane() {
     () => ws.state.active,
     guarded("editor", (path) => {
       editor ??= createPierre(el, {
+        readOnly: () => !has("edit"),
         onCursor: ws.setCursor,
         onDiagnostics: ws.setProblems,
         // Types for TypeScript files, with the editor's text (unsaved edits included).
-        hover: async (file, line, column) => (TYPED.test(file) && editor ? hover(vfs, file, editor.getText(), line, column) : null),
-        complete: async (file, line, column, trigger) => (TYPED.test(file) && editor ? complete(vfs, file, editor.getText(), line, column, trigger) : null),
+        hover: async (file, line, column) => (TYPED.test(file) && editor && has("types") ? hover(vfs, file, editor.getText(), line, column) : null),
+        complete: async (file, line, column, trigger) => (TYPED.test(file) && editor && has("types") ? complete(vfs, file, editor.getText(), line, column, trigger) : null),
         resolveCompletion: async (file, item) => (editor ? resolveCompletion(vfs, file, editor.getText(), item) : null),
         signatureHelp: async (file, line, column, trigger, retrigger) =>
           TYPED.test(file) && editor ? signatureHelp(vfs, file, editor.getText(), line, column, trigger, retrigger) : null,
       });
-      check ??= mountDiagnostics(vfs, editor);
+      check ??= mountDiagnostics(vfs, editor, () => has("types"));
       current = path;
       if (!path) {
         editor.clear();
@@ -88,7 +93,7 @@ export function EditorPane() {
         ws.setDirty(path, true);
         check!(path, next);
         clearTimeout(timer);
-        if (ws.autosave()) timer = setTimeout(saveAll, SAVE_DELAY);
+        if (ws.autosave() || !has("autosave")) timer = setTimeout(saveAll, SAVE_DELAY);
       });
       check(path, text);
     }),
@@ -134,7 +139,7 @@ export function EditorPane() {
     // unsaved edits make the browser ask first, as editors do.
     const onUnload = (e: BeforeUnloadEvent) => {
       if (!pending.size) return;
-      if (ws.autosave()) saveAll();
+      if (ws.autosave() || !has("autosave")) saveAll();
       else e.preventDefault();
     };
     addEventListener("keydown", onKey);
@@ -150,27 +155,34 @@ export function EditorPane() {
 
   return (
     <>
-      <div class="tabs-bar">
-        <EditorTabs />
-        <Tip class="format" type="button" disabled={!ws.state.active} tip="Format the open file with bun fmt" keys={keysFor("format").map(formatChord)} onClick={() => void formatOpenFile()}>
-          <i class="i-lucide-wand-sparkles" aria-hidden="true" /> Format
-        </Tip>
-        <Tip
-          class="autosave"
-          type="button"
-          aria-pressed={ws.autosave() ? "true" : "false"}
-          tip={ws.autosave() ? "Edits save shortly after you stop typing. Click to save with Ctrl/Cmd+S instead." : "Edits save with Ctrl/Cmd+S (and before Run). Click to save as you type."}
-          onClick={() => {
-            const on = !ws.autosave();
-            ws.setAutosave(on);
-            if (on) saveAll();
-          }}
-        >
-          <i class={ws.autosave() ? "i-lucide-save" : "i-lucide-save-off"} aria-hidden="true" /> Auto-save
-        </Tip>
-      </div>
+      {/* An embed shows the tabs bar only with its tabs; Format moves to the embed's menu, and auto-save stays on. */}
+      <Show when={has("tabs")}>
+        <div class="tabs-bar">
+          <EditorTabs />
+          <Show when={has("format")}>
+            <Tip class="format" type="button" disabled={!ws.state.active} tip="Format the open file with bun fmt" keys={keysFor("format").map(formatChord)} onClick={() => void formatOpenFile()}>
+              <i class="i-lucide-wand-sparkles" aria-hidden="true" /> Format
+            </Tip>
+          </Show>
+          <Show when={has("autosave")}>
+            <Tip
+              class="autosave"
+              type="button"
+              aria-pressed={ws.autosave() ? "true" : "false"}
+              tip={ws.autosave() ? "Edits save shortly after you stop typing. Click to save with Ctrl/Cmd+S instead." : "Edits save with Ctrl/Cmd+S (and before Run). Click to save as you type."}
+              onClick={() => {
+                const on = !ws.autosave();
+                ws.setAutosave(on);
+                if (on) saveAll();
+              }}
+            >
+              <i class={ws.autosave() ? "i-lucide-save" : "i-lucide-save-off"} aria-hidden="true" /> Auto-save
+            </Tip>
+          </Show>
+        </div>
+      </Show>
       {/* "No file open" only once the project has loaded, not while its first file is on the way. */}
-      <div id="editor" ref={el} data-empty={session.ready() && !ws.state.active ? "" : undefined} />
+      <div id="editor" ref={el} data-empty={app.session.ready() && !ws.state.active ? "" : undefined} />
     </>
   );
 }
