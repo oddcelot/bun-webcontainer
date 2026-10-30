@@ -30,6 +30,9 @@ const DEFAULT_OPTIONS = {
   types: ["bun"],
 };
 
+/** The project's scripts, for DEFAULT_CONFIG's `files`. */
+const SCRIPT = /\.(?:[cm]?[jt]sx?)$/;
+
 let worker: Worker | undefined;
 let nextId = 0;
 const waiting = new Map<number, (r: LsReply) => void>();
@@ -60,7 +63,13 @@ function request(vfs: VFS, path: string, text: string, op: LsOp): Promise<LsRepl
   files.set("/" + path, text);
   const tsconfig = nearestTsconfig(vfs, path);
   const config = tsconfig ? "/" + tsconfig : DEFAULT_CONFIG;
-  if (!tsconfig) files.set(DEFAULT_CONFIG, JSON.stringify({ compilerOptions: DEFAULT_OPTIONS, files: ["../" + path] }));
+  // Every script of the project, as `tsc` would see it, so completions can import from any of them and switching tabs
+  // keeps the program (errors are still asked for one file at a time). Listed: tsrs matches no `include` pattern
+  // that climbs out of the config's folder.
+  if (!tsconfig) {
+    const scripts = [...files.keys()].filter((p) => SCRIPT.test(p) && !p.includes("/node_modules/")).sort();
+    files.set(DEFAULT_CONFIG, JSON.stringify({ compilerOptions: DEFAULT_OPTIONS, files: scripts.map((p) => ".." + p) }));
+  }
 
   const changed: LsRequest["changed"] = {};
   for (const [p, data] of files) {
