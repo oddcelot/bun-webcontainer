@@ -3,7 +3,7 @@ import { Select } from "@kobalte/core/select";
 import { TabItem, TabList } from "./Tabs";
 import { BASE } from "../base";
 import { matches } from "../keymap";
-import { createPierre } from "../editors/pierre";
+import { createPierre, createViewer } from "../editors/pierre";
 import type { CodeEditor } from "../editors/types";
 import type { Card } from "../preview";
 import { AppContext } from "./context";
@@ -215,6 +215,39 @@ function PreviewTabItem(props: { tab: PreviewTab }) {
   );
 }
 
+/** Response bodies above this many characters stay plain text: the viewer renders every line. */
+const MAX_HIGHLIGHTED = 200_000;
+
+/** The extension to highlight a response body as, or undefined to show it as plain text (red when it failed). */
+function highlight(card: Card): string | undefined {
+  if (card.text.length > MAX_HIGHLIGHTED) return undefined;
+  const type = card.type;
+  const known: [RegExp, string][] = [
+    [/[/+]json\b/, "json"],
+    [/\bhtml\b/, "html"],
+    [/\bcss\b/, "css"],
+    [/\b(?:java|ecma)script\b/, "js"],
+    [/[/+]xml\b/, "xml"],
+    [/\bmarkdown\b/, "md"],
+  ];
+  return known.find(([re]) => re.test(type))?.[1];
+}
+
+/** A response body, highlighted in its language (from the extension of `name`), read-only. */
+function ResponseBody(props: { name: string; text: string }) {
+  let el!: HTMLDivElement;
+  let viewer: ReturnType<typeof createViewer> | undefined;
+  createEffect(
+    () => [props.name, props.text] as const,
+    ([name, text]) => {
+      viewer ??= createViewer(el);
+      viewer.show(name, text);
+    },
+  );
+  onSettled(() => () => viewer?.destroy());
+  return <div class="body highlighted" ref={el} />;
+}
+
 /** The response card: status pill and request line, headers, then the body in a box (red when it failed). */
 function Response(props: { card: Card | null; hidden: boolean }) {
   return (
@@ -232,7 +265,9 @@ function Response(props: { card: Card | null; hidden: boolean }) {
               <pre class="headers">{card().head}</pre>
             </Show>
             <Show when={card().text}>
-              <pre class="body">{card().text}</pre>
+              <Show when={highlight(card())} fallback={<pre class="body">{card().text}</pre>}>
+                {(ext) => <ResponseBody name={`response.${ext()}`} text={card().text} />}
+              </Show>
             </Show>
           </>
         )}

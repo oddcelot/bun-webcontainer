@@ -9,7 +9,8 @@ const SW_HEADERS = new Set(["cross-origin-embedder-policy", "cross-origin-resour
 export const normalize = (p: string) => (p.startsWith("/") ? p : `/${p}`);
 
 /** A response as the preview shows it: status pill and request line, headers, then the body (red when it failed). */
-export type Card = { ok: boolean; line: string; status: string; head: string; text: string };
+/** A response that isn't a page; `type` is its content-type. */
+export type Card = { ok: boolean; line: string; status: string; head: string; type: string; text: string };
 
 /**
  * Sends a request to the running server. An HTML GET returns "page": the caller loads it in an iframe (a second
@@ -40,5 +41,5 @@ export async function sendRequest(method: string, path: string, body: string): P
     .filter(([k]) => !SW_HEADERS.has(k))
     .map(([k, v]) => `${k}: ${v}`)
     .join("\n");
-  return { ok: res.ok, line: `${method} ${path}`, status: `${res.status} ${res.statusText}`.trim(), head, text };
+  return { ok: res.ok, line: `${method} ${path}`, status: `${res.status} ${res.statusText}`.trim(), head, type, text };
 }

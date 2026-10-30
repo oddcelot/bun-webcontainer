@@ -78,6 +78,43 @@ function docsHtml(md: string): string {
 const tipHtml = (h: EditorHover) =>
   (h.code ? `<pre class="editor-hover-code">${escapeHtml(h.code)}</pre>` : "") + (h.docs ? `<div class="editor-hover-docs">${docsHtml(h.docs)}</div>` : "");
 
+/**
+ * A read-only, highlighted view of some text, the language from `name`'s extension (a response body): the `File`
+ * surface the editor works on, without the editor or line numbers, wrapping long lines.
+ */
+export function createViewer(parent: HTMLElement) {
+  const host = document.createElement("div");
+  host.className = "pierre-viewer";
+  parent.replaceChildren(host);
+  let view: File | undefined;
+  let theme = themeName();
+  const unsubscribe = onTheme((next) => {
+    if (next === theme) return;
+    theme = next;
+    if (!view) return;
+    view.setOptions({ ...view.options, theme });
+    view.onThemeChange();
+  });
+  return {
+    show(name: string, text: string) {
+      view?.cleanUp();
+      view = new File({
+        theme,
+        disableFileHeader: true,
+        disableLineNumbers: true,
+        overflow: "wrap",
+        unsafeCSS: "* { scrollbar-width: thin; }",
+      });
+      view.render({ containerWrapper: host, file: { name, contents: text } });
+    },
+    destroy() {
+      unsubscribe();
+      view?.cleanUp();
+      host.remove();
+    },
+  };
+}
+
 /** @pierre/diffs edit mode: a highlighted `File` surface with an `Editor` attached. */
 export function createPierre(parent: HTMLElement, events: EditorEvents = {}): CodeEditor {
   const host = document.createElement("div");
