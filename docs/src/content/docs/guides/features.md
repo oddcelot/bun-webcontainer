@@ -10,7 +10,7 @@ sidebar:
 - Syntax-highlighted editor with themes and light/dark mode
 - File tree with search and a "New file" button
 - Tabs for open files: close with the × button, <kbd>Delete</kbd>, or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>W</kbd>
-- **Auto-save** (on by default): edits are saved a moment after you stop typing. Switch it off in the tab bar to save with <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>S</kbd> instead; unsaved tabs show a dot, and Run, Install, `bun test` and Share save everything first.
+- **Auto-save** (on by default): edits are saved a moment after you stop typing. Switch it off in the tab bar to save with <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>S</kbd> instead; unsaved tabs show a dot, and Run, Install, `bun test` and Share save everything first. The setting applies to every project and every open playground tab.
 - Type errors in TypeScript files, from TypeScript 7's checker (see [Toolchain](/compatibility/toolchain/#type-checking))
 - Resizable panes
 - **Open folder** or **Open zip file** loads a project from your computer (skips `node_modules` and `.git`). A zip whose files all sit in one folder, like GitHub's downloads, opens that folder.
@@ -30,7 +30,7 @@ Not yet: autocomplete, renaming or deleting files from the tree. Very large file
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>K</kbd> | Show or hide the preview |
 | <kbd>Esc</kbd> | Leave the expanded preview |
 
-They work in the preview page too. To change them, open the keyboard button in the header and write overrides as JSON: a command name to a chord, a list of chords, or `null` to turn it off, e.g. `{ "run": ["Mod+Enter", "Alt+R"], "togglePreview": null }`. `Mod` is <kbd>Cmd</kbd> on macOS and <kbd>Ctrl</kbd> elsewhere; the other modifiers are `Ctrl`, `Alt`, `Shift` and `Meta`. Overrides are kept in this browser for every project.
+They work in the preview page too. To change them, open the keyboard button in the header and write overrides as JSON: a command name to a chord, a list of chords, or `null` to turn it off, e.g. `{ "run": ["Mod+Enter", "Alt+R"], "togglePreview": null }`. `Mod` is <kbd>Cmd</kbd> on macOS and <kbd>Ctrl</kbd> elsewhere; the other modifiers are `Ctrl`, `Alt`, `Shift` and `Meta`. Overrides are kept in this browser for every project, and open playground tabs pick up changes right away.
 
 ## Console
 
