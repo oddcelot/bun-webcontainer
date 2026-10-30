@@ -16,7 +16,7 @@ The element's attributes and the iframe's URL parameters share names.
 | `mode` | `code`, `preview`, `console`, `full`, `result` | `code` | Which panes show. See [Features](#features). |
 | `features` | comma list | none | Added to the mode's features. `-name` turns one off and locks it. |
 | `file` | path | the entry file | The file opened first. |
-| `autorun` | `true`, `false` | `true`, except in `full` | Run once loaded (after installing missing packages when `install` is on). |
+| `autorun` | `true`, `false` | `true`, except in `full` | Run once loaded, after installing any missing packages. |
 | `theme` | `auto`, `light`, `dark`, or a theme family's light variant | `auto` | e.g. `github-light`. |
 | `readonly` | boolean | `false` | The editor takes no edits. Run still works. |
 | `persist` | key | none | Keeps edits in the reader's browser under this key. Without it every load starts from the source. |
