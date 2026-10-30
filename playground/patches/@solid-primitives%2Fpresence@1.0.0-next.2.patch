@@ -1,0 +1,63 @@
+diff --git a/dist/index.js b/dist/index.js
+index cbd0ee4916e47db58cd5998cb3e720befb08298f..e150773579fd22e6c0ef4992242fb35d5cb66dba 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -13,17 +13,21 @@ function createPresenceBase(source, options) {
+ 	const initialSource = untrack(source);
+ 	const initialState = options.initialEnter ? false : initialSource;
+ 	const [isVisible, setIsVisible] = createSignal(initialState, INTERNAL_OPTIONS);
+-	const [isMounted, setIsMounted] = createSignal(initialSource, INTERNAL_OPTIONS);
++	// runbun patch: mounted while the source is on, and for exitDuration after (`lingering`). Derived rather than
++	// set from an effect, which Solid 2 reports as a relay (EFFECT_RELAY_TEAR) and renders one stale frame for.
++	const [lingering, setLingering] = createSignal(!!initialSource, INTERNAL_OPTIONS);
++	const isMounted = createMemo(() => !!source() || lingering());
+ 	const [hasEntered, setHasEntered] = createSignal(initialState, INTERNAL_OPTIONS);
+ 	const isExiting = createMemo(() => isMounted() && !source());
+ 	const isEntering = createMemo(() => source() && !hasEntered());
+ 	const isAnimating = createMemo(() => isEntering() || isExiting());
+ 	createEffect(() => source(), (isActive) => {
+-		if (isActive) setIsMounted(true);
++		// Not read while the source is on, so this write doesn't re-run anything.
++		if (isActive) setLingering(true);
+ 		else {
+ 			setHasEntered(false);
+ 			setIsVisible(false);
+-			const timeoutId = setTimeout(() => setIsMounted(false), exitDuration());
++			const timeoutId = setTimeout(() => setLingering(false), exitDuration());
+ 			return () => clearTimeout(timeoutId);
+ 		}
+ 	});
+@@ -66,24 +70,16 @@ const itemShouldBeMounted = (item) => item !== false && item != null;
+ * ```
+ */
+ function createPresence(item, options) {
+-	const initial = untrack(item);
+-	const [mountedItem, setMountedItem] = createSignal(initial, INTERNAL_OPTIONS);
+-	const [shouldBeMounted, setShouldBeMounted] = createSignal(itemShouldBeMounted(initial), INTERNAL_OPTIONS);
+-	const { isMounted, ...rest } = createPresenceBase(shouldBeMounted, options);
+-	createEffect(() => ({
+-		currentItem: item(),
+-		mounted: mountedItem(),
+-		isM: isMounted()
+-	}), ({ currentItem, mounted, isM }) => {
+-		if (mounted !== currentItem) {
+-			if (isM) setShouldBeMounted(false);
+-			else if (itemShouldBeMounted(currentItem)) {
+-				setMountedItem(currentItem);
+-				setShouldBeMounted(true);
+-			}
+-		} else if (!itemShouldBeMounted(currentItem)) setShouldBeMounted(false);
+-		else if (itemShouldBeMounted(currentItem)) setShouldBeMounted(true);
++	// runbun patch: derived instead of kept in sync by an effect, which Solid 2 reported as writing its own
++	// source (EFFECT_WRITES_OWN_SOURCE). The mounted item is the last one that should be mounted, so it stays
++	// through the exit. Unlike upstream, a switch straight from one item to another swaps at once instead of
++	// letting the old one exit first; Kobalte only passes `true` or undefined, so it never switches.
++	const shouldBeMounted = createMemo(() => itemShouldBeMounted(item()));
++	const mountedItem = createMemo((prev) => {
++		const current = item();
++		return itemShouldBeMounted(current) ? current : prev;
+ 	});
++	const { isMounted, ...rest } = createPresenceBase(shouldBeMounted, options);
+ 	return {
+ 		...rest,
+ 		isMounted: () => isMounted() && mountedItem() !== void 0,
