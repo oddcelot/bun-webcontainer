@@ -204,8 +204,7 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
 #editor { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 /* Over the editor surface, not above it: the surface stays put when a file opens. */
 #editor[data-empty]::before { content: "No file open"; position: absolute; inset: 0; z-index: 1; display: grid; place-items: center; background: var(--bg); color: var(--muted); }
-.tabs { display: flex; gap: 4px; padding: var(--pad); overflow-x: auto; background: var(--bg); border-bottom: 1px solid var(--border); }
-#tabs:empty { display: none; }
+.tabs { display: flex; gap: 4px; padding: var(--pad); background: var(--bg); border-bottom: 1px solid var(--border); }
 /* Tabs size to their name up to 26rem (about 42 characters) (then "…"; the tooltip has the full path) and don't shrink: a full bar scrolls. */
 .tabs-bar { display: flex; align-items: center; min-width: 0; background: var(--bg); border-bottom: 1px solid var(--border); }
 .tabs-bar .tabs { flex: 1 1 auto; min-width: 0; border-bottom: 0; }
@@ -218,7 +217,26 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
 .tabs-bar .autosave[aria-pressed="false"] { color: var(--fg); border-color: var(--control-border); }
 .tabs .tab .unsaved { color: var(--accent); font-size: 10px; line-height: 1; }
 .tabs .tablist, .tabs.tablist { display: flex; gap: 4px; }
-.tabs .tablist { flex: 0 0 auto; }
+.tabs .tablist { flex: 0 1 auto; min-width: 0; }
+/*
+  The tab row scrolls without a scrollbar (TabList turns the wheel sideways). Instead its edges fade into the
+  background where tabs are scrolled out: each fade grows in over the first 24px scrolled away from its end, so it's
+  gone at either end and with nothing to scroll. Browsers without scroll-driven animations show no fades.
+*/
+@property --fade-start { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --fade-end { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@keyframes tabs-fade-start { from { --fade-start: 0px; } to { --fade-start: 24px; } }
+@keyframes tabs-fade-end { from { --fade-end: 24px; } to { --fade-end: 0px; } }
+.tablist { overflow-x: auto; scrollbar-width: none; }
+.tablist::-webkit-scrollbar { display: none; }
+@supports (animation-timeline: scroll()) {
+  .tablist {
+    mask-image: linear-gradient(to right, transparent, #000 var(--fade-start), #000 calc(100% - var(--fade-end)), transparent);
+    animation: tabs-fade-start linear both, tabs-fade-end linear both;
+    animation-timeline: scroll(self inline), scroll(self inline);
+    animation-range: 0 24px, calc(100% - 24px) 100%;
+  }
+}
 .tabs .tab { position: relative; display: flex; flex: 0 0 auto; align-items: center; gap: 6px; min-width: 6rem; max-width: 26rem; padding: 4px 6px 4px 10px; border-radius: var(--inner-radius); color: var(--muted); cursor: pointer; white-space: nowrap; user-select: none; }
 .tabs .tab:hover { color: var(--fg); background: var(--control); }
 .tabs .tab[data-selected] { background: var(--control-hover); color: var(--fg); }

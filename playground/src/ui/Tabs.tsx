@@ -8,7 +8,7 @@ const name = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 /**
  * A row of tabs (role tablist), each a `TabItem`. Selection is the caller's: a click, or the arrow keys, Home and End
  * (which move focus and select, without wrapping), call `onSelect` with the tab's value. The selected tab is the one
- * Tab-key focus lands on.
+ * Tab-key focus lands on. The row scrolls sideways with no scrollbar, so a vertical wheel scrolls it too.
  */
 export function TabList(props: ParentProps<{ id?: string; class?: string; label: string; onSelect: (value: string) => void }>) {
   const tabs = (list: HTMLElement) => [...list.querySelectorAll<HTMLElement>('[role="tab"]')];
@@ -20,6 +20,12 @@ export function TabList(props: ParentProps<{ id?: string; class?: string; label:
       role="tablist"
       aria-label={props.label}
       aria-orientation="horizontal"
+      onWheel={(e) => {
+        const list = e.currentTarget;
+        if (Math.abs(e.deltaY) <= Math.abs(e.deltaX) || list.scrollWidth <= list.clientWidth) return;
+        e.preventDefault();
+        list.scrollLeft += e.deltaY;
+      }}
       onClick={(e) => select((e.target as HTMLElement).closest<HTMLElement>('[role="tab"]') ?? undefined)}
       onKeyDown={(e) => {
         const all = tabs(e.currentTarget);
@@ -79,7 +85,7 @@ export function TabItem(
 }
 
 /** Open files as tabs above the editor. Middle-click, the ×, Delete or Ctrl/Cmd+W closes a tab; arrows move between them. */
-export function EditorTabs(props: { placeholder?: boolean }) {
+export function EditorTabs() {
   const { workspace: ws } = useContext(AppContext);
   // Same file name in two folders: those tabs show the folder too.
   const clashes = createMemo(() => {
@@ -96,8 +102,8 @@ export function EditorTabs(props: { placeholder?: boolean }) {
 
   return (
     <TabList id="tabs" class="tabs tablist" label="Open files" onSelect={(path) => path !== ws.state.active && ws.activate(path)}>
-        {/* Until the project's first file opens, an invisible tab holds the bar's height so the editor doesn't jump. */}
-        <Show when={props.placeholder}>
+        {/* With no file open, an invisible tab holds the bar's height so the editor doesn't jump. */}
+        <Show when={!ws.state.open.length}>
           <div class="tab" aria-hidden="true" style={{ visibility: "hidden" }}>
             <span class="tab-trigger">
               <span class="name">&nbsp;</span>
