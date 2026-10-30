@@ -34,6 +34,7 @@ use rustc_hash::FxHashMap;
 use tsrs_ast::{SourceFile, SourceFileParseOptions};
 use tsrs_compiler::{CompilerHost, Program, ProgramOptions, new_compiler_host, new_program};
 use tsrs_core::collections::Set;
+use tsrs_core::json::{JsonMap, Value};
 use tsrs_core::{P, alloc_str};
 use tsrs_core::context::Context;
 use tsrs_core::tspath::{Path, to_path};
@@ -111,6 +112,12 @@ impl CompilerHost for CachingHost {
 /// The auto-import registry, shared by the State (which replaces it) and the language service (which reads it).
 type SharedRegistry = Arc<Mutex<Option<Arc<Registry>>>>;
 
+fn preferences() -> UserPreferences {
+    let mut p = new_default_user_preferences();
+    p.auto_import_entrypoint_directory_search = tsrs_core::Tristate::True;
+    p
+}
+
 struct LsHost {
     fs: Arc<dyn FS>,
     converters: Arc<Converters>,
@@ -128,7 +135,7 @@ impl Host for LsHost {
         Arc::clone(&self.converters)
     }
     fn get_preferences(&self, _: &str) -> UserPreferences {
-        new_default_user_preferences()
+        preferences()
     }
     fn get_ecma_line_info(&self, _: &str) -> Option<Arc<ECMALineInfo>> {
         None
@@ -196,10 +203,13 @@ impl RegistryCloneHost for CloneHost {
     fn get_program_for_project(&self, id: &ProjectID) -> Option<&'static Program> {
         (*id == self.project_id).then_some(self.program)
     }
-    // As tsrs_project's AutoImportRegistryCloneHost does.
+    // As tsrs_project's AutoImportRegistryCloneHost does, except that the project's own package.json depends on
+    // every package the program loads files from (see `with_program_packages`).
     fn get_package_json(&self, file_name: &str) -> P<InfoCacheEntry> {
         let package_directory = alloc_str(&tsrs_core::tspath::get_directory_path(file_name));
-        let Some(text) = self.fs.read_file(file_name) else {
+        let text = self.fs.read_file(file_name);
+        let text = if file_name.contains("/node_modules/") { text } else { text.map(|t| with_program_packages(&t, self.program)) };
+        let Some(text) = text else {
             return P::new(InfoCacheEntry {
                 directory_exists: self.fs.directory_exists(package_directory),
                 package_directory,
@@ -212,9 +222,13 @@ impl RegistryCloneHost for CloneHost {
         };
         P::new(InfoCacheEntry { directory_exists: true, package_directory, contents: Some(P::new(contents)) })
     }
-    // Not through the cache: clone_registry allocates in a scratch region it frees before returning, so a file
-    // parsed here mustn't outlive the call.
+    // The program's own (bound) file when it has one, as tsrs's parse cache would hand out. Anything else is parsed
+    // here and kept out of the cache: clone_registry allocates in a scratch region it frees before returning, so a
+    // file parsed here mustn't outlive the call.
     fn get_source_file(&self, file_name: &str, path: &Path) -> Option<P<SourceFile>> {
+        if let Some(file) = self.program.get_source_file_by_path(path) {
+            return Some(file);
+        }
         self.host.inner.get_source_file(SourceFileParseOptions {
             file_name: file_name.to_owned(),
             path: path.clone(),
@@ -222,6 +236,30 @@ impl RegistryCloneHost for CloneHost {
         })
     }
     fn dispose(&self) {}
+}
+
+/// `package_json` with every package `program` loads files from added to its `dependencies`. The registry indexes
+/// a project's dependencies and the packages its program imports, but not those pulled in by `/// <reference types>`:
+/// bun-types, @types/node and undici-types, which declare `bun:*` and `node:*` (`declare module`), come in that way
+/// through @types/bun, which is a devDependency (also not indexed) when it's listed at all.
+fn with_program_packages(package_json: &str, program: &Program) -> String {
+    let Ok(Value::Object(mut root)) = tsrs_core::json::unmarshal(package_json) else { return package_json.to_owned() };
+    let mut deps = match root.shift_remove("dependencies") {
+        Some(Value::Object(deps)) => deps,
+        _ => JsonMap::new(),
+    };
+    for file in program.get_source_files() {
+        let name = file.file_name();
+        let Some(at) = name.rfind("/node_modules/") else { continue };
+        let rest = &name[at + "/node_modules/".len()..];
+        let segments = if rest.starts_with('@') { 2 } else { 1 };
+        let package = rest.splitn(segments + 1, '/').take(segments).collect::<Vec<_>>().join("/");
+        if !deps.contains_key(&package) {
+            deps.insert(package, Value::String("*".into()));
+        }
+    }
+    root.insert("dependencies", Value::Object(deps));
+    tsrs_core::json::marshal(&Value::Object(root)).unwrap_or_else(|_| package_json.to_owned())
 }
 
 /// File changes since the registry last saw the program, for it to mark what needs reindexing.
@@ -250,6 +288,9 @@ struct State {
     dirty: Option<Vec<String>>,
     registry: SharedRegistry,
     registry_changes: RegistryChanges,
+    /// Files completions were asked in: the editor's open files, as far as the registry is concerned. Without them
+    /// an update drops the buckets it built for them, and the next completion indexes everything again.
+    open_files: FxHashMap<Path, String>,
 }
 
 impl State {
@@ -275,6 +316,7 @@ impl State {
             dirty: Some(Vec::new()),
             registry: SharedRegistry::default(),
             registry_changes: RegistryChanges::default(),
+            open_files: FxHashMap::default(),
         }
     }
 
@@ -302,6 +344,7 @@ impl State {
     fn remove_file(&mut self, path: &str) {
         if self.mem.remove(path).is_ok() {
             self.dirty = None;
+            self.open_files.remove(&to_path(path, "/", true));
             self.registry_changes.deleted.add(lsconv::file_name_to_document_uri(path));
         }
     }
@@ -318,7 +361,11 @@ impl State {
         }
         let changes = std::mem::take(&mut self.registry_changes);
         let id = ProjectID(project.config.clone());
+        if let Some(file) = requested {
+            self.open_files.insert(to_path(file, "/", true), file.to_owned());
+        }
         let mut change = RegistryChange {
+            open_files: self.open_files.clone(),
             changed: changes.changed,
             created: changes.created,
             deleted: changes.deleted,
@@ -330,11 +377,10 @@ impl State {
         if let Some(file) = requested {
             change.requested_file = to_path(file, "/", true);
             change.requested_file_name = file.to_owned();
-            change.open_files.insert(change.requested_file.clone(), file.to_owned());
         }
         let host = CloneHost { fs: Arc::clone(&self.fs), host: Arc::clone(&self.host), project_id: id, program: project.program };
         let old = registry.take().unwrap_or_else(|| {
-            new_registry(Arc::new(|f: &str| to_path(f, "/", true)), new_default_user_preferences())
+            new_registry(Arc::new(|f: &str| to_path(f, "/", true)), preferences())
         });
         *registry = Some(old.clone_registry(&self.ctx, &change, &host, LogTree::nil()));
     }

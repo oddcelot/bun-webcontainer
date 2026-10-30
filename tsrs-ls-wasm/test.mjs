@@ -62,7 +62,7 @@ if (isMainThread) {
   log("signature help greet(", call("ls_signature_help", ["/tsconfig.json", "/index.ts", "1", String(at), "(", "0"]));
   // Auto-imports: names exported by a module (/extra.ts) and a package (tiny-pkg) that /use.ts doesn't import yet.
   call("ls_set_files", [
-    "/package.json", '{"dependencies":{"tiny-pkg":"1.0.0"}}',
+    "/package.json", '{"dependencies":{"tiny-pkg":"1.0.0"},"devDependencies":{"@types/bun":"1.0.0"}}',
     "/node_modules/tiny-pkg/package.json", '{"name":"tiny-pkg","version":"1.0.0","types":"index.d.ts"}',
     "/node_modules/tiny-pkg/index.d.ts", "export declare function tinyThing(): void;\n",
     "/extra.ts", 'export function farewellMessage() { return "bye"; }\n',
@@ -76,6 +76,10 @@ if (isMainThread) {
   };
   autoImport(0, 5, "farewellMessage");
   autoImport(1, 5, "tinyThing");
+  // From Bun's and Node's built-in modules, declared with `declare module` in files @types/bun pulls in.
+  call("ls_set_files", ["/use.ts", "farew\ntinyT\nDatab\nreadFileS\n"]);
+  autoImport(2, 5, "Database");
+  autoImport(3, 9, "readFileSync");
   call("ls_set_files", ["/extra.ts", 'export function farewellMessage() { return "bye"; }\nexport const farewellCount = 2;\n']);
   autoImport(0, 5, "farewellCount");
   parentPort.postMessage(`memory after setup: ${mib()}`);
