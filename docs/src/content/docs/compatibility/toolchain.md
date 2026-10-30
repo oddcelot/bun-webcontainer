@@ -76,7 +76,8 @@ An import that can't be resolved shows `cannot resolve "x"` in the console.
 - ✅ `.cjs` files, and `.js` files without ESM syntax in packages that aren't `"type": "module"`
 - ✅ `require("x")` with a string literal. Modules run on first `require`, as in Node; cycles see partial exports.
 - ✅ Named imports from CommonJS, found by a static scan (`exports.x =`, `module.exports = { … }`, re-exports). Exports computed at runtime aren't visible as named imports.
-- ✅ `createRequire(import.meta.url)` and `import.meta.require` with string literals
+- ✅ `import.meta.require` with string literals
+- 🟡 `createRequire(import.meta.url)` serves built-ins only; its `require("./x.cjs")` throws
 - ❌ `require(variable)` throws. So does a `require` that can't be resolved, when it runs.
 - ❌ `require.cache`, `require.main`, native `.node` addons
 
