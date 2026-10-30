@@ -57,7 +57,7 @@ export function EditorPane() {
         ws.setDirty(path, true);
         check!(path, next);
         clearTimeout(timer);
-        if (ws.state.autosave) timer = setTimeout(saveAll, SAVE_DELAY);
+        if (ws.autosave()) timer = setTimeout(saveAll, SAVE_DELAY);
       });
       check(path, text);
     }),
@@ -83,7 +83,7 @@ export function EditorPane() {
     // unsaved edits make the browser ask first, as editors do.
     const onUnload = (e: BeforeUnloadEvent) => {
       if (!pending.size) return;
-      if (ws.state.autosave) saveAll();
+      if (ws.autosave()) saveAll();
       else e.preventDefault();
     };
     addEventListener("keydown", onKey);
@@ -104,15 +104,15 @@ export function EditorPane() {
         <button
           class="autosave"
           type="button"
-          aria-pressed={ws.state.autosave ? "true" : "false"}
-          title={ws.state.autosave ? "Edits save shortly after you stop typing. Click to save with Ctrl/Cmd+S instead." : "Edits save with Ctrl/Cmd+S (and before Run). Click to save as you type."}
+          aria-pressed={ws.autosave() ? "true" : "false"}
+          title={ws.autosave() ? "Edits save shortly after you stop typing. Click to save with Ctrl/Cmd+S instead." : "Edits save with Ctrl/Cmd+S (and before Run). Click to save as you type."}
           onClick={() => {
-            const on = !ws.state.autosave;
+            const on = !ws.autosave();
             ws.setAutosave(on);
             if (on) saveAll();
           }}
         >
-          <i class={ws.state.autosave ? "i-lucide-save" : "i-lucide-save-off"} aria-hidden="true" /> Auto-save
+          <i class={ws.autosave() ? "i-lucide-save" : "i-lucide-save-off"} aria-hidden="true" /> Auto-save
         </button>
       </div>
       {/* "No file open" only once the project has loaded, not while its first file is on the way. */}
