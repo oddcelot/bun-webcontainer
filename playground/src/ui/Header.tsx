@@ -4,6 +4,7 @@ import logo from "../bun-logo.svg";
 import { AppContext } from "./context";
 import { ProjectPicker } from "./ProjectPicker";
 import { ShareMenu } from "./ShareMenu";
+import { Shortcuts } from "./Shortcuts";
 import { ThemePicker } from "./ThemePicker";
 import { Title } from "./Title";
 
@@ -57,6 +58,7 @@ export function Header() {
         <i class="i-lucide-share-2" aria-hidden="true" /> Share
       </button>
       <ShareMenu />
+      <Shortcuts />
       <ThemePicker />
     </>
   );

@@ -2,12 +2,23 @@ import { For, Show, createEffect, onSettled, untrack, useContext } from "solid-j
 import { Select } from "@kobalte/core/select";
 import { TabItem, TabList } from "./Tabs";
 import { BASE } from "../base";
+import { matches } from "../keymap";
 import type { Card } from "../preview";
 import { AppContext } from "./context";
 import type { PreviewTab } from "./previews";
 
 const CANT_RUN = "This browser can't run code here";
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"];
+
+/**
+ * Keys pressed in a page stay in its frame, so a frame hands its key presses to the playground's window as well, for
+ * the shortcuts there. A shortcut that's handled there doesn't also reach the page.
+ */
+function forwardKeys(e: KeyboardEvent) {
+  const copy = new KeyboardEvent("keydown", e);
+  dispatchEvent(copy);
+  if (copy.defaultPrevented) e.preventDefault();
+}
 
 /**
  * Request bar over the preview: any method and path against the running server. HTML GETs load in the iframe
@@ -23,9 +34,8 @@ export function Preview() {
   const byAge = () => [...s.tabs].sort((a, b) => a.id - b.id);
   const disabled = !app.session.canRun;
 
-  // Keys pressed in a page stay in its frame; frames forward Escape here too (see onLoad).
   const onKey = (e: KeyboardEvent) => {
-    if (e.key === "Escape" && s.expanded) p.setExpanded(false);
+    if (s.expanded && matches("exitFullscreen", e)) p.setExpanded(false);
   };
   onSettled(() => {
     addEventListener("keydown", onKey);
@@ -143,7 +153,7 @@ export function Preview() {
                     ref={(el) => p.frames.set(id, el)}
                     onLoad={(e) => {
                       p.loaded(id, e.currentTarget);
-                      e.currentTarget.contentWindow?.addEventListener("keydown", onKey);
+                      e.currentTarget.contentWindow?.addEventListener("keydown", forwardKeys);
                     }}
                   />
                   <Response card={tab.response} hidden={id !== s.active || tab.view !== "response"} />

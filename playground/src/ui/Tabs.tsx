@@ -1,4 +1,5 @@
 import { For, Show, createEffect, createMemo, flush, useContext, type ParentProps } from "solid-js";
+import { matches } from "../keymap";
 import { AppContext } from "./context";
 
 const name = (path: string) => path.slice(path.lastIndexOf("/") + 1);
@@ -114,7 +115,7 @@ export function EditorTabs(props: { placeholder?: boolean }) {
               onClose={() => ws.close(path)}
               closeLabel={`Close ${name(path)}`}
               onKeyDown={(e) => {
-                if (e.key === "Delete" || (e.key === "w" && (e.ctrlKey || e.metaKey))) {
+                if (matches("closeTab", e)) {
                   e.preventDefault();
                   ws.close(path);
                   // The focused tab is gone; keep keyboard focus in the bar, on the tab now selected.

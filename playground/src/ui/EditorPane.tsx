@@ -1,6 +1,7 @@
 import { createEffect, onSettled, useContext } from "solid-js";
 import { mountDiagnostics } from "../diagnostics";
 import { createPierre } from "../editors/pierre";
+import { matches } from "../keymap";
 import type { CodeEditor } from "../editors/types";
 import { AppContext } from "./context";
 import { guarded } from "./guarded";
@@ -11,7 +12,7 @@ const SAVE_DELAY = 300;
 
 /**
  * The open-file tabs over the editor, which shows the active tab and writes edits back to the VFS: shortly after
- * typing stops with auto-save on, else on Ctrl/Cmd+S (and before Run, Install or Share, through `ws.saveAll`).
+ * typing stops with auto-save on, else on the save shortcut (Ctrl/Cmd+S) (and before Run, Install or Share, through `ws.saveAll`).
  */
 export function EditorPane() {
   const { vfs, workspace: ws, session } = useContext(AppContext);
@@ -74,7 +75,7 @@ export function EditorPane() {
       }
     });
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "s" || !(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+      if (!matches("save", e)) return;
       e.preventDefault();
       if (current) save(current);
     };

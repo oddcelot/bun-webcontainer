@@ -51,7 +51,7 @@ async function setupServiceWorker() {
 }
 
 const vfs = new VFS();
-mountUI({ session, support, workspace, previews, terminal, clearConsole, vfs, log, run: () => run(), install, openProject, newFile, openFolder, openDirectory, reopenFolder, openZip, repoParam: new URLSearchParams(location.search).get("repo") ?? "" });
+mountUI({ session, support, workspace, previews, terminal, clearConsole, vfs, log, run: () => run(), stop, install, openProject, newFile, openFolder, openDirectory, reopenFolder, openZip, repoParam: new URLSearchParams(location.search).get("repo") ?? "" });
 const params = new URLSearchParams(location.search);
 const exampleName = params.get("example") ?? "";
 const repoParam = params.get("repo") ?? "";
