@@ -78,7 +78,7 @@ export function createPreviews() {
       try {
         result = await sendRequest(m, path, tab.body);
       } catch (err) {
-        result = { ok: false, line: `${m} ${tab.path}`, status: "", head: "", text: String(err) };
+        result = { ok: false, line: `${m} ${tab.path}`, status: "", head: "", type: "", text: String(err) };
       }
       if (result === "page") {
         update(id, (t) => {
