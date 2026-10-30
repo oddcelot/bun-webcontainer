@@ -29,7 +29,8 @@ example's `node_modules`), later ones a few milliseconds.
 - ✅ Types for `Bun.*`, `bun:*`, `node:*` and HTML imports from `@types/bun`, bundled; a project's own `@types/bun` or `@types/node` takes their place
 - ✅ Package types from installed `node_modules` (`.d.ts` files and `package.json` `types`/`exports`)
 - ✅ Hover info: rest the pointer on a name for its type and documentation (JSDoc, with examples)
-- ❌ No autocomplete or go-to-definition yet
+- 🟡 Completions: members after `.`, names in scope, keywords, and import paths, each with its type and documentation; no auto-imports (names another module exports appear once you import them)
+- ❌ No signature help or go-to-definition yet
 - ❌ No `tsc` command in the console
 
 ## Formatter (`bun fmt`)

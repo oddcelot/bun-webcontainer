@@ -1,13 +1,25 @@
 // tsrs's language service runs here and not on the page: the checker recurses deeply, and a request blocks until it
 // is answered. The instance keeps the project's files between requests and is replaced once its memory (which never
 // shrinks) passes MEMORY_LIMIT.
-import { TsrsLs, type LspDiagnostic, type LspHover } from "./tsrsLs";
+import { TsrsLs, type LspCompletionItem, type LspCompletionList, type LspDiagnostic, type LspHover } from "./tsrsLs";
 
 type Files = Record<string, string | Uint8Array>;
 /** Every request carries the files that changed since the last one (the worker keeps the rest). */
 type Sync = { id: number; changed: Files; removed: string[]; config: string; path: string };
-export type LsRequest = Sync & ({ kind: "diagnostics" } | { kind: "hover"; line: number; character: number });
-export type LsReply = { id: number; diagnostics?: LspDiagnostic[]; hover?: LspHover | null; error?: string };
+export type LsOp =
+  | { kind: "diagnostics" }
+  | { kind: "hover"; line: number; character: number }
+  | { kind: "completion"; line: number; character: number; trigger: string }
+  | { kind: "resolve"; item: LspCompletionItem };
+export type LsRequest = Sync & LsOp;
+export type LsReply = {
+  id: number;
+  diagnostics?: LspDiagnostic[];
+  hover?: LspHover | null;
+  completion?: LspCompletionList | null;
+  item?: LspCompletionItem | null;
+  error?: string;
+};
 
 const MEMORY_LIMIT = 1.5 * 2 ** 30;
 const PACKAGE = /^\/node_modules\/((?:@[^/]+\/)?[^/]+)\//;
@@ -59,7 +71,11 @@ self.onmessage = async (e: MessageEvent<LsRequest>) => {
     reply =
       req.kind === "hover"
         ? { id: req.id, hover: service.hover(req.config, req.path, req.line, req.character) }
-        : { id: req.id, diagnostics: service.diagnostics(req.config, req.path) };
+        : req.kind === "completion"
+          ? { id: req.id, completion: service.completion(req.config, req.path, req.line, req.character, req.trigger) }
+          : req.kind === "resolve"
+            ? { id: req.id, item: service.resolveCompletion(req.config, req.item) }
+            : { id: req.id, diagnostics: service.diagnostics(req.config, req.path) };
     if (service.memoryBytes > MEMORY_LIMIT) ls = undefined;
   } catch (err) {
     // A trap (stack overflow, out of memory) leaves the instance unusable: the next request makes a new one.

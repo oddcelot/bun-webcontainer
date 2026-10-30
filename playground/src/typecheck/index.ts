@@ -1,8 +1,9 @@
-import type { EditorDiagnostic, EditorHover } from "../editors/types";
+import type { CompletionKind, EditorCompletion, EditorCompletions, EditorDiagnostic, EditorHover } from "../editors/types";
 import { dirname, type FileData, type VFS } from "../vfs";
-import type { LsReply, LsRequest } from "./worker";
+import type { LspCompletionItem } from "./tsrsLs";
+import type { LsOp, LsReply, LsRequest } from "./worker";
 
-// Type errors and hovers from tsrs's language service (see ./worker.ts). The project's files go to it as absolute
+// Type errors, hovers and completions from tsrs's language service (see ./worker.ts). The project's files go to it as absolute
 // paths ("/" + VFS path); from node_modules only declarations and JSON (package.json, configs a tsconfig `extends`,
 // JSON imports), which is what type resolution reads. The worker adds Bun's own types where node_modules lacks them.
 
@@ -29,8 +30,6 @@ const DEFAULT_OPTIONS = {
   types: ["bun"],
 };
 
-type Op = { kind: "diagnostics" } | { kind: "hover"; line: number; character: number };
-
 let worker: Worker | undefined;
 let nextId = 0;
 const waiting = new Map<number, (r: LsReply) => void>();
@@ -46,7 +45,7 @@ function nearestTsconfig(vfs: VFS, path: string): string | undefined {
 }
 
 /** Sends `op` for `path` (contents `text`, unsaved edits included) with what changed in the project since the last request. */
-function request(vfs: VFS, path: string, text: string, op: Op): Promise<LsReply> {
+function request(vfs: VFS, path: string, text: string, op: LsOp): Promise<LsReply> {
   if (!worker) {
     worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
     worker.onmessage = (e: MessageEvent<LsReply>) => {
@@ -116,4 +115,60 @@ export async function hover(vfs: VFS, path: string, text: string, line: number, 
   // The language service's markdown: the declaration in a ```typescript block, then the JSDoc.
   const m = /^```\w*\n([\s\S]*?)\n```\n?([\s\S]*)$/.exec(value);
   return m ? { code: m[1], docs: m[2].trim() } : { code: "", docs: value.trim() };
+}
+
+/** LSP's CompletionItemKind, by number. */
+const KINDS: Record<number, CompletionKind> = {
+  2: "function",
+  3: "function",
+  4: "function",
+  5: "property",
+  6: "variable",
+  7: "class",
+  8: "interface",
+  9: "module",
+  10: "property",
+  13: "enum",
+  14: "keyword",
+  17: "file",
+  19: "folder",
+  20: "constant",
+  21: "constant",
+  22: "class",
+  23: "property",
+  25: "type",
+};
+
+/** The completions at `line`/`column` (1-based, UTF-16) of `path`; `trigger` is the character just typed, if that's what asked. */
+export async function complete(vfs: VFS, path: string, text: string, line: number, column: number, trigger = ""): Promise<EditorCompletions | null> {
+  const r = await request(vfs, path, text, { kind: "completion", line: line - 1, character: column - 1, trigger });
+  if (r.error) console.warn(`tsrs: ${r.error}`);
+  if (!r.completion) return null;
+  // DEFAULT_CONFIG's folder isn't the project's.
+  const items = r.completion.items.filter((i) => i.label !== ".runbun").map((i): EditorCompletion => {
+    const edit = i.textEdit;
+    const range = edit && ("range" in edit ? edit.range : edit.insert);
+    return {
+      label: i.label,
+      kind: KINDS[i.kind ?? 1] ?? "text",
+      description: i.labelDetails?.description,
+      insert: edit?.newText ?? i.insertText ?? i.label,
+      start: range && range.start.line === line - 1 ? range.start.character + 1 : undefined,
+      sort: i.sortText ?? i.label,
+      filter: i.filterText ?? i.label,
+      ref: i,
+    };
+  });
+  return { items, incomplete: r.completion.isIncomplete };
+}
+
+/** The declaration and documentation of `item` (from `complete` for `path`), or null. */
+export async function resolveCompletion(vfs: VFS, path: string, text: string, item: EditorCompletion): Promise<EditorHover | null> {
+  const r = await request(vfs, path, text, { kind: "resolve", item: item.ref as LspCompletionItem });
+  if (r.error) console.warn(`tsrs: ${r.error}`);
+  const doc = r.item?.documentation;
+  const docs = (typeof doc === "string" ? doc : doc?.value ?? "").trim();
+  // A path's detail is its name again.
+  const code = r.item?.detail === item.label ? "" : (r.item?.detail ?? "");
+  return code || docs ? { code, docs } : null;
 }

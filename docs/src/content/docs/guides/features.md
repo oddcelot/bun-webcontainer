@@ -12,13 +12,13 @@ sidebar:
 - Tabs for open files: close with the × button, <kbd>Delete</kbd>, or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>W</kbd>
 - **Auto-save** (on by default): edits are saved a moment after you stop typing. Switch it off in the tab bar to save with <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>S</kbd> instead; unsaved tabs show a dot, and Run, Install, `bun test` and Share save everything first. The setting applies to every project and every open playground tab.
 - **Format** in the tab bar (<kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd>) formats the open file with `bun fmt`, as one undoable edit (see [Toolchain](/compatibility/toolchain/#formatter-bun-fmt))
-- Type errors in TypeScript files, and a name's type and documentation when the pointer rests on it, from TypeScript 7's checker (see [Toolchain](/compatibility/toolchain/#type-checking))
+- Type errors in TypeScript files, a name's type and documentation when the pointer rests on it, and **completions** as you type, from TypeScript 7's checker (see [Toolchain](/compatibility/toolchain/#type-checking)). The list opens after `.`, in import paths, and at the first letter of a name; <kbd>↑</kbd>/<kbd>↓</kbd> pick, <kbd>Enter</kbd> or <kbd>Tab</kbd> insert, <kbd>Esc</kbd> closes it. The selected entry's type and docs show under the list.
 - Resizable panes
 - **Status bar** along the bottom: buttons to show or hide the preview and console, what the program is doing, and for the open file its error and warning counts (click to go to the next one), the cursor's line and column, and its language (for TypeScript, with the version the type checker follows). The Bun version links to [Bun compatibility](/compatibility/bun/).
 - **Open folder** or **Open zip file** loads a project from your computer (skips `node_modules` and `.git`). A zip whose files all sit in one folder, like GitHub's downloads, opens that folder.
 - In Chrome and Edge, an opened folder stays linked: edits, new files and deletions are saved to it on disk. `node_modules` stays in the browser and the folder's own `node_modules` and `.git` aren't touched. A reload opens it again if the browser still allows access; otherwise pick **Reopen <folder>** in the project picker, which asks once more. Other browsers open a copy.
 
-Not yet: autocomplete, renaming or deleting files from the tree. Very large files are slow, because every line is rendered.
+Not yet: renaming or deleting files from the tree. Very large files are slow, because every line is rendered.
 
 ### Keyboard shortcuts
 
@@ -29,12 +29,13 @@ Not yet: autocomplete, renaming or deleting files from the tree. Very large file
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>S</kbd> | Save the file |
 | <kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd> | Format the file with `bun fmt` (`format`) |
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>I</kbd> | Show the type and docs of the name at the cursor (`showHover`); any key closes it |
+| <kbd>Ctrl</kbd>+<kbd>Space</kbd> | Show completions at the cursor (`suggest`; <kbd>Ctrl</kbd> on macOS too) |
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>W</kbd>, <kbd>Delete</kbd> | Close the focused tab |
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>J</kbd> | Show or hide the console |
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>K</kbd> | Show or hide the preview |
 | <kbd>Esc</kbd> | Leave the expanded preview |
 
-They work in the preview page too. To change them, open the keyboard button in the header and write overrides as JSON: a command name to a chord, a list of chords, or `null` to turn it off, e.g. `{ "run": ["Mod+Enter", "Alt+R"], "togglePreview": null }`. `Mod` is <kbd>Cmd</kbd> on macOS and <kbd>Ctrl</kbd> elsewhere; the other modifiers are `Ctrl`, `Alt`, `Shift` and `Meta`. Overrides are kept in this browser for every project, and open playground tabs pick up changes right away.
+They work in the preview page too. To change them, open the keyboard button in the header and write overrides as JSON: a command name to a chord, a list of chords, or `null` to turn it off, e.g. `{ "run": ["Mod+Enter", "Alt+R"], "togglePreview": null }`. `Mod` is <kbd>Cmd</kbd> on macOS and <kbd>Ctrl</kbd> elsewhere; the other modifiers are `Ctrl`, `Alt`, `Shift` and `Meta`, and the space bar is `Space`. Overrides are kept in this browser for every project, and open playground tabs pick up changes right away.
 
 ## Console
 
