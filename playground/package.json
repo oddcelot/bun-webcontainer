@@ -53,6 +53,7 @@
     "vite": "^8.3.5"
   },
   "patchedDependencies": {
-    "@solid-primitives/presence@1.0.0-next.2": "patches/@solid-primitives%2Fpresence@1.0.0-next.2.patch"
+    "@solid-primitives/presence@1.0.0-next.2": "patches/@solid-primitives%2Fpresence@1.0.0-next.2.patch",
+    "@kobalte/core@2.0.0-alpha.4": "patches/@kobalte%2Fcore@2.0.0-alpha.4.patch"
   }
 }
