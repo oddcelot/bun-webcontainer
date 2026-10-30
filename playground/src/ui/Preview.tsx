@@ -11,6 +11,18 @@ import { Tip } from "./Tip";
 const CANT_RUN = "This browser can't run code here";
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"];
 
+/** An HTTP method as a tinted badge in its own color (style.css); DELETE reads DEL, in full for screen readers. */
+function MethodBadge(props: { method: string }) {
+  return (
+    <span class="method-badge" data-method={props.method}>
+      <Show when={props.method === "DELETE"} fallback={props.method}>
+        <span aria-hidden="true">DEL</span>
+        <span class="sr-only">DELETE</span>
+      </Show>
+    </span>
+  );
+}
+
 /**
  * Keys pressed in a page stay in its frame, so a frame hands its key presses to the playground's window as well, for
  * the shortcuts there. A shortcut that's handled there doesn't also reach the page.
@@ -78,15 +90,14 @@ export function Preview() {
             gutter={6}
             itemComponent={(props) => (
               <Select.Item item={props.item} class="select-option">
-                <Select.ItemLabel class="name">{props.item.rawValue}</Select.ItemLabel>
-                <Select.ItemIndicator class="check">
-                  <i class="i-lucide-check" aria-hidden="true" />
-                </Select.ItemIndicator>
+                <Select.ItemLabel class="name">
+                  <MethodBadge method={props.item.rawValue} />
+                </Select.ItemLabel>
               </Select.Item>
             )}
           >
             <Tip as={Select.Trigger} id="req-method" class="select-trigger" tip={disabled ? CANT_RUN : "Method"} aria-label="Method">
-              <Select.Value<string> class="value">{(state) => <span class="name">{state.selectedOption()}</span>}</Select.Value>
+              <Select.Value<string> class="value">{(state) => <MethodBadge method={state.selectedOption()} />}</Select.Value>
               <Select.Icon class="chevron">
                 <i class="i-lucide-chevron-down" aria-hidden="true" />
               </Select.Icon>
@@ -182,7 +193,7 @@ function PreviewTabItem(props: { tab: PreviewTab }) {
       closeLabel={`Close ${props.tab.path}`}
     >
       <Show when={props.tab.method !== "GET"}>
-        <span class="method">{props.tab.method}</span>
+        <MethodBadge method={props.tab.method} />
       </Show>
       <span class="name">{props.tab.path}</span>
     </TabItem>
