@@ -20,6 +20,8 @@ export type App = {
   vfs: VFS;
   log: LogFn;
   run(): void;
+  /** Stops the running server, if any. */
+  stop(): void;
   install(): void;
   /** Reloads with `?example=` or `?repo=` (picker values for repos are `repo:<owner/repo>`). */
   openProject(value: string): void;

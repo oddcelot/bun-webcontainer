@@ -1,5 +1,6 @@
-import { Show, useContext } from "solid-js";
-import { Resizable } from "@kobalte/core/resizable";
+import { Show, onSettled, useContext } from "solid-js";
+import { Resizable, type RootChildrenProps } from "@kobalte/core/resizable";
+import { matches } from "../keymap";
 import { AppContext } from "./context";
 import { Console } from "./Console";
 import { EditorPane } from "./EditorPane";
@@ -17,7 +18,8 @@ function savedSizes(key: string, fallback: number[]): number[] {
   return fallback;
 }
 
-const saveSizes = (key: string) => (sizes: number[]) => localStorage.setItem(key, JSON.stringify(sizes));
+// A collapsed panel isn't kept: after a reload it opens at its size from before.
+const saveSizes = (key: string) => (sizes: number[]) => sizes.every((n) => n > 0) && localStorage.setItem(key, JSON.stringify(sizes));
 
 /** The page: header, then the file tree, the editor and the preview over the console, with draggable borders between them. */
 export function App() {
@@ -25,6 +27,30 @@ export function App() {
   // Per panel, not the root's initialSizes: the root's list only reached the first panel after a reload.
   const columns = savedSizes("layout.columns", [0.14, 0.43, 0.43]);
   const rows = savedSizes("layout.right", [0.5, 0.5]);
+  // The preview-over-console split, for the shortcuts that hide either.
+  let split: RootChildrenProps | undefined;
+  // The split from before one was hidden, to show both again at.
+  let shown = rows;
+  const toggle = (i: number) => {
+    if (!split) return;
+    const sizes = split.sizes;
+    if (sizes.every((n) => n > 0)) shown = sizes;
+    // Hiding one gives the other all the room (so with the other hidden, it swaps them).
+    split.setSizes(sizes[i] > 0 ? (i ? [1, 0] : [0, 1]) : shown);
+  };
+  onSettled(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const s = app.session;
+      if (matches("run", e)) s.canRun && !s.busy.run && s.ready() && app.run();
+      else if (matches("stop", e)) app.stop();
+      else if (matches("togglePreview", e)) toggle(0);
+      else if (matches("toggleConsole", e)) toggle(1);
+      else return;
+      e.preventDefault();
+    };
+    addEventListener("keydown", onKey);
+    return () => removeEventListener("keydown", onKey);
+  });
   return (
     <>
       <header>
@@ -49,13 +75,20 @@ export function App() {
           <Resizable.Handle class="resize-handle" aria-label="Resize editor and preview" />
           <Resizable.Panel panelId="right" initialSize={columns[2]} minSize="200px">
             <Resizable orientation="vertical" onSizesChange={saveSizes("layout.right")}>
-              <Resizable.Panel panelId="preview-panel" initialSize={rows[0]} minSize="80px">
-                <Preview />
-              </Resizable.Panel>
-              <Resizable.Handle class="resize-handle" aria-label="Resize preview and console" />
-              <Resizable.Panel panelId="console-wrap" initialSize={rows[1]} minSize="60px">
-                <Console />
-              </Resizable.Panel>
+              {(r) => {
+                split = r;
+                return (
+                  <>
+                    <Resizable.Panel panelId="preview-panel" initialSize={rows[0]} minSize="80px">
+                      <Preview />
+                    </Resizable.Panel>
+                    <Resizable.Handle class="resize-handle" aria-label="Resize preview and console" />
+                    <Resizable.Panel panelId="console-wrap" initialSize={rows[1]} minSize="60px">
+                      <Console />
+                    </Resizable.Panel>
+                  </>
+                );
+              }}
             </Resizable>
           </Resizable.Panel>
         </Resizable>

@@ -18,6 +18,20 @@ sidebar:
 
 Not yet: autocomplete, renaming or deleting files from the tree. Very large files are slow, because every line is rendered.
 
+### Keyboard shortcuts
+
+| Shortcut | Does |
+|---|---|
+| <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Enter</kbd> | Run |
+| <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>.</kbd> | Stop the server |
+| <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>S</kbd> | Save the file |
+| <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>W</kbd>, <kbd>Delete</kbd> | Close the focused tab |
+| <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>J</kbd> | Show or hide the console |
+| <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>K</kbd> | Show or hide the preview |
+| <kbd>Esc</kbd> | Leave the expanded preview |
+
+They work in the preview page too. To change them, open the keyboard button in the header and write overrides as JSON: a command name to a chord, a list of chords, or `null` to turn it off, e.g. `{ "run": ["Mod+Enter", "Alt+R"], "togglePreview": null }`. `Mod` is <kbd>Cmd</kbd> on macOS and <kbd>Ctrl</kbd> elsewhere; the other modifiers are `Ctrl`, `Alt`, `Shift` and `Meta`. Overrides are kept in this browser for every project.
+
 ## Console
 
 A terminal with colors, clickable links, history (<kbd>↑</kbd>/<kbd>↓</kbd>) and line editing (<kbd>Ctrl</kbd>+<kbd>A</kbd>/<kbd>E</kbd>/<kbd>U</kbd>). <kbd>Ctrl</kbd>+<kbd>C</kbd> on an empty line stops the server; <kbd>Ctrl</kbd>+<kbd>L</kbd> clears.
@@ -44,7 +58,7 @@ The console is not a full shell: no quotes, pipes, `&&`, `bunx`, or file command
 2. the file in `scripts.dev` or `scripts.start` (`"dev": "bun --watch src/index.ts"` works)
 3. `index.ts`, `index.tsx`, `index.js` or `src/index.ts`
 
-- Press **Run** again to restart. Stop with <kbd>Ctrl</kbd>+<kbd>C</kbd> or the stop action.
+- Press **Run** (<kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Enter</kbd>) again to restart. Stop with <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>.</kbd>, or <kbd>Ctrl</kbd>+<kbd>C</kbd> in the console.
 - Edits reach the running code: the next import or request sees them, and `fs.watch` fires. The server isn't restarted automatically: `--watch` and `--hot` are ignored.
 - Scripts must have the form `bun <file>`. Scripts like `vite`, `astro dev` or `tsc && …` can't run; start those tools from a file instead (see [Frameworks](/compatibility/frameworks/)).
 
