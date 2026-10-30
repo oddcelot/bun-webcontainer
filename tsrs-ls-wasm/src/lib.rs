@@ -348,8 +348,8 @@ impl State {
         }
         let program = match (&self.project, dirty.as_deref()) {
             // One file of the program changed: Program::update_program keeps the rest (or rebuilds when the
-            // change touches imports).
-            (Some(project), Some([path])) if current => {
+            // change touches imports). It expects a file it has; one it doesn't may be about to join it.
+            (Some(project), Some([path])) if current && project.program.get_source_file(path).is_some() => {
                 let (program, _, reused) = project.program.update_program(
                     &to_path(path, "/", true),
                     Arc::<CachingHost>::clone(&self.host),

@@ -94,6 +94,10 @@ if (isMainThread) {
   parentPort.postMessage(`100 edits: diagnostics+hover+completion avg ${Math.round(total / 100)}ms, worst ${worst}ms, memory ${mib()}`);
   log("hover after edits", call("ls_hover", ["/tsconfig.json", "/index.ts", "1", "45"]));
 
+  // A file outside the program changing (nothing imports it) once crashed Program::update_program.
+  call("ls_set_files", ["/node_modules/tiny-pkg/unused.d.ts", "export declare const unused: 1;\n"]);
+  log("diagnostics after a change outside the program", call("ls_diagnostics", ["/tsconfig.json", "/index.ts"]));
+
   call("ls_set_files", ["/tsconfig.json", config.replace('"strict":true', '"strict":false')]);
   log("diagnostics after tsconfig change", call("ls_diagnostics", ["/tsconfig.json", "/index.ts"]));
   parentPort.postMessage(`memory at end: ${mib()}`);
