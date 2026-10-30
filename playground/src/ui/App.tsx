@@ -110,7 +110,7 @@ export function App() {
             cols = c;
             return (
               <>
-                <Resizable.Panel panelId="tree-panel" initialSize={columns[0]} minSize="120px">
+                <Resizable.Panel panelId="tree-panel" initialSize={columns[0]} minSize="120px" data-hidden={columnSizes()[0] > 0 ? undefined : ""}>
                   {() => (
                     <nav id="tree">
                       <FileTree />
@@ -126,7 +126,7 @@ export function App() {
                   )}
                 </Resizable.Panel>
                 <Resizable.Handle class="resize-handle" aria-label="Resize editor and preview" />
-                <Resizable.Panel panelId="right" initialSize={columns[2]} minSize="200px">
+                <Resizable.Panel panelId="right" initialSize={columns[2]} minSize="200px" data-hidden={columnSizes()[2] > 0 ? undefined : ""}>
                   {() => (
                     <Resizable
                       orientation="vertical"

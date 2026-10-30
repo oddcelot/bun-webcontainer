@@ -194,6 +194,12 @@ main [data-kb-resizable-root] { height: 100%; }
 /* Visible overflow also brings back the flex default of min-width/min-height: auto, which kept the column from
  * shrinking below its contents' width and pushed the request bar and console buttons off the screen. */
 #right, #right > [data-kb-resizable-root] { min-width: 0; min-height: 0; }
+/*
+ * A hidden column (App.tsx) has no width: drop its border too, which would still take room, clip what's left of it
+ * (#right's visible overflow would widen the page; paint containment also clips positioned descendants, like the
+ * request bar's hidden native select), and keep it out of the Tab order.
+ */
+#tree-panel[data-hidden], #right[data-hidden] { border-width: 0; overflow: hidden !important; contain: paint; visibility: hidden; }
 .resize-handle::after { content: ""; position: absolute; inset: 0; margin: auto; border-radius: 2px; background: transparent; transition: background-color 0.1s; }
 .resize-handle[data-orientation="horizontal"]::after { width: 3px; height: calc(100% - 2 * var(--radius)); }
 .resize-handle[data-orientation="vertical"]::after { height: 3px; width: calc(100% - 2 * var(--radius)); }
