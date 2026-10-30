@@ -1,0 +1,23 @@
+[package]
+name = "tsrs_ls_wasm"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Probe: tsrs's language service (TypeScript 7 ported to Rust) as a wasm32-wasip1 module answering hovers. Built
+# like tsrs's own tsrs_wasm (build.rs: its 80 MiB shadow stack), but on tsrs_ls directly: tsrs_project's Session
+# spawns timer and queue threads, which a single-threaded module can't.
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+tsrs_core = { git = "https://github.com/oxc-project/tsrs", tag = "v0.20.1" }
+tsrs_ast = { git = "https://github.com/oxc-project/tsrs", tag = "v0.20.1" }
+tsrs_vfs = { git = "https://github.com/oxc-project/tsrs", tag = "v0.20.1" }
+tsrs_compiler = { git = "https://github.com/oxc-project/tsrs", tag = "v0.20.1" }
+tsrs_tsoptions = { git = "https://github.com/oxc-project/tsrs", tag = "v0.20.1" }
+tsrs_lsproto = { git = "https://github.com/oxc-project/tsrs", tag = "v0.20.1" }
+tsrs_ls = { git = "https://github.com/oxc-project/tsrs", tag = "v0.20.1" }
+
+[profile.release]
+panic = "abort"
