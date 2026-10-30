@@ -1,0 +1,43 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Stefan Kopco <hey@oddcelot.dev>
+Date: Fri, 30 Oct 2026 18:19:15 +0100
+Subject: [PATCH] lint_driver: fmt's elapsed times read 0 on wasm
+
+std's Instant::now panics on wasm64-unknown-unknown, which has no clock.
+bun fmt reads it on every run for the summary's timing; like bun_core's
+timers on wasm, it now reads 0 there.
+---
+ src/lint/driver/fmt/mod.rs | 20 +++++++++++++++++++-
+ 1 file changed, 19 insertions(+), 1 deletion(-)
+
+diff --git a/src/lint/driver/fmt/mod.rs b/src/lint/driver/fmt/mod.rs
+index 19cc64e5..3cd835ea 100644
+--- a/src/lint/driver/fmt/mod.rs
++++ b/src/lint/driver/fmt/mod.rs
+@@ -49,7 +49,25 @@ pub use for_rules::ForRules;
+ use std::borrow::Cow;
+ use std::io::Write;
+ use std::sync::atomic::{AtomicBool, Ordering};
+-use std::time::{Duration, Instant};
++use std::time::Duration;
++#[cfg(not(target_family = "wasm"))]
++use std::time::Instant;
++
++// wasm-experiment: no clock on wasm (std's Instant::now panics there); like bun_core's timers, times read 0.
++#[cfg(target_family = "wasm")]
++#[derive(Clone, Copy)]
++struct Instant;
++
++#[cfg(target_family = "wasm")]
++impl Instant {
++    fn now() -> Instant {
++        Instant
++    }
++
++    fn elapsed(&self) -> Duration {
++        Duration::ZERO
++    }
++}
+ 
+ macro_rules! pretty {
+     ($($arg:tt)*) => {

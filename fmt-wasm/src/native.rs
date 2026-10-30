@@ -36,4 +36,8 @@ mod yarr {
 
     #[unsafe(no_mangle)]
     extern "C" fn Yarr__RegularExpression__deinit(_this: *mut c_void) {}
+
+    /// Starts JavaScriptCore before a match in `bun_jsc`; there is none, and nothing matches.
+    #[unsafe(no_mangle)]
+    fn __bun_yarr_initialize() {}
 }
