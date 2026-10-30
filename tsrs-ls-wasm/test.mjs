@@ -1,12 +1,12 @@
 // The module over a small Bun project (index.ts importing util.ts, @types/bun from node_modules): diagnostics and
 // hovers, then 100 edits to index.ts as typing would make them, then a tsconfig change. Prints times and memory.
-//   cargo build --release --target wasm32-wasip1 && node test.mjs [path/to/node_modules with @types/bun]
+//   cargo build --release --target wasm32-wasip1 && node test.mjs [node_modules with @types/bun; default: the playground's]
 import { Worker, isMainThread, parentPort, workerData } from "node:worker_threads";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 
 const wasm = new URL("target/wasm32-wasip1/release/tsrs_ls_wasm.wasm", import.meta.url).pathname;
 if (isMainThread) {
-  const w = new Worker(new URL(import.meta.url), { workerData: process.argv[2] ?? "/tmp/tsrs-test/nm/node_modules", resourceLimits: { stackSizeMb: 256 } });
+  const w = new Worker(new URL(import.meta.url), { workerData: process.argv[2] ?? new URL("../playground/node_modules", import.meta.url).pathname, resourceLimits: { stackSizeMb: 256 } });
   w.on("message", (m) => console.log(m));
   w.on("error", (e) => { console.error(e); process.exitCode = 1; });
 } else {
@@ -29,13 +29,14 @@ if (isMainThread) {
   const mib = () => `${ex.memory.buffer.byteLength >> 20} MiB`;
 
   const types = [];
-  (function walk(d) {
+  const walk = (d) => {
     for (const n of readdirSync(d)) {
       const p = `${d}/${n}`;
       if (statSync(p).isDirectory()) walk(p);
       else if (/\.d\.[cm]?ts$|package\.json$/.test(p)) types.push(p.replace(workerData, "/node_modules"), readFileSync(p, "utf8"));
     }
-  })(workerData);
+  };
+  for (const pkg of ["@types/bun", "bun-types", "@types/node", "undici-types"]) walk(`${workerData}/${pkg}`);
   const config = '{"compilerOptions":{"strict":true,"module":"preserve","moduleResolution":"bundler","target":"esnext","types":["bun"],"skipLibCheck":true,"allowImportingTsExtensions":true,"noEmit":true}}';
   let index = 'import { greet } from "./util.ts";\nconst server = Bun.serve({ routes: { "/a/:name": (req) => Response.json(greet(req.params.name)) } });\nconst n: number = server.url;\n';
   const util = 'export function greet(name: string) {\n  return { message: `hi ${name}` };\n}\n';
