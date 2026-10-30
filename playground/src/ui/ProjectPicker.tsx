@@ -14,6 +14,7 @@ const fromPicker = (value: string) => (value === DEMO ? "" : value);
 // Entries that ask for a project instead of naming one.
 const OPEN_FOLDER = "#open-folder";
 const OPEN_ZIP = "#open-zip";
+const REOPEN_FOLDER = "#reopen-folder";
 const OPEN_REPO = "#open-repo";
 type Group = { label: string; options: Project[] };
 
@@ -24,7 +25,7 @@ type Group = { label: string; options: Project[] };
 export function ProjectPicker() {
   const app = useContext(AppContext);
   const s = app.session;
-  const groups = (extra: [string, string][]): Group[] => [
+  const groups = (extra: [string, string][], reopen?: string): Group[] => [
     {
       label: "Examples",
       options: [{ label: "Confetti demo", value: DEMO }, ...Object.entries(examples).map(([value, label]) => ({ label, value }))],
@@ -41,6 +42,8 @@ export function ProjectPicker() {
     {
       label: "Open",
       options: [
+        // The folder from before a reload: opening it again asks for access.
+        ...(reopen ? [{ label: `Reopen ${reopen}`, value: REOPEN_FOLDER, icon: "i-lucide-folder-sync" }] : []),
         { label: "Folder…", value: OPEN_FOLDER, icon: "i-lucide-folder-open" },
         { label: "Zip file…", value: OPEN_ZIP, icon: "i-lucide-file-archive" },
         { label: "GitHub repo…", value: OPEN_REPO, icon: "i-lucide-github" },
@@ -48,11 +51,11 @@ export function ProjectPicker() {
     },
   ];
   const current = (list: Group[]) => list.flatMap((g) => g.options).find((o) => o.value === toPicker(s.project().selected)) ?? null;
-  // Rebuilt when "This page" changes (once, at startup): changing a mounted Select's options logs STRICT_READ_UNTRACKED
+  // Rebuilt when "This page" or the folder to reopen changes (at startup, when a folder opens): changing a mounted Select's options logs STRICT_READ_UNTRACKED
   // from inside Kobalte.
   return (
-    <Show when={JSON.stringify(s.project().extra)} keyed>
-      {(key) => <Picker groups={groups(JSON.parse(key))} current={current} />}
+    <Show when={JSON.stringify([s.project().extra, s.project().selected === "#folder" ? undefined : s.project().reopen])} keyed>
+      {(key) => <Picker groups={groups(...(JSON.parse(key) as [[string, string][], string?]))} current={current} />}
     </Show>
   );
 }
@@ -71,10 +74,11 @@ function Picker(props: { groups: Group[]; current: (list: Group[]) => Project | 
     // Where the browser can write to the folder, edits go back to disk; elsewhere it's a copy.
     if (p.value === OPEN_FOLDER) return "showDirectoryPicker" in window ? app.openDirectory() : folderInput.click();
     if (p.value === OPEN_ZIP) return zipInput.click();
+    if (p.value === REOPEN_FOLDER) return app.reopenFolder();
     // Once the Select has closed and handed focus back to its trigger, or that would win over the dialog.
     if (p.value === OPEN_REPO) return void setTimeout(() => setAsking(true));
-    // A shared project lives in the link only: picking it again has nothing to load.
-    if (p.value !== "#shared" && fromPicker(p.value) !== s.project().selected) app.openProject(fromPicker(p.value));
+    // A shared project lives in the link only, an opened folder on disk: picking them again has nothing to load.
+    if (p.value !== "#shared" && p.value !== "#folder" && fromPicker(p.value) !== s.project().selected) app.openProject(fromPicker(p.value));
   }
 
   return (
