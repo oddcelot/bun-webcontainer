@@ -17,6 +17,8 @@ interface Props {
   load?: "eager" | "visible" | "click";
   height?: string;
   title?: string;
+  /** A button that opens the embed in a modal: true, or a mode to switch to while open ("full"). */
+  expand?: boolean | "code" | "preview" | "console" | "full" | "result";
   files?: Record<string, string>;
 }
 const { files = {}, load = "click", ...attrs } = Astro.props;
@@ -38,6 +40,7 @@ const escape = (s: string) => s.replace(/<\/(script)/gi, "<\\/$1").replace(/<!--
   share={attrs.share}
   height={attrs.height}
   title={attrs.title}
+  expand={attrs.expand === undefined || attrs.expand === false ? undefined : attrs.expand === true ? "" : attrs.expand}
 >
   {Object.entries(files).map(([path, text]) => <script type="text/plain" data-file={path} set:html={"\n" + escape(text) + "\n"} />)}
   {/* Without a poster of its own, the element shows the first file's code. */}

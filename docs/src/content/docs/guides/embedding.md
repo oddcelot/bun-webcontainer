@@ -112,6 +112,16 @@ Type checking downloads 12 MB the first time it's used, and format 9 MB. They ar
 
 Edits are lost on reload. Set `persist="some-key"` to keep them in the reader's browser, or `readonly` to stop editing (Run still works).
 
+## Open in a modal
+
+`expand` adds a button to the embed's bar that opens it in a modal over your page. The program keeps running, and edits stay. Give it a mode to switch to while it's open, so a small snippet becomes the whole playground:
+
+```html
+<bun-playground mode="code" expand="full">…</bun-playground>
+```
+
+Escape or the button closes it. Your own controls can call `el.expand()` and `el.collapse()`. The code blocks in these docs open as `full`; write `expand=false` in a fence's meta to leave the button out.
+
 ## Load and sizing
 
 | `load` | The embed starts |

@@ -4,7 +4,7 @@
 // Meta words: `playground` (required), `mode=…`, `features=…`, `group=<name>`, `load=…`, `height=…`; `title="x.ts"`
 // names the file. Consecutive fences with the same `group` share one embed (the first fence's options apply).
 
-const OWN_KEYS = new Set(["playground", "mode", "features", "group", "load", "height", "autorun", "readonly", "persist", "theme", "file"]);
+const OWN_KEYS = new Set(["playground", "mode", "features", "group", "load", "height", "autorun", "readonly", "persist", "theme", "file", "expand"]);
 const EXT = { typescript: "ts", javascript: "js", markdown: "md", json: "json", jsonc: "json", html: "html", css: "css", tsx: "tsx", jsx: "jsx", ts: "ts", js: "js", mjs: "mjs", sh: "sh", bash: "sh" };
 
 /** Splits `a b=c title="d e"` into [key, value|null, raw] tokens. */
@@ -48,9 +48,11 @@ function embed(entries) {
     .filter((k) => k !== "load" && k in opts)
     .map((k) => ` ${k}="${esc(opts[k])}"`)
     .join("");
+  // A docs snippet opens as the whole playground in a modal unless the fence says otherwise (`expand=false`, `expand=on`).
+  const expand = ` expand="${esc(opts.expand || "full")}"`;
   const load = ` load="${esc(opts.load || "click")}"`;
   return [
-    html(`<bun-playground${load}${attrs}>\n${scripts.join("\n")}\n<div slot="poster">`),
+    html(`<bun-playground${load}${expand}${attrs}>\n${scripts.join("\n")}\n<div slot="poster">`),
     ...entries.map((e) => e.node),
     html(`</div>\n</bun-playground>`),
   ];
