@@ -7,6 +7,8 @@ export type EditorDiagnostic = {
   column: number;
   /** UTF-16 length; 0 marks the one character at `column`. */
   length: number;
+  /** What reported it, shown after the message as editors do: `ts(2322)`, `bun`. */
+  source?: string;
 };
 
 /** One open file at a time. `text === null` means a binary file (shown read-only). */

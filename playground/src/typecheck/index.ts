@@ -95,7 +95,8 @@ export async function typecheck(vfs: VFS, path: string, text: string): Promise<E
     const sameLine = d.endPosition?.line === line;
     out.push({
       severity: d.category === 1 ? "error" : "warning",
-      message: `${message(d)} (TS${d.code})`,
+      message: message(d),
+      source: `ts(${d.code})`,
       line: line + 1,
       column: character + 1,
       length: sameLine ? d.endPosition!.character - character : 0,

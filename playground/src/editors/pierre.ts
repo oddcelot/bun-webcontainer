@@ -1,7 +1,40 @@
 import { File } from "@pierre/diffs";
 import { Editor, type Marker } from "@pierre/diffs/edit";
 import { onTheme, themeName } from "../theme";
-import type { CodeEditor } from "./types";
+import type { CodeEditor, EditorDiagnostic } from "./types";
+
+// Lucide's circle-x and triangle-alert, drawn in the severity's color (the popover is in a shadow root, where the page's icon classes don't apply).
+const ICONS = {
+  error: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6M9 9l6 6"/></svg>',
+  warning: '<svg viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4M12 17h.01"/></svg>',
+};
+
+const escapeHtml = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
+
+/** A marker's hover, laid out like an editor's: severity icon, message (TypeScript's nested chains keep their lines), source. */
+const hoverHtml = (d: EditorDiagnostic) =>
+  `<span class="hover-icon" aria-hidden="true">${ICONS[d.severity]}</span><span class="hover-text">${escapeHtml(d.message)}${d.source ? ` <span class="hover-source">${escapeHtml(d.source)}</span>` : ""}</span>`;
+
+/**
+ * The marker hover as an editor widget (the surface the editor's own popovers use) instead of a pill in the severity's
+ * color. `unsafeCSS` lands in a cascade layer and the editor's styles don't, so the overrides need `!important`.
+ */
+const HOVER_CSS = `
+  [data-marker-popover] {
+    --diffs-widget-bg: color-mix(in lab, var(--diffs-fg) 4%, var(--diffs-bg)) !important;
+    color: var(--diffs-fg) !important;
+    border: 1px solid color-mix(in lab, var(--diffs-fg) 18%, transparent) !important;
+    border-radius: 6px !important;
+    padding: 6px 10px !important;
+    font-size: 13px !important;
+    line-height: 19px !important;
+  }
+  [data-marker-message] { display: flex; gap: 8px; align-items: flex-start; }
+  [data-marker-message] + [data-marker-message] { margin-top: 6px; padding-top: 6px; border-top: 1px solid color-mix(in lab, var(--diffs-fg) 12%, transparent); }
+  .hover-icon { flex: none; display: flex; height: 19px; align-items: center; color: var(--diffs-marker-bg); }
+  .hover-icon svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .hover-text { white-space: pre-wrap; }
+  .hover-source { color: color-mix(in lab, var(--diffs-fg) 50%, transparent); white-space: nowrap; }`;
 
 /** @pierre/diffs edit mode: a highlighted `File` surface with an `Editor` attached. */
 export function createPierre(parent: HTMLElement): CodeEditor {
@@ -67,7 +100,7 @@ export function createPierre(parent: HTMLElement): CodeEditor {
       unsafeCSS: `* { scrollbar-width: thin; }
         :host { display: flex; flex-direction: column; }
         pre { flex: 1 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); }
-        code { align-self: stretch; align-content: start; }`,
+        code { align-self: stretch; align-content: start; }${HOVER_CSS}`,
       onEditChange(event) {
         text = event.file.contents;
         listener(text);
@@ -94,8 +127,7 @@ export function createPierre(parent: HTMLElement): CodeEditor {
     setDiagnostics(diagnostics) {
       markers = diagnostics.map((d) => ({
         severity: d.severity,
-        message: d.message,
-        source: "bun",
+        message: { html: hoverHtml(d) },
         start: { line: d.line - 1, character: d.column - 1 },
         end: { line: d.line - 1, character: d.column - 1 + Math.max(d.length, 1) },
       }));
