@@ -7,6 +7,13 @@ type Dir = FileSystemDirectoryHandle;
 const SKIP = /(^|\/)(node_modules|\.git)(\/|$)/;
 const DEBOUNCE = 300;
 
+/**
+ * OPFS writes are async and don't finish before the page unloads, so unsaved files also go to sessionStorage on
+ * pagehide (synchronous, kept across a reload in the same tab). `attach` replays them and saves them for real.
+ * Values are file text, or null for a deleted file; binary files aren't stashed.
+ */
+const stashKey = (id: string) => "bwc-unsaved:" + id;
+
 /** Project id for a share link: the first 16 hex of the SHA-256 of its payload. */
 export async function shareProjectId(hash: string): Promise<string> {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(hash));
@@ -60,6 +67,9 @@ export async function discard(id: string): Promise<void> {
   const root = await navigator.storage.getDirectory();
   const projects = await root.getDirectoryHandle("projects").catch(() => null);
   await projects?.removeEntry(encodeURIComponent(id), { recursive: true }).catch(() => {});
+  try {
+    sessionStorage.removeItem(stashKey(id));
+  } catch {}
 }
 
 /**
@@ -91,6 +101,8 @@ export async function attach(id: string, vfs: VFS, log: Log, all: boolean): Prom
     if (!dir) throw new Error("can't create the project directory");
 
     const dirty = new Set<string>();
+    /** Taken out of `dirty` by the flush in progress, not yet written. */
+    const writing = new Set<string>();
     let timer: ReturnType<typeof setTimeout> | undefined;
     let chain: Promise<void> = Promise.resolve();
     let warned = false;
@@ -143,6 +155,7 @@ export async function attach(id: string, vfs: VFS, log: Log, all: boolean): Prom
         }
         const paths = [...dirty];
         dirty.clear();
+        for (const p of paths) writing.add(p);
         for (const path of paths) {
           if (stopped) return;
           try {
@@ -153,6 +166,12 @@ export async function attach(id: string, vfs: VFS, log: Log, all: boolean): Prom
               log("warn", `[storage] can't save ${path}: ${e}`);
             }
           }
+          writing.delete(path);
+        }
+        if (!dirty.size && !writing.size) {
+          try {
+            sessionStorage.removeItem(stashKey(id));
+          } catch {}
         }
       });
       return chain;
@@ -162,13 +181,36 @@ export async function attach(id: string, vfs: VFS, log: Log, all: boolean): Prom
       timer = setTimeout(flush, DEBOUNCE);
     };
 
+    // Edits a reload cut off last time: back into the VFS, then saved like any other change.
+    try {
+      const stash: Record<string, string | null> = JSON.parse(sessionStorage.getItem(stashKey(id)) ?? "{}");
+      for (const [path, data] of Object.entries(stash)) {
+        if (data === null) vfs.remove(path);
+        else vfs.write(path, data);
+        dirty.add(path);
+      }
+      if (dirty.size) schedule();
+    } catch {}
+
     const unsub = vfs.onChange(({ path }) => {
       if (stopped || SKIP.test(path)) return;
       dirty.add(path);
       schedule();
     });
     const onHide = () => {
-      if (document.visibilityState === "hidden" && dirty.size) void flush();
+      if (document.visibilityState !== "hidden" || !(dirty.size || writing.size)) return;
+      const stash: Record<string, string | null> = {};
+      for (const path of [...writing, ...dirty]) {
+        const data = vfs.files.get(path);
+        if (data === undefined) stash[path] = null;
+        else if (typeof data === "string") stash[path] = data;
+      }
+      try {
+        sessionStorage.setItem(stashKey(id), JSON.stringify(stash));
+      } catch (e) {
+        log("warn", `[storage] can't keep unsaved files across the reload: ${e}`);
+      }
+      if (dirty.size) void flush();
     };
     document.addEventListener("visibilitychange", onHide);
     addEventListener("pagehide", onHide);
