@@ -49,9 +49,6 @@ export function Header() {
           </DropdownMenu.Portal>
         </DropdownMenu>
       </span>
-      <span id="status" role="status" data-state={s.status().state} title={s.status().text}>
-        <span class="text">{s.status().text}</span>
-      </span>
       <a id="docs" href={DOCS} target="_blank" rel="noopener" title="Documentation: what works, and how (opens in a new tab)">
         <i class="i-lucide-book-open" aria-hidden="true" /> Docs
       </a>

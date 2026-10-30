@@ -1,4 +1,4 @@
-import { Show, onSettled, untrack, useContext } from "solid-js";
+import { Show, createSignal, onSettled, untrack, useContext } from "solid-js";
 import { Resizable, type RootChildrenProps } from "@kobalte/core/resizable";
 import { matches } from "../keymap";
 import { pref } from "../prefs";
@@ -8,6 +8,7 @@ import { EditorPane } from "./EditorPane";
 import { FileTree } from "./FileTree";
 import { Header } from "./Header";
 import { Preview } from "./Preview";
+import { StatusBar } from "./StatusBar";
 import { Unsupported } from "./Unsupported";
 
 /** Panel sizes as fractions, kept across reloads. A hidden panel isn't kept: after a reload it opens at its size from before. */
@@ -23,12 +24,14 @@ function sizesPref(key: string, fallback: number[]) {
   return [untrack(sizes), (next: number[]) => next.every((n) => n > 0) && setSizes(next)] as const;
 }
 
-/** The page: header, then the file tree, the editor and the preview over the console, with draggable borders between them. */
+/** The page: header, then the file tree, the editor and the preview over the console, with draggable borders between them, then the status bar. */
 export function App() {
   const app = useContext(AppContext);
   // Per panel, not the root's initialSizes: the root's list only reached the first panel after a reload.
   const [columns, saveColumns] = sizesPref("layout.columns", [0.14, 0.43, 0.43]);
   const [rows, saveRows] = sizesPref("layout.right", [0.5, 0.5]);
+  // Which of preview and console are shown, for the status bar's toggles.
+  const [rowSizes, setRowSizes] = createSignal(rows);
   // The preview-over-console split, for the shortcuts that hide either.
   let split: RootChildrenProps | undefined;
   // The split from before one was hidden, to show both again at.
@@ -76,7 +79,13 @@ export function App() {
           </Resizable.Panel>
           <Resizable.Handle class="resize-handle" aria-label="Resize editor and preview" />
           <Resizable.Panel panelId="right" initialSize={columns[2]} minSize="200px">
-            <Resizable orientation="vertical" onSizesChange={saveRows}>
+            <Resizable
+              orientation="vertical"
+              onSizesChange={(sizes) => {
+                setRowSizes(sizes);
+                saveRows(sizes);
+              }}
+            >
               {(r) => {
                 split = r;
                 return (
@@ -95,6 +104,7 @@ export function App() {
           </Resizable.Panel>
         </Resizable>
       </main>
+      <StatusBar previewShown={rowSizes()[0] > 0} consoleShown={rowSizes()[1] > 0} toggle={toggle} />
     </>
   );
 }
