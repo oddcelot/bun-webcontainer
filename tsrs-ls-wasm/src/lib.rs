@@ -34,7 +34,7 @@ use tsrs_core::tspath::{Path, to_path};
 use tsrs_lsproto as lsproto;
 use tsrs_tsoptions::{self as tsoptions, ParseConfigHost, ParsedCommandLine};
 use tsrs_vfs::vfstest::{self, MapFS};
-use tsrs_vfs::{FS, bundled};
+use tsrs_vfs::{FS, bundled, vfsmatch};
 
 use tsrs_ls::autoimport::{ProjectID, Registry};
 use tsrs_ls::lsconv::{self, Converters, compute_lsp_line_starts};
@@ -125,11 +125,20 @@ impl Host for LsHost {
     fn auto_import_registry(&self) -> Option<Arc<Registry>> {
         None
     }
-    fn read_directory(&self, _: &str, _: &str, _: &[String], _: &[String], _: &[String], _: usize) -> Vec<String> {
-        Vec::new()
+    // Import path completions list the project's directories (what the host pushed in).
+    fn read_directory(
+        &self,
+        current_dir: &str,
+        path: &str,
+        extensions: &[String],
+        excludes: &[String],
+        includes: &[String],
+        depth: usize,
+    ) -> Vec<String> {
+        vfsmatch::read_directory(&*self.fs, current_dir, path, extensions, excludes, includes, depth)
     }
-    fn get_directories(&self, _: &str) -> Vec<String> {
-        Vec::new()
+    fn get_directories(&self, path: &str) -> Vec<String> {
+        self.fs.get_accessible_entries(path).directories
     }
     fn directory_exists(&self, path: &str) -> bool {
         self.fs.directory_exists(path)

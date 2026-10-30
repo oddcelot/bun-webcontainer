@@ -54,6 +54,9 @@ if (isMainThread) {
   const invoked = call("ls_completion", ["/tsconfig.json", "/index.ts", "2", "18", ""]);
   const global = JSON.parse(invoked.out)?.items ?? [];
   parentPort.postMessage(`completion invoked at an expression: ${invoked.ms}ms ${global.length} items, Bun ${global.some((i) => i.label === "Bun") ? "among them" : "MISSING"}`);
+  // In an import's path: the project's files. Line 0 is `import { greet } from "./util.ts";`, so after `"./`.
+  const paths = JSON.parse(call("ls_completion", ["/tsconfig.json", "/index.ts", "0", "25", "/"]).out)?.items ?? [];
+  parentPort.postMessage(`completion in "./: ${paths.map((i) => i.label).join(", ") || "NONE"}`);
   parentPort.postMessage(`memory after setup: ${mib()}`);
 
   let worst = 0, total = 0;
