@@ -11,6 +11,7 @@ sidebar:
 - File tree with search and a "New file" button
 - Tabs for open files: close with the × button, <kbd>Delete</kbd>, or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>W</kbd>
 - **Auto-save** (on by default): edits are saved a moment after you stop typing. Switch it off in the tab bar to save with <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>S</kbd> instead; unsaved tabs show a dot, and Run, Install, `bun test` and Share save everything first.
+- **Format** in the tab bar (<kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd>) formats the open file with `bun fmt`, as one undoable edit (see [Toolchain](/compatibility/toolchain/#formatter-bun-fmt))
 - Type errors in TypeScript files, from TypeScript 7's checker (see [Toolchain](/compatibility/toolchain/#type-checking))
 - Resizable panes
 - **Open folder** or **Open zip file** loads a project from your computer (skips `node_modules` and `.git`). A zip whose files all sit in one folder, like GitHub's downloads, opens that folder.
@@ -29,6 +30,7 @@ A terminal with colors, clickable links, history (<kbd>↑</kbd>/<kbd>↓</kbd>)
 | `bun install` (`i`) | Install dependencies |
 | `bun add <pkg[@range]> [-d]` (`a`) | Add a dependency |
 | `bun remove <pkg>` (`rm`) | Remove a dependency |
+| `bun fmt [-c] [path…]` | Format files like Prettier, or only check them (`-c`) |
 | `ls [dir]`, `cat <file>` | List a folder, print a file |
 | `cookies [clear]` | List or clear the preview's cookies |
 | `reset` | Throw away your changes and reload the project from its source |

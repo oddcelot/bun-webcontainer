@@ -50,6 +50,7 @@ The picker's "Astro + Solid" (`fixtures/astro-solid-demo`) runs an Astro 7 dev s
     src/install.ts        no lockfile: registry fetch, semver pick (wasm), flat node_modules
     src/lockfile.ts       bun.lock (text format; tested with lockfileVersion 2 from Bun 1.4.4): locked versions, nested node_modules, sha512 integrity check
     src/semver.ts         loader for public/bun_semver_wasm.wasm (wasm64, BigInt pointers)
+    src/fmt.ts            `bun fmt` as wasm64 (../fmt-wasm), loaded on first use: format(path, text) => { text } | { error }
     src/worker/runtime.ts worker: the `Bun` global (serve, file, write, build, hash, CryptoHasher, gzipSync, ...), console forwarding, worker-side VFS copy
     src/worker/hash.ts    Bun.hash: JS ports of Bun's wyhash, xxHash and murmur, checked against Bun
     src/persist.ts        OPFS write-behind persistence of projects

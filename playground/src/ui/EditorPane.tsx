@@ -2,6 +2,7 @@ import { createEffect, onSettled, useContext } from "solid-js";
 import { mountDiagnostics } from "../diagnostics";
 import { createPierre } from "../editors/pierre";
 import type { CodeEditor } from "../editors/types";
+import { format } from "../fmt";
 import { AppContext } from "./context";
 import { guarded } from "./guarded";
 import { EditorTabs } from "./Tabs";
@@ -12,9 +13,10 @@ const SAVE_DELAY = 300;
 /**
  * The open-file tabs over the editor, which shows the active tab and writes edits back to the VFS: shortly after
  * typing stops with auto-save on, else on Ctrl/Cmd+S (and before Run, Install or Share, through `ws.saveAll`).
+ * Format (Shift+Alt+F) runs `bun fmt` on the open file as one undoable edit.
  */
 export function EditorPane() {
-  const { vfs, workspace: ws, session } = useContext(AppContext);
+  const { vfs, workspace: ws, session, log } = useContext(AppContext);
   let el!: HTMLDivElement;
   let editor: CodeEditor | undefined;
   let check: ReturnType<typeof mountDiagnostics> | undefined;
@@ -36,6 +38,19 @@ export function EditorPane() {
     for (const path of [...pending.keys()]) save(path);
   }
   ws.onSaveAll(saveAll);
+
+  async function formatOpenFile() {
+    const path = current;
+    if (!path || !editor) return;
+    try {
+      const r = await format(path, editor.getText());
+      if (path !== current) return;
+      if (!("error" in r)) return editor.replace(r.text);
+      log("error", r.error === "unsupported" ? `[fmt] bun fmt doesn't format ${path}` : r.error === "syntax" ? `[fmt] ${path} has a syntax error; left as is` : `[fmt] the formatter hit a bug on ${path}; left as is`);
+    } catch (e) {
+      log("error", `[fmt] ${e}`);
+    }
+  }
 
   createEffect(
     () => ws.state.active,
@@ -74,6 +89,12 @@ export function EditorPane() {
       }
     });
     const onKey = (e: KeyboardEvent) => {
+      // `code`: with Alt held, macOS reports `key` as "Ï".
+      if (e.code === "KeyF" && e.shiftKey && e.altKey && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        void formatOpenFile();
+        return;
+      }
       if (e.key !== "s" || !(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
       e.preventDefault();
       if (current) save(current);
@@ -100,6 +121,9 @@ export function EditorPane() {
     <>
       <div class="tabs-bar">
         <EditorTabs placeholder={!session.ready() && !ws.state.open.length} />
+        <button class="format" type="button" disabled={!ws.state.active} title="Format the open file with bun fmt (Shift+Alt+F)" onClick={() => void formatOpenFile()}>
+          <i class="i-lucide-wand-sparkles" aria-hidden="true" /> Format
+        </button>
         <button
           class="autosave"
           type="button"

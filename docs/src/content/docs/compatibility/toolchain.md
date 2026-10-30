@@ -1,6 +1,6 @@
 ---
 title: Toolchain
-description: Transpiler, module resolution, CommonJS, bun install and the bundler in the playground.
+description: Transpiler, type checking, bun fmt, module resolution, CommonJS, bun install and the bundler in the playground.
 sidebar:
   order: 4
 ---
@@ -29,6 +29,22 @@ loads with the first TypeScript file you open (~2.5 MB compressed, Bun's type de
 - ✅ Package types from installed `node_modules` (`.d.ts` files and `package.json` `types`/`exports`)
 - ❌ No autocomplete, hover info or go-to-definition (tsrs's WebAssembly build has no language server)
 - ❌ No `tsc` command in the console
+
+## Formatter (`bun fmt`)
+
+Bun's own formatter, compiled to WebAssembly. It formats like Prettier, and its output matches `bun fmt` byte for byte.
+It loads the first time you format (~2 MB compressed). Use **Format** in the tab bar or <kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd>
+for the open file, or `bun fmt` in the console.
+
+- ✅ JavaScript, TypeScript, JSX, JSON, CSS, SCSS, Less, HTML, Markdown, MDX, YAML, TOML, GraphQL, Handlebars and Svelte
+- ✅ `bun fmt [path…]` formats a folder or files; `--check` (`-c`) lists what isn't formatted and changes nothing
+- ✅ `--use-tabs`, `--no-semi`, `--single-quote`, `--print-width=<n>`
+- ✅ Skips `node_modules`, lock files and minified files, like `bun fmt`
+- ✅ The editor's Format is one undoable edit, and the cursor stays where the text didn't change
+- 🟡 Always formats with Prettier's defaults: `bunfig.toml` `[fmt]`, `.prettierrc`, `.editorconfig` and `.prettierignore` aren't read yet
+- 🟡 A file with a syntax error is left as is, with no details on where the error is
+- ❌ No import sorting or Tailwind class sorting
+- ❌ No `--staged`, `--changed` or `--stdin-filepath`
 
 ## Module resolution
 

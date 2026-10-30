@@ -15,6 +15,8 @@ export interface CodeEditor {
   /** The file changed outside the editor (e.g. `Bun.write`); show `text` if it differs. */
   update(text: string): void;
   getText(): string;
+  /** Replace the open file's text as one undoable edit (as typing it would); the cursor stays where the text didn't change. */
+  replace(text: string): void;
   /** Inline error/warning markers for the open file (replaces the previous ones; empty clears). Lines and columns are 1-based UTF-16. */
   setDiagnostics(diagnostics: EditorDiagnostic[]): void;
   /** Show no file (the last tab was closed). */

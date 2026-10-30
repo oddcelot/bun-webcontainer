@@ -5,6 +5,7 @@ const files = [
   ["../../transpile-wasm/target/wasm64-unknown-unknown/release/bun_transpile_wasm.wasm", "bun_transpile_wasm.wasm"],
   ["../../bundle-wasm/target/wasm64-unknown-unknown/release/bun_bundle_wasm.wasm", "bun_bundle_wasm.wasm"],
   ["../../resolve-wasm/target/wasm64-unknown-unknown/release/bun_resolve_wasm.wasm", "bun_resolve_wasm.wasm"],
+  ["../../fmt-wasm/target/wasm64-unknown-unknown/release/bun_fmt_wasm.wasm", "bun_fmt_wasm.wasm"],
 ];
 // Bun's runtime helpers, which transpiled code imports as "bun:wrap" (legacy decorators and the like). Tracked in
 // src/ so the playground builds without bun/; refreshed from the pinned checkout when there is one.
