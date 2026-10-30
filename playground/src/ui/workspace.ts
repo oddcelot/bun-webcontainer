@@ -1,4 +1,5 @@
 import { createStore } from "solid-js";
+import { pref } from "../prefs";
 
 const AUTOSAVE_KEY = "runbun:autosave";
 
@@ -13,9 +14,9 @@ export function createWorkspace() {
     treeVersion: 0,
     /** Files whose editor text isn't in the VFS yet (auto-save pending, or auto-save off). */
     dirty: [] as string[],
-    /** Save edits shortly after typing stops; off, they wait for Ctrl/Cmd+S, Run, Install or Share. */
-    autosave: localStorage.getItem(AUTOSAVE_KEY) !== "off",
   });
+  /** Save edits shortly after typing stops; off, they wait for Ctrl/Cmd+S, Run, Install or Share. Shared by all tabs. */
+  const [autosave, setAutosave] = pref(AUTOSAVE_KEY, true, { serialize: (on) => (on ? "on" : "off"), deserialize: (s) => s !== "off" });
   // The editor's pending edits; it registers how to write them (see EditorPane).
   let saveAll = () => {};
   return {
@@ -27,12 +28,8 @@ export function createWorkspace() {
         else if (!dirty && i >= 0) s.dirty.splice(i, 1);
       });
     },
-    setAutosave(on: boolean) {
-      localStorage.setItem(AUTOSAVE_KEY, on ? "on" : "off");
-      setState((s) => {
-        s.autosave = on;
-      });
-    },
+    autosave,
+    setAutosave,
     onSaveAll(fn: () => void) {
       saveAll = fn;
     },

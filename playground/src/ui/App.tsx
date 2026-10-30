@@ -1,6 +1,7 @@
-import { Show, onSettled, useContext } from "solid-js";
+import { Show, onSettled, untrack, useContext } from "solid-js";
 import { Resizable, type RootChildrenProps } from "@kobalte/core/resizable";
 import { matches } from "../keymap";
+import { pref } from "../prefs";
 import { AppContext } from "./context";
 import { Console } from "./Console";
 import { EditorPane } from "./EditorPane";
@@ -9,24 +10,25 @@ import { Header } from "./Header";
 import { Preview } from "./Preview";
 import { Unsupported } from "./Unsupported";
 
-/** Panel sizes as fractions, kept across reloads. */
-function savedSizes(key: string, fallback: number[]): number[] {
-  try {
-    const sizes = JSON.parse(localStorage.getItem(key) ?? "null");
-    if (Array.isArray(sizes) && sizes.length === fallback.length && sizes.every((n) => typeof n === "number")) return sizes;
-  } catch {}
-  return fallback;
+/** Panel sizes as fractions, kept across reloads. A hidden panel isn't kept: after a reload it opens at its size from before. */
+function sizesPref(key: string, fallback: number[]) {
+  const [sizes, setSizes] = pref(key, fallback, {
+    deserialize(data) {
+      const sizes: unknown = JSON.parse(data);
+      if (Array.isArray(sizes) && sizes.length === fallback.length && sizes.every((n) => typeof n === "number")) return sizes;
+      throw new Error(`${key}: expected ${fallback.length} sizes`);
+    },
+  });
+  // Read once: each tab keeps its own layout while open, and a reload takes the last one saved.
+  return [untrack(sizes), (next: number[]) => next.every((n) => n > 0) && setSizes(next)] as const;
 }
-
-// A collapsed panel isn't kept: after a reload it opens at its size from before.
-const saveSizes = (key: string) => (sizes: number[]) => sizes.every((n) => n > 0) && localStorage.setItem(key, JSON.stringify(sizes));
 
 /** The page: header, then the file tree, the editor and the preview over the console, with draggable borders between them. */
 export function App() {
   const app = useContext(AppContext);
   // Per panel, not the root's initialSizes: the root's list only reached the first panel after a reload.
-  const columns = savedSizes("layout.columns", [0.14, 0.43, 0.43]);
-  const rows = savedSizes("layout.right", [0.5, 0.5]);
+  const [columns, saveColumns] = sizesPref("layout.columns", [0.14, 0.43, 0.43]);
+  const [rows, saveRows] = sizesPref("layout.right", [0.5, 0.5]);
   // The preview-over-console split, for the shortcuts that hide either.
   let split: RootChildrenProps | undefined;
   // The split from before one was hidden, to show both again at.
@@ -60,7 +62,7 @@ export function App() {
         <Unsupported checks={app.support} />
       </Show>
       <main>
-        <Resizable onSizesChange={saveSizes("layout.columns")}>
+        <Resizable onSizesChange={saveColumns}>
           <Resizable.Panel panelId="tree-panel" initialSize={columns[0]} minSize="120px">
             <nav id="tree">
               <FileTree />
@@ -74,7 +76,7 @@ export function App() {
           </Resizable.Panel>
           <Resizable.Handle class="resize-handle" aria-label="Resize editor and preview" />
           <Resizable.Panel panelId="right" initialSize={columns[2]} minSize="200px">
-            <Resizable orientation="vertical" onSizesChange={saveSizes("layout.right")}>
+            <Resizable orientation="vertical" onSizesChange={saveRows}>
               {(r) => {
                 split = r;
                 return (

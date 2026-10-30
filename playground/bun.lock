@@ -12,6 +12,7 @@
         "@pierre/theming": "1.0.2",
         "@pierre/trees": "^1.0.0-beta.6",
         "@rolldown/browser": "1.2.15",
+        "@solid-primitives/storage": "5.0.0-next.7",
         "@solidjs/web": "2.0.0-rc.19",
         "@tsrs/wasm": "0.20.1-ts7.1.0-beta",
         "@xterm/addon-fit": "^0.11.0",
@@ -296,6 +297,8 @@
     "@solid-primitives/scroll": ["@solid-primitives/scroll@3.0.0-next.7", "", { "dependencies": { "@solid-primitives/event-listener": "^3.0.0-next.8", "@solid-primitives/rootless": "^2.0.0-next.4", "@solid-primitives/static-store": "^1.0.0-next.5", "@solid-primitives/utils": "^7.0.0-next.7" }, "peerDependencies": { "@solidjs/web": "^2.0.0-rc.14", "solid-js": "^2.0.0-rc.14" } }, "sha512-liPnzqwthLrzMZSR2DcEjS/h7BgAo2XxRFgWOLXYHB+QqPYFihpb099/Md5EWbL9mcpSIL7rgQyDzrQFu2b8Rw=="],
 
     "@solid-primitives/static-store": ["@solid-primitives/static-store@1.0.0-next.5", "", { "dependencies": { "@solid-primitives/utils": "^7.0.0-next.7" }, "peerDependencies": { "@solidjs/web": "^2.0.0-rc.14", "solid-js": "^2.0.0-rc.14" } }, "sha512-EFLhRoTmVh9qqFI6fdlHWq1h8/fVGx9vsblFedTp96McrtJlaknTnSQ4inWIu7jTZFXRmShLFw6/0NoNRvtZvg=="],
+
+    "@solid-primitives/storage": ["@solid-primitives/storage@5.0.0-next.7", "", { "dependencies": { "@solid-primitives/utils": "^7.0.0-next.7" }, "peerDependencies": { "@solidjs/web": "^2.0.0-rc.14", "@tauri-apps/plugin-store": "*", "solid-js": "^2.0.0-rc.14" }, "optionalPeers": ["@tauri-apps/plugin-store"] }, "sha512-KUqkkXLrCpF0C6qkdeDGmRaOOW90jirsnf/VBbnls3HrtOQ0wVFwChj8CIT1oUPQFk9C4b72kGv/Veqzv9OokQ=="],
 
     "@solid-primitives/trigger": ["@solid-primitives/trigger@3.0.0-next.4", "", { "dependencies": { "@solid-primitives/utils": "^7.0.0-next.7" }, "peerDependencies": { "@solidjs/web": "^2.0.0-rc.14", "solid-js": "^2.0.0-rc.14" } }, "sha512-1HGZKCglbvXsktzEOeBseHhiXefX2G9Svl4F3AM2+rxGXmznCKfCGitShPZJAhbtENc9dT4hhJgbSDGHgtbBcg=="],
 
