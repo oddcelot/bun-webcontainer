@@ -1,9 +1,10 @@
 // @ts-check
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+import { DOCS_URL, PLAYGROUND_URL } from "./site-urls.mjs";
 
 export default defineConfig({
-  site: "https://docs.runbun.dev",
+  site: DOCS_URL,
   integrations: [
     starlight({
       title: "Bun Playground",
@@ -12,7 +13,7 @@ export default defineConfig({
       favicon: "/favicon.svg",
       social: [
         { icon: "github", label: "GitHub", href: "https://github.com/oddcelot/bun-webcontainer" },
-        { icon: "external", label: "Playground", href: "https://runbun.dev" },
+        { icon: "external", label: "Playground", href: PLAYGROUND_URL },
       ],
       editLink: { baseUrl: "https://github.com/oddcelot/bun-webcontainer/edit/main/docs/" },
       sidebar: [

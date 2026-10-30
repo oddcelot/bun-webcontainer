@@ -42,8 +42,26 @@ function emnapiNotNode(): Plugin {
   };
 }
 
-export default defineConfig({
-  plugins: [UnoCSS(), solid(), hostPackageNames(), emnapiNotNode()],
+/**
+ * The docs site the playground links to: `DOCS_URL` when set (a canary or preview deploy), else the local docs dev
+ * server (`astro dev`) while developing and docs.runbun.dev in builds. The app reads it as `import.meta.env.DOCS_URL`.
+ */
+function docsUrl(mode: string): string {
+  const url = process.env.DOCS_URL || (mode === "development" ? "http://localhost:4321/" : "https://docs.runbun.dev/");
+  return url.endsWith("/") ? url : url + "/";
+}
+
+/** index.html's static header (for crawlers and no-JS visitors) links the same docs as the app. */
+function docsLink(url: string): Plugin {
+  return {
+    name: "docs-link",
+    transformIndexHtml: (html) => html.replace('<a id="docs" href="https://docs.runbun.dev/">', `<a id="docs" href="${url}">`),
+  };
+}
+
+export default defineConfig(({ mode }) => ({
+  define: { "import.meta.env.DOCS_URL": JSON.stringify(docsUrl(mode)) },
+  plugins: [UnoCSS(), solid(), hostPackageNames(), emnapiNotNode(), docsLink(docsUrl(mode))],
   build: { target: "esnext" },
   // In builds, worker bundles (the runtime and rolldown's wasi worker) only get worker.plugins.
   worker: { format: "es", plugins: () => [emnapiNotNode()] },
@@ -56,4 +74,4 @@ export default defineConfig({
       { find: /^(\.\.?\/)rolldown-binding\.wasi\.cjs$/, replacement: browserDist + "rolldown-binding.wasi-browser.js" },
     ],
   },
-});
+}));
