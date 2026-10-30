@@ -76,9 +76,27 @@ async function projectDir(id: string, create: boolean): Promise<Dir | null> {
 
 async function walk(dir: Dir, prefix: string, out: [string, File][]) {
   for await (const [name, h] of dir as unknown as AsyncIterable<[string, FileSystemHandle]>) {
+    if (SKIP.test(prefix + name)) continue;
     if (h.kind === "directory") await walk(h as Dir, `${prefix}${name}/`, out);
     else out.push([prefix + name, await (h as FileSystemFileHandle).getFile()]);
   }
+}
+
+/** Every file below `dir` but node_modules and .git, as text where it decodes as UTF-8, else bytes. */
+export async function readDir(dir: Dir): Promise<[string, string | Uint8Array][]> {
+  const found: [string, File][] = [];
+  await walk(dir, "", found);
+  const dec = new TextDecoder("utf-8", { fatal: true });
+  return Promise.all(
+    found.map(async ([path, file]): Promise<[string, string | Uint8Array]> => {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      try {
+        return [path, dec.decode(bytes)];
+      } catch {
+        return [path, bytes];
+      }
+    }),
+  );
 }
 
 /** Loads the saved files of a project into the VFS; returns how many (0 when nothing is saved or OPFS fails). */
@@ -86,18 +104,9 @@ export async function restore(id: string, vfs: VFS, log: Log): Promise<number> {
   try {
     const dir = await projectDir(id, false);
     if (!dir) return 0;
-    const found: [string, File][] = [];
-    await walk(dir, "", found);
-    const dec = new TextDecoder("utf-8", { fatal: true });
-    for (const [path, file] of found) {
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      let data: string | Uint8Array = bytes;
-      try {
-        data = dec.decode(bytes);
-      } catch {}
-      vfs.write(path, data);
-    }
-    return found.length;
+    const files = await readDir(dir);
+    for (const [path, data] of files) vfs.write(path, data);
+    return files.length;
   } catch (e) {
     log("warn", `[storage] can't read saved files: ${e}`);
     return 0;
