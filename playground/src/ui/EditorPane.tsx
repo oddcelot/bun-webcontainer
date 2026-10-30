@@ -4,6 +4,7 @@ import { createPierre } from "../editors/pierre";
 import { formatChord, keysFor, matches } from "../keymap";
 import type { CodeEditor } from "../editors/types";
 import { asConsoleEntry, errorLocation, fmt } from "../fmt";
+import { hover, TYPED } from "../typecheck";
 import { AppContext } from "./context";
 import { guarded } from "./guarded";
 import { EditorTabs } from "./Tabs";
@@ -62,7 +63,12 @@ export function EditorPane() {
   createEffect(
     () => ws.state.active,
     guarded("editor", (path) => {
-      editor ??= createPierre(el, { onCursor: ws.setCursor, onDiagnostics: ws.setProblems });
+      editor ??= createPierre(el, {
+        onCursor: ws.setCursor,
+        onDiagnostics: ws.setProblems,
+        // Types for TypeScript files, with the editor's text (unsaved edits included).
+        hover: async (file, line, column) => (TYPED.test(file) && editor ? hover(vfs, file, editor.getText(), line, column) : null),
+      });
       check ??= mountDiagnostics(vfs, editor);
       current = path;
       if (!path) {

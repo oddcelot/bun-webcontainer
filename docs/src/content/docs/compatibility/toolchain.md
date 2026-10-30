@@ -28,7 +28,8 @@ example's `node_modules`), later ones a few milliseconds.
 - ✅ Uses the nearest `tsconfig.json`, including `extends` (relative, from packages, or a list); without one, the options `bun init` writes plus `types: ["bun"]`
 - ✅ Types for `Bun.*`, `bun:*`, `node:*` and HTML imports from `@types/bun`, bundled; a project's own `@types/bun` or `@types/node` takes their place
 - ✅ Package types from installed `node_modules` (`.d.ts` files and `package.json` `types`/`exports`)
-- ❌ No autocomplete, hover info or go-to-definition yet
+- ✅ Hover info: rest the pointer on a name for its type and documentation (JSDoc, with examples)
+- ❌ No autocomplete or go-to-definition yet
 - ❌ No `tsc` command in the console
 
 ## Formatter (`bun fmt`)

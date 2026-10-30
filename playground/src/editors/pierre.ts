@@ -1,7 +1,7 @@
 import { File } from "@pierre/diffs";
 import { Editor, type Marker } from "@pierre/diffs/edit";
 import { onTheme, themeName } from "../theme";
-import type { CodeEditor, EditorDiagnostic, EditorEvents } from "./types";
+import type { CodeEditor, EditorDiagnostic, EditorEvents, EditorHover } from "./types";
 
 // Lucide's circle-x and triangle-alert, drawn in the severity's color (the popover is in a shadow root, where the page's icon classes don't apply).
 const ICONS = {
@@ -35,6 +35,48 @@ const HOVER_CSS = `
   .hover-icon svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .hover-text { white-space: pre-wrap; }
   .hover-source { color: color-mix(in lab, var(--diffs-fg) 50%, transparent); white-space: nowrap; }`;
+
+/** How long the pointer rests on a token before its hover is asked for, and how long a hover outlives the pointer leaving. */
+const HOVER_DELAY = 300;
+const HIDE_DELAY = 200;
+
+/** Inline markdown: `code`, **strong**, *emphasis*; links keep their text. */
+const inlineHtml = (md: string) =>
+  escapeHtml(md)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[^*\w])[*_]([^*_]+)[*_]/g, "$1<em>$2</em>")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1");
+
+/** The JSDoc part of a hover: paragraphs and fenced code blocks. */
+function docsHtml(md: string): string {
+  const out: string[] = [];
+  const lines = md.split("\n");
+  let para: string[] = [];
+  const flush = () => {
+    if (para.length) out.push(`<p>${inlineHtml(para.join("\n"))}</p>`);
+    para = [];
+  };
+  for (let i = 0; i < lines.length; i++) {
+    const open = /^(`{3,})/.exec(lines[i]);
+    if (!open) {
+      if (lines[i].trim()) para.push(lines[i]);
+      else flush();
+      continue;
+    }
+    flush();
+    const close = new RegExp(`^\`{${open[1].length},}\\s*$`);
+    const body: string[] = [];
+    while (++i < lines.length && !close.test(lines[i])) body.push(lines[i]);
+    // TypeScript wraps a JSDoc @example in a longer fence; inside is markdown again (a caption, then the code).
+    out.push(body.some((l) => l.startsWith("```")) ? docsHtml(body.join("\n")) : `<pre>${escapeHtml(body.join("\n"))}</pre>`);
+  }
+  flush();
+  return out.join("");
+}
+
+const tipHtml = (h: EditorHover) =>
+  (h.code ? `<pre class="editor-hover-code">${escapeHtml(h.code)}</pre>` : "") + (h.docs ? `<div class="editor-hover-docs">${docsHtml(h.docs)}</div>` : "");
 
 /** @pierre/diffs edit mode: a highlighted `File` surface with an `Editor` attached. */
 export function createPierre(parent: HTMLElement, events: EditorEvents = {}): CodeEditor {
@@ -80,6 +122,59 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
   const onMove = () => requestAnimationFrame(reportCursor);
   for (const type of ["keyup", "pointerup", "focusin"]) host.addEventListener(type, onMove);
 
+  // Type information for the token under the pointer (events.hover), in a popup fixed over the page, above the token
+  // (below when there's no room). Pointing into the popup keeps it open, so its text can be selected. It sits beside
+  // the host, so whatever replaces the editor's element removes it too.
+  const tip = document.createElement("div");
+  tip.className = "editor-hover";
+  tip.setAttribute("role", "tooltip");
+  tip.hidden = true;
+  parent.append(tip);
+  let hoverTimer: ReturnType<typeof setTimeout> | undefined;
+  let hideTimer: ReturnType<typeof setTimeout> | undefined;
+  let hoverSeq = 0;
+  let hovered: HTMLElement | undefined;
+  function hideHover() {
+    clearTimeout(hoverTimer);
+    clearTimeout(hideTimer);
+    hoverSeq++;
+    hovered = undefined;
+    tip.hidden = true;
+  }
+  function placeHover(anchor: HTMLElement) {
+    const at = anchor.getBoundingClientRect();
+    const { offsetWidth: width, offsetHeight: height } = tip;
+    const above = at.top - height - 4;
+    tip.style.top = `${above >= 4 ? above : at.bottom + 4}px`;
+    tip.style.left = `${Math.max(4, Math.min(at.left, innerWidth - width - 4))}px`;
+  }
+  function onTokenEnter(token: { lineNumber: number; lineCharStart: number; tokenElement: HTMLElement }) {
+    if (!events.hover || !editor) return;
+    clearTimeout(hideTimer);
+    if (token.tokenElement === hovered) return;
+    clearTimeout(hoverTimer);
+    const mine = ++hoverSeq;
+    hovered = token.tokenElement;
+    const at = path;
+    hoverTimer = setTimeout(async () => {
+      const info = await events.hover!(at, token.lineNumber, token.lineCharStart + 1).catch(() => null);
+      if (mine !== hoverSeq || at !== path) return;
+      if (!info) return void (tip.hidden = true);
+      tip.innerHTML = tipHtml(info);
+      tip.hidden = false;
+      placeHover(token.tokenElement);
+    }, HOVER_DELAY);
+  }
+  function onTokenLeave() {
+    clearTimeout(hoverTimer);
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(hideHover, HIDE_DELAY);
+  }
+  tip.addEventListener("pointerenter", () => clearTimeout(hideTimer));
+  tip.addEventListener("pointerleave", onTokenLeave);
+  // Typing, clicking or scrolling moves the text out from under it.
+  for (const type of ["keydown", "pointerdown", "wheel"]) host.addEventListener(type, hideHover, { capture: true });
+
   onTheme((next) => {
     if (next === theme) return;
     theme = next;
@@ -89,6 +184,7 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
   });
 
   function close() {
+    hideHover();
     finish?.();
     finish = undefined;
     editor = undefined;
@@ -133,6 +229,8 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
         :host { display: flex; flex-direction: column; }
         pre { flex: 1 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); }
         code { align-self: stretch; align-content: start; }${HOVER_CSS}`,
+      onTokenEnter,
+      onTokenLeave,
       onEditChange(event) {
         text = event.file.contents;
         listener(text);
@@ -200,6 +298,7 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
     destroy() {
       close();
       host.remove();
+      tip.remove();
     },
   };
 }

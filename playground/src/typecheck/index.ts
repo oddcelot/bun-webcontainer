@@ -1,6 +1,5 @@
-import type { EditorDiagnostic } from "../editors/types";
+import type { EditorDiagnostic, EditorHover } from "../editors/types";
 import { dirname, type FileData, type VFS } from "../vfs";
-import type { LspHover } from "./tsrsLs";
 import type { LsReply, LsRequest } from "./worker";
 
 // Type errors and hovers from tsrs's language service (see ./worker.ts). The project's files go to it as absolute
@@ -108,9 +107,13 @@ export async function typecheck(vfs: VFS, path: string, text: string): Promise<E
   return out;
 }
 
-/** Type information at `line`/`column` (1-based, UTF-16) of `path`: LSP hover markdown, or null. */
-export async function hover(vfs: VFS, path: string, text: string, line: number, column: number): Promise<LspHover | null> {
+/** Type information at `line`/`column` (1-based, UTF-16) of `path`, or null. */
+export async function hover(vfs: VFS, path: string, text: string, line: number, column: number): Promise<EditorHover | null> {
   const r = await request(vfs, path, text, { kind: "hover", line: line - 1, character: column - 1 });
   if (r.error) console.warn(`tsrs: ${r.error}`);
-  return r.hover ?? null;
+  const value = r.hover?.contents.value;
+  if (!value) return null;
+  // The language service's markdown: the declaration in a ```typescript block, then the JSDoc.
+  const m = /^```\w*\n([\s\S]*?)\n```\n?([\s\S]*)$/.exec(value);
+  return m ? { code: m[1], docs: m[2].trim() } : { code: "", docs: value.trim() };
 }

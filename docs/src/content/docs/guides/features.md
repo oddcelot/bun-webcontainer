@@ -12,7 +12,7 @@ sidebar:
 - Tabs for open files: close with the × button, <kbd>Delete</kbd>, or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>W</kbd>
 - **Auto-save** (on by default): edits are saved a moment after you stop typing. Switch it off in the tab bar to save with <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>S</kbd> instead; unsaved tabs show a dot, and Run, Install, `bun test` and Share save everything first. The setting applies to every project and every open playground tab.
 - **Format** in the tab bar (<kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd>) formats the open file with `bun fmt`, as one undoable edit (see [Toolchain](/compatibility/toolchain/#formatter-bun-fmt))
-- Type errors in TypeScript files, from TypeScript 7's checker (see [Toolchain](/compatibility/toolchain/#type-checking))
+- Type errors in TypeScript files, and a name's type and documentation when the pointer rests on it, from TypeScript 7's checker (see [Toolchain](/compatibility/toolchain/#type-checking))
 - Resizable panes
 - **Status bar** along the bottom: buttons to show or hide the preview and console, what the program is doing, and for the open file its error and warning counts (click to go to the next one), the cursor's line and column, and its language (for TypeScript, with the version the type checker follows). The Bun version links to [Bun compatibility](/compatibility/bun/).
 - **Open folder** or **Open zip file** loads a project from your computer (skips `node_modules` and `.git`). A zip whose files all sit in one folder, like GitHub's downloads, opens that folder.
