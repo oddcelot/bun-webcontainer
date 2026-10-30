@@ -11,11 +11,12 @@ sidebar:
 - File tree with search and a "New file" button
 - Tabs for open files: close with the × button, <kbd>Delete</kbd>, or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>W</kbd>
 - **Auto-save** (on by default): edits are saved a moment after you stop typing. Switch it off in the tab bar to save with <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>S</kbd> instead; unsaved tabs show a dot, and Run, Install, `bun test` and Share save everything first.
+- Type errors in TypeScript files, from TypeScript 7's checker (see [Toolchain](/compatibility/toolchain/#type-checking))
 - Resizable panes
 - **Open folder** or **Open zip file** loads a project from your computer (skips `node_modules` and `.git`). A zip whose files all sit in one folder, like GitHub's downloads, opens that folder.
 - In Chrome and Edge, an opened folder stays linked: edits, new files and deletions are saved to it on disk. `node_modules` stays in the browser and the folder's own `node_modules` and `.git` aren't touched. After a reload, open the folder again. Other browsers open a copy.
 
-Not yet: autocomplete, type checking, renaming or deleting files from the tree. Very large files are slow, because every line is rendered.
+Not yet: autocomplete, renaming or deleting files from the tree. Very large files are slow, because every line is rendered.
 
 ## Console
 

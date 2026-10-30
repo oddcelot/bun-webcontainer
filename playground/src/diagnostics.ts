@@ -1,6 +1,7 @@
 import type { CodeEditor, EditorDiagnostic } from "./editors/types";
 import { tsconfigFor } from "./moduleServer";
 import { transpile, TranspileError } from "./transpiler";
+import { typecheck, TYPED } from "./typecheck";
 import type { VFS } from "./vfs";
 
 const CHECKED = /\.(?:[cm]?[jt]s|[jt]sx)$/;
@@ -19,11 +20,11 @@ function utf16Index(line: string, bytes: number): number {
   return i;
 }
 
-/** Parse errors of `text` (the transpiler's, no resolver) as editor markers. Empty when it parses. */
+/** Parse errors of `text` (the transpiler's, no resolver) as editor markers; when it parses, type errors for TypeScript. */
 export async function diagnose(vfs: VFS, path: string, text: string): Promise<EditorDiagnostic[]> {
   try {
     await transpile(text, path, tsconfigFor(vfs, path));
-    return [];
+    return TYPED.test(path) ? await typecheck(vfs, path, text) : [];
   } catch (e) {
     if (!(e instanceof TranspileError)) return [];
     const lines = text.split("\n");
@@ -39,7 +40,7 @@ export async function diagnose(vfs: VFS, path: string, text: string): Promise<Ed
   }
 }
 
-/** Debounced parse-error markers for the file in `editor`; call `check(path, text)` on open and on every edit. */
+/** Debounced parse- and type-error markers for the file in `editor`; call `check(path, text)` on open and on every edit. */
 export function mountDiagnostics(vfs: VFS, editor: CodeEditor) {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let seq = 0;
