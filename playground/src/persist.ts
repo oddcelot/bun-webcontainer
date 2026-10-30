@@ -1,3 +1,4 @@
+import { bucket } from "./storage";
 import type { VFS } from "./vfs";
 
 type Log = (level: string, text: string) => void;
@@ -20,12 +21,53 @@ export async function shareProjectId(hash: string): Promise<string> {
   return "share:" + [...new Uint8Array(d).slice(0, 8)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+const projects = () => bucket("projects", { durability: "strict" });
+
+async function copyDir(from: Dir, to: Dir) {
+  for await (const [name, h] of from as unknown as AsyncIterable<[string, FileSystemHandle]>) {
+    if (h.kind === "directory") await copyDir(h as Dir, await to.getDirectoryHandle(name, { create: true }));
+    else {
+      const w = await (await to.getFileHandle(name, { create: true })).createWritable();
+      try {
+        await w.write(await (h as FileSystemFileHandle).getFile());
+      } finally {
+        await w.close();
+      }
+    }
+  }
+}
+
+let moved: Promise<void> | undefined;
+/**
+ * Projects saved before the `projects` bucket existed sit in the default storage: copy each one over, then delete
+ * it. A move cut short copies again next time, so nothing is lost.
+ */
+function moveOldProjects(): Promise<void> {
+  return (moved ??= (async () => {
+    const b = await projects();
+    if (!b.own) return;
+    const move = async () => {
+      const old = await (await navigator.storage.getDirectory()).getDirectoryHandle("projects").catch(() => null);
+      if (!old) return;
+      const to = await (await b.getDirectory()).getDirectoryHandle("projects", { create: true });
+      for await (const [name, h] of old as unknown as AsyncIterable<[string, FileSystemHandle]>) {
+        if (h.kind !== "directory") continue;
+        await copyDir(h as Dir, await to.getDirectoryHandle(name, { create: true }));
+        await old.removeEntry(name, { recursive: true });
+      }
+      await (await navigator.storage.getDirectory()).removeEntry("projects", { recursive: true });
+    };
+    await (navigator.locks ? navigator.locks.request("bwc-move-projects", move) : move());
+  })().catch(() => {}));
+}
+
 /** The project's OPFS directory (null when missing and `create` is off). */
 async function projectDir(id: string, create: boolean): Promise<Dir | null> {
   try {
-    const root = await navigator.storage.getDirectory();
-    const projects = await root.getDirectoryHandle("projects", { create });
-    return await projects.getDirectoryHandle(encodeURIComponent(id), { create });
+    await moveOldProjects();
+    const root = await (await projects()).getDirectory();
+    const projectsDir = await root.getDirectoryHandle("projects", { create });
+    return await projectsDir.getDirectoryHandle(encodeURIComponent(id), { create });
   } catch (e) {
     if (e instanceof DOMException && e.name === "NotFoundError") return null;
     throw e;
@@ -64,9 +106,10 @@ export async function restore(id: string, vfs: VFS, log: Log): Promise<number> {
 
 /** Deletes a project's saved files. */
 export async function discard(id: string): Promise<void> {
-  const root = await navigator.storage.getDirectory();
-  const projects = await root.getDirectoryHandle("projects").catch(() => null);
-  await projects?.removeEntry(encodeURIComponent(id), { recursive: true }).catch(() => {});
+  await moveOldProjects();
+  const root = await (await projects()).getDirectory();
+  const dir = await root.getDirectoryHandle("projects").catch(() => null);
+  await dir?.removeEntry(encodeURIComponent(id), { recursive: true }).catch(() => {});
   try {
     sessionStorage.removeItem(stashKey(id));
   } catch {}
@@ -151,7 +194,9 @@ export async function attach(id: string, vfs: VFS, log: Log, all: boolean): Prom
         if (stopped) return;
         if (!asked) {
           asked = true;
-          void Promise.resolve(navigator.storage.persist?.()).catch(() => {});
+          void projects()
+            .then((b) => b.persist())
+            .catch(() => {});
         }
         const paths = [...dirty];
         dirty.clear();
