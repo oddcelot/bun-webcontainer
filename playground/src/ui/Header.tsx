@@ -1,5 +1,6 @@
 import { useContext } from "solid-js";
 import { DropdownMenu } from "@kobalte/core/dropdown-menu";
+import { DOCS } from "../base";
 import logo from "../bun-logo.svg";
 import { AppContext } from "./context";
 import { ProjectPicker } from "./ProjectPicker";
@@ -51,7 +52,7 @@ export function Header() {
       <span id="status" role="status" data-state={s.status().state} title={s.status().text}>
         <span class="text">{s.status().text}</span>
       </span>
-      <a id="docs" href="https://docs.runbun.dev/" target="_blank" rel="noopener" title="Documentation: what works, and how (opens in a new tab)">
+      <a id="docs" href={DOCS} target="_blank" rel="noopener" title="Documentation: what works, and how (opens in a new tab)">
         <i class="i-lucide-book-open" aria-hidden="true" /> Docs
       </a>
       <button id="share" popovertarget="share-menu" title="Share this project">
