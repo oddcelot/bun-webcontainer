@@ -34,30 +34,49 @@ export function App() {
         <Unsupported checks={app.support} />
       </Show>
       <main>
+        {/*
+          Children as functions: Kobalte's Resizable and Resizable.Panel evaluate
+          `typeof p.children === "function" ? p.children(...) : p.children`, and each read of p.children builds the
+          JSX again, so plain children would render twice (a detached second editor, console and preview that live on).
+        */}
         <Resizable onSizesChange={saveSizes("layout.columns")}>
-          <Resizable.Panel panelId="tree-panel" initialSize={columns[0]} minSize="120px">
-            <nav id="tree">
-              <FileTree />
-            </nav>
-          </Resizable.Panel>
-          <Resizable.Handle class="resize-handle" aria-label="Resize file tree" />
-          <Resizable.Panel panelId="editor-panel" initialSize={columns[1]} minSize="200px">
-            <section id="editor-pane">
-              <EditorPane />
-            </section>
-          </Resizable.Panel>
-          <Resizable.Handle class="resize-handle" aria-label="Resize editor and preview" />
-          <Resizable.Panel panelId="right" initialSize={columns[2]} minSize="200px">
-            <Resizable orientation="vertical" onSizesChange={saveSizes("layout.right")}>
-              <Resizable.Panel panelId="preview-panel" initialSize={rows[0]} minSize="80px">
-                <Preview />
+          {() => (
+            <>
+              <Resizable.Panel panelId="tree-panel" initialSize={columns[0]} minSize="120px">
+                {() => (
+                  <nav id="tree">
+                    <FileTree />
+                  </nav>
+                )}
               </Resizable.Panel>
-              <Resizable.Handle class="resize-handle" aria-label="Resize preview and console" />
-              <Resizable.Panel panelId="console-wrap" initialSize={rows[1]} minSize="60px">
-                <Console />
+              <Resizable.Handle class="resize-handle" aria-label="Resize file tree" />
+              <Resizable.Panel panelId="editor-panel" initialSize={columns[1]} minSize="200px">
+                {() => (
+                  <section id="editor-pane">
+                    <EditorPane />
+                  </section>
+                )}
               </Resizable.Panel>
-            </Resizable>
-          </Resizable.Panel>
+              <Resizable.Handle class="resize-handle" aria-label="Resize editor and preview" />
+              <Resizable.Panel panelId="right" initialSize={columns[2]} minSize="200px">
+                {() => (
+                  <Resizable orientation="vertical" onSizesChange={saveSizes("layout.right")}>
+                    {() => (
+                      <>
+                        <Resizable.Panel panelId="preview-panel" initialSize={rows[0]} minSize="80px">
+                          {() => <Preview />}
+                        </Resizable.Panel>
+                        <Resizable.Handle class="resize-handle" aria-label="Resize preview and console" />
+                        <Resizable.Panel panelId="console-wrap" initialSize={rows[1]} minSize="60px">
+                          {() => <Console />}
+                        </Resizable.Panel>
+                      </>
+                    )}
+                  </Resizable>
+                )}
+              </Resizable.Panel>
+            </>
+          )}
         </Resizable>
       </main>
     </>
