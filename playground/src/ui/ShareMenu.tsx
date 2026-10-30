@@ -1,6 +1,7 @@
 import { Loading, Show, For, action, createMemo, createOptimistic, createSignal, resolve, useContext } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { LONG_LINK, MAX_SHORT, badgeUrl, formats, noteLines, shareLink, shortLink, type Link } from "../share";
+import { exportZip, zipName } from "../archive";
 import { AppContext } from "./context";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -47,6 +48,17 @@ export function ShareMenu() {
     }
   }
 
+  /** Saves the project as a zip, a backup that browser storage limits can't clear. */
+  async function download() {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(exportZip(app.vfs));
+    a.download = zipName(app.vfs);
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    app.log("sys", `[share] downloaded ${a.download}`);
+    return "Downloaded";
+  }
+
   return (
     <div id="share-menu" popover onBeforeToggle={(e) => {
         if (e.newState !== "open") return;
@@ -83,6 +95,7 @@ export function ShareMenu() {
                 <img src={badgeUrl()} alt="Open in runbun" width="150" height="28" />
               </ShareItem>
               <ShareItem icon="i-lucide-code" title="Copy HTML badge" sub="For a website or blog post" copy={() => copy("html")} />
+              <ShareItem icon="i-lucide-download" title="Download as zip" sub="A copy outside the browser; open it again from the project menu" copy={download} />
             </>
           )}
         </Show>

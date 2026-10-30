@@ -15,4 +15,6 @@ Each project is saved to the browser's [Origin Private File System](https://deve
 
 ## How long it stays
 
-The playground asks the browser to keep its storage (`navigator.storage.persist()`). Browsers can still clear it, for example when the disk is nearly full or when you clear site data. To keep a copy of a project, use a share link or push it to GitHub.
+The playground asks the browser to keep its storage (`navigator.storage.persist()`). In Chrome, projects sit in their own [storage bucket](https://developer.chrome.com/docs/web-platform/storage-buckets), kept apart from other site data. Browsers can still clear them, for example when the disk is nearly full or when you clear site data, and Safari clears a site's storage after seven days without a visit.
+
+To keep a copy of a project, use **Download as zip** in the Share menu and open it again with **Zip file…** in the project picker. A share link or a push to GitHub works too.
