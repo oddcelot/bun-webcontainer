@@ -1,7 +1,8 @@
 import { BASE } from "./base";
 import { commonJSFacade, exportNames as commonJSExportNames, isCommonJS, reexports, wrapCommonJS } from "./cjs";
 import bunWrap from "./bunWrap.js?raw";
-import { transpile, type Resolver, type TsconfigFlags } from "./transpiler";
+import type { Resolver, TsconfigFlags } from "./transpiler";
+import { transpileCached } from "./transpileCache";
 import { loadResolver, resolve, type ResolveKind } from "./resolver";
 import { dirname, norm, type VFS } from "./vfs";
 import hostNames, { version as hostVersion } from "virtual:host-package-names";
@@ -337,7 +338,7 @@ async function serveCommonJS(vfs: VFS, path: string, onError: (msg: string) => v
   });
   // The body is plain source: its `import("x")` calls still need their specifiers resolved.
   try {
-    return { status: 200, body: await transpile(rewriteMeta(code, path, target === "bun"), `${path}.js`, {}, resolver(vfs, dir)) };
+    return { status: 200, body: await transpileCached(rewriteMeta(code, path, target === "bun"), `${path}.js`, {}, resolver(vfs, dir)) };
   } catch (e) {
     const msg = `${path}: ${e instanceof Error ? e.message : String(e)}`;
     onError(msg);
@@ -379,7 +380,7 @@ export async function serveModule(vfs: VFS, rawPath: string, onError: (msg: stri
     if (path.endsWith(".json")) code = `var __m;\nexport function __cjsModule() {\n  return (__m ??= { exports: ${src} });\n}\nexport default __cjsModule().exports;`;
     else if (/\.(ts|tsx|jsx)$/.test(path)) {
       TARGET = target;
-      code = await transpile(src, path, tsconfigFor(vfs, path), resolver(vfs, dirname(path)));
+      code = await transpileCached(src, path, tsconfigFor(vfs, path), resolver(vfs, dirname(path)));
     }
     else if (isCommonJS(path, src, packageType(vfs, path))) {
       TARGET = target;
@@ -388,7 +389,7 @@ export async function serveModule(vfs: VFS, rawPath: string, onError: (msg: stri
     else {
       // Plain ES module: Bun's parser finds the specifiers, as `bun build --no-bundle` does.
       TARGET = target;
-      code = await transpile(src, path, {}, resolver(vfs, dirname(path)));
+      code = await transpileCached(src, path, {}, resolver(vfs, dirname(path)));
     }
     TARGET = target;
     // The hoisted imports are final URLs already (the transpiler leaves those alone).

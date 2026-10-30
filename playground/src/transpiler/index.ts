@@ -45,6 +45,8 @@ let ready: Promise<Exports> | undefined;
 // The wasm import is global to the instance; calls are synchronous, so the current call's resolver lives here.
 let current: Resolver | undefined;
 let resolveError: unknown;
+/** SHA-256 of the wasm, set once it loads: output from another build of the transpiler can differ. */
+let wasmId = "";
 
 async function load(): Promise<Exports> {
   const res = await fetch(new URL(`${BASE}bun_transpile_wasm.wasm`, location.href));
@@ -68,9 +70,17 @@ async function load(): Promise<Exports> {
       }
     },
   };
-  const { instance } = await WebAssembly.instantiate(await res.arrayBuffer(), { env });
+  const bytes = await res.arrayBuffer();
+  wasmId = [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const { instance } = await WebAssembly.instantiate(bytes, { env });
   w = instance.exports as unknown as Exports;
   return w;
+}
+
+/** Which build of the transpiler this is (a hash of its wasm). */
+export async function transpilerId(): Promise<string> {
+  await (ready ??= load());
+  return wasmId;
 }
 
 const enc = new TextEncoder();
