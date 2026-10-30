@@ -5,6 +5,7 @@ import { TYPED } from "../typecheck";
 import { TS_VERSION, TSRS_VERSION } from "../typecheck/tsrsLs";
 import { BUN_VERSION } from "../worker/bunVersion";
 import { AppContext } from "./context";
+import { Shortcuts } from "./Shortcuts";
 import { Tip } from "./Tip";
 
 /** What Bun treats a file as, by extension (its loader), named as editors do. */
@@ -40,7 +41,7 @@ const keys = (command: Command) => keysFor(command).map(formatChord);
 
 /**
  * The bar along the bottom, as in VS Code or Zed: panel toggles and the program's status on the left, the open
- * file's problems, cursor and language and the Bun release on the right.
+ * file's problems, cursor and language, the keyboard shortcuts and the Bun release on the right.
  */
 export function StatusBar(props: { previewShown: boolean; consoleShown: boolean; toggle(i: number): void }) {
   const app = useContext(AppContext);
@@ -122,6 +123,7 @@ export function StatusBar(props: { previewShown: boolean; consoleShown: boolean;
           </>
         )}
       </Show>
+      <Shortcuts placement="top" />
       <Tip
         as="a"
         href={`${DOCS}compatibility/bun/`}
