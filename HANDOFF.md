@@ -25,8 +25,9 @@ scripts/w64.sh crate...  wasm64 compile check of bun crates (errors in short for
 semver-wasm/             cdylib: Bun.semver order/satisfies; test.mjs, diff.mjs (vs real Bun)
 transpile-wasm/          cdylib: Bun's transpiler; src/lib.rs (parse→print), src/native.rs (C/C++ stand-ins),
                          examples/smoke.rs (native), test.mjs + corpus/ (wasm vs `bun build --no-bundle`)
-fmt-wasm/                cdylib: `bun fmt`; src/lib.rs (format_c via bun_lint_driver::fmt::format_for_tests), src/native.rs
-                         (transpile-wasm's stand-ins + a Yarr stub), test.mjs (wasm vs native `bun fmt` on the repo)
+fmt-wasm/                cdylib: `bun fmt`; src/cli.rs (run_c: `bun fmt <args>` itself over the VFS, bunfig [fmt]),
+                         src/lib.rs (format_c: defaults only), src/native.rs (transpile-wasm's stand-ins + Yarr stubs),
+                         test.mjs (wasm vs native `bun fmt`: the repo's files, and config/error scenarios)
 shim-test/               runs the wasm mimalloc shim natively under cargo test (+ ASan)
 playground/              Vite app; README has architecture + limitations
 ```
