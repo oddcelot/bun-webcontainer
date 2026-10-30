@@ -38,6 +38,22 @@ Reported version: `Bun.version` is `1.4.4-browser`. Labels are explained on the 
 | `Bun.CookieMap`, `Bun.YAML`, `Bun.TOML`, `Bun.plugin`, `Bun.FileSystemRouter`, `Bun.mmap` | ❌ Missing | |
 | `HTMLRewriter` | ❌ Missing | |
 
+Try a few of them:
+
+```ts playground title="index.ts"
+await Bun.write("notes.txt", "written with Bun.write\n");
+const file = Bun.file("notes.txt");
+console.log(file.size, await file.text());
+
+console.log(Bun.semver.satisfies("1.2.3", "^1.0.0"), Bun.semver.order("1.0.0", "2.0.0"));
+console.log(new Bun.CryptoHasher("sha256").update("bun").digest("hex"));
+console.log(Bun.hash("bun"));
+
+const zipped = Bun.gzipSync("hello hello hello hello");
+console.log(zipped.length, "bytes:", new TextDecoder().decode(Bun.gunzipSync(zipped)));
+console.log(Bun.inspect({ deep: { map: new Map([["a", 1]]) } }));
+```
+
 ## `Bun.serve`
 
 Servers answer requests from the [preview](/guides/features/#preview), not from the network.
@@ -58,6 +74,32 @@ Servers answer requests from the [preview](/guides/features/#preview), not from 
 | `error`, `idleTimeout`, `maxRequestBodySize`, `unix`, `reusePort` | ❌ Missing | A throwing handler returns a plain-text 500. |
 | `server.requestIP`, `server.timeout`, `server.ref`/`unref` | ❌ Missing | |
 
+Routes with parameters, JSON and a streamed response. Send requests from the bar above the preview:
+
+```ts playground mode=preview title="index.ts"
+const server = Bun.serve({
+  routes: {
+    "/": new Response("Try /hello/you, /json or /stream"),
+    "/hello/:name": (req) => new Response(`Hello, ${req.params.name}!`),
+    "/json": () => Response.json({ ok: true, at: Date.now() }),
+    "/stream": () =>
+      new Response(
+        new ReadableStream({
+          async start(controller) {
+            for (const word of ["streamed ", "one ", "chunk ", "at a time"]) {
+              controller.enqueue(new TextEncoder().encode(word));
+              await Bun.sleep(300);
+            }
+            controller.close();
+          },
+        }),
+      ),
+  },
+});
+
+console.log(`Listening on ${server.url}`);
+```
+
 ## `bun:*` modules
 
 | Module | Status | Notes |
@@ -66,6 +108,19 @@ Servers answer requests from the [preview](/guides/features/#preview), not from 
 | `bun:test` | 🟡 Partial | Run with `bun test` in the console. See [below](#buntest). |
 | `bun:ffi`, `bun:jsc` | ❌ Missing | |
 | `bun` | ✅ Works | `import { serve } from "bun"` and the default export are the `Bun` global. |
+
+```ts playground title="index.ts"
+import { Database } from "bun:sqlite";
+
+const db = new Database(":memory:");
+db.run("create table todos (id integer primary key, title text, done integer)");
+
+const insert = db.prepare("insert into todos (title, done) values (?, ?)");
+const addAll = db.transaction((rows: [string, number][]) => rows.forEach((r) => insert.run(...r)));
+addAll([["write docs", 1], ["ship embeds", 0]]);
+
+console.log(db.query("select * from todos where done = ?").all(0));
+```
 
 ### `bun:test`
 
@@ -76,6 +131,24 @@ Servers answer requests from the [preview](/guides/features/#preview), not from 
 - ❌ Snapshots, fake timers, `setSystemTime`, `mock.module`, `jest.mock`, `expect.extend`, `expect.assertions`, coverage, `test.concurrent`, `test.failing`
 - Unknown matchers throw "is not supported here".
 - `bun test` takes name filters but no flags.
+
+Type `bun test` in the console to run this one:
+
+```ts playground mode=console autorun=false title="math.test.ts"
+import { describe, expect, mock, test } from "bun:test";
+
+const add = (a: number, b: number) => a + b;
+
+describe("add", () => {
+  test("sums", () => expect(add(1, 2)).toBe(3));
+  test.each([[1, 1, 2], [2, 3, 5]])("%d + %d = %d", (a, b, sum) => expect(add(a, b)).toBe(sum));
+  test("mocks", () => {
+    const fn = mock(add);
+    fn(2, 2);
+    expect(fn).toHaveBeenCalledWith(2, 2);
+  });
+});
+```
 
 ## `import.meta` and globals
 

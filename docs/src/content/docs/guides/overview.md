@@ -12,4 +12,17 @@ The playground runs a Bun project entirely in your browser:
 - **A virtual file system.** Your project lives in memory and is saved to the browser's storage.
 - **A service worker** serves your modules and the preview of `Bun.serve` and `node:http` servers.
 
+Try it: this server runs in your browser when you click Run.
+
+```ts playground mode=preview title="index.ts"
+const server = Bun.serve({
+  routes: {
+    "/": () => new Response("<h1>Hello from Bun.serve</h1><a href='/api/time'>/api/time</a>", { headers: { "content-type": "text/html" } }),
+    "/api/time": () => Response.json({ now: new Date().toISOString(), bun: Bun.version }),
+  },
+});
+
+console.log(`Listening on ${server.url}`);
+```
+
 Because the runtime is a set of shims, not every Bun or Node API is there yet. Check [Compatibility](/compatibility/) before porting a project, and the [Features](/guides/features/) tour for what the playground can do.

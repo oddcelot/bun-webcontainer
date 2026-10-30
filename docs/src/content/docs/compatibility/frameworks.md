@@ -18,6 +18,24 @@ These ship as examples in the playground (project picker → Examples). Unless n
 | [Node built-ins demo](https://runbun.dev/?example=node-demo) | ✅ Works | Output matches real Bun. |
 | [`bun.lock` demo](https://runbun.dev/?example=lockfile-demo) | ✅ Works | Nested installs from a lockfile. |
 
+Elysia, installed and served from this page:
+
+```json playground mode=preview group=elysia title="package.json"
+{ "dependencies": { "elysia": "^1.4.0" } }
+```
+
+```ts playground mode=preview group=elysia title="index.ts"
+import { Elysia, t } from "elysia";
+
+new Elysia()
+  .get("/", () => "Hello from Elysia")
+  .get("/user/:id", ({ params }) => ({ id: params.id }))
+  .post("/echo", ({ body }) => body, { body: t.Object({ message: t.String() }) })
+  .listen(3000);
+```
+
+The Vite and Astro examples need cross-origin isolation, which this site doesn't have; open them on runbun.dev from the table.
+
 ## What usually blocks a framework
 
 - **CLI scripts.** Only `"script": "bun <file>"` runs. Start the dev server from a file instead (for example `createServer()` in Vite, `dev()` in Astro).

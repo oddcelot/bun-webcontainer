@@ -16,6 +16,24 @@ Bun's own parser and printer, compiled to WebAssembly. Output matches `bun build
 - ✅ Top-level `await`
 - ❌ `tsconfig.json` `jsx` and `jsxImportSource` are not read by the transpiler (`paths` and `baseUrl` are, by the resolver); use the `@jsxImportSource` pragma for another JSX runtime
 
+```ts playground title="index.ts"
+enum Level { Low = 1, High = 10 }
+
+interface Task { title: string; level: Level }
+const tasks = [{ title: "docs", level: Level.High }] satisfies Task[];
+
+class Queue<T> {
+  #items: T[] = [];
+  constructor(private readonly name: string) {}
+  push(item: T) { this.#items.push(item); return this; }
+  get size() { return this.#items.length; }
+}
+
+const queue = new Queue<Task>("main").push(tasks[0]);
+await Bun.sleep(10); // top-level await
+console.log(Level[tasks[0].level], queue.size);
+```
+
 ## Type checking
 
 The language service of [tsrs](https://github.com/oxc-project/tsrs) (TypeScript 7's compiler ported to Rust), compiled
@@ -71,6 +89,27 @@ Bun's own resolver, compiled to WebAssembly (~900 KB, loaded with the first modu
 
 An import that can't be resolved shows `cannot resolve "x"` in the console.
 
+`tsconfig.json` `paths`, `index.*` files and JSON imports, in one project:
+
+```json playground group=resolve title="tsconfig.json"
+{ "compilerOptions": { "paths": { "@lib/*": ["./src/lib/*"] } } }
+```
+
+```ts playground group=resolve title="src/lib/greet/index.ts"
+export const greet = (name: string) => `Hello, ${name}`;
+```
+
+```json playground group=resolve title="src/config.json"
+{ "name": "resolver" }
+```
+
+```ts playground group=resolve title="index.ts"
+import { greet } from "@lib/greet";
+import config from "./src/config.json";
+
+console.log(greet(config.name));
+```
+
 ## CommonJS and `require`
 
 - ✅ `.cjs` files, and `.js` files without ESM syntax in packages that aren't `"type": "module"`
@@ -80,6 +119,20 @@ An import that can't be resolved shows `cannot resolve "x"` in the console.
 - 🟡 `createRequire(import.meta.url)` serves built-ins only; its `require("./x.cjs")` throws
 - ❌ `require(variable)` throws. So does a `require` that can't be resolved, when it runs.
 - ❌ `require.cache`, `require.main`, native `.node` addons
+
+```js playground group=cjs title="counter.cjs"
+let count = 0;
+exports.next = () => ++count;
+module.exports.name = "counter";
+```
+
+```ts playground group=cjs title="index.ts"
+import { next, name } from "./counter.cjs";
+
+const again = import.meta.require("./counter.cjs");
+next();
+console.log(name, again.next()); // one module instance: counter 2
+```
 
 ## `bun install`
 
@@ -96,6 +149,21 @@ Runs in the console (`bun install`, `bun add`, `bun remove`) and automatically w
 - ❌ Only `registry.npmjs.org`; `.npmrc` isn't read
 - ❌ Binary `bun.lockb`
 
+Missing packages install before the first run:
+
+```json playground group=install title="package.json"
+{ "dependencies": { "picocolors": "^1.1.0", "zod": "^3.23.0" } }
+```
+
+```ts playground group=install title="index.ts"
+import pc from "picocolors";
+import { z } from "zod";
+
+const User = z.object({ name: z.string(), age: z.number().int() });
+console.log(pc.green("valid:"), User.safeParse({ name: "Ada", age: 36 }).success);
+console.log(pc.red("invalid:"), User.safeParse({ name: "Ada", age: "old" }).success);
+```
+
 ## Bundler
 
 `Bun.build` and HTML imports use Bun's real bundler, compiled to WebAssembly (~10 MB, loaded on first use). See [`Bun.build`](/compatibility/bun/#the-bun-global) for the supported options.
@@ -103,3 +171,18 @@ Runs in the console (`bun install`, `bun add`, `bun remove`) and automatically w
 - Single-threaded; each build starts fresh
 - HTML imports in `Bun.serve` are built for the browser, without minification or source maps
 - If a build fails, errors go to the console and the page is served unbundled
+
+The first run downloads the bundler:
+
+```ts playground group=build title="src/math.ts"
+export const square = (n: number) => n * n;
+export const unused = () => "tree-shaken away";
+```
+
+```ts playground group=build title="index.ts"
+await Bun.write("src/entry.ts", 'import { square } from "./math";\nconsole.log(square(7));\n');
+
+const result = await Bun.build({ entrypoints: ["./src/entry.ts"], outdir: "./dist", minify: true });
+for (const output of result.outputs) console.log(output.path, output.size, "bytes");
+console.log(await Bun.file("./dist/entry.js").text());
+```
