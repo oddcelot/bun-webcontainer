@@ -68,7 +68,8 @@ function Picker(props: { groups: Group[]; current: (list: Group[]) => Project | 
   function pick(p: Project | null) {
     // The select stays on the current project (value is controlled) unless the page navigates away.
     if (!p) return;
-    if (p.value === OPEN_FOLDER) return folderInput.click();
+    // Where the browser can write to the folder, edits go back to disk; elsewhere it's a copy.
+    if (p.value === OPEN_FOLDER) return "showDirectoryPicker" in window ? app.openDirectory() : folderInput.click();
     if (p.value === OPEN_ZIP) return zipInput.click();
     // Once the Select has closed and handed focus back to its trigger, or that would win over the dialog.
     if (p.value === OPEN_REPO) return void setTimeout(() => setAsking(true));

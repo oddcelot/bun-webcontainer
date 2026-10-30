@@ -16,7 +16,7 @@ import { createPreviews } from "./ui/previews";
 import { createWorkspace } from "./ui/workspace";
 import { createConsole } from "./console";
 import { createShell, scriptEntry } from "./shell";
-import { attach, discard, restore, shareProjectId } from "./persist";
+import { attach, discard, mirror, readDir, restore, shareProjectId } from "./persist";
 import { importZip } from "./archive";
 
 const support = checkSupport();
@@ -50,7 +50,7 @@ async function setupServiceWorker() {
 }
 
 const vfs = new VFS();
-mountUI({ session, support, workspace, previews, terminal, clearConsole, vfs, log, run: () => run(), install, openProject, newFile, openFolder, openZip, repoParam: new URLSearchParams(location.search).get("repo") ?? "" });
+mountUI({ session, support, workspace, previews, terminal, clearConsole, vfs, log, run: () => run(), install, openProject, newFile, openFolder, openDirectory, openZip, repoParam: new URLSearchParams(location.search).get("repo") ?? "" });
 const params = new URLSearchParams(location.search);
 const exampleName = params.get("example") ?? "";
 const repoParam = params.get("repo") ?? "";
@@ -239,6 +239,37 @@ async function openFolder(files: File[]) {
   }
   workspace.reloadTree();
   log("sys", `[open] ${files[0].webkitRelativePath.split("/")[0] || "files"}: ${n} files (node_modules skipped)`);
+  openFile(entryFile());
+}
+
+/**
+ * Opens a folder on disk (File System Access, Chromium) and writes edits back to it. node_modules and .git are
+ * neither read nor written: `bun install` fills node_modules in the browser only.
+ */
+async function openDirectory() {
+  let dir: FileSystemDirectoryHandle;
+  try {
+    dir = await (window as unknown as { showDirectoryPicker(o: object): Promise<FileSystemDirectoryHandle> }).showDirectoryPicker({ id: "bwc-folder", mode: "readwrite" });
+  } catch (e) {
+    if (!(e instanceof DOMException && e.name === "AbortError")) log("error", `[open] can't open the folder: ${e}`);
+    return;
+  }
+  let files: [string, string | Uint8Array][];
+  try {
+    files = await readDir(dir);
+  } catch (e) {
+    return log("error", `[open] can't read ${dir.name}: ${e}`);
+  }
+  await session.started;
+  await stopSaving();
+  await runner?.stop();
+  workspace.closeAll();
+  vfs.clear();
+  for (const [path, data] of files) vfs.write(path, data);
+  // After the load: the files just read are on disk already.
+  stopSaving = mirror(dir, vfs, log, { all: false, tag: "[folder]" });
+  workspace.reloadTree();
+  log("sys", `[open] ${dir.name}: ${files.length} files; changes are saved to the folder (node_modules stays in the browser)`);
   openFile(entryFile());
 }
 
