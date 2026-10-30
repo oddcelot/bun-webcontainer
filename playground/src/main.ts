@@ -1,56 +1,16 @@
 import "virtual:uno.css";
-import { BASE } from "./base";
 import { seedDemo } from "./demo";
 import { examples, loadExample, repoExamples } from "./examples";
 import { loadRepo, parseRepo, repoQuery } from "./github";
-import { createRoot } from "solid-js";
 import { isShareLink, loadShareLink, rememberSource } from "./share";
-import { bunInstall } from "./install";
-import { Runner } from "./runner";
-import { loadSemver } from "./semver";
-import { checkSupport } from "./support";
-import { VFS } from "./vfs";
+import { createPlayground } from "./boot";
 import { mountUI } from "./ui/mount";
-import { createSession, type Status } from "./ui/session";
-import { createPreviews } from "./ui/previews";
-import { createWorkspace } from "./ui/workspace";
-import { createConsole } from "./console";
-import { createShell, scriptEntry } from "./shell";
 import { attach, discard, mirror, readDir, restore, shareProjectId } from "./persist";
 import { importZip } from "./archive";
 import { canWrite, lastFolder, rememberFolder } from "./folders";
 
-const support = checkSupport();
-/** False when a requirement is missing: the interface still loads, but nothing that runs code starts. */
-const canRun = support.every((c) => c.ok);
-// The shell (below) needs the runner and VFS, which come later.
-const terminal = createConsole({
-  onCommand: (line) => exec(line),
-  onInterrupt: () => stop(),
-  onClear: () => clearConsole(),
-});
-const [session, workspace, previews] = createRoot(() => [createSession(canRun), createWorkspace(), createPreviews()] as const);
-
-function log(level: string, text: string) {
-  terminal.log(level, text);
-  session.countLine(level);
-}
-
-async function setupServiceWorker() {
-  const reg = await navigator.serviceWorker.register(`${BASE}sw.js`, { scope: BASE });
-  await reg.update().catch(() => {});
-  const updating = reg.installing ?? reg.waiting;
-  await navigator.serviceWorker.ready;
-  if (!navigator.serviceWorker.controller || updating) {
-    await Promise.race([
-      new Promise((r) => navigator.serviceWorker.addEventListener("controllerchange", r, { once: true })),
-      new Promise((r) => setTimeout(r, 3000)),
-    ]);
-  }
-  if (!navigator.serviceWorker.controller) log("error", "service worker is not controlling this page; reload without hard-refresh");
-}
-
-const vfs = new VFS();
+const pg = createPlayground();
+const { support, session, workspace, previews, terminal, vfs, log, run, stop, install, clearConsole, newFile, entryFile } = pg;
 mountUI({ session, support, workspace, previews, terminal, clearConsole, vfs, log, run: () => run(), stop, install, openProject, newFile, openFolder, openDirectory, reopenFolder, openZip, repoParam: new URLSearchParams(location.search).get("repo") ?? "" });
 const params = new URLSearchParams(location.search);
 const exampleName = params.get("example") ?? "";
@@ -128,87 +88,7 @@ function openProject(value: string) {
 
 // A damaged share link fell back to the demo.
 if (isShareLink(location.hash) && !shared) showProject(false);
-if (canRun) await setupServiceWorker();
-const semver = canRun ? await loadSemver() : undefined;
-const runner = canRun ? new Runner(vfs, log) : undefined;
-const cantRun = () => log("error", "this browser can't run code here; see the banner above the editor");
-
-
 const openFile = (path: string) => workspace.open(path);
-
-vfs.onChange(({ path, removed }) => {
-  if (removed) workspace.close(path);
-});
-
-function entryFile(): string {
-  try {
-    const pkg = JSON.parse(vfs.readText("package.json") ?? "{}") as { module?: string; main?: string; scripts?: Record<string, string> };
-    for (const e of [pkg.module, pkg.main, scriptEntry(pkg.scripts?.dev), scriptEntry(pkg.scripts?.start)])
-      if (e && vfs.files.has(e.replace(/^\.\//, ""))) return e.replace(/^\.\//, "");
-  } catch {}
-  return ["index.ts", "index.tsx", "index.js", "src/index.ts"].find((f) => vfs.files.has(f)) ?? "index.ts";
-}
-
-/** What the last Run started, to start it again after `bun test` (which replaces the server). */
-let lastEntry: string | undefined;
-
-async function run(entry = entryFile()) {
-  if (!runner) return cantRun();
-  workspace.saveAll();
-  await session.task("run", "Starting…", async (): Promise<Status> => {
-    log("sys", `[run] ${entry}`);
-    lastEntry = entry;
-    try {
-      await runner.start(entry);
-      previews.reload();
-      return { state: "running", text: `Running ${entry}` };
-    } catch (e) {
-      log("error", String(e));
-      return { state: "error", text: "Failed to start" };
-    }
-  });
-}
-
-async function install() {
-  if (!semver) return cantRun();
-  workspace.saveAll();
-  // A running server keeps running through an install, so the status goes back to what it was.
-  await session.task("install", "Installing…", async () => {
-    log("sys", "[bun install]");
-    try {
-      const n = await bunInstall(vfs, semver, log);
-      log("sys", `[bun install] ${n} packages installed`);
-    } catch (e) {
-      log("error", String(e));
-    }
-  });
-}
-
-/** `bun test`: a fresh worker runs the files; a server that was running is started again afterwards. */
-async function test(files: string[]): Promise<number> {
-  if (!runner) return cantRun(), 0;
-  workspace.saveAll();
-  const wasRunning = session.settled().state === "running";
-  let failed = 0;
-  await session.task("run", "Testing…", async (): Promise<Status> => {
-    failed = await runner.runTests(files);
-    return failed ? { state: "error", text: `${failed} test${failed === 1 ? "" : "s"} failed` } : { state: "idle", text: "Tests passed" };
-  });
-  if (wasRunning) await run(lastEntry);
-  return failed;
-}
-
-function stop() {
-  if (session.settled().state !== "running") return;
-  void runner?.stop();
-  log("sys", "[stopped]");
-  session.setStatus({ state: "idle", text: "Stopped" });
-}
-
-function clearConsole() {
-  terminal.clear();
-  session.resetCounts();
-}
 
 async function reset() {
   // A write still in flight would recreate the directory after the discard.
@@ -217,15 +97,12 @@ async function reset() {
   location.reload();
 }
 
-const exec = createShell({ vfs, log, run, install, test, stop, clear: clearConsole, reset, cookies: runner?.cookies });
+await pg.start({ reset });
 
 async function openFolder(files: File[]) {
   await session.started;
   void stopSaving();
-  // Finished before the clear: a database flushed afterwards would land in the opened folder.
-  await runner?.stop();
-  workspace.closeAll();
-  vfs.clear();
+  await pg.clearProject();
   const dec = new TextDecoder("utf-8", { fatal: true });
   let n = 0;
   for (const f of files) {
@@ -267,9 +144,7 @@ async function openDirectory(dir?: FileSystemDirectoryHandle) {
   }
   await session.started;
   await stopSaving();
-  await runner?.stop();
-  workspace.closeAll();
-  vfs.clear();
+  await pg.clearProject();
   for (const [path, data] of files) vfs.write(path, data);
   // After the load: the files just read are on disk already.
   stopSaving = mirror(dir, vfs, log, { all: false, tag: "[folder]" });
@@ -304,21 +179,13 @@ async function openZip(file: File) {
   if (!entries.length) return log("error", `[open] ${file.name} has no files`);
   await session.started;
   void stopSaving();
-  await runner?.stop();
-  workspace.closeAll();
-  vfs.clear();
+  await pg.clearProject();
   for (const [path, data] of entries) vfs.write(path, data);
   workspace.reloadTree();
   log("sys", `[open] ${file.name}: ${entries.length} files (node_modules skipped)`);
   openFile(entryFile());
 }
 
-async function newFile(path: string) {
-  await session.started;
-  vfs.write(path, "");
-  openFile(path);
-}
-session.markReady();
 
 // `?folder=`: the folder opened before the reload, if the browser still lets us write to it; else it's a click away.
 const folder = "showDirectoryPicker" in window ? await lastFolder() : undefined;
@@ -328,19 +195,9 @@ if (params.has("folder")) {
   else log("sys", `[open] pick "Reopen ${folder?.name ?? params.get("folder")}" in the project menu to keep working on the folder`);
 }
 
-/** Like StackBlitz: install on load when a dependency is missing from node_modules. */
-function missingDeps(): boolean {
-  try {
-    const pkg = JSON.parse(vfs.readText("package.json") ?? "{}") as { dependencies?: Record<string, string> };
-    return Object.keys(pkg.dependencies ?? {}).some((n) => !vfs.files.has(`node_modules/${n}/package.json`));
-  } catch {
-    return false;
-  }
-}
-
 openFile(entryFile());
-if (canRun) {
-  if (missingDeps()) await install();
+if (pg.canRun) {
+  if (pg.missingDeps()) await install();
   await run();
 }
-Object.assign(window, { vfs, semver });
+Object.assign(window, { vfs, semver: pg.semver });
