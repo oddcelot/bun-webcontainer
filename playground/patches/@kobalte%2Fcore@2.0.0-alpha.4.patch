@@ -1,0 +1,88 @@
+diff --git a/dist/create-dom-collection/F5MPGch0.js b/dist/create-dom-collection/F5MPGch0.js
+index a915aa33b221ba033856b483e99fb1ad5a38e14f..98f20774084a8d0f7b499c0e8c2060b6a6f91b01 100644
+--- a/dist/create-dom-collection/F5MPGch0.js
++++ b/dist/create-dom-collection/F5MPGch0.js
+@@ -91,9 +91,12 @@ function createSortBasedOnDOMPosition(items, setItems) {
+ //#endregion
+ //#region src/primitives/create-dom-collection/create-dom-collection.ts
+ function createDomCollection(props = {}) {
+-	const [items, setItems] = createSignal([]);
++	// runbun patch: a caller's own items signal is used directly. Copying ours into it from an effect was a relay
++	// (Solid 2's EFFECT_RELAY_TEAR): readers of the copy were a flush behind.
++	const shared = props.items && props.onItemsChange;
++	const [items, setItems] = shared ? [props.items, props.onItemsChange] : createSignal([]);
+ 	createSortBasedOnDOMPosition(items, setItems);
+-	createEffect(() => items(), (currentItems) => {
++	if (!shared) createEffect(() => items(), (currentItems) => {
+ 		props.onItemsChange?.(currentItems);
+ 	}, { defer: true });
+ 	const registerItem = (item) => {
+diff --git a/dist/create-dom-collection/F5MPGch0.jsx b/dist/create-dom-collection/F5MPGch0.jsx
+index a915aa33b221ba033856b483e99fb1ad5a38e14f..98f20774084a8d0f7b499c0e8c2060b6a6f91b01 100644
+--- a/dist/create-dom-collection/F5MPGch0.jsx
++++ b/dist/create-dom-collection/F5MPGch0.jsx
+@@ -91,9 +91,12 @@ function createSortBasedOnDOMPosition(items, setItems) {
+ //#endregion
+ //#region src/primitives/create-dom-collection/create-dom-collection.ts
+ function createDomCollection(props = {}) {
+-	const [items, setItems] = createSignal([]);
++	// runbun patch: a caller's own items signal is used directly. Copying ours into it from an effect was a relay
++	// (Solid 2's EFFECT_RELAY_TEAR): readers of the copy were a flush behind.
++	const shared = props.items && props.onItemsChange;
++	const [items, setItems] = shared ? [props.items, props.onItemsChange] : createSignal([]);
+ 	createSortBasedOnDOMPosition(items, setItems);
+-	createEffect(() => items(), (currentItems) => {
++	if (!shared) createEffect(() => items(), (currentItems) => {
+ 		props.onItemsChange?.(currentItems);
+ 	}, { defer: true });
+ 	const registerItem = (item) => {
+diff --git a/dist/create-list-state/DiJ141L7.js b/dist/create-list-state/DiJ141L7.js
+index 2563c4b1435ac821abe57395b1e33984b5fe4a48..7ce072594b23c38724f61f333bf9e73c08e103e4 100644
+--- a/dist/create-list-state/DiJ141L7.js
++++ b/dist/create-list-state/DiJ141L7.js
+@@ -768,13 +768,14 @@ function createListState(props) {
+ 		getSectionChildren: () => access(props.getSectionChildren),
+ 		factory
+ 	}, [() => props.filter]);
+-	const selectionManager = new SelectionManager(collection, selectionState);
+-	createEffect(() => {
+-		const focusedKey = selectionState.focusedKey();
+-		return focusedKey != null && !collection().getItem(focusedKey);
+-	}, (shouldReset) => {
+-		if (shouldReset) selectionState.setFocusedKey(void 0);
++	// runbun patch: a focused key whose item is gone reads as none. Clearing it from an effect that reads it was a
++	// write to its own source (Solid 2's EFFECT_WRITES_OWN_SOURCE), seen each time a menu closed.
++	const storedFocusedKey = selectionState.focusedKey;
++	selectionState.focusedKey = createMemo(() => {
++		const focusedKey = storedFocusedKey();
++		return focusedKey != null && !collection().getItem(focusedKey) ? void 0 : focusedKey;
+ 	});
++	const selectionManager = new SelectionManager(collection, selectionState);
+ 	return {
+ 		collection,
+ 		selectionManager: () => selectionManager
+diff --git a/dist/create-list-state/VJ4P23xP.jsx b/dist/create-list-state/VJ4P23xP.jsx
+index 182b99bb41a8c052f38d39d6e249f3ea3375cd48..83330fa4878b1738c23c7f9aa6231678dbfa156a 100644
+--- a/dist/create-list-state/VJ4P23xP.jsx
++++ b/dist/create-list-state/VJ4P23xP.jsx
+@@ -768,13 +768,14 @@ function createListState(props) {
+ 		getSectionChildren: () => access(props.getSectionChildren),
+ 		factory
+ 	}, [() => props.filter]);
+-	const selectionManager = new SelectionManager(collection, selectionState);
+-	createEffect(() => {
+-		const focusedKey = selectionState.focusedKey();
+-		return focusedKey != null && !collection().getItem(focusedKey);
+-	}, (shouldReset) => {
+-		if (shouldReset) selectionState.setFocusedKey(void 0);
++	// runbun patch: a focused key whose item is gone reads as none. Clearing it from an effect that reads it was a
++	// write to its own source (Solid 2's EFFECT_WRITES_OWN_SOURCE), seen each time a menu closed.
++	const storedFocusedKey = selectionState.focusedKey;
++	selectionState.focusedKey = createMemo(() => {
++		const focusedKey = storedFocusedKey();
++		return focusedKey != null && !collection().getItem(focusedKey) ? void 0 : focusedKey;
+ 	});
++	const selectionManager = new SelectionManager(collection, selectionState);
+ 	return {
+ 		collection,
+ 		selectionManager: () => selectionManager
