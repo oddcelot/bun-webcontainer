@@ -30,8 +30,21 @@ export function App() {
   // Per panel, not the root's initialSizes: the root's list only reached the first panel after a reload.
   const [columns, saveColumns] = sizesPref("layout.columns", [0.14, 0.43, 0.43]);
   const [rows, saveRows] = sizesPref("layout.right", [0.5, 0.5]);
-  // Which of preview and console are shown, for the status bar's toggles.
+  // Which of tree, preview and console are shown, for the status bar's toggles.
+  const [columnSizes, setColumnSizes] = createSignal(columns);
   const [rowSizes, setRowSizes] = createSignal(rows);
+  // The tree-editor-right columns, for the shortcut that hides the tree.
+  let cols: RootChildrenProps | undefined;
+  // The tree's width from before it was hidden, to show it again at.
+  let treeShown = columns[0];
+  const toggleTree = () => {
+    if (!cols) return;
+    const [tree, editor, right] = cols.sizes;
+    if (tree > 0) treeShown = tree;
+    // The editor and the right column give up (or take) the tree's room in proportion to their widths.
+    const scale = (tree > 0 ? 1 : 1 - treeShown) / (editor + right);
+    cols.setSizes([tree > 0 ? 0 : treeShown, editor * scale, right * scale]);
+  };
   // The preview-over-console split, for the shortcuts that hide either.
   let split: RootChildrenProps | undefined;
   // The split from before one was hidden, to show both again at.
@@ -48,6 +61,7 @@ export function App() {
       const s = app.session;
       if (matches("run", e)) s.canRun && !s.busy.run && s.ready() && app.run();
       else if (matches("stop", e)) app.stop();
+      else if (matches("toggleExplorer", e)) toggleTree();
       else if (matches("togglePreview", e)) toggle(0);
       else if (matches("toggleConsole", e)) toggle(1);
       else return;
@@ -70,56 +84,64 @@ export function App() {
           `typeof p.children === "function" ? p.children(...) : p.children`, and each read of p.children builds the
           JSX again, so plain children would render twice (a detached second editor, console and preview that live on).
         */}
-        <Resizable onSizesChange={saveColumns}>
-          {() => (
-            <>
-              <Resizable.Panel panelId="tree-panel" initialSize={columns[0]} minSize="120px">
-                {() => (
-                  <nav id="tree">
-                    <FileTree />
-                  </nav>
-                )}
-              </Resizable.Panel>
-              <Resizable.Handle class="resize-handle" aria-label="Resize file tree" />
-              <Resizable.Panel panelId="editor-panel" initialSize={columns[1]} minSize="200px">
-                {() => (
-                  <section id="editor-pane">
-                    <EditorPane />
-                  </section>
-                )}
-              </Resizable.Panel>
-              <Resizable.Handle class="resize-handle" aria-label="Resize editor and preview" />
-              <Resizable.Panel panelId="right" initialSize={columns[2]} minSize="200px">
-                {() => (
-                  <Resizable
-                    orientation="vertical"
-                    onSizesChange={(sizes) => {
-                      setRowSizes(sizes);
-                      saveRows(sizes);
-                    }}
-                  >
-                    {(r) => {
-                      split = r;
-                      return (
-                        <>
-                          <Resizable.Panel panelId="preview-panel" initialSize={rows[0]} minSize="80px">
-                            {() => <Preview />}
-                          </Resizable.Panel>
-                          <Resizable.Handle class="resize-handle" aria-label="Resize preview and console" />
-                          <Resizable.Panel panelId="console-wrap" initialSize={rows[1]} minSize="60px">
-                            {() => <Console />}
-                          </Resizable.Panel>
-                        </>
-                      );
-                    }}
-                  </Resizable>
-                )}
-              </Resizable.Panel>
-            </>
-          )}
+        <Resizable
+          onSizesChange={(sizes) => {
+            setColumnSizes(sizes);
+            saveColumns(sizes);
+          }}
+        >
+          {(c) => {
+            cols = c;
+            return (
+              <>
+                <Resizable.Panel panelId="tree-panel" initialSize={columns[0]} minSize="120px">
+                  {() => (
+                    <nav id="tree">
+                      <FileTree />
+                    </nav>
+                  )}
+                </Resizable.Panel>
+                <Resizable.Handle class="resize-handle" aria-label="Resize file tree" />
+                <Resizable.Panel panelId="editor-panel" initialSize={columns[1]} minSize="200px">
+                  {() => (
+                    <section id="editor-pane">
+                      <EditorPane />
+                    </section>
+                  )}
+                </Resizable.Panel>
+                <Resizable.Handle class="resize-handle" aria-label="Resize editor and preview" />
+                <Resizable.Panel panelId="right" initialSize={columns[2]} minSize="200px">
+                  {() => (
+                    <Resizable
+                      orientation="vertical"
+                      onSizesChange={(sizes) => {
+                        setRowSizes(sizes);
+                        saveRows(sizes);
+                      }}
+                    >
+                      {(r) => {
+                        split = r;
+                        return (
+                          <>
+                            <Resizable.Panel panelId="preview-panel" initialSize={rows[0]} minSize="80px">
+                              {() => <Preview />}
+                            </Resizable.Panel>
+                            <Resizable.Handle class="resize-handle" aria-label="Resize preview and console" />
+                            <Resizable.Panel panelId="console-wrap" initialSize={rows[1]} minSize="60px">
+                              {() => <Console />}
+                            </Resizable.Panel>
+                          </>
+                        );
+                      }}
+                    </Resizable>
+                  )}
+                </Resizable.Panel>
+              </>
+            );
+          }}
         </Resizable>
       </main>
-      <StatusBar previewShown={rowSizes()[0] > 0} consoleShown={rowSizes()[1] > 0} toggle={toggle} />
+      <StatusBar treeShown={columnSizes()[0] > 0} toggleTree={toggleTree} previewShown={rowSizes()[0] > 0} consoleShown={rowSizes()[1] > 0} toggle={toggle} />
     </>
   );
 }
