@@ -30,6 +30,8 @@ export function createSession(canRun: boolean) {
   /** Runs `work` with `kind`'s button disabled and `text` as the status; `work` returns the status to settle on, or nothing to keep the current one. */
   const task = (kind: Task, text: string, work: () => Promise<Status | void>) => {
     let start!: (work: Promise<Status | void>) => void;
+    // Commit what the caller wrote just before (startup's ready flag and opened file), or the action holds it too.
+    flush();
     const done = settle(kind, text, new Promise((r) => (start = r)));
     flush();
     start(work());
