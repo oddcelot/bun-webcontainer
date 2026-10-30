@@ -15,7 +15,19 @@ Bun's own parser and printer, compiled to WebAssembly. Output matches `bun build
 - ✅ Legacy decorators with `experimentalDecorators` and `emitDecoratorMetadata` in `tsconfig.json`
 - ✅ Top-level `await`
 - ❌ `tsconfig.json` `jsx` and `jsxImportSource` are not read by the transpiler (`paths` and `baseUrl` are, by the resolver); use the `@jsxImportSource` pragma for another JSX runtime
-- ❌ No type checking
+
+## Type checking
+
+[tsrs](https://github.com/oxc-project/tsrs) (TypeScript 7's compiler ported to Rust), compiled to WebAssembly. The editor
+shows type errors in `.ts`, `.tsx`, `.mts` and `.cts` files a moment after you stop typing, once the file parses. It
+loads with the first TypeScript file you open (~2.5 MB compressed, Bun's type definitions included).
+
+- 🟡 Errors for the open file only, with the editor's unsaved text; other files are checked as saved
+- ✅ Uses the nearest `tsconfig.json`; without one, the options `bun init` writes plus `types: ["bun"]`
+- ✅ Types for `Bun.*`, `bun:*`, `node:*` and HTML imports from `@types/bun`, bundled; a project's own `@types/bun` or `@types/node` takes their place
+- ✅ Package types from installed `node_modules` (`.d.ts` files and `package.json` `types`/`exports`)
+- ❌ No autocomplete, hover info or go-to-definition (tsrs's WebAssembly build has no language server)
+- ❌ No `tsc` command in the console
 
 ## Module resolution
 
