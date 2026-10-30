@@ -9,7 +9,7 @@
 #embed-bar button:disabled { opacity: 0.5; cursor: default; }
 #embed-bar .run { border-color: color-mix(in srgb, var(--accent) 60%, var(--panel)); background: color-mix(in srgb, var(--accent) 18%, var(--panel)); }
 #embed-bar .run:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 30%, var(--panel)); }
-#embed-bar .more { padding: 0 7px; }
+#embed-bar .more, #embed-bar .expand { padding: 0 7px; }
 .embed-menu { min-width: 13rem; }
 .embed-menu .check { display: grid; place-items: center; width: 14px; color: var(--accent); }
 .embed-menu .cost { color: var(--muted); font-size: 11px; }

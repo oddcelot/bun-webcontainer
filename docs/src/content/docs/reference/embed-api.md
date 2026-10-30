@@ -20,6 +20,7 @@ The element's attributes and the iframe's URL parameters share names.
 | `theme` | `auto`, `light`, `dark`, or a theme family's light variant | `auto` | e.g. `github-light`. |
 | `readonly` | boolean | `false` | The editor takes no edits. Run still works. |
 | `persist` | key | none | Keeps edits in the reader's browser under this key. Without it every load starts from the source. |
+| `expand` | empty, a mode, `false` | none | A button that opens the embed in a modal over the page. With a mode (`expand="full"`) it switches to that mode while open. Escape or the button closes it. |
 | `example` | name | none | A bundled example. |
 | `repo` | `owner/repo[@ref]` | none | A public GitHub repo. |
 | `share` | `#code=…` | none | A share link's hash. In an iframe URL put it after `#`. |
@@ -69,6 +70,10 @@ On the element, each returns a promise. Call them after `await el.ready`.
 | `setTheme(theme)` | a theme | |
 | `getShareUrl()` | | the share link as a string |
 | `activate()` | | Starts an embed waiting for `load="click"` or `visible`. |
+| `expand()` | | Opens the modal (works without the `expand` button too). |
+| `collapse()` | | Puts the embed back in the page. |
+
+`el.expanded` is true while the modal is open.
 
 `el.ready` resolves once the embed has sent `ready` (or `unsupported`); read the data from the `bun-playground:ready` event. Requests sent earlier wait until the project has loaded.
 
@@ -86,6 +91,7 @@ On the element they are DOM events named `bun-playground:<event>`, with the data
 | `test` | `{ failed }` |
 | `mode` | `{ mode, features }`: after `setMode`, `setFeatures` or the reader's menu |
 | `resize` | `{ height }`: the content's height in pixels, for iframes |
+| `expand` | `{ open }`: on the element, the modal opened or closed. Over postMessage, the reader pressed the expand button (or Escape while open); the host opens or closes its modal and answers with `setExpanded` |
 | `boot` | `{ version }`: postMessage only; see below |
 
 ## postMessage protocol
@@ -98,7 +104,7 @@ Host to embed:
 iframe.contentWindow.postMessage({ bunPlayground: 1, id: 1, method: "writeFile", params: { path: "index.ts", text: "…" } }, "https://runbun.dev");
 ```
 
-The embed answers with the same `id`: `{ bunPlayground: 1, id: 1, result }` or `{ bunPlayground: 1, id: 1, error: "message" }`. Methods and params are those above, plus `init`.
+The embed answers with the same `id`: `{ bunPlayground: 1, id: 1, result }` or `{ bunPlayground: 1, id: 1, error: "message" }`. Methods and params are those above, plus `init` and `setExpanded` (`{ open }`: tell the embed the host's modal opened or closed, so it switches mode and its button follows).
 
 Embed to host, unsolicited:
 

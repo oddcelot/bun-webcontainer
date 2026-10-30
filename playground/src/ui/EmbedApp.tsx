@@ -102,6 +102,18 @@ function EmbedBar() {
       >
         <i class={running() ? "i-lucide-square" : "i-lucide-play"} aria-hidden="true" /> {running() ? "Stop" : "Run"}
       </button>
+      <Show when={e.options.expand}>
+        <button
+          type="button"
+          class="expand"
+          aria-label={e.expanded() ? "Close the large view" : "Open in a large view"}
+          title={e.expanded() ? "Close (Esc)" : "Open in a large view"}
+          aria-pressed={e.expanded() ? "true" : "false"}
+          onClick={() => e.requestExpand(!e.expanded())}
+        >
+          <i class={e.expanded() ? "i-lucide-minimize-2" : "i-lucide-maximize-2"} aria-hidden="true" />
+        </button>
+      </Show>
       <EmbedMenu />
     </header>
   );

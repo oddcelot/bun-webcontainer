@@ -38,6 +38,13 @@ export function resolveFeatures(mode: Mode, authored: string, changes: Partial<R
 /** Features the author turned off with `-name`: the menu doesn't offer them. */
 export const lockedFeatures = (authored: string) => new Set(parseFeatures(authored).off);
 
+/** `expand` (or `expand=on`) for the button, `expand=<mode>` to switch modes too, `false` or absent for none. */
+function expandOption(params: URLSearchParams): Options["expand"] {
+  const v = params.get("expand");
+  if (v === null || v === "false" || v === "0") return "";
+  return isMode(v) ? v : "on";
+}
+
 const bool = (s: string | null, fallback: boolean) => (s === null ? fallback : s !== "false" && s !== "0");
 
 /** Options from the embed URL's parameters; unknown or malformed ones fall back to the defaults. */
@@ -52,5 +59,6 @@ export function optionsFromUrl(params: URLSearchParams): Options {
     theme: params.get("theme") ?? "auto",
     readonly: bool(params.get("readonly"), false),
     persist: params.get("persist") ?? "",
+    expand: expandOption(params),
   };
 }

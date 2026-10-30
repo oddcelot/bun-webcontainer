@@ -28,6 +28,11 @@ export type Options = {
   readonly: boolean;
   /** Keep edits across reloads (in this browser) under this key; without it every load starts from the source. */
   persist: string;
+  /**
+   * A button that asks the host to show the embed in a modal (the `expand` event): "" none, "on" in the same mode,
+   * or a mode to switch to while expanded (`expand=full`: a snippet opens as the whole playground).
+   */
+  expand: "" | "on" | Mode;
 };
 
 /** Host → embed. Each gets a reply with the same `id`: `{ id, result }` or `{ id, error }`. */
@@ -44,6 +49,8 @@ export type Request =
   | { method: "setMode"; params: { mode: Mode } }
   | { method: "setFeatures"; params: Partial<Record<Feature, boolean>> }
   | { method: "setTheme"; params: { theme: string } }
+  /** The host shows (or stopped showing) the embed in a modal; the embed switches mode and its button follows. */
+  | { method: "setExpanded"; params: { open: boolean } }
   | { method: "getShareUrl" };
 
 export type Method = Request["method"];
@@ -59,7 +66,9 @@ export type Event =
   | { event: "change"; data: { path: string; removed: boolean } }
   | { event: "test"; data: { failed: number } }
   | { event: "mode"; data: { mode: Mode; features: Feature[] } }
-  | { event: "resize"; data: { height: number } };
+  | { event: "resize"; data: { height: number } }
+  /** The reader pressed the expand button (or Escape while expanded): the host should open or close its modal. */
+  | { event: "expand"; data: { open: boolean } };
 
 export type EventName = Event["event"];
 

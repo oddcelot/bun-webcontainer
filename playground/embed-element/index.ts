@@ -5,9 +5,14 @@ import type { Event, Feature, Mode, Reply, Request } from "../src/embed/protocol
 const TAG = "bunPlayground"; // = protocol TAG
 const VERSION = 1; // = protocol VERSION
 
-const PARAMS = ["mode", "features", "file", "autorun", "theme", "readonly", "persist", "example", "repo"];
+const PARAMS = ["mode", "features", "file", "autorun", "theme", "readonly", "persist", "example", "repo", "expand"];
 const HEIGHTS: Record<string, string> = { code: "auto", console: "360px", preview: "420px", full: "600px", result: "420px" };
 const CSS = `:host{display:block;position:relative}
+dialog{position:static;display:block;margin:0;padding:0;border:0;width:auto;height:auto;max-width:none;max-height:none;background:none;color:inherit;overflow:visible}
+dialog:not([open]){display:none}
+dialog:modal{position:fixed;inset:0;margin:auto;width:min(1280px,calc(100vw - 48px));height:calc(100vh - 48px);border-radius:10px;overflow:hidden;box-shadow:0 24px 80px rgb(0 0 0/.5)}
+dialog:modal .box{height:100%!important}
+dialog::backdrop{background:rgb(0 0 0/.55)}
 .box{position:relative;overflow:hidden}
 iframe{position:absolute;inset:0;display:block;width:100%;height:100%;border:0}
 iframe.wait{visibility:hidden}
@@ -32,6 +37,9 @@ export class BunPlayground extends HTMLElement {
   static observedAttributes = [...PARAMS, "share", "load", "height", "src", "title"];
 
   #root = this.attachShadow({ mode: "open" });
+  // The box sits in a dialog that's open in place; expanding reopens it as a modal (the top layer), so the iframe never
+  // moves in the DOM, which would reload it.
+  #dialog = document.createElement("dialog");
   #box = document.createElement("div");
   #poster = document.createElement("div");
   #frame: HTMLIFrameElement | null = null;
@@ -55,7 +63,14 @@ export class BunPlayground extends HTMLElement {
     const style = document.createElement("style");
     style.textContent = CSS;
     this.#box.append(this.#poster);
-    this.#root.append(style, this.#box);
+    this.#dialog.append(this.#box);
+    this.#dialog.setAttribute("open", "");
+    // Escape on the host page (focus outside the frame) closes the modal back into the page.
+    this.#dialog.addEventListener("cancel", (e) => {
+      e.preventDefault();
+      void this.collapse();
+    });
+    this.#root.append(style, this.#dialog);
   }
 
   /** Resolves once the embed is ready (or reported `unsupported`). Created up front; replaced if the iframe is rebuilt. */
@@ -150,6 +165,29 @@ export class BunPlayground extends HTMLElement {
   setTheme(theme: string) {
     return this.#call("setTheme", { theme });
   }
+  /** Shows the embed in a modal over the page (in the `expand` attribute's mode, if it names one). */
+  expand() {
+    return this.#setExpanded(true);
+  }
+  /** Puts a modal embed back in the page. */
+  collapse() {
+    return this.#setExpanded(false);
+  }
+  /** True while the embed shows in a modal. */
+  get expanded(): boolean {
+    return this.#dialog.matches(":modal");
+  }
+
+  async #setExpanded(open: boolean) {
+    if (open === this.expanded) return;
+    await this.activate();
+    this.#dialog.close();
+    if (open) this.#dialog.showModal();
+    else this.#dialog.show();
+    this.dispatchEvent(new CustomEvent("bun-playground:expand", { detail: { open }, bubbles: true, composed: true }));
+    await this.#request("setExpanded", { open });
+  }
+
   /** Returns a runbun.dev URL that reopens the current project. */
   getShareUrl(): Promise<string> {
     return this.#call("getShareUrl");
@@ -282,6 +320,8 @@ export class BunPlayground extends HTMLElement {
       return;
     }
     const { event, data } = d as Event;
+    // The embed's expand button: the element opens or closes the modal and announces it itself.
+    if (event === "expand") return void this.#setExpanded(data.open);
     if (event === "boot") void this.#request("init", { files: this.#files(), options: {} }).catch(() => {});
     else if (event === "ready" || event === "unsupported") {
       this.#isReady = true;

@@ -65,6 +65,9 @@ const locked = lockedFeatures(options.features);
 
 const embed = createRoot(() => {
   const [mode, setMode] = createSignal<Mode>(options.mode);
+  const [expanded, setOpen] = createSignal(false);
+  // The mode to go back to when the modal closes (`expand=<mode>` switched it).
+  let modeBefore: Mode | undefined;
   const [changes, setChanges] = createStore<Partial<Record<Feature, boolean>>>({});
   const features = createMemo(() => resolveFeatures(mode(), options.features, changes));
   createEffect(
@@ -86,6 +89,24 @@ const embed = createRoot(() => {
     features,
     has: (f: Feature) => features().includes(f),
     setMode,
+    expanded,
+    /** Asks the host for its modal (or to close it); it answers with `setExpanded`. */
+    requestExpand(open: boolean) {
+      emit("expand", { open });
+    },
+    /** The host opened or closed its modal: an `expand=<mode>` embed switches to that mode meanwhile. */
+    setExpanded(open: boolean) {
+      setOpen(open);
+      const to = options.expand;
+      if (to === "" || to === "on") return;
+      if (open) {
+        modeBefore = mode();
+        setMode(to);
+      } else if (modeBefore) {
+        setMode(modeBefore);
+        modeBefore = undefined;
+      }
+    },
     /** Turns features on or off; `fromReader` (the menu) can't turn on what the author locked. */
     setFeatures(next: Partial<Record<Feature, boolean>>, fromReader = false) {
       setChanges((c) => {
@@ -174,6 +195,13 @@ workspace.open(first);
 
 // --- Events
 
+// Escape while expanded closes the modal (keys pressed in this frame never reach the host's dialog), unless something
+// in here used it: a completion list, the preview's own full view.
+addEventListener("keydown", (e) => {
+  if (e.key !== "Escape" || e.defaultPrevented || !untrack(embed.expanded) || document.querySelector("#preview-wrap.expanded")) return;
+  embed.requestExpand(false);
+});
+
 pg.onLog((level, text) => emit("console", { level, text }));
 vfs.onChange(({ path, removed }) => {
   if (!SKIP.test(path)) emit("change", { path, removed: !!removed });
@@ -255,6 +283,8 @@ async function handle(req: Request): Promise<unknown> {
       return embed.setFeatures(req.params);
     case "setTheme":
       return applyTheme(req.params.theme);
+    case "setExpanded":
+      return embed.setExpanded(!!req.params.open);
     case "getShareUrl":
       return shareUrl();
     default:
