@@ -3,6 +3,7 @@ import { Select } from "@kobalte/core/select";
 import { examples, repoExamples } from "../examples";
 import { AppContext } from "./context";
 import { PromptDialog } from "./PromptDialog";
+import { Tip } from "./Tip";
 
 type Project = { label: string; value: string; icon?: string };
 
@@ -103,12 +104,12 @@ function Picker(props: { groups: Group[]; current: (list: Group[]) => Project | 
         )}
         sectionComponent={(p) => <Select.Section class="select-section">{p.section.rawValue.label}</Select.Section>}
       >
-        <Select.Trigger id="example" class="select-trigger" title="Example project" aria-label="Example project">
+        <Tip as={Select.Trigger} id="example" class="select-trigger" tip="Example project" aria-label="Example project">
           <Select.Value<Project> class="value">{(state) => <span class="name">{state.selectedOption().label}</span>}</Select.Value>
           <Select.Icon class="chevron">
             <i class="i-lucide-chevron-down" aria-hidden="true" />
           </Select.Icon>
-        </Select.Trigger>
+        </Tip>
         <Select.Portal>
           <Select.Content class="select-menu">
             <Select.Listbox class="select-list" />

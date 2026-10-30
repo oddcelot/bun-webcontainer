@@ -1,5 +1,6 @@
 import { Show, onSettled, useContext } from "solid-js";
 import { AppContext } from "./context";
+import { Tip } from "./Tip";
 
 /** The console pane: its header (line, error and warning counts, Clear) over the terminal. */
 export function Console() {
@@ -12,24 +13,24 @@ export function Console() {
       <div id="console-head">
         <i class="i-lucide-square-terminal" aria-hidden="true" />
         <span class="label">Console</span>
-        <span id="console-count" class="chip" title="Lines">
+        <Tip as="span" id="console-count" class="chip" tip="Lines">
           {counts.lines}
-        </span>
+        </Tip>
         <Show when={counts.error}>
-          <span id="console-errors" class="chip error" title="Errors">
+          <Tip as="span" id="console-errors" class="chip error" tip="Errors">
             <i class="i-lucide-circle-x" aria-hidden="true" />
             <span>{counts.error}</span>
-          </span>
+          </Tip>
         </Show>
         <Show when={counts.warn}>
-          <span id="console-warns" class="chip warn" title="Warnings">
+          <Tip as="span" id="console-warns" class="chip warn" tip="Warnings">
             <i class="i-lucide-triangle-alert" aria-hidden="true" />
             <span>{counts.warn}</span>
-          </span>
+          </Tip>
         </Show>
-        <button
+        <Tip
           id="clear"
-          title="Clear console"
+          tip="Clear console"
           aria-label="Clear console"
           disabled={counts.lines === 0}
           onClick={() => {
@@ -38,7 +39,7 @@ export function Console() {
           }}
         >
           <i class="i-lucide-trash-2" aria-hidden="true" />
-        </button>
+        </Tip>
       </div>
       <div id="console" ref={el} />
     </>

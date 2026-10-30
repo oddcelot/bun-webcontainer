@@ -7,6 +7,7 @@ import { asConsoleEntry, errorLocation, fmt } from "../fmt";
 import { AppContext } from "./context";
 import { guarded } from "./guarded";
 import { EditorTabs } from "./Tabs";
+import { Tip } from "./Tip";
 
 /** How long auto-save waits after the last keystroke. */
 const SAVE_DELAY = 300;
@@ -126,14 +127,14 @@ export function EditorPane() {
     <>
       <div class="tabs-bar">
         <EditorTabs placeholder={!session.ready() && !ws.state.open.length} />
-        <button class="format" type="button" disabled={!ws.state.active} title={["Format the open file with bun fmt", ...keysFor("format").map(formatChord)].join(" · ")} onClick={() => void formatOpenFile()}>
+        <Tip class="format" type="button" disabled={!ws.state.active} tip="Format the open file with bun fmt" keys={keysFor("format").map(formatChord)} onClick={() => void formatOpenFile()}>
           <i class="i-lucide-wand-sparkles" aria-hidden="true" /> Format
-        </button>
-        <button
+        </Tip>
+        <Tip
           class="autosave"
           type="button"
           aria-pressed={ws.autosave() ? "true" : "false"}
-          title={ws.autosave() ? "Edits save shortly after you stop typing. Click to save with Ctrl/Cmd+S instead." : "Edits save with Ctrl/Cmd+S (and before Run). Click to save as you type."}
+          tip={ws.autosave() ? "Edits save shortly after you stop typing. Click to save with Ctrl/Cmd+S instead." : "Edits save with Ctrl/Cmd+S (and before Run). Click to save as you type."}
           onClick={() => {
             const on = !ws.autosave();
             ws.setAutosave(on);
@@ -141,7 +142,7 @@ export function EditorPane() {
           }}
         >
           <i class={ws.autosave() ? "i-lucide-save" : "i-lucide-save-off"} aria-hidden="true" /> Auto-save
-        </button>
+        </Tip>
       </div>
       {/* "No file open" only once the project has loaded, not while its first file is on the way. */}
       <div id="editor" ref={el} data-empty={session.ready() && !ws.state.active ? "" : undefined} />

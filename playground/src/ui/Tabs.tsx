@@ -1,6 +1,7 @@
 import { For, Show, createEffect, createMemo, flush, useContext, type ParentProps } from "solid-js";
-import { matches } from "../keymap";
+import { formatChord, keysFor, matches } from "../keymap";
 import { AppContext } from "./context";
+import { Tip } from "./Tip";
 
 const name = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 
@@ -54,23 +55,23 @@ export function TabItem(
 ) {
   return (
     <div class="tab" role="presentation" data-selected={props.selected ? "" : undefined} onAuxClick={(e) => e.button === 1 && props.onClose?.()}>
-      <button
+      <Tip
         type="button"
         role="tab"
         class="tab-trigger"
         data-value={props.value}
         aria-selected={props.selected ? "true" : "false"}
         tabindex={props.selected ? 0 : -1}
-        title={props.title}
-        onKeyDown={(e) => props.onKeyDown?.(e)}
+        tip={props.title}
+        onKeyDown={(e: KeyboardEvent) => props.onKeyDown?.(e)}
       >
         {props.children}
-      </button>
+      </Tip>
       <Show when={props.onClose}>
         {(close) => (
-          <button class="close" type="button" title={props.closeLabel} aria-label={props.closeLabel} tabindex={-1} onClick={() => close()()}>
+          <Tip class="close" type="button" tip={props.closeLabel} aria-label={props.closeLabel} tabindex={-1} onClick={() => close()()}>
             <i class="i-lucide-x" aria-hidden="true" />
-          </button>
+          </Tip>
         )}
       </Show>
     </div>
@@ -127,9 +128,9 @@ export function EditorTabs(props: { placeholder?: boolean }) {
               <span class="name">{name(path)}</span>
               {clashes().get(name(path))! > 1 && path.includes("/") && <span class="dir">{path.slice(0, path.lastIndexOf("/"))}</span>}
               <Show when={ws.state.dirty.includes(path)}>
-                <span class="unsaved" title="Unsaved changes (Ctrl/Cmd+S saves)" aria-label="unsaved">
+                <Tip as="span" class="unsaved" tip="Unsaved changes" keys={keysFor("save").map(formatChord)} aria-label="unsaved">
                   ●
-                </span>
+                </Tip>
               </Show>
             </TabItem>
           )}

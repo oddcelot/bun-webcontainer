@@ -6,6 +6,7 @@ import { matches } from "../keymap";
 import type { Card } from "../preview";
 import { AppContext } from "./context";
 import type { PreviewTab } from "./previews";
+import { Tip } from "./Tip";
 
 const CANT_RUN = "This browser can't run code here";
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"];
@@ -56,9 +57,9 @@ export function Preview() {
           <TabList class="tablist" label="Previews" onSelect={(id) => Number(id) !== s.active && p.activate(Number(id))}>
             <For each={s.tabs}>{(tab) => <PreviewTabItem tab={tab} />}</For>
           </TabList>
-          <button class="add" type="button" title="New preview" aria-label="New preview" onClick={() => p.request(p.open())}>
+          <Tip class="add" type="button" tip="New preview" aria-label="New preview" onClick={() => p.request(p.open())}>
             <i class="i-lucide-plus" aria-hidden="true" />
-          </button>
+          </Tip>
         </div>
         <form
           id="request"
@@ -84,12 +85,12 @@ export function Preview() {
               </Select.Item>
             )}
           >
-            <Select.Trigger id="req-method" class="select-trigger" title={disabled ? CANT_RUN : "Method"} aria-label="Method">
+            <Tip as={Select.Trigger} id="req-method" class="select-trigger" tip={disabled ? CANT_RUN : "Method"} aria-label="Method">
               <Select.Value<string> class="value">{(state) => <span class="name">{state.selectedOption()}</span>}</Select.Value>
               <Select.Icon class="chevron">
                 <i class="i-lucide-chevron-down" aria-hidden="true" />
               </Select.Icon>
-            </Select.Trigger>
+            </Tip>
             <Select.Portal>
               <Select.Content class="select-menu method-menu">
                 <Select.Listbox class="select-list" />
@@ -104,14 +105,14 @@ export function Preview() {
             value={active().path}
             onInput={(e) => p.edit(s.active, "path", e.currentTarget.value)}
           />
-          <button disabled={disabled} title={disabled ? CANT_RUN : "Send"}>
+          <Tip type="submit" disabled={disabled} tip={disabled ? CANT_RUN : "Send the request"}>
             <i class="i-lucide-send" aria-hidden="true" />
             <span class="label">Send</span>
-          </button>
-          <button
+          </Tip>
+          <Tip
             type="button"
             id="open-tab"
-            title={disabled ? CANT_RUN : "Open in a new tab (the server keeps running here)"}
+            tip={disabled ? CANT_RUN : "Open in a new tab (the server keeps running here)"}
             aria-label="Open in a new tab"
             disabled={disabled}
             onClick={() => {
@@ -120,16 +121,18 @@ export function Preview() {
             }}
           >
             <i class="i-lucide-external-link" aria-hidden="true" />
-          </button>
-          <button
+          </Tip>
+          <Tip
             type="button"
             id="expand"
-            title={s.expanded ? "Restore preview (Esc)" : "Expand preview (Esc)"}
+            tip={s.expanded ? "Restore preview" : "Expand preview"}
+            keys={["Esc"]}
+            aria-label={s.expanded ? "Restore preview" : "Expand preview"}
             aria-pressed={s.expanded ? "true" : "false"}
             onClick={() => p.setExpanded(!s.expanded)}
           >
             <i class={s.expanded ? "i-lucide-minimize-2" : "i-lucide-maximize-2"} aria-hidden="true" />
-          </button>
+          </Tip>
         </form>
         <textarea
           id="req-body"
