@@ -54,3 +54,26 @@ Built-ins import with or without the `node:` prefix. Labels are explained on the
 | `wasi` | ❌ Missing | |
 | `worker_threads` | 🟡 Partial | `isMainThread`, `MessageChannel`, `BroadcastChannel`. `new Worker()` throws. |
 | `zlib` | 🟡 Partial | gzip, deflate (zlib and raw) and `unzip`: sync, callback and stream APIs, `crc32`, `constants`. Brotli functions throw. |
+
+Try a few of them:
+
+```ts playground title="index.ts"
+import { EventEmitter, once } from "node:events";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import { gunzipSync, gzipSync } from "node:zlib";
+import { format } from "node:util";
+
+await mkdir("data", { recursive: true });
+await writeFile(join("data", "hello.txt"), "hi from node:fs");
+console.log(await readdir("data"), await readFile("data/hello.txt", "utf8"));
+
+console.log(createHash("sha1").update("bun").digest("hex"), randomUUID().length);
+console.log(gunzipSync(gzipSync(Buffer.from("zlib round trip"))).toString());
+
+const emitter = new EventEmitter();
+setTimeout(() => emitter.emit("ready", 42), 10);
+const [value] = await once(emitter, "ready");
+console.log(format("event said %d", value));
+```
