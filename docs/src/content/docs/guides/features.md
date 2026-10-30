@@ -98,6 +98,10 @@ Dependencies install automatically when a project opens with missing packages. `
 - **Examples:** Elysia, Hono, Astro + Solid, Vite, Lit SSR and more in the project picker.
 - **One tab per project:** a second tab with the same project can't save its changes.
 
+## Embedding
+
+Any project can be put in another page, as a `<bun-playground>` element or an iframe. See [Embedding](/guides/embedding/) and the [embed reference](/reference/embed-api/).
+
 ### Links
 
 | URL | Opens |

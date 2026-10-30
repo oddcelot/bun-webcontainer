@@ -39,6 +39,18 @@ The playground uses these when the browser has them and works without them.
 | Web Locks | Only one tab saves a project at a time. | Two tabs with the same project overwrite each other's saves. | ✅ | ✅ | ✅ |
 | Cross-origin isolation (`COEP: credentialless`) | The site sends `COOP: same-origin` and `COEP: credentialless`. | Safari ignores `credentialless` and isn't isolated; the playground still runs. | ✅ | ✅ | ❌ |
 
+## Embeds
+
+[Embeds](/guides/embedding/) run in the same browsers, with these differences.
+
+| Case | Status | Notes |
+|---|---|---|
+| Chrome / Edge 133+, Firefox 134+ | ✅ Works | Code, console, preview and full modes. |
+| Safari and iOS | 🟡 Edit only | The embed shows and edits the code but can't run it, and sends `unsupported`. |
+| Vite / Rolldown projects in an iframe | 🟡 Partial | They need cross-origin isolation. It works only if the host page is isolated (`COOP: same-origin`, `COEP: credentialless`) and the iframe has `allow="cross-origin-isolated"`. Otherwise run them on runbun.dev. |
+| Everything else in an iframe | ✅ Works | No isolation needed. |
+| Storage | 🟡 Partial | The service worker and OPFS are partitioned per host site. The first visit on each site downloads the wasm again. |
+
 ## Notes
 
 - **Reload normally.** A hard refresh bypasses the service worker and leaves the page uncontrolled; reload again to recover.

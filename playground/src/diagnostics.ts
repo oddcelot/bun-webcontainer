@@ -22,10 +22,10 @@ function utf16Index(line: string, bytes: number): number {
 }
 
 /** Parse errors of `text` (the transpiler's, no resolver) as editor markers; when it parses, type errors for TypeScript. */
-export async function diagnose(vfs: VFS, path: string, text: string): Promise<EditorDiagnostic[]> {
+export async function diagnose(vfs: VFS, path: string, text: string, types = true): Promise<EditorDiagnostic[]> {
   try {
     await transpile(text, path, tsconfigFor(vfs, path));
-    return TYPED.test(path) ? await typecheck(vfs, path, text) : [];
+    return types && TYPED.test(path) ? await typecheck(vfs, path, text) : [];
   } catch (e) {
     if (!(e instanceof TranspileError)) return [];
     const lines = text.split("\n");
@@ -41,8 +41,11 @@ export async function diagnose(vfs: VFS, path: string, text: string): Promise<Ed
   }
 }
 
-/** Debounced parse- and type-error markers for the file in `editor`; call `check(path, text)` on open and on every edit. */
-export function mountDiagnostics(vfs: VFS, editor: CodeEditor) {
+/**
+ * Debounced parse- and type-error markers for the file in `editor`; call `check(path, text)` on open and on every
+ * edit. Type errors only while `types()` (an embed without the type checker gets parse errors).
+ */
+export function mountDiagnostics(vfs: VFS, editor: CodeEditor, types: () => boolean = () => true) {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let seq = 0;
   return (path: string | null, text: string | null) => {
@@ -50,7 +53,7 @@ export function mountDiagnostics(vfs: VFS, editor: CodeEditor) {
     const mine = ++seq;
     if (!path || text === null || !CHECKED.test(path) || text.length > MAX_BYTES) return editor.setDiagnostics([]);
     timer = setTimeout(async () => {
-      const found = await diagnose(vfs, path, text);
+      const found = await diagnose(vfs, path, text, types());
       if (mine === seq) editor.setDiagnostics(found);
     }, DEBOUNCE_MS);
   };

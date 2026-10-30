@@ -1,5 +1,5 @@
 import { CookieJar } from "./cookieJar";
-import { serveModule } from "./moduleServer";
+import { serveModule, vfsRoot } from "./moduleServer";
 import type { VFS } from "./vfs";
 
 /** Tells preview pages (see previewWebSocket in sw.js) that their WebSockets' server is gone. */
@@ -175,7 +175,7 @@ export class Runner {
         resolve();
       };
     });
-    worker.postMessage({ type: "start", entry, tests, files: this.vfs.files, dirs: this.vfs.dirs });
+    worker.postMessage({ type: "start", entry, tests, files: this.vfs.files, dirs: this.vfs.dirs, vfsRoot: vfsRoot() });
     return this.ready;
   }
 }

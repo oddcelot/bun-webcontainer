@@ -120,6 +120,17 @@ function hoistMetaRequire(vfs: VFS, code: string, dir: string, url: (spec: strin
 ${code.replace(/\bimport\.meta\.require\b/g, "__metaRequire")}`;
 }
 
+/**
+ * Where this page's modules are served: `/__vfs/@<client id>/`, so the service worker asks this page for them and not
+ * another playground sharing it (a second tab, or embeds on one page). See `setVfsOwner`.
+ */
+let VFS_ROOT = `${BASE}__vfs/`;
+export const vfsRoot = () => VFS_ROOT;
+/** Called once the service worker has said which client this page is. */
+export function setVfsOwner(clientId: string) {
+  VFS_ROOT = `${BASE}__vfs/@${encodeURIComponent(clientId)}/`;
+}
+
 /** Where `spec` imported from `dir` is served, relative to `/__vfs/`; null if it doesn't resolve. CSS imported from code is `__css/<path>` (see cssModule). */
 function resolveTarget(vfs: VFS, spec: string, dir: string, kind: ResolveKind = "import"): string | null {
   const t = resolveSpecifier(vfs, spec, dir, kind);
@@ -147,7 +158,7 @@ function resolver(vfs: VFS, dir: string): Resolver {
 function specifierUrl(vfs: VFS, dir: string): (spec: string) => string | null {
   return (spec) => {
     if (/^(https?:|data:|blob:)/.test(spec) || spec.startsWith(`${BASE}__vfs/`)) return null;
-    return `${BASE}__vfs/${resolveTarget(vfs, spec, dir) ?? `__unresolved__/${encodeURIComponent(spec)}`}`;
+    return `${VFS_ROOT}${resolveTarget(vfs, spec, dir) ?? `__unresolved__/${encodeURIComponent(spec)}`}`;
   };
 }
 
@@ -275,7 +286,7 @@ function rewriteMeta(code: string, path: string, bun: boolean): string {
  */
 function cssModule(path: string, target: ModuleTarget): string {
   if (target === "bun") return "const m = {};\nexport default m;\nexport const __esModule = true;\nexport const __cjs = m;";
-  const href = JSON.stringify(`${BASE}__vfs/${path}`);
+  const href = JSON.stringify(`${VFS_ROOT}${path}`);
   const names = /\.module\.css$/.test(path) ? 'new Proxy({}, { get: (_, k) => (typeof k === "string" ? k : undefined) })' : "{}";
   return `if (!document.querySelector(\`link[href=\${CSS.escape(${href})}]\`)) document.head.append(Object.assign(document.createElement("link"), { rel: "stylesheet", href: ${href} }));
 const m = ${names};
@@ -332,9 +343,9 @@ async function serveCommonJS(vfs: VFS, path: string, onError: (msg: string) => v
   const dir = dirname(path);
   const code = wrapCommonJS(path, src, (spec) => {
     const t = resolveTarget(vfs, spec, dir, "require");
-    if (t === null || t.startsWith("__")) return t && `${BASE}__vfs/${t}`;
+    if (t === null || t.startsWith("__")) return t && `${VFS_ROOT}${t}`;
     const dep = vfs.readText(t);
-    return `${BASE}__vfs/${dep !== undefined && isCommonJS(t, dep, packageType(vfs, t)) ? "__cjs/" : ""}${t}`;
+    return `${VFS_ROOT}${dep !== undefined && isCommonJS(t, dep, packageType(vfs, t)) ? "__cjs/" : ""}${t}`;
   });
   // The body is plain source: its `import("x")` calls still need their specifiers resolved.
   try {
@@ -384,7 +395,7 @@ export async function serveModule(vfs: VFS, rawPath: string, onError: (msg: stri
     }
     else if (isCommonJS(path, src, packageType(vfs, path))) {
       TARGET = target;
-      return { status: 200, body: commonJSFacade(commonJSNames(vfs, path, src), `${BASE}__vfs/__cjs/${path}`) };
+      return { status: 200, body: commonJSFacade(commonJSNames(vfs, path, src), `${VFS_ROOT}__cjs/${path}`) };
     }
     else {
       // Plain ES module: Bun's parser finds the specifiers, as `bun build --no-bundle` does.

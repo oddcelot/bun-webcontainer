@@ -1,0 +1,119 @@
+<!doctype html>
+<!--
+  Manual test host for <bun-playground>. Serve it from a DIFFERENT origin than the playground, so the embed is
+  genuinely cross-origin:
+
+    1. cd playground && bun run dev                     (playground on http://localhost:5173, serves /embed.js)
+    2. cd playground/fixtures && bunx serve -l 8080     (or: python3 -m http.server 8080)
+    3. open http://localhost:8080/embed-host.html
+
+  To test against another deployment, change PLAYGROUND below (default http://localhost:5173/).
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>bun-playground embed host</title>
+  <style>
+    body { font: 15px/1.5 system-ui, sans-serif; max-width: 880px; margin: 24px auto; padding: 0 16px; color-scheme: light dark; }
+    h2 { margin: 32px 0 8px; font-size: 16px; }
+    bun-playground { border: 1px solid #8884; border-radius: 8px; overflow: hidden; }
+    .panel { position: sticky; bottom: 0; background: Canvas; border-top: 1px solid #8884; padding: 8px 0; margin-top: 32px; }
+    .panel button { margin: 0 4px 4px 0; }
+    #log { height: 160px; overflow: auto; margin: 8px 0 0; padding: 8px; font: 12px/1.4 ui-monospace, monospace; border: 1px solid #8884; white-space: pre-wrap; }
+  </style>
+  <script type="module" src="http://localhost:5173/embed.js"></script>
+</head>
+<body>
+  <h1>&lt;bun-playground&gt; test host</h1>
+
+  <h2>mode="code" (height auto, autorun)</h2>
+  <bun-playground id="code" mode="code" load="eager">
+    <script type="text/plain" data-file="index.ts">
+      const greet = (name: string) => `hello, ${name}`;
+      console.log(greet("embed"));
+    </script>
+  </bun-playground>
+
+  <h2>mode="console"</h2>
+  <bun-playground id="console" mode="console">
+    <script type="text/plain" data-file="index.ts">
+      for (let i = 1; i <= 3; i++) console.log("line", i);
+      console.log(Bun.version);
+    </script>
+  </bun-playground>
+
+  <h2>mode="preview" example="elysia-demo"</h2>
+  <bun-playground id="preview" mode="preview" example="elysia-demo"></bun-playground>
+
+  <h2>mode="full" (readonly off, theme dark)</h2>
+  <bun-playground id="full" mode="full" theme="dark">
+    <script type="text/plain" data-file="index.ts">
+      Bun.serve({ port: 3000, fetch: () => new Response("hi from full") });
+    </script>
+    <script type="text/plain" data-file="package.json">
+      { "name": "full-demo", "private": true }
+    </script>
+  </bun-playground>
+
+  <h2>mode="result"</h2>
+  <bun-playground id="result" mode="result">
+    <script type="text/plain" data-file="index.html">
+      <!doctype html><h1>result mode</h1>
+    </script>
+  </bun-playground>
+
+  <h2>load="click" with a custom poster</h2>
+  <bun-playground id="click" mode="console" load="click" height="300px">
+    <div slot="poster" style="display:grid;place-items:center;height:100%;background:#fbf0df;color:#222;font-size:20px">
+      Click to start the playground
+    </div>
+    <script type="text/plain" data-file="index.ts">
+      console.log("started from a click");
+    </script>
+  </bun-playground>
+
+  <h2>load="click" with the default poster</h2>
+  <bun-playground id="click2" mode="code" load="click" height="200px">
+    <script type="text/plain" data-file="index.ts">
+      console.log("default poster");
+    </script>
+  </bun-playground>
+
+  <div class="panel">
+    <button id="b-write">writeFile + run</button>
+    <button id="b-full">setMode full</button>
+    <button id="b-dark">setTheme dark</button>
+    <button id="b-share">getShareUrl</button>
+    <button id="b-files">listFiles</button>
+    <small>(acts on the "code" embed)</small>
+    <pre id="log"></pre>
+  </div>
+
+  <script type="module">
+    const el = document.getElementById("code");
+    const log = document.getElementById("log");
+    const out = (s) => { log.textContent += s + "\n"; log.scrollTop = log.scrollHeight; };
+
+    // Every embed event bubbles from its element as bun-playground:<event>.
+    for (const name of ["boot", "ready", "unsupported", "status", "console", "change", "test", "mode", "resize"]) {
+      document.addEventListener("bun-playground:" + name, (e) => {
+        if (name === "resize") return; // noisy
+        out(`${e.target.id} ${name} ${JSON.stringify(e.detail)}`);
+      });
+    }
+
+    const act = (id, fn) => document.getElementById(id).addEventListener("click", async () => {
+      try { out("-> " + JSON.stringify(await fn())); } catch (err) { out("!! " + err.message); }
+    });
+    act("b-write", async () => {
+      await el.writeFile("index.ts", `console.log("written by host at", new Date().toISOString());`);
+      return el.run();
+    });
+    act("b-full", () => el.setMode("full"));
+    act("b-dark", () => el.setTheme("dark"));
+    act("b-share", () => el.getShareUrl());
+    act("b-files", () => el.listFiles());
+  </script>
+</body>
+</html>

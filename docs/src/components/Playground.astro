@@ -1,0 +1,59 @@
+---
+// A runnable embed for .mdx pages. The default slot is the poster (shown until the embed is ready); `files` become
+// inline sources. In plain .md pages use a ```ts playground fence instead (src/remark-playground.mjs).
+import { PLAYGROUND_URL } from "../../site-urls.mjs";
+
+interface Props {
+  mode?: "code" | "preview" | "console" | "full" | "result";
+  features?: string;
+  file?: string;
+  autorun?: boolean;
+  theme?: string;
+  readonly?: boolean;
+  persist?: string;
+  example?: string;
+  repo?: string;
+  share?: string;
+  load?: "eager" | "visible" | "click";
+  height?: string;
+  title?: string;
+  /** A button that opens the embed in a modal: true, or a mode to switch to while open ("full"). */
+  expand?: boolean | "code" | "preview" | "console" | "full" | "result";
+  files?: Record<string, string>;
+}
+const { files = {}, load = "click", ...attrs } = Astro.props;
+const bool = (v: unknown) => (v === undefined ? undefined : v ? "" : undefined);
+const escape = (s: string) => s.replace(/<\/(script)/gi, "<\\/$1").replace(/<!--/g, "<\\!--");
+---
+
+<bun-playground
+  load={load}
+  mode={attrs.mode}
+  features={attrs.features}
+  file={attrs.file}
+  autorun={attrs.autorun === undefined ? undefined : String(attrs.autorun)}
+  theme={attrs.theme}
+  readonly={bool(attrs.readonly)}
+  persist={attrs.persist}
+  example={attrs.example}
+  repo={attrs.repo}
+  share={attrs.share}
+  height={attrs.height}
+  title={attrs.title}
+  expand={attrs.expand === undefined || attrs.expand === false ? undefined : attrs.expand === true ? "" : attrs.expand}
+>
+  {Object.entries(files).map(([path, text]) => <script type="text/plain" data-file={path} set:html={"\n" + escape(text) + "\n"} />)}
+  {/* Without a poster of its own, the element shows the first file's code. */}
+  {Astro.slots.has("default") && <div slot="poster"><slot /></div>}
+</bun-playground>
+
+<!-- Module scripts with the same URL run once, so several embeds on a page load embed.js a single time. -->
+<script is:inline type="module" src={`${PLAYGROUND_URL}embed.js`}></script>
+<script is:inline type="module">
+  const sync = () => {
+    const t = document.documentElement.dataset.theme === "light" ? "light" : "dark";
+    for (const el of document.querySelectorAll("bun-playground")) el.setAttribute("theme", t);
+  };
+  sync();
+  new MutationObserver(sync).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+</script>

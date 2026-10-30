@@ -69,6 +69,8 @@ export type EditorSignatureHelp = { signatures: EditorSignature[]; active: numbe
 
 /** What the editor reports as it changes, for the status bar, and what it asks for. */
 export type EditorEvents = {
+  /** Files open highlighted but not editable while this says so (an embed with `readonly`). */
+  readOnly?(): boolean;
   /** The cursor moved (null: no editable file). */
   onCursor?(cursor: EditorCursor | null): void;
   /** The markers shown changed. */

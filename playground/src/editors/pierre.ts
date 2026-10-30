@@ -653,7 +653,7 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
       onEditComplete: () => "accept",
     });
     view.render({ containerWrapper: host, file: { name: path, contents: nextText ?? "(binary file)" } });
-    if (nextText === null) return;
+    if (nextText === null || events.readOnly?.()) return;
     editor = new Editor("file");
     shown = false;
     finish = editor.edit(view);

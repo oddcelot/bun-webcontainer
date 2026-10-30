@@ -43,17 +43,20 @@ g.__nodeBuiltins = builtins;
  * `import(url)` that the host Vite leaves alone: in dev it rewrites computed imports in the playground's own code to
  * add `?import`, and the same module imported statically elsewhere would load a second time.
  */
+/** Where the page serves modules (moduleServer.ts `vfsRoot`), from the start message. */
+let VFS_ROOT = `${BASE}__vfs/`;
+
 const importUrl = new Function("url", "options", "return import(url, options)") as (url: string, options?: ImportCallOptions) => Promise<unknown>;
 
 /** `import(expr)` in served modules (see rewriteMeta): `file:` URLs and paths, as Bun takes them, load from the VFS. */
 g.__dynamicImport = (from: string, spec: unknown, options?: ImportCallOptions) => {
   const s = String(spec);
   const builtin = s.replace(/^node:/, "");
-  if (builtin in builtins) return importUrl(`${BASE}__vfs/__node/${builtin}`);
+  if (builtin in builtins) return importUrl(`${VFS_ROOT}__node/${builtin}`);
   const path = /^(file:|\/|\.)/.test(s) && decodeURIComponent(new URL(s, from).pathname);
   if (!path) return importUrl(s, options);
   const file = norm(path);
-  return importUrl(`${BASE}__vfs/${file.endsWith(".css") ? "__css/" : ""}${file}`, options);
+  return importUrl(`${VFS_ROOT}${file.endsWith(".css") ? "__css/" : ""}${file}`, options);
 };
 g.process = process;
 g.global ??= globalThis;
@@ -296,7 +299,9 @@ function asPageOrigin(value: string): string {
   const { hostname, port } = inst.server as { hostname: string; port: number };
   const page = `http://${hostname === "0.0.0.0" || hostname === "::" ? "localhost" : hostname}:${port}`;
   const rest = value.slice(own.length);
-  return page + (rest.startsWith(`${BASE}__preview`) ? rest.slice(`${BASE}__preview`.length) || "/" : rest);
+  // `/__preview` or `/__preview/@<client id>` (preview.ts PREFIX) is where the page sits, not part of its path.
+  const prefix = new RegExp(`^${BASE}__preview(?:/@[^/]+)?`).exec(rest)?.[0];
+  return page + (prefix ? rest.slice(prefix.length) || "/" : rest);
 }
 
 /** A page's WebSocket: a GET with `upgrade: websocket` through the server's handler, which may accept it. */
@@ -828,17 +833,18 @@ self.addEventListener("message", (e: MessageEvent) => {
 
 self.addEventListener("message", async (e: MessageEvent) => {
   if (e.data.type !== "start") return;
+  if (e.data.vfsRoot) VFS_ROOT = e.data.vfsRoot;
   vfs.load(e.data.files, e.data.dirs);
   await booted;
   if (e.data.tests) {
     // `bun test`: load and run each file instead of an entry.
-    const failed = await runTestFiles(e.data.tests, (f) => importUrl(`${BASE}__vfs/${f}`), (g.Bun as { version: string }).version).catch((err) => (post({ type: "console", level: "error", text: fmt(err) }), 1));
+    const failed = await runTestFiles(e.data.tests, (f) => importUrl(`${VFS_ROOT}${f}`), (g.Bun as { version: string }).version).catch((err) => (post({ type: "console", level: "error", text: fmt(err) }), 1));
     post({ type: "ready", failed });
     return;
   }
   (g.Bun as { main: string }).main = process.argv[1] = `/${e.data.entry}`;
   try {
-    const mod = (await importUrl(`${BASE}__vfs/${e.data.entry}`)) as { default?: ServeOptions };
+    const mod = (await importUrl(`${VFS_ROOT}${e.data.entry}`)) as { default?: ServeOptions };
     // Bun serves an entry whose default export has a fetch handler (Hono's `export default app`), unless that
     // port is already served (Elysia's `export default app.listen(3000)`).
     const def = mod.default;

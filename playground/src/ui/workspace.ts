@@ -24,6 +24,7 @@ export function createWorkspace() {
   // The editor's pending edits; it registers how to write them (see EditorPane).
   let saveAll = () => {};
   let reveal: (line: number, column: number) => void = () => {};
+  let format = () => {};
   return {
     state,
     setDirty(path: string, dirty: boolean) {
@@ -49,6 +50,11 @@ export function createWorkspace() {
     },
     /** Moves the editor's cursor to a 1-based line and column of the open file. */
     reveal: (line: number, column: number) => reveal(line, column),
+    onFormat(fn: () => void) {
+      format = fn;
+    },
+    /** Formats the open file (`bun fmt`), as the Format button does. */
+    format: () => format(),
     /** Writes every pending edit to the VFS now (before running, installing or sharing). */
     saveAll: () => saveAll(),
     /** Opens `path` in a tab (after the active one) or switches to its tab. */

@@ -1,11 +1,10 @@
 import { For, Show, createEffect, onSettled, untrack, useContext } from "solid-js";
 import { Select } from "@kobalte/core/select";
 import { TabItem, TabList } from "./Tabs";
-import { BASE } from "../base";
 import { matches } from "../keymap";
 import { createPierre, createViewer } from "../editors/pierre";
 import type { CodeEditor } from "../editors/types";
-import type { Card } from "../preview";
+import { PREFIX, type Card } from "../preview";
 import { AppContext } from "./context";
 import type { PreviewTab } from "./previews";
 import { Tip } from "./Tip";
@@ -130,7 +129,7 @@ export function Preview() {
             disabled={disabled}
             onClick={() => {
               const path = active().path.trim() || "/";
-              window.open(`${BASE}__preview${path.startsWith("/") ? path : `/${path}`}`, "_blank", "noopener");
+              window.open(`${PREFIX}${path.startsWith("/") ? path : `/${path}`}`, "_blank", "noopener");
             }}
           >
             <i class="i-lucide-external-link" aria-hidden="true" />
