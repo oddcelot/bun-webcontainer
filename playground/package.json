@@ -23,7 +23,6 @@
     "@rolldown/browser": "1.2.15",
     "@solid-primitives/storage": "5.0.0-next.7",
     "@solidjs/web": "2.0.0-rc.19",
-    "@tsrs/wasm": "0.20.1-ts7.1.0-beta",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-unicode-graphemes": "^0.4.0",
     "@xterm/addon-web-links": "^0.12.0",

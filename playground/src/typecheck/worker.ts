@@ -1,42 +1,70 @@
-// tsrs (TypeScript 7's compiler ported to Rust, as wasm32) runs here and not on the page: the checker recurses
-// deeply, and a run blocks until it is done once the module is instantiated.
-import { loadModule, tsc, type Diagnostic } from "@tsrs/wasm";
-import wasmUrl from "@tsrs/wasm/tsrs.wasm?url";
+// tsrs's language service runs here and not on the page: the checker recurses deeply, and a request blocks until it
+// is answered. The instance keeps the project's files between requests and is replaced once its memory (which never
+// shrinks) passes MEMORY_LIMIT.
+import { TsrsLs, type LspDiagnostic, type LspHover } from "./tsrsLs";
 
 type Files = Record<string, string | Uint8Array>;
-/** The files that changed since the last request (the worker keeps the rest). */
-export type CheckRequest = { id: number; args: string[]; changed: Files; removed: string[] };
-export type CheckReply = { id: number; diagnostics: Diagnostic[]; exitCode: number; stderr: string };
+/** Every request carries the files that changed since the last one (the worker keeps the rest). */
+type Sync = { id: number; changed: Files; removed: string[]; config: string; path: string };
+export type LsRequest = Sync & ({ kind: "diagnostics" } | { kind: "hover"; line: number; character: number });
+export type LsReply = { id: number; diagnostics?: LspDiagnostic[]; hover?: LspHover | null; error?: string };
 
+const MEMORY_LIMIT = 1.5 * 2 ** 30;
 const PACKAGE = /^\/node_modules\/((?:@[^/]+\/)?[^/]+)\//;
+const dec = new TextDecoder();
 
-/** Bundled packages (./bunTypes.ts) the project doesn't have in its own node_modules. */
-async function withBunTypes(files: Files): Promise<Files> {
+const project = new Map<string, string>();
+let ls: Promise<TsrsLs> | undefined;
+/** Bundled type files (./bunTypes.ts) the instance has, for packages the project's node_modules lacks. */
+let bunShown = new Set<string>();
+
+async function instance(): Promise<{ ls: TsrsLs; fresh: boolean }> {
+  if (ls) return { ls: await ls, fresh: false };
+  ls = TsrsLs.create();
+  ls.catch(() => (ls = undefined));
+  bunShown = new Set();
+  return { ls: await ls, fresh: true };
+}
+
+async function sync({ changed, removed }: Sync) {
   const { bunTypes } = await import("./bunTypes");
+  for (const [p, data] of Object.entries(changed)) project.set(p, typeof data === "string" ? data : dec.decode(data));
+  for (const p of removed) project.delete(p);
   const own = new Set<string>();
-  for (const p of Object.keys(files)) {
+  for (const p of project.keys()) {
     const m = PACKAGE.exec(p);
     if (m) own.add(m[1]);
   }
-  const out = { ...files };
-  for (const [p, text] of Object.entries(bunTypes)) {
-    if (!own.has(PACKAGE.exec(p)![1])) out[p] = text;
+  const bun = new Set(Object.keys(bunTypes).filter((p) => !own.has(PACKAGE.exec(p)![1])));
+
+  const { ls, fresh } = await instance();
+  if (fresh) {
+    ls.setFiles(project);
+  } else {
+    // Bundled files the project now has its own copy of go first (same paths), then the project's changes.
+    ls.removeFiles([...bunShown].filter((p) => !bun.has(p) && !project.has(p)));
+    ls.removeFiles(removed.filter((p) => !bun.has(p)));
+    ls.setFiles(Object.keys(changed).map((p) => [p, project.get(p)!]));
   }
-  return out;
+  ls.setFiles([...bun].filter((p) => fresh || !bunShown.has(p)).map((p) => [p, bunTypes[p]]));
+  bunShown = bun;
+  return ls;
 }
 
-const project: Files = {};
-
-self.onmessage = async (e: MessageEvent<CheckRequest>) => {
-  const { id, args, changed, removed } = e.data;
-  Object.assign(project, changed);
-  for (const p of removed) delete project[p];
+self.onmessage = async (e: MessageEvent<LsRequest>) => {
+  const req = e.data;
+  let reply: LsReply;
   try {
-    const files = await withBunTypes(project);
-    const r = await tsc(args, { files, diagnostics: "json", module: await loadModule(wasmUrl) });
-    const reply: CheckReply = { id, diagnostics: r.diagnostics ?? [], exitCode: r.exitCode, stderr: r.stderr };
-    postMessage(reply);
+    const service = await sync(req);
+    reply =
+      req.kind === "hover"
+        ? { id: req.id, hover: service.hover(req.config, req.path, req.line, req.character) }
+        : { id: req.id, diagnostics: service.diagnostics(req.config, req.path) };
+    if (service.memoryBytes > MEMORY_LIMIT) ls = undefined;
   } catch (err) {
-    postMessage({ id, diagnostics: [], exitCode: 5, stderr: String(err) } satisfies CheckReply);
+    // A trap (stack overflow, out of memory) leaves the instance unusable: the next request makes a new one.
+    ls = undefined;
+    reply = { id: req.id, error: String(err) };
   }
+  postMessage(reply);
 };
