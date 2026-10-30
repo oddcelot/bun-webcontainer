@@ -252,7 +252,7 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
 #preview-backdrop { position: fixed; inset: 0; z-index: 19; background: rgba(0, 0, 0, 0.55); }
 #preview-backdrop[hidden] { display: none; }
 #request { display: flex; gap: 6px; min-width: 0; padding: 4px 8px; background: var(--panel); border-bottom: 1px solid var(--border); }
-#request input, #req-body { background: var(--control); color: var(--fg); border: 1px solid var(--control-border); border-radius: 6px; padding: 3px 6px; font: 12px ui-monospace, monospace; }
+#request input { background: var(--control); color: var(--fg); border: 1px solid var(--control-border); border-radius: 6px; padding: 3px 6px; font: 12px ui-monospace, monospace; }
 /* The method Select: the method's badge, its list as narrow as the longest method. */
 #request #req-method { padding: 3px 4px 3px 3px; }
 #request #req-method:disabled { opacity: 0.5; cursor: default; }
@@ -280,7 +280,11 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
 }
 #request button { background: var(--control); color: inherit; border: 1px solid var(--control-border); border-radius: 6px; padding: 3px 10px; cursor: pointer; }
 #expand { display: grid; place-items: center; padding: 0 8px; }
-#req-body { height: 5em; margin: 0; border-radius: 0; border-width: 0 0 1px; resize: vertical; }
+/* The request body's editor (ui/Preview.tsx): resizable like the textarea it replaced, a hint while it's empty. */
+#req-body { position: relative; height: 7em; min-height: 3em; overflow: hidden; resize: vertical; border-bottom: 1px solid var(--border); }
+#req-body .pierre-host { height: 100%; overflow: auto; background: var(--bg); }
+#req-body diffs-container { min-height: 100%; }
+#req-body[data-empty]::after { content: attr(data-placeholder); position: absolute; top: 8px; left: 41px; color: var(--muted); font: 12px/20px ui-monospace, monospace; pointer-events: none; }
 #preview-views { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .preview-frame { flex: 1; width: 100%; border: 0; }
 .preview-frame[hidden], .preview-response[hidden], #req-body[hidden] { display: none; }

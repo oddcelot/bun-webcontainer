@@ -3,6 +3,8 @@ import { Select } from "@kobalte/core/select";
 import { TabItem, TabList } from "./Tabs";
 import { BASE } from "../base";
 import { matches } from "../keymap";
+import { createPierre } from "../editors/pierre";
+import type { CodeEditor } from "../editors/types";
 import type { Card } from "../preview";
 import { AppContext } from "./context";
 import type { PreviewTab } from "./previews";
@@ -145,14 +147,7 @@ export function Preview() {
             <i class={s.expanded ? "i-lucide-minimize-2" : "i-lucide-maximize-2"} aria-hidden="true" />
           </Tip>
         </form>
-        <textarea
-          id="req-body"
-          spellcheck={false}
-          placeholder="Request body (JSON is sent as application/json)"
-          hidden={active().method === "GET" || active().method === "HEAD"}
-          value={active().body}
-          onInput={(e) => p.edit(s.active, "body", e.currentTarget.value)}
-        />
+        <RequestBody hidden={active().method === "GET" || active().method === "HEAD"} empty={!active().body} />
         <div id="preview-views">
           <For each={byAge()}>
             {(tab) => {
@@ -179,6 +174,26 @@ export function Preview() {
       </div>
     </>
   );
+}
+
+/**
+ * The request body in the editor the files use, highlighted as JSON (what it's usually sent as). One editor: switching
+ * preview tabs opens the active tab's body in it, and each edit goes back to that tab.
+ */
+function RequestBody(props: { hidden: boolean; empty: boolean }) {
+  const { previews: p } = useContext(AppContext);
+  let el!: HTMLDivElement;
+  let editor: CodeEditor | undefined;
+  createEffect(
+    () => p.state.active,
+    (id) => {
+      editor ??= createPierre(el);
+      const body = untrack(() => p.state.tabs.find((t) => t.id === id)?.body ?? "");
+      editor.open(`request-body-${id}.json`, body, (text) => p.edit(id, "body", text));
+    },
+  );
+  onSettled(() => () => editor?.destroy());
+  return <div id="req-body" ref={el} hidden={props.hidden} data-empty={props.empty ? "" : undefined} data-placeholder="Request body (JSON is sent as application/json)" />;
 }
 
 function PreviewTabItem(props: { tab: PreviewTab }) {

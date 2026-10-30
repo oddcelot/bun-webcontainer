@@ -71,7 +71,7 @@ The console is not a full shell: no quotes, pipes, `&&`, `bunx`, or file command
 
 When your code starts a server (`Bun.serve`, `node:http`, or `export default { fetch }`), the preview shows it.
 
-- **Request bar:** send any method, path and body. HTML responses open in the page; anything else shows status, headers and the body (JSON is formatted).
+- **Request bar:** send any method, path and body. The body is written in the same editor as files, highlighted as JSON, and each preview tab keeps its own. HTML responses open in the page; anything else shows status, headers and the body (JSON is formatted).
 - **Tabs:** several previews at once.
 - **Open in a new tab:** the page gets its own browser tab, still served by the playground (keep the playground tab open).
 - **Requests stay inside:** `fetch("/api/x")`, links, forms and redirects from the preview page reach your server.
