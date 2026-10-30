@@ -116,15 +116,12 @@ export async function discard(id: string): Promise<void> {
 }
 
 /**
- * Mirrors the VFS into OPFS (`projects/<id>/`), write-behind: changes are collected and flushed after a short
- * pause. `all` saves every file now (a project just loaded from its source). Only the tab holding the project's
- * lock writes. Never throws; returns a function that stops saving and settles once a flush in progress is done.
+ * Mirrors the VFS into OPFS (`projects/<id>/`), write-behind (see `mirror`). `all` saves every file now (a project
+ * just loaded from its source). Only the tab holding the project's lock writes. Never throws; returns a function that
+ * stops saving and settles once a flush in progress is done.
  */
 export async function attach(id: string, vfs: VFS, log: Log, all: boolean): Promise<() => Promise<void>> {
-  let stopped = false;
-  const stop = async () => {
-    stopped = true;
-  };
+  const off = async () => {};
   try {
     if (!navigator.storage?.getDirectory) throw new Error("OPFS is not available");
     if (navigator.locks) {
@@ -137,98 +134,125 @@ export async function attach(id: string, vfs: VFS, log: Log, all: boolean): Prom
       });
       if (!got) {
         log("warn", "[storage] project open in another tab; changes here won't be saved");
-        return stop;
+        return off;
       }
     }
     const dir = await projectDir(id, true);
     if (!dir) throw new Error("can't create the project directory");
+    return mirror(dir, vfs, log, {
+      all,
+      stash: stashKey(id),
+      tag: "[storage]",
+      // Asked on the first save, not on every visit.
+      onFirstFlush: () => void projects().then((b) => b.persist()).catch(() => {}),
+    });
+  } catch (e) {
+    log("warn", `[storage] saving is unavailable (${e}); this project won't be kept across reloads`);
+    return off;
+  }
+}
 
-    const dirty = new Set<string>();
-    /** Taken out of `dirty` by the flush in progress, not yet written. */
-    const writing = new Set<string>();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let chain: Promise<void> = Promise.resolve();
-    let warned = false;
-    let asked = false;
+type MirrorOptions = {
+  /** Write every file now, not only changed ones. */
+  all: boolean;
+  /** sessionStorage key for files a reload cut off (see `stashKey`); replayed first. */
+  stash?: string;
+  /** Log prefix. */
+  tag: string;
+  onFirstFlush?: () => void;
+};
 
-    const writeOne = async (path: string) => {
-      const parts = path.split("/");
-      const name = parts.pop()!;
-      const data = vfs.files.get(path);
-      if (data === undefined) {
-        // Gone from the VFS: delete the entry, then prune parents left empty.
-        const dirs: Dir[] = [dir];
-        try {
-          for (const p of parts) dirs.push(await dirs[dirs.length - 1].getDirectoryHandle(p));
-          await dirs[dirs.length - 1].removeEntry(name);
-        } catch (e) {
-          if (e instanceof DOMException && e.name === "NotFoundError") return;
-          throw e;
-        }
-        for (let i = dirs.length - 1; i > 0; i--) {
-          let empty = true;
-          for await (const _ of dirs[i] as unknown as AsyncIterable<unknown>) {
-            empty = false;
-            break;
-          }
-          if (!empty) break;
-          await dirs[i - 1].removeEntry(parts[i - 1]).catch(() => {});
-        }
-        return;
-      }
-      let d = dir;
-      for (const p of parts) d = await d.getDirectoryHandle(p, { create: true });
-      const w = await (await d.getFileHandle(name, { create: true })).createWritable();
+/**
+ * Writes VFS changes into `dir` (OPFS or a folder on disk), write-behind: changes are collected and flushed after a
+ * short pause, and on pagehide. node_modules and .git are left alone. Returns a function that stops writing and
+ * settles once a flush in progress is done.
+ */
+export function mirror(dir: Dir, vfs: VFS, log: Log, { all, stash: stashAt, tag, onFirstFlush }: MirrorOptions): () => Promise<void> {
+  let stopped = false;
+  const dirty = new Set<string>();
+  /** Taken out of `dirty` by the flush in progress, not yet written. */
+  const writing = new Set<string>();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let chain: Promise<void> = Promise.resolve();
+  let warned = false;
+  let flushed = false;
+  const writeOne = async (path: string) => {
+    const parts = path.split("/");
+    const name = parts.pop()!;
+    const data = vfs.files.get(path);
+    if (data === undefined) {
+      // Gone from the VFS: delete the entry, then prune parents left empty.
+      const dirs: Dir[] = [dir];
       try {
-        await w.write(data as FileSystemWriteChunkType);
-      } finally {
-        await w.close();
+        for (const p of parts) dirs.push(await dirs[dirs.length - 1].getDirectoryHandle(p));
+        await dirs[dirs.length - 1].removeEntry(name);
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "NotFoundError") return;
+        throw e;
       }
-    };
-
-    // Flushes run one after another, never overlapping.
-    const flush = () => {
-      clearTimeout(timer);
-      timer = undefined;
-      chain = chain.then(async () => {
-        if (stopped) return;
-        if (!asked) {
-          asked = true;
-          void projects()
-            .then((b) => b.persist())
-            .catch(() => {});
+      for (let i = dirs.length - 1; i > 0; i--) {
+        let empty = true;
+        for await (const _ of dirs[i] as unknown as AsyncIterable<unknown>) {
+          empty = false;
+          break;
         }
-        const paths = [...dirty];
-        dirty.clear();
-        for (const p of paths) writing.add(p);
-        for (const path of paths) {
-          if (stopped) return;
-          try {
-            await writeOne(path);
-          } catch (e) {
-            if (!warned) {
-              warned = true;
-              log("warn", `[storage] can't save ${path}: ${e}`);
-            }
-          }
-          writing.delete(path);
-        }
-        if (!dirty.size && !writing.size) {
-          try {
-            sessionStorage.removeItem(stashKey(id));
-          } catch {}
-        }
-      });
-      return chain;
-    };
-    const schedule = () => {
-      clearTimeout(timer);
-      timer = setTimeout(flush, DEBOUNCE);
-    };
-
-    // Edits a reload cut off last time: back into the VFS, then saved like any other change.
+        if (!empty) break;
+        await dirs[i - 1].removeEntry(parts[i - 1]).catch(() => {});
+      }
+      return;
+    }
+    let d = dir;
+    for (const p of parts) d = await d.getDirectoryHandle(p, { create: true });
+    const w = await (await d.getFileHandle(name, { create: true })).createWritable();
     try {
-      const stash: Record<string, string | null> = JSON.parse(sessionStorage.getItem(stashKey(id)) ?? "{}");
+      await w.write(data as FileSystemWriteChunkType);
+    } finally {
+      await w.close();
+    }
+  };
+
+  // Flushes run one after another, never overlapping.
+  const flush = () => {
+    clearTimeout(timer);
+    timer = undefined;
+    chain = chain.then(async () => {
+      if (stopped) return;
+      if (!flushed) {
+        flushed = true;
+        onFirstFlush?.();
+      }
+      const paths = [...dirty];
+      dirty.clear();
+      for (const p of paths) writing.add(p);
+      for (const path of paths) {
+        if (stopped) return;
+        try {
+          await writeOne(path);
+        } catch (e) {
+          if (!warned) {
+            warned = true;
+            log("warn", `${tag} can't save ${path}: ${e}`);
+          }
+        }
+        writing.delete(path);
+      }
+      if (stashAt && !dirty.size && !writing.size) {
+        try {
+          sessionStorage.removeItem(stashAt);
+        } catch {}
+      }
+    });
+    return chain;
+  };
+  const schedule = () => {
+    clearTimeout(timer);
+    timer = setTimeout(flush, DEBOUNCE);
+  };
+
+  // Edits a reload cut off last time: back into the VFS, then saved like any other change.
+  if (stashAt) {
+    try {
+      const stash: Record<string, string | null> = JSON.parse(sessionStorage.getItem(stashAt) ?? "{}");
       for (const [path, data] of Object.entries(stash)) {
         if (data === null) vfs.remove(path);
         else vfs.write(path, data);
@@ -236,14 +260,16 @@ export async function attach(id: string, vfs: VFS, log: Log, all: boolean): Prom
       }
       if (dirty.size) schedule();
     } catch {}
+  }
 
-    const unsub = vfs.onChange(({ path }) => {
-      if (stopped || SKIP.test(path)) return;
-      dirty.add(path);
-      schedule();
-    });
-    const onHide = () => {
-      if (document.visibilityState !== "hidden" || !(dirty.size || writing.size)) return;
+  const unsub = vfs.onChange(({ path }) => {
+    if (stopped || SKIP.test(path)) return;
+    dirty.add(path);
+    schedule();
+  });
+  const onHide = () => {
+    if (document.visibilityState !== "hidden" || !(dirty.size || writing.size)) return;
+    if (stashAt) {
       const stash: Record<string, string | null> = {};
       for (const path of [...writing, ...dirty]) {
         const data = vfs.files.get(path);
@@ -251,28 +277,25 @@ export async function attach(id: string, vfs: VFS, log: Log, all: boolean): Prom
         else if (typeof data === "string") stash[path] = data;
       }
       try {
-        sessionStorage.setItem(stashKey(id), JSON.stringify(stash));
+        sessionStorage.setItem(stashAt, JSON.stringify(stash));
       } catch (e) {
-        log("warn", `[storage] can't keep unsaved files across the reload: ${e}`);
+        log("warn", `${tag} can't keep unsaved files across the reload: ${e}`);
       }
-      if (dirty.size) void flush();
-    };
-    document.addEventListener("visibilitychange", onHide);
-    addEventListener("pagehide", onHide);
-    if (all) {
-      for (const p of vfs.files.keys()) if (!SKIP.test(p)) dirty.add(p);
-      schedule();
     }
-    return () => {
-      stop();
-      unsub();
-      clearTimeout(timer);
-      document.removeEventListener("visibilitychange", onHide);
-      removeEventListener("pagehide", onHide);
-      return chain;
-    };
-  } catch (e) {
-    log("warn", `[storage] saving is unavailable (${e}); this project won't be kept across reloads`);
-    return stop;
+    if (dirty.size) void flush();
+  };
+  document.addEventListener("visibilitychange", onHide);
+  addEventListener("pagehide", onHide);
+  if (all) {
+    for (const p of vfs.files.keys()) if (!SKIP.test(p)) dirty.add(p);
+    schedule();
   }
+  return () => {
+    stopped = true;
+    unsub();
+    clearTimeout(timer);
+    document.removeEventListener("visibilitychange", onHide);
+    removeEventListener("pagehide", onHide);
+    return chain;
+  };
 }
