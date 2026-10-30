@@ -5,6 +5,7 @@ import { ToggleGroup } from "@kobalte/core/toggle-group";
 import type { ColorMode } from "@pierre/theming";
 import { FAMILIES, familyOf, pickFamily, setColorMode, switchTheme, themeState, watchTheme } from "../theme";
 import { SWATCHES } from "../themeSwatches";
+import { Tip } from "./Tip";
 
 const MODES: [ColorMode, string, string][] = [
   ["system", "i-lucide-monitor", "System"],
@@ -56,11 +57,11 @@ export function ThemePicker() {
 
   return (
     <Popover placement="bottom-end" gutter={6} open={open()} onOpenChange={onOpenChange}>
-      <Popover.Trigger id="theme" class="select-trigger" title={`Appearance: ${current().name}, ${theme().mode}`} aria-label="Appearance">
+      <Tip as={Popover.Trigger} id="theme" class="select-trigger" placement="bottom-end" tip={`Appearance: ${current().name}, ${theme().mode}`} aria-label="Appearance">
         <Swatch light={current().light} />
         <i class={MODES.find(([m]) => m === theme().mode)?.[1]} aria-hidden="true" />
         <i class="chevron i-lucide-chevron-down" aria-hidden="true" />
-      </Popover.Trigger>
+      </Tip>
       <Popover.Portal>
         <Popover.Content class="appearance">
           {/* One mode is always on: clicking the pressed one again (onChange(null)) changes nothing. */}

@@ -1,6 +1,7 @@
 import { useContext } from "solid-js";
 import { DropdownMenu } from "@kobalte/core/dropdown-menu";
 import { DOCS } from "../base";
+import { formatChord, keysFor } from "../keymap";
 import logo from "../bun-logo.svg";
 import { AppContext } from "./context";
 import { ProjectPicker } from "./ProjectPicker";
@@ -8,6 +9,7 @@ import { ShareMenu } from "./ShareMenu";
 import { Shortcuts } from "./Shortcuts";
 import { ThemePicker } from "./ThemePicker";
 import { Title } from "./Title";
+import { Tip } from "./Tip";
 
 const CANT_RUN = "This browser can't run code here";
 
@@ -27,18 +29,19 @@ export function Header() {
       <ProjectPicker />
       {/* Startup installs and runs the project itself, so Run and Install ignore clicks until it's done (no greying out meanwhile). */}
       <span id="run-group">
-        <button
+        <Tip
           id="run"
+          tip={s.canRun ? "Run the project" : CANT_RUN}
+          keys={s.canRun ? keysFor("run").map(formatChord) : undefined}
           disabled={!s.canRun || !!s.busy.run}
-          title={s.canRun ? undefined : CANT_RUN}
           onClick={() => s.ready() && app.run()}
         >
           <i class="i-lucide-play" aria-hidden="true" /> Run
-        </button>
+        </Tip>
         <DropdownMenu placement="bottom-start" gutter={6}>
-          <DropdownMenu.Trigger id="run-more" disabled={!s.canRun} title={s.canRun ? "More" : CANT_RUN} aria-label="More run actions">
+          <Tip as={DropdownMenu.Trigger} id="run-more" disabled={!s.canRun} tip={s.canRun ? "More" : CANT_RUN} aria-label="More run actions">
             <i class="i-lucide-chevron-down" aria-hidden="true" />
-          </DropdownMenu.Trigger>
+          </Tip>
           <DropdownMenu.Portal>
             <DropdownMenu.Content class="select-menu menu">
               <DropdownMenu.Item class="select-option" disabled={!!s.busy.install} onSelect={() => s.ready() && app.install()}>
@@ -49,15 +52,12 @@ export function Header() {
           </DropdownMenu.Portal>
         </DropdownMenu>
       </span>
-      <span id="status" role="status" data-state={s.status().state} title={s.status().text}>
-        <span class="text">{s.status().text}</span>
-      </span>
-      <a id="docs" href={DOCS} target="_blank" rel="noopener" title="Documentation: what works, and how (opens in a new tab)">
+      <Tip as="a" id="docs" href={DOCS} target="_blank" rel="noopener" tip="Documentation: what works, and how (opens in a new tab)">
         <i class="i-lucide-book-open" aria-hidden="true" /> Docs
-      </a>
-      <button id="share" popovertarget="share-menu" title="Share this project">
+      </Tip>
+      <Tip id="share" popovertarget="share-menu" tip="Share this project">
         <i class="i-lucide-share-2" aria-hidden="true" /> Share
-      </button>
+      </Tip>
       <ShareMenu />
       <Shortcuts />
       <ThemePicker />

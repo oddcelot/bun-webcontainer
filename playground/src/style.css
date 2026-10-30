@@ -38,7 +38,7 @@ body { display: flex; flex-direction: column; }
 header { display: flex; gap: 8px; align-items: center; padding: 6px 10px 4px; }
 header button, #docs, #clear, #request button { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 /* By id: the share menu is in the header too, and its items mustn't take this height. */
-#example, #run, #run-more, #status, #docs, #share, #shortcuts, #theme { height: var(--control-height); }
+#example, #run, #run-more, #docs, #share, #shortcuts, #theme { height: var(--control-height); }
 /* Run and its menu (bun install): one control split in two. */
 #run-group { display: inline-flex; }
 #run { border-radius: 6px 0 0 6px; }
@@ -137,6 +137,21 @@ html[data-booting] body > header > * { visibility: hidden; animation: boot-fallb
 .select-option .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .select-option[data-highlighted] { background: var(--control-hover); }
 .select-option .check { display: grid; color: var(--accent); }
+/* The status bar, as in VS Code or Zed: one quiet line of small items straight on the canvas, under the panes. */
+#statusbar { display: flex; align-items: center; gap: 2px; height: 24px; margin: -2px 6px 4px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+#statusbar .spacer { flex: 1; }
+#statusbar > button, #statusbar > a, #statusbar > span:not(.spacer, #status) { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 6px; border: 0; border-radius: var(--inner-radius); background: none; color: inherit; font: inherit; text-decoration: none; }
+#statusbar > button, #statusbar > a { cursor: pointer; }
+#statusbar > button:not([aria-disabled]):hover, #statusbar > a:hover { background: var(--control-hover); color: var(--fg); }
+#statusbar > button[aria-pressed="true"] { color: var(--fg); }
+#statusbar > button[aria-disabled] { cursor: default; }
+#statusbar .problems:not([aria-disabled]) { color: var(--fg); }
+#statusbar #status { height: 18px; margin-left: 4px; min-width: 0; font-size: 11px; }
+/* Kobalte tooltips (ui/Tip.tsx): a small card with the text, then the shortcut keys. */
+.tooltip { z-index: 40; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; max-width: 24rem; padding: 4px 8px; border: 1px solid var(--control-border); border-radius: var(--inner-radius); background: var(--panel); color: var(--fg); font-size: 12px; line-height: 1.4; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3); }
+.tooltip kbd { padding: 0 4px; border: 1px solid var(--control-border); border-radius: 4px; color: var(--muted); font: 11px/16px ui-monospace, monospace; }
+.tooltip-note { flex-basis: 100%; color: var(--muted); font-size: 11px; }
+@media (max-width: 640px) { #statusbar .language, #statusbar .cursor { display: none; } }
 #status { min-width: 7.5em; justify-content: center; display: inline-flex; align-items: center; gap: 6px; padding: 0 9px 0 7px; border: 1px solid var(--control-border); border-radius: 999px; color: var(--muted); white-space: nowrap; --dot: var(--muted); }
 /* In a narrow header the text gives way ("…", full text in the tooltip); the dot keeps its size. */
 #status .text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }

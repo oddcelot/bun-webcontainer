@@ -1,4 +1,5 @@
-import { createStore } from "solid-js";
+import { createSignal, createStore } from "solid-js";
+import type { EditorCursor, EditorDiagnostic } from "../editors/types";
 import { pref } from "../prefs";
 
 const AUTOSAVE_KEY = "runbun:autosave";
@@ -17,8 +18,12 @@ export function createWorkspace() {
   });
   /** Save edits shortly after typing stops; off, they wait for Ctrl/Cmd+S, Run, Install or Share. Shared by all tabs. */
   const [autosave, setAutosave] = pref(AUTOSAVE_KEY, true, { serialize: (on) => (on ? "on" : "off"), deserialize: (s) => s !== "off" });
+  // What the editor reports for the status bar.
+  const [cursor, setCursor] = createSignal<EditorCursor | null>(null);
+  const [problems, setProblems] = createSignal<EditorDiagnostic[]>([]);
   // The editor's pending edits; it registers how to write them (see EditorPane).
   let saveAll = () => {};
+  let reveal: (line: number, column: number) => void = () => {};
   return {
     state,
     setDirty(path: string, dirty: boolean) {
@@ -33,6 +38,17 @@ export function createWorkspace() {
     onSaveAll(fn: () => void) {
       saveAll = fn;
     },
+    /** The open file's cursor, null with no editable file open. */
+    cursor,
+    setCursor,
+    /** The open file's error and warning markers. */
+    problems,
+    setProblems,
+    onReveal(fn: typeof reveal) {
+      reveal = fn;
+    },
+    /** Moves the editor's cursor to a 1-based line and column of the open file. */
+    reveal: (line: number, column: number) => reveal(line, column),
     /** Writes every pending edit to the VFS now (before running, installing or sharing). */
     saveAll: () => saveAll(),
     /** Opens `path` in a tab (after the active one) or switches to its tab. */

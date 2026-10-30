@@ -10,6 +10,7 @@ import { onTheme } from "../theme";
 import { AppContext } from "./context";
 import { guarded } from "./guarded";
 import { PromptDialog } from "./PromptDialog";
+import { Tip } from "./Tip";
 
 const TREE_VARS_KEY = "tree-vars";
 
@@ -139,9 +140,9 @@ export function FileTree() {
   return (
     <>
       <div ref={host} style={{ height: "100%" }} />
-      <button ref={button} id="newfile" type="button" title="New file" aria-label="New file" onClick={() => setAsking(true)}>
+      <Tip ref={(el: HTMLButtonElement) => (button = el)} id="newfile" type="button" tip="New file" aria-label="New file" onClick={() => setAsking(true)}>
         <i class="i-lucide-file-plus" aria-hidden="true" />
-      </button>
+      </Tip>
       <PromptDialog
         open={asking()}
         onOpenChange={setAsking}

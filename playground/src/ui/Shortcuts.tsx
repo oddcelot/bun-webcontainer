@@ -1,6 +1,7 @@
 import { For, createSignal, createUniqueId } from "solid-js";
 import { Dialog, useDialogContext } from "@kobalte/core/dialog";
 import { COMMANDS, formatChord, keysFor, overridesText, setOverrides, type Command } from "../keymap";
+import { Tip } from "./Tip";
 
 /**
  * The keyboard shortcuts in effect, and the JSON that changes them: command names to a chord, a list of chords, or
@@ -9,9 +10,9 @@ import { COMMANDS, formatChord, keysFor, overridesText, setOverrides, type Comma
 export function Shortcuts() {
   return (
     <Dialog>
-      <Dialog.Trigger id="shortcuts" title="Keyboard shortcuts" aria-label="Keyboard shortcuts">
+      <Tip as={Dialog.Trigger} id="shortcuts" tip="Keyboard shortcuts" aria-label="Keyboard shortcuts">
         <i class="i-lucide-keyboard" aria-hidden="true" />
-      </Dialog.Trigger>
+      </Tip>
       <Dialog.Portal>
         <Dialog.Overlay class="dialog-overlay" />
         <div class="dialog-positioner">
