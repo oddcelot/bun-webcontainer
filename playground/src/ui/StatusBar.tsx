@@ -1,6 +1,8 @@
 import { Show, useContext } from "solid-js";
 import { DOCS } from "../base";
+import { version as tsrsPackage } from "@tsrs/wasm/package.json";
 import { formatChord, keysFor, type Command } from "../keymap";
+import { TYPED } from "../typecheck";
 import { BUN_VERSION } from "../worker/bunVersion";
 import { AppContext } from "./context";
 
@@ -29,6 +31,10 @@ const language = (path: string) => {
   const ext = /\.([^./]+)$/.exec(path)?.[1].toLowerCase();
   return (ext && LANGUAGES[ext]) ?? "Plain Text";
 };
+
+// The checker's release and the TypeScript it ports, from its package version ("0.20.1-ts7.1.0-beta").
+const [TSRS_VERSION, TS_VERSION = ""] = tsrsPackage.split("-ts");
+const TS_SHORT = TS_VERSION.split(".").slice(0, 2).join(".");
 
 const withKeys = (text: string, command: Command) => [text, ...keysFor(command).map(formatChord)].join(" · ");
 
@@ -88,9 +94,18 @@ export function StatusBar(props: { previewShown: boolean; consoleShown: boolean;
                 </span>
               )}
             </Show>
-            <span class="language" title="What the file is read as">
-              {language(path())}
-            </span>
+            <Show
+              when={TYPED.test(path())}
+              fallback={
+                <span class="language" title="What the file is read as">
+                  {language(path())}
+                </span>
+              }
+            >
+              <a class="language" href={`${DOCS}compatibility/toolchain/#type-checking`} target="_blank" rel="noopener" title={`Type-checked by tsrs ${TSRS_VERSION} (TypeScript ${TS_VERSION}): what it checks (opens in a new tab)`}>
+                {language(path())} {TS_SHORT}
+              </a>
+            </Show>
           </>
         )}
       </Show>
