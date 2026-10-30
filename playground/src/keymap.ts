@@ -1,7 +1,9 @@
+import { pref } from "./prefs";
+
 /**
  * Keyboard shortcuts: each command's default chords, with the user's overrides (JSON, edited in the shortcuts dialog)
- * kept in localStorage. A chord is `+`-joined modifiers and a key, e.g. `Mod+Shift+Enter`: `Mod` is Cmd on macOS and
- * Ctrl elsewhere; the key is a letter, digit or `KeyboardEvent.key` name (`Enter`, `Escape`, `.`), any case.
+ * kept in localStorage and shared by every tab. A chord is `+`-joined modifiers and a key, e.g. `Mod+Shift+Enter`:
+ * `Mod` is Cmd on macOS and Ctrl elsewhere; the key is a letter, digit or `KeyboardEvent.key` name (`Enter`, `Escape`, `.`), any case.
  */
 
 export const COMMANDS = {
@@ -42,19 +44,23 @@ function parse(chord: string): Chord | string {
 /** The event's key, by physical key for letters and digits so Alt and Shift (`π`, `!`) don't change it. */
 const keyOf = (e: KeyboardEvent) => (/^(?:Key|Digit)(.)$/.exec(e.code)?.[1] ?? e.key).toLowerCase();
 
-function load(): Overrides {
-  try {
-    const value: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}");
-    if (!check(value)) return value as Overrides;
-  } catch {}
-  return {};
-}
+const [overrides, saveOverrides] = pref<Overrides>(STORAGE_KEY, {}, {
+  deserialize(data) {
+    const value: unknown = JSON.parse(data);
+    const error = check(value);
+    if (error) throw new Error(`${STORAGE_KEY}: ${error}`);
+    return value as Overrides;
+  },
+});
 
-let overrides = load();
-let bound = bind();
+// The parsed chords, for the overrides they came from (which another tab can change).
+let bound: { from: Overrides; chords: Map<Command, Chord[]> } | undefined;
 
-function bind(): Map<Command, Chord[]> {
-  return new Map((Object.keys(COMMANDS) as Command[]).map((c) => [c, keysFor(c).map(parse).filter((p): p is Chord => typeof p !== "string")]));
+function chords(command: Command): Chord[] {
+  const from = overrides();
+  if (bound?.from !== from)
+    bound = { from, chords: new Map((Object.keys(COMMANDS) as Command[]).map((c) => [c, keysFor(c).map(parse).filter((p): p is Chord => typeof p !== "string")])) };
+  return bound.chords.get(command)!;
 }
 
 /** Why `value` isn't a valid overrides object, or undefined if it is. */
@@ -74,16 +80,15 @@ function check(value: unknown): string | undefined {
 
 /** The chords bound to `command` now, as written (`Mod+S`). */
 export function keysFor(command: Command): string[] {
-  if (!(command in overrides)) return COMMANDS[command].keys;
-  const v = overrides[command];
+  const o = overrides();
+  if (!(command in o)) return COMMANDS[command].keys;
+  const v = o[command];
   return v == null ? [] : typeof v === "string" ? [v] : v;
 }
 
 export function matches(command: Command, e: KeyboardEvent): boolean {
   const key = keyOf(e);
-  return !!bound
-    .get(command)
-    ?.some((c) => c.key === key && c.ctrl === e.ctrlKey && c.alt === e.altKey && c.shift === e.shiftKey && c.meta === e.metaKey);
+  return chords(command).some((c) => c.key === key && c.ctrl === e.ctrlKey && c.alt === e.altKey && c.shift === e.shiftKey && c.meta === e.metaKey);
 }
 
 /** A chord for display: `⌘⇧↵` on macOS, `Ctrl+Shift+Enter` elsewhere. */
@@ -99,7 +104,7 @@ export function formatChord(chord: string): string {
 }
 
 /** The overrides as JSON for editing. */
-export const overridesText = () => JSON.stringify(overrides, null, 2);
+export const overridesText = () => JSON.stringify(overrides(), null, 2);
 
 /** Applies and keeps overrides given as JSON text; returns what's wrong with it instead if it isn't valid. */
 export function setOverrides(text: string): string | undefined {
@@ -111,8 +116,5 @@ export function setOverrides(text: string): string | undefined {
   }
   const error = check(value);
   if (error) return error;
-  overrides = value as Overrides;
-  bound = bind();
-  if (Object.keys(overrides).length) localStorage.setItem(STORAGE_KEY, JSON.stringify(overrides));
-  else localStorage.removeItem(STORAGE_KEY);
+  saveOverrides(value as Overrides);
 }
