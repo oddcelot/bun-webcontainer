@@ -18,16 +18,18 @@ Bun's own parser and printer, compiled to WebAssembly. Output matches `bun build
 
 ## Type checking
 
-[tsrs](https://github.com/oxc-project/tsrs) (TypeScript 7's compiler ported to Rust), compiled to WebAssembly. The editor
-shows type errors in `.ts`, `.tsx`, `.mts` and `.cts` files a moment after you stop typing, once the file parses. It
-loads with the first TypeScript file you open (~2.5 MB compressed, Bun's type definitions included).
+The language service of [tsrs](https://github.com/oxc-project/tsrs) (TypeScript 7's compiler ported to Rust), compiled
+to WebAssembly. The editor shows type errors in `.ts`, `.tsx`, `.mts` and `.cts` files a moment after you stop typing,
+once the file parses. It loads with the first TypeScript file you open (~2.4 MB compressed, Bun's type definitions
+included) and keeps the project in memory: the first check takes a fraction of a second (about 0.6 s with the Astro
+example's `node_modules`), later ones a few milliseconds.
 
 - 🟡 Errors for the open file only, with the editor's unsaved text; other files are checked as saved
-- 🟡 Every check rebuilds the whole program: under 0.1 s for small projects, about a second with a large `node_modules` (the Astro example)
 - ✅ Uses the nearest `tsconfig.json`, including `extends` (relative, from packages, or a list); without one, the options `bun init` writes plus `types: ["bun"]`
 - ✅ Types for `Bun.*`, `bun:*`, `node:*` and HTML imports from `@types/bun`, bundled; a project's own `@types/bun` or `@types/node` takes their place
 - ✅ Package types from installed `node_modules` (`.d.ts` files and `package.json` `types`/`exports`)
-- ❌ No autocomplete, hover info or go-to-definition (tsrs's WebAssembly build has no language server)
+- ✅ Hover info: rest the pointer on a name for its type and documentation (JSDoc, with examples)
+- ❌ No autocomplete or go-to-definition yet
 - ❌ No `tsc` command in the console
 
 ## Formatter (`bun fmt`)

@@ -71,6 +71,7 @@ W="-Zbuild-std=std,panic_abort --target wasm64-unknown-unknown --release"
 (cd transpile-wasm && cargo build $W && node test.mjs)   # diff vs `bun build --no-bundle` on corpus/
 (cd sys-wasm && cargo build $W && node test.mjs)         # bun_sys over the VFS (node >= 24; bun lacks Memory64)
 (cd resolve-wasm && cargo build $W && node test.mjs)     # bun_resolver over the VFS vs bun (node >= 24); the playground resolves with it
+(cd tsrs-ls-wasm && cargo build --release --target wasm32-wasip1 && node test.mjs)  # TS7 language service (tsrs); own Rust pin
 (cd fmt-wasm && cargo build $W && node test.mjs)         # `bun fmt` (bun_format) vs native bun fmt on the repo's files (node >= 24)
 (cd shim-test && cargo +$TOOLCHAIN test)         # TOOLCHAIN from scripts/bun-pins.sh
 (cd playground && bunx tsc --noEmit && bun run dev)      # verify in Chrome (Memory64)

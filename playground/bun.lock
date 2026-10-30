@@ -14,7 +14,6 @@
         "@rolldown/browser": "1.2.15",
         "@solid-primitives/storage": "5.0.0-next.7",
         "@solidjs/web": "2.0.0-rc.19",
-        "@tsrs/wasm": "0.20.1-ts7.1.0-beta",
         "@xterm/addon-fit": "^0.11.0",
         "@xterm/addon-unicode-graphemes": "^0.4.0",
         "@xterm/addon-web-links": "^0.12.0",
@@ -333,8 +332,6 @@
     "@solidjs/web": ["@solidjs/web@2.0.0-rc.19", "", { "dependencies": { "seroval": "1.7.0", "seroval-plugins": "1.7.0" }, "peerDependencies": { "solid-js": "^2.0.0-rc.19" } }, "sha512-FTHxQ8aE+vSHWc1exWw2Y+Brb727I4hCiWi+Y0DURbaqCou8xjCTzn8uiPi7mwC1tqpKSWfkn1Iq1ya/Bl9vYQ=="],
 
     "@swc/helpers": ["@swc/helpers@0.5.23", "", { "dependencies": { "tslib": "^2.8.0" } }, "sha512-5lSsMOTXURePglDfvuAQUqkGek9Hg2kksOYay2m0+XR++b2NWYL/4sWyuvVBIs8oKnJaxkdi9whaL/sqN13afw=="],
-
-    "@tsrs/wasm": ["@tsrs/wasm@0.20.1-ts7.1.0-beta", "", { "bin": { "tsrs-wasm": "bin/tsrs-wasm.js" } }, "sha512-64m578lnTFxVdgIXiOGhBzB9o764LE6KSHWnkFw7+etQZ9idI/CS0wBTWYHkoFWz4GcfDF4HUu4+ylhbakaB0Q=="],
 
     "@tybys/wasm-util": ["@tybys/wasm-util@0.10.4", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-W3c4gRigFS0T/Ma4qIYF3GDAc5AQdHb1yL5znJT1Zv1YaD9Kitx656wBjvr19qbiosmZT8lWDM5BEMynUqX65A=="],
 

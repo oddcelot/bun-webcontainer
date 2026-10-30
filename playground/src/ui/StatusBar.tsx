@@ -1,8 +1,8 @@
 import { Show, useContext } from "solid-js";
 import { DOCS } from "../base";
-import { version as tsrsPackage } from "@tsrs/wasm/package.json";
 import { formatChord, keysFor, type Command } from "../keymap";
 import { TYPED } from "../typecheck";
+import { TS_VERSION, TSRS_VERSION } from "../typecheck/tsrsLs";
 import { BUN_VERSION } from "../worker/bunVersion";
 import { AppContext } from "./context";
 import { Tip } from "./Tip";
@@ -33,8 +33,7 @@ const language = (path: string) => {
   return (ext && LANGUAGES[ext]) ?? "Plain Text";
 };
 
-// The checker's release and the TypeScript it ports, from its package version ("0.20.1-ts7.1.0-beta").
-const [TSRS_VERSION, TS_VERSION = ""] = tsrsPackage.split("-ts");
+// The TypeScript version the checker ports, as "7.1".
 const TS_SHORT = TS_VERSION.split(".").slice(0, 2).join(".");
 
 const keys = (command: Command) => keysFor(command).map(formatChord);
