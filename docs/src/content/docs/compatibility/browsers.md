@@ -45,7 +45,7 @@ The playground uses these when the browser has them and works without them.
 
 | Case | Status | Notes |
 |---|---|---|
-| Chrome / Edge 133+, Firefox 134+ | ✅ Works | Code, console, preview and full modes. |
+| Chrome / Edge 133+, Firefox 134+ | ✅ Works | Every mode, the API, the modal and several embeds on one page; checked in Chrome and Firefox 160 from another origin. |
 | Safari and iOS | 🟡 Edit only | The embed shows and edits the code but can't run it, and sends `unsupported`. |
 | Vite / Rolldown projects in an iframe | 🟡 Partial | They need cross-origin isolation. It works only if the host page is isolated (`COOP: same-origin`, `COEP: credentialless`) and the iframe has `allow="cross-origin-isolated"`. Otherwise run them on runbun.dev. |
 | Everything else in an iframe | ✅ Works | No isolation needed. |
