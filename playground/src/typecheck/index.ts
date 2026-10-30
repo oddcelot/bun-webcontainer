@@ -1,4 +1,4 @@
-import type { CompletionKind, EditorCompletion, EditorCompletions, EditorDiagnostic, EditorHover, EditorSignatureHelp } from "../editors/types";
+import type { CompletionKind, EditorCompletion, EditorCompletionDetails, EditorCompletions, EditorDiagnostic, EditorHover, EditorSignatureHelp } from "../editors/types";
 import { dirname, type FileData, type VFS } from "../vfs";
 import type { LspCompletionItem } from "./tsrsLs";
 import type { LsOp, LsReply, LsRequest } from "./worker";
@@ -165,21 +165,27 @@ export async function complete(vfs: VFS, path: string, text: string, line: numbe
       start: range && range.start.line === line - 1 ? range.start.character + 1 : undefined,
       sort: i.sortText ?? i.label,
       filter: i.filterText ?? i.label,
+      autoImport: !!i.data?.autoImport,
       ref: i,
     };
   });
   return { items, incomplete: r.completion.isIncomplete };
 }
 
-/** The declaration and documentation of `item` (from `complete` for `path`), or null. */
-export async function resolveCompletion(vfs: VFS, path: string, text: string, item: EditorCompletion): Promise<EditorHover | null> {
+/** The declaration and documentation of `item` (from `complete` for `path`) and the import it adds, or null. */
+export async function resolveCompletion(vfs: VFS, path: string, text: string, item: EditorCompletion): Promise<EditorCompletionDetails | null> {
   const r = await request(vfs, path, text, { kind: "resolve", item: item.ref as LspCompletionItem });
   if (r.error) console.warn(`tsrs: ${r.error}`);
   const doc = r.item?.documentation;
   const docs = (typeof doc === "string" ? doc : doc?.value ?? "").trim();
   // A path's detail is its name again.
   const code = r.item?.detail === item.label ? "" : (r.item?.detail ?? "");
-  return code || docs ? { code, docs } : null;
+  const edits = r.item?.additionalTextEdits?.map(({ range: { start, end }, newText }) => ({
+    start: { line: start.line + 1, column: start.character + 1 },
+    end: { line: end.line + 1, column: end.character + 1 },
+    text: newText,
+  }));
+  return code || docs || edits?.length ? { code, docs, edits } : null;
 }
 
 const markdown = (doc: string | { value: string } | undefined) => (typeof doc === "string" ? doc : (doc?.value ?? "")).trim();

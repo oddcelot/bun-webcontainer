@@ -155,7 +155,9 @@ export type LspCompletionItem = {
   filterText?: string;
   insertText?: string;
   textEdit?: LspTextEdit;
-  data?: unknown;
+  /** Other edits accepting it makes, e.g. the import an auto-import adds (after resolving). */
+  additionalTextEdits?: { range: LspRange; newText: string }[];
+  data?: { autoImport?: unknown };
 };
 export type LspCompletionList = { isIncomplete: boolean; items: LspCompletionItem[] };
 /** A parameter's label is its text, or where it sits in the signature's label. */

@@ -1,7 +1,7 @@
 import { File } from "@pierre/diffs";
 import { Editor, type Marker } from "@pierre/diffs/edit";
 import { onTheme, themeName } from "../theme";
-import type { CodeEditor, CompletionKind, EditorCompletion, EditorDiagnostic, EditorEvents, EditorHover, EditorSignatureHelp } from "./types";
+import type { CodeEditor, CompletionKind, EditorCompletion, EditorCompletionDetails, EditorDiagnostic, EditorEvents, EditorHover, EditorSignatureHelp } from "./types";
 
 // Lucide's circle-x and triangle-alert, drawn in the severity's color (the popover is in a shadow root, where the page's icon classes don't apply).
 const ICONS = {
@@ -262,6 +262,13 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
   let resolveSeq = 0;
   /** Set while accepting, so the edit doesn't count as typing. */
   let applying = false;
+  // Each entry's details, asked for once: for the docs under the list, and the import accepting it adds.
+  let resolved = new WeakMap<EditorCompletion, Promise<EditorCompletionDetails | null>>();
+  function details(item: EditorCompletion) {
+    let p = resolved.get(item);
+    if (!p) resolved.set(item, (p = events.resolveCompletion ? events.resolveCompletion(path, item).catch(() => null) : Promise.resolve(null)));
+    return p;
+  }
 
   /** The cursor, zero-based, if nothing is selected. */
   function caretPos() {
@@ -315,6 +322,7 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
     // Typed past the word it was asked for (a space, a parenthesis): it's for a place that's gone.
     if (now.character < start || lineText(now.line).slice(start, now.character).match(/[^\w$]/)) return closeSuggest();
     suggest = { line: now.line, start, items: r.items, incomplete: r.incomplete, shown: [], selected: 0 };
+    resolved = new WeakMap();
     filterSuggest();
   }
 
@@ -374,31 +382,42 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
     const mine = ++resolveSeq;
     suggestDocs.hidden = true;
     if (!events.resolveCompletion) return;
-    const at = path;
     setTimeout(async () => {
       if (mine !== resolveSeq) return;
-      const info = await events.resolveCompletion!(at, item).catch(() => null);
-      if (mine !== resolveSeq || !info) return;
+      const info = await details(item);
+      if (mine !== resolveSeq || !info || !(info.code || info.docs)) return;
       suggestDocs.innerHTML = tipHtml(info);
       suggestDocs.hidden = false;
       placeSuggest();
     }, 60);
   }
 
-  function acceptSuggest() {
+  async function acceptSuggest() {
     const s = suggest;
     const caret = caretPos();
     const item = s?.shown[s.selected];
     closeSuggest();
     if (!s || !caret || !item || !editor) return;
     const from = item.start === undefined ? s.start : item.start - 1;
+    // An auto-import's import comes from resolving it (usually done already, for the docs under the list).
+    const before = text;
+    const extra = item.autoImport ? ((await details(item))?.edits ?? []) : [];
+    // Typed on meanwhile: the edit would land in the wrong place.
+    if (text !== before || !editor) return;
+    const pos = (p: { line: number; column: number }) => ({ line: p.line - 1, character: p.column - 1 });
     applying = true;
     try {
-      editor.applyEdits([{ range: { start: { line: s.line, character: from }, end: caret }, newText: item.insert }]);
+      editor.applyEdits([
+        ...extra.map((e) => ({ range: { start: pos(e.start), end: pos(e.end) }, newText: e.text })),
+        { range: { start: { line: s.line, character: from }, end: caret }, newText: item.insert },
+      ]);
     } finally {
       applying = false;
     }
-    editor.focus({ lineNumber: s.line + 1, character: from + item.insert.length });
+    // Lines the import added above push the cursor's line down.
+    let line = s.line;
+    for (const e of extra) if (e.start.line - 1 <= s.line) line += e.text.split("\n").length - 1 - (e.end.line - e.start.line);
+    editor.focus({ lineNumber: line + 1, character: from + item.insert.length });
     onMove();
   }
 
@@ -435,8 +454,8 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
         ArrowUp: () => selectSuggest(suggest!.selected - 1),
         PageDown: () => selectSuggest(Math.min(suggest!.selected + page, suggest!.shown.length - 1)),
         PageUp: () => selectSuggest(Math.max(suggest!.selected - page, 0)),
-        Enter: acceptSuggest,
-        Tab: acceptSuggest,
+        Enter: () => void acceptSuggest(),
+        Tab: () => void acceptSuggest(),
         Escape: closeSuggest,
       };
       const action = !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey ? keys[e.key] : undefined;
@@ -462,7 +481,7 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
     const row = (e.target as HTMLElement).closest<HTMLElement>("[role=option]");
     if (!row || !suggest) return;
     suggest.selected = Number(row.dataset.index);
-    acceptSuggest();
+    void acceptSuggest();
   });
 
   // Parameter hints (events.signatureHelp): the signature of the call the cursor is in, above its line. Typing `(`,

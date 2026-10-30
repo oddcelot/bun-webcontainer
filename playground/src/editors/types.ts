@@ -46,9 +46,17 @@ export type EditorCompletion = {
   /** Ordering among equally good matches, and the text typing is matched against. */
   sort: string;
   filter: string;
+  /** From a module the file doesn't import yet: accepting it adds the import (EditorCompletionDetails.edits). */
+  autoImport?: boolean;
   /** For EditorEvents.resolveCompletion. */
   ref?: unknown;
 };
+
+/** A replacement of the text between two 1-based line and UTF-16 column positions. */
+export type EditorTextEdit = { start: { line: number; column: number }; end: { line: number; column: number }; text: string };
+
+/** What a completion is (shown like a hover), and what else accepting it changes. */
+export type EditorCompletionDetails = EditorHover & { edits?: EditorTextEdit[] };
 
 /** The completions at a position; `incomplete`: typing more asks again instead of narrowing these down. */
 export type EditorCompletions = { items: EditorCompletion[]; incomplete: boolean };
@@ -69,8 +77,8 @@ export type EditorEvents = {
   hover?(path: string, line: number, column: number): Promise<EditorHover | null>;
   /** The completions at a 1-based line and UTF-16 column of `path`; `trigger` is the character just typed, if that's what asked. */
   complete?(path: string, line: number, column: number, trigger?: string): Promise<EditorCompletions | null>;
-  /** The declaration and documentation of a completion (one `complete` returned for `path`), shown beside the list. */
-  resolveCompletion?(path: string, item: EditorCompletion): Promise<EditorHover | null>;
+  /** The declaration and documentation of a completion (one `complete` returned for `path`), shown beside the list, and the edits accepting it adds. */
+  resolveCompletion?(path: string, item: EditorCompletion): Promise<EditorCompletionDetails | null>;
   /** The signatures of the call around a 1-based line and UTF-16 column; `trigger` is the character just typed, `retrigger` while they're showing. */
   signatureHelp?(path: string, line: number, column: number, trigger?: string, retrigger?: boolean): Promise<EditorSignatureHelp | null>;
 };
