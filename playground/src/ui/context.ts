@@ -28,6 +28,8 @@ export type App = {
   openFolder(files: File[]): void;
   /** Opens a folder on disk and saves edits to it (only where `showDirectoryPicker` exists). */
   openDirectory(): void;
+  /** Opens the last folder from disk again, asking for access. */
+  reopenFolder(): void;
   /** Opens a zip's files like a folder. */
   openZip(file: File): void;
   /** The `?repo=` the page was opened with, as the repo prompt's default. */

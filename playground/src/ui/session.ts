@@ -14,7 +14,7 @@ export function createSession(canRun: boolean) {
   let resolveStarted!: () => void;
   const started = new Promise<void>((r) => (resolveStarted = r));
   const [counts, setCounts] = createStore({ lines: 0, error: 0, warn: 0 });
-  const [project, setProject] = createSignal({ selected: "", extra: [] as [label: string, value: string][] });
+  const [project, setProject] = createSignal<{ selected: string; extra: [label: string, value: string][]; reopen?: string }>({ selected: "", extra: [] });
 
   // Writes made in the action's frame are held until it settles, so `work` starts after that frame is flushed:
   // what it writes along the way (console counts, say) shows as it happens. Only the busy state and the end

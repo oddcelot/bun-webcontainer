@@ -18,6 +18,7 @@ import { createConsole } from "./console";
 import { createShell, scriptEntry } from "./shell";
 import { attach, discard, mirror, readDir, restore, shareProjectId } from "./persist";
 import { importZip } from "./archive";
+import { canWrite, lastFolder, rememberFolder } from "./folders";
 
 const support = checkSupport();
 /** False when a requirement is missing: the interface still loads, but nothing that runs code starts. */
@@ -50,7 +51,7 @@ async function setupServiceWorker() {
 }
 
 const vfs = new VFS();
-mountUI({ session, support, workspace, previews, terminal, clearConsole, vfs, log, run: () => run(), install, openProject, newFile, openFolder, openDirectory, openZip, repoParam: new URLSearchParams(location.search).get("repo") ?? "" });
+mountUI({ session, support, workspace, previews, terminal, clearConsole, vfs, log, run: () => run(), install, openProject, newFile, openFolder, openDirectory, reopenFolder, openZip, repoParam: new URLSearchParams(location.search).get("repo") ?? "" });
 const params = new URLSearchParams(location.search);
 const exampleName = params.get("example") ?? "";
 const repoParam = params.get("repo") ?? "";
@@ -119,6 +120,7 @@ function openProject(value: string) {
   url.hash = "";
   url.searchParams.delete("example");
   url.searchParams.delete("repo");
+  url.searchParams.delete("folder");
   if (value.startsWith("repo:")) url.searchParams.set("repo", value.slice(5));
   else if (value) url.searchParams.set("example", value);
   location.assign(url);
@@ -243,17 +245,20 @@ async function openFolder(files: File[]) {
 }
 
 /**
- * Opens a folder on disk (File System Access, Chromium) and writes edits back to it. node_modules and .git are
- * neither read nor written: `bun install` fills node_modules in the browser only.
+ * Opens a folder on disk (File System Access, Chromium) and writes edits back to it: `dir` (the last one, after
+ * asking for access again) or one the user picks. node_modules and .git are neither read nor written: `bun install`
+ * fills node_modules in the browser only.
  */
-async function openDirectory() {
-  let dir: FileSystemDirectoryHandle;
-  try {
-    dir = await (window as unknown as { showDirectoryPicker(o: object): Promise<FileSystemDirectoryHandle> }).showDirectoryPicker({ id: "bwc-folder", mode: "readwrite" });
-  } catch (e) {
-    if (!(e instanceof DOMException && e.name === "AbortError")) log("error", `[open] can't open the folder: ${e}`);
-    return;
-  }
+async function openDirectory(dir?: FileSystemDirectoryHandle) {
+  if (dir) {
+    if (!(await canWrite(dir, true))) return log("error", `[open] no access to ${dir.name}`);
+  } else
+    try {
+      dir = await (window as unknown as { showDirectoryPicker(o: object): Promise<FileSystemDirectoryHandle> }).showDirectoryPicker({ id: "bwc-folder", mode: "readwrite" });
+    } catch (e) {
+      if (!(e instanceof DOMException && e.name === "AbortError")) log("error", `[open] can't open the folder: ${e}`);
+      return;
+    }
   let files: [string, string | Uint8Array][];
   try {
     files = await readDir(dir);
@@ -271,6 +276,21 @@ async function openDirectory() {
   workspace.reloadTree();
   log("sys", `[open] ${dir.name}: ${files.length} files; changes are saved to the folder (node_modules stays in the browser)`);
   openFile(entryFile());
+  // A reload opens it again (see the end of startup).
+  void rememberFolder(dir);
+  const url = new URL(location.href);
+  url.hash = "";
+  url.searchParams.delete("example");
+  url.searchParams.delete("repo");
+  url.searchParams.set("folder", dir.name);
+  history.replaceState(null, "", url);
+  session.setProject({ selected: "#folder", extra: [[`Folder: ${dir.name}`, "#folder"]], reopen: dir.name });
+}
+
+/** The project picker's "Reopen <folder>". */
+async function reopenFolder() {
+  const dir = await lastFolder();
+  if (dir) await openDirectory(dir);
 }
 
 /** Opens a zip (a download from Share, a GitHub zip) the way a folder opens. */
@@ -299,6 +319,14 @@ async function newFile(path: string) {
   openFile(path);
 }
 session.markReady();
+
+// `?folder=`: the folder opened before the reload, if the browser still lets us write to it; else it's a click away.
+const folder = "showDirectoryPicker" in window ? await lastFolder() : undefined;
+if (folder) session.setProject({ ...session.project(), reopen: folder.name });
+if (params.has("folder")) {
+  if (folder && (await canWrite(folder, false))) await openDirectory(folder);
+  else log("sys", `[open] pick "Reopen ${folder?.name ?? params.get("folder")}" in the project menu to keep working on the folder`);
+}
 
 /** Like StackBlitz: install on load when a dependency is missing from node_modules. */
 function missingDeps(): boolean {

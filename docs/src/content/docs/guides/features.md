@@ -14,7 +14,7 @@ sidebar:
 - Type errors in TypeScript files, from TypeScript 7's checker (see [Toolchain](/compatibility/toolchain/#type-checking))
 - Resizable panes
 - **Open folder** or **Open zip file** loads a project from your computer (skips `node_modules` and `.git`). A zip whose files all sit in one folder, like GitHub's downloads, opens that folder.
-- In Chrome and Edge, an opened folder stays linked: edits, new files and deletions are saved to it on disk. `node_modules` stays in the browser and the folder's own `node_modules` and `.git` aren't touched. After a reload, open the folder again. Other browsers open a copy.
+- In Chrome and Edge, an opened folder stays linked: edits, new files and deletions are saved to it on disk. `node_modules` stays in the browser and the folder's own `node_modules` and `.git` aren't touched. A reload opens it again if the browser still allows access; otherwise pick **Reopen <folder>** in the project picker, which asks once more. Other browsers open a copy.
 
 Not yet: autocomplete, renaming or deleting files from the tree. Very large files are slow, because every line is rendered.
 
