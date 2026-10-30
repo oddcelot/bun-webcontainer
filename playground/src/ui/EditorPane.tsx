@@ -102,6 +102,11 @@ export function EditorPane() {
       }
     });
     const onKey = (e: KeyboardEvent) => {
+      if (matches("showHover", e)) {
+        e.preventDefault();
+        editor?.showHover();
+        return;
+      }
       if (matches("format", e)) {
         e.preventDefault();
         void formatOpenFile();

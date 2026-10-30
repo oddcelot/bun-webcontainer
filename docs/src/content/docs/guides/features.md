@@ -28,6 +28,7 @@ Not yet: autocomplete, renaming or deleting files from the tree. Very large file
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>.</kbd> | Stop the server |
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>S</kbd> | Save the file |
 | <kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd> | Format the file with `bun fmt` (`format`) |
+| <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>I</kbd> | Show the type and docs of the name at the cursor (`showHover`); any key closes it |
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>W</kbd>, <kbd>Delete</kbd> | Close the focused tab |
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>J</kbd> | Show or hide the console |
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>K</kbd> | Show or hide the preview |

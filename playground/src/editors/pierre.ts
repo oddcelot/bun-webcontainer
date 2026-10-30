@@ -148,10 +148,12 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
     tip.style.top = `${above >= 4 ? above : at.bottom + 4}px`;
     tip.style.left = `${Math.max(4, Math.min(at.left, innerWidth - width - 4))}px`;
   }
-  function onTokenEnter(token: { lineNumber: number; lineCharStart: number; tokenElement: HTMLElement }) {
+  type Token = { lineNumber: number; lineCharStart: number; tokenElement: HTMLElement };
+  /** Asks for the hover of `token` after `delay` ms and shows it there, unless another token is asked for first. */
+  function hoverToken(token: Token, delay: number) {
     if (!events.hover || !editor) return;
     clearTimeout(hideTimer);
-    if (token.tokenElement === hovered) return;
+    if (token.tokenElement === hovered && !tip.hidden) return;
     clearTimeout(hoverTimer);
     const mine = ++hoverSeq;
     hovered = token.tokenElement;
@@ -163,7 +165,19 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
       tip.innerHTML = tipHtml(info);
       tip.hidden = false;
       placeHover(token.tokenElement);
-    }, HOVER_DELAY);
+    }, delay);
+  }
+  const onTokenEnter = (token: Token) => hoverToken(token, HOVER_DELAY);
+  /** The token at a zero-based position: the one it's in, else the one it ends (the cursor just after a name). */
+  function tokenAt(line: number, character: number): Token | undefined {
+    const root = host.querySelector("diffs-container")?.shadowRoot;
+    const spans = [...(root?.querySelectorAll<HTMLElement>(`code [data-line="${line + 1}"] [data-char]`) ?? [])];
+    const start = (s: HTMLElement) => Number(s.dataset.char);
+    const end = (s: HTMLElement) => start(s) + (s.textContent?.length ?? 0);
+    const word = (s: HTMLElement) => !!s.textContent?.trim();
+    const span =
+      spans.find((s) => word(s) && start(s) <= character && character < end(s)) ?? spans.find((s) => word(s) && end(s) === character);
+    return span && { lineNumber: line + 1, lineCharStart: start(span), tokenElement: span };
   }
   function onTokenLeave() {
     clearTimeout(hoverTimer);
@@ -265,6 +279,12 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
       }));
       applyMarkers();
       events.onDiagnostics?.(diagnostics);
+    },
+    showHover() {
+      const sel = editor?.getViewState().selections?.[0];
+      const caret = sel?.direction === -1 ? sel.start : sel?.end;
+      const token = caret && tokenAt(caret.line, caret.character);
+      if (token) hoverToken(token, 0);
     },
     reveal(line, column) {
       editor?.focus({ lineNumber: line, character: column - 1 });

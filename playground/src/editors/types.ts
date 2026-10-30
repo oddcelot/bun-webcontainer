@@ -37,6 +37,8 @@ export interface CodeEditor {
   replace(text: string): void;
   /** Inline error/warning markers for the open file (replaces the previous ones; empty clears). Lines and columns are 1-based UTF-16. */
   setDiagnostics(diagnostics: EditorDiagnostic[]): void;
+  /** Shows the hover (EditorEvents.hover) for the token at the cursor, as resting the pointer on it would. */
+  showHover(): void;
   /** Puts the cursor at a 1-based line and column, scrolls to it and focuses the editor. */
   reveal(line: number, column: number): void;
   /** Show no file (the last tab was closed). */
