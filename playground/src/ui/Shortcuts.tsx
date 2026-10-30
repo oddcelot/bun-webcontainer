@@ -1,5 +1,5 @@
 import { For, createSignal, createUniqueId } from "solid-js";
-import { Dialog } from "@kobalte/core/dialog";
+import { Dialog, useDialogContext } from "@kobalte/core/dialog";
 import { COMMANDS, formatChord, keysFor, overridesText, setOverrides, type Command } from "../keymap";
 
 /**
@@ -7,9 +7,8 @@ import { COMMANDS, formatChord, keysFor, overridesText, setOverrides, type Comma
  * null to unbind. Kept in this browser, for every project.
  */
 export function Shortcuts() {
-  const [open, setOpen] = createSignal(false);
   return (
-    <Dialog open={open()} onOpenChange={setOpen}>
+    <Dialog>
       <Dialog.Trigger id="shortcuts" title="Keyboard shortcuts" aria-label="Keyboard shortcuts">
         <i class="i-lucide-keyboard" aria-hidden="true" />
       </Dialog.Trigger>
@@ -17,7 +16,7 @@ export function Shortcuts() {
         <Dialog.Overlay class="dialog-overlay" />
         <div class="dialog-positioner">
           <Dialog.Content class="dialog shortcuts">
-            <ShortcutsForm close={() => setOpen(false)} />
+            <ShortcutsForm />
           </Dialog.Content>
         </div>
       </Dialog.Portal>
@@ -26,7 +25,8 @@ export function Shortcuts() {
 }
 
 // Inside Dialog.Content so each opening reads the keymap afresh (the content unmounts on close).
-function ShortcutsForm(props: { close: () => void }) {
+function ShortcutsForm() {
+  const dialog = useDialogContext();
   const id = createUniqueId();
   const [error, setError] = createSignal("");
   let input!: HTMLTextAreaElement;
@@ -37,7 +37,7 @@ function ShortcutsForm(props: { close: () => void }) {
         e.preventDefault();
         const problem = setOverrides(input.value);
         if (problem) setError(problem);
-        else props.close();
+        else dialog.close();
       }}
     >
       <Dialog.Title class="dialog-title">Keyboard shortcuts</Dialog.Title>
