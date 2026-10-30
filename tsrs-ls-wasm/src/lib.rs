@@ -1,5 +1,5 @@
 // tsrs's language service (TypeScript 7 ported to Rust) as a long-lived wasm32-wasip1 module: the host pushes the
-// project's files in, then asks for hovers and diagnostics. Built like tsrs's own tsrs_wasm (build.rs: its 80 MiB
+// project's files in, then asks for hovers, completions and diagnostics. Built like tsrs's own tsrs_wasm (build.rs: its 80 MiB
 // shadow stack), but on tsrs_ls directly: tsrs_project's Session spawns timer and queue threads, which a
 // single-threaded module can't.
 //
@@ -9,6 +9,10 @@
 //   ls_set_files()           request: `path \0 contents` pairs, NUL-separated (absolute paths)
 //   ls_remove_files()        request: paths, NUL-separated
 //   ls_hover()               request: `config \0 path \0 line \0 character` (UTF-16); reply: LSP Hover JSON or null
+//   ls_completion()          request: `config \0 path \0 line \0 character \0 trigger` (trigger: the character typed,
+//                            or empty when asked for); reply: LSP CompletionList JSON or null
+//   ls_completion_resolve()  request: `config \0 item` (an item of that list, as JSON); reply: the item with its
+//                            detail and documentation
 //   ls_diagnostics()         request: `config \0 path`; reply: LSP Diagnostic[] JSON
 //   ls_output() -> ptr, ls_output_len() -> len    the reply
 // `config` is the tsconfig.json the program comes from. A program lives until a file changes; a change to one file
@@ -24,6 +28,7 @@ use rustc_hash::FxHashMap;
 use tsrs_ast::{SourceFile, SourceFileParseOptions};
 use tsrs_compiler::{CompilerHost, Program, ProgramOptions, new_compiler_host, new_program};
 use tsrs_core::P;
+use tsrs_core::Tristate;
 use tsrs_core::context::Context;
 use tsrs_core::tspath::{Path, to_path};
 use tsrs_lsproto as lsproto;
@@ -110,7 +115,9 @@ impl Host for LsHost {
         Arc::clone(&self.converters)
     }
     fn get_preferences(&self, _: &str) -> UserPreferences {
-        new_default_user_preferences()
+        // Completions for other modules' exports need an auto-import registry (`auto_import_registry`), which this
+        // host doesn't build: without this, completing a name fails with "completion list needs auto imports".
+        UserPreferences { include_completions_for_module_exports: Tristate::False, ..new_default_user_preferences() }
     }
     fn get_ecma_line_info(&self, _: &str) -> Option<Arc<ECMALineInfo>> {
         None
@@ -170,6 +177,7 @@ impl State {
         let host = Arc::new(CachingHost { inner, cache: RefCell::default() });
         let mut caps = lsproto::ResolvedClientCapabilities::default();
         caps.text_document.hover.content_format = vec![lsproto::MarkupKind::MARKDOWN];
+        caps.text_document.completion.completion_item.documentation_format = vec![lsproto::MarkupKind::MARKDOWN];
         let ctx = lsproto::with_client_capabilities(&Context::background(), Arc::new(caps));
         State { mem, fs, host, ctx, project: None, dirty: Some(Vec::new()) }
     }
@@ -275,6 +283,42 @@ fn hover(state: &mut State, request: &[u8]) -> String {
     project.ls.provide_hover(&ctx, &params).map_or_else(|_| "null".into(), |r| json(&r))
 }
 
+fn completion(state: &mut State, request: &[u8]) -> String {
+    let f = fields(request);
+    let [config, path, line, character, trigger] = f.as_slice() else { return "null".into() };
+    let ctx = state.ctx.clone();
+    let Some(project) = state.project(config) else { return "null".into() };
+    if project.program.get_source_file(path).is_none() {
+        return "null".into();
+    }
+    let uri = lsconv::file_name_to_document_uri(path);
+    let position = lsproto::Position { line: line.parse().unwrap_or(0), character: character.parse().unwrap_or(0) };
+    let context = lsproto::CompletionContext {
+        trigger_kind: if trigger.is_empty() {
+            lsproto::CompletionTriggerKind::INVOKED
+        } else {
+            lsproto::CompletionTriggerKind::TRIGGER_CHARACTER
+        },
+        trigger_character: (!trigger.is_empty()).then(|| trigger.clone()),
+    };
+    match project.ls.provide_completion(&ctx, &uri, position, Some(&context)) {
+        Ok(lsproto::CompletionItemsOrListOrNull { list: Some(list), .. }) => json(&list),
+        _ => "null".into(),
+    }
+}
+
+fn completion_resolve(state: &mut State, request: &[u8]) -> String {
+    let f = fields(request);
+    let [config, item] = f.as_slice() else { return "null".into() };
+    let Some(item) = tsrs_core::json::unmarshal(item).ok().and_then(|v| <lsproto::CompletionItem as lsproto::Json>::from_json(&v).ok()) else {
+        return "null".into();
+    };
+    let ctx = state.ctx.clone();
+    let Some(project) = state.project(config) else { return "null".into() };
+    let data = item.data.clone();
+    project.ls.resolve_completion_item(&ctx, item, data.as_ref()).map_or_else(|_| "null".into(), |r| json(&r))
+}
+
 fn diagnostics(state: &mut State, request: &[u8]) -> String {
     let f = fields(request);
     let [config, path] = f.as_slice() else { return "[]".into() };
@@ -341,6 +385,16 @@ mod abi {
     #[unsafe(no_mangle)]
     pub extern "C" fn ls_hover() {
         with(super::hover);
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn ls_completion() {
+        with(super::completion);
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn ls_completion_resolve() {
+        with(super::completion_resolve);
     }
 
     #[unsafe(no_mangle)]

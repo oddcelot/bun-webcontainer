@@ -1,5 +1,5 @@
-// The module over a small Bun project (index.ts importing util.ts, @types/bun from node_modules): diagnostics and
-// hovers, then 100 edits to index.ts as typing would make them, then a tsconfig change. Prints times and memory.
+// The module over a small Bun project (index.ts importing util.ts, @types/bun from node_modules): diagnostics,
+// hovers and completions, then 100 edits to index.ts as typing would make them, then a tsconfig change. Prints times and memory.
 //   cargo build --release --target wasm32-wasip1 && node test.mjs [node_modules with @types/bun; default: the playground's]
 import { Worker, isMainThread, parentPort, workerData } from "node:worker_threads";
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -44,6 +44,16 @@ if (isMainThread) {
   log("diagnostics (cold)", call("ls_diagnostics", ["/tsconfig.json", "/index.ts"]));
   log("hover req", call("ls_hover", ["/tsconfig.json", "/index.ts", "1", "45"]));
   log("hover greet", call("ls_hover", ["/tsconfig.json", "/index.ts", "1", "80"]));
+  // After `server.` on line 2: Server's members; then the first one with its type and docs.
+  const done = call("ls_completion", ["/tsconfig.json", "/index.ts", "2", "25", "."]);
+  const items = JSON.parse(done.out)?.items ?? [];
+  parentPort.postMessage(`completion server.: ${done.ms}ms ${items.length} items: ${items.slice(0, 8).map((i) => i.label).join(", ")}`);
+  const url = items.find((i) => i.label === "url");
+  if (!url) throw new Error("no `url` among server's completions");
+  log("completion resolve url", call("ls_completion_resolve", ["/tsconfig.json", JSON.stringify(url)]));
+  const invoked = call("ls_completion", ["/tsconfig.json", "/index.ts", "2", "18", ""]);
+  const global = JSON.parse(invoked.out)?.items ?? [];
+  parentPort.postMessage(`completion invoked at an expression: ${invoked.ms}ms ${global.length} items, Bun ${global.some((i) => i.label === "Bun") ? "among them" : "MISSING"}`);
   parentPort.postMessage(`memory after setup: ${mib()}`);
 
   let worst = 0, total = 0;
