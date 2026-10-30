@@ -6,6 +6,7 @@ export type Bucket = {
   getDirectory(): Promise<FileSystemDirectoryHandle>;
   /** Asks the browser not to evict this bucket. */
   persist(): Promise<boolean>;
+  caches: CacheStorage;
   /** False when this is the origin's default storage (no Storage Buckets). */
   own: boolean;
 };
@@ -16,6 +17,9 @@ type StorageBuckets = { open(name: string, options?: Options): Promise<Omit<Buck
 const fallback: Bucket = {
   getDirectory: () => navigator.storage.getDirectory(),
   persist: async () => (await navigator.storage.persist?.()) ?? false,
+  get caches() {
+    return self.caches;
+  },
   own: false,
 };
 
@@ -28,7 +32,7 @@ export function bucket(name: string, options?: Options): Promise<Bucket> {
     const sb = (navigator as { storageBuckets?: StorageBuckets }).storageBuckets;
     b = sb
       ? sb.open(name, options).then(
-          (b) => ({ getDirectory: () => b.getDirectory(), persist: () => b.persist(), own: true }),
+          (b) => ({ getDirectory: () => b.getDirectory(), persist: () => b.persist(), caches: b.caches, own: true }),
           () => fallback,
         )
       : Promise.resolve(fallback);
