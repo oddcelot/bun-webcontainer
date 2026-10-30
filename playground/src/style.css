@@ -182,7 +182,6 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
 .tabs { display: flex; gap: 4px; padding: var(--pad); overflow-x: auto; background: var(--bg); border-bottom: 1px solid var(--border); }
 #tabs:empty { display: none; }
 /* Tabs size to their name up to 26rem (about 42 characters) (then "…"; the tooltip has the full path) and don't shrink: a full bar scrolls. */
-.tabs-root { display: contents; }
 .tabs-bar { display: flex; align-items: center; min-width: 0; background: var(--bg); border-bottom: 1px solid var(--border); }
 .tabs-bar .tabs { flex: 1 1 auto; min-width: 0; border-bottom: 0; }
 .tabs-bar .autosave { display: flex; flex: 0 0 auto; align-items: center; gap: 4px; margin: 0 var(--pad) 0 auto; padding: 3px 8px; border: 1px solid transparent; border-radius: var(--inner-radius); background: none; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
@@ -197,7 +196,7 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
 /* The same mark as the pressed color-scheme button: an accent line on the bottom edge, inset past the corners. */
 .tabs .tab[data-selected]::after { content: ""; position: absolute; left: 7px; right: 7px; bottom: 0; height: 2px; border-radius: 1px 1px 0 0; background: var(--accent); }
 .tabs .tab:has(:focus-visible) { outline: 1px solid var(--accent); outline-offset: -1px; }
-/* Kobalte's trigger is the tab's label: a bare button inside the tab box, which draws the tab. */
+/* The tab button is the tab's label: a bare button inside the tab box, which draws the tab. */
 .tabs .tab-trigger { display: flex; flex: 1 1 auto; align-items: center; gap: 6px; min-width: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; outline: none; white-space: nowrap; }
 .tabs .name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* The folder hint gives way before the name does. */

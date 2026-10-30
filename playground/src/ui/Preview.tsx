@@ -1,7 +1,6 @@
 import { For, Show, createEffect, onSettled, untrack, useContext } from "solid-js";
 import { Select } from "@kobalte/core/select";
-import { Tabs } from "@kobalte/core/tabs";
-import { TabItem, useTabValue } from "./Tabs";
+import { TabItem, TabList } from "./Tabs";
 import { BASE } from "../base";
 import type { Card } from "../preview";
 import { AppContext } from "./context";
@@ -23,7 +22,6 @@ export function Preview() {
   // iframes in the order they were opened: moving an iframe in the DOM reloads it.
   const byAge = () => [...s.tabs].sort((a, b) => a.id - b.id);
   const disabled = !app.session.canRun;
-  const tabValue = useTabValue(() => String(s.active));
 
   // Keys pressed in a page stay in its frame; frames forward Escape here too (see onLoad).
   const onKey = (e: KeyboardEvent) => {
@@ -44,16 +42,14 @@ export function Preview() {
     <>
       <div id="preview-backdrop" hidden={!s.expanded} onClick={() => p.setExpanded(false)} />
       <div id="preview-wrap" class={{ expanded: s.expanded }}>
-        <Tabs class="tabs-root" value={tabValue()} onChange={(id) => id !== tabValue() && p.activate(Number(id))}>
-          <div id="preview-tabs" class="tabs">
-            <Tabs.List class="tablist" aria-label="Previews">
-              <For each={s.tabs}>{(tab) => <PreviewTabItem tab={tab} />}</For>
-            </Tabs.List>
-            <button class="add" type="button" title="New preview" aria-label="New preview" onClick={() => p.request(p.open())}>
-              <i class="i-lucide-plus" aria-hidden="true" />
-            </button>
-          </div>
-        </Tabs>
+        <div id="preview-tabs" class="tabs">
+          <TabList class="tablist" label="Previews" onSelect={(id) => Number(id) !== s.active && p.activate(Number(id))}>
+            <For each={s.tabs}>{(tab) => <PreviewTabItem tab={tab} />}</For>
+          </TabList>
+          <button class="add" type="button" title="New preview" aria-label="New preview" onClick={() => p.request(p.open())}>
+            <i class="i-lucide-plus" aria-hidden="true" />
+          </button>
+        </div>
         <form
           id="request"
           onSubmit={(e) => {
