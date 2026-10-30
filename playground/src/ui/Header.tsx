@@ -59,7 +59,7 @@ export function Header() {
         <i class="i-lucide-share-2" aria-hidden="true" /> Share
       </Tip>
       <ShareMenu />
-      <Shortcuts />
+      <Shortcuts id="shortcuts" />
       <ThemePicker />
     </>
   );
