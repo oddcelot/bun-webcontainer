@@ -51,6 +51,8 @@ export class BunPlayground extends HTMLElement {
   #pending = new Map<number, Pending>();
   #id = 0;
   #io: IntersectionObserver | null = null;
+  /** The frame's page said `boot`; until it does, a loaded frame is something else (see #start). */
+  #booted = false;
   #listening = false;
 
   constructor() {
@@ -286,6 +288,17 @@ export class BunPlayground extends HTMLElement {
     f.allow = "cross-origin-isolated; clipboard-write";
     f.title = this.getAttribute("title") || "Bun playground";
     f.src = url.href;
+    // A service worker from before the embed existed sends the frame to its preview page instead (it's updated by that
+    // very navigation): a frame that loads without saying `boot` loads again, a few times, as the new worker takes over.
+    this.#booted = false;
+    let retries = 0;
+    f.addEventListener("load", () => {
+      setTimeout(() => {
+        if (this.#booted || this.#frame !== f || retries >= 3) return;
+        retries++;
+        f.src = url.href;
+      }, 1500 * (retries + 1));
+    });
     this.#frame = f;
     this.#box.append(f);
     return this.#ready;
@@ -322,8 +335,10 @@ export class BunPlayground extends HTMLElement {
     const { event, data } = d as Event;
     // The embed's expand button: the element opens or closes the modal and announces it itself.
     if (event === "expand") return void this.#setExpanded(data.open);
-    if (event === "boot") void this.#request("init", { files: this.#files(), options: {} }).catch(() => {});
-    else if (event === "ready" || event === "unsupported") {
+    if (event === "boot") {
+      this.#booted = true;
+      void this.#request("init", { files: this.#files(), options: {} }).catch(() => {});
+    } else if (event === "ready" || event === "unsupported") {
       this.#isReady = true;
       this.#frame.classList.remove("wait");
       this.#poster.hidden = true;
