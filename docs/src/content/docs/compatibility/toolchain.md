@@ -24,7 +24,7 @@ loads with the first TypeScript file you open (~2.5 MB compressed, Bun's type de
 
 - 🟡 Errors for the open file only, with the editor's unsaved text; other files are checked as saved
 - 🟡 Every check rebuilds the whole program: under 0.1 s for small projects, about a second with a large `node_modules` (the Astro example)
-- ✅ Uses the nearest `tsconfig.json`; without one, the options `bun init` writes plus `types: ["bun"]`
+- ✅ Uses the nearest `tsconfig.json`, including `extends` (relative, from packages, or a list); without one, the options `bun init` writes plus `types: ["bun"]`
 - ✅ Types for `Bun.*`, `bun:*`, `node:*` and HTML imports from `@types/bun`, bundled; a project's own `@types/bun` or `@types/node` takes their place
 - ✅ Package types from installed `node_modules` (`.d.ts` files and `package.json` `types`/`exports`)
 - ❌ No autocomplete, hover info or go-to-definition (tsrs's WebAssembly build has no language server)

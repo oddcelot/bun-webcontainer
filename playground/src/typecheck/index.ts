@@ -4,13 +4,13 @@ import { dirname, type FileData, type VFS } from "../vfs";
 import type { CheckReply, CheckRequest } from "./worker";
 
 // Type errors from tsrs (see ./worker.ts). The project's files go to the checker as absolute paths ("/" + VFS path);
-// from node_modules only declarations, package.json and tsconfig files (for `extends`), which is what type
-// resolution reads. The worker adds Bun's own types where node_modules lacks them.
+// from node_modules only declarations and JSON (package.json, configs a tsconfig `extends`, JSON imports), which is
+// what type resolution reads. The worker adds Bun's own types where node_modules lacks them.
 
 /** Files the type checker looks at. */
 export const TYPED = /\.(?:[cm]?ts|tsx)$/;
 const PROJECT = /\.(?:[cm]?[jt]sx?|json)$/;
-const DECLARATIONS = /(?:\.d\.[cm]?ts|\.d\.[^/.]+\.ts|\/package\.json|\/tsconfig[^/]*\.json|\/tsconfigs\/[^/]+\.json)$/;
+const DECLARATIONS = /(?:\.d\.[cm]?ts|\.d\.[^/.]+\.ts|\.json)$/;
 
 /** Without tsconfig.json: what `bun init` writes plus Bun's types, with the DOM libs for code that runs in the preview. */
 const DEFAULTS = [
