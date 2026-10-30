@@ -1,10 +1,13 @@
 // @ts-check
 import { defineConfig } from "astro/config";
+import { unified } from "@astrojs/markdown-remark";
 import starlight from "@astrojs/starlight";
+import remarkPlayground from "./src/remark-playground.mjs";
 import { DOCS_URL, PLAYGROUND_URL } from "./site-urls.mjs";
 
 export default defineConfig({
   site: DOCS_URL,
+  markdown: { processor: unified({ remarkPlugins: [[remarkPlayground, { playgroundUrl: PLAYGROUND_URL }]] }) },
   integrations: [
     starlight({
       title: "Bun Playground",
