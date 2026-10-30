@@ -1,5 +1,5 @@
 // The module over a small Bun project (index.ts importing util.ts, @types/bun from node_modules): diagnostics,
-// hovers and completions, then 100 edits to index.ts as typing would make them, then a tsconfig change. Prints times and memory.
+// hovers, completions and signature help, then 100 edits to index.ts as typing would make them, then a tsconfig change. Prints times and memory.
 //   cargo build --release --target wasm32-wasip1 && node test.mjs [node_modules with @types/bun; default: the playground's]
 import { Worker, isMainThread, parentPort, workerData } from "node:worker_threads";
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -57,6 +57,9 @@ if (isMainThread) {
   // In an import's path: the project's files. Line 0 is `import { greet } from "./util.ts";`, so after `"./`.
   const paths = JSON.parse(call("ls_completion", ["/tsconfig.json", "/index.ts", "0", "25", "/"]).out)?.items ?? [];
   parentPort.postMessage(`completion in "./: ${paths.map((i) => i.label).join(", ") || "NONE"}`);
+  // Inside `greet(` on line 1: greet's signature, its one parameter active.
+  const at = index.split("\n")[1].indexOf("greet(") + 6;
+  log("signature help greet(", call("ls_signature_help", ["/tsconfig.json", "/index.ts", "1", String(at), "(", "0"]));
   parentPort.postMessage(`memory after setup: ${mib()}`);
 
   let worst = 0, total = 0;

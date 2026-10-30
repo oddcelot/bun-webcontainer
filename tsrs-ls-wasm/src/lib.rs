@@ -1,5 +1,5 @@
 // tsrs's language service (TypeScript 7 ported to Rust) as a long-lived wasm32-wasip1 module: the host pushes the
-// project's files in, then asks for hovers, completions and diagnostics. Built like tsrs's own tsrs_wasm (build.rs: its 80 MiB
+// project's files in, then asks for hovers, completions, signature help and diagnostics. Built like tsrs's own tsrs_wasm (build.rs: its 80 MiB
 // shadow stack), but on tsrs_ls directly: tsrs_project's Session spawns timer and queue threads, which a
 // single-threaded module can't.
 //
@@ -13,6 +13,9 @@
 //                            or empty when asked for); reply: LSP CompletionList JSON or null
 //   ls_completion_resolve()  request: `config \0 item` (an item of that list, as JSON); reply: the item with its
 //                            detail and documentation
+//   ls_signature_help()      request: `config \0 path \0 line \0 character \0 trigger \0 retrigger` (trigger: the
+//                            character typed, or empty; retrigger: "1" while hints are showing); reply: LSP
+//                            SignatureHelp JSON or null
 //   ls_diagnostics()         request: `config \0 path`; reply: LSP Diagnostic[] JSON
 //   ls_output() -> ptr, ls_output_len() -> len    the reply
 // `config` is the tsconfig.json the program comes from. A program lives until a file changes; a change to one file
@@ -187,6 +190,9 @@ impl State {
         let mut caps = lsproto::ResolvedClientCapabilities::default();
         caps.text_document.hover.content_format = vec![lsproto::MarkupKind::MARKDOWN];
         caps.text_document.completion.completion_item.documentation_format = vec![lsproto::MarkupKind::MARKDOWN];
+        let signature = &mut caps.text_document.signature_help.signature_information;
+        signature.documentation_format = vec![lsproto::MarkupKind::MARKDOWN];
+        signature.active_parameter_support = true;
         let ctx = lsproto::with_client_capabilities(&Context::background(), Arc::new(caps));
         State { mem, fs, host, ctx, project: None, dirty: Some(Vec::new()) }
     }
@@ -328,6 +334,31 @@ fn completion_resolve(state: &mut State, request: &[u8]) -> String {
     project.ls.resolve_completion_item(&ctx, item, data.as_ref()).map_or_else(|_| "null".into(), |r| json(&r))
 }
 
+fn signature_help(state: &mut State, request: &[u8]) -> String {
+    let f = fields(request);
+    let [config, path, line, character, trigger, retrigger] = f.as_slice() else { return "null".into() };
+    let ctx = state.ctx.clone();
+    let Some(project) = state.project(config) else { return "null".into() };
+    if project.program.get_source_file(path).is_none() {
+        return "null".into();
+    }
+    let uri = lsconv::file_name_to_document_uri(path);
+    let position = lsproto::Position { line: line.parse().unwrap_or(0), character: character.parse().unwrap_or(0) };
+    // active_signature_help is private: start from the default.
+    let mut context = lsproto::SignatureHelpContext::default();
+    context.trigger_kind = if trigger.is_empty() {
+        lsproto::SignatureHelpTriggerKind::INVOKED
+    } else {
+        lsproto::SignatureHelpTriggerKind::TRIGGER_CHARACTER
+    };
+    context.trigger_character = (!trigger.is_empty()).then(|| trigger.clone());
+    context.is_retrigger = retrigger == "1";
+    match project.ls.provide_signature_help(&ctx, &uri, position, Some(&context)) {
+        Ok(lsproto::SignatureHelpOrNull { signature_help: Some(help) }) => json(&help),
+        _ => "null".into(),
+    }
+}
+
 fn diagnostics(state: &mut State, request: &[u8]) -> String {
     let f = fields(request);
     let [config, path] = f.as_slice() else { return "[]".into() };
@@ -404,6 +435,11 @@ mod abi {
     #[unsafe(no_mangle)]
     pub extern "C" fn ls_completion_resolve() {
         with(super::completion_resolve);
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn ls_signature_help() {
+        with(super::signature_help);
     }
 
     #[unsafe(no_mangle)]
