@@ -18,6 +18,14 @@ tsrs_compiler = { git = "https://github.com/oxc-project/tsrs", tag = "v0.20.1" }
 tsrs_tsoptions = { git = "https://github.com/oxc-project/tsrs", tag = "v0.20.1" }
 tsrs_lsproto = { git = "https://github.com/oxc-project/tsrs", tag = "v0.20.1" }
 tsrs_ls = { git = "https://github.com/oxc-project/tsrs", tag = "v0.20.1" }
+tsrs_diagnostics = { git = "https://github.com/oxc-project/tsrs", tag = "v0.20.1" }
+tsrs_contentmapper = { git = "https://github.com/oxc-project/tsrs", tag = "v0.20.1" }
+rustc-hash = "2"
 
+# tsrs's tools/wasm/build.sh settings (without its wasm-opt pass).
 [profile.release]
 panic = "abort"
+opt-level = "s"
+lto = "fat"
+codegen-units = 1
+strip = "debuginfo"
