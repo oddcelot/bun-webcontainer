@@ -1,8 +1,9 @@
-import type { EditorDiagnostic, EditorHover } from "../editors/types";
+import type { CompletionKind, EditorCompletion, EditorCompletionDetails, EditorCompletions, EditorDiagnostic, EditorHover, EditorSignatureHelp } from "../editors/types";
 import { dirname, type FileData, type VFS } from "../vfs";
-import type { LsReply, LsRequest } from "./worker";
+import type { LspCompletionItem } from "./tsrsLs";
+import type { LsOp, LsReply, LsRequest } from "./worker";
 
-// Type errors and hovers from tsrs's language service (see ./worker.ts). The project's files go to it as absolute
+// Type errors, hovers, completions and signature help from tsrs's language service (see ./worker.ts). The project's files go to it as absolute
 // paths ("/" + VFS path); from node_modules only declarations and JSON (package.json, configs a tsconfig `extends`,
 // JSON imports), which is what type resolution reads. The worker adds Bun's own types where node_modules lacks them.
 
@@ -29,7 +30,8 @@ const DEFAULT_OPTIONS = {
   types: ["bun"],
 };
 
-type Op = { kind: "diagnostics" } | { kind: "hover"; line: number; character: number };
+/** The project's scripts, for DEFAULT_CONFIG's `files`. */
+const SCRIPT = /\.(?:[cm]?[jt]sx?)$/;
 
 let worker: Worker | undefined;
 let nextId = 0;
@@ -46,7 +48,7 @@ function nearestTsconfig(vfs: VFS, path: string): string | undefined {
 }
 
 /** Sends `op` for `path` (contents `text`, unsaved edits included) with what changed in the project since the last request. */
-function request(vfs: VFS, path: string, text: string, op: Op): Promise<LsReply> {
+function request(vfs: VFS, path: string, text: string, op: LsOp): Promise<LsReply> {
   if (!worker) {
     worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
     worker.onmessage = (e: MessageEvent<LsReply>) => {
@@ -61,7 +63,13 @@ function request(vfs: VFS, path: string, text: string, op: Op): Promise<LsReply>
   files.set("/" + path, text);
   const tsconfig = nearestTsconfig(vfs, path);
   const config = tsconfig ? "/" + tsconfig : DEFAULT_CONFIG;
-  if (!tsconfig) files.set(DEFAULT_CONFIG, JSON.stringify({ compilerOptions: DEFAULT_OPTIONS, files: ["../" + path] }));
+  // Every script of the project, as `tsc` would see it, so completions can import from any of them and switching tabs
+  // keeps the program (errors are still asked for one file at a time). Listed: tsrs matches no `include` pattern
+  // that climbs out of the config's folder.
+  if (!tsconfig) {
+    const scripts = [...files.keys()].filter((p) => SCRIPT.test(p) && !p.includes("/node_modules/")).sort();
+    files.set(DEFAULT_CONFIG, JSON.stringify({ compilerOptions: DEFAULT_OPTIONS, files: scripts.map((p) => ".." + p) }));
+  }
 
   const changed: LsRequest["changed"] = {};
   for (const [p, data] of files) {
@@ -116,4 +124,90 @@ export async function hover(vfs: VFS, path: string, text: string, line: number, 
   // The language service's markdown: the declaration in a ```typescript block, then the JSDoc.
   const m = /^```\w*\n([\s\S]*?)\n```\n?([\s\S]*)$/.exec(value);
   return m ? { code: m[1], docs: m[2].trim() } : { code: "", docs: value.trim() };
+}
+
+/** LSP's CompletionItemKind, by number. */
+const KINDS: Record<number, CompletionKind> = {
+  2: "function",
+  3: "function",
+  4: "function",
+  5: "property",
+  6: "variable",
+  7: "class",
+  8: "interface",
+  9: "module",
+  10: "property",
+  13: "enum",
+  14: "keyword",
+  17: "file",
+  19: "folder",
+  20: "constant",
+  21: "constant",
+  22: "class",
+  23: "property",
+  25: "type",
+};
+
+/** The completions at `line`/`column` (1-based, UTF-16) of `path`; `trigger` is the character just typed, if that's what asked. */
+export async function complete(vfs: VFS, path: string, text: string, line: number, column: number, trigger = ""): Promise<EditorCompletions | null> {
+  const r = await request(vfs, path, text, { kind: "completion", line: line - 1, character: column - 1, trigger });
+  if (r.error) console.warn(`tsrs: ${r.error}`);
+  if (!r.completion) return null;
+  // DEFAULT_CONFIG's folder isn't the project's.
+  const items = r.completion.items.filter((i) => i.label !== ".runbun").map((i): EditorCompletion => {
+    const edit = i.textEdit;
+    const range = edit && ("range" in edit ? edit.range : edit.insert);
+    return {
+      label: i.label,
+      kind: KINDS[i.kind ?? 1] ?? "text",
+      description: i.labelDetails?.description,
+      insert: edit?.newText ?? i.insertText ?? i.label,
+      start: range && range.start.line === line - 1 ? range.start.character + 1 : undefined,
+      sort: i.sortText ?? i.label,
+      filter: i.filterText ?? i.label,
+      autoImport: !!i.data?.autoImport,
+      ref: i,
+    };
+  });
+  return { items, incomplete: r.completion.isIncomplete };
+}
+
+/** The declaration and documentation of `item` (from `complete` for `path`) and the import it adds, or null. */
+export async function resolveCompletion(vfs: VFS, path: string, text: string, item: EditorCompletion): Promise<EditorCompletionDetails | null> {
+  const r = await request(vfs, path, text, { kind: "resolve", item: item.ref as LspCompletionItem });
+  if (r.error) console.warn(`tsrs: ${r.error}`);
+  const doc = r.item?.documentation;
+  const docs = (typeof doc === "string" ? doc : doc?.value ?? "").trim();
+  // A path's detail is its name again.
+  const code = r.item?.detail === item.label ? "" : (r.item?.detail ?? "");
+  const edits = r.item?.additionalTextEdits?.map(({ range: { start, end }, newText }) => ({
+    start: { line: start.line + 1, column: start.character + 1 },
+    end: { line: end.line + 1, column: end.character + 1 },
+    text: newText,
+  }));
+  return code || docs || edits?.length ? { code, docs, edits } : null;
+}
+
+const markdown = (doc: string | { value: string } | undefined) => (typeof doc === "string" ? doc : (doc?.value ?? "")).trim();
+
+/** The signatures of the call around `line`/`column` (1-based, UTF-16) of `path`, or null; `retrigger` while they're showing. */
+export async function signatureHelp(vfs: VFS, path: string, text: string, line: number, column: number, trigger = "", retrigger = false): Promise<EditorSignatureHelp | null> {
+  const r = await request(vfs, path, text, { kind: "signature", line: line - 1, character: column - 1, trigger, retrigger });
+  if (r.error) console.warn(`tsrs: ${r.error}`);
+  const help = r.signature;
+  if (!help?.signatures.length) return null;
+  const active = Math.min(help.activeSignature ?? 0, help.signatures.length - 1);
+  const signatures = help.signatures.map((sig) => {
+    // A parameter given as text is the next place that text appears, after the opening parenthesis.
+    let from = sig.label.indexOf("(") + 1;
+    const params = (sig.parameters ?? []).map((p) => {
+      let [start, end] = typeof p.label === "string" ? [sig.label.indexOf(p.label, from), 0] : p.label;
+      if (typeof p.label === "string") end = start + p.label.length;
+      if (start >= 0) from = end;
+      return { start, end, docs: markdown(p.documentation) };
+    });
+    return { label: sig.label, params, docs: markdown(sig.documentation) };
+  });
+  const param = help.signatures[active].activeParameter;
+  return { signatures, active, param: param ?? undefined };
 }

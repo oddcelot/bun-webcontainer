@@ -4,7 +4,7 @@ import { createPierre } from "../editors/pierre";
 import { formatChord, keysFor, matches } from "../keymap";
 import type { CodeEditor } from "../editors/types";
 import { asConsoleEntry, errorLocation, fmt } from "../fmt";
-import { hover, TYPED } from "../typecheck";
+import { complete, hover, resolveCompletion, signatureHelp, TYPED } from "../typecheck";
 import { AppContext } from "./context";
 import { guarded } from "./guarded";
 import { EditorTabs } from "./Tabs";
@@ -68,6 +68,10 @@ export function EditorPane() {
         onDiagnostics: ws.setProblems,
         // Types for TypeScript files, with the editor's text (unsaved edits included).
         hover: async (file, line, column) => (TYPED.test(file) && editor ? hover(vfs, file, editor.getText(), line, column) : null),
+        complete: async (file, line, column, trigger) => (TYPED.test(file) && editor ? complete(vfs, file, editor.getText(), line, column, trigger) : null),
+        resolveCompletion: async (file, item) => (editor ? resolveCompletion(vfs, file, editor.getText(), item) : null),
+        signatureHelp: async (file, line, column, trigger, retrigger) =>
+          TYPED.test(file) && editor ? signatureHelp(vfs, file, editor.getText(), line, column, trigger, retrigger) : null,
       });
       check ??= mountDiagnostics(vfs, editor);
       current = path;
@@ -105,6 +109,16 @@ export function EditorPane() {
       if (matches("showHover", e)) {
         e.preventDefault();
         editor?.showHover();
+        return;
+      }
+      if (matches("suggest", e)) {
+        e.preventDefault();
+        editor?.suggest();
+        return;
+      }
+      if (matches("signatureHelp", e)) {
+        e.preventDefault();
+        editor?.showSignatureHelp();
         return;
       }
       if (matches("format", e)) {

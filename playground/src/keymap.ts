@@ -3,7 +3,7 @@ import { pref } from "./prefs";
 /**
  * Keyboard shortcuts: each command's default chords, with the user's overrides (JSON, edited in the shortcuts dialog)
  * kept in localStorage and shared by every tab. A chord is `+`-joined modifiers and a key, e.g. `Mod+Shift+Enter`:
- * `Mod` is Cmd on macOS and Ctrl elsewhere; the key is a letter, digit or `KeyboardEvent.key` name (`Enter`, `Escape`, `.`), any case.
+ * `Mod` is Cmd on macOS and Ctrl elsewhere; the key is a letter, digit, `Space` or `KeyboardEvent.key` name (`Enter`, `Escape`, `.`), any case.
  */
 
 export const COMMANDS = {
@@ -12,6 +12,9 @@ export const COMMANDS = {
   save: { label: "Save the file", keys: ["Mod+S"] },
   format: { label: "Format the file (bun fmt)", keys: ["Shift+Alt+F"] },
   showHover: { label: "Show the type at the cursor", keys: ["Mod+I"] },
+  // Ctrl on macOS too, as there: Cmd+Space opens Spotlight.
+  suggest: { label: "Suggest completions", keys: ["Ctrl+Space"] },
+  signatureHelp: { label: "Show the parameters of the call", keys: ["Mod+Shift+Space"] },
   closeTab: { label: "Close the focused tab", keys: ["Mod+W", "Delete"] },
   toggleConsole: { label: "Show or hide the console", keys: ["Mod+J"] },
   togglePreview: { label: "Show or hide the preview", keys: ["Mod+K"] },
@@ -43,8 +46,8 @@ function parse(chord: string): Chord | string {
   };
 }
 
-/** The event's key, by physical key for letters and digits so Alt and Shift (`π`, `!`) don't change it. */
-const keyOf = (e: KeyboardEvent) => (/^(?:Key|Digit)(.)$/.exec(e.code)?.[1] ?? e.key).toLowerCase();
+/** The event's key, by physical key for letters, digits and the space bar so Alt and Shift (`π`, `!`) don't change it. */
+const keyOf = (e: KeyboardEvent) => (e.code === "Space" ? "space" : (/^(?:Key|Digit)(.)$/.exec(e.code)?.[1] ?? e.key)).toLowerCase();
 
 const [overrides, saveOverrides] = pref<Overrides>(STORAGE_KEY, {}, {
   deserialize(data) {

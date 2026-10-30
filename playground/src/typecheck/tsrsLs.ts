@@ -68,6 +68,9 @@ type Exports = {
   ls_set_files(): void;
   ls_remove_files(): void;
   ls_hover(): void;
+  ls_completion(): void;
+  ls_completion_resolve(): void;
+  ls_signature_help(): void;
   ls_diagnostics(): void;
 };
 
@@ -90,7 +93,7 @@ export class TsrsLs {
     return this.ex.memory.buffer.byteLength;
   }
 
-  private call(fn: "ls_set_files" | "ls_remove_files" | "ls_hover" | "ls_diagnostics", fields: string[]): string {
+  private call(fn: "ls_set_files" | "ls_remove_files" | "ls_hover" | "ls_completion" | "ls_completion_resolve" | "ls_signature_help" | "ls_diagnostics", fields: string[]): string {
     const bytes = new TextEncoder().encode(fields.join("\0"));
     // ls_input may grow memory, which detaches the old buffer: take the pointer first.
     const ptr = this.ex.ls_input(bytes.length);
@@ -114,6 +117,21 @@ export class TsrsLs {
     return JSON.parse(this.call("ls_hover", [config, path, String(line), String(character)]));
   }
 
+  /** The completions at `line`/`character` (0-based, UTF-16), or null; `trigger` is the character just typed, if that's what asked. */
+  completion(config: string, path: string, line: number, character: number, trigger = ""): LspCompletionList | null {
+    return JSON.parse(this.call("ls_completion", [config, path, String(line), String(character), trigger]));
+  }
+
+  /** `item` (from `completion`) with its detail and documentation, or null. */
+  resolveCompletion(config: string, item: LspCompletionItem): LspCompletionItem | null {
+    return JSON.parse(this.call("ls_completion_resolve", [config, JSON.stringify(item)]));
+  }
+
+  /** The signatures of the call around `line`/`character` (0-based, UTF-16), or null; `retrigger` while they're showing. */
+  signatureHelp(config: string, path: string, line: number, character: number, trigger = "", retrigger = false): LspSignatureHelp | null {
+    return JSON.parse(this.call("ls_signature_help", [config, path, String(line), String(character), trigger, retrigger ? "1" : "0"]));
+  }
+
   diagnostics(config: string, path: string): LspDiagnostic[] {
     return JSON.parse(this.call("ls_diagnostics", [config, path]));
   }
@@ -124,3 +142,29 @@ export type LspRange = { start: LspPosition; end: LspPosition };
 /** 1 error, 2 warning, 3 information, 4 hint. */
 export type LspDiagnostic = { range: LspRange; severity?: 1 | 2 | 3 | 4; code?: number | string; message: string };
 export type LspHover = { contents: { kind: "markdown" | "plaintext"; value: string }; range?: LspRange };
+type LspMarkup = { kind: "markdown" | "plaintext"; value: string };
+export type LspTextEdit = { newText: string } & ({ range: LspRange } | { insert: LspRange; replace: LspRange });
+/** `kind` is LSP's CompletionItemKind (1 text … 25 type parameter); `data` goes back unchanged to resolve it. */
+export type LspCompletionItem = {
+  label: string;
+  labelDetails?: { detail?: string; description?: string };
+  kind?: number;
+  detail?: string;
+  documentation?: string | LspMarkup;
+  sortText?: string;
+  filterText?: string;
+  insertText?: string;
+  textEdit?: LspTextEdit;
+  /** Other edits accepting it makes, e.g. the import an auto-import adds (after resolving). */
+  additionalTextEdits?: { range: LspRange; newText: string }[];
+  data?: { autoImport?: unknown };
+};
+export type LspCompletionList = { isIncomplete: boolean; items: LspCompletionItem[] };
+/** A parameter's label is its text, or where it sits in the signature's label. */
+export type LspSignature = {
+  label: string;
+  documentation?: string | LspMarkup;
+  parameters?: { label: string | [number, number]; documentation?: string | LspMarkup }[];
+  activeParameter?: number | null;
+};
+export type LspSignatureHelp = { signatures: LspSignature[]; activeSignature?: number };
