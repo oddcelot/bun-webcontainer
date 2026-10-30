@@ -8,6 +8,7 @@ JSC-independent Rust crates compiled to wasm64 (Memory64) plus JS shims for the 
 | `playground/` | The app: editor, file tree, VFS, worker runtime, `Bun.serve` preview, `bun install` (see its README) |
 | `docs/` | Docs site (Astro Starlight) for docs.runbun.dev: features and compatibility |
 | `transpile-wasm/` | Bun's transpiler (`bun_js_parser` + `bun_js_printer`) as wasm64 |
+| `fmt-wasm/` | `bun fmt` (`bun_format` through `bun_lint_driver`) as wasm64: byte-identical to native `bun fmt`, no imports |
 | `semver-wasm/` | `bun_semver` as wasm64 |
 | `sys-wasm/` | probe: `bun_sys` file ops on wasm64 through host imports over the playground VFS |
 | `resolve-wasm/` | `bun_resolver` on wasm64 (`resolve_c`): relative/bare/exports/imports/tsconfig paths over the VFS via `bun_sys` imports; 0.9 MB, only `bun_sys.*` imports |
@@ -27,6 +28,7 @@ W="-Zbuild-std=std,panic_abort --target wasm64-unknown-unknown --release"
 (cd transpile-wasm && cargo build $W && node test.mjs)
 (cd sys-wasm && cargo build $W && node test.mjs)
 (cd resolve-wasm && cargo build $W && node test.mjs)
+(cd fmt-wasm && cargo build $W && node test.mjs)
 (cd playground && bun install && bun run dev)   # http://localhost:5173, Chrome
 ```
 

@@ -10,6 +10,7 @@ export const COMMANDS = {
   run: { label: "Run", keys: ["Mod+Enter"] },
   stop: { label: "Stop the server", keys: ["Mod+."] },
   save: { label: "Save the file", keys: ["Mod+S"] },
+  format: { label: "Format the file (bun fmt)", keys: ["Shift+Alt+F"] },
   closeTab: { label: "Close the focused tab", keys: ["Mod+W", "Delete"] },
   toggleConsole: { label: "Show or hide the console", keys: ["Mod+J"] },
   togglePreview: { label: "Show or hide the preview", keys: ["Mod+K"] },

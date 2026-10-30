@@ -195,6 +195,10 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
 .tabs-bar .tabs { flex: 1 1 auto; min-width: 0; border-bottom: 0; }
 .tabs-bar .autosave { display: flex; flex: 0 0 auto; align-items: center; gap: 4px; margin: 0 var(--pad) 0 auto; padding: 3px 8px; border: 1px solid transparent; border-radius: var(--inner-radius); background: none; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
 .tabs-bar .autosave:hover, .tabs-bar .autosave:focus-visible { color: var(--fg); background: var(--control); outline: none; }
+.tabs-bar .format { display: flex; flex: 0 0 auto; align-items: center; gap: 4px; margin: 0 0 0 auto; padding: 3px 8px; border: 1px solid transparent; border-radius: var(--inner-radius); background: none; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
+.tabs-bar .format:hover:not(:disabled), .tabs-bar .format:focus-visible { color: var(--fg); background: var(--control); outline: none; }
+.tabs-bar .format:disabled { opacity: 0.5; cursor: default; }
+.tabs-bar .format + .autosave { margin-left: 4px; }
 .tabs-bar .autosave[aria-pressed="false"] { color: var(--fg); border-color: var(--control-border); }
 .tabs .tab .unsaved { color: var(--accent); font-size: 10px; line-height: 1; }
 .tabs .tablist, .tabs.tablist { display: flex; gap: 4px; }

@@ -102,6 +102,21 @@ export function createPierre(parent: HTMLElement): CodeEditor {
       applyMarkers();
     },
     getText: () => editor?.getText() ?? text,
+    replace(next) {
+      const current = editor?.getText();
+      if (!editor || current === undefined || next === current) return;
+      // Only the span that differs, so the cursor and the lines around it don't move.
+      let start = 0;
+      while (start < current.length && start < next.length && current[start] === next[start]) start++;
+      let end = 0;
+      while (end < current.length - start && end < next.length - start && current[current.length - 1 - end] === next[next.length - 1 - end]) end++;
+      const at = (offset: number) => {
+        const before = current.slice(0, offset);
+        const line = before.split("\n").length - 1;
+        return { line, character: offset - (before.lastIndexOf("\n") + 1) };
+      };
+      editor.applyEdits([{ range: { start: at(start), end: at(current.length - end) }, newText: next.slice(start, next.length - end) }]);
+    },
     clear() {
       close();
       host.replaceChildren();
