@@ -151,7 +151,7 @@ export function EditorPane() {
   return (
     <>
       <div class="tabs-bar">
-        <EditorTabs placeholder={!session.ready() && !ws.state.open.length} />
+        <EditorTabs />
         <Tip class="format" type="button" disabled={!ws.state.active} tip="Format the open file with bun fmt" keys={keysFor("format").map(formatChord)} onClick={() => void formatOpenFile()}>
           <i class="i-lucide-wand-sparkles" aria-hidden="true" /> Format
         </Tip>

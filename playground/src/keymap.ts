@@ -16,6 +16,7 @@ export const COMMANDS = {
   suggest: { label: "Suggest completions", keys: ["Ctrl+Space"] },
   signatureHelp: { label: "Show the parameters of the call", keys: ["Mod+Shift+Space"] },
   closeTab: { label: "Close the focused tab", keys: ["Mod+W", "Delete"] },
+  toggleExplorer: { label: "Show or hide the file tree", keys: ["Mod+B"] },
   toggleConsole: { label: "Show or hide the console", keys: ["Mod+J"] },
   togglePreview: { label: "Show or hide the preview", keys: ["Mod+K"] },
   exitFullscreen: { label: "Leave the expanded preview", keys: ["Escape"] },

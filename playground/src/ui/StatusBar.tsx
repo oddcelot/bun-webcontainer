@@ -43,7 +43,7 @@ const keys = (command: Command) => keysFor(command).map(formatChord);
  * The bar along the bottom, as in VS Code or Zed: panel toggles and the program's status on the left, the open
  * file's problems, cursor and language, the keyboard shortcuts and the Bun release on the right.
  */
-export function StatusBar(props: { previewShown: boolean; consoleShown: boolean; toggle(i: number): void }) {
+export function StatusBar(props: { treeShown: boolean; toggleTree(): void; previewShown: boolean; consoleShown: boolean; toggle(i: number): void }) {
   const app = useContext(AppContext);
   const s = app.session;
   const ws = app.workspace;
@@ -60,6 +60,10 @@ export function StatusBar(props: { previewShown: boolean; consoleShown: boolean;
 
   return (
     <footer id="statusbar">
+      <Tip tip="Show or hide the file tree" keys={keys("toggleExplorer")} type="button" aria-pressed={props.treeShown ? "true" : "false"} onClick={props.toggleTree}>
+        <i class="i-lucide-panel-left" aria-hidden="true" />
+        <span class="sr-only">File tree</span>
+      </Tip>
       <Tip tip="Show or hide the preview" keys={keys("togglePreview")} type="button" aria-pressed={props.previewShown ? "true" : "false"} onClick={() => props.toggle(0)}>
         <i class="i-lucide-app-window" aria-hidden="true" />
         <span class="sr-only">Preview</span>
