@@ -30,7 +30,8 @@ example's `node_modules`), later ones a few milliseconds.
 - ✅ Package types from installed `node_modules` (`.d.ts` files and `package.json` `types`/`exports`)
 - ✅ Hover info: rest the pointer on a name for its type and documentation (JSDoc, with examples)
 - 🟡 Completions: members after `.`, names in scope, keywords, and import paths, each with its type and documentation; no auto-imports (names another module exports appear once you import them)
-- ❌ No signature help or go-to-definition yet
+- ✅ Parameter hints in calls: the signature, its overloads, and the current parameter's documentation
+- ❌ No go-to-definition yet
 - ❌ No `tsc` command in the console
 
 ## Formatter (`bun fmt`)

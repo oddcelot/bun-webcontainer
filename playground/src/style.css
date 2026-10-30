@@ -253,6 +253,8 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
 .editor-suggest-description { margin-left: auto; padding-left: 12px; overflow: hidden; text-overflow: ellipsis; color: color-mix(in srgb, var(--fg) 50%, transparent); font-size: 12px; }
 .editor-suggest-docs { max-height: 30vh; overflow: auto; padding: 6px 10px; border-top: 1px solid color-mix(in srgb, var(--fg) 12%, transparent); line-height: 19px; }
 .editor-suggest-docs[hidden] { display: none; }
+.editor-signature .editor-hover-code strong { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.editor-signature-count { margin-right: 8px; color: color-mix(in srgb, var(--fg) 50%, transparent); }
 #editor .pierre-host { height: 100%; overflow: auto; background: var(--bg); }
 #editor diffs-container { min-height: 100%; }
 #preview-panel { display: flex; flex-direction: column; }

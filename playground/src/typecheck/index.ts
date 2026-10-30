@@ -1,9 +1,9 @@
-import type { CompletionKind, EditorCompletion, EditorCompletions, EditorDiagnostic, EditorHover } from "../editors/types";
+import type { CompletionKind, EditorCompletion, EditorCompletions, EditorDiagnostic, EditorHover, EditorSignatureHelp } from "../editors/types";
 import { dirname, type FileData, type VFS } from "../vfs";
 import type { LspCompletionItem } from "./tsrsLs";
 import type { LsOp, LsReply, LsRequest } from "./worker";
 
-// Type errors, hovers and completions from tsrs's language service (see ./worker.ts). The project's files go to it as absolute
+// Type errors, hovers, completions and signature help from tsrs's language service (see ./worker.ts). The project's files go to it as absolute
 // paths ("/" + VFS path); from node_modules only declarations and JSON (package.json, configs a tsconfig `extends`,
 // JSON imports), which is what type resolution reads. The worker adds Bun's own types where node_modules lacks them.
 
@@ -171,4 +171,28 @@ export async function resolveCompletion(vfs: VFS, path: string, text: string, it
   // A path's detail is its name again.
   const code = r.item?.detail === item.label ? "" : (r.item?.detail ?? "");
   return code || docs ? { code, docs } : null;
+}
+
+const markdown = (doc: string | { value: string } | undefined) => (typeof doc === "string" ? doc : (doc?.value ?? "")).trim();
+
+/** The signatures of the call around `line`/`column` (1-based, UTF-16) of `path`, or null; `retrigger` while they're showing. */
+export async function signatureHelp(vfs: VFS, path: string, text: string, line: number, column: number, trigger = "", retrigger = false): Promise<EditorSignatureHelp | null> {
+  const r = await request(vfs, path, text, { kind: "signature", line: line - 1, character: column - 1, trigger, retrigger });
+  if (r.error) console.warn(`tsrs: ${r.error}`);
+  const help = r.signature;
+  if (!help?.signatures.length) return null;
+  const active = Math.min(help.activeSignature ?? 0, help.signatures.length - 1);
+  const signatures = help.signatures.map((sig) => {
+    // A parameter given as text is the next place that text appears, after the opening parenthesis.
+    let from = sig.label.indexOf("(") + 1;
+    const params = (sig.parameters ?? []).map((p) => {
+      let [start, end] = typeof p.label === "string" ? [sig.label.indexOf(p.label, from), 0] : p.label;
+      if (typeof p.label === "string") end = start + p.label.length;
+      if (start >= 0) from = end;
+      return { start, end, docs: markdown(p.documentation) };
+    });
+    return { label: sig.label, params, docs: markdown(sig.documentation) };
+  });
+  const param = help.signatures[active].activeParameter;
+  return { signatures, active, param: param ?? undefined };
 }

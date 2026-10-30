@@ -1,7 +1,7 @@
 // tsrs's language service runs here and not on the page: the checker recurses deeply, and a request blocks until it
 // is answered. The instance keeps the project's files between requests and is replaced once its memory (which never
 // shrinks) passes MEMORY_LIMIT.
-import { TsrsLs, type LspCompletionItem, type LspCompletionList, type LspDiagnostic, type LspHover } from "./tsrsLs";
+import { TsrsLs, type LspCompletionItem, type LspCompletionList, type LspDiagnostic, type LspHover, type LspSignatureHelp } from "./tsrsLs";
 
 type Files = Record<string, string | Uint8Array>;
 /** Every request carries the files that changed since the last one (the worker keeps the rest). */
@@ -10,7 +10,8 @@ export type LsOp =
   | { kind: "diagnostics" }
   | { kind: "hover"; line: number; character: number }
   | { kind: "completion"; line: number; character: number; trigger: string }
-  | { kind: "resolve"; item: LspCompletionItem };
+  | { kind: "resolve"; item: LspCompletionItem }
+  | { kind: "signature"; line: number; character: number; trigger: string; retrigger: boolean };
 export type LsRequest = Sync & LsOp;
 export type LsReply = {
   id: number;
@@ -18,6 +19,7 @@ export type LsReply = {
   hover?: LspHover | null;
   completion?: LspCompletionList | null;
   item?: LspCompletionItem | null;
+  signature?: LspSignatureHelp | null;
   error?: string;
 };
 
@@ -75,7 +77,9 @@ self.onmessage = async (e: MessageEvent<LsRequest>) => {
           ? { id: req.id, completion: service.completion(req.config, req.path, req.line, req.character, req.trigger) }
           : req.kind === "resolve"
             ? { id: req.id, item: service.resolveCompletion(req.config, req.item) }
-            : { id: req.id, diagnostics: service.diagnostics(req.config, req.path) };
+            : req.kind === "signature"
+              ? { id: req.id, signature: service.signatureHelp(req.config, req.path, req.line, req.character, req.trigger, req.retrigger) }
+              : { id: req.id, diagnostics: service.diagnostics(req.config, req.path) };
     if (service.memoryBytes > MEMORY_LIMIT) ls = undefined;
   } catch (err) {
     // A trap (stack overflow, out of memory) leaves the instance unusable: the next request makes a new one.

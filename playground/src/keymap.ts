@@ -14,6 +14,7 @@ export const COMMANDS = {
   showHover: { label: "Show the type at the cursor", keys: ["Mod+I"] },
   // Ctrl on macOS too, as there: Cmd+Space opens Spotlight.
   suggest: { label: "Suggest completions", keys: ["Ctrl+Space"] },
+  signatureHelp: { label: "Show the parameters of the call", keys: ["Mod+Shift+Space"] },
   closeTab: { label: "Close the focused tab", keys: ["Mod+W", "Delete"] },
   toggleConsole: { label: "Show or hide the console", keys: ["Mod+J"] },
   togglePreview: { label: "Show or hide the preview", keys: ["Mod+K"] },

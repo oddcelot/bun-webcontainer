@@ -70,6 +70,7 @@ type Exports = {
   ls_hover(): void;
   ls_completion(): void;
   ls_completion_resolve(): void;
+  ls_signature_help(): void;
   ls_diagnostics(): void;
 };
 
@@ -92,7 +93,7 @@ export class TsrsLs {
     return this.ex.memory.buffer.byteLength;
   }
 
-  private call(fn: "ls_set_files" | "ls_remove_files" | "ls_hover" | "ls_completion" | "ls_completion_resolve" | "ls_diagnostics", fields: string[]): string {
+  private call(fn: "ls_set_files" | "ls_remove_files" | "ls_hover" | "ls_completion" | "ls_completion_resolve" | "ls_signature_help" | "ls_diagnostics", fields: string[]): string {
     const bytes = new TextEncoder().encode(fields.join("\0"));
     // ls_input may grow memory, which detaches the old buffer: take the pointer first.
     const ptr = this.ex.ls_input(bytes.length);
@@ -126,6 +127,11 @@ export class TsrsLs {
     return JSON.parse(this.call("ls_completion_resolve", [config, JSON.stringify(item)]));
   }
 
+  /** The signatures of the call around `line`/`character` (0-based, UTF-16), or null; `retrigger` while they're showing. */
+  signatureHelp(config: string, path: string, line: number, character: number, trigger = "", retrigger = false): LspSignatureHelp | null {
+    return JSON.parse(this.call("ls_signature_help", [config, path, String(line), String(character), trigger, retrigger ? "1" : "0"]));
+  }
+
   diagnostics(config: string, path: string): LspDiagnostic[] {
     return JSON.parse(this.call("ls_diagnostics", [config, path]));
   }
@@ -152,3 +158,11 @@ export type LspCompletionItem = {
   data?: unknown;
 };
 export type LspCompletionList = { isIncomplete: boolean; items: LspCompletionItem[] };
+/** A parameter's label is its text, or where it sits in the signature's label. */
+export type LspSignature = {
+  label: string;
+  documentation?: string | LspMarkup;
+  parameters?: { label: string | [number, number]; documentation?: string | LspMarkup }[];
+  activeParameter?: number | null;
+};
+export type LspSignatureHelp = { signatures: LspSignature[]; activeSignature?: number };

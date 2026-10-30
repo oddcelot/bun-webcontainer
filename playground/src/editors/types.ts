@@ -53,6 +53,12 @@ export type EditorCompletion = {
 /** The completions at a position; `incomplete`: typing more asks again instead of narrowing these down. */
 export type EditorCompletions = { items: EditorCompletion[]; incomplete: boolean };
 
+/** One signature of the function being called: its label, where each parameter sits in it, and docs (markdown). */
+export type EditorSignature = { label: string; params: { start: number; end: number; docs: string }[]; docs: string };
+
+/** The signatures of the call around the cursor, which one applies, and the parameter the cursor is at (if any). */
+export type EditorSignatureHelp = { signatures: EditorSignature[]; active: number; param?: number };
+
 /** What the editor reports as it changes, for the status bar, and what it asks for. */
 export type EditorEvents = {
   /** The cursor moved (null: no editable file). */
@@ -65,6 +71,8 @@ export type EditorEvents = {
   complete?(path: string, line: number, column: number, trigger?: string): Promise<EditorCompletions | null>;
   /** The declaration and documentation of a completion (one `complete` returned for `path`), shown beside the list. */
   resolveCompletion?(path: string, item: EditorCompletion): Promise<EditorHover | null>;
+  /** The signatures of the call around a 1-based line and UTF-16 column; `trigger` is the character just typed, `retrigger` while they're showing. */
+  signatureHelp?(path: string, line: number, column: number, trigger?: string, retrigger?: boolean): Promise<EditorSignatureHelp | null>;
 };
 
 /** One open file at a time. `text === null` means a binary file (shown read-only). */
@@ -81,6 +89,8 @@ export interface CodeEditor {
   showHover(): void;
   /** Opens the completion list at the cursor (EditorEvents.complete), as typing a name does. */
   suggest(): void;
+  /** Shows the parameters of the call around the cursor (EditorEvents.signatureHelp), as typing `(` does. */
+  showSignatureHelp(): void;
   /** Puts the cursor at a 1-based line and column, scrolls to it and focuses the editor. */
   reveal(line: number, column: number): void;
   /** Show no file (the last tab was closed). */

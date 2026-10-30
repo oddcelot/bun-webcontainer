@@ -1,7 +1,7 @@
 import { File } from "@pierre/diffs";
 import { Editor, type Marker } from "@pierre/diffs/edit";
 import { onTheme, themeName } from "../theme";
-import type { CodeEditor, CompletionKind, EditorCompletion, EditorDiagnostic, EditorEvents, EditorHover } from "./types";
+import type { CodeEditor, CompletionKind, EditorCompletion, EditorDiagnostic, EditorEvents, EditorHover, EditorSignatureHelp } from "./types";
 
 // Lucide's circle-x and triangle-alert, drawn in the severity's color (the popover is in a shadow root, where the page's icon classes don't apply).
 const ICONS = {
@@ -75,6 +75,19 @@ function docsHtml(md: string): string {
   return out.join("");
 }
 
+/** A signature with the active parameter in bold, its docs, then the signature's docs. */
+function signatureHtml(help: EditorSignatureHelp): string {
+  const sig = help.signatures[help.active];
+  const param = help.param === undefined ? undefined : sig.params[help.param];
+  const label =
+    param && param.start >= 0
+      ? `${escapeHtml(sig.label.slice(0, param.start))}<strong>${escapeHtml(sig.label.slice(param.start, param.end))}</strong>${escapeHtml(sig.label.slice(param.end))}`
+      : escapeHtml(sig.label);
+  const count = help.signatures.length > 1 ? `<span class="editor-signature-count">${help.active + 1}/${help.signatures.length}</span>` : "";
+  const docs = [param?.docs, sig.docs].filter(Boolean).map((d) => docsHtml(d!)).join("");
+  return `<pre class="editor-hover-code">${count}${label}</pre>` + (docs ? `<div class="editor-hover-docs">${docs}</div>` : "");
+}
+
 const tipHtml = (h: EditorHover) =>
   (h.code ? `<pre class="editor-hover-code">${escapeHtml(h.code)}</pre>` : "") + (h.docs ? `<div class="editor-hover-docs">${docsHtml(h.docs)}</div>` : "");
 
@@ -98,6 +111,8 @@ const KIND_ICONS: Record<CompletionKind, string> = {
 /** Characters after which the language service has something to offer: members, import paths, JSX, decorators, private names. */
 const TRIGGERS = new Set([".", '"', "'", "`", "/", "@", "<", "#"]);
 const WORD = /[\w$]/;
+/** Characters that start or move along a call's arguments: parameter hints for it. */
+const SIGNATURE_TRIGGERS = new Set(["(", ",", "<"]);
 /** Rows the list shows; typing narrows the rest down. */
 const MAX_SHOWN = 200;
 
@@ -145,6 +160,7 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
     if (key === lastCursor) return;
     lastCursor = key;
     events.onCursor?.(cursor ?? null);
+    if (signature) void requestSignature();
   }
   /** A zero-based position as an offset into the text. */
   const offsetOf = (p: { line: number; character: number }) => {
@@ -394,6 +410,7 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
     const grew = text.length - before.length;
     // One character typed, or two when the editor closes a quote or bracket after it.
     const typed = grew === 1 || grew === 2 ? lineText(caret.line)[caret.character - 1] : undefined;
+    if (typed && SIGNATURE_TRIGGERS.has(typed)) void requestSignature(typed);
     if (typed && TRIGGERS.has(typed)) return void requestSuggest(typed);
     if (typed && WORD.test(typed)) {
       if (suggest) return suggest.incomplete ? void requestSuggest() : filterSuggest();
@@ -448,6 +465,69 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
     acceptSuggest();
   });
 
+  // Parameter hints (events.signatureHelp): the signature of the call the cursor is in, above its line. Typing `(`,
+  // `,` or `<` (or the shortcut) shows them; while shown, every cursor move asks again, which hides them once the
+  // cursor leaves the call. Up and Down pick another overload when there are several.
+  const sigBox = document.createElement("div");
+  sigBox.className = "editor-hover editor-signature";
+  sigBox.setAttribute("role", "tooltip");
+  sigBox.hidden = true;
+  parent.append(sigBox);
+  let signature: { help: EditorSignatureHelp; line: number } | undefined;
+  let signatureSeq = 0;
+
+  function hideSignature() {
+    signatureSeq++;
+    signature = undefined;
+    sigBox.hidden = true;
+  }
+
+  async function requestSignature(trigger?: string) {
+    const caret = caretPos();
+    if (!events.signatureHelp || !caret) return hideSignature();
+    const mine = ++signatureSeq;
+    const at = path;
+    const help = await events.signatureHelp(at, caret.line + 1, caret.character + 1, trigger, !!signature).catch(() => null);
+    if (mine !== signatureSeq || at !== path) return;
+    if (!help) return hideSignature();
+    // Keep the overload picked with Up/Down while the same list shows.
+    const old = signature?.help;
+    if (old && old.signatures.length === help.signatures.length && old.signatures.every((s, i) => s.label === help.signatures[i].label)) help.active = old.active;
+    signature = { help, line: caret.line };
+    showSignature();
+  }
+
+  function showSignature() {
+    const caret = caretPos();
+    if (!signature || !caret) return hideSignature();
+    sigBox.innerHTML = signatureHtml(signature.help);
+    sigBox.hidden = false;
+    const at = rectAt(caret.line, caret.character);
+    if (!at) return hideSignature();
+    const { offsetWidth: width, offsetHeight: height } = sigBox;
+    const above = at.top - height - 2;
+    sigBox.style.top = `${above >= 4 ? above : at.bottom + 2}px`;
+    sigBox.style.left = `${Math.max(4, Math.min(at.left - 8, innerWidth - width - 4))}px`;
+  }
+
+  host.addEventListener(
+    "keydown",
+    (e) => {
+      // The completion list has these keys while it's open (and took this one if it just closed).
+      if (!signature || suggest || e.defaultPrevented || e.isComposing || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      const { help } = signature;
+      const step = e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0;
+      if (e.key === "Escape") hideSignature();
+      else if (step && help.signatures.length > 1) {
+        help.active = (help.active + step + help.signatures.length) % help.signatures.length;
+        showSignature();
+      } else return;
+      e.preventDefault();
+      e.stopPropagation();
+    },
+    { capture: true },
+  );
+
   onTheme((next) => {
     if (next === theme) return;
     theme = next;
@@ -459,6 +539,7 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
   function close() {
     hideHover();
     closeSuggest();
+    hideSignature();
     finish?.();
     finish = undefined;
     editor = undefined;
@@ -548,6 +629,9 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
       const token = caret && tokenAt(caret.line, caret.character);
       if (token) hoverToken(token, 0);
     },
+    showSignatureHelp() {
+      if (editor && host.contains(document.activeElement)) void requestSignature();
+    },
     suggest() {
       if (editor && host.contains(document.activeElement)) void requestSuggest();
     },
@@ -585,6 +669,7 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
       host.remove();
       tip.remove();
       suggestBox.remove();
+      sigBox.remove();
     },
   };
 }
