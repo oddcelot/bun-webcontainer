@@ -96,6 +96,8 @@ const ugly = "const user = {name: 'Ada', roles: ['admin', 'editor'], active: tru
 const SCENARIOS = {
   "bunfig.toml [fmt]": [{ "bunfig.toml": "[fmt]\nprintWidth = 40\nsemi = false\n", "a.ts": ugly }, "a.ts"],
   ".prettierrc": [{ ".prettierrc": '{ "singleQuote": true, "tabWidth": 4 }', "a.ts": ugly }, "a.ts"],
+  ".prettierrc.yaml": [{ ".prettierrc.yaml": "semi: false\nbracketSpacing: false\n", "a.ts": ugly }, "a.ts"],
+  ".prettierrc.toml": [{ ".prettierrc.toml": "useTabs = true\ntrailingComma = \"none\"\n", "a.ts": ugly }, "a.ts"],
   "package.json prettier, nearest wins": [{ ".prettierrc": '{ "semi": false }', "sub/package.json": '{ "prettier": { "useTabs": true } }', "sub/a.ts": ugly }, "sub/a.ts"],
   ".editorconfig": [{ ".editorconfig": "root = true\n[*.css]\nindent_style = tab\n", "s.css": "a{color:red;b{c:d}}\n" }, "s.css"],
   ".prettierignore": [{ ".prettierignore": "skip.ts\n", "skip.ts": ugly }, "skip.ts"],

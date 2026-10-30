@@ -4,7 +4,8 @@ import { transpile, TranspileError } from "./transpiler";
 import { typecheck, TYPED } from "./typecheck";
 import type { VFS } from "./vfs";
 
-const CHECKED = /\.(?:[cm]?[jt]s|[jt]sx)$/;
+/** Files whose parse (and type) errors the editor marks as you type. */
+export const CHECKED = /\.(?:[cm]?[jt]s|[jt]sx)$/;
 const MAX_BYTES = 500_000;
 const DEBOUNCE_MS = 300;
 

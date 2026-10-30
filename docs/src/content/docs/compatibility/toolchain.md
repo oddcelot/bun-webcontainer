@@ -32,19 +32,23 @@ loads with the first TypeScript file you open (~2.5 MB compressed, Bun's type de
 
 ## Formatter (`bun fmt`)
 
-Bun's own formatter, compiled to WebAssembly. It formats like Prettier, and its output matches `bun fmt` byte for byte.
-It loads the first time you format (~2 MB compressed). Use **Format** in the tab bar or <kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd>
-for the open file, or `bun fmt` in the console.
+Bun's own formatter, compiled to WebAssembly. It formats like Prettier, and its output matches `bun fmt` byte for byte:
+each file goes through `bun fmt --stdin-filepath`, Bun's own code, with the project's files. It loads the first time you
+format (~2.5 MB compressed). Use **Format** in the tab bar or <kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd> for the open
+file, or `bun fmt` in the console.
 
 - ✅ JavaScript, TypeScript, JSX, JSON, CSS, SCSS, Less, HTML, Markdown, MDX, YAML, TOML, GraphQL, Handlebars and Svelte
+- ✅ The project's config: `bunfig.toml` `[fmt]`, `.prettierrc` (JSON, YAML or TOML), `package.json` `"prettier"`, `.editorconfig`; the nearest one applies, as in Bun
+- ✅ `.prettierignore`
 - ✅ `bun fmt [path…]` formats a folder or files; `--check` (`-c`) lists what isn't formatted and changes nothing
-- ✅ `--use-tabs`, `--no-semi`, `--single-quote`, `--print-width=<n>`
+- ✅ `bun fmt`'s formatting flags (`--no-semi`, `--single-quote`, `--print-width=<n>`, …), which win over the config
+- ✅ A syntax error leaves the file as is and prints `bun fmt`'s message with the line in question; Format also marks it in the editor
 - ✅ Skips `node_modules`, lock files and minified files, like `bun fmt`
 - ✅ The editor's Format is one undoable edit, and the cursor stays where the text didn't change
-- 🟡 Always formats with Prettier's defaults: `bunfig.toml` `[fmt]`, `.prettierrc`, `.editorconfig` and `.prettierignore` aren't read yet
-- 🟡 A file with a syntax error is left as is, with no details on where the error is
+- 🟡 In a folder, files that `.prettierignore` lists count as unchanged instead of being left out of the count
+- ❌ Configs written in JavaScript (`prettier.config.js`) and Prettier plugins
 - ❌ No import sorting or Tailwind class sorting
-- ❌ No `--staged`, `--changed` or `--stdin-filepath`
+- ❌ No `--staged` or `--changed` (no git)
 
 ## Module resolution
 
