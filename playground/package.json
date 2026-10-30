@@ -51,5 +51,8 @@
     "typescript": "^7.0.2",
     "unocss": "^66.12.0",
     "vite": "^8.3.5"
+  },
+  "patchedDependencies": {
+    "@solid-primitives/presence@1.0.0-next.2": "patches/@solid-primitives%2Fpresence@1.0.0-next.2.patch"
   }
 }
