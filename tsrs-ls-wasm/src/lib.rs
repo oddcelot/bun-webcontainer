@@ -20,18 +20,21 @@
 //   ls_output() -> ptr, ls_output_len() -> len    the reply
 // `config` is the tsconfig.json the program comes from. A program lives until a file changes; a change to one file
 // of it reuses the rest (Program::update_program), and parsed files are cached by content across programs.
+// Completions include other modules' exports (auto-imports): the first completion that needs them indexes the
+// project and its node_modules (tsrs's auto-import registry); file changes mark what they touch for reindexing, as
+// tsrs's project snapshots do.
 
 use std::cell::RefCell;
 use std::collections::hash_map::DefaultHasher;
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use rustc_hash::FxHashMap;
 use tsrs_ast::{SourceFile, SourceFileParseOptions};
 use tsrs_compiler::{CompilerHost, Program, ProgramOptions, new_compiler_host, new_program};
-use tsrs_core::P;
-use tsrs_core::Tristate;
+use tsrs_core::collections::Set;
+use tsrs_core::{P, alloc_str};
 use tsrs_core::context::Context;
 use tsrs_core::tspath::{Path, to_path};
 use tsrs_lsproto as lsproto;
@@ -39,11 +42,14 @@ use tsrs_tsoptions::{self as tsoptions, ParseConfigHost, ParsedCommandLine};
 use tsrs_vfs::vfstest::{self, MapFS};
 use tsrs_vfs::{FS, bundled, vfsmatch};
 
-use tsrs_ls::autoimport::{ProjectID, Registry};
+use tsrs_ls::autoimport::{ProjectID, Registry, RegistryChange, RegistryCloneHost, new_registry};
 use tsrs_ls::lsconv::{self, Converters, compute_lsp_line_starts};
 use tsrs_ls::lsutil::{UserPreferences, new_default_user_preferences};
 use tsrs_ls::sourcemap::ECMALineInfo;
-use tsrs_ls::{Host, LanguageService, new_language_service};
+use tsrs_ls::{Host, LanguageService, is_err_needs_auto_imports, new_language_service};
+use tsrs_module::ResolutionHost;
+use tsrs_module::packagejson::{self, InfoCacheEntry, PackageJson};
+use tsrs_projectutil::logging::LogTree;
 
 type MemFs = tsrs_vfs::iovfs::IoVFS<MapFS>;
 
@@ -102,9 +108,13 @@ impl CompilerHost for CachingHost {
     }
 }
 
+/// The auto-import registry, shared by the State (which replaces it) and the language service (which reads it).
+type SharedRegistry = Arc<Mutex<Option<Arc<Registry>>>>;
+
 struct LsHost {
     fs: Arc<dyn FS>,
     converters: Arc<Converters>,
+    registry: SharedRegistry,
 }
 
 impl Host for LsHost {
@@ -118,15 +128,13 @@ impl Host for LsHost {
         Arc::clone(&self.converters)
     }
     fn get_preferences(&self, _: &str) -> UserPreferences {
-        // Completions for other modules' exports need an auto-import registry (`auto_import_registry`), which this
-        // host doesn't build: without this, completing a name fails with "completion list needs auto imports".
-        UserPreferences { include_completions_for_module_exports: Tristate::False, ..new_default_user_preferences() }
+        new_default_user_preferences()
     }
     fn get_ecma_line_info(&self, _: &str) -> Option<Arc<ECMALineInfo>> {
         None
     }
     fn auto_import_registry(&self) -> Option<Arc<Registry>> {
-        None
+        self.registry.lock().unwrap().clone()
     }
     // Import path completions list the project's directories (what the host pushed in).
     fn read_directory(
@@ -164,6 +172,68 @@ impl ParseConfigHost for ConfigHost {
     }
 }
 
+/// What the auto-import registry reads while it (re)indexes: the one program, and files from the same file system.
+struct CloneHost {
+    fs: Arc<dyn FS>,
+    host: Arc<CachingHost>,
+    project_id: ProjectID,
+    program: &'static Program,
+}
+
+impl ResolutionHost for CloneHost {
+    fn fs(&self) -> &dyn FS {
+        &*self.fs
+    }
+    fn get_current_directory(&self) -> &str {
+        "/"
+    }
+}
+
+impl RegistryCloneHost for CloneHost {
+    fn get_default_project(&self, _: &Path) -> (Option<ProjectID>, Option<&'static Program>) {
+        (Some(self.project_id.clone()), Some(self.program))
+    }
+    fn get_program_for_project(&self, id: &ProjectID) -> Option<&'static Program> {
+        (*id == self.project_id).then_some(self.program)
+    }
+    // As tsrs_project's AutoImportRegistryCloneHost does.
+    fn get_package_json(&self, file_name: &str) -> P<InfoCacheEntry> {
+        let package_directory = alloc_str(&tsrs_core::tspath::get_directory_path(file_name));
+        let Some(text) = self.fs.read_file(file_name) else {
+            return P::new(InfoCacheEntry {
+                directory_exists: self.fs.directory_exists(package_directory),
+                package_directory,
+                contents: None,
+            });
+        };
+        let contents = match packagejson::parse(&text) {
+            Ok(fields) => PackageJson::new(fields, true),
+            Err(_) => PackageJson::new(packagejson::Fields::default(), false),
+        };
+        P::new(InfoCacheEntry { directory_exists: true, package_directory, contents: Some(P::new(contents)) })
+    }
+    // Not through the cache: clone_registry allocates in a scratch region it frees before returning, so a file
+    // parsed here mustn't outlive the call.
+    fn get_source_file(&self, file_name: &str, path: &Path) -> Option<P<SourceFile>> {
+        self.host.inner.get_source_file(SourceFileParseOptions {
+            file_name: file_name.to_owned(),
+            path: path.clone(),
+            ..Default::default()
+        })
+    }
+    fn dispose(&self) {}
+}
+
+/// File changes since the registry last saw the program, for it to mark what needs reindexing.
+#[derive(Default)]
+struct RegistryChanges {
+    changed: Set<lsproto::DocumentUri>,
+    created: Set<lsproto::DocumentUri>,
+    deleted: Set<lsproto::DocumentUri>,
+    /// The program was built anew (not updated in place): Some(true), as its files may differ.
+    rebuilt: Option<bool>,
+}
+
 struct Project {
     config: String,
     program: &'static Program,
@@ -178,6 +248,8 @@ struct State {
     project: Option<Project>,
     /// Files changed since `project` was built; None once more changed than one program update covers.
     dirty: Option<Vec<String>>,
+    registry: SharedRegistry,
+    registry_changes: RegistryChanges,
 }
 
 impl State {
@@ -194,7 +266,16 @@ impl State {
         signature.documentation_format = vec![lsproto::MarkupKind::MARKDOWN];
         signature.active_parameter_support = true;
         let ctx = lsproto::with_client_capabilities(&Context::background(), Arc::new(caps));
-        State { mem, fs, host, ctx, project: None, dirty: Some(Vec::new()) }
+        State {
+            mem,
+            fs,
+            host,
+            ctx,
+            project: None,
+            dirty: Some(Vec::new()),
+            registry: SharedRegistry::default(),
+            registry_changes: RegistryChanges::default(),
+        }
     }
 
     fn changed(&mut self, path: &str) {
@@ -208,17 +289,54 @@ impl State {
     }
 
     fn set_file(&mut self, path: &str, text: &str) {
-        if self.mem.read_file(path).as_deref() == Some(text) {
+        let old = self.mem.read_file(path);
+        if old.as_deref() == Some(text) {
             return;
         }
         let _ = self.mem.write_file(path, text);
         self.changed(path);
+        let uri = lsconv::file_name_to_document_uri(path);
+        if old.is_some() { self.registry_changes.changed.add(uri) } else { self.registry_changes.created.add(uri) }
     }
 
     fn remove_file(&mut self, path: &str) {
         if self.mem.remove(path).is_ok() {
             self.dirty = None;
+            self.registry_changes.deleted.add(lsconv::file_name_to_document_uri(path));
         }
+    }
+
+    /// Hands the registry what changed since it last looked, and with `requested` (a file of the program) indexes
+    /// what completions in that file can import.
+    fn update_registry(&mut self, requested: Option<&str>) {
+        let Some(project) = &self.project else { return };
+        let mut registry = self.registry.lock().unwrap();
+        // Nothing to mark in a registry that doesn't exist yet: the first request indexes from scratch.
+        if registry.is_none() && requested.is_none() {
+            self.registry_changes = RegistryChanges::default();
+            return;
+        }
+        let changes = std::mem::take(&mut self.registry_changes);
+        let id = ProjectID(project.config.clone());
+        let mut change = RegistryChange {
+            changed: changes.changed,
+            created: changes.created,
+            deleted: changes.deleted,
+            ..Default::default()
+        };
+        if let Some(different) = changes.rebuilt {
+            change.rebuilt_programs.insert(id.clone(), different);
+        }
+        if let Some(file) = requested {
+            change.requested_file = to_path(file, "/", true);
+            change.requested_file_name = file.to_owned();
+            change.open_files.insert(change.requested_file.clone(), file.to_owned());
+        }
+        let host = CloneHost { fs: Arc::clone(&self.fs), host: Arc::clone(&self.host), project_id: id, program: project.program };
+        let old = registry.take().unwrap_or_else(|| {
+            new_registry(Arc::new(|f: &str| to_path(f, "/", true)), new_default_user_preferences())
+        });
+        *registry = Some(old.clone_registry(&self.ctx, &change, &host, LogTree::nil()));
     }
 
     /// The language service for `config`'s program as the files are now.
@@ -232,18 +350,22 @@ impl State {
             // One file of the program changed: Program::update_program keeps the rest (or rebuilds when the
             // change touches imports).
             (Some(project), Some([path])) if current => {
-                let (program, _, _) = project.program.update_program(
+                let (program, _, reused) = project.program.update_program(
                     &to_path(path, "/", true),
                     Arc::<CachingHost>::clone(&self.host),
                     None,
                     None,
                 );
+                if !reused {
+                    self.registry_changes.rebuilt = Some(true);
+                }
                 program
             }
             _ => {
                 let config_host: &'static ConfigHost = Box::leak(Box::new(ConfigHost { fs: Arc::clone(&self.fs) }));
                 let (command_line, _) =
                     tsoptions::get_parsed_command_line_of_config_file(config, None, None, config_host, None);
+                self.registry_changes.rebuilt = Some(true);
                 new_program(ProgramOptions::new(P::new(command_line?), Arc::<CachingHost>::clone(&self.host)))
             }
         };
@@ -251,9 +373,10 @@ impl State {
         let converters = lsconv::new_converters(lsproto::PositionEncodingKind::UTF16, move |name| {
             lines.read_file(name).map(|text| compute_lsp_line_starts(&text))
         });
-        let host = Arc::new(LsHost { fs: Arc::clone(&self.fs), converters });
+        let host = Arc::new(LsHost { fs: Arc::clone(&self.fs), converters, registry: Arc::clone(&self.registry) });
         let ls = new_language_service(ProjectID(config.to_owned()), program, host, config);
         self.project = Some(Project { config: config.to_owned(), program, ls });
+        self.update_registry(None);
         self.project.as_ref()
     }
 }
@@ -316,7 +439,14 @@ fn completion(state: &mut State, request: &[u8]) -> String {
         },
         trigger_character: (!trigger.is_empty()).then(|| trigger.clone()),
     };
-    match project.ls.provide_completion(&ctx, &uri, position, Some(&context)) {
+    let mut result = project.ls.provide_completion(&ctx, &uri, position, Some(&context));
+    // The first completion at a name, or the first since a change the registry hasn't indexed: index, then ask again.
+    if matches!(&result, Err(e) if is_err_needs_auto_imports(e)) {
+        state.update_registry(Some(path));
+        let Some(project) = state.project(config) else { return "null".into() };
+        result = project.ls.provide_completion(&ctx, &uri, position, Some(&context));
+    }
+    match result {
         Ok(lsproto::CompletionItemsOrListOrNull { list: Some(list), .. }) => json(&list),
         _ => "null".into(),
     }

@@ -585,6 +585,8 @@ dependencies = [
  "tsrs_diagnostics",
  "tsrs_ls",
  "tsrs_lsproto",
+ "tsrs_module",
+ "tsrs_projectutil",
  "tsrs_tsoptions",
  "tsrs_vfs",
 ]

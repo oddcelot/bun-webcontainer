@@ -60,6 +60,24 @@ if (isMainThread) {
   // Inside `greet(` on line 1: greet's signature, its one parameter active.
   const at = index.split("\n")[1].indexOf("greet(") + 6;
   log("signature help greet(", call("ls_signature_help", ["/tsconfig.json", "/index.ts", "1", String(at), "(", "0"]));
+  // Auto-imports: names exported by a module (/extra.ts) and a package (tiny-pkg) that /use.ts doesn't import yet.
+  call("ls_set_files", [
+    "/package.json", '{"dependencies":{"tiny-pkg":"1.0.0"}}',
+    "/node_modules/tiny-pkg/package.json", '{"name":"tiny-pkg","version":"1.0.0","types":"index.d.ts"}',
+    "/node_modules/tiny-pkg/index.d.ts", "export declare function tinyThing(): void;\n",
+    "/extra.ts", 'export function farewellMessage() { return "bye"; }\n',
+    "/use.ts", "farew\ntinyT\n",
+  ]);
+  const autoImport = (line, character, label) => {
+    const r = call("ls_completion", ["/tsconfig.json", "/use.ts", String(line), String(character), ""]);
+    const item = (JSON.parse(r.out)?.items ?? []).find((i) => i.label === label);
+    const resolved = item && JSON.parse(call("ls_completion_resolve", ["/tsconfig.json", JSON.stringify(item)]).out);
+    parentPort.postMessage(`auto-import ${label}: ${r.ms}ms ${item ? "offered" : "MISSING"}; ${JSON.stringify(resolved?.additionalTextEdits?.map((e) => e.newText) ?? null)}`);
+  };
+  autoImport(0, 5, "farewellMessage");
+  autoImport(1, 5, "tinyThing");
+  call("ls_set_files", ["/extra.ts", 'export function farewellMessage() { return "bye"; }\nexport const farewellCount = 2;\n']);
+  autoImport(0, 5, "farewellCount");
   parentPort.postMessage(`memory after setup: ${mib()}`);
 
   let worst = 0, total = 0;
@@ -68,9 +86,12 @@ if (isMainThread) {
     call("ls_set_files", ["/index.ts", index]);
     const d = call("ls_diagnostics", ["/tsconfig.json", "/index.ts"]);
     const h = call("ls_hover", ["/tsconfig.json", "/index.ts", "1", "45"]);
-    worst = Math.max(worst, d.ms + h.ms); total += d.ms + h.ms;
+    // At a name, so auto-imports are asked for after every edit.
+    const c = call("ls_completion", ["/tsconfig.json", "/index.ts", "2", "18", ""]);
+    if (!c.out.includes('"farewellMessage"')) throw new Error(`edit ${i}: no auto-import in the completions`);
+    worst = Math.max(worst, d.ms + h.ms + c.ms); total += d.ms + h.ms + c.ms;
   }
-  parentPort.postMessage(`100 edits: diagnostics+hover avg ${Math.round(total / 100)}ms, worst ${worst}ms, memory ${mib()}`);
+  parentPort.postMessage(`100 edits: diagnostics+hover+completion avg ${Math.round(total / 100)}ms, worst ${worst}ms, memory ${mib()}`);
   log("hover after edits", call("ls_hover", ["/tsconfig.json", "/index.ts", "1", "45"]));
 
   call("ls_set_files", ["/tsconfig.json", config.replace('"strict":true', '"strict":false')]);
