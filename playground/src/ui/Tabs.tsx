@@ -1,27 +1,44 @@
-import { For, Show, createEffect, createMemo, createSignal, untrack, useContext, type ParentProps } from "solid-js";
-import { Tabs } from "@kobalte/core/tabs";
+import { For, Show, createEffect, createMemo, flush, useContext, type ParentProps } from "solid-js";
 import { AppContext } from "./context";
 
 const name = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 
 /**
- * The selected tab's value, a flush late. Kobalte Tabs finds its tabs in the DOM after they mount; given the
- * value of a tab added in the same update (Preview's "+"), it doesn't find it yet and falls back to selecting the
- * first tab, reporting that through onChange. Held a flush back, the old value is what it falls back to and
- * re-reports; callers drop an onChange equal to this value (a re-report, not a pick) instead of activating it.
+ * A row of tabs (role tablist), each a `TabItem`. Selection is the caller's: a click, or the arrow keys, Home and End
+ * (which move focus and select, without wrapping), call `onSelect` with the tab's value. The selected tab is the one
+ * Tab-key focus lands on.
  */
-export function useTabValue(value: () => string) {
-  const [shown, setShown] = createSignal(untrack(value));
-  createEffect(value, (v) => {
-    queueMicrotask(() => setShown(v));
-  });
-  return shown;
+export function TabList(props: ParentProps<{ id?: string; class?: string; label: string; onSelect: (value: string) => void }>) {
+  const tabs = (list: HTMLElement) => [...list.querySelectorAll<HTMLElement>('[role="tab"]')];
+  const select = (tab: HTMLElement | undefined) => tab && props.onSelect(tab.dataset.value!);
+  return (
+    <div
+      id={props.id}
+      class={props.class}
+      role="tablist"
+      aria-label={props.label}
+      aria-orientation="horizontal"
+      onClick={(e) => select((e.target as HTMLElement).closest<HTMLElement>('[role="tab"]') ?? undefined)}
+      onKeyDown={(e) => {
+        const all = tabs(e.currentTarget);
+        const i = all.indexOf(document.activeElement as HTMLElement);
+        if (i < 0) return;
+        const next = { ArrowLeft: all[i - 1], ArrowRight: all[i + 1], Home: all[0], End: all[all.length - 1] }[e.key];
+        if (!next) return;
+        e.preventDefault();
+        next.focus();
+        select(next);
+      }}
+    >
+      {props.children}
+    </div>
+  );
 }
 
 /**
- * One tab: Kobalte's trigger (the tab itself) with a close button beside it. The × can't live inside the trigger,
- * since a button in a button is invalid and the tab's accessible name would include "Close"; the wrapper draws the
- * tab and the two sit in it. Middle-click closes from anywhere on it.
+ * One tab: the tab button with a close button beside it. The × can't live inside the tab, since a button in a
+ * button is invalid and the tab's accessible name would include "Close"; the wrapper draws the tab and the two sit
+ * in it. Middle-click closes from anywhere on it.
  */
 export function TabItem(
   props: ParentProps<{
@@ -36,9 +53,18 @@ export function TabItem(
 ) {
   return (
     <div class="tab" role="presentation" data-selected={props.selected ? "" : undefined} onAuxClick={(e) => e.button === 1 && props.onClose?.()}>
-      <Tabs.Trigger value={props.value} class="tab-trigger" title={props.title} onKeyDown={props.onKeyDown}>
+      <button
+        type="button"
+        role="tab"
+        class="tab-trigger"
+        data-value={props.value}
+        aria-selected={props.selected ? "true" : "false"}
+        tabindex={props.selected ? 0 : -1}
+        title={props.title}
+        onKeyDown={(e) => props.onKeyDown?.(e)}
+      >
         {props.children}
-      </Tabs.Trigger>
+      </button>
       <Show when={props.onClose}>
         {(close) => (
           <button class="close" type="button" title={props.closeLabel} aria-label={props.closeLabel} tabindex={-1} onClick={() => close()()}>
@@ -59,7 +85,6 @@ export function EditorTabs(props: { placeholder?: boolean }) {
     for (const p of ws.state.open) counts.set(name(p), (counts.get(name(p)) ?? 0) + 1);
     return counts;
   });
-  const value = useTabValue(() => ws.state.active ?? "");
   createEffect(
     () => ws.state.active,
     () => {
@@ -68,8 +93,7 @@ export function EditorTabs(props: { placeholder?: boolean }) {
   );
 
   return (
-    <Tabs class="tabs-root" value={value()} onChange={(path) => path !== value() && ws.activate(path)}>
-      <Tabs.List id="tabs" class="tabs tablist" aria-label="Open files">
+    <TabList id="tabs" class="tabs tablist" label="Open files" onSelect={(path) => path !== ws.state.active && ws.activate(path)}>
         {/* Until the project's first file opens, an invisible tab holds the bar's height so the editor doesn't jump. */}
         <Show when={props.placeholder}>
           <div class="tab" aria-hidden="true" style={{ visibility: "hidden" }}>
@@ -93,6 +117,9 @@ export function EditorTabs(props: { placeholder?: boolean }) {
                 if (e.key === "Delete" || (e.key === "w" && (e.ctrlKey || e.metaKey))) {
                   e.preventDefault();
                   ws.close(path);
+                  // The focused tab is gone; keep keyboard focus in the bar, on the tab now selected.
+                  flush();
+                  document.querySelector<HTMLElement>('#tabs [aria-selected="true"]')?.focus();
                 }
               }}
             >
@@ -106,7 +133,6 @@ export function EditorTabs(props: { placeholder?: boolean }) {
             </TabItem>
           )}
         </For>
-      </Tabs.List>
-    </Tabs>
+    </TabList>
   );
 }
