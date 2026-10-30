@@ -40,7 +40,8 @@ const escape = (s: string) => s.replace(/<\/(script)/gi, "<\\/$1").replace(/<!--
   title={attrs.title}
 >
   {Object.entries(files).map(([path, text]) => <script type="text/plain" data-file={path} set:html={"\n" + escape(text) + "\n"} />)}
-  <div slot="poster"><slot /></div>
+  {/* Without a poster of its own, the element shows the first file's code. */}
+  {Astro.slots.has("default") && <div slot="poster"><slot /></div>}
 </bun-playground>
 
 <!-- Module scripts with the same URL run once, so several embeds on a page load embed.js a single time. -->
