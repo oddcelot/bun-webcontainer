@@ -3,6 +3,8 @@ import { BASE } from "./base";
 import { createConsole } from "./console";
 import { bunInstall } from "./install";
 import { Runner } from "./runner";
+import { setVfsOwner } from "./moduleServer";
+import { setPreviewOwner } from "./preview";
 import { loadSemver, type Semver } from "./semver";
 import { createShell, scriptEntry } from "./shell";
 import { checkSupport } from "./support";
@@ -51,7 +53,16 @@ export function createPlayground() {
         new Promise((r) => setTimeout(r, 3000)),
       ]);
     }
-    if (!navigator.serviceWorker.controller) log("error", "service worker is not controlling this page; reload without hard-refresh");
+    if (!navigator.serviceWorker.controller) return log("error", "service worker is not controlling this page; reload without hard-refresh");
+    // Which client this page is to the worker: module URLs carry it, so the worker asks this page for its files.
+    const ch = new MessageChannel();
+    const answer = new Promise<string>((r) => (ch.port1.onmessage = (e) => r(e.data)));
+    navigator.serviceWorker.controller.postMessage({ type: "whoami" }, [ch.port2]);
+    const id = await Promise.race([answer, new Promise<undefined>((r) => setTimeout(r, 3000))]);
+    if (id) {
+      setVfsOwner(id);
+      setPreviewOwner(id);
+    }
   }
 
   /** The file Run starts: package.json's module/main or a `bun <file>` dev/start script, else a usual index file. */

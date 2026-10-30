@@ -35,8 +35,9 @@ async function windowClient(id) {
 const ASK_TIMEOUT = 30_000;
 const timedOut = () => `No answer from the playground within ${ASK_TIMEOUT / 1000}s`;
 
-async function ask(msg) {
-  const client = await host();
+/** Asks `owner` (the page a module URL names), else the playground page. */
+async function ask(msg, owner) {
+  const client = owner ?? (await host());
   if (!client) throw new Error("playground page not found");
   return new Promise((resolve) => {
     const ch = new MessageChannel();
@@ -56,8 +57,8 @@ async function ask(msg) {
  * A preview request: resolves with the response's head and its body as a stream, fed as the server produces it
  * (`head`, `chunk`…, `end` or `error`; see sendResponse in worker/runtime.ts). Cancelling the stream tells the server.
  */
-async function askStream(msg) {
-  const client = await host();
+async function askStream(msg, owner) {
+  const client = owner ?? (await host());
   if (!client) throw new Error("playground page not found");
   const ch = new MessageChannel();
   const port = ch.port1;
@@ -92,9 +93,15 @@ async function askStream(msg) {
 }
 
 async function serveModule(url, clientId) {
-  const path = decodeURIComponent(url.pathname.slice(VFS.length));
+  let path = decodeURIComponent(url.pathname.slice(VFS.length));
+  // `@<client id>/`: the page whose project this is (moduleServer.ts setVfsOwner); playgrounds in other tabs, or
+  // other embeds on the same page, share this worker.
+  const at = /^@([^/]+)\//.exec(path);
+  const owner = at ? await windowClient(at[1]) : undefined;
+  if (at) path = path.slice(at[0].length);
+  if (at && !owner) return new Response("The playground page that served this module is gone", isolated({ status: 410, headers: { "content-type": "text/plain" } }));
   // The worker runs the program (Bun's runtime conditions); a page gets the browser's.
-  const r = await ask({ type: "module", path, target: (await windowClient(clientId)) ? "browser" : "bun" });
+  const r = await ask({ type: "module", path, target: (await windowClient(clientId)) ? "browser" : "bun" }, owner);
   // A stylesheet as a `<link>` loads it, CSS imported from code is a module (`__css/<path>`).
   const type = url.pathname.endsWith(".css") && !path.startsWith("__css/") ? "text/css" : "text/javascript";
   return new Response(r.body, isolated({
@@ -108,16 +115,27 @@ const NO_PLAYGROUND = `<!doctype html><meta name="color-scheme" content="light d
 <h1 style="font-size: 1.3rem">The playground isn't open</h1>
 <p>This preview's server runs in the playground's tab. Open <a href="${BASE}">the playground</a>, press Run, then reload this page.</p>`;
 
-async function servePreview(req, url, path = (url.pathname.slice(PREVIEW.length) || "/") + url.search) {
+/**
+ * `/__preview/@<client id>/…`: the page whose server a preview shows (preview.ts setPreviewOwner), so previews of
+ * playgrounds in other tabs, or of other embeds on the same page, reach their own server.
+ */
+const previewOwnerOf = (pathname) => (pathname.startsWith(`${PREVIEW}/@`) ? pathname.slice(PREVIEW.length + 2).split("/")[0] : undefined);
+const previewBase = (id) => (id ? `${PREVIEW}/@${id}` : PREVIEW);
+
+async function servePreview(req, url, path, ownerId = previewOwnerOf(url.pathname)) {
+  const base = previewBase(ownerId);
+  path ??= (url.pathname.slice(base.length) || "/") + url.search;
   const hasBody = req.method !== "GET" && req.method !== "HEAD";
   const body = hasBody ? await req.arrayBuffer() : null;
   let asked;
   try {
+    const owner = ownerId ? await windowClient(ownerId) : undefined;
+    if (ownerId && !owner) throw new Error("gone");
     asked = await askStream({
       type: "preview",
       // A 304 would reach the page as an empty response (we answer from memory, nothing is cached), so never ask for one.
       req: { path, method: req.method, headers: [...req.headers].filter(([k]) => k !== "if-none-match" && k !== "if-modified-since"), body },
-    });
+    }, owner);
   } catch {
     // The server runs in the playground's tab: a preview opened in its own tab needs that one open.
     return new Response(NO_PLAYGROUND, isolated({ status: 503, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } }));
@@ -127,14 +145,14 @@ async function servePreview(req, url, path = (url.pathname.slice(PREVIEW.length)
   const headers = new Headers(head.headers);
   // Redirects to an absolute path stay inside the preview (`redirect("/")` from a form post).
   const location = headers.get("location");
-  if (location?.startsWith("/") && !location.startsWith("//") && !location.startsWith(PREVIEW)) headers.set("location", PREVIEW + location);
+  if (location?.startsWith("/") && !location.startsWith("//") && !location.startsWith(PREVIEW)) headers.set("location", base + location);
   let out = stream;
   if (nullBody) {
     out = null;
     stream.cancel().catch(() => {});
   } else if (headers.get("content-type")?.startsWith("text/html")) {
     // The preview scripts go into <head>, so an HTML page is read whole first.
-    out = withPreviewScripts(await new Response(stream).text());
+    out = withPreviewScripts(await new Response(stream).text(), base);
     headers.delete("content-length");
   }
   return new Response(out, isolated({ status: head.status, statusText: head.statusText, headers }));
@@ -144,9 +162,9 @@ async function servePreview(req, url, path = (url.pathname.slice(PREVIEW.length)
  * Runs first in every preview page: same-host WebSockets go to the worker's `Bun.serve` instead of the
  * network, and the page follows the playground's color scheme toggle.
  */
-function withPreviewScripts(html) {
+function withPreviewScripts(html, base) {
   const script =
-    `<script>(${previewWebSocket})(${JSON.stringify(PREVIEW)})</script>` +
+    `<script>(${previewWebSocket})(${JSON.stringify(base)})</script>` +
     `<script>(${previewColorScheme})()</script>`;
   const head = html.match(/<head\b[^>]*>/i);
   if (head) return html.slice(0, head.index + head[0].length) + script + html.slice(head.index + head[0].length);
@@ -283,10 +301,16 @@ function previewWebSocket(prefix) {
   window.WebSocket = PreviewWebSocket;
 }
 
+// A page asks which client it is (boot.ts), to put in its module URLs.
+self.addEventListener("message", (e) => {
+  if (e.data?.type === "whoami") e.ports[0]?.postMessage(e.source?.id);
+});
+
 // A preview page's WebSocket (see previewWebSocket): hand its port to the playground, which passes it to the worker.
 self.addEventListener("message", (e) => {
   if (e.data?.type !== "ws") return;
-  e.waitUntil(host().then((c) => (c ? c.postMessage(e.data, [e.ports[0]]) : e.ports[0].postMessage({ type: "close", code: 1011, reason: "playground page not found" }))));
+  const ownerId = e.source?.url && previewOwnerOf(new URL(e.source.url).pathname);
+  e.waitUntil((ownerId ? windowClient(ownerId) : host()).then((c) => (c ? c.postMessage(e.data, [e.ports[0]]) : e.ports[0].postMessage({ type: "close", code: 1011, reason: "playground page not found" }))));
 });
 
 self.addEventListener("fetch", (e) => {
@@ -295,23 +319,31 @@ self.addEventListener("fetch", (e) => {
   if (url.pathname.startsWith(VFS)) e.respondWith(serveModule(url, e.clientId));
   // A link, form or redirect in the preview frame that leaves `/__preview` (`<a href="/entries/2">`): same server.
   else if (e.request.mode === "navigate" && e.request.destination === "iframe" && !url.pathname.startsWith(PREVIEW))
-    e.respondWith(e.request.method === "GET" ? Response.redirect(PREVIEW + url.pathname + url.search, 302) : servePreview(e.request, url, url.pathname + url.search));
+    e.respondWith(leavePreview(e.request, url));
   else if (url.pathname === PREVIEW || url.pathname.startsWith(`${PREVIEW}/`)) e.respondWith(servePreview(e.request, url));
   else if (e.clientId) e.respondWith(fromPreviewOrNetwork(e));
 });
+
+/** A preview frame navigating outside `/__preview` (a link to `/entries/2`): its own server, found from where it came from. */
+function leavePreview(req, url) {
+  const ownerId = req.referrer ? previewOwnerOf(new URL(req.referrer).pathname) : undefined;
+  if (req.method === "GET") return Response.redirect(previewBase(ownerId) + url.pathname + url.search, 302);
+  return servePreview(req, url, url.pathname + url.search, ownerId);
+}
 
 // The preview page is the app's origin: its absolute requests (`fetch("/api/hello")`) go to Bun.serve.
 async function fromPreviewOrNetwork(e) {
   const client = await windowClient(e.clientId);
   if (client && new URL(client.url).pathname.startsWith(PREVIEW)) {
     const url = new URL(e.request.url);
+    const ownerId = previewOwnerOf(new URL(client.url).pathname);
     if (e.request.mode === "navigate") {
       // A preview in its own tab following a link out of /__preview: with no playground open there's no server, so
       // it's the playground being opened; otherwise it's the app's own page, as for the iframe above.
-      if (!(await host())) return fetch(e.request);
-      if (e.request.method === "GET") return Response.redirect(PREVIEW + url.pathname + url.search, 302);
+      if (!(ownerId ? await windowClient(ownerId) : await host())) return fetch(e.request);
+      if (e.request.method === "GET") return Response.redirect(previewBase(ownerId) + url.pathname + url.search, 302);
     }
-    return servePreview(e.request, url, url.pathname + url.search);
+    return servePreview(e.request, url, url.pathname + url.search, ownerId);
   }
   return fetch(e.request);
 }
