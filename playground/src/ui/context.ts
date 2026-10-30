@@ -26,6 +26,8 @@ export type App = {
   /** Creates an empty file and opens it. */
   newFile(path: string): Promise<void>;
   openFolder(files: File[]): void;
+  /** Opens a zip's files like a folder. */
+  openZip(file: File): void;
   /** The `?repo=` the page was opened with, as the repo prompt's default. */
   repoParam: string;
 };

@@ -17,6 +17,7 @@ import { createWorkspace } from "./ui/workspace";
 import { createConsole } from "./console";
 import { createShell, scriptEntry } from "./shell";
 import { attach, discard, restore, shareProjectId } from "./persist";
+import { importZip } from "./archive";
 
 const support = checkSupport();
 /** False when a requirement is missing: the interface still loads, but nothing that runs code starts. */
@@ -49,7 +50,7 @@ async function setupServiceWorker() {
 }
 
 const vfs = new VFS();
-mountUI({ session, support, workspace, previews, terminal, clearConsole, vfs, log, run: () => run(), install, openProject, newFile, openFolder, repoParam: new URLSearchParams(location.search).get("repo") ?? "" });
+mountUI({ session, support, workspace, previews, terminal, clearConsole, vfs, log, run: () => run(), install, openProject, newFile, openFolder, openZip, repoParam: new URLSearchParams(location.search).get("repo") ?? "" });
 const params = new URLSearchParams(location.search);
 const exampleName = params.get("example") ?? "";
 const repoParam = params.get("repo") ?? "";
@@ -238,6 +239,26 @@ async function openFolder(files: File[]) {
   }
   workspace.reloadTree();
   log("sys", `[open] ${files[0].webkitRelativePath.split("/")[0] || "files"}: ${n} files (node_modules skipped)`);
+  openFile(entryFile());
+}
+
+/** Opens a zip (a download from Share, a GitHub zip) the way a folder opens. */
+async function openZip(file: File) {
+  let entries: [string, string | Uint8Array][];
+  try {
+    entries = importZip(new Uint8Array(await file.arrayBuffer()));
+  } catch (e) {
+    return log("error", `[open] ${file.name} isn't a zip file this can read: ${e}`);
+  }
+  if (!entries.length) return log("error", `[open] ${file.name} has no files`);
+  await session.started;
+  void stopSaving();
+  await runner?.stop();
+  workspace.closeAll();
+  vfs.clear();
+  for (const [path, data] of entries) vfs.write(path, data);
+  workspace.reloadTree();
+  log("sys", `[open] ${file.name}: ${entries.length} files (node_modules skipped)`);
   openFile(entryFile());
 }
 

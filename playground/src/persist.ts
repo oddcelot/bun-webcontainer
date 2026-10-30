@@ -5,7 +5,7 @@ type Log = (level: string, text: string) => void;
 type Dir = FileSystemDirectoryHandle;
 
 /** Paths that are never saved: they come back from `bun install` or the source. */
-const SKIP = /(^|\/)(node_modules|\.git)(\/|$)/;
+export const SKIP = /(^|\/)(node_modules|\.git)(\/|$)/;
 const DEBOUNCE = 300;
 
 /**

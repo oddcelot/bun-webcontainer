@@ -12,7 +12,7 @@ sidebar:
 - Tabs for open files: close with the × button, <kbd>Delete</kbd>, or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>W</kbd>
 - **Auto-save** (on by default): edits are saved a moment after you stop typing. Switch it off in the tab bar to save with <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>S</kbd> instead; unsaved tabs show a dot, and Run, Install, `bun test` and Share save everything first.
 - Resizable panes
-- **Open folder** loads a folder from your computer (skips `node_modules` and `.git`)
+- **Open folder** or **Open zip file** loads a project from your computer (skips `node_modules` and `.git`). A zip whose files all sit in one folder, like GitHub's downloads, opens that folder.
 
 Not yet: autocomplete, type checking, renaming or deleting files from the tree. Very large files are slow, because every line is rendered.
 
@@ -69,7 +69,7 @@ Dependencies install automatically when a project opens with missing packages. `
 ## Projects
 
 - **Saved as you type**, in your browser. See [Storage and persistence](/guides/storage/).
-- **Share:** the Share menu copies a link with the whole project in the URL (nothing is uploaded), a Markdown badge, or HTML. `node_modules`, `.git`, binary files and secrets (`.env`, keys, `.npmrc`) are left out. Very long links can be shortened to `runbun.dev/s/<id>`.
+- **Share:** the Share menu copies a link with the whole project in the URL (nothing is uploaded), a Markdown badge, or HTML. `node_modules`, `.git`, binary files and secrets (`.env`, keys, `.npmrc`) are left out. Very long links can be shortened to `runbun.dev/s/<id>`. **Download as zip** saves every file except `node_modules` and `.git`, binaries included.
 - **GitHub:** open any public repo, branch or subfolder from the project picker or with `?repo=`. Up to 500 files; GitHub allows 60 imports an hour per IP.
 - **Examples:** Elysia, Hono, Astro + Solid, Vite, Lit SSR and more in the project picker.
 - **One tab per project:** a second tab with the same project can't save its changes.

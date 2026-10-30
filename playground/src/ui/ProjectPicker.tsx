@@ -13,6 +13,7 @@ const fromPicker = (value: string) => (value === DEMO ? "" : value);
 
 // Entries that ask for a project instead of naming one.
 const OPEN_FOLDER = "#open-folder";
+const OPEN_ZIP = "#open-zip";
 const OPEN_REPO = "#open-repo";
 type Group = { label: string; options: Project[] };
 
@@ -41,6 +42,7 @@ export function ProjectPicker() {
       label: "Open",
       options: [
         { label: "Folder…", value: OPEN_FOLDER, icon: "i-lucide-folder-open" },
+        { label: "Zip file…", value: OPEN_ZIP, icon: "i-lucide-file-archive" },
         { label: "GitHub repo…", value: OPEN_REPO, icon: "i-lucide-github" },
       ],
     },
@@ -59,6 +61,7 @@ function Picker(props: { groups: Group[]; current: (list: Group[]) => Project | 
   const app = useContext(AppContext);
   const s = app.session;
   let folderInput!: HTMLInputElement;
+  let zipInput!: HTMLInputElement;
 
   const [asking, setAsking] = createSignal(false);
 
@@ -66,6 +69,7 @@ function Picker(props: { groups: Group[]; current: (list: Group[]) => Project | 
     // The select stays on the current project (value is controlled) unless the page navigates away.
     if (!p) return;
     if (p.value === OPEN_FOLDER) return folderInput.click();
+    if (p.value === OPEN_ZIP) return zipInput.click();
     // Once the Select has closed and handed focus back to its trigger, or that would win over the dialog.
     if (p.value === OPEN_REPO) return void setTimeout(() => setAsking(true));
     // A shared project lives in the link only: picking it again has nothing to load.
@@ -128,6 +132,18 @@ function Picker(props: { groups: Group[]; current: (list: Group[]) => Project | 
           const files = [...(e.currentTarget.files ?? [])];
           e.currentTarget.value = "";
           if (files.length) app.openFolder(files);
+        }}
+      />
+      <input
+        ref={zipInput}
+        id="zipinput"
+        type="file"
+        accept=".zip,application/zip"
+        hidden
+        onChange={(e) => {
+          const file = e.currentTarget.files?.[0];
+          e.currentTarget.value = "";
+          if (file) app.openZip(file);
         }}
       />
     </>
