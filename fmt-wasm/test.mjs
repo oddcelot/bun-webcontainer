@@ -1,10 +1,18 @@
 // Runs the wasm64 build of `bun fmt` on this repository's files and diffs against the native `bun fmt` (node >= 24).
-import { readFileSync } from "node:fs";
-import { execFileSync } from "node:child_process";
+// Then `bun fmt --stdin-filepath` itself (run_c) over a VFS with config files, against native bun fmt in a directory
+// with the same files.
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { VFS } from "../playground/src/vfs.ts";
+import { createSysImports } from "../playground/src/worker/sysHost.ts";
 
 const wasm = readFileSync(new URL("./target/wasm64-unknown-unknown/release/bun_fmt_wasm.wasm", import.meta.url));
 const t0 = performance.now();
-const { instance } = await WebAssembly.instantiate(wasm, {});
+const vfs = new VFS();
+let stdin = new Uint8Array(0);
+const { instance } = await WebAssembly.instantiate(wasm, createSysImports(vfs, () => instance.exports.memory, () => stdin));
 console.log(`instantiate ${(performance.now() - t0).toFixed(1)} ms, ${(wasm.length / 1e6).toFixed(1)} MB, bun ${execFileSync("bun", ["--version"], { encoding: "utf8" }).trim()}`);
 const w = instance.exports;
 const enc = new TextEncoder(), dec = new TextDecoder();
@@ -57,4 +65,53 @@ console.log(`${checked - fail}/${checked} identical to bun fmt, ${ms.toFixed(0)}
 const before = w.memory.buffer.byteLength, big = readFileSync(new URL("playground/src/shell.ts", root), "utf8");
 for (let i = 0; i < 300; i++) format("shell.ts", big, []);
 console.log(`memory ${before} -> ${w.memory.buffer.byteLength} after 300 formats`);
-process.exit(fail ? 1 : 0);
+
+// bun fmt --stdin-filepath over a VFS with config files.
+function run(files, path, args = []) {
+  vfs.clear();
+  for (const [p, text] of Object.entries(files)) vfs.write(p, text);
+  stdin = enc.encode(files[path] ?? "");
+  const argv = enc.encode([...args, "--stdin-filepath", path].join("\0"));
+  const n = BigInt(argv.length), p = w.alloc(n);
+  new Uint8Array(w.memory.buffer, Number(p), argv.length).set(argv);
+  const out = w.run_c(p, n, 0);
+  const view = new DataView(w.memory.buffer), at = (i) => view.getBigUint64(Number(out) + 8 * i, true);
+  const text = (ptr, len) => dec.decode(new Uint8Array(w.memory.buffer, Number(ptr), Number(len)));
+  const r = { exit: Number(at(0)), stdout: text(at(1), at(2)), stderr: text(at(3), at(4)) };
+  w.run_output_free(out); w.dealloc(p, n);
+  return r;
+}
+function nativeRun(files, path, args = []) {
+  const dir = mkdtempSync(join(tmpdir(), "fmt-wasm-"));
+  try {
+    for (const [p, text] of Object.entries(files)) mkdirSync(dirname(join(dir, p)), { recursive: true }), writeFileSync(join(dir, p), text);
+    const r = spawnSync("bun", ["fmt", ...args, "--stdin-filepath", path], { cwd: dir, input: files[path] ?? "", encoding: "utf8" });
+    // Absolute paths in messages: the directory here is the VFS root there.
+    return { exit: r.status, stdout: r.stdout, stderr: r.stderr.replaceAll(realpathSync(dir), "") };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+const ugly = "const user = {name: 'Ada', roles: ['admin', 'editor'], active: true, created: Date.now()}\nfunction save(u) { return fetch('/api/users', {method: 'POST', body: JSON.stringify(u)}) }\n";
+const SCENARIOS = {
+  "bunfig.toml [fmt]": [{ "bunfig.toml": "[fmt]\nprintWidth = 40\nsemi = false\n", "a.ts": ugly }, "a.ts"],
+  ".prettierrc": [{ ".prettierrc": '{ "singleQuote": true, "tabWidth": 4 }', "a.ts": ugly }, "a.ts"],
+  ".prettierrc.yaml": [{ ".prettierrc.yaml": "semi: false\nbracketSpacing: false\n", "a.ts": ugly }, "a.ts"],
+  ".prettierrc.toml": [{ ".prettierrc.toml": "useTabs = true\ntrailingComma = \"none\"\n", "a.ts": ugly }, "a.ts"],
+  "package.json prettier, nearest wins": [{ ".prettierrc": '{ "semi": false }', "sub/package.json": '{ "prettier": { "useTabs": true } }', "sub/a.ts": ugly }, "sub/a.ts"],
+  ".editorconfig": [{ ".editorconfig": "root = true\n[*.css]\nindent_style = tab\n", "s.css": "a{color:red;b{c:d}}\n" }, "s.css"],
+  ".prettierignore": [{ ".prettierignore": "skip.ts\n", "skip.ts": ugly }, "skip.ts"],
+  "syntax error": [{ "bad.ts": "const user = {\n  name: 'Ada'\nconst =\n" }, "bad.ts"],
+  "no parser": [{ "notes.txt": "hello\n" }, "notes.txt"],
+  "flags over bunfig": [{ "bunfig.toml": "[fmt]\nsemi = false\n", "a.ts": ugly }, "a.ts", ["--single-quote"]],
+};
+let configFail = 0;
+for (const [name, [files, path, args]] of Object.entries(SCENARIOS)) {
+  const got = run(files, path, args), want = nativeRun(files, path, args);
+  const same = got.exit === want.exit && got.stdout === want.stdout && got.stderr === want.stderr;
+  if (!same) configFail++;
+  console.log(`${same ? "same" : "DIFF"}  ${name} (exit ${got.exit})`);
+  if (!same) console.log({ wasm: got, native: want });
+}
+console.log(configFail ? `${configFail} config scenarios differ` : `all ${Object.keys(SCENARIOS).length} config scenarios match bun fmt`);
+process.exit(fail || configFail ? 1 : 0);

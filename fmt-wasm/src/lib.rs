@@ -6,6 +6,7 @@
 
 #![feature(linkage)]
 
+mod cli;
 mod native;
 
 use bun_format::FormatOptions;
@@ -146,6 +147,43 @@ pub unsafe extern "C" fn format_c(
 pub unsafe extern "C" fn walks_c(path: *const u8, path_len: usize) -> u32 {
     let path = unsafe { core::slice::from_raw_parts(path, path_len) };
     (supports(path) && !is_generated(path)) as u32
+}
+
+#[repr(C)]
+pub struct RunOutput {
+    pub exit_code: u64,
+    pub stdout: *mut u8,
+    pub stdout_len: usize,
+    pub stderr: *mut u8,
+    pub stderr_len: usize,
+}
+
+/// `bun fmt <args>`; `args` are NUL-separated. The host serves standard input (fd 0) for `--stdin-filepath`.
+/// `colors`: 1 for ANSI colors in what it prints. Free the result with `run_output_free`.
+///
+/// # Safety
+/// The input range must be readable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn run_c(args: *const u8, args_len: usize, colors: u32) -> *mut RunOutput {
+    let args = unsafe { core::slice::from_raw_parts(args, args_len) };
+    let args: Vec<&[u8]> = if args.is_empty() { Vec::new() } else { args.split(|&b| b == 0).collect() };
+    let outcome = cli::run(&args, colors != 0);
+    let leak = |v: Vec<u8>| {
+        let b = Box::into_raw(v.into_boxed_slice());
+        (b.cast::<u8>(), b.len())
+    };
+    let (stdout, stdout_len) = leak(outcome.stdout);
+    let (stderr, stderr_len) = leak(outcome.stderr);
+    Box::into_raw(Box::new(RunOutput { exit_code: u64::from(outcome.exit_code), stdout, stdout_len, stderr, stderr_len }))
+}
+
+/// # Safety
+/// `out` must come from `run_c`, once.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn run_output_free(out: *mut RunOutput) {
+    let out = unsafe { Box::from_raw(out) };
+    drop(unsafe { Box::from_raw(core::ptr::slice_from_raw_parts_mut(out.stdout, out.stdout_len)) });
+    drop(unsafe { Box::from_raw(core::ptr::slice_from_raw_parts_mut(out.stderr, out.stderr_len)) });
 }
 
 /// # Safety

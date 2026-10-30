@@ -4,7 +4,8 @@ import { transpile, TranspileError } from "./transpiler";
 import { typecheck, TYPED } from "./typecheck";
 import type { VFS } from "./vfs";
 
-const CHECKED = /\.(?:[cm]?[jt]s|[jt]sx)$/;
+/** Files whose parse (and type) errors the editor marks as you type. */
+export const CHECKED = /\.(?:[cm]?[jt]s|[jt]sx)$/;
 const MAX_BYTES = 500_000;
 const DEBOUNCE_MS = 300;
 
@@ -34,7 +35,7 @@ export async function diagnose(vfs: VFS, path: string, text: string): Promise<Ed
       const line = lines[d.line - 1].replace(/\r$/, "");
       const start = utf16Index(line, (d.column ?? 1) - 1);
       const end = utf16Index(line, (d.column ?? 1) - 1 + (d.length ?? 0));
-      out.push({ severity: d.severity, message: d.text, line: d.line, column: start + 1, length: end - start });
+      out.push({ severity: d.severity, message: d.text, line: d.line, column: start + 1, length: end - start, source: "bun" });
     }
     return out;
   }

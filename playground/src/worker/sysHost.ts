@@ -13,7 +13,7 @@ const DT_DIR = 4, DT_REG = 8;
 const STAT_SIZE = 120;
 const START = Date.now();
 
-type OpenFile = { key: string; pos: number; read: boolean; write: boolean; append: boolean; dir: boolean; cursor: number };
+type OpenFile = { key: string; pos: number; read: boolean; write: boolean; append: boolean; dir: boolean; cursor: number; data?: () => Uint8Array };
 
 class Errno extends Error {
   code: number;
@@ -25,9 +25,22 @@ class Errno extends Error {
 
 const bytesOf = (d: FileData): Uint8Array => (typeof d === "string" ? new TextEncoder().encode(d) : d);
 
-/** Builds the `bun_sys` import object. Each VFS gets its own fd table (fds start at 3). */
-export function createSysImports(vfs: VFS, getMemory: () => WebAssembly.Memory) {
+/**
+ * Builds the `bun_sys` import object. Each VFS gets its own fd table (fds start at 3). With `stdin`, fd 0 reads what it
+ * returns (for `bun fmt --stdin-filepath`), from the start whenever it returns a new buffer.
+ */
+export function createSysImports(vfs: VFS, getMemory: () => WebAssembly.Memory, stdin?: () => Uint8Array) {
   const fds = new Map<number, OpenFile>();
+  let stdinSeen: Uint8Array | undefined;
+  if (stdin)
+    fds.set(0, {
+      key: "", pos: 0, read: true, write: false, append: false, dir: false, cursor: 0,
+      data() {
+        const b = stdin();
+        if (b !== stdinSeen) (stdinSeen = b), (this.pos = 0);
+        return b;
+      },
+    });
   let nextFd = 3;
   const dec = new TextDecoder();
   const enc = new TextEncoder();
@@ -61,6 +74,7 @@ export function createSysImports(vfs: VFS, getMemory: () => WebAssembly.Memory) 
   };
 
   function fileBytes(f: OpenFile): Uint8Array {
+    if (f.data) return f.data();
     const d = vfs.files.get(f.key);
     return d === undefined ? new Uint8Array(0) : bytesOf(d);
   }
@@ -158,6 +172,7 @@ export function createSysImports(vfs: VFS, getMemory: () => WebAssembly.Memory) 
     read: (fd: number, buf: bigint, len: bigint) =>
       guard(() => {
         const f = getFd(fd);
+        f.data?.(); // stdin: rewinds for a new buffer before `pos` is read
         const n = readAt(f, buf, len, f.pos);
         f.pos += n;
         return n;

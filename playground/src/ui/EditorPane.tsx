@@ -1,9 +1,9 @@
 import { createEffect, onSettled, useContext } from "solid-js";
-import { mountDiagnostics } from "../diagnostics";
+import { CHECKED, mountDiagnostics } from "../diagnostics";
 import { createPierre } from "../editors/pierre";
 import { formatChord, keysFor, matches } from "../keymap";
 import type { CodeEditor } from "../editors/types";
-import { format } from "../fmt";
+import { asConsoleEntry, errorLocation, fmt } from "../fmt";
 import { AppContext } from "./context";
 import { guarded } from "./guarded";
 import { EditorTabs } from "./Tabs";
@@ -44,14 +44,18 @@ export function EditorPane() {
     const path = current;
     if (!path || !editor) return;
     try {
-      const r = await format(path, editor.getText());
+      const r = await fmt(vfs, path, editor.getText());
       if (path !== current) return;
-      if (!("error" in r)) return editor.replace(r.text);
-      log("error", r.error === "unsupported" ? `[fmt] bun fmt doesn't format ${path}` : r.error === "syntax" ? `[fmt] ${path} has a syntax error; left as is` : `[fmt] the formatter hit a bug on ${path}; left as is`);
+      if (r.exitCode === 0) return editor.replace(r.stdout);
+      log("error", asConsoleEntry(r.stderr));
+      // JS and TS errors are already marked as you type; mark where other files stop parsing, until the next edit.
+      const at = errorLocation(r.stderr);
+      if (at && !CHECKED.test(path)) editor.setDiagnostics([{ severity: "error", message: at.message, line: at.line, column: at.column, length: 0, source: "bun fmt" }]);
     } catch (e) {
       log("error", `[fmt] ${e}`);
     }
   }
+
 
   createEffect(
     () => ws.state.active,

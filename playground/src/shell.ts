@@ -1,5 +1,5 @@
 import type { CookieJar } from "./cookieJar";
-import { format, walks, type FormatOptions } from "./fmt";
+import { asConsoleEntry, fmt as formatFile, walks } from "./fmt";
 import type { VFS } from "./vfs";
 
 type Log = (level: string, text: string) => void;
@@ -36,7 +36,7 @@ bun test [filter...]   run *.test.ts, *.spec.ts… (stops the server meanwhile)
 bun install, bun i     install dependencies
 bun add <pkg> [-d]     add (dev) dependencies
 bun remove <pkg>       remove dependencies
-bun fmt [-c] [path...]  format (or --check) files like Prettier
+bun fmt [-c] [path...]  format (or --check) files like Prettier, with the project's configs
 ls [dir]  cat <file>  clear  help
 reset                  discard saved files, reload from source
 cookies [clear]        list (or delete) the preview's cookies
@@ -135,26 +135,27 @@ export function createShell(host: ShellHost) {
     writePkg(pkg);
   }
 
-  /** `bun fmt [--check] [--use-tabs] [--no-semi] [--single-quote] [--print-width=N] [path...]` over the VFS. */
+  /**
+   * `bun fmt [-c] [flags] [path...]` over the VFS. Each file goes through `bun fmt [flags] --stdin-filepath <file>`, so
+   * the project's configs and bun fmt's own flags apply; folders are walked like bun fmt does (no node_modules, lock
+   * files or minified code).
+   */
   async function fmt(args: string[]) {
-    const options: FormatOptions = {};
     let check = false;
+    const flags: string[] = [];
     const targets: string[] = [];
-    for (let i = 0; i < args.length; i++) {
-      const a = args[i];
+    for (const a of args) {
       if (a === "-c" || a === "--check") check = true;
-      else if (a === "--use-tabs") options.useTabs = true;
-      else if (a === "--no-semi") options.noSemi = true;
-      else if (a === "--single-quote") options.singleQuote = true;
-      else if (a.startsWith("--print-width")) {
-        const width = Number(a.includes("=") ? a.slice(a.indexOf("=") + 1) : args[++i]);
-        if (!Number.isInteger(width) || width <= 0) return fail(`error: --print-width expects a positive integer`);
-        options.printWidth = width;
-      } else if (a.startsWith("-")) return fail(`error: bun fmt ${a} is not supported here`);
-      else targets.push(a.replace(/^\.\/?/, "").replace(/\/$/, ""));
+      else if (a.startsWith("-")) flags.push(a);
+      else {
+        const path = a.replace(/^\.\/?/, "").replace(/\/$/, "");
+        // `--print-width 100`: a word after a flag without `=` is its value unless it names a file or a folder.
+        const prev = flags.at(-1);
+        if (prev && !prev.includes("=") && !vfs.files.has(path) && !vfs.isDir(path)) flags[flags.length - 1] = `${prev}=${a}`;
+        else targets.push(path);
+      }
     }
     const started = performance.now();
-    // Directories: what `bun fmt` walks into (not node_modules, lock files or minified code). Named files: as named.
     const files = new Set<string>();
     for (const target of targets.length ? targets : [""]) {
       if (vfs.files.has(target)) {
@@ -163,22 +164,23 @@ export function createShell(host: ShellHost) {
       }
       if (!vfs.isDir(target)) return fail(`error: No files matching the pattern were found: "${target}".`);
       for (const f of vfs.list(target)) {
-        if (!/(^|\/)(node_modules|\.git)\//.test(f) && (await walks(f))) files.add(f);
+        if (!/(^|\/)(node_modules|\.git)\//.test(f) && (await walks(vfs, f))) files.add(f);
       }
     }
     let changed = 0, same = 0, failed = 0;
     for (const f of [...files].sort()) {
       const text = vfs.readText(f);
       if (text === undefined) continue;
-      const r = await format(f, text, options);
-      if ("error" in r) {
-        failed++;
-        fail(r.error === "unsupported" ? `error: No parser could be inferred for file "${f}".` : r.error === "syntax" ? `error: ${f}: syntax error, left as is` : `error: ${f}: the formatter hit a bug, left as is`);
-      } else if (r.text === text) same++;
+      const r = await formatFile(vfs, f, text, flags, true);
+      // An error that doesn't name the file is about the command line (an unknown flag, a bad bunfig.toml): once is enough.
+      if (r.exitCode && !r.stderr.includes(f)) return fail(asConsoleEntry(r.stderr));
+      if (r.stderr) log(r.exitCode ? "error" : "warn", asConsoleEntry(r.stderr));
+      if (r.exitCode) failed++;
+      else if (r.stdout === text) same++;
       else {
         changed++;
         log("log", f);
-        if (!check) vfs.write(f, r.text);
+        if (!check) vfs.write(f, r.stdout);
       }
     }
     const s = (n: number) => (n === 1 ? "file" : "files");
