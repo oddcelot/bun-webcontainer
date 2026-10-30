@@ -1,7 +1,7 @@
 import { File } from "@pierre/diffs";
 import { Editor, type Marker } from "@pierre/diffs/edit";
 import { onTheme, themeName } from "../theme";
-import type { CodeEditor, EditorDiagnostic } from "./types";
+import type { CodeEditor, EditorDiagnostic, EditorEvents } from "./types";
 
 // Lucide's circle-x and triangle-alert, drawn in the severity's color (the popover is in a shadow root, where the page's icon classes don't apply).
 const ICONS = {
@@ -37,7 +37,7 @@ const HOVER_CSS = `
   .hover-source { color: color-mix(in lab, var(--diffs-fg) 50%, transparent); white-space: nowrap; }`;
 
 /** @pierre/diffs edit mode: a highlighted `File` surface with an `Editor` attached. */
-export function createPierre(parent: HTMLElement): CodeEditor {
+export function createPierre(parent: HTMLElement, events: EditorEvents = {}): CodeEditor {
   const host = document.createElement("div");
   host.className = "pierre-host";
   parent.replaceChildren(host);
@@ -50,6 +50,35 @@ export function createPierre(parent: HTMLElement): CodeEditor {
   let listener: (text: string) => void = () => {};
   let theme = themeName();
   let markers: Marker[] = [];
+
+  // The editor has no selection event; read the cursor after whatever can move it (events from its shadow root bubble here).
+  let lastCursor = "";
+  function reportCursor() {
+    const sel = editor?.getViewState().selections?.[0];
+    // The caret is the end a selection was extended to.
+    const caret = sel?.direction === -1 ? sel.start : sel?.end;
+    const cursor = sel && caret && {
+      line: caret.line + 1,
+      column: caret.character + 1,
+      selected: Math.abs(offsetOf(sel.end) - offsetOf(sel.start)),
+    };
+    const key = JSON.stringify(cursor ?? null);
+    if (key === lastCursor) return;
+    lastCursor = key;
+    events.onCursor?.(cursor ?? null);
+  }
+  /** A zero-based position as an offset into the text. */
+  const offsetOf = (p: { line: number; character: number }) => {
+    let offset = 0;
+    for (let l = 0; l < p.line; l++) {
+      const next = text.indexOf("\n", offset);
+      if (next < 0) return text.length;
+      offset = next + 1;
+    }
+    return offset + p.character;
+  };
+  const onMove = () => requestAnimationFrame(reportCursor);
+  for (const type of ["keyup", "pointerup", "focusin"]) host.addEventListener(type, onMove);
 
   onTheme((next) => {
     if (next === theme) return;
@@ -87,7 +116,10 @@ export function createPierre(parent: HTMLElement): CodeEditor {
 
   function show(nextPath: string, nextText: string | null) {
     close();
-    if (nextPath !== path) markers = [];
+    if (nextPath !== path) {
+      markers = [];
+      events.onDiagnostics?.([]);
+    }
     path = nextPath;
     text = nextText ?? "";
     view = new File({
@@ -104,6 +136,7 @@ export function createPierre(parent: HTMLElement): CodeEditor {
       onEditChange(event) {
         text = event.file.contents;
         listener(text);
+        onMove();
       },
       // The VFS already holds every change from onEditChange; keep the surface showing it.
       onEditComplete: () => "accept",
@@ -114,6 +147,7 @@ export function createPierre(parent: HTMLElement): CodeEditor {
     shown = false;
     finish = editor.edit(view);
     if (markers.length) applyMarkers();
+    onMove();
   }
 
   return {
@@ -132,6 +166,11 @@ export function createPierre(parent: HTMLElement): CodeEditor {
         end: { line: d.line - 1, character: d.column - 1 + Math.max(d.length, 1) },
       }));
       applyMarkers();
+      events.onDiagnostics?.(diagnostics);
+    },
+    reveal(line, column) {
+      editor?.focus({ lineNumber: line, character: column - 1 });
+      onMove();
     },
     getText: () => editor?.getText() ?? text,
     replace(next) {
@@ -155,6 +194,8 @@ export function createPierre(parent: HTMLElement): CodeEditor {
       path = text = "";
       markers = [];
       listener = () => {};
+      events.onDiagnostics?.([]);
+      reportCursor();
     },
     destroy() {
       close();

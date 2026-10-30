@@ -39,6 +39,7 @@ export function EditorPane() {
     for (const path of [...pending.keys()]) save(path);
   }
   ws.onSaveAll(saveAll);
+  ws.onReveal((line, column) => editor?.reveal(line, column));
 
   async function formatOpenFile() {
     const path = current;
@@ -60,7 +61,7 @@ export function EditorPane() {
   createEffect(
     () => ws.state.active,
     guarded("editor", (path) => {
-      editor ??= createPierre(el);
+      editor ??= createPierre(el, { onCursor: ws.setCursor, onDiagnostics: ws.setProblems });
       check ??= mountDiagnostics(vfs, editor);
       current = path;
       if (!path) {
