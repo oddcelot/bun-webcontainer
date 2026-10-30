@@ -137,10 +137,10 @@ html[data-booting] body > header > * { visibility: hidden; animation: boot-fallb
 .select-option .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .select-option[data-highlighted] { background: var(--control-hover); }
 .select-option .check { display: grid; color: var(--accent); }
-/* The status bar, as in VS Code or Zed: one quiet line of small items under the panes. */
-#statusbar { display: flex; align-items: center; gap: 2px; height: 24px; padding: 0 6px; border-top: 1px solid var(--border); background: var(--panel); color: var(--muted); font-size: 12px; white-space: nowrap; }
+/* The status bar, as in VS Code or Zed: one quiet line of small items, a card like the panes (inset as far as their visible edges). */
+#statusbar { display: flex; align-items: center; gap: 2px; height: 28px; margin: 0 8px 8px; padding: 0 4px; border-radius: var(--radius); background: var(--bg); color: var(--muted); font-size: 12px; white-space: nowrap; }
 #statusbar .spacer { flex: 1; }
-#statusbar > button, #statusbar > a, #statusbar > span:not(.spacer, #status) { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 6px; border: 0; border-radius: 4px; background: none; color: inherit; font: inherit; text-decoration: none; }
+#statusbar > button, #statusbar > a, #statusbar > span:not(.spacer, #status) { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 6px; border: 0; border-radius: var(--inner-radius); background: none; color: inherit; font: inherit; text-decoration: none; }
 #statusbar > button, #statusbar > a { cursor: pointer; }
 #statusbar > button:not(:disabled):hover, #statusbar > a:hover { background: var(--control-hover); color: var(--fg); }
 #statusbar > button[aria-pressed="true"] { color: var(--fg); }
