@@ -1,0 +1,38 @@
+---
+title: Privacy
+description: What runbun.dev and docs.runbun.dev store, send and keep.
+---
+
+The playground (runbun.dev) and these docs (docs.runbun.dev) set **no cookies** and run **no analytics or tracking**.
+
+## In your browser
+
+Your projects stay in your browser. The playground keeps them there and sends none of it to us:
+
+- **Projects** in the browser's Origin Private File System (see [Storage and persistence](/guides/storage/)).
+- **Settings** (theme, keyboard shortcuts, auto-save, panel layout) in local storage.
+- **The current tab's session** in session storage.
+- **Folders you open from disk**: the handle, so the playground can reopen the folder; the browser asks for permission again.
+- **Transpiled modules** in a cache, so the next run starts faster.
+- **A service worker** that serves your project's files and its `Bun.serve` preview to the page.
+
+Clearing the site's data in your browser removes all of it.
+
+## Share links
+
+- **A normal share link** (`runbun.dev/#code=…`) carries the project in the part of the URL after `#`. Browsers don't send that part to the server, so nothing is uploaded.
+- **A short link** (`runbun.dev/s/…`) is only made when you pick **Copy short link**. It stores a copy of the project on runbun.dev (Cloudflare Workers KV), and **anyone with the link can open it**. Files that may hold secrets (`.env`, keys, `.npmrc`) and binary files are left out. Next to the copy we keep the day it was created and the day it was last opened, and nothing about who made it.
+
+Short links are kept until they're removed. To have one removed, email [privacy@runbun.dev](mailto:privacy@runbun.dev) with the link. The same address takes reports of illegal content and requests about personal data.
+
+## Requests from your browser
+
+- **runbun.dev / docs.runbun.dev** are hosted on Cloudflare, which processes requests (including your IP address) to serve and protect the sites; see [Cloudflare's privacy policy](https://www.cloudflare.com/privacypolicy/). When you make a short link, your IP address is used to limit how many you can make a minute; it isn't stored.
+- **npm**: installing packages fetches them from `registry.npmjs.org` ([npm's privacy policy](https://docs.npmjs.com/policies/privacy)).
+- **GitHub**: opening a repository fetches it from `api.github.com` and `raw.githubusercontent.com` ([GitHub's privacy statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement)).
+
+These requests go straight from your browser to those services, and only when you install or import something.
+
+## Changes
+
+If this changes, for example if the sites add analytics, this page will say so first.
