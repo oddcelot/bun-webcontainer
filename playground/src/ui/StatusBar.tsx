@@ -128,6 +128,9 @@ export function StatusBar(props: { treeShown: boolean; toggleTree(): void; previ
         )}
       </Show>
       <Shortcuts placement="top" />
+      <Tip as="a" href={`${DOCS}privacy/`} target="_blank" rel="noopener" placement="top-end" tip="No cookies or tracking; what is stored, and where">
+        Privacy
+      </Tip>
       <Tip
         as="a"
         href={`${DOCS}compatibility/bun/`}

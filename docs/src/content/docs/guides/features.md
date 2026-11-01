@@ -93,7 +93,7 @@ Dependencies install automatically when a project opens with missing packages. `
 ## Projects
 
 - **Saved as you type**, in your browser. See [Storage and persistence](/guides/storage/).
-- **Share:** the Share menu copies a link with the whole project in the URL (nothing is uploaded), a Markdown badge, or HTML. `node_modules`, `.git`, binary files and secrets (`.env`, keys, `.npmrc`) are left out. Very long links can be shortened to `runbun.dev/s/<id>`. **Download as zip** saves every file except `node_modules` and `.git`, binaries included.
+- **Share:** the Share menu copies a link with the whole project in the URL (nothing is uploaded), a Markdown badge, or HTML. `node_modules`, `.git`, binary files and secrets (`.env`, keys, `.npmrc`) are left out. Very long links can be shortened to `runbun.dev/s/<id>`, which stores a copy on runbun.dev (see [Privacy](/privacy/)). **Download as zip** saves every file except `node_modules` and `.git`, binaries included.
 - **GitHub:** open any public repo, branch or subfolder from the project picker or with `?repo=`. Up to 500 files; GitHub allows 60 imports an hour per IP.
 - **Examples:** Elysia, Hono, Astro + Solid, Vite, Lit SSR and more in the project picker.
 - **One tab per project:** a second tab with the same project can't save its changes.

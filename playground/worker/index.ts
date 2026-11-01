@@ -2,6 +2,9 @@
 // derived from its content, so sharing the same project twice gives the same link and costs no second write.
 // GET /s/<id> redirects to /#code=<payload>, which the playground already knows how to open. Everything else is
 // the static site.
+//
+// Links are kept until someone asks for one to be removed (docs: /privacy/). Each key's metadata records the day it was
+// created and the day it was last opened, for a later cleanup of links nobody uses; reading it costs nothing extra.
 
 interface Env {
   ASSETS: Fetcher;
@@ -24,6 +27,14 @@ async function idFor(payload: string): Promise<string> {
   return id;
 }
 
+/** Kept with each link, as "YYYY-MM-DD" days. Links stored before this have none until they're opened. */
+interface Dates {
+  created?: string;
+  viewed?: string;
+}
+
+const today = () => new Date().toISOString().slice(0, 10);
+
 const json = (status: number, body: object) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
 
@@ -36,22 +47,27 @@ async function create(req: Request, env: Env, url: URL): Promise<Response> {
   if (!payload || !/^[A-Za-z0-9_-]+$/.test(payload)) return json(400, { error: "not a share payload" });
   if (payload.length > MAX_PAYLOAD) return json(413, { error: "project too large for a short link" });
   const id = await idFor(payload);
-  if ((await env.LINKS.get(id)) === null) await env.LINKS.put(id, payload);
+  if ((await env.LINKS.get(id)) === null) await env.LINKS.put(id, payload, { metadata: { created: today() } satisfies Dates });
   // A path, not a URL: the page adds its own origin (runbun.dev, workers.dev or a local dev server).
   return json(200, { id, path: `/s/${id}` });
 }
 
-async function open(id: string, env: Env, url: URL): Promise<Response> {
-  const payload = ID.test(id) ? await env.LINKS.get(id, { cacheTtl: 86400 }) : null;
+async function open(id: string, env: Env, url: URL, ctx: ExecutionContext): Promise<Response> {
+  // The default (60 s) edge cache, not a day: a longer one would keep serving the old "viewed" after the write below,
+  // and every open in that window would write again.
+  const { value: payload, metadata } = ID.test(id) ? await env.LINKS.getWithMetadata<Dates>(id) : { value: null, metadata: null };
+  // At most one write per link a day; a failed write (KV allows one a second per key) only loses a date.
+  if (payload !== null && metadata?.viewed !== today())
+    ctx.waitUntil(env.LINKS.put(id, payload, { metadata: { ...metadata, viewed: today() } satisfies Dates }).catch(() => {}));
   if (payload === null) return new Response("This short link doesn't exist (or never did).", { status: 404, headers: { "content-type": "text/plain; charset=utf-8" } });
   return Response.redirect(`${url.origin}/#code=${payload}`, 302);
 }
 
 export default {
-  async fetch(req, env): Promise<Response> {
+  async fetch(req, env, ctx): Promise<Response> {
     const url = new URL(req.url);
     if (url.pathname === "/api/short" && req.method === "POST") return create(req, env, url);
-    if (url.pathname.startsWith("/s/")) return open(url.pathname.slice(3), env, url);
+    if (url.pathname.startsWith("/s/")) return open(url.pathname.slice(3), env, url, ctx);
     if (url.pathname.startsWith("/api/")) return json(404, { error: "not found" });
     return env.ASSETS.fetch(req);
   },
