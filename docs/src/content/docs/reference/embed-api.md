@@ -134,7 +134,7 @@ window.addEventListener("message", (e) => {
 });
 ```
 
-`files` maps paths to text. `options` takes `mode`, `features`, `file`, `path`, `autorun`, `theme`, `family`, `fonts`, `readonly`, `persist` and `status`. `vars` takes the object described under [Theming](#theming). Without `?init=1`, the page loads from its URL and `init` isn't needed; `setFamily` and `setVars` change both afterwards.
+`files` maps paths to text. `options` takes `mode`, `features`, `file`, `path`, `autorun`, `theme`, `family`, `fonts`, `readonly`, `persist`, `expand` and `status`. `vars` takes the object described under [Theming](#theming). Without `?init=1`, the page loads from its URL and `init` isn't needed; `setFamily` and `setVars` change both afterwards.
 
 ## Theming
 
