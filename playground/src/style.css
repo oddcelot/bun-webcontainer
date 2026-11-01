@@ -88,18 +88,19 @@ html[data-booting] body > header > * { visibility: hidden; animation: boot-fallb
 /* Appearance popover: the color-scheme toggle over the theme list. Its padding is --pad, so the corners inside are --inner-radius. */
 .appearance { z-index: 30; width: 18rem; padding: var(--pad); border: 1px solid var(--control-border); border-radius: calc(var(--inner-radius) + var(--pad) + 1px); background: var(--panel); color: var(--fg); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35); }
 .appearance .select-list { max-height: min(24rem, 60vh); margin-top: var(--pad); padding: 0; }
-#modes { display: flex; }
-#modes button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: var(--control-height); padding: 0 7px; margin-left: -1px; border: 1px solid var(--control-border); border-radius: 0; background: var(--control); color: inherit; font: inherit; cursor: pointer; }
-#modes button:hover { background: var(--control-hover); }
-#modes button:first-child { border-radius: var(--inner-radius) 0 0 var(--inner-radius); margin-left: 0; }
-#modes button:last-child { border-radius: 0 var(--inner-radius) var(--inner-radius) 0; }
+:is(#modes, #status-display) { display: flex; }
+#status-display { margin-top: var(--pad); }
+:is(#modes, #status-display) button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: var(--control-height); padding: 0 7px; margin-left: -1px; border: 1px solid var(--control-border); border-radius: 0; background: var(--control); color: inherit; font: inherit; cursor: pointer; }
+:is(#modes, #status-display) button:hover { background: var(--control-hover); }
+:is(#modes, #status-display) button:first-child { border-radius: var(--inner-radius) 0 0 var(--inner-radius); margin-left: 0; }
+:is(#modes, #status-display) button:last-child { border-radius: 0 var(--inner-radius) var(--inner-radius) 0; }
 /*
  * Pressed: the icon keeps the text color (an accent icon can be fainter than its neighbours); the mark is an accent
  * line on the bottom edge, inset from the sides (past the 6px corner radius) so it stays straight on the outer buttons.
  */
-#modes button { position: relative; }
-#modes button[aria-pressed="true"] { background: var(--control-hover); }
-#modes button[aria-pressed="true"]::after { content: ""; position: absolute; left: 7px; right: 7px; bottom: 0; height: 2px; border-radius: 1px 1px 0 0; background: var(--accent); }
+:is(#modes, #status-display) button { position: relative; }
+:is(#modes, #status-display) button[aria-pressed="true"] { background: var(--control-hover); }
+:is(#modes, #status-display) button[aria-pressed="true"]::after { content: ""; position: absolute; left: 7px; right: 7px; bottom: 0; height: 2px; border-radius: 1px 1px 0 0; background: var(--accent); }
 .title { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: inherit; white-space: nowrap; }
 /* Read by screen readers and crawlers, not shown: the h1's stable name next to the random visible one. */
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
@@ -162,14 +163,17 @@ html[data-booting] body > header > * { visibility: hidden; animation: boot-fallb
 /* In a narrow header the text gives way ("…", full text in the tooltip); the dot keeps its size. */
 #status .text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 #status::before { content: ""; flex-shrink: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--dot); }
+/* As a toast (ui/Status.tsx): over the panes' bottom-right corner, above the expanded preview (20), fading (and sliding) out once hidden. Before the states so theirs win. */
+#status.toast { position: absolute; right: 12px; bottom: 12px; z-index: 21; max-width: calc(100% - 24px); height: 26px; font-size: 12px; background: var(--panel); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3); transition: opacity 0.2s, transform 0.2s, visibility 0.2s; }
+#status.toast[data-hidden] { opacity: 0; transform: translateY(6px); visibility: hidden; }
 #status[data-state="busy"] { --dot: var(--warn); color: var(--fg); }
 #status[data-state="busy"]::before { animation: status-pulse 1s ease-in-out infinite alternate; }
 #status[data-state="running"] { --dot: var(--ok); color: var(--fg); border-color: color-mix(in srgb, var(--ok) 45%, var(--panel)); background: color-mix(in srgb, var(--ok) 12%, var(--panel)); }
 #status[data-state="running"]::before { box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent); }
 #status[data-state="error"] { --dot: var(--error); color: var(--error); border-color: color-mix(in srgb, var(--error) 45%, var(--panel)); }
 @keyframes status-pulse { to { opacity: 0.3; } }
-@media (prefers-reduced-motion: reduce) { #status[data-state="busy"]::before { animation: none; } }
-main { flex: 1; min-height: 0; padding: 0 4px 4px; }
+@media (prefers-reduced-motion: reduce) { #status[data-state="busy"]::before { animation: none; } #status.toast[data-hidden] { transform: none; } }
+main { position: relative; flex: 1; min-height: 0; padding: 0 4px 4px; }
 /*
  * The panes are cards with gaps between them. The gap is each pane's transparent border (the background stops at
  * the padding box, and so does overflow, along the inner curve): borders sit inside the size Kobalte gives a panel,

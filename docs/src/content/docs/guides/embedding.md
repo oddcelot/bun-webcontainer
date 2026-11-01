@@ -112,6 +112,8 @@ Type checking downloads 12 MB the first time it's used, and format 9 MB. They ar
 
 Edits are lost on reload. Set `persist="some-key"` to keep them in the reader's browser, or `readonly` to stop editing (Run still works).
 
+The run status shows as a toast over the panes that fades once the program settles; `status="bar"` shows it as a pill in the bar instead.
+
 ## Open in a modal
 
 `expand` adds a button to the embed's bar that opens it in a modal over your page. The program keeps running, and edits stay. Give it a mode to switch to while it's open, so a small snippet becomes the whole playground:

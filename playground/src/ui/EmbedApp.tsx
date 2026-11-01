@@ -9,6 +9,7 @@ import { Console } from "./Console";
 import { EditorPane } from "./EditorPane";
 import { FileTree } from "./FileTree";
 import { Preview } from "./Preview";
+import { StatusPill, StatusToast } from "./Status";
 import { Unsupported } from "./Unsupported";
 
 export const EmbedContext = createContext<Embed>();
@@ -69,6 +70,9 @@ export function EmbedApp() {
             <Console />
           </section>
         </Show>
+        <Show when={e.options.status === "toast"}>
+          <StatusToast status={app.session.status()} />
+        </Show>
       </div>
     </div>
   );
@@ -84,9 +88,9 @@ function EmbedBar() {
       <Show when={e.mode() !== "result" && !e.has("tabs")}>
         <span class="file">{app.workspace.state.active ?? ""}</span>
       </Show>
-      <span id="status" data-state={s.status().state}>
-        <span class="text">{s.status().text}</span>
-      </span>
+      <Show when={e.options.status === "bar"}>
+        <StatusPill status={s.status()} />
+      </Show>
       <span class="spacer" />
       <Show when={e.mode() === "result"}>
         <button type="button" onClick={() => e.setMode("preview")}>

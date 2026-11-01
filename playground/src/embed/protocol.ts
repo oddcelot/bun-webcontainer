@@ -49,6 +49,8 @@ export type Options = {
    * or a mode to switch to while expanded (`expand=full`: a snippet opens as the whole playground).
    */
   expand: "" | "on" | Mode;
+  /** Where the run status shows: "toast", one that fades once it settles (default), or "bar", a pill in the bar. */
+  status: "bar" | "toast";
 };
 
 /** Host → embed. Each gets a reply with the same `id`: `{ id, result }` or `{ id, error }`. */

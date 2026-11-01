@@ -19,6 +19,7 @@ const PARAMS = [
   "example",
   "repo",
   "expand",
+  "status",
 ];
 const HEIGHTS: Record<string, string> = { code: "auto", console: "360px", preview: "420px", full: "600px", result: "420px" };
 const CSS = `:host{display:block;position:relative}

@@ -63,5 +63,6 @@ export function optionsFromUrl(params: URLSearchParams): Options {
     readonly: bool(params.get("readonly"), false),
     persist: params.get("persist") ?? "",
     expand: expandOption(params),
+    status: params.get("status") === "bar" ? "bar" : "toast",
   };
 }
