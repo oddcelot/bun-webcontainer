@@ -13,7 +13,7 @@ const VARS_KEY = "theme-vars";
  * An embed (embed.html marks its <html>) takes its theme from the host and keeps it to itself: runbun.dev shares its
  * storage with embeds on docs.runbun.dev, so an embed saving its theme would change the playground's.
  */
-const EMBEDDED = "embed" in document.documentElement.dataset;
+export const EMBEDDED = "embed" in document.documentElement.dataset;
 
 const controller = createThemeController({
   catalog: createThemeCatalog({

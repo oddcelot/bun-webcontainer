@@ -53,6 +53,8 @@ Inline files: child `<script type="text/plain" data-file="path">` elements, dede
 | `install` | Install button | `preview`, `full` | |
 | `terminal` | Interactive terminal | `console`, `full` | |
 | `open` | "Open in runbun.dev" | all | |
+| `watch` | Restart the running program when an edit is saved, like `bun --watch` | all | |
+| `autosave` | An Auto-save switch over the editor: off, edits save on Ctrl/Cmd+S and before Run (switching it back on, or turning the feature off, saves what's waiting). Without it, edits save as you type | none | |
 
 Readers can switch features on or off from the **⋯** menu, except those you locked with `-name`.
 

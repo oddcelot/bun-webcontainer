@@ -203,6 +203,10 @@ export function createPlayground() {
     get semver() {
       return semver;
     },
+    /** What the last Run started. */
+    get lastEntry() {
+      return lastEntry;
+    },
   };
 }
 

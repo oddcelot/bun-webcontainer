@@ -64,7 +64,7 @@ A share link's `#code=…` hash works too: `https://runbun.dev/embed?mode=code#c
 | `full` | The whole playground: file tree, tabs, preview over console, Format, Install. Waits for Run. | same, plus the formatter (9 MB) once used | 600px |
 | `result` | Only the preview, with an Edit button that switches to `preview`. | same | 420px |
 
-Every mode except `full` runs the code once it has loaded; `autorun="false"` waits for Run.
+Every mode except `full` runs the code once it has loaded; `autorun="false"` waits for Run. While the program runs, saving an edit restarts it, like `bun --watch` (`features="-watch"` turns that off).
 
 Set `height` to any CSS length, or `auto` to fit the code.
 
@@ -106,7 +106,7 @@ export const greet = (n: string) => n;
 <bun-playground mode="code" features="types,-open"></bun-playground>
 ```
 
-Readers get a **⋯** menu to show or hide the file tree, tabs, console and preview, and to turn on type hints and formatting. It only offers what you haven't locked. With `format` or `install` on, the menu also has **Format file** and **bun install**; **Reset** loads the original files again. **Open in runbun.dev** opens the current files as a share link. The feature list is in the [reference](/reference/embed-api/#features).
+Readers get a **⋯** menu to show or hide the file tree, tabs, console and preview, and to turn on type hints, formatting, restart on save and the Auto-save switch. It only offers what you haven't locked. With `format` or `install` on, the menu also has **Format file** and **bun install**; **Reset** loads the original files again. **Open in runbun.dev** opens the current files as a share link. The feature list is in the [reference](/reference/embed-api/#features).
 
 Readers can drag the borders between panes (or focus one and use the arrow keys) to resize them; a double click goes back to the default. Sizes are kept for the browser tab.
 

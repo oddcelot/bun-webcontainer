@@ -32,18 +32,29 @@ export function EditorPane() {
   const pending = new Map<string, string>();
   let timer: ReturnType<typeof setTimeout> | undefined;
 
+  /** Writes `path`'s edits to the VFS; false when there were none. */
   function save(path: string) {
     const text = pending.get(path);
-    if (text === undefined) return;
+    if (text === undefined) return false;
     pending.delete(path);
     vfs.write(path, text);
     ws.setDirty(path, false);
+    return true;
   }
   function saveAll() {
     clearTimeout(timer);
-    for (const path of [...pending.keys()]) save(path);
+    let any = false;
+    for (const path of [...pending.keys()]) any = save(path) || any;
+    return any;
   }
   ws.onSaveAll(saveAll);
+  // Saving as you type again (the toggle back on, or an embed's switch turned off): edits waiting for Ctrl/Cmd+S save now.
+  createEffect(
+    () => ws.autosave() || !has("autosave"),
+    (on) => {
+      if (on && saveAll()) ws.markSaved();
+    },
+  );
   ws.onReveal((line, column) => editor?.reveal(line, column));
   ws.onFormat(() => void formatOpenFile());
 
@@ -93,7 +104,7 @@ export function EditorPane() {
         ws.setDirty(path, true);
         check!(path, next);
         clearTimeout(timer);
-        if (ws.autosave() || !has("autosave")) timer = setTimeout(saveAll, SAVE_DELAY);
+        if (ws.autosave() || !has("autosave")) timer = setTimeout(() => saveAll() && ws.markSaved(), SAVE_DELAY);
       });
       check(path, text);
     }),
@@ -133,7 +144,7 @@ export function EditorPane() {
       }
       if (!matches("save", e)) return;
       e.preventDefault();
-      if (current) save(current);
+      if (current && save(current)) ws.markSaved();
     };
     // Pending auto-saves go to the VFS before the page goes (persistence writes on pagehide); with auto-save off,
     // unsaved edits make the browser ask first, as editors do.
@@ -155,11 +166,13 @@ export function EditorPane() {
 
   return (
     <>
-      {/* An embed shows the tabs bar only with its tabs; Format moves to the embed's menu, and auto-save stays on. */}
-      <Show when={has("tabs")}>
+      {/* An embed shows the tabs bar only with its tabs or the Auto-save toggle (`autosave`); without tabs, Format is in the embed's menu. */}
+      <Show when={has("tabs") || has("autosave")}>
         <div class="tabs-bar">
-          <EditorTabs />
-          <Show when={has("format")}>
+          <Show when={has("tabs")}>
+            <EditorTabs />
+          </Show>
+          <Show when={has("tabs") && has("format")}>
             <Tip class="format" type="button" disabled={!ws.state.active} tip="Format the open file with bun fmt" keys={keysFor("format").map(formatChord)} onClick={() => void formatOpenFile()}>
               <i class="i-lucide-wand-sparkles" aria-hidden="true" /> Format
             </Tip>
@@ -171,9 +184,7 @@ export function EditorPane() {
               aria-pressed={ws.autosave() ? "true" : "false"}
               tip={ws.autosave() ? "Edits save shortly after you stop typing. Click to save with Ctrl/Cmd+S instead." : "Edits save with Ctrl/Cmd+S (and before Run). Click to save as you type."}
               onClick={() => {
-                const on = !ws.autosave();
-                ws.setAutosave(on);
-                if (on) saveAll();
+                ws.setAutosave(!ws.autosave());
               }}
             >
               <i class={ws.autosave() ? "i-lucide-save" : "i-lucide-save-off"} aria-hidden="true" /> Auto-save

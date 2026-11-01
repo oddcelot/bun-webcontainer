@@ -2,11 +2,11 @@ import { FEATURES, MODES, type Feature, type Mode, type Options } from "./protoc
 
 /** What each mode shows and turns on before the author's `features` list. */
 export const PRESETS: Record<Mode, readonly Feature[]> = {
-  code: ["console", "open"],
-  console: ["console", "terminal", "open"],
-  preview: ["tabs", "preview", "install", "open"],
-  full: ["files", "tabs", "console", "preview", "format", "install", "terminal", "open"],
-  result: ["preview", "open"],
+  code: ["console", "open", "watch"],
+  console: ["console", "terminal", "open", "watch"],
+  preview: ["tabs", "preview", "install", "open", "watch"],
+  full: ["files", "tabs", "console", "preview", "format", "install", "terminal", "open", "watch"],
+  result: ["preview", "open", "watch"],
 };
 
 /** What a feature costs to turn on, for the embed's menu. */

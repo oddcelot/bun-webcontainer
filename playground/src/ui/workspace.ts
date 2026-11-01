@@ -1,6 +1,7 @@
 import { createSignal, createStore } from "solid-js";
 import type { EditorCursor, EditorDiagnostic } from "../editors/types";
 import { pref } from "../prefs";
+import { EMBEDDED } from "../theme";
 
 const AUTOSAVE_KEY = "runbun:autosave";
 
@@ -17,7 +18,11 @@ export function createWorkspace() {
     dirty: [] as string[],
   });
   /** Save edits shortly after typing stops; off, they wait for Ctrl/Cmd+S, Run, Install or Share. Shared by all tabs. */
-  const [autosave, setAutosave] = pref(AUTOSAVE_KEY, true, { serialize: (on) => (on ? "on" : "off"), deserialize: (s) => s !== "off" });
+  // An embed keeps it in memory: it shares runbun.dev's storage (see theme.ts).
+  const [autosave, setAutosave] = EMBEDDED
+    ? createSignal(true)
+    : pref(AUTOSAVE_KEY, true, { serialize: (on) => (on ? "on" : "off"), deserialize: (s) => s !== "off" });
+  const saved = new Set<() => void>();
   // What the editor reports for the status bar.
   const [cursor, setCursor] = createSignal<EditorCursor | null>(null);
   const [problems, setProblems] = createSignal<EditorDiagnostic[]>([]);
@@ -36,6 +41,14 @@ export function createWorkspace() {
     },
     autosave,
     setAutosave,
+    /** Calls `fn` after each save the reader made (as they type, or Ctrl/Cmd+S), not those before Run; returns the unsubscribe. */
+    onSaved(fn: () => void) {
+      saved.add(fn);
+      return () => void saved.delete(fn);
+    },
+    markSaved() {
+      for (const fn of saved) fn();
+    },
     onSaveAll(fn: () => void) {
       saveAll = fn;
     },

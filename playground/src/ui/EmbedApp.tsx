@@ -149,6 +149,8 @@ const PANES: [Feature, string][] = [
 const TOOLS: [Feature, string][] = [
   ["types", "Type hints"],
   ["format", "Formatting"],
+  ["watch", "Restart on save"],
+  ["autosave", "Auto-save switch"],
 ];
 
 /** The ⋯ menu: panes and tools to turn on or off (what the author didn't lock), and actions. */
