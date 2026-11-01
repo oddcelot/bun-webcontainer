@@ -38,6 +38,20 @@ A boolean is on unless it is `false` or `0`. Unknown or malformed values fall ba
 
 Inline files: child `<script type="text/plain" data-file="path">` elements, dedented. Poster: children with `slot="poster"`, shown until the embed is ready; with `load="click"` a Run button over them starts it.
 
+## Page defaults
+
+`<bun-playground-defaults>` sets defaults for every `<bun-playground>` on the page. It takes the same attribute names and values, and renders nothing. Put it before the embeds.
+
+```html
+<bun-playground-defaults family="github-light" status="bar" load="click" fonts="https://fonts.googleapis.com/css2?family=Inter&display=swap"></bun-playground-defaults>
+```
+
+- Keys: `mode`, `features`, `autorun`, `theme`, `family`, `fonts`, `readonly`, `expand`, `status`, `vars`, `load`, `height`, `src`. The others (`file`, `path`, `example`, `repo`, `share`, `title`, `persist`) are per embed; a shared `persist` key would make embeds overwrite each other's edits.
+- Precedence: built-in default, then the page default, then the element's attribute, then what the reader picks in the embed's menu. An element opts out of a boolean default with `false`, e.g. `readonly="false"`. Removing an element's attribute falls back to the page default.
+- `vars` merges per scheme: the element's `base`, `light` and `dark` go over the page default's. Every other key replaces the default, `features` too. Malformed `vars` JSON in either place is skipped.
+- Changing `theme`, `family`, `vars`, `mode` or `height` on the defaults element updates running embeds without reloading them. The other keys only reach embeds that haven't started yet.
+- The first `<bun-playground-defaults>` in the document wins; with more than one the element logs a warning. It is looked up every time, so a page that swaps its content (client-side navigation) can swap it too.
+
 ## Features
 
 `mode` picks a preset; `features` adjusts it.

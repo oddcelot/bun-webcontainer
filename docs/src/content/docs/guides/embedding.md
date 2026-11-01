@@ -157,6 +157,19 @@ Prefer `click` for pages with several embeds, or for modes that download a lot.
 
 `fonts` takes stylesheet URLs (whitespace-separated) and loads them inside the embed; `--font-ui` and `--font-mono` are what the chrome and the code use. When your page's own theme changes, call `el.setVars(vars)` with the new values; the object's shape and the variables are in the [reference](/reference/embed-api/#theming).
 
+## Defaults for a page
+
+With several embeds on a page, set what they share once with `<bun-playground-defaults>`. Each embed's own attributes still win:
+
+```html
+<bun-playground-defaults family="github-light" load="click" expand="full" theme="dark"></bun-playground-defaults>
+
+<bun-playground mode="preview">…</bun-playground>
+<bun-playground mode="code" expand="false">…</bun-playground>
+```
+
+To follow your page's theme, set `theme` (or `vars`) on the defaults element; every embed that doesn't set its own updates in place. Keys, precedence and how `vars` merges are in the [reference](/reference/embed-api/#page-defaults).
+
 ## Script it
 
 ```html

@@ -21,6 +21,11 @@ const PARAMS = [
   "expand",
   "status",
 ];
+/** Keys a page-wide `<bun-playground-defaults>` may set. Not `file path example repo share title persist`: those are per
+ * embed (a shared `persist` key would make embeds overwrite each other's edits). */
+const DEFAULTABLE = new Set(["mode", "features", "autorun", "theme", "family", "fonts", "readonly", "expand", "status", "vars", "load", "height", "src"]);
+/** Defaults a running embed takes without reloading; the others only reach embeds that haven't started yet. */
+const LIVE = new Set(["theme", "family", "vars", "mode", "height"]);
 /** How long a start may take before the poster offers to try again (a first start downloads several MB of wasm). */
 const START_TIMEOUT = 60_000;
 const HEIGHTS: Record<string, string> = { code: "auto", console: "360px", preview: "420px", full: "600px", result: "420px" };
@@ -47,6 +52,27 @@ pre{margin:0;padding:12px 16px;font:13px/1.5 var(--font-mono,ui-monospace,Menlo,
 @keyframes spin{to{transform:rotate(1turn)}}
 @media (prefers-reduced-motion:reduce){.spin{animation-duration:2.4s}}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}`;
+
+let warned = false;
+/** The page's `<bun-playground-defaults>` (the first one). Looked up each time: a client-side navigation may swap it. */
+function defaults(): Element | null {
+  const all = document.getElementsByTagName("bun-playground-defaults");
+  if (all.length > 1 && !warned) (warned = true), console.warn("bun-playground: more than one <bun-playground-defaults>; the first one wins");
+  return all[0] ?? null;
+}
+
+function parseVars(raw: string | null | undefined): Vars | undefined {
+  if (!raw) return undefined;
+  try {
+    const vars = JSON.parse(raw);
+    return vars && typeof vars === "object" ? (vars as Vars) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Applies a changed page default to an embed that doesn't override it (set in BunPlayground's static block). */
+let applyDefault: (el: BunPlayground, name: string) => void;
 
 type Pending = { resolve: (v: any) => void; reject: (e: Error) => void };
 
@@ -119,7 +145,7 @@ export class BunPlayground extends HTMLElement {
     if (!this.#listening) addEventListener("message", this.#onMessage), (this.#listening = true);
     this.#renderPoster();
     this.#sizeBox();
-    const load = this.getAttribute("load");
+    const load = this.#get("load");
     if (this.#act) return;
     if (load === "eager") void this.activate();
     else if (load === "click") return;
@@ -139,20 +165,35 @@ export class BunPlayground extends HTMLElement {
     this.#listening = false;
   }
 
+  static {
+    applyDefault = (el, name) => {
+      // `vars` merges with the embed's own, so it applies even when the embed sets it.
+      if (!el.isConnected || (name !== "vars" && el.hasAttribute(name)) || (el.#frame && !LIVE.has(name))) return;
+      el.#apply(name);
+    };
+  }
+
   attributeChangedCallback(name: string, old: string | null, value: string | null) {
-    if (old === value || !this.isConnected) return;
+    // Removing an attribute falls back to the page default: only a change in the effective value counts.
+    const d = DEFAULTABLE.has(name) ? (defaults()?.getAttribute(name) ?? null) : null;
+    if ((old ?? d) === (value ?? d) || !this.isConnected) return;
+    this.#apply(name);
+  }
+
+  /** Applies the effective value of `name` (the attribute, else the page default). */
+  #apply(name: string) {
     if (!this.#frame) {
       if (name === "load") (this.#io?.disconnect(), (this.#io = null), this.connectedCallback());
       else this.#sizeBox();
       return;
     }
-    if (name === "mode") void this.setMode(value as Mode);
-    else if (name === "theme") void this.setTheme(value ?? "auto");
-    else if (name === "family") void this.setFamily(value ?? "");
+    if (name === "mode") void this.setMode(this.#get("mode") as Mode);
+    else if (name === "theme") void this.setTheme(this.#get("theme") ?? "auto");
+    else if (name === "family") void this.setFamily(this.#get("family") ?? "");
     else if (name === "vars") void this.setVars(this.#vars());
     else if (name === "height") this.#sizeBox();
     else if (name !== "title" && name !== "load") this.#rebuild();
-    else if (name === "title") this.#frame.title = value || "Bun playground";
+    else if (name === "title") this.#frame.title = this.getAttribute("title") || "Bun playground";
   }
 
   /** Runs the project (optionally from another entry file). */
@@ -240,12 +281,18 @@ export class BunPlayground extends HTMLElement {
     this.#ready = new Promise<void>((r) => (this.#done = r));
   }
 
+  /** An attribute, else (for DEFAULTABLE keys) the page's `<bun-playground-defaults>` one. */
+  #get(name: string): string | null {
+    return this.getAttribute(name) ?? (DEFAULTABLE.has(name) ? (defaults()?.getAttribute(name) ?? null) : null);
+  }
+
   #base(): URL {
-    return new URL(this.getAttribute("src") || "./", this.getAttribute("src") ? location.href : import.meta.url);
+    const src = this.#get("src");
+    return new URL(src || "./", src ? location.href : import.meta.url);
   }
 
   #bool(name: string): string | null {
-    const v = this.getAttribute(name);
+    const v = this.#get(name);
     return v === null ? null : v === "false" ? "false" : "true";
   }
 
@@ -257,23 +304,21 @@ export class BunPlayground extends HTMLElement {
     return files;
   }
 
-  /** The `vars` attribute: a JSON object (see protocol.ts Vars). Malformed JSON is ignored like other bad values. */
+  /** The `vars` attribute: a JSON object (see protocol.ts Vars) merged per scheme over the page default's. Malformed JSON
+   * is ignored like other bad values (that layer is skipped). */
   #vars(): Vars | undefined {
-    const raw = this.getAttribute("vars");
-    if (!raw) return undefined;
-    try {
-      const vars = JSON.parse(raw);
-      return vars && typeof vars === "object" ? (vars as Vars) : undefined;
-    } catch {
-      return undefined;
-    }
+    const layers = [parseVars(defaults()?.getAttribute("vars")), parseVars(this.getAttribute("vars"))].filter((l) => !!l);
+    if (!layers.length) return undefined;
+    const vars: Vars = {};
+    for (const k of ["base", "light", "dark"] as const) for (const l of layers) if (l[k]) vars[k] = { ...vars[k], ...l[k] };
+    return vars;
   }
 
   #url(): URL {
     const base = this.#base();
     const url = new URL("embed", base);
     for (const p of PARAMS) {
-      const v = p === "readonly" || p === "autorun" ? this.#bool(p) : this.getAttribute(p);
+      const v = p === "readonly" || p === "autorun" ? this.#bool(p) : this.#get(p);
       if (v !== null) url.searchParams.set(p, v);
     }
     url.searchParams.set("init", "1");
@@ -283,7 +328,7 @@ export class BunPlayground extends HTMLElement {
   }
 
   #mode(): string {
-    const m = this.getAttribute("mode") ?? "code";
+    const m = this.#get("mode") ?? "code";
     return HEIGHTS[m] ? m : "code";
   }
 
@@ -293,7 +338,7 @@ export class BunPlayground extends HTMLElement {
     this.#poster.querySelector(".play")?.remove();
     this.#poster.querySelector(".spin")?.remove();
     // Any poster that waits for a click says so.
-    if (this.getAttribute("load") === "click") {
+    if (this.#get("load") === "click") {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "play";
@@ -307,7 +352,7 @@ export class BunPlayground extends HTMLElement {
       spin.innerHTML = `<span class="sr"></span>`;
       this.#poster.append(btn, spin);
     }
-    if (this.querySelector(':scope > [slot="poster"]') || this.getAttribute("load") !== "click") return;
+    if (this.querySelector(':scope > [slot="poster"]') || this.#get("load") !== "click") return;
     const def = document.createElement("div");
     def.className = "def";
     const pre = document.createElement("pre");
@@ -328,7 +373,7 @@ export class BunPlayground extends HTMLElement {
   }
 
   #sizeBox(auto?: number) {
-    const h = this.getAttribute("height") || HEIGHTS[this.#mode()]!;
+    const h = this.#get("height") || HEIGHTS[this.#mode()]!;
     let css = h;
     if (h === "auto") {
       const px = auto ?? (this.#frame && this.#isReady ? this.#box.offsetHeight : this.#posterHeight() || 200);
@@ -431,15 +476,32 @@ export class BunPlayground extends HTMLElement {
       this.#poster.removeAttribute("data-starting");
       clearTimeout(this.#startTimer);
       this.#done();
-    } else if (event === "resize" && (this.getAttribute("height") || HEIGHTS[this.#mode()]) === "auto") this.#sizeBox(data.height);
+    } else if (event === "resize" && (this.#get("height") || HEIGHTS[this.#mode()]) === "auto") this.#sizeBox(data.height);
     this.dispatchEvent(new CustomEvent("bun-playground:" + event, { detail: data, bubbles: true, composed: true }));
   };
 }
 
+/** `<bun-playground-defaults>`: page-wide defaults for every `<bun-playground>` (same attribute names and parsing). An
+ * embed's own attribute wins; a changed default reaches running embeds live for LIVE keys, else only embeds not started. */
+export class BunPlaygroundDefaults extends HTMLElement {
+  static observedAttributes = [...DEFAULTABLE];
+
+  connectedCallback() {
+    this.style.display = "none";
+  }
+
+  attributeChangedCallback(name: string, old: string | null, value: string | null) {
+    if (old === value || !this.isConnected || defaults() !== this) return;
+    for (const el of document.getElementsByTagName("bun-playground")) if (el instanceof BunPlayground) applyDefault(el, name);
+  }
+}
+
+if (!customElements.get("bun-playground-defaults")) customElements.define("bun-playground-defaults", BunPlaygroundDefaults);
 if (!customElements.get("bun-playground")) customElements.define("bun-playground", BunPlayground);
 
 declare global {
   interface HTMLElementTagNameMap {
+    "bun-playground-defaults": BunPlaygroundDefaults;
     "bun-playground": BunPlayground;
   }
 }
