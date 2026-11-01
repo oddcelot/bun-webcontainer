@@ -1,7 +1,7 @@
 import { createThemeCatalog, createThemeController, type ColorMode, type ThemeLike } from "@pierre/theming";
 import { themes } from "@pierre/theming/themes";
 import type { Vars } from "./embed/protocol";
-import { elysiaThemes } from "./elysiaTheme";
+import { THEME_VARS, elysiaThemes } from "./elysiaTheme";
 import { FAMILIES, chromeVars, withRealColors } from "./themeColors";
 
 export { FAMILIES };
@@ -50,9 +50,45 @@ export function setThemeVars(vars: Vars | undefined) {
   applyChrome();
 }
 
+/** The theme's own variables: its chrome colors, plus what its family declares (e.g. Elysia's overlay). */
+const themeVarsFor = (theme: ThemeLike) => ({ ...chromeVars(theme), ...THEME_VARS[themeName()] });
+
+/**
+ * `?vars=`: the embed's `vars` shape, limited to the overlay. Other chrome variables feed `background` too, and a
+ * shared link must not be able to put a remote image (`url()`, `image-set()`, …) over the page, so values may only
+ * call color and gradient functions; `\` is rejected since CSS escapes spell any name (`u\72l(`).
+ */
+const URL_VARS = new Set(["--overlay", "--overlay-ring"]);
+const URL_FUNCTIONS = new Set(
+  "linear-gradient radial-gradient conic-gradient repeating-linear-gradient repeating-radial-gradient repeating-conic-gradient rgb rgba hsl hsla hwb lab lch oklab oklch color color-mix light-dark calc".split(" "),
+);
+const urlValue = (v: unknown) =>
+  typeof v === "string" &&
+  v.length <= 2000 &&
+  !v.includes("\\") &&
+  !v.includes("/*") &&
+  // Every `(` must open an allowed function: a bare one, or one after a name `\w` can't spell, fails too.
+  [...v.matchAll(/([\w-]*)\s*\(/g)].every(([, name]) => URL_FUNCTIONS.has(name.toLowerCase()));
+
+export function urlVars(raw: string | null): Vars | undefined {
+  let vars: unknown;
+  try {
+    vars = JSON.parse(raw ?? "");
+  } catch {
+    return;
+  }
+  if (!vars || typeof vars !== "object") return;
+  const pick = (set: unknown) =>
+    set && typeof set === "object"
+      ? Object.fromEntries(Object.entries(set).filter(([k, v]) => URL_VARS.has(k) && urlValue(v)))
+      : {};
+  const { base, light, dark } = vars as Vars;
+  return { base: pick(base), light: pick(light), dark: pick(dark) };
+}
+
 function chromeVarsFor(theme: ThemeLike) {
   const { resolvedColorScheme } = controller.getState();
-  return { ...chromeVars(theme), ...customVars.base, ...customVars[resolvedColorScheme] };
+  return { ...themeVarsFor(theme), ...customVars.base, ...customVars[resolvedColorScheme] };
 }
 
 /** The theme name for the scheme in effect (`system` resolved against the OS). */
@@ -85,9 +121,9 @@ try {
 
 function applyChrome() {
   if (!applied) return;
-  const vars = chromeVarsFor(applied);
-  applyVars(vars);
-  if (!EMBEDDED) localStorage.setItem(VARS_KEY, JSON.stringify(vars));
+  applyVars(chromeVarsFor(applied));
+  // Only the theme's: the host's or a URL's variables must not carry over to the next visit (or first paint).
+  if (!EMBEDDED) localStorage.setItem(VARS_KEY, JSON.stringify(themeVarsFor(applied)));
 }
 
 function sync() {

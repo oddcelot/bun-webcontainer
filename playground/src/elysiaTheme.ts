@@ -55,6 +55,24 @@ export const elysiaDark = theme(
   "#A7AEDC",
 );
 
+/**
+ * The docs' page overlay for each theme (style.css `.overlay`): `--surface-wash-iris-glow` as the wash and
+ * `--gradient-magic-strong` as the ring, from the docs' src/styles/spica.css. The docs' oklch tokens are converted to
+ * sRGB, and `color-mix(in oklab, c N%, transparent)` is c at alpha N%.
+ */
+export const THEME_VARS: Record<string, Record<string, string>> = {
+  "elysia-light": {
+    "--overlay":
+      "radial-gradient(60% 54% at 98% 2%, rgba(207, 180, 232, 0.22) 0%, rgba(207, 180, 232, 0) 68%), radial-gradient(56% 50% at 2% 98%, rgba(222, 194, 236, 0.18) 0%, rgba(222, 194, 236, 0) 70%), radial-gradient(50% 46% at 88% 96%, rgba(255, 116, 156, 0.1) 0%, rgba(255, 116, 156, 0) 72%)",
+    "--overlay-ring": "linear-gradient(135deg, #FCD3E2 0%, #F1E1FC 50%, #9FCEFA 100%)",
+  },
+  "elysia-dark": {
+    "--overlay":
+      "radial-gradient(75% 67.5% at 98% 2%, rgba(105, 69, 135, 0.28), transparent 100%), radial-gradient(70% 62.5% at 2% 98%, rgba(105, 69, 135, 0.24), transparent 100%), radial-gradient(62.5% 57.5% at 88% 96%, rgba(132, 59, 97, 0.14), transparent 100%)",
+    "--overlay-ring": "linear-gradient(135deg, #69334E, #31263B 50%, #1D2D3C)",
+  },
+};
+
 /** The pair as a theme family: selecting `elysia-light` selects `elysia-dark` for dark mode too. */
 export const elysiaThemes = createThemeCollection({
   themes: [

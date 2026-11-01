@@ -8,11 +8,14 @@ import { mountUI } from "./ui/mount";
 import { attach, discard, mirror, readDir, restore, shareProjectId } from "./persist";
 import { importZip } from "./archive";
 import { canWrite, lastFolder, rememberFolder } from "./folders";
+import { setThemeVars, urlVars } from "./theme";
 
 const pg = createPlayground();
 const { support, session, workspace, previews, terminal, vfs, log, run, stop, install, clearConsole, newFile, entryFile } = pg;
 mountUI({ session, support, workspace, previews, terminal, clearConsole, vfs, log, run: () => run(), stop, install, openProject, newFile, openFolder, openDirectory, reopenFolder, openZip, repoParam: new URLSearchParams(location.search).get("repo") ?? "" });
 const params = new URLSearchParams(location.search);
+// ?vars= sets the overlay for this visit (theme.ts allows only that); not saved, and Share links drop it.
+if (params.has("vars")) setThemeVars(urlVars(params.get("vars")));
 const exampleName = params.get("example") ?? "";
 const repoParam = params.get("repo") ?? "";
 const repo = repoParam ? parseRepo(repoParam) : null;
