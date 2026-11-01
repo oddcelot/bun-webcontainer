@@ -176,9 +176,11 @@ The poster (shown until the embed is ready) is styled by CSS custom properties s
 |---|---|---|
 | `--poster-bg`, `--poster-fg` | The poster's background and text | `Canvas`, `CanvasText` |
 | `--font-mono` | The default poster's code font (`load="click"` without a `slot="poster"`) | `ui-monospace`, … |
-| `--play-bg`, `--play-fg` | The Run button's background and text | `ButtonFace`, `ButtonText` |
+| `--play-bg`, `--play-fg` | The Run button's background and text; `--play-bg` also colors the spinner shown while the embed starts | `ButtonFace`, `ButtonText` |
 | `--play-bg-hover` | The Run button's background on hover | `--play-bg` mixed 15% toward `--play-fg` |
 | `--play-border`, `--play-radius`, `--play-font` | The Run button's border color, corner radius and font | `GrayText`, `6px`, inherited |
+
+If the embed isn't ready after 60 seconds, the spinner turns back into the button, as "Try again".
 
 ## Versioning
 

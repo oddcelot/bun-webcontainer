@@ -21,6 +21,8 @@ const PARAMS = [
   "expand",
   "status",
 ];
+/** How long a start may take before the poster offers to try again (a first start downloads several MB of wasm). */
+const START_TIMEOUT = 60_000;
 const HEIGHTS: Record<string, string> = { code: "auto", console: "360px", preview: "420px", full: "600px", result: "420px" };
 const CSS = `:host{display:block;position:relative}
 dialog{position:static;display:block;margin:0;padding:0;border:0;width:auto;height:auto;max-width:none;max-height:none;background:none;color:inherit;overflow:visible}
@@ -38,7 +40,13 @@ iframe.wait{visibility:hidden}
 pre{margin:0;padding:12px 16px;font:13px/1.5 var(--font-mono,ui-monospace,Menlo,Consolas,monospace);white-space:pre-wrap}
 .play{position:absolute;right:12px;bottom:12px;z-index:1;font:var(--play-font,inherit);padding:6px 14px;border:1px solid var(--play-border,GrayText);border-radius:var(--play-radius,6px);background:var(--play-bg,ButtonFace);color:var(--play-fg,ButtonText);cursor:pointer}
 .play:hover{background:var(--play-bg-hover,color-mix(in srgb,var(--play-bg,ButtonFace) 85%,var(--play-fg,ButtonText)))}
-.play:focus-visible{outline:2px solid var(--play-bg,Highlight);outline-offset:2px}`;
+.play:focus-visible{outline:2px solid var(--play-bg,Highlight);outline-offset:2px}
+.spin{position:absolute;right:16px;bottom:16px;z-index:1;display:none;box-sizing:border-box;width:22px;height:22px;border:2px solid color-mix(in srgb,var(--play-bg,ButtonText) 25%,transparent);border-top-color:var(--play-bg,ButtonText);border-radius:50%;animation:spin .8s linear infinite}
+.poster[data-starting] .play{display:none}
+.poster[data-starting] .spin{display:block}
+@keyframes spin{to{transform:rotate(1turn)}}
+@media (prefers-reduced-motion:reduce){.spin{animation-duration:2.4s}}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}`;
 
 type Pending = { resolve: (v: any) => void; reject: (e: Error) => void };
 
@@ -74,6 +82,7 @@ export class BunPlayground extends HTMLElement {
   /** The frame's page said `boot`; until it does, a loaded frame is something else (see #start). */
   #booted = false;
   #listening = false;
+  #startTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor() {
     super();
@@ -282,15 +291,21 @@ export class BunPlayground extends HTMLElement {
   #renderPoster() {
     this.#poster.querySelector(".def")?.remove();
     this.#poster.querySelector(".play")?.remove();
+    this.#poster.querySelector(".spin")?.remove();
     // Any poster that waits for a click says so.
     if (this.getAttribute("load") === "click") {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "play";
       btn.textContent = "▶ Run";
-      // Only the button starts it: the poster's code stays selectable.
-      btn.addEventListener("click", () => void this.activate());
-      this.#poster.append(btn);
+      // Only the button starts it: the poster's code stays selectable. After a start timed out, it starts over.
+      btn.addEventListener("click", () => (this.#poster.hasAttribute("data-failed") ? this.#rebuild() : void this.activate()));
+      // In the button's place from the click until the embed is ready (the poster hides then).
+      const spin = document.createElement("span");
+      spin.className = "spin";
+      spin.setAttribute("role", "status");
+      spin.innerHTML = `<span class="sr"></span>`;
+      this.#poster.append(btn, spin);
     }
     if (this.querySelector(':scope > [slot="poster"]') || this.getAttribute("load") !== "click") return;
     const def = document.createElement("div");
@@ -323,6 +338,21 @@ export class BunPlayground extends HTMLElement {
   }
 
   #start(): Promise<void> {
+    this.#poster.toggleAttribute("data-starting", true);
+    this.#poster.removeAttribute("data-failed");
+    const btn = this.#poster.querySelector(".play");
+    if (btn) btn.textContent = "▶ Run";
+    // No `ready` in time: the button comes back to try again (a late `ready` still shows the embed).
+    clearTimeout(this.#startTimer);
+    this.#startTimer = setTimeout(() => {
+      if (this.#isReady) return;
+      this.#poster.removeAttribute("data-starting");
+      this.#poster.toggleAttribute("data-failed", true);
+      if (btn) btn.textContent = "↻ Try again";
+    }, START_TIMEOUT);
+    // Said once it's shown, so screen readers announce it.
+    const sr = this.#poster.querySelector(".spin .sr");
+    if (sr) sr.textContent = "Starting…";
     this.#io?.disconnect();
     this.#io = null;
     const url = this.#url();
@@ -387,6 +417,8 @@ export class BunPlayground extends HTMLElement {
       this.#isReady = true;
       this.#frame.classList.remove("wait");
       this.#poster.hidden = true;
+      this.#poster.removeAttribute("data-starting");
+      clearTimeout(this.#startTimer);
       this.#done();
     } else if (event === "resize" && (this.getAttribute("height") || HEIGHTS[this.#mode()]) === "auto") this.#sizeBox(data.height);
     this.dispatchEvent(new CustomEvent("bun-playground:" + event, { detail: data, bubbles: true, composed: true }));
