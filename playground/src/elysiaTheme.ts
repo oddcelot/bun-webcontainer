@@ -18,10 +18,12 @@ const theme = (
   string: string,
   number: string,
   comment: string,
+  selection: string,
 ): ElysiaTheme => ({
   name,
   type,
-  colors: { "editor.foreground": foreground, "editor.background": background },
+  // Without a selection color the editor paints selections in the line's background, i.e. invisibly.
+  colors: { "editor.foreground": foreground, "editor.background": background, "editor.selectionBackground": selection },
   tokenColors: [
     { scope: ["keyword", "storage"], settings: { foreground: keyword } },
     { scope: ["entity.name.function", "support.function"], settings: { foreground: method } },
@@ -42,6 +44,7 @@ export const elysiaLight = theme(
   "#45688B",
   "#5360AA",
   "#585563",
+  "#F9578A40",
 );
 export const elysiaDark = theme(
   "elysia-dark",
@@ -53,6 +56,7 @@ export const elysiaDark = theme(
   "#A8CDF0",
   "#C9D2F2",
   "#A7AEDC",
+  "#FE8DC54D",
 );
 
 /**
