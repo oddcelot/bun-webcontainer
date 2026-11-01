@@ -136,6 +136,23 @@ Prefer `click` for pages with several embeds, or for modes that download a lot.
 
 `theme="auto"` follows the visitor's system setting. Use `light`, `dark`, or a theme family's light variant such as `github-light`. To follow your own page's theme, set the attribute when it changes. These docs do that with a small script.
 
+`family` picks a family without touching the color mode, so `theme="light"`/`theme="dark"` can follow your page while the family stays put:
+
+```html
+<bun-playground family="github-light" fonts="https://fonts.googleapis.com/css2?family=Inter&display=swap"></bun-playground>
+```
+
+`vars` brings the embed's colors in line with your page. It sets CSS custom properties on top of the theme's, on both schemes or one:
+
+```html
+<bun-playground
+  vars='{"base":{"--accent":"#ff5a5f","--radius":"1rem","--font-ui":"Inter, sans-serif","--font-mono":"JetBrains Mono, monospace"}}'
+  fonts="https://fonts.googleapis.com/css2?family=Inter&family=JetBrains+Mono&display=swap"
+></bun-playground>
+```
+
+`fonts` takes stylesheet URLs (whitespace-separated) and loads them inside the embed; `--font-ui` and `--font-mono` are what the chrome and the code use. When your page's own theme changes, call `el.setVars(vars)` with the new values; the object's shape and the variables are in the [reference](/reference/embed-api/#theming).
+
 ## Script it
 
 ```html

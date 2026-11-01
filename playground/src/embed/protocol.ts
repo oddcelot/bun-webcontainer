@@ -13,6 +13,13 @@ export type Feature = (typeof FEATURES)[number];
 
 export type Status = { state: "idle" | "busy" | "running" | "error"; text: string };
 
+/** Chrome CSS variables the host sets on top of the theme's: `base` for both schemes, `light`/`dark` for one. */
+export type Vars = {
+  base?: Record<string, string>;
+  light?: Record<string, string>;
+  dark?: Record<string, string>;
+};
+
 /** What the host may set at load (URL parameters or `init`) and later (`setMode`, `setFeatures`, `setTheme`). */
 export type Options = {
   mode: Mode;
@@ -26,6 +33,13 @@ export type Options = {
   autorun: boolean;
   /** auto, light, dark, or a theme family by its light variant (e.g. "github-light"). */
   theme: string;
+  /**
+   * A theme family by its light variant (e.g. "elysia-light"). Unlike `theme`, it leaves the color mode alone, so a
+   * host can follow its own light/dark setting with `theme` and keep the family.
+   */
+  family: string;
+  /** Stylesheet URLs for the embed to load (fonts), whitespace-separated. */
+  fonts: string;
   /** The editor doesn't take edits; Run still works. */
   readonly: boolean;
   /** Keep edits across reloads (in this browser) under this key; without it every load starts from the source. */
@@ -39,7 +53,10 @@ export type Options = {
 
 /** Host → embed. Each gets a reply with the same `id`: `{ id, result }` or `{ id, error }`. */
 export type Request =
-  | { method: "init"; params: { files?: Record<string, string>; options?: Partial<Options> } }
+  | {
+      method: "init";
+      params: { files?: Record<string, string>; options?: Partial<Options>; vars?: Vars };
+    }
   | { method: "run"; params?: { entry?: string } }
   | { method: "stop" }
   | { method: "install" }
@@ -51,6 +68,8 @@ export type Request =
   | { method: "setMode"; params: { mode: Mode } }
   | { method: "setFeatures"; params: Partial<Record<Feature, boolean>> }
   | { method: "setTheme"; params: { theme: string } }
+  | { method: "setFamily"; params: { family: string } }
+  | { method: "setVars"; params: { vars: Vars } }
   /** The host shows (or stopped showing) the embed in a modal; the embed switches mode and its button follows. */
   | { method: "setExpanded"; params: { open: boolean } }
   | { method: "getShareUrl" };

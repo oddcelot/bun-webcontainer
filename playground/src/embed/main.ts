@@ -7,7 +7,7 @@ import { examples, loadExample } from "../examples";
 import { loadRepo, parseRepo, repoQuery } from "../github";
 import { attach, discard, restore, SKIP } from "../persist";
 import { isShareLink, loadShareLink, rememberSource, shareLink } from "../share";
-import { isFamily, pickFamily, setColorMode } from "../theme";
+import { isFamily, pickFamily, setColorMode, setThemeVars } from "../theme";
 import { BUN_VERSION } from "../worker/bunVersion";
 import { isFeature, isMode, lockedFeatures, optionsFromUrl, resolveFeatures } from "./config";
 import { mountEmbed } from "./mount";
@@ -63,7 +63,8 @@ const options = await (async (): Promise<Options> => {
   for (const [k, v] of Object.entries(init.options ?? {})) merged.set(k, String(v));
   return optionsFromUrl(merged);
 })();
-const initFiles = params.get("init") === "1" ? ((await initReceived).files ?? {}) : {};
+const init = params.get("init") === "1" ? await initReceived : undefined;
+const initFiles = init?.files ?? {};
 const locked = lockedFeatures(options.features);
 
 const embed = createRoot(() => {
@@ -132,13 +133,34 @@ const embed = createRoot(() => {
 });
 export type Embed = typeof embed;
 
-applyTheme(options.theme);
-
 function applyTheme(theme: string) {
   if (theme === "light" || theme === "dark") setColorMode(theme);
   else if (isFamily(theme)) pickFamily(theme);
   else setColorMode("system");
 }
+
+/** Keeps the color mode alone (unlike `theme`) and picks both variants of a family. */
+function applyFamily(family: string) {
+  if (isFamily(family)) pickFamily(family);
+}
+
+/** Loads the stylesheets a host names in `fonts` (fonts for `--font-ui` and `--font-mono`). */
+const loadedFonts = new Set<string>();
+function applyFonts(fonts: string) {
+  for (const href of fonts.split(/\s+/)) {
+    if (!href || loadedFonts.has(href)) continue;
+    loadedFonts.add(href);
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = href;
+    document.head.append(link);
+  }
+}
+
+setThemeVars(init?.vars);
+applyFonts(options.fonts);
+applyFamily(options.family);
+applyTheme(options.theme);
 
 // --- The project: saved edits (with `persist`), else the host's files, a share link, a repo, an example or a stub.
 
@@ -288,6 +310,10 @@ async function handle(req: Request): Promise<unknown> {
       return embed.setFeatures(req.params);
     case "setTheme":
       return applyTheme(req.params.theme);
+    case "setFamily":
+      return applyFamily(req.params.family);
+    case "setVars":
+      return setThemeVars(req.params.vars);
     case "setExpanded":
       return embed.setExpanded(!!req.params.open);
     case "getShareUrl":

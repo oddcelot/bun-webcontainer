@@ -58,6 +58,8 @@ export function optionsFromUrl(params: URLSearchParams): Options {
     path: params.get("path") ?? "",
     autorun: bool(params.get("autorun"), m !== "full"),
     theme: params.get("theme") ?? "auto",
+    family: params.get("family") ?? "",
+    fonts: params.get("fonts") ?? "",
     readonly: bool(params.get("readonly"), false),
     persist: params.get("persist") ?? "",
     expand: expandOption(params),

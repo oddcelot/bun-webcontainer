@@ -1,11 +1,25 @@
 // <bun-playground>: builds an iframe to <base>embed and talks to it over postMessage (protocol: ../src/embed/protocol.ts).
 // Dependency-free; bundled standalone as embed.js. Don't import runtime values from the app.
-import type { Event, Feature, Mode, Reply, Request } from "../src/embed/protocol";
+import type { Event, Feature, Mode, Reply, Request, Vars } from "../src/embed/protocol";
 
 const TAG = "bunPlayground"; // = protocol TAG
 const VERSION = 1; // = protocol VERSION
 
-const PARAMS = ["mode", "features", "file", "path", "autorun", "theme", "readonly", "persist", "example", "repo", "expand"];
+const PARAMS = [
+  "mode",
+  "features",
+  "file",
+  "path",
+  "autorun",
+  "theme",
+  "family",
+  "fonts",
+  "readonly",
+  "persist",
+  "example",
+  "repo",
+  "expand",
+];
 const HEIGHTS: Record<string, string> = { code: "auto", console: "360px", preview: "420px", full: "600px", result: "420px" };
 const CSS = `:host{display:block;position:relative}
 dialog{position:static;display:block;margin:0;padding:0;border:0;width:auto;height:auto;max-width:none;max-height:none;background:none;color:inherit;overflow:visible}
@@ -16,11 +30,11 @@ dialog::backdrop{background:rgb(0 0 0/.55)}
 .box{position:relative;overflow:hidden}
 iframe{position:absolute;inset:0;display:block;width:100%;height:100%;border:0}
 iframe.wait{visibility:hidden}
-.poster{position:absolute;inset:0;overflow:auto;cursor:pointer;color-scheme:light dark;background:Canvas;color:CanvasText}
+.poster{position:absolute;inset:0;overflow:auto;cursor:pointer;color-scheme:light dark;background:var(--poster-bg,Canvas);color:var(--poster-fg,CanvasText)}
 .poster[hidden]{display:none}
 .def{display:block;position:relative;min-height:100%;box-sizing:border-box}
-pre{margin:0;padding:12px 16px;font:13px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap}
-.play{position:absolute;right:12px;bottom:12px;z-index:1;font:inherit;padding:6px 14px;border:1px solid GrayText;border-radius:6px;background:ButtonFace;color:ButtonText;cursor:pointer}`;
+pre{margin:0;padding:12px 16px;font:13px/1.5 var(--font-mono,ui-monospace,Menlo,Consolas,monospace);white-space:pre-wrap}
+.play{position:absolute;right:12px;bottom:12px;z-index:1;font:var(--play-font,inherit);padding:6px 14px;border:1px solid var(--play-border,GrayText);border-radius:var(--play-radius,6px);background:var(--play-bg,ButtonFace);color:var(--play-fg,ButtonText);cursor:pointer}`;
 
 type Pending = { resolve: (v: any) => void; reject: (e: Error) => void };
 
@@ -34,7 +48,7 @@ function dedent(s: string): string {
 }
 
 export class BunPlayground extends HTMLElement {
-  static observedAttributes = [...PARAMS, "share", "load", "height", "src", "title"];
+  static observedAttributes = [...PARAMS, "vars", "share", "load", "height", "src", "title"];
 
   #root = this.attachShadow({ mode: "open" });
   // The box sits in a dialog that's open in place; expanding reopens it as a modal (the top layer), so the iframe never
@@ -118,6 +132,8 @@ export class BunPlayground extends HTMLElement {
     }
     if (name === "mode") void this.setMode(value as Mode);
     else if (name === "theme") void this.setTheme(value ?? "auto");
+    else if (name === "family") void this.setFamily(value ?? "");
+    else if (name === "vars") void this.setVars(this.#vars());
     else if (name === "height") this.#sizeBox();
     else if (name !== "title" && name !== "load") this.#rebuild();
     else if (name === "title") this.#frame.title = value || "Bun playground";
@@ -167,6 +183,14 @@ export class BunPlayground extends HTMLElement {
   setTheme(theme: string) {
     return this.#call("setTheme", { theme });
   }
+  /** Sets a theme family (by its light variant) without changing the color mode. */
+  setFamily(family: string) {
+    return this.#call("setFamily", { family });
+  }
+  /** Sets the chrome's CSS variables (the `vars` attribute, as an object). */
+  setVars(vars: Vars | undefined) {
+    return this.#call("setVars", { vars });
+  }
   /** Shows the embed in a modal over the page (in the `expand` attribute's mode, if it names one). */
   expand() {
     return this.#setExpanded(true);
@@ -215,6 +239,18 @@ export class BunPlayground extends HTMLElement {
       // `<\/script` and `<\!--` are how a page writes those inside a script element (docs/src/remark-playground.mjs does).
       files[s.getAttribute("data-file")!] = dedent(s.textContent ?? "").replace(/<\\\/script/gi, "</script").replace(/<\\!--/g, "<!--");
     return files;
+  }
+
+  /** The `vars` attribute: a JSON object (see protocol.ts Vars). Malformed JSON is ignored like other bad values. */
+  #vars(): Vars | undefined {
+    const raw = this.getAttribute("vars");
+    if (!raw) return undefined;
+    try {
+      const vars = JSON.parse(raw);
+      return vars && typeof vars === "object" ? (vars as Vars) : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   #url(): URL {
@@ -337,7 +373,7 @@ export class BunPlayground extends HTMLElement {
     if (event === "expand") return void this.#setExpanded(data.open);
     if (event === "boot") {
       this.#booted = true;
-      void this.#request("init", { files: this.#files(), options: {} }).catch(() => {});
+      void this.#request("init", { files: this.#files(), options: {}, vars: this.#vars() }).catch(() => {});
     } else if (event === "ready" || event === "unsupported") {
       this.#isReady = true;
       this.#frame.classList.remove("wait");

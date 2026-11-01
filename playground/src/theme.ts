@@ -1,5 +1,6 @@
 import { createThemeCatalog, createThemeController, type ColorMode, type ThemeLike } from "@pierre/theming";
 import { themes } from "@pierre/theming/themes";
+import type { Vars } from "./embed/protocol";
 import { elysiaThemes } from "./elysiaTheme";
 import { FAMILIES, chromeVars, withRealColors } from "./themeColors";
 
@@ -27,15 +28,51 @@ const listeners = new Set<(name: string, theme: ThemeLike) => void>();
 let source: ThemeLike | undefined;
 let applied: ThemeLike | undefined;
 
+/** CSS custom properties the host sets (the embed's `vars`): on both schemes, or on one. */
+type VarSet = Record<string, string>;
+let customVars: { base: VarSet; light: VarSet; dark: VarSet } = { base: {}, light: {}, dark: {} };
+const VAR_NAME = /^--[a-z0-9-]+$/i;
+
+function cleanVars(vars: unknown): VarSet {
+  if (!vars || typeof vars !== "object") return {};
+  return Object.fromEntries(
+    Object.entries(vars).filter(([name, value]) => VAR_NAME.test(name) && typeof value === "string"),
+  ) as VarSet;
+}
+
+/** Sets the host's chrome variables; the theme's own run first, so these win. */
+export function setThemeVars(vars: Vars | undefined) {
+  customVars = {
+    base: cleanVars(vars?.base),
+    light: cleanVars(vars?.light),
+    dark: cleanVars(vars?.dark),
+  };
+  applyChrome();
+}
+
+function chromeVarsFor(theme: ThemeLike) {
+  const { resolvedColorScheme } = controller.getState();
+  return { ...chromeVars(theme), ...customVars.base, ...customVars[resolvedColorScheme] };
+}
+
 /** The theme name for the scheme in effect (`system` resolved against the OS). */
 export function themeName() {
   const s = controller.getState();
   return s.resolvedColorScheme === "light" ? s.lightThemeName : s.darkThemeName;
 }
 
+let appliedVars = new Set<string>();
 function applyVars(vars: Record<string, string | undefined>) {
   const style = document.documentElement.style;
-  for (const [k, v] of Object.entries(vars)) v ? style.setProperty(k, v) : style.removeProperty(k);
+  // A host's variable that's gone (or a theme that no longer sets one) must not linger from the last sync.
+  for (const k of appliedVars) if (!(k in vars)) style.removeProperty(k);
+  appliedVars = new Set();
+  for (const [k, v] of Object.entries(vars)) {
+    if (v) {
+      style.setProperty(k, v);
+      appliedVars.add(k);
+    } else style.removeProperty(k);
+  }
   // Mobile browser chrome matches the header.
   const panel = getComputedStyle(document.documentElement).getPropertyValue("--panel").trim();
   if (panel) document.querySelector('meta[name="theme-color"]')?.setAttribute("content", panel);
@@ -46,14 +83,19 @@ try {
   if (!EMBEDDED) applyVars(JSON.parse(localStorage.getItem(VARS_KEY) ?? "{}"));
 } catch {}
 
+function applyChrome() {
+  if (!applied) return;
+  const vars = chromeVarsFor(applied);
+  applyVars(vars);
+  if (!EMBEDDED) localStorage.setItem(VARS_KEY, JSON.stringify(vars));
+}
+
 function sync() {
   const { resolvedTheme, pendingThemeResolution } = controller.getState();
   if (!resolvedTheme || pendingThemeResolution || resolvedTheme === source) return;
   source = resolvedTheme;
   applied = withRealColors(resolvedTheme);
-  const vars = chromeVars(applied);
-  applyVars(vars);
-  if (!EMBEDDED) localStorage.setItem(VARS_KEY, JSON.stringify(vars));
+  applyChrome();
   for (const fn of listeners) fn(themeName(), applied);
   for (const resolve of appliedWaiters.splice(0)) resolve();
 }

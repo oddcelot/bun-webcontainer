@@ -18,7 +18,10 @@ The element's attributes and the iframe's URL parameters share names.
 | `file` | path | the entry file | The file opened first. |
 | `path` | URL path | `/` | What the preview requests first, e.g. `/user/123`. |
 | `autorun` | `true`, `false` | `true`, except in `full` | Run once loaded, after installing any missing packages. |
-| `theme` | `auto`, `light`, `dark`, or a theme family's light variant | `auto` | e.g. `github-light`. |
+| `theme` | `auto`, `light`, `dark`, or a theme family's light variant | `auto` | The color mode. e.g. `dark`. |
+| `family` | a theme family's light variant | none | e.g. `github-light`. Picks both halves of the family without changing the color mode, so `theme` can follow your page. |
+| `fonts` | stylesheet URLs, whitespace-separated | none | Loaded inside the embed, for the fonts `--font-ui` and `--font-mono` name. |
+| `vars` | JSON object | none | Chrome CSS variables to set on top of the theme's. Element only; see [Theming](#theming). |
 | `readonly` | boolean | `false` | The editor takes no edits. Run still works. |
 | `persist` | key | none | Keeps edits in the reader's browser under this key. Without it every load starts from the source. |
 | `expand` | empty, a mode, `false` | none | A button that opens the embed in a modal over the page. With a mode (`expand="full"`) it switches to that mode while open. Escape or the button closes it. |
@@ -69,6 +72,8 @@ On the element, each returns a promise. Call them after `await el.ready`.
 | `setMode(mode)` | a mode | |
 | `setFeatures(obj)` | `{ types: true, format: false }` | |
 | `setTheme(theme)` | a theme | |
+| `setFamily(theme)` | a theme family's light variant | picks both halves without changing the color mode |
+| `setVars(vars)` | a `vars` object | sets the chrome's CSS variables |
 | `getShareUrl()` | | the share link as a string |
 | `activate()` | | Starts an embed waiting for `load="click"` or `visible`. |
 | `expand()` | | Opens the modal (works without the `expand` button too). |
@@ -128,7 +133,46 @@ window.addEventListener("message", (e) => {
 });
 ```
 
-`files` maps paths to text. `options` takes `mode`, `features`, `file`, `path`, `autorun`, `theme`, `readonly` and `persist`. Without `?init=1`, the page loads from its URL and `init` isn't needed.
+`files` maps paths to text. `options` takes `mode`, `features`, `file`, `path`, `autorun`, `theme`, `family`, `fonts`, `readonly` and `persist`. `vars` takes the object described under [Theming](#theming). Without `?init=1`, the page loads from its URL and `init` isn't needed; `setFamily` and `setVars` change both afterwards.
+
+## Theming
+
+A theme family (`theme`'s variant or `family`) colors the editor and the app chrome. `vars` overrides chrome values on top of the theme, as an object with `base` (both schemes) and optionally `light` or `dark`:
+
+```json
+{
+  "base": { "--accent": "#ff5a5f", "--radius": "1rem" },
+  "light": { "--bg": "#ffffff" },
+  "dark": { "--bg": "#171723" }
+}
+```
+
+Names and values are CSS custom properties; anything that isn't a `--name` with a string value is ignored. The chrome variables are:
+
+| Name | What |
+|---|---|
+| `--bg` | The code surface |
+| `--canvas` | Behind the panes |
+| `--panel` | The bar, tabs and file tree |
+| `--fg` | Text |
+| `--muted` | Secondary text |
+| `--border` | Lines between panes |
+| `--accent` | Selection, focus rings, the Run button |
+| `--error`, `--warn`, `--info`, `--ok` | Status colors |
+| `--radius`, `--pad` | A pane's corner and the space inside it |
+| `--font-ui`, `--font-mono` | The UI and code fonts; load them with `fonts` |
+| `--control`, `--control-hover`, `--control-border` | Buttons and inputs |
+
+Others in `style.css` work too, but these are the ones a page usually wants to match its own design. To follow a page's light and dark themes, send `base` for the scheme in effect and update it (with `setVars`) when the page changes.
+
+The poster (shown until the embed is ready) is styled by CSS custom properties set on `<bun-playground>` or an ancestor:
+
+| Name | What | Default |
+|---|---|---|
+| `--poster-bg`, `--poster-fg` | The poster's background and text | `Canvas`, `CanvasText` |
+| `--font-mono` | The default poster's code font (`load="click"` without a `slot="poster"`) | `ui-monospace`, … |
+| `--play-bg`, `--play-fg` | The Run button's background and text | `ButtonFace`, `ButtonText` |
+| `--play-border`, `--play-radius`, `--play-font` | The Run button's border color, corner radius and font | `GrayText`, `6px`, inherited |
 
 ## Versioning
 
