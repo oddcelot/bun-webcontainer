@@ -165,6 +165,8 @@ Names and values are CSS custom properties; anything that isn't a `--name` with 
 
 Others in `style.css` work too, but these are the ones a page usually wants to match its own design. To follow a page's light and dark themes, send `base` for the scheme in effect and update it (with `setVars`) when the page changes.
 
+To draw over the embed (a border, a glow), style `bun-playground::part(overlay)`: an empty layer covering the poster and the frame, in the modal too, that lets clicks through.
+
 The poster (shown until the embed is ready) is styled by CSS custom properties set on `<bun-playground>` or an ancestor:
 
 | Name | What | Default |

@@ -30,6 +30,7 @@ dialog::backdrop{background:rgb(0 0 0/.55)}
 .box{position:relative;overflow:hidden}
 iframe{position:absolute;inset:0;display:block;width:100%;height:100%;border:0}
 iframe.wait{visibility:hidden}
+.overlay{position:absolute;inset:0;z-index:2;pointer-events:none}
 .poster{position:absolute;inset:0;overflow:auto;cursor:pointer;color-scheme:light dark;background:var(--poster-bg,Canvas);color:var(--poster-fg,CanvasText)}
 .poster[hidden]{display:none}
 .def{display:block;position:relative;min-height:100%;box-sizing:border-box}
@@ -56,6 +57,8 @@ export class BunPlayground extends HTMLElement {
   #dialog = document.createElement("dialog");
   #box = document.createElement("div");
   #poster = document.createElement("div");
+  /** Empty, click-through, above the poster and the frame: a page draws over the embed with `::part(overlay)`. */
+  #overlay = document.createElement("div");
   #frame: HTMLIFrameElement | null = null;
   #origin = "";
   #act: Promise<void> | null = null;
@@ -76,9 +79,11 @@ export class BunPlayground extends HTMLElement {
     this.#poster.className = "poster";
     this.#poster.innerHTML = `<slot name="poster"></slot>`;
     this.#poster.addEventListener("click", () => void this.activate());
+    this.#overlay.className = "overlay";
+    this.#overlay.part.add("overlay");
     const style = document.createElement("style");
     style.textContent = CSS;
-    this.#box.append(this.#poster);
+    this.#box.append(this.#poster, this.#overlay);
     this.#dialog.append(this.#box);
     this.#dialog.setAttribute("open", "");
     // Escape on the host page (focus outside the frame) closes the modal back into the page.
