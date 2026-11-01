@@ -20,6 +20,8 @@ export type Options = {
   features: string;
   /** The file opened first (default: the entry file Run starts). */
   file: string;
+  /** What the preview requests first (default: `/`), e.g. `/user/123`. */
+  path: string;
   /** Run once loaded (default: on, except in full mode). */
   autorun: boolean;
   /** auto, light, dark, or a theme family by its light variant (e.g. "github-light"). */

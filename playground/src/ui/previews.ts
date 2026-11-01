@@ -104,6 +104,12 @@ export function createPreviews() {
         t.title = frame.contentDocument?.title ?? "";
       });
     },
+    /** Where the first tab requests before anything has been sent: the embed's `path` option. */
+    start(path: string) {
+      update(1, (t) => {
+        t.path = normalize(path.trim() || "/");
+      });
+    },
     /** After Run: tabs showing a page or a GET response load again; a POST and the like isn't replayed. */
     reload() {
       for (const tab of state.tabs) if (tab.view === "frame" || tab.method === "GET") void previews.request(tab.id, "GET");

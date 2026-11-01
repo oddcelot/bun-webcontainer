@@ -5,7 +5,7 @@ import type { Event, Feature, Mode, Reply, Request } from "../src/embed/protocol
 const TAG = "bunPlayground"; // = protocol TAG
 const VERSION = 1; // = protocol VERSION
 
-const PARAMS = ["mode", "features", "file", "autorun", "theme", "readonly", "persist", "example", "repo", "expand"];
+const PARAMS = ["mode", "features", "file", "path", "autorun", "theme", "readonly", "persist", "example", "repo", "expand"];
 const HEIGHTS: Record<string, string> = { code: "auto", console: "360px", preview: "420px", full: "600px", result: "420px" };
 const CSS = `:host{display:block;position:relative}
 dialog{position:static;display:block;margin:0;padding:0;border:0;width:auto;height:auto;max-width:none;max-height:none;background:none;color:inherit;overflow:visible}

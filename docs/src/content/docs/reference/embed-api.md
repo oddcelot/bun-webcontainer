@@ -16,6 +16,7 @@ The element's attributes and the iframe's URL parameters share names.
 | `mode` | `code`, `preview`, `console`, `full`, `result` | `code` | Which panes show. See [Features](#features). |
 | `features` | comma list | none | Added to the mode's features. `-name` turns one off and locks it. |
 | `file` | path | the entry file | The file opened first. |
+| `path` | URL path | `/` | What the preview requests first, e.g. `/user/123`. |
 | `autorun` | `true`, `false` | `true`, except in `full` | Run once loaded, after installing any missing packages. |
 | `theme` | `auto`, `light`, `dark`, or a theme family's light variant | `auto` | e.g. `github-light`. |
 | `readonly` | boolean | `false` | The editor takes no edits. Run still works. |
@@ -127,7 +128,7 @@ window.addEventListener("message", (e) => {
 });
 ```
 
-`files` maps paths to text. `options` takes `mode`, `features`, `file`, `autorun`, `theme`, `readonly` and `persist`. Without `?init=1`, the page loads from its URL and `init` isn't needed.
+`files` maps paths to text. `options` takes `mode`, `features`, `file`, `path`, `autorun`, `theme`, `readonly` and `persist`. Without `?init=1`, the page loads from its URL and `init` isn't needed.
 
 ## Versioning
 

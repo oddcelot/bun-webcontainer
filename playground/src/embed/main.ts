@@ -196,6 +196,9 @@ const first = options.file && vfs.files.has(options.file) ? options.file : pg.en
 for (const path of Object.keys(initFiles)) workspace.open(path.replace(/^\.?\//, ""));
 workspace.open(first);
 
+// `path` picks where the preview's first tab points (default "/"); the next Run loads it there.
+if (options.path) pg.previews.start(options.path);
+
 // --- Events
 
 // Escape while expanded closes the modal (keys pressed in this frame never reach the host's dialog), unless something
