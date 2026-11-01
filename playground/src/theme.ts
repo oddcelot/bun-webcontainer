@@ -1,5 +1,6 @@
 import { createThemeCatalog, createThemeController, type ColorMode, type ThemeLike } from "@pierre/theming";
 import { themes } from "@pierre/theming/themes";
+import { elysiaThemes } from "./elysiaTheme";
 import { FAMILIES, chromeVars, withRealColors } from "./themeColors";
 
 export { FAMILIES };
@@ -14,7 +15,11 @@ const VARS_KEY = "theme-vars";
 const EMBEDDED = "embed" in document.documentElement.dataset;
 
 const controller = createThemeController({
-  catalog: createThemeCatalog({ themes, defaultLightThemeName: "pierre-light", defaultDarkThemeName: "pierre-dark" }),
+  catalog: createThemeCatalog({
+    themes: [themes, elysiaThemes],
+    defaultLightThemeName: "pierre-light",
+    defaultDarkThemeName: "pierre-dark",
+  }),
   defaultMode: "system",
   storageKey: EMBEDDED ? undefined : "theme-selection",
 });
