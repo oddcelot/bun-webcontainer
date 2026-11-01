@@ -108,6 +108,8 @@ export const greet = (n: string) => n;
 
 Readers get a **⋯** menu to show or hide the file tree, tabs, console and preview, and to turn on type hints and formatting. It only offers what you haven't locked. With `format` or `install` on, the menu also has **Format file** and **bun install**; **Reset** loads the original files again. **Open in runbun.dev** opens the current files as a share link. The feature list is in the [reference](/reference/embed-api/#features).
 
+Readers can drag the borders between panes (or focus one and use the arrow keys) to resize them; a double click goes back to the default. Sizes are kept for the browser tab.
+
 Type checking downloads 12 MB the first time it's used, and format 9 MB. They are off until someone turns them on.
 
 Edits are lost on reload. Set `persist="some-key"` to keep them in the reader's browser, or `readonly` to stop editing (Run still works).

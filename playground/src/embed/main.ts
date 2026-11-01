@@ -67,6 +67,16 @@ const init = params.get("init") === "1" ? await initReceived : undefined;
 const initFiles = init?.files ?? {};
 const locked = lockedFeatures(options.features);
 
+/** A short FNV-1a hash, base 36. */
+function hash(text: string) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193);
+  return (h >>> 0).toString(36);
+}
+// Where the reader's pane sizes are kept for the tab. Embeds on a page often share a URL (the host sends the files),
+// so the host's files and options and a share link tell them apart.
+const sizesKey = `embed-sizes:${location.search}#${hash(JSON.stringify([initFiles, init?.options ?? {}, location.hash]))}`;
+
 const embed = createRoot(() => {
   const [mode, setMode] = createSignal<Mode>(options.mode);
   const [expanded, setOpen] = createSignal(false);
@@ -89,6 +99,7 @@ const embed = createRoot(() => {
   return {
     options,
     locked,
+    sizesKey,
     mode,
     features,
     has: (f: Feature) => features().includes(f),
