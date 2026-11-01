@@ -1,7 +1,8 @@
 import { BASE } from "../base";
+import { loadResolver, resolve } from "../resolver";
 import { loadSemver } from "../semver";
 import { dirname, norm, VFS } from "../vfs";
-import { BUN_NAMES, builtins, installTimers, setFs, setStdio } from "./node";
+import { BUN_NAMES, builtins, installTimers, setFs, setResolve, setStdio } from "./node";
 import { bundle, type BundleConfig, type BundleLog } from "./bundler";
 import { setHostVfs } from "./hostPackages";
 import { hash } from "./hash";
@@ -741,7 +742,9 @@ const compressible = (d: Compressible) =>
 const level = (o?: { level?: number }) => ({ level: (o?.level === undefined || o.level < 0 ? 6 : Math.min(o.level, 9)) as fflate.DeflateOptions["level"] });
 
 async function main() {
-  const semver = await loadSemver();
+  // Bun's resolver, for `require.resolve` with a computed specifier (node/module.ts); the page has its own instance.
+  const [semver] = await Promise.all([loadSemver(), loadResolver(vfs)]);
+  setResolve((spec, dir) => resolve(spec, dir, "require", "bun"));
   const bun: Record<(typeof BUN_NAMES)[number], unknown> = {
     version: `${BUN_VERSION}-browser`,
     env,

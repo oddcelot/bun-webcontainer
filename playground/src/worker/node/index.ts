@@ -94,6 +94,7 @@ export const builtins: Record<string, object> = {
 builtins.module = createModule(builtins);
 
 export { setFs } from "./fs";
+export { setResolve } from "./module";
 export { setStdio } from "./process";
 export { installTimers } from "./timers";
 
