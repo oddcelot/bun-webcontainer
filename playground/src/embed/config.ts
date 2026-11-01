@@ -2,11 +2,11 @@ import { FEATURES, MODES, type Feature, type Mode, type Options } from "./protoc
 
 /** What each mode shows and turns on before the author's `features` list. */
 export const PRESETS: Record<Mode, readonly Feature[]> = {
-  code: ["console", "open"],
-  console: ["console", "terminal", "open"],
-  preview: ["tabs", "preview", "install", "open"],
-  full: ["files", "tabs", "console", "preview", "format", "install", "terminal", "open"],
-  result: ["preview", "open"],
+  code: ["console", "open", "watch"],
+  console: ["console", "terminal", "open", "watch"],
+  preview: ["tabs", "preview", "install", "open", "watch"],
+  full: ["files", "tabs", "console", "preview", "format", "install", "terminal", "open", "watch"],
+  result: ["preview", "open", "watch"],
 };
 
 /** What a feature costs to turn on, for the embed's menu. */
@@ -55,10 +55,14 @@ export function optionsFromUrl(params: URLSearchParams): Options {
     mode: m,
     features: params.get("features") ?? "",
     file: params.get("file") ?? "",
+    path: params.get("path") ?? "",
     autorun: bool(params.get("autorun"), m !== "full"),
     theme: params.get("theme") ?? "auto",
+    family: params.get("family") ?? "",
+    fonts: params.get("fonts") ?? "",
     readonly: bool(params.get("readonly"), false),
     persist: params.get("persist") ?? "",
     expand: expandOption(params),
+    status: params.get("status") === "bar" ? "bar" : "toast",
   };
 }

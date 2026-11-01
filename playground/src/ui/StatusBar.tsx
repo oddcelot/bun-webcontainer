@@ -4,8 +4,10 @@ import { formatChord, keysFor, type Command } from "../keymap";
 import { TYPED } from "../typecheck";
 import { TS_VERSION, TSRS_VERSION } from "../typecheck/tsrsLs";
 import { BUN_VERSION } from "../worker/bunVersion";
+import { pref } from "../prefs";
 import { AppContext } from "./context";
 import { Shortcuts } from "./Shortcuts";
+import { StatusPill } from "./Status";
 import { Tip } from "./Tip";
 
 /** What Bun treats a file as, by extension (its loader), named as editors do. */
@@ -38,6 +40,9 @@ const language = (path: string) => {
 const TS_SHORT = TS_VERSION.split(".").slice(0, 2).join(".");
 
 const keys = (command: Command) => keysFor(command).map(formatChord);
+
+/** Where the run status shows: a pill in this bar, or a toast over the panes (App.tsx); picked under Appearance. */
+export const [statusDisplay, setStatusDisplay] = pref<"bar" | "toast">("runbun:status", "bar", { serialize: (v) => v, deserialize: (s) => (s === "toast" ? "toast" : "bar") });
 
 /**
  * The bar along the bottom, as in VS Code or Zed: panel toggles and the program's status on the left, the open
@@ -72,9 +77,9 @@ export function StatusBar(props: { treeShown: boolean; toggleTree(): void; previ
         <i class="i-lucide-square-terminal" aria-hidden="true" />
         <span class="sr-only">Console</span>
       </Tip>
-      <span id="status" role="status" data-state={s.status().state} title={s.status().text}>
-        <span class="text">{s.status().text}</span>
-      </span>
+      <Show when={statusDisplay() === "bar"}>
+        <StatusPill role="status" status={s.status()} title={s.status().text} />
+      </Show>
       <span class="spacer" />
       <Show when={ws.state.active}>
         {(path) => (

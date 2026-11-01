@@ -7,13 +7,21 @@ import type { Feature } from "../embed/protocol";
 import { AppContext } from "./context";
 import { Console } from "./Console";
 import { EditorPane } from "./EditorPane";
+import { Splits, createSizes, type Split } from "./EmbedSplit";
 import { FileTree } from "./FileTree";
 import { Preview } from "./Preview";
+import { StatusPill, StatusToast } from "./Status";
 import { Unsupported } from "./Unsupported";
 
 export const EmbedContext = createContext<Embed>();
 
 const CANT_RUN = "This browser can't run code here";
+
+const TREE: Split = { size: "tree", a: "tree", b: "editor-pane", label: "Resize file tree" };
+const SIDE_PREVIEW: Split = { size: "side", a: "editor-pane", b: "preview-panel", label: "Resize editor and preview" };
+const SIDE_CONSOLE: Split = { size: "side", a: "editor-pane", b: "console-wrap", label: "Resize editor and console" };
+const ROWS: Split = { size: "rows", a: "preview-panel", b: "console-wrap", label: "Resize preview and console" };
+const BELOW: Split = { size: "console", a: "editor-pane", b: "console-wrap", label: "Resize editor and console" };
 
 /** True from the first time `on()` is: a pane mounts once it's first shown and is only hidden after that (xterm and preview frames don't survive a remount). */
 function sticky(on: () => boolean) {
@@ -36,6 +44,15 @@ export function EmbedApp() {
   const showTree = sticky(tree);
   const showPreview = sticky(() => has("preview"));
   const showConsole = sticky(() => has("console"));
+  const sizes = createSizes(e.sizesKey);
+  // A handle on each border between two shown panes, as the grid places them.
+  const splits = () =>
+    [
+      tree() && TREE,
+      side() && (has("preview") ? SIDE_PREVIEW : SIDE_CONSOLE),
+      (side() || !editor()) && has("preview") && has("console") && ROWS,
+      editor() && !side() && has("console") && BELOW,
+    ].filter((s): s is Split => !!s);
   return (
     <div
       id="embed"
@@ -50,7 +67,7 @@ export function EmbedApp() {
       <Show when={!app.session.canRun}>
         <Unsupported checks={app.support} />
       </Show>
-      <div id="embed-main">
+      <div id="embed-main" style={sizes.vars()}>
         <Show when={showTree()}>
           <nav id="tree" class="pane" hidden={!tree()}>
             <FileTree />
@@ -69,6 +86,10 @@ export function EmbedApp() {
             <Console />
           </section>
         </Show>
+        <Splits splits={splits()} sizes={sizes} />
+        <Show when={e.options.status === "toast"}>
+          <StatusToast status={app.session.status()} />
+        </Show>
       </div>
     </div>
   );
@@ -84,9 +105,9 @@ function EmbedBar() {
       <Show when={e.mode() !== "result" && !e.has("tabs")}>
         <span class="file">{app.workspace.state.active ?? ""}</span>
       </Show>
-      <span id="status" data-state={s.status().state}>
-        <span class="text">{s.status().text}</span>
-      </span>
+      <Show when={e.options.status === "bar"}>
+        <StatusPill status={s.status()} />
+      </Show>
       <span class="spacer" />
       <Show when={e.mode() === "result"}>
         <button type="button" onClick={() => e.setMode("preview")}>
@@ -128,6 +149,8 @@ const PANES: [Feature, string][] = [
 const TOOLS: [Feature, string][] = [
   ["types", "Type hints"],
   ["format", "Formatting"],
+  ["watch", "Restart on save"],
+  ["autosave", "Auto-save switch"],
 ];
 
 /** The ⋯ menu: panes and tools to turn on or off (what the author didn't lock), and actions. */

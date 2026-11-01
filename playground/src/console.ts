@@ -183,10 +183,12 @@ export function createConsole(
   async function open(el: HTMLElement, attached: () => boolean): Promise<Terminal | undefined> {
     const [{ Terminal }, { FitAddon }, { WebLinksAddon }, { UnicodeGraphemesAddon }] = await xterm();
     if (!attached()) return;
+    // style.css's --font-mono, which a host can override (the embed's vars), like the editor's font.
+    const mono = getComputedStyle(document.documentElement).getPropertyValue("--font-mono").trim();
     const next = new Terminal({
       theme: terminalTheme(latest!),
       fontSize: 12,
-      fontFamily: "Menlo, Consolas, 'DejaVu Sans Mono', monospace",
+      fontFamily: mono || "Menlo, Consolas, 'DejaVu Sans Mono', monospace",
       convertEol: true,
       cursorBlink: true,
       cursorStyle: "bar",

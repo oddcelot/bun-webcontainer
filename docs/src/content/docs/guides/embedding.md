@@ -32,7 +32,7 @@ Load the script once, then use `<bun-playground>`:
 </bun-playground>
 ```
 
-The code runs when the element comes into view and the page is ready. Add `load="click"` to wait for a click, and put a `slot="poster"` child inside to show something until it starts:
+The code runs when the element comes into view and the page is ready. Add `load="click"` to wait for a click on its Run button, and put a `slot="poster"` child inside to show something until it starts:
 
 ```html
 <bun-playground load="click" mode="preview" example="elysia-demo">
@@ -64,7 +64,7 @@ A share link's `#code=…` hash works too: `https://runbun.dev/embed?mode=code#c
 | `full` | The whole playground: file tree, tabs, preview over console, Format, Install. Waits for Run. | same, plus the formatter (9 MB) once used | 600px |
 | `result` | Only the preview, with an Edit button that switches to `preview`. | same | 420px |
 
-Every mode except `full` runs the code once it has loaded; `autorun="false"` waits for Run.
+Every mode except `full` runs the code once it has loaded; `autorun="false"` waits for Run. While the program runs, saving an edit restarts it, like `bun --watch` (`features="-watch"` turns that off).
 
 Set `height` to any CSS length, or `auto` to fit the code.
 
@@ -106,11 +106,15 @@ export const greet = (n: string) => n;
 <bun-playground mode="code" features="types,-open"></bun-playground>
 ```
 
-Readers get a **⋯** menu to show or hide the file tree, tabs, console and preview, and to turn on type hints and formatting. It only offers what you haven't locked. With `format` or `install` on, the menu also has **Format file** and **bun install**; **Reset** loads the original files again. **Open in runbun.dev** opens the current files as a share link. The feature list is in the [reference](/reference/embed-api/#features).
+Readers get a **⋯** menu to show or hide the file tree, tabs, console and preview, and to turn on type hints, formatting, restart on save and the Auto-save switch. It only offers what you haven't locked. With `format` or `install` on, the menu also has **Format file** and **bun install**; **Reset** loads the original files again. **Open in runbun.dev** opens the current files as a share link. The feature list is in the [reference](/reference/embed-api/#features).
+
+Readers can drag the borders between panes (or focus one and use the arrow keys) to resize them; a double click goes back to the default. Sizes are kept for the browser tab.
 
 Type checking downloads 12 MB the first time it's used, and format 9 MB. They are off until someone turns them on.
 
 Edits are lost on reload. Set `persist="some-key"` to keep them in the reader's browser, or `readonly` to stop editing (Run still works).
+
+The run status shows as a toast over the panes that fades once the program settles; `status="bar"` shows it as a pill in the bar instead.
 
 ## Open in a modal
 
@@ -128,13 +132,43 @@ Escape or the button closes it. Your own controls can call `el.expand()` and `el
 |---|---|
 | `visible` (default) | When it scrolls into view |
 | `eager` | At once |
-| `click` | When the reader clicks the poster |
+| `click` | When the reader clicks the poster's Run button |
 
 Prefer `click` for pages with several embeds, or for modes that download a lot.
 
 ## Theme
 
 `theme="auto"` follows the visitor's system setting. Use `light`, `dark`, or a theme family's light variant such as `github-light`. To follow your own page's theme, set the attribute when it changes. These docs do that with a small script.
+
+`family` picks a family without touching the color mode, so `theme="light"`/`theme="dark"` can follow your page while the family stays put:
+
+```html
+<bun-playground family="github-light" fonts="https://fonts.googleapis.com/css2?family=Inter&display=swap"></bun-playground>
+```
+
+`vars` brings the embed's colors in line with your page. It sets CSS custom properties on top of the theme's, on both schemes or one:
+
+```html
+<bun-playground
+  vars='{"base":{"--accent":"#ff5a5f","--radius":"1rem","--font-ui":"Inter, sans-serif","--font-mono":"JetBrains Mono, monospace"}}'
+  fonts="https://fonts.googleapis.com/css2?family=Inter&family=JetBrains+Mono&display=swap"
+></bun-playground>
+```
+
+`fonts` takes stylesheet URLs (whitespace-separated) and loads them inside the embed; `--font-ui` and `--font-mono` are what the chrome and the code use. When your page's own theme changes, call `el.setVars(vars)` with the new values; the object's shape and the variables are in the [reference](/reference/embed-api/#theming).
+
+## Defaults for a page
+
+With several embeds on a page, set what they share once with `<bun-playground-defaults>`. Each embed's own attributes still win:
+
+```html
+<bun-playground-defaults family="github-light" load="click" expand="full" theme="dark"></bun-playground-defaults>
+
+<bun-playground mode="preview">…</bun-playground>
+<bun-playground mode="code" expand="false">…</bun-playground>
+```
+
+To follow your page's theme, set `theme` (or `vars`) on the defaults element; every embed that doesn't set its own updates in place. Keys, precedence and how `vars` merges are in the [reference](/reference/embed-api/#page-defaults).
 
 ## Script it
 

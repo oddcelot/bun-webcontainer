@@ -1,11 +1,33 @@
 // <bun-playground>: builds an iframe to <base>embed and talks to it over postMessage (protocol: ../src/embed/protocol.ts).
 // Dependency-free; bundled standalone as embed.js. Don't import runtime values from the app.
-import type { Event, Feature, Mode, Reply, Request } from "../src/embed/protocol";
+import type { Event, Feature, Mode, Reply, Request, Vars } from "../src/embed/protocol";
 
 const TAG = "bunPlayground"; // = protocol TAG
 const VERSION = 1; // = protocol VERSION
 
-const PARAMS = ["mode", "features", "file", "autorun", "theme", "readonly", "persist", "example", "repo", "expand"];
+const PARAMS = [
+  "mode",
+  "features",
+  "file",
+  "path",
+  "autorun",
+  "theme",
+  "family",
+  "fonts",
+  "readonly",
+  "persist",
+  "example",
+  "repo",
+  "expand",
+  "status",
+];
+/** Keys a page-wide `<bun-playground-defaults>` may set. Not `file path example repo share title persist`: those are per
+ * embed (a shared `persist` key would make embeds overwrite each other's edits). */
+const DEFAULTABLE = new Set(["mode", "features", "autorun", "theme", "family", "fonts", "readonly", "expand", "status", "vars", "load", "height", "src"]);
+/** Defaults a running embed takes without reloading; the others only reach embeds that haven't started yet. */
+const LIVE = new Set(["theme", "family", "vars", "mode", "height"]);
+/** How long a start may take before the poster offers to try again (a first start downloads several MB of wasm). */
+const START_TIMEOUT = 60_000;
 const HEIGHTS: Record<string, string> = { code: "auto", console: "360px", preview: "420px", full: "600px", result: "420px" };
 const CSS = `:host{display:block;position:relative}
 dialog{position:static;display:block;margin:0;padding:0;border:0;width:auto;height:auto;max-width:none;max-height:none;background:none;color:inherit;overflow:visible}
@@ -16,11 +38,41 @@ dialog::backdrop{background:rgb(0 0 0/.55)}
 .box{position:relative;overflow:hidden}
 iframe{position:absolute;inset:0;display:block;width:100%;height:100%;border:0}
 iframe.wait{visibility:hidden}
-.poster{position:absolute;inset:0;overflow:auto;cursor:pointer;color-scheme:light dark;background:Canvas;color:CanvasText}
+.overlay{position:absolute;inset:0;z-index:2;pointer-events:none}
+.poster{position:absolute;inset:0;overflow:auto;color-scheme:light dark;background:var(--poster-bg,Canvas);color:var(--poster-fg,CanvasText)}
 .poster[hidden]{display:none}
 .def{display:block;position:relative;min-height:100%;box-sizing:border-box}
-pre{margin:0;padding:12px 16px;font:13px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap}
-.play{position:absolute;right:12px;bottom:12px;z-index:1;font:inherit;padding:6px 14px;border:1px solid GrayText;border-radius:6px;background:ButtonFace;color:ButtonText;cursor:pointer}`;
+pre{margin:0;padding:12px 16px;font:13px/1.5 var(--font-mono,ui-monospace,Menlo,Consolas,monospace);white-space:pre-wrap}
+.play{position:absolute;right:12px;bottom:12px;z-index:1;font:var(--play-font,inherit);padding:6px 14px;border:1px solid var(--play-border,GrayText);border-radius:var(--play-radius,6px);background:var(--play-bg,ButtonFace);color:var(--play-fg,ButtonText);cursor:pointer}
+.play:hover{background:var(--play-bg-hover,color-mix(in srgb,var(--play-bg,ButtonFace) 85%,var(--play-fg,ButtonText)))}
+.play:focus-visible{outline:2px solid var(--play-bg,Highlight);outline-offset:2px}
+.spin{position:absolute;right:16px;bottom:16px;z-index:1;display:none;box-sizing:border-box;width:22px;height:22px;border:2px solid color-mix(in srgb,var(--play-bg,ButtonText) 25%,transparent);border-top-color:var(--play-bg,ButtonText);border-radius:50%;animation:spin .8s linear infinite}
+.poster[data-starting] .play{display:none}
+.poster[data-starting] .spin{display:block}
+@keyframes spin{to{transform:rotate(1turn)}}
+@media (prefers-reduced-motion:reduce){.spin{animation-duration:2.4s}}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}`;
+
+let warned = false;
+/** The page's `<bun-playground-defaults>` (the first one). Looked up each time: a client-side navigation may swap it. */
+function defaults(): Element | null {
+  const all = document.getElementsByTagName("bun-playground-defaults");
+  if (all.length > 1 && !warned) (warned = true), console.warn("bun-playground: more than one <bun-playground-defaults>; the first one wins");
+  return all[0] ?? null;
+}
+
+function parseVars(raw: string | null | undefined): Vars | undefined {
+  if (!raw) return undefined;
+  try {
+    const vars = JSON.parse(raw);
+    return vars && typeof vars === "object" ? (vars as Vars) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Applies a changed page default to an embed that doesn't override it (set in BunPlayground's static block). */
+let applyDefault: (el: BunPlayground, name: string) => void;
 
 type Pending = { resolve: (v: any) => void; reject: (e: Error) => void };
 
@@ -34,7 +86,7 @@ function dedent(s: string): string {
 }
 
 export class BunPlayground extends HTMLElement {
-  static observedAttributes = [...PARAMS, "share", "load", "height", "src", "title"];
+  static observedAttributes = [...PARAMS, "vars", "share", "load", "height", "src", "title"];
 
   #root = this.attachShadow({ mode: "open" });
   // The box sits in a dialog that's open in place; expanding reopens it as a modal (the top layer), so the iframe never
@@ -42,6 +94,8 @@ export class BunPlayground extends HTMLElement {
   #dialog = document.createElement("dialog");
   #box = document.createElement("div");
   #poster = document.createElement("div");
+  /** Empty, click-through, above the poster and the frame: a page draws over the embed with `::part(overlay)`. */
+  #overlay = document.createElement("div");
   #frame: HTMLIFrameElement | null = null;
   #origin = "";
   #act: Promise<void> | null = null;
@@ -54,6 +108,7 @@ export class BunPlayground extends HTMLElement {
   /** The frame's page said `boot`; until it does, a loaded frame is something else (see #start). */
   #booted = false;
   #listening = false;
+  #startTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor() {
     super();
@@ -61,10 +116,11 @@ export class BunPlayground extends HTMLElement {
     this.#box.className = "box";
     this.#poster.className = "poster";
     this.#poster.innerHTML = `<slot name="poster"></slot>`;
-    this.#poster.addEventListener("click", () => void this.activate());
+    this.#overlay.className = "overlay";
+    this.#overlay.part.add("overlay");
     const style = document.createElement("style");
     style.textContent = CSS;
-    this.#box.append(this.#poster);
+    this.#box.append(this.#poster, this.#overlay);
     this.#dialog.append(this.#box);
     this.#dialog.setAttribute("open", "");
     // Escape on the host page (focus outside the frame) closes the modal back into the page.
@@ -89,7 +145,7 @@ export class BunPlayground extends HTMLElement {
     if (!this.#listening) addEventListener("message", this.#onMessage), (this.#listening = true);
     this.#renderPoster();
     this.#sizeBox();
-    const load = this.getAttribute("load");
+    const load = this.#get("load");
     if (this.#act) return;
     if (load === "eager") void this.activate();
     else if (load === "click") return;
@@ -109,18 +165,35 @@ export class BunPlayground extends HTMLElement {
     this.#listening = false;
   }
 
+  static {
+    applyDefault = (el, name) => {
+      // `vars` merges with the embed's own, so it applies even when the embed sets it.
+      if (!el.isConnected || (name !== "vars" && el.hasAttribute(name)) || (el.#frame && !LIVE.has(name))) return;
+      el.#apply(name);
+    };
+  }
+
   attributeChangedCallback(name: string, old: string | null, value: string | null) {
-    if (old === value || !this.isConnected) return;
+    // Removing an attribute falls back to the page default: only a change in the effective value counts.
+    const d = DEFAULTABLE.has(name) ? (defaults()?.getAttribute(name) ?? null) : null;
+    if ((old ?? d) === (value ?? d) || !this.isConnected) return;
+    this.#apply(name);
+  }
+
+  /** Applies the effective value of `name` (the attribute, else the page default). */
+  #apply(name: string) {
     if (!this.#frame) {
       if (name === "load") (this.#io?.disconnect(), (this.#io = null), this.connectedCallback());
       else this.#sizeBox();
       return;
     }
-    if (name === "mode") void this.setMode(value as Mode);
-    else if (name === "theme") void this.setTheme(value ?? "auto");
+    if (name === "mode") void this.setMode(this.#get("mode") as Mode);
+    else if (name === "theme") void this.setTheme(this.#get("theme") ?? "auto");
+    else if (name === "family") void this.setFamily(this.#get("family") ?? "");
+    else if (name === "vars") void this.setVars(this.#vars());
     else if (name === "height") this.#sizeBox();
     else if (name !== "title" && name !== "load") this.#rebuild();
-    else if (name === "title") this.#frame.title = value || "Bun playground";
+    else if (name === "title") this.#frame.title = this.getAttribute("title") || "Bun playground";
   }
 
   /** Runs the project (optionally from another entry file). */
@@ -167,6 +240,14 @@ export class BunPlayground extends HTMLElement {
   setTheme(theme: string) {
     return this.#call("setTheme", { theme });
   }
+  /** Sets a theme family (by its light variant) without changing the color mode. */
+  setFamily(family: string) {
+    return this.#call("setFamily", { family });
+  }
+  /** Sets the chrome's CSS variables (the `vars` attribute, as an object). */
+  setVars(vars: Vars | undefined) {
+    return this.#call("setVars", { vars });
+  }
   /** Shows the embed in a modal over the page (in the `expand` attribute's mode, if it names one). */
   expand() {
     return this.#setExpanded(true);
@@ -200,12 +281,18 @@ export class BunPlayground extends HTMLElement {
     this.#ready = new Promise<void>((r) => (this.#done = r));
   }
 
+  /** An attribute, else (for DEFAULTABLE keys) the page's `<bun-playground-defaults>` one. */
+  #get(name: string): string | null {
+    return this.getAttribute(name) ?? (DEFAULTABLE.has(name) ? (defaults()?.getAttribute(name) ?? null) : null);
+  }
+
   #base(): URL {
-    return new URL(this.getAttribute("src") || "./", this.getAttribute("src") ? location.href : import.meta.url);
+    const src = this.#get("src");
+    return new URL(src || "./", src ? location.href : import.meta.url);
   }
 
   #bool(name: string): string | null {
-    const v = this.getAttribute(name);
+    const v = this.#get(name);
     return v === null ? null : v === "false" ? "false" : "true";
   }
 
@@ -217,11 +304,21 @@ export class BunPlayground extends HTMLElement {
     return files;
   }
 
+  /** The `vars` attribute: a JSON object (see protocol.ts Vars) merged per scheme over the page default's. Malformed JSON
+   * is ignored like other bad values (that layer is skipped). */
+  #vars(): Vars | undefined {
+    const layers = [parseVars(defaults()?.getAttribute("vars")), parseVars(this.getAttribute("vars"))].filter((l) => !!l);
+    if (!layers.length) return undefined;
+    const vars: Vars = {};
+    for (const k of ["base", "light", "dark"] as const) for (const l of layers) if (l[k]) vars[k] = { ...vars[k], ...l[k] };
+    return vars;
+  }
+
   #url(): URL {
     const base = this.#base();
     const url = new URL("embed", base);
     for (const p of PARAMS) {
-      const v = p === "readonly" || p === "autorun" ? this.#bool(p) : this.getAttribute(p);
+      const v = p === "readonly" || p === "autorun" ? this.#bool(p) : this.#get(p);
       if (v !== null) url.searchParams.set(p, v);
     }
     url.searchParams.set("init", "1");
@@ -231,7 +328,7 @@ export class BunPlayground extends HTMLElement {
   }
 
   #mode(): string {
-    const m = this.getAttribute("mode") ?? "code";
+    const m = this.#get("mode") ?? "code";
     return HEIGHTS[m] ? m : "code";
   }
 
@@ -239,15 +336,23 @@ export class BunPlayground extends HTMLElement {
   #renderPoster() {
     this.#poster.querySelector(".def")?.remove();
     this.#poster.querySelector(".play")?.remove();
+    this.#poster.querySelector(".spin")?.remove();
     // Any poster that waits for a click says so.
-    if (this.getAttribute("load") === "click") {
+    if (this.#get("load") === "click") {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "play";
       btn.textContent = "▶ Run";
-      this.#poster.append(btn);
+      // Only the button starts it: the poster's code stays selectable. After a start timed out, it starts over.
+      btn.addEventListener("click", () => (this.#poster.hasAttribute("data-failed") ? this.#rebuild() : void this.activate()));
+      // In the button's place from the click until the embed is ready (the poster hides then).
+      const spin = document.createElement("span");
+      spin.className = "spin";
+      spin.setAttribute("role", "status");
+      spin.innerHTML = `<span class="sr"></span>`;
+      this.#poster.append(btn, spin);
     }
-    if (this.querySelector(':scope > [slot="poster"]') || this.getAttribute("load") !== "click") return;
+    if (this.querySelector(':scope > [slot="poster"]') || this.#get("load") !== "click") return;
     const def = document.createElement("div");
     def.className = "def";
     const pre = document.createElement("pre");
@@ -256,11 +361,22 @@ export class BunPlayground extends HTMLElement {
     this.#poster.prepend(def);
   }
 
+  /**
+   * The poster's content height, rounded up: scrollHeight rounds to the nearest pixel, and a box half a pixel short of
+   * its content scrolls. (Still at least scrollHeight, which counts margins the boxes don't.)
+   */
+  #posterHeight(): number {
+    const top = this.#poster.getBoundingClientRect().top - this.#poster.scrollTop;
+    const parts = [...this.#poster.querySelectorAll("slot")].flatMap((s) => s.assignedElements());
+    parts.push(...this.#poster.querySelectorAll(".def"));
+    return Math.max(this.#poster.scrollHeight, ...parts.map((e) => Math.ceil(e.getBoundingClientRect().bottom - top)));
+  }
+
   #sizeBox(auto?: number) {
-    const h = this.getAttribute("height") || HEIGHTS[this.#mode()]!;
+    const h = this.#get("height") || HEIGHTS[this.#mode()]!;
     let css = h;
     if (h === "auto") {
-      const px = auto ?? (this.#frame && this.#isReady ? this.#box.offsetHeight : this.#poster.scrollHeight || 200);
+      const px = auto ?? (this.#frame && this.#isReady ? this.#box.offsetHeight : this.#posterHeight() || 200);
       css = Math.min(640, Math.max(120, px)) + "px";
     }
     this.#box.style.height = css;
@@ -278,11 +394,26 @@ export class BunPlayground extends HTMLElement {
   }
 
   #start(): Promise<void> {
+    this.#poster.toggleAttribute("data-starting", true);
+    this.#poster.removeAttribute("data-failed");
+    const btn = this.#poster.querySelector(".play");
+    if (btn) btn.textContent = "▶ Run";
+    // No `ready` in time: the button comes back to try again (a late `ready` still shows the embed).
+    clearTimeout(this.#startTimer);
+    this.#startTimer = setTimeout(() => {
+      if (this.#isReady) return;
+      this.#poster.removeAttribute("data-starting");
+      this.#poster.toggleAttribute("data-failed", true);
+      if (btn) btn.textContent = "↻ Try again";
+    }, START_TIMEOUT);
+    // Said once it's shown, so screen readers announce it.
+    const sr = this.#poster.querySelector(".spin .sr");
+    if (sr) sr.textContent = "Starting…";
     this.#io?.disconnect();
     this.#io = null;
     const url = this.#url();
     this.#origin = url.origin;
-    this.#sizeBox(this.#poster.hidden ? undefined : this.#poster.scrollHeight);
+    this.#sizeBox(this.#poster.hidden ? undefined : this.#posterHeight());
     const f = document.createElement("iframe");
     f.className = "wait";
     f.allow = "cross-origin-isolated; clipboard-write";
@@ -337,21 +468,40 @@ export class BunPlayground extends HTMLElement {
     if (event === "expand") return void this.#setExpanded(data.open);
     if (event === "boot") {
       this.#booted = true;
-      void this.#request("init", { files: this.#files(), options: {} }).catch(() => {});
+      void this.#request("init", { files: this.#files(), options: {}, vars: this.#vars() }).catch(() => {});
     } else if (event === "ready" || event === "unsupported") {
       this.#isReady = true;
       this.#frame.classList.remove("wait");
       this.#poster.hidden = true;
+      this.#poster.removeAttribute("data-starting");
+      clearTimeout(this.#startTimer);
       this.#done();
-    } else if (event === "resize" && (this.getAttribute("height") || HEIGHTS[this.#mode()]) === "auto") this.#sizeBox(data.height);
+    } else if (event === "resize" && (this.#get("height") || HEIGHTS[this.#mode()]) === "auto") this.#sizeBox(data.height);
     this.dispatchEvent(new CustomEvent("bun-playground:" + event, { detail: data, bubbles: true, composed: true }));
   };
 }
 
+/** `<bun-playground-defaults>`: page-wide defaults for every `<bun-playground>` (same attribute names and parsing). An
+ * embed's own attribute wins; a changed default reaches running embeds live for LIVE keys, else only embeds not started. */
+export class BunPlaygroundDefaults extends HTMLElement {
+  static observedAttributes = [...DEFAULTABLE];
+
+  connectedCallback() {
+    this.style.display = "none";
+  }
+
+  attributeChangedCallback(name: string, old: string | null, value: string | null) {
+    if (old === value || !this.isConnected || defaults() !== this) return;
+    for (const el of document.getElementsByTagName("bun-playground")) if (el instanceof BunPlayground) applyDefault(el, name);
+  }
+}
+
+if (!customElements.get("bun-playground-defaults")) customElements.define("bun-playground-defaults", BunPlaygroundDefaults);
 if (!customElements.get("bun-playground")) customElements.define("bun-playground", BunPlayground);
 
 declare global {
   interface HTMLElementTagNameMap {
+    "bun-playground-defaults": BunPlaygroundDefaults;
     "bun-playground": BunPlayground;
   }
 }

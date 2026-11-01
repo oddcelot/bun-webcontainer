@@ -1,7 +1,12 @@
-import { File } from "@pierre/diffs";
+import { File, registerCustomTheme } from "@pierre/diffs";
 import { Editor, type Marker } from "@pierre/diffs/edit";
+import { elysiaDark, elysiaLight } from "../elysiaTheme";
 import { onTheme, themeName } from "../theme";
 import type { CodeEditor, CompletionKind, EditorCompletion, EditorCompletionDetails, EditorDiagnostic, EditorEvents, EditorHover, EditorSignatureHelp } from "./types";
+
+// @pierre/diffs resolves theme names from its own bundles; the Elysia pair (elysiaTheme.ts) has to be registered.
+registerCustomTheme("elysia-light", async () => elysiaLight);
+registerCustomTheme("elysia-dark", async () => elysiaDark);
 
 // Lucide's circle-x and triangle-alert, drawn in the severity's color (the popover is in a shadow root, where the page's icon classes don't apply).
 const ICONS = {

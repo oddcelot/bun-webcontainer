@@ -8,7 +8,8 @@ import { EditorPane } from "./EditorPane";
 import { FileTree } from "./FileTree";
 import { Header } from "./Header";
 import { Preview } from "./Preview";
-import { StatusBar } from "./StatusBar";
+import { StatusToast } from "./Status";
+import { StatusBar, statusDisplay } from "./StatusBar";
 import { Unsupported } from "./Unsupported";
 
 /** Panel sizes as fractions, kept across reloads. A hidden panel isn't kept: after a reload it opens at its size from before. */
@@ -156,6 +157,9 @@ export function App() {
             );
           }}
         </Resizable>
+        <Show when={statusDisplay() === "toast"}>
+          <StatusToast status={app.session.status()} />
+        </Show>
       </main>
       <StatusBar
         treeShown={columnSizes()[0] > 0}

@@ -7,7 +7,7 @@ import { examples, loadExample } from "../examples";
 import { loadRepo, parseRepo, repoQuery } from "../github";
 import { attach, discard, restore, SKIP } from "../persist";
 import { isShareLink, loadShareLink, rememberSource, shareLink } from "../share";
-import { isFamily, pickFamily, setColorMode } from "../theme";
+import { isFamily, pickFamily, setColorMode, setThemeVars } from "../theme";
 import { BUN_VERSION } from "../worker/bunVersion";
 import { isFeature, isMode, lockedFeatures, optionsFromUrl, resolveFeatures } from "./config";
 import { mountEmbed } from "./mount";
@@ -63,8 +63,19 @@ const options = await (async (): Promise<Options> => {
   for (const [k, v] of Object.entries(init.options ?? {})) merged.set(k, String(v));
   return optionsFromUrl(merged);
 })();
-const initFiles = params.get("init") === "1" ? ((await initReceived).files ?? {}) : {};
+const init = params.get("init") === "1" ? await initReceived : undefined;
+const initFiles = init?.files ?? {};
 const locked = lockedFeatures(options.features);
+
+/** A short FNV-1a hash, base 36. */
+function hash(text: string) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193);
+  return (h >>> 0).toString(36);
+}
+// Where the reader's pane sizes are kept for the tab. Embeds on a page often share a URL (the host sends the files),
+// so the host's files and options and a share link tell them apart.
+const sizesKey = `embed-sizes:${location.search}#${hash(JSON.stringify([initFiles, init?.options ?? {}, location.hash]))}`;
 
 const embed = createRoot(() => {
   const [mode, setMode] = createSignal<Mode>(options.mode);
@@ -88,6 +99,7 @@ const embed = createRoot(() => {
   return {
     options,
     locked,
+    sizesKey,
     mode,
     features,
     has: (f: Feature) => features().includes(f),
@@ -132,13 +144,34 @@ const embed = createRoot(() => {
 });
 export type Embed = typeof embed;
 
-applyTheme(options.theme);
-
 function applyTheme(theme: string) {
   if (theme === "light" || theme === "dark") setColorMode(theme);
   else if (isFamily(theme)) pickFamily(theme);
   else setColorMode("system");
 }
+
+/** Keeps the color mode alone (unlike `theme`) and picks both variants of a family. */
+function applyFamily(family: string) {
+  if (isFamily(family)) pickFamily(family);
+}
+
+/** Loads the stylesheets a host names in `fonts` (fonts for `--font-ui` and `--font-mono`). */
+const loadedFonts = new Set<string>();
+function applyFonts(fonts: string) {
+  for (const href of fonts.split(/\s+/)) {
+    if (!href || loadedFonts.has(href)) continue;
+    loadedFonts.add(href);
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = href;
+    document.head.append(link);
+  }
+}
+
+setThemeVars(init?.vars);
+applyFonts(options.fonts);
+applyFamily(options.family);
+applyTheme(options.theme);
 
 // --- The project: saved edits (with `persist`), else the host's files, a share link, a repo, an example or a stub.
 
@@ -196,6 +229,9 @@ const first = options.file && vfs.files.has(options.file) ? options.file : pg.en
 for (const path of Object.keys(initFiles)) workspace.open(path.replace(/^\.?\//, ""));
 workspace.open(first);
 
+// `path` picks where the preview's first tab points (default "/"); the next Run loads it there.
+if (options.path) pg.previews.start(options.path);
+
 // --- Events
 
 // Escape while expanded closes the modal (keys pressed in this frame never reach the host's dialog), unless something
@@ -208,6 +244,31 @@ addEventListener("keydown", (e) => {
 vfs.onChange(({ path, removed }) => {
   if (!SKIP.test(path)) emit("change", { path, removed: !!removed });
 });
+// `watch`: a save the reader made while the program runs starts it again, like `bun --watch`. Only the editor's saves
+// count (not the program's own writes, an install or Run's save first); a burst is one restart, and one that lands
+// while a run, test or install is under way waits for it.
+const WATCH_DELAY = 300;
+let watchTimer: ReturnType<typeof setTimeout> | undefined;
+function restart() {
+  if (!embed.has("watch")) return;
+  if (session.busy.run || session.busy.install) return void (watchTimer = setTimeout(restart, WATCH_DELAY));
+  if (session.settled().state !== "running") return;
+  log("sys", "[watch] restarting");
+  void pg.run(pg.lastEntry);
+}
+workspace.onSaved(() => {
+  clearTimeout(watchTimer);
+  watchTimer = setTimeout(restart, WATCH_DELAY);
+});
+// Any run that starts (Run, the API, a restart) saves first, so a restart still pending would only run it twice.
+createRoot(() =>
+  createEffect(
+    () => !!session.busy.run,
+    (busy) => {
+      if (busy) clearTimeout(watchTimer);
+    },
+  ),
+);
 // The height the embed would like (`height="auto"` on <bun-playground>): the bar, the open file's lines (within
 // bounds) and the console when it sits under the editor.
 const LINE = 20;
@@ -219,7 +280,7 @@ function wantedHeight() {
   const path = workspace.state.active;
   const lines = Math.min(Math.max((path ? (vfs.readText(path) ?? "") : "").split("\n").length, 3), 30);
   const below = embed.has("console") && !embed.has("preview") && embed.mode() === "code";
-  return 40 + (embed.has("tabs") ? 38 : 0) + lines * LINE + 24 + (below ? 160 : 0) + (pg.canRun ? 0 : 44);
+  return 40 + (embed.has("tabs") || embed.has("autosave") ? 38 : 0) + lines * LINE + 24 + (below ? 160 : 0) + (pg.canRun ? 0 : 44);
 }
 let lastHeight = 0;
 function sendResize(height: number) {
@@ -285,6 +346,10 @@ async function handle(req: Request): Promise<unknown> {
       return embed.setFeatures(req.params);
     case "setTheme":
       return applyTheme(req.params.theme);
+    case "setFamily":
+      return applyFamily(req.params.family);
+    case "setVars":
+      return setThemeVars(req.params.vars);
     case "setExpanded":
       return embed.setExpanded(!!req.params.open);
     case "getShareUrl":

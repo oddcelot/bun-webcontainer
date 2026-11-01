@@ -16,11 +16,16 @@ The element's attributes and the iframe's URL parameters share names.
 | `mode` | `code`, `preview`, `console`, `full`, `result` | `code` | Which panes show. See [Features](#features). |
 | `features` | comma list | none | Added to the mode's features. `-name` turns one off and locks it. |
 | `file` | path | the entry file | The file opened first. |
+| `path` | URL path | `/` | What the preview requests first, e.g. `/user/123`. |
 | `autorun` | `true`, `false` | `true`, except in `full` | Run once loaded, after installing any missing packages. |
-| `theme` | `auto`, `light`, `dark`, or a theme family's light variant | `auto` | e.g. `github-light`. |
+| `theme` | `auto`, `light`, `dark`, or a theme family's light variant | `auto` | The color mode. e.g. `dark`. |
+| `family` | a theme family's light variant | none | e.g. `github-light`. Picks both halves of the family without changing the color mode, so `theme` can follow your page. |
+| `fonts` | stylesheet URLs, whitespace-separated | none | Loaded inside the embed, for the fonts `--font-ui` and `--font-mono` name. |
+| `vars` | JSON object | none | Chrome CSS variables to set on top of the theme's. Element only; see [Theming](#theming). |
 | `readonly` | boolean | `false` | The editor takes no edits. Run still works. |
 | `persist` | key | none | Keeps edits in the reader's browser under this key. Without it every load starts from the source. |
 | `expand` | empty, a mode, `false` | none | A button that opens the embed in a modal over the page. With a mode (`expand="full"`) it switches to that mode while open. Escape or the button closes it. |
+| `status` | `toast`, `bar` | `toast` | Where the run status shows: a toast over the panes' bottom-right corner that fades a few seconds after it settles (errors stay), or a pill in the bar. |
 | `example` | name | none | A bundled example. |
 | `repo` | `owner/repo[@ref]` | none | A public GitHub repo. |
 | `share` | `#code=…` | none | A share link's hash. In an iframe URL put it after `#`. |
@@ -31,7 +36,21 @@ The element's attributes and the iframe's URL parameters share names.
 
 A boolean is on unless it is `false` or `0`. Unknown or malformed values fall back to the default.
 
-Inline files: child `<script type="text/plain" data-file="path">` elements, dedented. Poster: children with `slot="poster"`, shown until the embed is ready; with `load="click"` a click on them starts it.
+Inline files: child `<script type="text/plain" data-file="path">` elements, dedented. Poster: children with `slot="poster"`, shown until the embed is ready; with `load="click"` a Run button over them starts it.
+
+## Page defaults
+
+`<bun-playground-defaults>` sets defaults for every `<bun-playground>` on the page. It takes the same attribute names and values, and renders nothing. Put it before the embeds.
+
+```html
+<bun-playground-defaults family="github-light" status="bar" load="click" fonts="https://fonts.googleapis.com/css2?family=Inter&display=swap"></bun-playground-defaults>
+```
+
+- Keys: `mode`, `features`, `autorun`, `theme`, `family`, `fonts`, `readonly`, `expand`, `status`, `vars`, `load`, `height`, `src`. The others (`file`, `path`, `example`, `repo`, `share`, `title`, `persist`) are per embed; a shared `persist` key would make embeds overwrite each other's edits.
+- Precedence: built-in default, then the page default, then the element's attribute, then what the reader picks in the embed's menu. An element opts out of a boolean default with `false`, e.g. `readonly="false"`. Removing an element's attribute falls back to the page default.
+- `vars` merges per scheme: the element's `base`, `light` and `dark` go over the page default's. Every other key replaces the default, `features` too. Malformed `vars` JSON in either place is skipped.
+- Changing `theme`, `family`, `vars`, `mode` or `height` on the defaults element updates running embeds without reloading them. The other keys only reach embeds that haven't started yet.
+- The first `<bun-playground-defaults>` in the document wins; with more than one the element logs a warning. It is looked up every time, so a page that swaps its content (client-side navigation) can swap it too.
 
 ## Features
 
@@ -48,6 +67,8 @@ Inline files: child `<script type="text/plain" data-file="path">` elements, dede
 | `install` | Install button | `preview`, `full` | |
 | `terminal` | Interactive terminal | `console`, `full` | |
 | `open` | "Open in runbun.dev" | all | |
+| `watch` | Restart the running program when an edit is saved, like `bun --watch` | all | |
+| `autosave` | An Auto-save switch over the editor: off, edits save on Ctrl/Cmd+S and before Run (switching it back on, or turning the feature off, saves what's waiting). Without it, edits save as you type | none | |
 
 Readers can switch features on or off from the **⋯** menu, except those you locked with `-name`.
 
@@ -68,6 +89,8 @@ On the element, each returns a promise. Call them after `await el.ready`.
 | `setMode(mode)` | a mode | |
 | `setFeatures(obj)` | `{ types: true, format: false }` | |
 | `setTheme(theme)` | a theme | |
+| `setFamily(theme)` | a theme family's light variant | picks both halves without changing the color mode |
+| `setVars(vars)` | a `vars` object | sets the chrome's CSS variables |
 | `getShareUrl()` | | the share link as a string |
 | `activate()` | | Starts an embed waiting for `load="click"` or `visible`. |
 | `expand()` | | Opens the modal (works without the `expand` button too). |
@@ -127,7 +150,51 @@ window.addEventListener("message", (e) => {
 });
 ```
 
-`files` maps paths to text. `options` takes `mode`, `features`, `file`, `autorun`, `theme`, `readonly` and `persist`. Without `?init=1`, the page loads from its URL and `init` isn't needed.
+`files` maps paths to text. `options` takes `mode`, `features`, `file`, `path`, `autorun`, `theme`, `family`, `fonts`, `readonly`, `persist`, `expand` and `status`. `vars` takes the object described under [Theming](#theming). Without `?init=1`, the page loads from its URL and `init` isn't needed; `setFamily` and `setVars` change both afterwards.
+
+## Theming
+
+A theme family (`theme`'s variant or `family`) colors the editor and the app chrome. `vars` overrides chrome values on top of the theme, as an object with `base` (both schemes) and optionally `light` or `dark`:
+
+```json
+{
+  "base": { "--accent": "#ff5a5f", "--radius": "1rem" },
+  "light": { "--bg": "#ffffff" },
+  "dark": { "--bg": "#171723" }
+}
+```
+
+Names and values are CSS custom properties; anything that isn't a `--name` with a string value is ignored. The chrome variables are:
+
+| Name | What |
+|---|---|
+| `--bg` | The code surface |
+| `--canvas` | Behind the panes |
+| `--panel` | The bar, tabs and file tree |
+| `--fg` | Text |
+| `--muted` | Secondary text |
+| `--border` | Lines between panes |
+| `--accent` | Selection, focus rings, the Run button |
+| `--error`, `--warn`, `--info`, `--ok` | Status colors |
+| `--radius`, `--pad` | A pane's corner and the space inside it |
+| `--font-ui`, `--font-mono` | The UI and code fonts; load them with `fonts` |
+| `--control`, `--control-hover`, `--control-border` | Buttons and inputs |
+
+Others in `style.css` work too, but these are the ones a page usually wants to match its own design. To follow a page's light and dark themes, send `base` for the scheme in effect and update it (with `setVars`) when the page changes.
+
+To draw over the embed (a border, a glow), style `bun-playground::part(overlay)`: an empty layer covering the poster and the frame, in the modal too, that lets clicks through.
+
+The poster (shown until the embed is ready) is styled by CSS custom properties set on `<bun-playground>` or an ancestor:
+
+| Name | What | Default |
+|---|---|---|
+| `--poster-bg`, `--poster-fg` | The poster's background and text | `Canvas`, `CanvasText` |
+| `--font-mono` | The default poster's code font (`load="click"` without a `slot="poster"`) | `ui-monospace`, … |
+| `--play-bg`, `--play-fg` | The Run button's background and text; `--play-bg` also colors the spinner shown while the embed starts | `ButtonFace`, `ButtonText` |
+| `--play-bg-hover` | The Run button's background on hover | `--play-bg` mixed 15% toward `--play-fg` |
+| `--play-border`, `--play-radius`, `--play-font` | The Run button's border color, corner radius and font | `GrayText`, `6px`, inherited |
+
+If the embed isn't ready after 60 seconds, the spinner turns back into the button, as "Try again".
 
 ## Versioning
 
