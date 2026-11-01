@@ -316,11 +316,22 @@ export class BunPlayground extends HTMLElement {
     this.#poster.prepend(def);
   }
 
+  /**
+   * The poster's content height, rounded up: scrollHeight rounds to the nearest pixel, and a box half a pixel short of
+   * its content scrolls. (Still at least scrollHeight, which counts margins the boxes don't.)
+   */
+  #posterHeight(): number {
+    const top = this.#poster.getBoundingClientRect().top - this.#poster.scrollTop;
+    const parts = [...this.#poster.querySelectorAll("slot")].flatMap((s) => s.assignedElements());
+    parts.push(...this.#poster.querySelectorAll(".def"));
+    return Math.max(this.#poster.scrollHeight, ...parts.map((e) => Math.ceil(e.getBoundingClientRect().bottom - top)));
+  }
+
   #sizeBox(auto?: number) {
     const h = this.getAttribute("height") || HEIGHTS[this.#mode()]!;
     let css = h;
     if (h === "auto") {
-      const px = auto ?? (this.#frame && this.#isReady ? this.#box.offsetHeight : this.#poster.scrollHeight || 200);
+      const px = auto ?? (this.#frame && this.#isReady ? this.#box.offsetHeight : this.#posterHeight() || 200);
       css = Math.min(640, Math.max(120, px)) + "px";
     }
     this.#box.style.height = css;
@@ -357,7 +368,7 @@ export class BunPlayground extends HTMLElement {
     this.#io = null;
     const url = this.#url();
     this.#origin = url.origin;
-    this.#sizeBox(this.#poster.hidden ? undefined : this.#poster.scrollHeight);
+    this.#sizeBox(this.#poster.hidden ? undefined : this.#posterHeight());
     const f = document.createElement("iframe");
     f.className = "wait";
     f.allow = "cross-origin-isolated; clipboard-write";
