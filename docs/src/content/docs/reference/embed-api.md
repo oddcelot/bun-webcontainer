@@ -36,7 +36,7 @@ The element's attributes and the iframe's URL parameters share names.
 
 A boolean is on unless it is `false` or `0`. Unknown or malformed values fall back to the default.
 
-Inline files: child `<script type="text/plain" data-file="path">` elements, dedented. Poster: children with `slot="poster"`, shown until the embed is ready; with `load="click"` a click on them starts it.
+Inline files: child `<script type="text/plain" data-file="path">` elements, dedented. Poster: children with `slot="poster"`, shown until the embed is ready; with `load="click"` a Run button over them starts it.
 
 ## Features
 
@@ -177,6 +177,7 @@ The poster (shown until the embed is ready) is styled by CSS custom properties s
 | `--poster-bg`, `--poster-fg` | The poster's background and text | `Canvas`, `CanvasText` |
 | `--font-mono` | The default poster's code font (`load="click"` without a `slot="poster"`) | `ui-monospace`, … |
 | `--play-bg`, `--play-fg` | The Run button's background and text | `ButtonFace`, `ButtonText` |
+| `--play-bg-hover` | The Run button's background on hover | `--play-bg` mixed 15% toward `--play-fg` |
 | `--play-border`, `--play-radius`, `--play-font` | The Run button's border color, corner radius and font | `GrayText`, `6px`, inherited |
 
 ## Versioning

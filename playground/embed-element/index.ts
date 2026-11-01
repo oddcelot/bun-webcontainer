@@ -32,11 +32,13 @@ dialog::backdrop{background:rgb(0 0 0/.55)}
 iframe{position:absolute;inset:0;display:block;width:100%;height:100%;border:0}
 iframe.wait{visibility:hidden}
 .overlay{position:absolute;inset:0;z-index:2;pointer-events:none}
-.poster{position:absolute;inset:0;overflow:auto;cursor:pointer;color-scheme:light dark;background:var(--poster-bg,Canvas);color:var(--poster-fg,CanvasText)}
+.poster{position:absolute;inset:0;overflow:auto;color-scheme:light dark;background:var(--poster-bg,Canvas);color:var(--poster-fg,CanvasText)}
 .poster[hidden]{display:none}
 .def{display:block;position:relative;min-height:100%;box-sizing:border-box}
 pre{margin:0;padding:12px 16px;font:13px/1.5 var(--font-mono,ui-monospace,Menlo,Consolas,monospace);white-space:pre-wrap}
-.play{position:absolute;right:12px;bottom:12px;z-index:1;font:var(--play-font,inherit);padding:6px 14px;border:1px solid var(--play-border,GrayText);border-radius:var(--play-radius,6px);background:var(--play-bg,ButtonFace);color:var(--play-fg,ButtonText);cursor:pointer}`;
+.play{position:absolute;right:12px;bottom:12px;z-index:1;font:var(--play-font,inherit);padding:6px 14px;border:1px solid var(--play-border,GrayText);border-radius:var(--play-radius,6px);background:var(--play-bg,ButtonFace);color:var(--play-fg,ButtonText);cursor:pointer}
+.play:hover{background:var(--play-bg-hover,color-mix(in srgb,var(--play-bg,ButtonFace) 85%,var(--play-fg,ButtonText)))}
+.play:focus-visible{outline:2px solid var(--play-bg,Highlight);outline-offset:2px}`;
 
 type Pending = { resolve: (v: any) => void; reject: (e: Error) => void };
 
@@ -79,7 +81,6 @@ export class BunPlayground extends HTMLElement {
     this.#box.className = "box";
     this.#poster.className = "poster";
     this.#poster.innerHTML = `<slot name="poster"></slot>`;
-    this.#poster.addEventListener("click", () => void this.activate());
     this.#overlay.className = "overlay";
     this.#overlay.part.add("overlay");
     const style = document.createElement("style");
@@ -287,6 +288,8 @@ export class BunPlayground extends HTMLElement {
       btn.type = "button";
       btn.className = "play";
       btn.textContent = "▶ Run";
+      // Only the button starts it: the poster's code stays selectable.
+      btn.addEventListener("click", () => void this.activate());
       this.#poster.append(btn);
     }
     if (this.querySelector(':scope > [slot="poster"]') || this.getAttribute("load") !== "click") return;

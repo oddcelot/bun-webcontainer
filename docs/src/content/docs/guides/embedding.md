@@ -32,7 +32,7 @@ Load the script once, then use `<bun-playground>`:
 </bun-playground>
 ```
 
-The code runs when the element comes into view and the page is ready. Add `load="click"` to wait for a click, and put a `slot="poster"` child inside to show something until it starts:
+The code runs when the element comes into view and the page is ready. Add `load="click"` to wait for a click on its Run button, and put a `slot="poster"` child inside to show something until it starts:
 
 ```html
 <bun-playground load="click" mode="preview" example="elysia-demo">
@@ -132,7 +132,7 @@ Escape or the button closes it. Your own controls can call `el.expand()` and `el
 |---|---|
 | `visible` (default) | When it scrolls into view |
 | `eager` | At once |
-| `click` | When the reader clicks the poster |
+| `click` | When the reader clicks the poster's Run button |
 
 Prefer `click` for pages with several embeds, or for modes that download a lot.
 
