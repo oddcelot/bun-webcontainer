@@ -1,0 +1,39 @@
+/* The embed configurator (configure.html): the form beside the live embed and the snippet. Controls reuse style.css. */
+body { color: var(--fg); }
+.cfg-header { display: flex; align-items: center; gap: 14px; flex: 0 0 auto; height: 44px; padding: 0 14px; background: var(--panel); border-bottom: 1px solid var(--border); }
+.cfg-header .title { font-weight: 600; margin-right: auto; }
+.cfg-header a { color: var(--muted); text-decoration: none; }
+.cfg-header a:hover { color: var(--fg); }
+.cfg { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(22rem, 32rem) minmax(0, 1fr); gap: 12px; padding: 12px; }
+.cfg-form, .cfg-side { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+.cfg-form section { display: flex; flex-direction: column; gap: 12px; padding: 14px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); }
+.cfg-form h2 { margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.cfg-form .row { display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); gap: 12px; }
+.field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.field-label { display: flex; align-items: baseline; gap: 6px; font-size: 12px; color: var(--muted); }
+.field-hint { font-size: 11px; opacity: 0.75; }
+.field-hint::before { content: "· "; }
+.field .select-trigger { height: var(--control-height); }
+.field .select-trigger .value { overflow: hidden; }
+.cfg-form .dialog-input.code { height: auto; padding: 6px 8px; line-height: 1.5; resize: vertical; }
+.cfg-form .dialog-input:focus { outline: 1px solid var(--accent); outline-offset: -1px; }
+.segmented button { white-space: nowrap; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border: 1px solid var(--control-border); border-radius: 999px; background: none; color: var(--muted); font: 12px var(--font-mono); cursor: pointer; }
+.chip:hover { background: var(--control); color: var(--fg); }
+.chip[aria-pressed="true"], .chip[data-pressed] { border-color: color-mix(in srgb, var(--accent) 60%, var(--control-border)); background: color-mix(in srgb, var(--accent) 16%, var(--panel)); color: var(--fg); }
+.chip i { font-size: 12px; }
+.accent { display: flex; align-items: center; gap: 6px; }
+.accent input[type="color"] { flex: 0 0 auto; width: 28px; height: var(--control-height); padding: 2px; border: 1px solid var(--control-border); border-radius: 6px; background: var(--control); cursor: pointer; }
+.accent .clear { display: grid; place-items: center; flex: 0 0 auto; width: var(--control-height); height: var(--control-height); border: 1px solid var(--control-border); border-radius: 6px; background: var(--control); color: var(--muted); cursor: pointer; }
+.accent .clear:hover { color: var(--fg); background: var(--control-hover); }
+.live { flex: 0 0 auto; }
+.snippet { flex: 0 0 auto; overflow: hidden; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); }
+.snippet .copy { display: flex; flex: 0 0 auto; align-items: center; gap: 5px; margin: 0 var(--pad) 0 auto; padding: 3px 9px; border: 1px solid var(--control-border); border-radius: var(--inner-radius); background: var(--control); color: var(--fg); font: inherit; font-size: 12px; cursor: pointer; }
+.snippet .copy:hover { background: var(--control-hover); }
+.snippet pre { margin: 0; padding: 12px 14px; overflow-x: auto; font: 12px/1.55 var(--font-mono); color: var(--fg); }
+@media (max-width: 860px) {
+  body { height: auto; }
+  .cfg { grid-template-columns: 1fr; }
+  .cfg-form, .cfg-side { overflow: visible; }
+}
