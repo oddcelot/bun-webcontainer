@@ -1,0 +1,9 @@
+# typos (Brewfile: typos-cli); `moon run root:typos`.
+[files]
+# Upstream Bun's code and git hashes, applied as-is.
+extend-exclude = ["patches/bun/"]
+
+[default.extend-words]
+WRONLY = "WRONLY"  # O_WRONLY
+Flate = "Flate"    # fflate's FlateStreamHandler
+lits = "lits"      # literals
