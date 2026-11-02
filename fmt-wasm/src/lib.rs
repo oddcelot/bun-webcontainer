@@ -64,6 +64,8 @@ pub fn options(flags: u32, print_width: u32) -> FormatOptions {
     // On in `bun fmt` unless a Prettier config turns them off.
     options.toml = true;
     options.svelte.is_on = true;
+    // As in `bun fmt` (lint/driver/fmt/config.rs): HTML in Markdown code blocks and JS templates gets formatted too.
+    options.embedded_html = true;
     if flags & USE_TABS != 0 {
         options.indent_style = IndentStyle::Tab;
     }
