@@ -48,7 +48,7 @@ export default defineConfig({
       social: [
         { icon: "github", label: "GitHub", href: "https://github.com/oddcelot/bun-webcontainer" },
       ],
-      editLink: { baseUrl: "https://github.com/oddcelot/bun-webcontainer/edit/main/docs/" },
+      editLink: { baseUrl: "https://github.com/oddcelot/bun-webcontainer/edit/main/apps/docs/" },
       sidebar: [
         // The home page is the overview, first among the guides.
         { label: "Guides", items: [{ label: "Overview", link: "/" }, { autogenerate: { directory: "guides" } }] },
