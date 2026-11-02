@@ -252,14 +252,14 @@ function isMethod(code: string, from: number): boolean {
   return /^\s*\{/.test(code.slice(i, i + 32));
 }
 
-const META_RE = /(?<![\w$.])import\.meta\.(url|dirname|filename|dir|file|path|env|main)\b|(?<![\w$.])import\s*\(\s*(?!["'\s])/g;
+const META_RE = /(?<![\w$.])import\.meta\.(url|dirname|filename|dir|file|path|env|main|resolve)\b|(?<![\w$.])import\s*\(\s*(?!["'\s])/g;
 
 /**
  * `import.meta.url` & co. point at a `file:` URL of the module's VFS path, as Node and Bun have them. For the `bun`
- * target, Bun's own `dir`, `file`, `path`, `env` and `main` are filled in too, and `import(expr)` with a computed
- * specifier goes through the worker's `__dynamicImport`, which loads `file:` URLs and paths from the VFS (literal
- * ones are resolved from the transpiler's import records). Only code is touched, not strings, templates, comments
- * or regex literals.
+ * target, Bun's own `dir`, `file`, `path`, `env` and `main` are filled in too, `resolve` answers as Bun's does (the
+ * worker's `__importMetaResolve`), and `import(expr)` with a computed specifier goes through the worker's
+ * `__dynamicImport`, which loads `file:` URLs and paths from the VFS (literal ones are resolved from the transpiler's
+ * import records). Only code is touched, not strings, templates, comments or regex literals.
  */
 function rewriteMeta(code: string, path: string, bun: boolean): string {
   const value: Record<string, string> = { url: JSON.stringify(`file:///${path}`), dirname: JSON.stringify("/" + dirname(path)), filename: JSON.stringify("/" + path) };
@@ -270,6 +270,8 @@ function rewriteMeta(code: string, path: string, bun: boolean): string {
       file: JSON.stringify(path.slice(path.lastIndexOf("/") + 1)),
       env: "globalThis.process.env",
       main: `(globalThis.Bun.main === ${value.filename})`,
+      // Bun's answer (a `file:` URL of the VFS path) instead of the browser's (the served URL).
+      resolve: `globalThis.__importMetaResolve.bind(null, ${value.filename})`,
     });
   const literal = literalRanges(code);
   return code.replace(META_RE, (m, meta: string | undefined, offset: number) => {

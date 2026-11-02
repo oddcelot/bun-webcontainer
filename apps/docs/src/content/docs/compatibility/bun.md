@@ -31,7 +31,8 @@ Reported version: `Bun.version` is `1.4.4-browser`. Labels are explained on the 
 | `Bun.password` | ❌ Missing | Use `Bun.CryptoHasher`, `node:crypto` or `crypto.subtle`. |
 | `Bun.Glob` | ❌ Missing | |
 | `Bun.Transpiler` | 🟡 Partial | Bun's own parser and printer, as wasm (~3 MB, loaded on first use): `transformSync`, `transform`, `scan`, `scanImports` give Bun's output for the `js`, `jsx`, `ts` and `tsx` loaders. `tsconfig` reads `experimentalDecorators` and `emitDecoratorMetadata`; `target` is accepted. `define` (including Bun's default `process.env.NODE_ENV`), `macro`, `exports`, `minifyWhitespace`, `inline`, `trimUnusedImports` and the other options are ignored with a warning; the other loaders (`json`, `toml`, …) throw. |
-| `Bun.resolveSync`, `Bun.stdin` | ❌ Missing | |
+| `Bun.resolveSync`, `Bun.resolve` | ✅ Works | Bun's resolver over the project's files; returns the file's path (`/src/x.ts`), `node:fs` for built-ins. `from` is a directory, as in Bun. Throws a `ResolveMessage` (`Cannot find module …`, `code: "ERR_MODULE_NOT_FOUND"`) when nothing matches. |
+| `Bun.stdin` | ❌ Missing | |
 | `Bun.sql`, `Bun.redis`, `Bun.s3` | ❌ Missing | |
 | `Bun.connect`, `Bun.listen`, `Bun.udpSocket`, `Bun.dns` | ❌ Missing | No raw sockets in the browser. |
 | `Bun.gzipSync`, `Bun.gunzipSync`, `Bun.deflateSync`, `Bun.inflateSync` | 🟡 Partial | `level` is the only option read. Deflate is raw, as in Bun. |
@@ -158,7 +159,7 @@ describe("add", () => {
 | `import.meta.url`, `dirname`, `filename` | ✅ Works | `file:///<path>` in the project. |
 | `import.meta.require` | 🟡 Partial | String literals only (`import.meta.require("x")`). |
 | `import.meta.dir`, `file`, `path`, `main`, `env` | ✅ Works | `env` is `process.env`. In browser code (HTML imports), only `url`, `dirname` and `filename` are filled in. |
-| `import.meta.resolve` | ❌ Missing | The browser's own returns the served URL, not a project path. |
+| `import.meta.resolve` | ✅ Works | As in Bun: a package resolves to its file's `file:///<path>` URL (or throws a `ResolveMessage`), a built-in to `node:x`, and a path is joined to the module's URL as written. Server code only; browser code (HTML imports) gets the browser's own, which returns the served URL. |
 | `import(expr)` with a computed path | ✅ Works | |
 | `fetch("file:///…")` | ✅ Works | Reads project files. Relative URLs throw. Other URLs go to the network, subject to CORS. |
 | `process`, `Buffer`, `global`, timers | ✅ Works | See [Node built-ins](/compatibility/node/). |

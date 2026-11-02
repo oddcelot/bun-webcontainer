@@ -7,6 +7,7 @@ import { bundle, type BundleConfig, type BundleLog } from "./bundler";
 import { setHostVfs } from "./hostPackages";
 import { hash } from "./hash";
 import { CryptoHasher } from "./node/crypto";
+import { importMetaResolve, resolveSync } from "./resolve";
 import { Transpiler } from "./transpiler";
 import { fsError } from "./node/errors";
 import { hooks, type NodeSocket } from "./node/serve";
@@ -60,6 +61,8 @@ g.__dynamicImport = (from: string, spec: unknown, options?: ImportCallOptions) =
   const file = norm(path);
   return importUrl(`${VFS_ROOT}${file.endsWith(".css") ? "__css/" : ""}${file}`, options);
 };
+/** `import.meta.resolve` in served modules (see rewriteMeta), bound to the module's path. */
+g.__importMetaResolve = importMetaResolve;
 g.process = process;
 g.global ??= globalThis;
 g.Buffer ??= (builtins.buffer as { Buffer: unknown }).Buffer;
@@ -776,6 +779,8 @@ async function main() {
     deflateSync: (d: Compressible, o?: { level?: number }) => fflate.deflateSync(compressible(d), level(o)),
     inflateSync: (d: Compressible) => fflate.inflateSync(compressible(d)),
     Transpiler,
+    resolveSync,
+    resolve: async (specifier: string, from: string | URL) => resolveSync(specifier, from),
   };
   g.Bun = Object.assign(builtins.bun, bun);
 
