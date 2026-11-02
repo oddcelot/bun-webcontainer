@@ -104,8 +104,8 @@ export const BLOCK_CSS = `
 .runbun-code pre{margin:0;padding:1rem;overflow-x:auto;font-family:var(--runbun-code-font,ui-monospace,monospace);font-size:var(--runbun-code-size,.875rem);line-height:var(--runbun-code-line-height,1.6)}
 .runbun-tabs{display:grid;border:1px solid var(--runbun-code-border,color-mix(in srgb,currentColor 15%,transparent));border-radius:var(--runbun-code-radius,8px);overflow:hidden;background:var(--hls-background);color:var(--hls-foreground)}
 .runbun-tabs>.runbun-code{grid-area:2/1;visibility:hidden;min-width:0;margin:0;border:0;border-radius:0}
-.runbun-tablist{grid-area:1/1;display:flex;overflow-x:auto;border-bottom:1px solid var(--runbun-code-border,color-mix(in srgb,currentColor 15%,transparent));font-family:var(--runbun-code-font,ui-monospace,monospace);font-size:var(--runbun-code-caption-size,.75rem)}
-.runbun-tablist label{position:relative;padding:.5rem 1rem;cursor:pointer;white-space:nowrap;opacity:.65;border-bottom:2px solid transparent;margin-bottom:-1px}
+.runbun-tablist{grid-area:1/1;display:flex;overflow-x:auto;overflow-y:hidden;box-shadow:inset 0 -1px var(--runbun-code-border,color-mix(in srgb,currentColor 15%,transparent));font-family:var(--runbun-code-font,ui-monospace,monospace);font-size:var(--runbun-code-caption-size,.75rem)}
+.runbun-tablist label{position:relative;padding:.5rem 1rem;cursor:pointer;white-space:nowrap;opacity:.65;border-bottom:2px solid transparent}
 .runbun-tablist label:hover{opacity:.9}
 .runbun-tablist label:has(input:checked){opacity:1;border-bottom-color:currentColor}
 .runbun-tablist label:has(input:focus-visible){outline:2px solid currentColor;outline-offset:-2px}
