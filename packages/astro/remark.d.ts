@@ -5,4 +5,4 @@ export default function remarkRunbun(options?: {
   playgroundUrl?: string;
   base?: string;
   sync?: { scheme?: string; family?: string };
-}): (tree: Root) => void;
+}): (tree: Root, file?: { path?: string }) => void;

@@ -20,7 +20,15 @@ function tokens(meta) {
 }
 
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
-const html = (value) => ({ type: "html", value });
+/**
+ * Raw HTML for the page. MDX turns a raw `<script>`'s text into a literal `set:html` attribute, so the embed's files
+ * would arrive empty; there the HTML goes through Astro's `<Fragment set:html>` untouched.
+ */
+let mdx = false;
+const html = (value) =>
+  mdx
+    ? { type: "mdxJsxFlowElement", name: "Fragment", attributes: [{ type: "mdxJsxAttribute", name: "set:html", value }], children: [] }
+    : { type: "html", value };
 
 function parse(node) {
   const toks = tokens(node.meta ?? "");
@@ -79,7 +87,8 @@ function transform(children) {
 
 /** @param {{ playgroundUrl?: string, base?: string, sync?: { scheme?: string, family?: string } }} [options] */
 export default function remarkRunbun(options = {}) {
-  return (tree) => {
+  return (tree, file) => {
+    mdx = /\.mdx$/.test(file?.path ?? "");
     if (!transform(tree.children)) return;
     const { playgroundUrl, base, sync } = { ...CONFIG(), ...options };
     tree.children.push(html(cssLink(base) + "\n" + embedScripts(playgroundUrl, sync)));
