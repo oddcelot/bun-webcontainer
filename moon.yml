@@ -9,3 +9,17 @@ tasks:
       cache: false
       runInCI: true
       runFromWorkspaceRoot: true
+  lint-sh:
+    # Warnings and errors only; style notes (SC2012 & co.) don't fail it. Needs shellcheck (Brewfile).
+    script: 'shellcheck -S warning scripts/*.sh .claude/hooks/*.sh'
+    inputs:
+      - '/scripts/*.sh'
+      - '/.claude/hooks/*.sh'
+    options:
+      runFromWorkspaceRoot: true
+  typos:
+    # Spell check of tracked sources and docs; exceptions in _typos.toml. Needs typos-cli (Brewfile).
+    command: 'typos'
+    options:
+      cache: false
+      runFromWorkspaceRoot: true

@@ -12,3 +12,7 @@ bun_core = { path = "../../bun/src/bun_core" }
 bun_threading = { path = "../../bun/src/threading" }
 bstr = "1"
 libc = "0.2"
+
+[package.metadata.cargo-machete]
+# Used by bun/src/sema/standalone/native.rs, which src/lib.rs includes with #[path].
+ignored = ["bstr", "bun_threading", "libc"]

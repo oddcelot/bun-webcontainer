@@ -1,3 +1,4 @@
+# shellcheck shell=bash disable=SC2034  # sourced: the pins are read by the scripts that source this file
 # Sourced by the bun scripts. Upstream Bun commit the patch series in patches/bun/ applies to.
 # scripts/bun-upgrade.sh rewrites this file; follow releases (BUN_TAG), not main.
 BUN_COMMIT=7942008688acad538e64933b82465dc614fe7536

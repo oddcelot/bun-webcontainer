@@ -29,6 +29,12 @@ tasks:
       - '@group(sources)'
     outputs:
       - 'dist/**/*'
+  links:
+    # Internal links of the built site (offline: external URLs are skipped). Needs lychee (Brewfile).
+    script: 'lychee --offline --no-progress --root-dir "$PWD/dist" dist'
+    deps: ['~:build']
+    inputs:
+      - 'dist/**/*'
   dev:
     # The embeds frame the playground dev server, so it runs alongside (scripts/dev.sh does the same by hand).
     # When an AI agent runs it, `astro dev` backgrounds itself (stop: `cd docs && bunx astro dev stop`) and the task

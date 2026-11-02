@@ -7,6 +7,6 @@ pkgs=""; for c in "$@"; do pkgs="$pkgs -p $c"; done
 cargo +"$TOOLCHAIN" build $pkgs -Zbuild-std=std,panic_abort \
   --target wasm64-unknown-unknown --message-format=short > /tmp/w64.log 2>&1
 status=$?
-grep -E "(error|warning)(\[|:)" /tmp/w64.log | grep -v "^warning: build failed" | head -${N:-60}
+grep -E "(error|warning)(\[|:)" /tmp/w64.log | grep -v "^warning: build failed" | head -n "${N:-60}"
 grep -E "could not compile|Finished" /tmp/w64.log
 exit $status

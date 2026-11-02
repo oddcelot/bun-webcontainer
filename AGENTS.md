@@ -66,6 +66,7 @@ moon run :test                             # build + test every wasm crate (cach
 moon run <crate>:build|test                # one crate; config in .moon/ and <crate>/moon.yml
 moon run playground:build docs:build       # playground after the wasm crates' builds; docs:check, playground:typecheck
 moon run docs:dev                          # docs dev server + playground:dev (like scripts/dev.sh)
+moon run root:lint-sh root:typos docs:links  # shellcheck, spelling, the built docs' internal links (tools: Brewfile)
 scripts/setup-bun.sh                       # recreate bun/ (pinned commit + patches/bun/ via git am); bun/ is not tracked
 scripts/export-bun-patches.sh              # after committing in bun/ on wasm-experiment
 scripts/bun-upgrade.sh --check             # newer Bun release? do patches/bun/ still apply? (changes nothing)
@@ -132,6 +133,22 @@ These rules override the conservative Beads profile for commits (not for pushes)
   support), update the matching page in `apps/docs/src/content/docs/` (`compatibility/bun.md`, `node.md`,
   `toolchain.md`, `browsers.md`, `frameworks.md`, `guides/features.md`) in the same commit, using
   the status labels from `compatibility/index.md`. Don't deploy the docs without asking.
+
+## Shell Tools
+
+`brew bundle` (Brewfile) installs these; prefer them over sed/python one-offs:
+
+- `sd` for find-and-replace (`sd -F 'old/path' 'new/path' $(git grep -l 'old/path')`). Don't use `sed -i`/`sed -E`:
+  macOS's BSD sed differs from GNU (`-i ''`, no `\1` in `-E` patterns). In Claude Code a hook
+  (`.claude/hooks/prefer-sd.sh`) refuses in-place `sed`/`perl` edits; read-only `sed` still runs.
+- `ast-grep` for structural search/rewrite in Rust/TS/TSX, e.g.
+  `ast-grep run -l ts -p 'import { $$$ } from "@runbun/vfs"' apps/` (add `-r '<rewrite>' -U` to apply).
+- `rg` always gets an explicit path (`rg -n foo .`): without one and with stdin not a terminal, it waits on stdin.
+- `wasm-tools` for the built `.wasm`: `wasm-tools print X.wasm | rg '^\s*\((import|export)'` lists its ABI (check it
+  is unchanged after a refactor); `wasm-tools validate --features all`. `twiggy top -n 20 X.wasm` shows what's big.
+- `cargo machete` lists unused dependencies of the wrapper crates. Verify before removing one: a crate can be linked
+  only for its `#[no_mangle]` symbols (`use bun_sys_host as _;`).
+- `hyperfine -N` to time commands; give `rg` a path there too.
 
 ## Non-Interactive Shell Commands
 
