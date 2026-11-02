@@ -10,7 +10,7 @@ export const PRESETS: Record<Mode, readonly Feature[]> = {
 };
 
 /** What a feature costs to turn on, for the embed's menu. */
-export const COST: Partial<Record<Feature, string>> = { types: "12 MB", format: "9 MB" };
+export const COST: Partial<Record<Feature, string>> = { types: "10 MB", format: "7 MB" };
 
 export const isMode = (s: unknown): s is Mode => MODES.includes(s as Mode);
 export const isFeature = (s: unknown): s is Feature => FEATURES.includes(s as Feature);

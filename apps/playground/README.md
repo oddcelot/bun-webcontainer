@@ -83,7 +83,7 @@ User-facing gaps are listed at https://docs.runbun.dev/compatibility/ and kept i
 
 - Import rewriting is regex-based over a tokenizer that skips strings, templates, comments and regex literals (a heuristic: `/` after `)` counts as division).
 - Pierre editor: renders every line (no virtualization yet; `VirtualizedFile` would be needed for very large files) and has no autocomplete; undo history resets when switching files or editors.
-- The bundler wasm (~10 MB) is fetched on first use and instantiated fresh per bundle, single-threaded. HTML imports are bundled on first request, cached, and dropped on any file change; if bundling fails the page falls back to the unbundled `/__vfs/` module server.
+- The bundler wasm (~7.5 MB) is fetched on first use and instantiated fresh per bundle, single-threaded. HTML imports are bundled on first request, cached, and dropped on any file change; if bundling fails the page falls back to the unbundled `/__vfs/` module server.
 - The preview SW drops `If-None-Match`/`If-Modified-Since` (nothing is cached, and a 304 would arrive empty).
 - Single tab only (the SW picks one page). A hard refresh (bypassing the SW) leaves the page uncontrolled; reload normally.
 

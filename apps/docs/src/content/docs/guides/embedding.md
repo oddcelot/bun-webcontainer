@@ -58,10 +58,10 @@ A share link's `#code=…` hash works too: `https://runbun.dev/embed?mode=code#c
 
 | Mode | Shows | Loads | Default height |
 |---|---|---|---|
-| `code` | The editor and a console below it. | wasm for the transpiler and resolver (about 5 MB, once per site) | fits the code |
+| `code` | The editor and a console below it. | wasm for the transpiler and resolver (about 4 MB, once per site) | fits the code |
 | `console` | The editor beside the console, which takes `bun test` and other commands. | same | 360px |
 | `preview` | The editor with file tabs beside the preview. Installs missing packages. | same, plus the packages | 420px |
-| `full` | The whole playground: file tree, tabs, preview over console, Format, Install. Waits for Run. | same, plus the formatter (9 MB) once used | 600px |
+| `full` | The whole playground: file tree, tabs, preview over console, Format, Install. Waits for Run. | same, plus the formatter (7 MB) once used | 600px |
 | `result` | Only the preview, with an Edit button that switches to `preview`. | same | 420px |
 
 Every mode except `full` runs the code once it has loaded; `autorun="false"` waits for Run. While the program runs, saving an edit restarts it, like `bun --watch` (`features="-watch"` turns that off).
@@ -112,7 +112,7 @@ Readers get a **⋯** menu to show or hide the file tree, tabs, console and prev
 
 Readers can drag the borders between panes (or focus one and use the arrow keys) to resize them; a double click goes back to the default. Sizes are kept for the browser tab.
 
-Type checking downloads 12 MB the first time it's used, and format 9 MB. They are off until someone turns them on.
+Type checking downloads 10 MB the first time it's used, and format 7 MB. They are off until someone turns them on.
 
 Edits are lost on reload. Set `persist="some-key"` to keep them in the reader's browser, or `readonly` to stop editing (Run still works).
 

@@ -62,8 +62,8 @@ Inline files: child `<script type="text/plain" data-file="path">` elements, dede
 | `tabs` | Tab bar for open files | `preview`, `full` | |
 | `console` | Console output | `code`, `console`, `full` | |
 | `preview` | Preview of a server | `preview`, `full`, `result` | |
-| `types` | Type errors, hover and completions | none | 12 MB on first use |
-| `format` | Format button (`bun fmt`) | `full` | 9 MB on first use |
+| `types` | Type errors, hover and completions | none | 10 MB on first use |
+| `format` | Format button (`bun fmt`) | `full` | 7 MB on first use |
 | `install` | Install button | `preview`, `full` | |
 | `terminal` | Interactive terminal | `console`, `full` | |
 | `open` | "Open in runbun.dev" | all | |

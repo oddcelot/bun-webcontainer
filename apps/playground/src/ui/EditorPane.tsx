@@ -21,7 +21,7 @@ const SAVE_DELAY = 300;
 export function EditorPane() {
   const app = useContext(AppContext);
   const { vfs, workspace: ws, log } = app;
-  // An embed loads the type checker (12 MB) and the formatter (9 MB) only once they're turned on.
+  // An embed loads the type checker (10 MB) and the formatter (7 MB) only once they're turned on.
   const has = (name: "types" | "format" | "tabs" | "autosave" | "edit") => app.features?.has(name) ?? true;
   let el!: HTMLDivElement;
   let editor: CodeEditor | undefined;
