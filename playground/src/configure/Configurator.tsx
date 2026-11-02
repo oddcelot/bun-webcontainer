@@ -6,7 +6,7 @@ import { PRESETS } from "../embed/config";
 import { FEATURES, MODES, type Feature, type Mode } from "../embed/protocol";
 import { examples, repoExamples } from "../examples";
 import { createPierre, createViewer } from "../editors/pierre";
-import { FAMILIES, isFamily, pickFamily, setColorMode, setThemeVars } from "../theme";
+import { FAMILIES, isFamily, pickFamily, setColorMode } from "../theme";
 import { guarded } from "../ui/guarded";
 import { Swatch } from "../ui/Swatch";
 import { TabItem, TabList } from "../ui/Tabs";
@@ -14,12 +14,11 @@ import { Tip } from "../ui/Tip";
 import { attributes, elementSnippet, iframeSnippet, inlineFile, type Attr, type Form } from "./snippet";
 
 // runbun.dev/configure: a form over every <bun-playground> option, a live embed with those options, and the snippet to
-// paste. The page wears the embed's theme, family and vars, so the whole thing previews the look.
+// paste. The form's Look settings go to the embed only; the page wears the docs' theme when they frame it.
 
 /**
- * The page framing the configurator (the docs): its color scheme and theme family, which this page wears wherever the
- * form leaves them at their defaults. They come in the URL (`?theme=dark&family=…`) and later as messages
- * (`{ bunConfigure: 1, theme, family }`), only from the docs.
+ * The page framing the configurator (the docs): its color scheme and theme family, which this page wears. They come
+ * in the URL (`?theme=dark&family=…`) and later as messages (`{ bunConfigure: 1, theme, family }`), only from the docs.
  */
 type Host = { theme?: "light" | "dark"; family?: string };
 const DOCS_ORIGIN = new URL(DOCS).origin;
@@ -281,15 +280,13 @@ export function Configurator() {
     return () => removeEventListener("message", onMessage);
   });
 
-  // The page takes the embed's look (its color mode, family and chrome variables), or the framing page's where the
-  // form leaves them at their defaults.
+  // The page wears the framing page's look (the docs'), else its own default; the form's Look settings are the
+  // embed's alone.
   createEffect(
-    () => ({ theme: form.theme, family: form.family, vars: attrs().find(([k]) => k === "vars")?.[1], host: host() }),
+    () => host(),
     guarded("configure theme", (look) => {
-      const theme = look.theme !== "auto" ? look.theme : (look.host.theme ?? "auto");
-      setColorMode(theme === "auto" ? "system" : theme);
-      pickFamily(look.family !== "default" ? look.family : (look.host.family ?? "pierre-light"));
-      setThemeVars(look.vars ? JSON.parse(look.vars) : undefined);
+      setColorMode(look.theme ?? "system");
+      pickFamily(look.family ?? "pierre-light");
     }),
   );
 
