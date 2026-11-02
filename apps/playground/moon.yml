@@ -40,7 +40,7 @@ tasks:
     outputs:
       - 'dist/**/*'
   dev:
-    # strictPort: the docs frame the playground at localhost:5173 (docs/site-urls.mjs).
+    # strictPort: the docs frame the playground at localhost:5173 (apps/docs/site-urls.ts).
     command: 'bun run dev --strictPort'
     preset: 'server'
     deps:
