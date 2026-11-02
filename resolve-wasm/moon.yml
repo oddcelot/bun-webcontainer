@@ -2,3 +2,8 @@ $schema: 'https://moonrepo.dev/schemas/project.json'
 
 language: 'rust'
 tags: ['wasm64']
+
+tasks:
+  build:
+    outputs:
+      - '/target/wasm64-unknown-unknown/release/bun_resolve_wasm.wasm'

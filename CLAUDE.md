@@ -71,6 +71,8 @@ scripts/export-bun-patches.sh              # after committing in bun/ on wasm-ex
 scripts/bun-upgrade.sh --check             # newer Bun release? do patches/bun/ still apply? (changes nothing)
 scripts/bun-upgrade.sh [tag]               # rebase bun/ onto a release (default: latest); on conflict resolve, then --finish
 scripts/w64.sh <crate>...                  # wasm64 compile check of bun crates
+# The wrapper crates are one Cargo workspace (root Cargo.toml, Cargo.lock, rust-toolchain.toml, target/; not bun/ or
+# tsrs-ls-wasm). Build one crate per cargo run: built together, features unify (sys-host `imports` into transpile-wasm).
 W="-Zbuild-std=std,panic_abort --target wasm64-unknown-unknown --release"
 (cd semver-wasm && cargo build $W && node test.mjs && node diff.mjs)
 (cd transpile-wasm && cargo build $W && node test.mjs)   # diff vs `bun build --no-bundle` on corpus/

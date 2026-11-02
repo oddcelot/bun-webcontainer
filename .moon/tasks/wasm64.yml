@@ -9,8 +9,10 @@ fileGroups:
     - 'src/**/*'
     - 'build.rs'
     - 'Cargo.toml'
-    - 'Cargo.lock'
-    - 'rust-toolchain.toml'
+    # The root Cargo workspace: lockfile, toolchain and release profile.
+    - '/Cargo.toml'
+    - '/Cargo.lock'
+    - '/rust-toolchain.toml'
   bun:
     - '/bun/Cargo.toml'
     - '/bun/Cargo.lock'
@@ -29,8 +31,7 @@ tasks:
     inputs:
       - '@group(sources)'
       - '@group(bun)'
-    outputs:
-      - 'target/wasm64-unknown-unknown/release/*.wasm'
+    # outputs: in each crate's moon.yml (the shared /target holds every crate's .wasm).
   test:
     # Node >= 24 (Memory64); bun lacks it. Both pinned in /.prototools.
     command: 'node test.mjs'

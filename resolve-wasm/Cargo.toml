@@ -23,11 +23,3 @@ bun_js_parser = { path = "../bun/src/js_parser" }
 bun_sys_host = { path = "../sys-host", features = ["imports"] }
 bstr = "1"
 libc = "0.2"
-
-[profile.release]
-panic = "abort"
-opt-level = "s"
-lto = true
-
-[profile.dev]
-panic = "abort"

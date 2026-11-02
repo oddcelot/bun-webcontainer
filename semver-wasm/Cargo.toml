@@ -8,11 +8,3 @@ crate-type = ["cdylib"]
 
 [dependencies]
 bun_semver = { path = "../bun/src/semver" }
-
-[profile.release]
-panic = "abort"
-opt-level = "s"
-lto = true
-
-[profile.dev]
-panic = "abort"

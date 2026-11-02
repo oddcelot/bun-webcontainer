@@ -4,6 +4,9 @@ language: 'rust'
 tags: ['wasm64']
 
 tasks:
+  build:
+    outputs:
+      - '/target/wasm64-unknown-unknown/release/bun_fmt_wasm.wasm'
   test:
     # Formats every git-tracked file in the repo and compares with native `bun fmt`; too wide an input set to cache.
     options:

@@ -4,12 +4,13 @@ language: 'rust'
 
 tasks:
   test:
-    # No rust-toolchain.toml here: use the nightly pinned for bun/.
-    script: '. ../scripts/bun-pins.sh && cargo +"$TOOLCHAIN" test'
+    command: 'cargo test'
     deps: ['root:setup-bun']
     inputs:
       - 'src/**/*'
       - 'Cargo.toml'
-      - 'Cargo.lock'
+      - '/Cargo.toml'
+      - '/Cargo.lock'
+      - '/rust-toolchain.toml'
       - '/bun/src/opaque/**/*'
       - '/scripts/bun-pins.sh'

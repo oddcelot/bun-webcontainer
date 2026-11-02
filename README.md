@@ -32,7 +32,7 @@ moon run playground:build       # after the wasm builds it needs
 moon run docs:dev               # docs + playground dev servers
 ```
 
-By hand:
+By hand (the wrapper crates are one Cargo workspace with a shared `target/`; build them one at a time, as below):
 
 ```sh
 scripts/setup-bun.sh

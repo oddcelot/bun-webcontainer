@@ -1,0 +1,25 @@
+# The wrapper crates around Bun's Rust crates, as one workspace: one Cargo.lock and one target/, so the Bun crates
+# they share (bun_core, bun_ast, bun_sys, ...) compile once. Build crates one at a time (`cargo build` in the crate,
+# or `-p <crate>`): built together, features unify, and sys-host's `imports` would leak into transpile-wasm.
+[workspace]
+resolver = "3"
+members = [
+  "semver-wasm",
+  "transpile-wasm",
+  "bundle-wasm",
+  "sys-wasm",
+  "resolve-wasm",
+  "fmt-wasm",
+  "sys-host",
+  "shim-test",
+]
+# bun/ is upstream's own workspace (the members depend on its crates by path); tsrs-ls-wasm has its own Rust pin.
+exclude = ["bun", "tsrs-ls-wasm"]
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = true
+
+[profile.dev]
+panic = "abort"

@@ -131,10 +131,9 @@ finish() {
   set_pin LOLHTML_COMMIT "$(dep_commit "$bun/scripts/build/deps/lolhtml.ts" LOLHTML_COMMIT)"
   set_pin ARGON2_COMMIT "$(dep_commit "$bun/scripts/build/deps/rust-argon2.ts" RUST_ARGON2_COMMIT)"
   set_pin TOOLCHAIN "$toolchain"
-  # The wrapper crates build with the same nightly as bun/.
-  for f in "$root"/*-wasm/rust-toolchain.toml; do
-    sed "s|^channel = \".*\"|channel = \"$toolchain\"|" "$f" > "$f.tmp" && mv "$f.tmp" "$f"
-  done
+  # The wrapper crates' workspace (root rust-toolchain.toml) builds with the same nightly as bun/.
+  f="$root/rust-toolchain.toml"
+  sed "s|^channel = \".*\"|channel = \"$toolchain\"|" "$f" > "$f.tmp" && mv "$f.tmp" "$f"
   # The tests compare against native Bun of the same release (proto pins it for moon and the shell).
   sed "s|^bun = \".*\"|bun = \"$ver\"|" "$root/.prototools" > "$root/.prototools.tmp" && mv "$root/.prototools.tmp" "$root/.prototools"
   sed "s|BUN_VERSION = \".*\"|BUN_VERSION = \"$ver\"|" "$root/playground/src/worker/bunVersion.ts" > "$root/playground/src/worker/bunVersion.ts.tmp" &&
