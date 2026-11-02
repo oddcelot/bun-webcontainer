@@ -28,6 +28,8 @@ builds and tests with caching (`proto install` once):
 ```sh
 moon run :test                  # build every wasm crate (bun/ set up if missing) and run its test
 moon run transpile-wasm:test    # one crate
+moon run playground:build       # after the wasm builds it needs
+moon run docs:dev               # docs + playground dev servers
 ```
 
 By hand:

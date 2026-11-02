@@ -64,6 +64,8 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 proto install                              # tools pinned in .prototools: moon, bun, node 26 (wasm64 tests need >= 24)
 moon run :test                             # build + test every wasm crate (cached; sets up bun/ if missing)
 moon run <crate>:build|test                # one crate; config in .moon/ and <crate>/moon.yml
+moon run playground:build docs:build       # playground after the wasm crates' builds; docs:check, playground:typecheck
+moon run docs:dev                          # docs dev server + playground:dev (like scripts/dev.sh)
 scripts/setup-bun.sh                       # recreate bun/ (pinned commit + patches/bun/ via git am); bun/ is not tracked
 scripts/export-bun-patches.sh              # after committing in bun/ on wasm-experiment
 scripts/bun-upgrade.sh --check             # newer Bun release? do patches/bun/ still apply? (changes nothing)

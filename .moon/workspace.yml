@@ -14,6 +14,9 @@ projects:
   tsrs-ls-wasm: 'tsrs-ls-wasm'
   sys-host: 'sys-host'
   shim-test: 'shim-test'
+  playground: 'playground'
+  docs: 'docs'
+  astro: 'packages/astro'
 
 vcs:
   client: 'git'
