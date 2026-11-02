@@ -7,6 +7,7 @@ import { bundle, type BundleConfig, type BundleLog } from "./bundler";
 import { setHostVfs } from "./hostPackages";
 import { hash } from "./hash";
 import { CryptoHasher } from "./node/crypto";
+import { Glob } from "./glob";
 import { importMetaResolve, resolveSync } from "./resolve";
 import { Transpiler } from "./transpiler";
 import { fsError } from "./node/errors";
@@ -781,6 +782,7 @@ async function main() {
     Transpiler,
     resolveSync,
     resolve: async (specifier: string, from: string | URL) => resolveSync(specifier, from),
+    Glob,
   };
   g.Bun = Object.assign(builtins.bun, bun);
 
