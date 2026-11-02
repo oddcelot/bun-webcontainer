@@ -84,7 +84,7 @@ checks below.
   - push events (`vfs.onChange`, runner logs, the theme controller): subscribe in `onSettled` and
     write into a store or signal, returning the unsubscribe. Avoid `createMemo(() => from(...))`
     for state that a click changes in several synchronous steps: the theme picker built that way
-    showed a blank select after some picks (see `ui/ThemePicker.tsx`).
+    showed a blank select after some picks (see `apps/playground/src/ui/ThemePicker.tsx`).
   - one-shot async (loading an example, fetching a repo): an `action(function* () {...})`, with
     `Loading`/`isPending` for UI state rather than hand-rolled status flags.
 - **App state** (status, open tabs, console counts, theme) lives in a store created inside `App`
@@ -104,8 +104,8 @@ checks below.
 ## Checking work
 
 ```bash
-(cd playground && bunx tsc --noEmit && bun run build)
-(cd playground && bun run dev)   # port may not be 5173 if another server holds it; read the log
+(cd apps/playground && bunx tsc --noEmit && bun run build)
+(cd apps/playground && bun run dev)   # port may not be 5173 if another server holds it; read the log
 ```
 
 In Chrome: the page loads, Run starts the demo and the preview shows, and the console has no Solid

@@ -71,22 +71,22 @@ scripts/export-bun-patches.sh              # after committing in bun/ on wasm-ex
 scripts/bun-upgrade.sh --check             # newer Bun release? do patches/bun/ still apply? (changes nothing)
 scripts/bun-upgrade.sh [tag]               # rebase bun/ onto a release (default: latest); on conflict resolve, then --finish
 scripts/w64.sh <crate>...                  # wasm64 compile check of bun crates
-# The wrapper crates are one Cargo workspace (root Cargo.toml, Cargo.lock, rust-toolchain.toml, target/; not bun/ or
-# tsrs-ls-wasm). Build one crate per cargo run: built together, features unify (sys-host `imports` into transpile-wasm).
+# The wrapper crates (crates/) are one Cargo workspace (root Cargo.toml, Cargo.lock, rust-toolchain.toml, target/;
+# not bun/ or crates/tsrs-ls-wasm). Build one crate per cargo run: built together, features unify (sys-host `imports` into transpile-wasm).
 W="-Zbuild-std=std,panic_abort --target wasm64-unknown-unknown --release"
-(cd semver-wasm && cargo build $W && node test.mjs && node diff.mjs)
-(cd transpile-wasm && cargo build $W && node test.mjs)   # diff vs `bun build --no-bundle` on corpus/
-(cd sys-wasm && cargo build $W && node test.mjs)         # bun_sys over the VFS (node >= 24; bun lacks Memory64)
-(cd resolve-wasm && cargo build $W && node test.mjs)     # bun_resolver over the VFS vs bun (node >= 24); the playground resolves with it
-(cd tsrs-ls-wasm && cargo build --release --target wasm32-wasip1 && node test.mjs)  # TS7 language service (tsrs); own Rust pin
-(cd fmt-wasm && cargo build $W && node test.mjs)         # `bun fmt` (bun_format) vs native bun fmt on the repo's files (node >= 24)
-(cd shim-test && cargo +$TOOLCHAIN test)         # TOOLCHAIN from scripts/bun-pins.sh
+(cd crates/semver-wasm && cargo build $W && node test.mjs && node diff.mjs)
+(cd crates/transpile-wasm && cargo build $W && node test.mjs)   # diff vs `bun build --no-bundle` on corpus/
+(cd crates/sys-wasm && cargo build $W && node test.mjs)         # bun_sys over the VFS (node >= 24; bun lacks Memory64)
+(cd crates/resolve-wasm && cargo build $W && node test.mjs)     # bun_resolver over the VFS vs bun (node >= 24); the playground resolves with it
+(cd crates/tsrs-ls-wasm && cargo build --release --target wasm32-wasip1 && node test.mjs)  # TS7 language service (tsrs); own Rust pin
+(cd crates/fmt-wasm && cargo build $W && node test.mjs)         # `bun fmt` (bun_format) vs native bun fmt on the repo's files (node >= 24)
+(cd crates/shim-test && cargo +$TOOLCHAIN test)         # TOOLCHAIN from scripts/bun-pins.sh
 bun install                                # root bun workspace (playground, docs, packages/*): one bun.lock, isolated
                                            # node_modules per package; shared versions in package.json's catalog
-(cd playground && bunx tsc --noEmit && bun run dev)      # verify in Chrome (Memory64)
-(cd docs && bun run check && bun run build)               # docs site; `bun run deploy` publishes docs.runbun.dev
+(cd apps/playground && bunx tsc --noEmit && bun run dev)      # verify in Chrome (Memory64)
+(cd apps/docs && bun run check && bun run build)               # docs site; `bun run deploy` publishes docs.runbun.dev
 scripts/dev.sh                                           # playground (:5173) + docs (:4321) dev servers; docs embeds need both
-(cd playground && bun run swatches)                       # after changing theme families: swatches, ui/themes.json, ui/code-themes/
+(cd apps/playground && bun run swatches)                       # after changing theme families: swatches, packages/ui/themes.json, code-themes/
 # Cross-links: DOCS_URL / PLAYGROUND_URL (both builds read them; default localhost in dev, runbun.dev in builds)
 ```
 
@@ -99,6 +99,9 @@ the pins, the wrapper crates' toolchains and the playground's reported version.
 See README.md and HANDOFF.md. In short: Bun's JSC-independent Rust crates compile to wasm64; the
 playground runs user code in the browser engine with JS shims for `Bun.*`, a VFS, a service worker
 (`/__vfs/` modules, `/__preview/` Bun.serve), and Bun's wasm transpiler.
+
+Layout: `apps/` (playground, docs), `crates/` (the Rust wrapper crates, one Cargo workspace), `packages/`
+(`@runbun/astro` on npm; private `@runbun/ui` tokens and `@runbun/vfs`), `patches/` (`bun/`, `npm/`, `bun-codegen/`).
 
 ## Git Workflow
 
@@ -126,6 +129,6 @@ These rules override the conservative Beads profile for commits (not for pushes)
 - Stop the playground dev server by port (`kill $(lsof -tiTCP:5173 -sTCP:LISTEN)`), never `pkill vite`.
 - Keep the docs site in step with the code. When a change adds, removes or changes what users can
   do (a `Bun.*`/`bun:*`/`node:*` API, toolchain or install behavior, a playground feature, browser
-  support), update the matching page in `docs/src/content/docs/` (`compatibility/bun.md`, `node.md`,
+  support), update the matching page in `apps/docs/src/content/docs/` (`compatibility/bun.md`, `node.md`,
   `toolchain.md`, `browsers.md`, `frameworks.md`, `guides/features.md`) in the same commit, using
   the status labels from `compatibility/index.md`. Don't deploy the docs without asking.

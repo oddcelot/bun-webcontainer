@@ -65,7 +65,7 @@ These rules override the conservative Beads profile for commits (not for pushes)
 
 - Keep the docs site in step with the code. When a change adds, removes or changes what users can
   do (a `Bun.*`/`bun:*`/`node:*` API, toolchain or install behavior, a playground feature, browser
-  support), update the matching page in `docs/src/content/docs/` (`compatibility/bun.md`, `node.md`,
+  support), update the matching page in `apps/docs/src/content/docs/` (`compatibility/bun.md`, `node.md`,
   `toolchain.md`, `browsers.md`, `frameworks.md`, `guides/features.md`) in the same commit, using
   the status labels from `compatibility/index.md`. Don't deploy the docs without asking.
 
