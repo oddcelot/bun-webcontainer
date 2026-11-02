@@ -909,10 +909,12 @@ version = "0.0.0"
 dependencies = [
  "bun_ast",
  "bun_dotenv",
+ "bun_glob",
  "bun_install_types",
  "bun_options_types",
  "bun_resolver",
  "bun_semver",
+ "bun_sys",
  "bun_sys_host",
  "bun_wasm_stubs",
 ]
