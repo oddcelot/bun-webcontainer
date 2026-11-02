@@ -9,7 +9,8 @@
     // `moon run docs:deploy-canary`: bun-playground-docs-canary on docs-canary.runbun.dev, built into dist-canary/.
     "canary": {
       "assets": { "directory": "./dist-canary", "not_found_handling": "404-page" },
-      "routes": [{ "pattern": "docs-canary.runbun.dev", "custom_domain": true }]
+      "routes": [{ "pattern": "docs-canary.runbun.dev", "custom_domain": true }],
+      "workers_dev": false
     }
   }
 }

@@ -25,7 +25,9 @@
       },
       "kv_namespaces": [{ "binding": "LINKS", "id": "5823c967357a4e149e3fd4347898c0a2" }],
       "ratelimits": [{ "name": "CREATE_LIMIT", "namespace_id": "1002", "simple": { "limit": 10, "period": 60 } }],
-      "routes": [{ "pattern": "canary.runbun.dev", "custom_domain": true }]
+      "routes": [{ "pattern": "canary.runbun.dev", "custom_domain": true }],
+      // Only the custom domain: a workers.dev copy would be one more host for search engines to find.
+      "workers_dev": false
     }
   }
 }
