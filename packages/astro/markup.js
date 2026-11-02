@@ -42,3 +42,15 @@ export function embedScripts(playgroundUrl, sync) {
 
 /** Extensions for a file named after its fence's or block's language. */
 export const EXT = { typescript: "ts", javascript: "js", markdown: "md", jsonc: "json", shell: "sh", bash: "sh" };
+
+const INDEX = new Set(["index.ts", "index.tsx", "index.js", "src/index.ts"]);
+
+/**
+ * `files` with `entry` as the file Run starts. Run starts package.json's `main`, else an index file, so a block named
+ * anything else gets a package.json that points at it (unless the files bring their own). Test files are left alone:
+ * `bun test` finds them.
+ */
+export function withEntry(files, entry) {
+  if (INDEX.has(entry) || /\.(test|spec)\.[cm]?[jt]sx?$/.test(entry) || "package.json" in files) return files;
+  return { ...files, "package.json": JSON.stringify({ main: entry }, null, 2) + "\n" };
+}

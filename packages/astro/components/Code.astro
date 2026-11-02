@@ -3,7 +3,7 @@
 // `playground` it gets a Run button that turns it into an embed (Playground.astro) with the code as its file, and
 // every embed option passes through. `title` names the file, as in a fence.
 import { config } from "virtual:@runbun/astro/config";
-import { codeBlock, cssLink, EXT } from "../markup.js";
+import { codeBlock, cssLink, EXT, withEntry } from "../markup.js";
 import Playground, { type Props as PlaygroundProps } from "./Playground.astro";
 
 export type Props = Omit<PlaygroundProps, "title"> & {
@@ -20,7 +20,7 @@ const block = codeBlock(code, lang, title);
 <Fragment set:html={cssLink(config.base)} />
 {
   playground ? (
-    <Playground {...options} expand={expand} files={{ [file]: code, ...files }}>
+    <Playground file={file} {...options} expand={expand} files={withEntry({ [file]: code, ...files }, file)}>
       <Fragment set:html={block} />
     </Playground>
   ) : (

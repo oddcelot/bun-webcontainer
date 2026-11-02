@@ -5,7 +5,7 @@
 // names the file. Consecutive fences with the same `group` share one embed (the first fence's options apply).
 // Options default to the runbun() integration's (playgroundUrl, base, sync).
 import { CONFIG } from "./config.js";
-import { codeBlock, cssLink, embedScripts, EXT, fileScript } from "./markup.js";
+import { codeBlock, cssLink, embedScripts, EXT, fileScript, withEntry } from "./markup.js";
 
 const OWN_KEYS = new Set(["playground", "mode", "features", "group", "load", "height", "autorun", "readonly", "persist", "theme", "file", "expand"]);
 const ATTRS = ["mode", "features", "height", "autorun", "readonly", "persist", "theme", "file"];
@@ -41,14 +41,17 @@ function parse(node) {
 
 function embed(entries) {
   const { opts } = entries[0];
-  const used = new Set();
-  const files = entries.map(({ title, node }) => {
+  const sources = {};
+  for (const { title, node } of entries) {
     const ext = EXT[node.lang ?? ""] ?? node.lang ?? "txt";
     let name = title || `index.${ext}`;
-    for (let n = 2; used.has(name); n++) name = `index${n}.${ext}`;
-    used.add(name);
-    return fileScript(name, node.value);
-  });
+    for (let n = 2; name in sources; n++) name = `index${n}.${ext}`;
+    sources[name] = node.value;
+  }
+  // The first fence is the one Run starts, unless the group has an index file of its own.
+  const names = Object.keys(sources);
+  const entry = names.find((n) => /^(src\/)?index\.[jt]sx?$/.test(n)) ?? names[0];
+  const files = Object.entries(withEntry(sources, entry)).map(([name, text]) => fileScript(name, text));
   const attrs = ATTRS.filter((k) => k in opts).map((k) => ` ${k}="${esc(opts[k])}"`).join("");
   // A docs snippet opens as the whole playground in a modal unless the fence says otherwise (`expand=false`, `expand=on`).
   const expand = opts.expand === "false" ? "" : ` expand="${esc(opts.expand || "full")}"`;
