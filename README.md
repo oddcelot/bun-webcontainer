@@ -41,7 +41,8 @@ W="-Zbuild-std=std,panic_abort --target wasm64-unknown-unknown --release"
 (cd resolve-wasm && cargo build $W && node test.mjs)
 (cd fmt-wasm && cargo build $W && node test.mjs)
 (cd tsrs-ls-wasm && cargo build --release --target wasm32-wasip1 && node test.mjs)   # tsrs's Rust 1.99.1, not the nightly
-(cd playground && bun install && bun run dev)   # http://localhost:5173, Chrome
+bun install                     # one bun workspace: playground, docs, packages/*
+(cd playground && bun run dev)  # http://localhost:5173, Chrome
 ```
 
 Work is tracked with [beads](https://github.com/steveyegge/beads): `bd ready`.

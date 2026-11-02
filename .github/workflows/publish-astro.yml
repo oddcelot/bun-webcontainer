@@ -41,8 +41,7 @@ jobs:
       - name: Check the docs site builds with this package
         working-directory: docs
         run: |
-          (cd ../packages/astro && bun install)
-          bun install
+          bun install --frozen-lockfile
           bun run check
           bun run build
 

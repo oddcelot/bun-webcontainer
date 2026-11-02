@@ -77,6 +77,8 @@ W="-Zbuild-std=std,panic_abort --target wasm64-unknown-unknown --release"
 (cd tsrs-ls-wasm && cargo build --release --target wasm32-wasip1 && node test.mjs)  # TS7 language service (tsrs); own Rust pin
 (cd fmt-wasm && cargo build $W && node test.mjs)         # `bun fmt` (bun_format) vs native bun fmt on the repo's files (node >= 24)
 (cd shim-test && cargo +$TOOLCHAIN test)         # TOOLCHAIN from scripts/bun-pins.sh
+bun install                                # root bun workspace (playground, docs, packages/*): one bun.lock, isolated
+                                           # node_modules per package; shared versions in package.json's catalog
 (cd playground && bunx tsc --noEmit && bun run dev)      # verify in Chrome (Memory64)
 (cd docs && bun run check && bun run build)               # docs site; `bun run deploy` publishes docs.runbun.dev
 scripts/dev.sh                                           # playground (:5173) + docs (:4321) dev servers; docs embeds need both
