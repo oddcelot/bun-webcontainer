@@ -136,12 +136,12 @@ finish() {
   sed "s|^channel = \".*\"|channel = \"$toolchain\"|" "$f" > "$f.tmp" && mv "$f.tmp" "$f"
   # The tests compare against native Bun of the same release (proto pins it for moon and the shell).
   sed "s|^bun = \".*\"|bun = \"$ver\"|" "$root/.prototools" > "$root/.prototools.tmp" && mv "$root/.prototools.tmp" "$root/.prototools"
-  sed "s|BUN_VERSION = \".*\"|BUN_VERSION = \"$ver\"|" "$root/playground/src/worker/bunVersion.ts" > "$root/playground/src/worker/bunVersion.ts.tmp" &&
-    mv "$root/playground/src/worker/bunVersion.ts.tmp" "$root/playground/src/worker/bunVersion.ts"
-  # The editor's type checker bundles Bun's type definitions (playground/src/typecheck/bunTypes.ts).
-  # It globs them from playground/node_modules, so bun-types (and @types/node, undici-types) are declared there too.
-  (cd "$root/playground" && bun add -d --exact "@types/bun@$ver" "bun-types@$ver" > /dev/null 2>&1) ||
-    say "bun-upgrade: @types/bun@$ver isn't published yet; run \`bun add -d --exact @types/bun@$ver bun-types@$ver\` in playground/ once it is"
+  sed "s|BUN_VERSION = \".*\"|BUN_VERSION = \"$ver\"|" "$root/apps/playground/src/worker/bunVersion.ts" > "$root/apps/playground/src/worker/bunVersion.ts.tmp" &&
+    mv "$root/apps/playground/src/worker/bunVersion.ts.tmp" "$root/apps/playground/src/worker/bunVersion.ts"
+  # The editor's type checker bundles Bun's type definitions (apps/playground/src/typecheck/bunTypes.ts).
+  # It globs them from apps/playground/node_modules, so bun-types (and @types/node, undici-types) are declared there too.
+  (cd "$root/apps/playground" && bun add -d --exact "@types/bun@$ver" "bun-types@$ver" > /dev/null 2>&1) ||
+    say "bun-upgrade: @types/bun@$ver isn't published yet; run \`bun add -d --exact @types/bun@$ver bun-types@$ver\` in apps/playground/ once it is"
 
   "$root/scripts/bun-prepare.sh" "$bun"
   "$root/scripts/export-bun-patches.sh" > /dev/null
@@ -165,7 +165,7 @@ run_tests() {
   for d in semver-wasm transpile-wasm sys-wasm resolve-wasm bundle-wasm fmt-wasm; do
     say "bun-upgrade: $d…"
     # shellcheck disable=SC2086
-    if (cd "$root/$d" && cargo +"$1" build $W -q && node test.mjs > "/tmp/bun-upgrade-$d.log" 2>&1); then
+    if (cd "$root/crates/$d" && cargo +"$1" build $W -q && node test.mjs > "/tmp/bun-upgrade-$d.log" 2>&1); then
       say "  ok"
     else
       failed="$failed $d"

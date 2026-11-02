@@ -1,0 +1,17 @@
+[package]
+name = "bun_transpile_wasm"
+version = "0.0.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# the C/C++ stand-ins the parser and printer link against
+bun_wasm_stubs = { path = "../wasm-stubs" }
+bun_alloc = { path = "../../bun/src/bun_alloc" }
+bun_ast = { path = "../../bun/src/ast" }
+bun_js_parser = { path = "../../bun/src/js_parser" }
+bun_js_printer = { path = "../../bun/src/js_printer" }
+# defines the bun_sys_host_* symbols bun_sys declares, as -ENOSYS stubs (keeps the wasm import-free)
+bun_sys_host = { path = "../sys-host" }

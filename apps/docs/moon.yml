@@ -1,0 +1,39 @@
+$schema: 'https://moonrepo.dev/schemas/project.json'
+
+language: 'typescript'
+
+fileGroups:
+  sources:
+    - 'src/**/*'
+    - 'public/**/*'
+    - '*.mjs'
+    - '*.ts'
+    - 'tsconfig.json'
+    - 'package.json'
+    - 'wrangler.jsonc'
+    - '/packages/ui/**/*'
+    - '/bun.lock'
+    # @runbun/astro (workspace:*), not built: the docs load its sources.
+    - '/packages/astro/*.{js,ts}'
+    - '/packages/astro/components/**/*'
+    - '/packages/astro/package.json'
+
+tasks:
+  check:
+    command: 'bun run check'
+    inputs:
+      - '@group(sources)'
+  build:
+    command: 'bun run build'
+    inputs:
+      - '@group(sources)'
+    outputs:
+      - 'dist/**/*'
+  dev:
+    # The embeds frame the playground dev server, so it runs alongside (scripts/dev.sh does the same by hand).
+    # When an AI agent runs it, `astro dev` backgrounds itself (stop: `cd docs && bunx astro dev stop`) and the task
+    # ends at once; from a terminal it stays in the foreground.
+    command: 'bun run dev'
+    preset: 'server'
+    deps:
+      - 'playground:dev'

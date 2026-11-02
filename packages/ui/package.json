@@ -1,0 +1,11 @@
+{
+  "name": "@runbun/ui",
+  "private": true,
+  "description": "Design tokens the playground and the docs share: the UnoCSS preset, theme families and code themes.",
+  "type": "module",
+  "exports": {
+    "./uno.preset": "./uno.preset.ts",
+    "./themes.json": "./themes.json",
+    "./code-themes/*": "./code-themes/*"
+  }
+}

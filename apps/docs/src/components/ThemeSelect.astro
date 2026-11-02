@@ -1,0 +1,267 @@
+---
+// The appearance picker, in place of Starlight's light/dark select: like the playground's (playground/src/ui/
+// ThemePicker.tsx), a swatch button opening the color scheme toggle over the theme families. The scheme is Starlight's
+// (`starlight-theme` in localStorage, `data-theme`); the family is `data-family` (ThemeProvider.astro).
+import { FAMILIES } from "@runbun/ui/uno.preset";
+import themes from "@runbun/ui/themes.json";
+
+const chrome: Record<string, Record<string, string>> = themes.chrome;
+const groups = [...new Set(FAMILIES.map((f) => f.group))].map((group) => ({ group, families: FAMILIES.filter((f) => f.group === group) }));
+/** One half of a swatch: the theme's background, with its accent as a strip along the bottom. */
+const half = (theme: string) => `background:${chrome[theme]!["--bg"]};--swatch-accent:${chrome[theme]!["--accent"]}`;
+const MODES = [
+  ["auto", "System", "i-lucide-monitor"],
+  ["light", "Light", "i-lucide-sun"],
+  ["dark", "Dark", "i-lucide-moon"],
+] as const;
+// Starlight renders the picker twice (header and mobile menu); each popover needs its own id.
+const id = `appearance-${Math.random().toString(36).slice(2, 8)}`;
+---
+
+<docs-appearance>
+  <button type="button" class="trigger" popovertarget={id} aria-label="Appearance">
+    <span class="swatch" data-current-swatch><span></span><span></span></span>
+    {MODES.map(([mode, , icon]) => <i class={icon} data-mode-icon={mode} aria-hidden="true" />)}
+    <i class="chevron i-lucide-chevron-down" aria-hidden="true"></i>
+  </button>
+  <div id={id} popover class="appearance" role="dialog" aria-label="Appearance">
+    <div class="modes" role="group" aria-label="Color scheme">
+      {
+        MODES.map(([mode, label, icon]) => (
+          <button type="button" data-mode={mode} aria-pressed="false">
+            <i class={icon} aria-hidden="true" />
+            {label}
+          </button>
+        ))
+      }
+    </div>
+    <div class="families" role="listbox" aria-label="Theme">
+      {
+        groups.map(({ group, families }) => (
+          <div role="group" aria-label={group}>
+            <div class="section" aria-hidden="true">{group}</div>
+            {families.map((f) => (
+              <button type="button" role="option" class="option" data-family={f.light} aria-selected="false">
+                <span class="swatch" aria-hidden="true">
+                  <span style={half(f.light)} />
+                  <span style={half(f.dark)} />
+                </span>
+                <span class="name">{f.name}</span>
+                <i class="check i-lucide-check" aria-hidden="true" />
+              </button>
+            ))}
+          </div>
+        ))
+      }
+    </div>
+  </div>
+</docs-appearance>
+
+<script>
+  type Mode = "auto" | "light" | "dark";
+  const SCHEME_KEY = "starlight-theme"; // Starlight's
+  const FAMILY_KEY = "docs-family";
+  const html = document.documentElement;
+  const store = (key: string, value: string) => {
+    try {
+      localStorage.setItem(key, value);
+    } catch {}
+  };
+  const loadMode = (): Mode => {
+    try {
+      const v = localStorage.getItem(SCHEME_KEY);
+      return v === "light" || v === "dark" ? v : "auto";
+    } catch {
+      return "auto";
+    }
+  };
+  const preferred = () => (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+
+  function setMode(mode: Mode) {
+    html.dataset.theme = mode === "auto" ? preferred() : mode;
+    store(SCHEME_KEY, mode === "auto" ? "" : mode);
+    render();
+  }
+  function setFamily(family: string) {
+    html.dataset.family = family;
+    store(FAMILY_KEY, family);
+    render();
+  }
+  matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => loadMode() === "auto" && setMode("auto"));
+
+  /** Every picker on the page shows the current mode and family. */
+  function render() {
+    const mode = loadMode();
+    for (const picker of document.querySelectorAll("docs-appearance")) {
+      for (const b of picker.querySelectorAll<HTMLElement>("[data-mode]")) b.setAttribute("aria-pressed", String(b.dataset.mode === mode));
+      for (const i of picker.querySelectorAll<HTMLElement>("[data-mode-icon]")) i.hidden = i.dataset.modeIcon !== mode;
+      let current: HTMLElement | null = null;
+      for (const o of picker.querySelectorAll<HTMLElement>("[data-family]")) {
+        const on = o.dataset.family === html.dataset.family;
+        o.setAttribute("aria-selected", String(on));
+        if (on) current = o;
+      }
+      const swatch = picker.querySelector("[data-current-swatch]");
+      if (swatch && current) swatch.replaceChildren(...[...current.querySelector(".swatch")!.children].map((c) => c.cloneNode(true)));
+      picker.querySelector(".trigger")?.setAttribute("title", `Appearance: ${current?.querySelector(".name")?.textContent ?? ""}, ${mode === "auto" ? "system" : mode}`);
+    }
+  }
+
+  class DocsAppearance extends HTMLElement {
+    connectedCallback() {
+      const trigger = this.querySelector<HTMLElement>(".trigger")!;
+      const panel = this.querySelector<HTMLElement>("[popover]")!;
+      this.addEventListener("click", (e) => {
+        const target = (e.target as HTMLElement).closest<HTMLElement>("[data-mode], [data-family]");
+        if (target?.dataset.mode) setMode(target.dataset.mode as Mode);
+        else if (target?.dataset.family) setFamily(target.dataset.family);
+      });
+      // Below the trigger, right-aligned, inside the viewport (the popover is in the top layer, not the header).
+      panel.addEventListener("toggle", (e) => {
+        if ((e as ToggleEvent).newState !== "open") return;
+        const r = trigger.getBoundingClientRect();
+        const left = Math.max(8, Math.min(r.right - panel.offsetWidth, innerWidth - panel.offsetWidth - 8));
+        panel.style.inset = `${r.bottom + 6}px auto auto ${left}px`;
+        panel.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" });
+      });
+      render();
+    }
+  }
+  customElements.define("docs-appearance", DocsAppearance);
+</script>
+
+<style>
+  .trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: var(--control-height);
+    padding: 0 8px;
+    border: 1px solid var(--control-border);
+    border-radius: 6px;
+    background: var(--control);
+    color: var(--fg);
+    cursor: pointer;
+  }
+  .trigger:hover {
+    background: var(--control-hover);
+  }
+  .trigger [hidden] {
+    display: none;
+  }
+  .chevron {
+    color: var(--muted);
+  }
+  .swatch {
+    display: inline-flex;
+    flex-shrink: 0;
+    width: 22px;
+    height: 14px;
+    overflow: hidden;
+    border: 1px solid var(--control-border);
+    border-radius: 3px;
+  }
+  .swatch > :global(span) {
+    flex: 1;
+    box-shadow: inset 0 -3px var(--swatch-accent, transparent);
+  }
+  .appearance {
+    position: fixed;
+    margin: 0;
+    width: 18rem;
+    max-height: min(32rem, 75vh);
+    padding: var(--pad);
+    border: 1px solid var(--control-border);
+    border-radius: calc(var(--inner-radius) + var(--pad) + 1px);
+    background: var(--panel);
+    color: var(--fg);
+    font-size: var(--sl-text-sm);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+    flex-direction: column;
+  }
+  .appearance:popover-open {
+    display: flex;
+  }
+  .modes {
+    display: flex;
+  }
+  .modes button {
+    flex: 1;
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    height: var(--control-height);
+    margin-left: -1px;
+    border: 1px solid var(--control-border);
+    background: var(--control);
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+  .modes button:first-child {
+    margin-left: 0;
+    border-radius: var(--inner-radius) 0 0 var(--inner-radius);
+  }
+  .modes button:last-child {
+    border-radius: 0 var(--inner-radius) var(--inner-radius) 0;
+  }
+  .modes button:hover,
+  .modes button[aria-pressed="true"] {
+    background: var(--control-hover);
+  }
+  .modes button[aria-pressed="true"]::after {
+    content: "";
+    position: absolute;
+    left: 7px;
+    right: 7px;
+    bottom: 0;
+    height: 2px;
+    border-radius: 1px 1px 0 0;
+    background: var(--accent);
+  }
+  .families {
+    margin-top: var(--pad);
+    overflow-y: auto;
+  }
+  .section {
+    padding: 8px 8px 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  .option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 5px 8px;
+    border: 0;
+    border-radius: var(--inner-radius);
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+  }
+  .option:hover,
+  .option:focus-visible {
+    background: var(--control-hover);
+    outline: none;
+  }
+  .option .name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .option .check {
+    color: var(--accent);
+    visibility: hidden;
+  }
+  .option[aria-selected="true"] .check {
+    visibility: visible;
+  }
+</style>

@@ -1,0 +1,30 @@
+[package]
+name = "bun_bundle_wasm"
+version = "0.0.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# the C/C++ stand-ins the parser and printer link against
+bun_wasm_stubs = { path = "../wasm-stubs" }
+bun_bundler = { path = "../../bun/src/bundler" }
+bun_resolver = { path = "../../bun/src/resolver" }
+bun_ast = { path = "../../bun/src/ast" }
+bun_base64 = { path = "../../bun/src/base64" }
+bun_alloc = { path = "../../bun/src/bun_alloc" }
+bun_core = { path = "../../bun/src/bun_core" }
+bun_collections = { path = "../../bun/src/collections" }
+bun_sys = { path = "../../bun/src/sys" }
+bun_threading = { path = "../../bun/src/threading" }
+bun_event_loop = { path = "../../bun/src/event_loop" }
+bun_install_types = { path = "../../bun/src/install_types" }
+bun_semver = { path = "../../bun/src/semver" }
+bun_dotenv = { path = "../../bun/src/dotenv" }
+bun_options_types = { path = "../../bun/src/options_types" }
+bun_js_parser = { path = "../../bun/src/js_parser" }
+bun_js_printer = { path = "../../bun/src/js_printer" }
+# defines the bun_sys_host_* symbols bun_sys declares, as `bun_sys.*` wasm imports served by the VFS
+bun_sys_host = { path = "../sys-host", features = ["imports"] }
+serde_json = "1"

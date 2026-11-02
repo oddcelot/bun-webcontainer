@@ -1,0 +1,10 @@
+{
+  "name": "@runbun/vfs",
+  "private": true,
+  "description": "The playground's in-memory file system and the bun_sys host imports that serve it to the wasm crates. Plain erasable TypeScript: the crates' node tests load it directly.",
+  "type": "module",
+  "exports": {
+    ".": "./vfs.ts",
+    "./sysHost": "./sysHost.ts"
+  }
+}

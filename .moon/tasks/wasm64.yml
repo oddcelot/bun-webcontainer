@@ -18,8 +18,9 @@ fileGroups:
     - '/bun/Cargo.lock'
     - '/bun/src/**/*.rs'
     - '/bun/src/**/Cargo.toml'
-    - '/sys-host/src/**/*'
-    - '/sys-host/Cargo.toml'
+    - '/crates/sys-host/src/**/*'
+    - '/crates/sys-host/Cargo.toml'
+    - '/crates/wasm-stubs/**/*'
     - '/scripts/bun-pins.sh'
 
 tasks:
@@ -41,6 +42,5 @@ tasks:
     deps: ['~:build']
     inputs:
       - '*.mjs'
-      # The tests run the wasm over the playground's VFS and host imports.
-      - '/playground/src/vfs.ts'
-      - '/playground/src/worker/sysHost.ts'
+      # The tests run the wasm over the playground's VFS and host imports (@runbun/vfs).
+      - '/packages/vfs/*.ts'

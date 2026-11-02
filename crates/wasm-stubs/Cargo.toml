@@ -1,0 +1,14 @@
+[package]
+name = "bun_wasm_stubs"
+version = "0.0.0"
+edition = "2024"
+
+# The C/C++ symbols (JSC, WebKit, ICU, sema's natives) that Bun's parser/printer closure links against, as
+# stand-ins: every wasm64 crate that links the parser depends on this and keeps a `use bun_wasm_stubs as _;`.
+[dependencies]
+bun_ast = { path = "../../bun/src/ast" }
+bun_js_parser = { path = "../../bun/src/js_parser" }
+bun_core = { path = "../../bun/src/bun_core" }
+bun_threading = { path = "../../bun/src/threading" }
+bstr = "1"
+libc = "0.2"

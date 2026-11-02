@@ -5,13 +5,14 @@
     "": {
       "name": "bun-webcontainer",
     },
-    "docs": {
+    "apps/docs": {
       "name": "bun-playground-docs",
       "dependencies": {
         "@astrojs/markdown-remark": "^7.3.5",
         "@astrojs/starlight": "^0.42.7",
         "@pierre/theme": "2.0.0",
         "@runbun/astro": "workspace:*",
+        "@runbun/ui": "workspace:*",
         "astro": "^7.4.4",
         "sharp": "^0.35.5",
       },
@@ -25,20 +26,7 @@
         "wrangler": "^4.156.0",
       },
     },
-    "packages/astro": {
-      "name": "@runbun/astro",
-      "version": "0.1.0",
-      "dependencies": {
-        "@pierre/highlights": "0.3.0",
-      },
-      "devDependencies": {
-        "@types/mdast": "^4.0.4",
-      },
-      "peerDependencies": {
-        "astro": "^7.0.0",
-      },
-    },
-    "playground": {
+    "apps/playground": {
       "name": "bun-playground",
       "dependencies": {
         "@kobalte/core": "2.0.0-alpha.4",
@@ -49,6 +37,7 @@
         "@pierre/theming": "1.0.2",
         "@pierre/trees": "^1.0.0-beta.6",
         "@rolldown/browser": "1.2.15",
+        "@runbun/vfs": "workspace:*",
         "@solid-primitives/storage": "5.0.0-next.7",
         "@solidjs/web": "2.0.0-rc.19",
         "@xterm/addon-fit": "^0.11.0",
@@ -70,6 +59,7 @@
         "@fontsource/jetbrains-mono": "^5.3.0",
         "@iconify-json/lucide": "catalog:",
         "@resvg/resvg-js": "^2.6.2",
+        "@runbun/ui": "workspace:*",
         "@solidjs/vite-plugin": "3.0.0-next.52",
         "@types/bun": "1.4.4",
         "@types/node": "26.6.5",
@@ -84,10 +74,29 @@
         "vite": "^8.3.5",
       },
     },
+    "packages/astro": {
+      "name": "@runbun/astro",
+      "version": "0.1.0",
+      "dependencies": {
+        "@pierre/highlights": "0.3.0",
+      },
+      "devDependencies": {
+        "@types/mdast": "^4.0.4",
+      },
+      "peerDependencies": {
+        "astro": "^7.0.0",
+      },
+    },
+    "packages/ui": {
+      "name": "@runbun/ui",
+    },
+    "packages/vfs": {
+      "name": "@runbun/vfs",
+    },
   },
   "patchedDependencies": {
-    "@solid-primitives/presence@1.0.0-next.2": "playground/patches/@solid-primitives%2Fpresence@1.0.0-next.2.patch",
-    "@kobalte/core@2.0.0-alpha.4": "playground/patches/@kobalte%2Fcore@2.0.0-alpha.4.patch",
+    "@solid-primitives/presence@1.0.0-next.2": "patches/npm/@solid-primitives%2Fpresence@1.0.0-next.2.patch",
+    "@kobalte/core@2.0.0-alpha.4": "patches/npm/@kobalte%2Fcore@2.0.0-alpha.4.patch",
   },
   "catalog": {
     "@iconify-json/lucide": "^1.2.148",
@@ -312,7 +321,7 @@
 
     "@fontsource/jetbrains-mono": ["@fontsource/jetbrains-mono@5.3.0", "", {}, "sha512-fqDfB5I9f1p1TV486aUgB9t8zP84P0O1FtQR5Ol9vjwPy+S+EIGlVYm1cvj2W5shcZMTg2nZFdVMoH5wFu8a1A=="],
 
-    "@iconify-json/lucide": ["@iconify-json/lucide@1.2.148", "", { "dependencies": { "@iconify/types": "*" } }, "sha512-m+39WCfRJYC2JgzOsmDuzfZCJqNZg45sm4lYDAnxMvj3F4mN9N1olCc53jMhsn0ZIZBoNV2iyrq5JIxv/GZzow=="],
+    "@iconify-json/lucide": ["@iconify-json/lucide@1.2.150", "", { "dependencies": { "@iconify/types": "*" } }, "sha512-av3IH1CB8RuKrlKGDmBbt6dLYtZus1Vr89VOysxORLhKcTr4ARe4Dmp0gL7Q47sK9GMkyROn1a+h07tAYpSuEw=="],
 
     "@iconify/types": ["@iconify/types@2.0.0", "", {}, "sha512-+wluvCrRhXrhyOmRDJ3q8mux9JkKy5SJ/v8ol2tu4FVjyYvtEzkc/3pK15ET6RKg4b4w4BmTk1+gsCUhf21Ykg=="],
 
@@ -531,6 +540,10 @@
     "@rolldown/pluginutils": ["@rolldown/pluginutils@1.0.1", "", {}, "sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw=="],
 
     "@runbun/astro": ["@runbun/astro@workspace:packages/astro"],
+
+    "@runbun/ui": ["@runbun/ui@workspace:packages/ui"],
+
+    "@runbun/vfs": ["@runbun/vfs@workspace:packages/vfs"],
 
     "@shikijs/core": ["@shikijs/core@4.5.0", "", { "dependencies": { "@shikijs/primitive": "4.5.0", "@shikijs/types": "4.5.0", "@shikijs/vscode-textmate": "^10.0.2", "@types/hast": "^3.0.5", "hast-util-to-html": "^9.0.5" } }, "sha512-6CIgwq+bt2JZ3OSjb/nBkkwEf/CfpHcbam+Mg5Pllco7HAGRQ2/EFhZrrJtbyNTgKwknfVS+llsXGygiDGwJWw=="],
 
@@ -838,9 +851,9 @@
 
     "buffer": ["buffer@6.0.3", "", { "dependencies": { "base64-js": "^1.3.1", "ieee754": "^1.2.1" } }, "sha512-FTiCpNxtwiZZHEZbcbTIcZjERVICn9yq/pDFkTl95/AxzD1naBctN7YO68riM/gLSDY7sdrMby8hofADYuuqOA=="],
 
-    "bun-playground": ["bun-playground@workspace:playground"],
+    "bun-playground": ["bun-playground@workspace:apps/playground"],
 
-    "bun-playground-docs": ["bun-playground-docs@workspace:docs"],
+    "bun-playground-docs": ["bun-playground-docs@workspace:apps/docs"],
 
     "bun-types": ["bun-types@1.4.4", "", { "dependencies": { "@types/node": "*", "undici-types": "*" } }, "sha512-yjrJh5oGX7mMPKGd19YXyIjmEuj4G4zNC30bs7PM9Az7NQ3ndF3j6hbeRdvJTRQEhJ/FYQwW0a2moweEi2hMxQ=="],
 
@@ -1729,8 +1742,6 @@
     "astro/rolldown": ["rolldown@1.2.16", "", { "dependencies": { "@oxc-project/types": "=0.156.0", "@rolldown/pluginutils": "^1.0.0" }, "optionalDependencies": { "@rolldown/binding-android-arm-eabi": "1.2.16", "@rolldown/binding-android-arm64": "1.2.16", "@rolldown/binding-darwin-arm64": "1.2.16", "@rolldown/binding-darwin-x64": "1.2.16", "@rolldown/binding-freebsd-x64": "1.2.16", "@rolldown/binding-linux-arm-gnueabihf": "1.2.16", "@rolldown/binding-linux-arm64-gnu": "1.2.16", "@rolldown/binding-linux-arm64-musl": "1.2.16", "@rolldown/binding-linux-ppc64-gnu": "1.2.16", "@rolldown/binding-linux-s390x-gnu": "1.2.16", "@rolldown/binding-linux-x64-gnu": "1.2.16", "@rolldown/binding-linux-x64-musl": "1.2.16", "@rolldown/binding-openharmony-arm64": "1.2.16", "@rolldown/binding-win32-arm64-msvc": "1.2.16", "@rolldown/binding-win32-x64-msvc": "1.2.16" }, "bin": { "rolldown": "./bin/cli.mjs" } }, "sha512-bWvlMpFKiTfDKfnK7FC2MPgPeWCf/Kpwsq49ApdW+FQaBZb6O6dZ4MAPbPUjp7hYQrw/RobqCzn64BRrQecGHw=="],
 
     "bun-playground-docs/@astrojs/check": ["@astrojs/check@0.9.12", "", { "dependencies": { "@astrojs/language-server": "^2.17.3", "chokidar": "^5.0.0", "kleur": "^4.1.5", "yargs": "^18.2.0" }, "peerDependencies": { "typescript": "^5.0.0 || ^6.0.0" }, "bin": { "astro-check": "./bin/astro-check.js" } }, "sha512-hazpqxIfZWj2VhyPyR0pOEQ/IhFDM/2nIApL96zMXABdD8NrUKYDmhxTy7h+drTDl9MQG/Sd1ET/4amadVJUUA=="],
-
-    "bun-playground-docs/@iconify-json/lucide": ["@iconify-json/lucide@1.2.150", "", { "dependencies": { "@iconify/types": "*" } }, "sha512-av3IH1CB8RuKrlKGDmBbt6dLYtZus1Vr89VOysxORLhKcTr4ARe4Dmp0gL7Q47sK9GMkyROn1a+h07tAYpSuEw=="],
 
     "bun-playground-docs/typescript": ["typescript@6.0.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw=="],
 
