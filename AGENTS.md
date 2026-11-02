@@ -84,7 +84,7 @@ W="-Zbuild-std=std,panic_abort --target wasm64-unknown-unknown --release"
 (cd crates/shim-test && cargo +$TOOLCHAIN test)         # TOOLCHAIN from scripts/bun-pins.sh
 bun install                                # root bun workspace (playground, docs, packages/*): one bun.lock, isolated
                                            # node_modules per package; shared versions in package.json's catalog
-(cd apps/playground && bunx tsc --noEmit && bun run dev)      # verify in Chrome (Memory64)
+(cd apps/playground && bunx tsrs --noEmit && bun run dev)      # verify in Chrome (Memory64)
 (cd apps/docs && bun run check && bun run build)               # docs site; `bun run deploy` publishes docs.runbun.dev
 moon run playground:deploy-canary docs:deploy-canary      # canary.runbun.dev + docs-canary.runbun.dev (noindex)
 scripts/dev.sh                                           # playground (:5173) + docs (:4321) dev servers; docs embeds need both

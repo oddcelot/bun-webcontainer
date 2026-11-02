@@ -7,25 +7,25 @@
     "dev:all": "../../scripts/dev.sh",
     "build": "astro build",
     "preview": "astro preview",
-    "check": "astro check",
+    "check": "astro sync && tsrs --noEmit --runExternalCode",
     "deploy": "astro build && wrangler deploy --env=\"\""
   },
   "dependencies": {
     "@astrojs/markdown-remark": "^7.3.5",
-    "@astrojs/starlight": "^0.42.7",
+    "@astrojs/starlight": "^0.42.8",
     "@pierre/theme": "2.0.0",
     "@runbun/astro": "workspace:*",
     "@runbun/ui": "workspace:*",
-    "astro": "^7.4.4",
+    "astro": "^7.4.5",
     "sharp": "^0.35.5"
   },
   "devDependencies": {
-    "@astrojs/check": "^0.9.12",
-    "@emnapi/runtime": "1.11.1",
+    "@astrojs/ts-content-mapper": "0.2.0",
+    "@emnapi/runtime": "1.11.3",
     "@iconify-json/lucide": "catalog:",
     "@unocss/astro": "66.12.0",
-    "typescript": "^6",
+    "tsrs": "0.20.1-ts7.1.0-beta",
     "unocss": "catalog:",
-    "wrangler": "^4.156.0"
+    "wrangler": "^4.156.2"
   }
 }
