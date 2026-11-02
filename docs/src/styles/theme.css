@@ -126,3 +126,13 @@ bun-playground {
 :root[data-theme="light"] .status-warn > span { color: color-mix(in srgb, var(--warn) 70%, var(--fg)); }
 .status-error > span { color: var(--error); }
 .status-muted > span { color: var(--muted); }
+
+/* @runbun/astro's code blocks (fences marked `playground`, <Code>) in the site's borders, corners and code font. */
+:root {
+  --runbun-code-border: var(--border);
+  --runbun-code-radius: var(--radius);
+  --runbun-code-font: var(--__sl-font-mono);
+  --runbun-code-size: var(--sl-text-code);
+  --runbun-code-caption-size: var(--sl-text-xs);
+  --runbun-code-line-height: var(--sl-line-height);
+}

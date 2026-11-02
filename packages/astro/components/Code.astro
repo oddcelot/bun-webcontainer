@@ -1,0 +1,29 @@
+---
+// A code block highlighted at build time with @pierre/highlights in the page's code theme. Static by default; with
+// `playground` it gets a Run button that turns it into an embed (Playground.astro) with the code as its file, and
+// every embed option passes through. `title` names the file, as in a fence.
+import { config } from "virtual:@runbun/astro/config";
+import { codeBlock, cssLink, EXT } from "../markup.js";
+import Playground, { type Props as PlaygroundProps } from "./Playground.astro";
+
+export type Props = Omit<PlaygroundProps, "title"> & {
+  code: string;
+  lang?: string;
+  title?: string;
+  playground?: boolean;
+};
+const { code, lang = "ts", title, playground, files, expand = "full", ...options } = Astro.props;
+const file = title || `index.${EXT[lang] ?? lang}`;
+const block = codeBlock(code, lang, title);
+---
+
+<Fragment set:html={cssLink(config.base)} />
+{
+  playground ? (
+    <Playground {...options} expand={expand} files={{ [file]: code, ...files }}>
+      <Fragment set:html={block} />
+    </Playground>
+  ) : (
+    <Fragment set:html={block} />
+  )
+}

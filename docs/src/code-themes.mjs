@@ -16,3 +16,8 @@ async function load(name) {
 /** Pierre Dark first: Expressive Code's base theme, which the others are declared against. */
 const names = ["pierre-dark", ...themes.families.flatMap((f) => [f.dark, f.light]).filter((n) => n !== "pierre-dark")];
 export const codeThemes = await Promise.all(names.map(load));
+
+/** The same themes for @runbun/astro: highlights bundles all but Elysia's, which go in as their VS Code JSON. */
+export const codeThemeOptions = [...new Set(themes.families.flatMap((f) => [f.dark, f.light]))].map((n) =>
+  n.startsWith("elysia-") ? json(n) : n,
+);
