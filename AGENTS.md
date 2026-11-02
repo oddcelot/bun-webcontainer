@@ -133,6 +133,16 @@ These rules override the conservative Beads profile for commits (not for pushes)
   `toolchain.md`, `browsers.md`, `frameworks.md`, `guides/features.md`) in the same commit, using
   the status labels from `compatibility/index.md`. Don't deploy the docs without asking.
 
+## Shell Tools
+
+`brew bundle` (Brewfile) installs these; prefer them over sed/python one-offs:
+
+- `sd` for find-and-replace (`sd -F 'old/path' 'new/path' $(git grep -l 'old/path')`). Don't use `sed -i`/`sed -E`:
+  macOS's BSD sed differs from GNU (`-i ''`, no `\1` in `-E` patterns).
+- `ast-grep` for structural search/rewrite in Rust/TS/TSX, e.g.
+  `ast-grep run -l ts -p 'import { $$$ } from "@runbun/vfs"' apps/` (add `-r '<rewrite>' -U` to apply).
+- `rg` always gets an explicit path (`rg -n foo .`): without one and with stdin not a terminal, it waits on stdin.
+
 ## Non-Interactive Shell Commands
 
 **ALWAYS use non-interactive flags** with file operations to avoid hanging on confirmation prompts.
