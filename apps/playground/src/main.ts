@@ -9,6 +9,9 @@ import { attach, discard, mirror, readDir, restore, shareProjectId } from "./per
 import { importZip } from "./archive";
 import { canWrite, lastFolder, rememberFolder } from "./folders";
 import { setThemeVars, urlVars } from "./theme";
+import { showCanaryBadge } from "./canary";
+
+showCanaryBadge();
 
 const pg = createPlayground();
 const { support, session, workspace, previews, terminal, vfs, log, run, stop, install, clearConsole, newFile, entryFile } = pg;

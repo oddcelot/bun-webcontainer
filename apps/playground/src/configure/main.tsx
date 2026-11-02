@@ -2,7 +2,10 @@ import "virtual:uno.css";
 import "./configure.css";
 import { render } from "@solidjs/web";
 import { BASE } from "../base";
+import { showCanaryBadge } from "../canary";
 import { Configurator } from "./Configurator";
+
+showCanaryBadge();
 
 // The <bun-playground> element, from the same embed.js other sites load (in dev vite.config.ts serves it from
 // embed-element/). Not a static import: bundled into this page as well, its code would move to a shared chunk, and
