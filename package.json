@@ -1,6 +1,7 @@
 {
   "name": "bun-webcontainer",
   "private": true,
+  "type": "module",
   "workspaces": {
     "packages": [
       "apps/*",
