@@ -2,7 +2,8 @@
 // hovers, completions and signature help, then 100 edits to index.ts as typing would make them, then a tsconfig change. Prints times and memory.
 //   cargo build --release --target wasm32-wasip1 && node test.mjs [node_modules with @types/bun; default: the playground's]
 import { Worker, isMainThread, parentPort, workerData } from "node:worker_threads";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { dirname } from "node:path";
 
 const wasm = new URL("target/wasm32-wasip1/release/tsrs_ls_wasm.wasm", import.meta.url).pathname;
 if (isMainThread) {
@@ -29,14 +30,28 @@ if (isMainThread) {
   const mib = () => `${ex.memory.buffer.byteLength >> 20} MiB`;
 
   const types = [];
-  const walk = (d) => {
+  const walk = (d, as) => {
     for (const n of readdirSync(d)) {
       const p = `${d}/${n}`;
-      if (statSync(p).isDirectory()) walk(p);
-      else if (/\.d\.[cm]?ts$|package\.json$/.test(p)) types.push(p.replace(workerData, "/node_modules"), readFileSync(p, "utf8"));
+      if (statSync(p).isDirectory()) walk(p, `${as}/${n}`);
+      else if (/\.d\.[cm]?ts$|package\.json$/.test(p)) types.push(`${as}/${n}`, readFileSync(p, "utf8"));
     }
   };
-  for (const pkg of ["@types/bun", "bun-types", "@types/node", "undici-types"]) walk(`${workerData}/${pkg}`);
+  // Each package is looked up from the one that depends on it, as Node would: with isolated installs only @types/bun
+  // is linked into the playground's node_modules, the rest next to their dependents in node_modules/.bun.
+  const find = (name, from) => {
+    for (let d = from; d !== "/"; d = dirname(d)) {
+      const p = `${d}${d.endsWith("/node_modules") ? "" : "/node_modules"}/${name}`;
+      if (existsSync(p)) return realpathSync(p);
+    }
+    throw new Error(`${name} not found from ${from}`);
+  };
+  let from = workerData;
+  for (const pkg of ["@types/bun", "bun-types", "@types/node", "undici-types"]) {
+    const dir = find(pkg, from);
+    walk(dir, `/node_modules/${pkg}`);
+    from = dir;
+  }
   const config = '{"compilerOptions":{"strict":true,"module":"preserve","moduleResolution":"bundler","target":"esnext","types":["bun"],"skipLibCheck":true,"allowImportingTsExtensions":true,"noEmit":true}}';
   let index = 'import { greet } from "./util.ts";\nconst server = Bun.serve({ routes: { "/a/:name": (req) => Response.json(greet(req.params.name)) } });\nconst n: number = server.url;\n';
   const util = 'export function greet(name: string) {\n  return { message: `hi ${name}` };\n}\n';
