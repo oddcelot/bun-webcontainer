@@ -9,6 +9,8 @@ type Exports = {
   dealloc(ptr: bigint, len: bigint): void;
   transpile_resolve_c(pathPtr: bigint, pathLen: bigint, srcPtr: bigint, srcLen: bigint, loader: number, flags: number): bigint;
   transpile_flags_c(pathPtr: bigint, pathLen: bigint, srcPtr: bigint, srcLen: bigint, loader: number, flags: number): bigint;
+  scan_c(pathPtr: bigint, pathLen: bigint, srcPtr: bigint, srcLen: bigint, loader: number, flags: number): bigint;
+  scan_imports_c(pathPtr: bigint, pathLen: bigint, srcPtr: bigint, srcLen: bigint, loader: number, flags: number): bigint;
   output_free(out: bigint): void;
 };
 
@@ -42,14 +44,17 @@ export type ImportKind = "stmt" | "dynamic";
 export type Resolver = (specifier: string, kind: ImportKind) => string | null;
 
 let ready: Promise<Exports> | undefined;
+/** The instance, once loaded (by `load` or `loadSync`). */
+let loaded: Exports | undefined;
 // The wasm import is global to the instance; calls are synchronous, so the current call's resolver lives here.
 let current: Resolver | undefined;
 let resolveError: unknown;
 /** SHA-256 of the wasm, set once it loads: output from another build of the transpiler can differ. */
 let wasmId = "";
 
-async function load(): Promise<Exports> {
-  const res = await fetch(new URL(`${BASE}bun_transpile_wasm.wasm`, location.href));
+const wasmUrl = () => new URL(`${BASE}bun_transpile_wasm.wasm`, location.href);
+
+function instantiate(module: WebAssembly.Module): Exports {
   let w: Exports;
   // ABI: see crates/transpile-wasm/src/lib.rs ("Host resolver ABI"). Returns 0 (keep) or alloc'd [u64 len][utf-8 bytes].
   const env = {
@@ -70,11 +75,30 @@ async function load(): Promise<Exports> {
       }
     },
   };
-  const bytes = await res.arrayBuffer();
-  wasmId = [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map((b) => b.toString(16).padStart(2, "0")).join("");
-  const { instance } = await WebAssembly.instantiate(bytes, { env });
-  w = instance.exports as unknown as Exports;
+  w = new WebAssembly.Instance(module, { env }).exports as unknown as Exports;
   return w;
+}
+
+async function load(): Promise<Exports> {
+  const bytes = await (await fetch(wasmUrl())).arrayBuffer();
+  wasmId = [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const module = await WebAssembly.compile(bytes);
+  return (loaded ??= instantiate(module));
+}
+
+/**
+ * The instance, loaded synchronously if it isn't yet (a synchronous XHR and compile): for `Bun.Transpiler#transformSync`
+ * in the worker, which loads the 3 MB module only when a program uses it. Workers only: the page may not compile
+ * modules this large synchronously.
+ */
+function loadSync(): Exports {
+  if (loaded) return loaded;
+  const xhr = new XMLHttpRequest();
+  xhr.open("GET", wasmUrl(), false);
+  xhr.responseType = "arraybuffer";
+  xhr.send();
+  if (xhr.status !== 200) throw new Error(`failed to load the transpiler: HTTP ${xhr.status}`);
+  return (loaded = instantiate(new WebAssembly.Module(xhr.response as ArrayBuffer)));
 }
 
 /** Which build of the transpiler this is (a hash of its wasm). */
@@ -92,6 +116,23 @@ const dec = new TextDecoder();
  */
 export async function transpile(source: string, path: string, tsconfig: TsconfigFlags = {}, resolve?: Resolver): Promise<string> {
   const w = await (ready ??= load());
+  const flags = (tsconfig.experimentalDecorators ? 1 : 0) | (tsconfig.emitDecoratorMetadata ? 2 : 0);
+  const loader = LOADERS[path.slice(path.lastIndexOf(".") + 1)] ?? 0;
+  current = resolve;
+  resolveError = undefined;
+  try {
+    return call(w, resolve ? "transpile_resolve_c" : "transpile_flags_c", path, source, loader, flags, () => {
+      if (resolveError !== undefined) throw resolveError;
+    });
+  } finally {
+    current = undefined;
+  }
+}
+
+type Entry = "transpile_resolve_c" | "transpile_flags_c" | "scan_c" | "scan_imports_c";
+
+/** Calls `fn` (always with DIAGNOSTICS_JSON) and returns its text, or throws a TranspileError. `check` runs first. */
+function call(w: Exports, fn: Entry, path: string, source: string, loader: number, flags: number, check?: () => void): string {
   const put = (s: string): [bigint, bigint] => {
     const b = enc.encode(s);
     const len = BigInt(b.length);
@@ -101,18 +142,9 @@ export async function transpile(source: string, path: string, tsconfig: Tsconfig
   };
   const [pp, pl] = put(path);
   const [sp, sl] = put(source);
-  const flags = (tsconfig.experimentalDecorators ? 1 : 0) | (tsconfig.emitDecoratorMetadata ? 2 : 0) | 4; // 4: errors as JSON
-  const loader = LOADERS[path.slice(path.lastIndexOf(".") + 1)] ?? 0;
-  current = resolve;
-  resolveError = undefined;
-  let out: bigint;
+  const out = w[fn](pp, pl, sp, sl, loader, flags | 4); // 4: errors as JSON
   try {
-    out = resolve ? w.transpile_resolve_c(pp, pl, sp, sl, loader, flags) : w.transpile_flags_c(pp, pl, sp, sl, loader, flags);
-  } finally {
-    current = undefined;
-  }
-  try {
-    if (resolveError !== undefined) throw resolveError;
+    check?.();
     const view = new DataView(w.memory.buffer);
     const at = Number(out);
     const status = view.getBigUint64(at, true);
@@ -135,4 +167,16 @@ export async function transpile(source: string, path: string, tsconfig: Tsconfig
     w.dealloc(pp, pl);
     w.dealloc(sp, sl);
   }
+}
+
+/** What `Bun.Transpiler` runs: its output (`transform`, as Bun's runtime transpiler prints it), `scan` or `scanImports` (JSON). */
+export type RuntimeOp = "transform" | "scan" | "scanImports";
+const RUNTIME_TRANSPILER = 8;
+const ENTRY: Record<RuntimeOp, Entry> = { transform: "transpile_flags_c", scan: "scan_c", scanImports: "scan_imports_c" };
+
+/** For `Bun.Transpiler` in the worker: synchronous, loading the module on first use. `loader` is js, jsx, ts or tsx. */
+export function runtimeTranspile(op: RuntimeOp, source: string, loader: "js" | "jsx" | "ts" | "tsx", tsconfig: TsconfigFlags = {}): string {
+  const flags = (tsconfig.experimentalDecorators ? 1 : 0) | (tsconfig.emitDecoratorMetadata ? 2 : 0) | RUNTIME_TRANSPILER;
+  // Bun names the source after the loader (`Loader::stdin_name`), which its messages show.
+  return call(loadSync(), ENTRY[op], `input.${loader}`, source, LOADERS[loader], flags);
 }

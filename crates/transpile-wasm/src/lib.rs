@@ -1,7 +1,8 @@
 //! Bun's JS/TS/JSX transpiler (`bun_js_parser` + `bun_js_printer`) behind a pointer+length C ABI.
 //!
 //! Mirrors the no-bundle path of `bun_bundler::Transpiler` (`bundler/cache.rs` parse,
-//! `print_ast_esm_ascii` print) without the resolver, macros or defines.
+//! `print_ast_esm_ascii` print) without the resolver, macros or defines. `scan` reports the imports and exports
+//! of the same parse (`Bun.Transpiler#scan`).
 
 // The C/C++ stand-ins the parser and printer link against.
 use bun_wasm_stubs as _;
@@ -26,6 +27,9 @@ pub const EXPERIMENTAL_DECORATORS: u32 = 1;
 pub const EMIT_DECORATOR_METADATA: u32 = 2;
 /// Not a tsconfig option: on failure, `Output.ptr` holds the diagnostics as JSON (see `format_json`) instead of text.
 pub const DIAGNOSTICS_JSON: u32 = 4;
+/// Not a tsconfig option: output as `Bun.Transpiler` prints it (no JSX runtime import, no `/* @__PURE__ */`
+/// annotations) instead of as `bun build --no-bundle`.
+pub const RUNTIME_TRANSPILER: u32 = 8;
 
 /// Transpiled JS on success; formatted diagnostics on failure.
 pub fn transpile(path: &[u8], source: &[u8], loader: Loader, flags: u32) -> Result<Vec<u8>, Vec<u8>> {
@@ -43,20 +47,113 @@ pub const KIND_DYNAMIC: u32 = 4;
 /// never text inside strings, templates or comments) passed through `resolve` before printing.
 /// `require()` and `require.resolve()` records are left alone.
 pub fn transpile_with(path: &[u8], source: &[u8], loader: Loader, flags: u32, resolve: Option<Resolver>) -> Result<Vec<u8>, Vec<u8>> {
+    with_ast(path, source, loader, flags, |mut ast, arena, src| {
+        if let Some(resolve) = resolve {
+            for record in ast.import_records.iter_mut() {
+                let kind = record.kind as u32;
+                if (kind != KIND_STMT && kind != KIND_DYNAMIC) || record.flags.contains(bun_ast::ImportRecordFlags::IS_UNUSED) {
+                    continue;
+                }
+                if let Some(new) = resolve(record.path.text, kind) {
+                    record.path.text = arena.alloc_slice_copy(&new);
+                }
+            }
+        }
+
+        let symbols = bun_ast::symbol::Map::init_with_one_list(
+            core::mem::replace(&mut ast.symbols, bun_alloc::ArenaVec::new_in(arena))
+                .into_iter()
+                .collect(),
+        );
+        let opts = printer::Options {
+            bundling: false,
+            require_ref: Some(ast.require_ref),
+            import_meta_ref: ast.import_meta_ref,
+            hmr_ref: ast.wrapper_ref,
+            print_dce_annotations: flags & RUNTIME_TRANSPILER == 0,
+            ..Default::default()
+        };
+        let mut writer = printer::BufferPrinter::init(printer::BufferWriter::init());
+        match printer::print_ast::<_, false, false>(&mut writer, arena, &ast, symbols, src, opts) {
+            Ok(_) => Ok(writer.ctx.written().to_vec()),
+            Err(e) => Err(format!("print failed: {e:?}").into_bytes()),
+        }
+    })
+}
+
+/// What `Bun.Transpiler#scan` reports, from the same parse as `transpile`:
+/// `{"imports":[{"kind":"import-statement",..,"path":..}],"exports":[..]}`. The imports are the parser's import
+/// records without internal ones and `require()` calls (as `named_imports_to_js` in Bun's `JSTranspiler.rs`, with
+/// `trimUnusedImports` off), `kind` is `ImportKind::label`; the exports are the named exports, sorted.
+pub fn scan(path: &[u8], source: &[u8], loader: Loader, flags: u32) -> Result<Vec<u8>, Vec<u8>> {
+    with_ast(path, source, loader, flags, |ast, _, _| {
+        let mut out = b"{\"imports\":[".to_vec();
+        // Bun's `scan` never lists `require()` calls (its scan pass, `scan_imports`, does).
+        import_records_json(&mut out, ast.import_records.iter().filter(|r| r.kind != bun_ast::ImportKind::Require));
+        out.extend_from_slice(b"],\"exports\":[");
+        let mut names: Vec<&[u8]> = ast.named_exports.keys().iter().map(|k| &**k).collect();
+        names.sort_unstable();
+        for (i, name) in names.iter().enumerate() {
+            if i > 0 {
+                out.push(b',');
+            }
+            json_str(&mut out, name);
+        }
+        out.extend_from_slice(b"]}");
+        Ok(out)
+    })
+}
+
+/// What `Bun.Transpiler#scanImports` reports: the import records of Bun's quick scan pass
+/// (`Parser::scan_imports`, as `bun_bundler::cache::JavaScript::scan`), as `[{"kind":..,"path":..}]`.
+pub fn scan_imports(path: &[u8], source: &[u8], loader: Loader, flags: u32) -> Result<Vec<u8>, Vec<u8>> {
     let arena = Arena::new();
     let mut ast_alloc = bun_ast::ASTMemoryAllocator::borrowing(&arena);
     let _ast_scope = ast_alloc.enter();
+    let src = bun_ast::Source::init_path_string(path, source);
+    let opts = parser_options(loader, flags);
+    let define = Define::default();
+    let mut log = bun_ast::Log::init();
+    let mut result = bun_js_parser::ScanPassResult::init();
+    let ok = Parser::init(opts, &mut log, &src, &define, &arena).and_then(|mut p| p.scan_imports(&mut result)).is_ok();
+    if !ok || log.errors > 0 {
+        return Err(if flags & DIAGNOSTICS_JSON != 0 { format_json(&log) } else { format_log(&log) });
+    }
+    let mut out = b"[".to_vec();
+    import_records_json(&mut out, result.import_records.iter());
+    out.push(b']');
+    Ok(out)
+}
 
+/// `{"kind":..,"path":..}` for each record but internal ones, comma-separated.
+fn import_records_json<'r, 'a: 'r>(out: &mut Vec<u8>, records: impl Iterator<Item = &'r bun_ast::ImportRecord<'a>>) {
+    let mut first = true;
+    for record in records {
+        if record.flags.contains(bun_ast::ImportRecordFlags::IS_INTERNAL) {
+            continue;
+        }
+        if !first {
+            out.push(b',');
+        }
+        first = false;
+        out.extend_from_slice(b"{\"kind\":");
+        json_str(out, record.kind.label());
+        out.extend_from_slice(b",\"path\":");
+        json_str(out, record.path.text);
+        out.push(b'}');
+    }
+}
+
+fn parser_options(loader: Loader, flags: u32) -> ParserOptions<'static> {
     let loader = match loader {
         Loader::Js => bun_ast::Loader::Js,
         Loader::Jsx => bun_ast::Loader::Jsx,
         Loader::Ts => bun_ast::Loader::Ts,
         Loader::Tsx => bun_ast::Loader::Tsx,
     };
-    let src = bun_ast::Source::init_path_string(path, source);
     let mut opts = ParserOptions::init(options::JSX::Pragma::default(), loader);
     // As `bun build --no-bundle --target=browser` sets them (`bundler/transpiler.rs`).
-    opts.features.auto_import_jsx = true;
+    opts.features.auto_import_jsx = flags & RUNTIME_TRANSPILER == 0;
     opts.features.no_macros = true;
     opts.features.top_level_await = true;
     opts.features.lower_using = true;
@@ -64,6 +161,24 @@ pub fn transpile_with(path: &[u8], source: &[u8], loader: Loader, flags: u32, re
     let legacy = flags & (EXPERIMENTAL_DECORATORS | EMIT_DECORATOR_METADATA) != 0;
     opts.features.emit_decorator_metadata = flags & EMIT_DECORATOR_METADATA != 0;
     opts.features.standard_decorators = !loader.is_typescript() || !legacy;
+    opts
+}
+
+/// Parses `source` as `bun build --no-bundle --target=browser` does and hands the AST to `f`; parse errors are
+/// formatted per `flags` (`DIAGNOSTICS_JSON`).
+fn with_ast(
+    path: &[u8],
+    source: &[u8],
+    loader: Loader,
+    flags: u32,
+    f: impl for<'a> FnOnce(bun_ast::Ast<'a>, &'a Arena, &bun_ast::Source) -> Result<Vec<u8>, Vec<u8>>,
+) -> Result<Vec<u8>, Vec<u8>> {
+    let arena = Arena::new();
+    let mut ast_alloc = bun_ast::ASTMemoryAllocator::borrowing(&arena);
+    let _ast_scope = ast_alloc.enter();
+
+    let src = bun_ast::Source::init_path_string(path, source);
+    let opts = parser_options(loader, flags);
     let define = Define::default();
     let mut log = bun_ast::Log::init();
 
@@ -74,37 +189,7 @@ pub fn transpile_with(path: &[u8], source: &[u8], loader: Loader, flags: u32, re
             return Err(if flags & DIAGNOSTICS_JSON != 0 { format_json(&log) } else { format_log(&log) });
         }
     };
-    let mut ast = *ast;
-
-    if let Some(resolve) = resolve {
-        for record in ast.import_records.iter_mut() {
-            let kind = record.kind as u32;
-            if (kind != KIND_STMT && kind != KIND_DYNAMIC) || record.flags.contains(bun_ast::ImportRecordFlags::IS_UNUSED) {
-                continue;
-            }
-            if let Some(new) = resolve(record.path.text, kind) {
-                record.path.text = arena.alloc_slice_copy(&new);
-            }
-        }
-    }
-
-    let symbols = bun_ast::symbol::Map::init_with_one_list(
-        core::mem::replace(&mut ast.symbols, bun_alloc::ArenaVec::new_in(&arena))
-            .into_iter()
-            .collect(),
-    );
-    let opts = printer::Options {
-        bundling: false,
-        require_ref: Some(ast.require_ref),
-        import_meta_ref: ast.import_meta_ref,
-        hmr_ref: ast.wrapper_ref,
-        ..Default::default()
-    };
-    let mut writer = printer::BufferPrinter::init(printer::BufferWriter::init());
-    match printer::print_ast::<_, false, false>(&mut writer, &arena, &ast, symbols, &src, opts) {
-        Ok(_) => Ok(writer.ctx.written().to_vec()),
-        Err(e) => Err(format!("print failed: {e:?}").into_bytes()),
-    }
+    f(*ast, &arena, &src)
 }
 
 fn format_log(log: &bun_ast::Log) -> Vec<u8> {
@@ -244,6 +329,17 @@ unsafe fn run(
     flags: u32,
     resolve: Option<Resolver>,
 ) -> *mut Output {
+    unsafe { run_with(path, path_len, src, src_len, loader, |path, src, loader| transpile_with(path, src, loader, flags, resolve)) }
+}
+
+unsafe fn run_with(
+    path: *const u8,
+    path_len: usize,
+    src: *const u8,
+    src_len: usize,
+    loader: u32,
+    f: impl FnOnce(&[u8], &[u8], Loader) -> Result<Vec<u8>, Vec<u8>>,
+) -> *mut Output {
     let slice = |p: *const u8, n: usize| if n == 0 { &[][..] } else { unsafe { core::slice::from_raw_parts(p, n) } };
     let loader = match loader {
         0 => Loader::Js,
@@ -252,7 +348,7 @@ unsafe fn run(
         3 => Loader::Tsx,
         _ => return Box::into_raw(Box::new(Output { status: 2, ptr: core::ptr::null_mut(), len: 0 })),
     };
-    let (status, bytes) = match transpile_with(slice(path, path_len), slice(src, src_len), loader, flags, resolve) {
+    let (status, bytes) = match f(slice(path, path_len), slice(src, src_len), loader) {
         Ok(b) => (0, b),
         Err(b) => (1, b),
     };
@@ -260,6 +356,38 @@ unsafe fn run(
     let (ptr, len) = (bytes.as_mut_ptr(), bytes.len());
     core::mem::forget(bytes);
     Box::into_raw(Box::new(Output { status, ptr, len }))
+}
+
+/// `scan` (imports and exports as JSON, see there) behind the `transpile_flags_c` ABI.
+///
+/// # Safety
+/// Both input ranges must be readable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn scan_c(
+    path: *const u8,
+    path_len: usize,
+    src: *const u8,
+    src_len: usize,
+    loader: u32,
+    flags: u32,
+) -> *mut Output {
+    unsafe { run_with(path, path_len, src, src_len, loader, |path, src, loader| scan(path, src, loader, flags)) }
+}
+
+/// `scan_imports` (JSON, see there) behind the `transpile_flags_c` ABI.
+///
+/// # Safety
+/// Both input ranges must be readable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn scan_imports_c(
+    path: *const u8,
+    path_len: usize,
+    src: *const u8,
+    src_len: usize,
+    loader: u32,
+    flags: u32,
+) -> *mut Output {
+    unsafe { run_with(path, path_len, src, src_len, loader, |path, src, loader| scan_imports(path, src, loader, flags)) }
 }
 
 // ── Host resolver ABI (`transpile_resolve_c`) ──

@@ -4,6 +4,8 @@
 //! Host flow: `alloc` input buffers, write UTF-8, call `resolve_c`, read the `Output`, then
 //! `output_free` it and `dealloc` the inputs. Directory/package.json/tsconfig lookups are cached
 //! process-wide (as in Bun); call `resolve_reset_c` after the VFS changed.
+//!
+//! It also carries `Bun.Glob` (`bun_glob`, which walks the same `bun_sys` host): `glob_match_c` and `glob_scan_c`.
 
 // The C/C++ stand-ins the parser and printer link against.
 use bun_wasm_stubs as _;
@@ -263,4 +265,77 @@ pub extern "C" fn panic_message_c() -> *mut Output {
 pub unsafe extern "C" fn invalidate_c(path: *const u8, len: usize) -> u32 {
     let path = if len == 0 { &[][..] } else { unsafe { core::slice::from_raw_parts(path, len) } };
     invalidate(path) as u32
+}
+
+// ── Bun.Glob ──
+
+/// `Glob#match`: as Bun's (`runtime/api/glob.rs`), dots are matched like any other character.
+pub fn glob_match(pattern: &[u8], path: &[u8]) -> bool {
+    bun_glob::matcher::match_on::<false>(pattern, path).matches()
+}
+
+/// `glob_scan` flags (`Glob#scan` options).
+pub const GLOB_DOT: u32 = 1;
+pub const GLOB_ABSOLUTE: u32 = 2;
+pub const GLOB_ONLY_FILES: u32 = 4;
+pub const GLOB_FOLLOW_SYMLINKS: u32 = 8;
+pub const GLOB_ERROR_ON_BROKEN_SYMLINKS: u32 = 16;
+
+/// `Glob#scanSync`: the paths `pattern` matches under `cwd` (absolute), relative to it unless `GLOB_ABSOLUTE`, in
+/// walk order. Err = `code\0syscall\0path` of the failing syscall, or a message.
+pub fn glob_scan(pattern: &[u8], cwd: &[u8], flags: u32) -> Result<Vec<Box<[u8]>>, Vec<u8>> {
+    install_panic_hook();
+    let mut walker = match bun_glob::BunGlobWalker::init_with_cwd(
+        pattern,
+        cwd,
+        flags & GLOB_DOT != 0,
+        flags & GLOB_ABSOLUTE != 0,
+        flags & GLOB_FOLLOW_SYMLINKS != 0,
+        flags & GLOB_ERROR_ON_BROKEN_SYMLINKS != 0,
+        flags & GLOB_ONLY_FILES != 0,
+        None,
+    ) {
+        Ok(Ok(w)) => w,
+        Ok(Err(e)) => return Err(sys_error(&e)),
+        Err(e) => return Err(format!("{e:?}").into_bytes()),
+    };
+    match walker.walk() {
+        Ok(Ok(())) => Ok(walker.matched_paths.keys().to_vec()),
+        Ok(Err(e)) => Err(sys_error(&e)),
+        Err(e) => Err(format!("{e:?}").into_bytes()),
+    }
+}
+
+fn sys_error(e: &bun_sys::Error) -> Vec<u8> {
+    let mut out = e.name().to_vec();
+    out.push(0);
+    out.extend_from_slice(<&'static str>::from(e.syscall).as_bytes());
+    out.push(0);
+    out.extend_from_slice(e.path.as_ref());
+    out
+}
+
+/// # Safety
+/// Both input ranges must be readable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn glob_match_c(pattern: *const u8, pattern_len: usize, path: *const u8, path_len: usize) -> u32 {
+    let slice = |p: *const u8, n: usize| if n == 0 { &[][..] } else { unsafe { core::slice::from_raw_parts(p, n) } };
+    glob_match(slice(pattern, pattern_len), slice(path, path_len)) as u32
+}
+
+/// `glob_scan`: status 0 = the matched paths, each followed by a NUL; 1 = the error.
+///
+/// # Safety
+/// Both input ranges must be readable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn glob_scan_c(pattern: *const u8, pattern_len: usize, cwd: *const u8, cwd_len: usize, flags: u32) -> *mut Output {
+    let slice = |p: *const u8, n: usize| if n == 0 { &[][..] } else { unsafe { core::slice::from_raw_parts(p, n) } };
+    let (status, bytes) = match glob_scan(slice(pattern, pattern_len), slice(cwd, cwd_len), flags) {
+        Ok(paths) => (0, paths.iter().flat_map(|p| p.iter().copied().chain([0])).collect::<Vec<u8>>()),
+        Err(b) => (1, b),
+    };
+    let mut bytes = bytes.into_boxed_slice();
+    let (ptr, len) = (bytes.as_mut_ptr(), bytes.len());
+    core::mem::forget(bytes);
+    Box::into_raw(Box::new(Output { status, ptr, len }))
 }

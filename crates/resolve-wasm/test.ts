@@ -203,6 +203,58 @@ inval("/node_modules/pkgmain");
 assert.deepEqual(wasmResolve("pkgmain", "/src"), { ok: "/node_modules/pkgmain/other.js" });
 // Warm calls give the same answer.
 assert.deepEqual(wasmResolve("./a", "/src"), { ok: "/src/a.ts" });
+
+// Bun.Glob: glob_match_c and glob_scan_c (over the VFS) vs Bun's Glob#match and Glob#scanSync over the fixture on disk.
+vfs.write("src/.hidden/h.ts", "");
+mkdirSync(join(disk, "src/.hidden"), { recursive: true });
+writeFileSync(join(disk, "src/.hidden/h.ts"), "");
+writeFileSync(join(disk, "src/late.ts"), ""); // written to the VFS above
+const GLOB = { dot: 1, absolute: 2, onlyFiles: 4 } as const;
+function globScan(pattern: string, cwd: string, opts: { dot?: boolean; onlyFiles?: boolean } = {}): string[] | string {
+  const flags = (opts.dot ? GLOB.dot : 0) | (opts.onlyFiles === false ? 0 : GLOB.onlyFiles);
+  const a = put(pattern), b = put(cwd);
+  const out = w.glob_scan_c(a[0], a[1], b[0], b[1], flags);
+  for (const [p, l] of [a, b]) w.dealloc(p, l);
+  const [status, ptr, len] = new BigUint64Array(w.memory.buffer, Number(out), 3);
+  const text = dec.decode(new Uint8Array(w.memory.buffer, Number(ptr), Number(len)));
+  w.output_free(out);
+  return status === 0n ? text.split("\0").slice(0, -1).sort() : `ERR ${text.split("\0").join(" ")}`;
+}
+const globMatch = (pattern: string, path: string) => withStrBytes(pattern, (pp, pl) => withStrBytes(path, (sp, sl) => w.glob_match_c(pp, pl, sp, sl))) === 1;
+const globScans: [string, string, { dot?: boolean; onlyFiles?: boolean }][] = [
+  ["**/*.ts", "/src", {}],
+  ["**/*.ts", "/src", { dot: true }],
+  ["src/**/*.{ts,tsx}", "/", {}],
+  ["*", "/src", { onlyFiles: false }],
+  ["**", "/node_modules/@scope", { onlyFiles: false }],
+  ["node_modules/*/package.json", "/", {}],
+  ["src/[a-c].*", "/", {}],
+  ["src/?.ts", "/", {}],
+  ["src/sub/deep/x.ts", "/", {}],
+  ["src/dir", "/", { onlyFiles: false }],
+];
+const globMatches: [string, string][] = [
+  ["!*.ts", "a.js"], ["!*.ts", "a.ts"], ["[a-c]?.md", "bz.md"], ["[!a]*", "b"], ["[^a]*", "a"], ["a/**", "a"], ["a/**", "a/b/c"],
+  ["**", "a/.b"], ["*", "a/b"], ["**/*.ts", "b.ts"], ["{a,b/{c,d}}/x", "b/d/x"], ["\\*a", "*a"], ["*", ".a"], ["x/**/y", "x/y"], ["a?", "a/"],
+];
+for (const [pattern, cwd, opts] of globScans) {
+  const got = globScan(pattern, cwd, opts);
+  if (typeof got === "string") { failed++; console.log(`FAIL  glob ${pattern} in ${cwd}: ${got}`); continue; }
+  if (hasBun) {
+    const r = spawnSync("bun", ["-e", "console.log(JSON.stringify([...new Bun.Glob(process.argv[1]).scanSync({ cwd: process.argv[2], ...JSON.parse(process.argv[3]) })].sort()))", pattern, join(disk, cwd), JSON.stringify(opts)], { encoding: "utf8" });
+    const want = JSON.parse(r.stdout) as string[];
+    if (JSON.stringify(want) !== JSON.stringify(got)) mismatches.push(`bun: glob ${pattern} in ${cwd} ${JSON.stringify(opts)}: bun=${JSON.stringify(want)} wasm=${JSON.stringify(got)}`);
+  }
+  console.log(`ok    glob ${pattern} in ${cwd} ${JSON.stringify(opts)} -> ${got.length} paths`);
+}
+assert.match(String(globScan("*", "/nonexistent")), /^ERR ENOENT open/);
+if (hasBun) {
+  const r = spawnSync("bun", ["-e", "console.log(JSON.stringify(JSON.parse(process.argv[1]).map(([p, s]) => new Bun.Glob(p).match(s))))", JSON.stringify(globMatches)], { encoding: "utf8" });
+  const want = JSON.parse(r.stdout) as boolean[];
+  const got = globMatches.map(([p, s]) => globMatch(p, s));
+  globMatches.forEach(([p, s], i) => want[i] !== got[i] && mismatches.push(`bun: glob match ${p} ${s}: bun=${want[i]} wasm=${got[i]}`));
+  console.log(`ok    ${globMatches.length} glob matches compared`);
+}
 rmSync(tmp, { recursive: true, force: true });
 
 console.log(hasBun ? "" : "(bun not on PATH: skipped native comparison)");

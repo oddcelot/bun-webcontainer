@@ -1,6 +1,7 @@
 // Bun's module resolver (bun_resolver, from crates/resolve-wasm) over the page VFS, through the same `bun_sys` host
 // imports the worker uses. Its directory, package.json and tsconfig caches live as long as the instance, as in Bun;
-// VFS changes invalidate the directories they touch, and clearing the VFS starts a fresh instance.
+// VFS changes invalidate the directories they touch, and clearing the VFS starts a fresh instance. The same module
+// has `Bun.Glob`'s matcher and walker (bun_glob), which the worker uses.
 import { BASE } from "./base";
 import { dirname, type VFS } from "@runbun/vfs";
 import { createSysImports } from "@runbun/vfs/sysHost";
@@ -13,6 +14,8 @@ type Exports = {
   output_free(out: bigint): void;
   invalidate_c(p: bigint, l: bigint): number;
   panic_message_c(): bigint;
+  glob_match_c(pp: bigint, pl: bigint, sp: bigint, sl: bigint): number;
+  glob_scan_c(pp: bigint, pl: bigint, cp: bigint, cl: bigint, flags: number): bigint;
 };
 
 export type ResolveKind = "import" | "require";
@@ -74,22 +77,63 @@ export async function loadResolver(vfs: VFS): Promise<void> {
   vfs.onClear(() => bound === vfs && instantiate(vfs));
 }
 
+/** Runs a call into the module. panic=abort traps and leaves the instance unusable: report the panic and start over. */
+function guard<T>(what: string, f: () => T): T {
+  try {
+    return f();
+  } catch (e) {
+    const m = w!.panic_message_c();
+    const [, mp, ml] = new BigUint64Array(w!.memory.buffer, Number(m), 3);
+    const msg = dec.decode(new Uint8Array(w!.memory.buffer, Number(mp), Number(ml)));
+    instantiate(bound!);
+    throw new Error(`resolver panicked ${what}: ${msg}`, { cause: e });
+  }
+}
+
 /** The VFS path `spec` imported from `dir` resolves to, or null (not found, or not a file). */
 export function resolve(spec: string, dir: string, kind: ResolveKind, target: ResolveTarget): string | null {
   if (!w) throw new Error("resolver not loaded");
-  let out: bigint;
-  try {
-    out = withStr(spec, (sp, sl) => withStr("/" + dir, (dp, dl) => withStr(CONDITIONS, (cp, cl) => w!.resolve_c(sp, sl, dp, dl, KIND[kind], TARGET[target], cp, cl))));
-  } catch (e) {
-    // panic=abort traps and leaves the instance unusable: report the panic and start over.
-    const m = w.panic_message_c();
-    const [, mp, ml] = new BigUint64Array(w.memory.buffer, Number(m), 3);
-    const msg = dec.decode(new Uint8Array(w.memory.buffer, Number(mp), Number(ml)));
-    instantiate(bound!);
-    throw new Error(`resolver panicked on ${JSON.stringify(spec)} from /${dir}: ${msg}`, { cause: e });
-  }
+  const out = guard(`on ${JSON.stringify(spec)} from /${dir}`, () =>
+    withStr(spec, (sp, sl) => withStr("/" + dir, (dp, dl) => withStr(CONDITIONS, (cp, cl) => w!.resolve_c(sp, sl, dp, dl, KIND[kind], TARGET[target], cp, cl)))),
+  );
   const [status, ptr, len] = new BigUint64Array(w.memory.buffer, Number(out), 3);
   const text = dec.decode(new Uint8Array(w.memory.buffer, Number(ptr), Number(len)));
   w.output_free(out);
   return status === 0n && text.startsWith("/") ? text.slice(1) : null;
+}
+
+/** `Bun.Glob#match` (bun_glob's matcher, in the same module). */
+export function globMatch(pattern: string, path: string): boolean {
+  if (!w) throw new Error("resolver not loaded");
+  return guard(`matching ${JSON.stringify(pattern)}`, () => withStr(pattern, (pp, pl) => withStr(path, (sp, sl) => w!.glob_match_c(pp, pl, sp, sl)))) === 1;
+}
+
+/** `Bun.Glob#scan` options, as resolve-wasm's flags. */
+export type GlobScanFlags = { dot: boolean; absolute: boolean; onlyFiles: boolean; followSymlinks: boolean; throwErrorOnBrokenSymlink: boolean };
+const GLOB_FLAGS: Record<keyof GlobScanFlags, number> = { dot: 1, absolute: 2, onlyFiles: 4, followSymlinks: 8, throwErrorOnBrokenSymlink: 16 };
+
+/** Thrown by `globScan` when a syscall fails: Bun's error code (`ENOENT`), the syscall and its path. */
+export class GlobScanError extends Error {
+  constructor(readonly code: string, readonly syscall: string, readonly path: string) {
+    super(`${code}: ${syscall} '${path}'`);
+  }
+}
+
+/**
+ * `Bun.Glob#scanSync`: the paths `pattern` matches under `cwd` (an absolute VFS path, `/` first), relative to it unless
+ * `absolute`, in walk order. Reads the VFS directly, past the resolver's caches.
+ */
+export function globScan(pattern: string, cwd: string, opts: GlobScanFlags): string[] {
+  if (!w) throw new Error("resolver not loaded");
+  let flags = 0;
+  for (const k of Object.keys(GLOB_FLAGS) as (keyof GlobScanFlags)[]) if (opts[k]) flags |= GLOB_FLAGS[k];
+  const out = guard(`scanning ${JSON.stringify(pattern)} in ${cwd}`, () => withStr(pattern, (pp, pl) => withStr(cwd, (cp, cl) => w!.glob_scan_c(pp, pl, cp, cl, flags))));
+  const [status, ptr, len] = new BigUint64Array(w.memory.buffer, Number(out), 3);
+  const text = dec.decode(new Uint8Array(w.memory.buffer, Number(ptr), Number(len)));
+  w.output_free(out);
+  if (status !== 0n) {
+    const [code, syscall, path] = text.split("\0");
+    throw new GlobScanError(code, syscall ?? "", path ?? "");
+  }
+  return text ? text.slice(0, -1).split("\0") : [];
 }
