@@ -4,6 +4,7 @@
 # Build output
 target/
 dist/
+dist-canary/
 node_modules/
 
 # Copied in by apps/playground/scripts/copy-wasm.mjs

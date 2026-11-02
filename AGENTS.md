@@ -86,6 +86,7 @@ bun install                                # root bun workspace (playground, doc
                                            # node_modules per package; shared versions in package.json's catalog
 (cd apps/playground && bunx tsc --noEmit && bun run dev)      # verify in Chrome (Memory64)
 (cd apps/docs && bun run check && bun run build)               # docs site; `bun run deploy` publishes docs.runbun.dev
+moon run playground:deploy-canary docs:deploy-canary      # canary.runbun.dev + docs-canary.runbun.dev (noindex)
 scripts/dev.sh                                           # playground (:5173) + docs (:4321) dev servers; docs embeds need both
 (cd apps/playground && bun run swatches)                       # after changing theme families: swatches, packages/ui/themes.json, code-themes/
 # Cross-links: DOCS_URL / PLAYGROUND_URL (both builds read them; default localhost in dev, runbun.dev in builds)
