@@ -2,7 +2,7 @@
 // The embed configurator lives in the playground (playground/configure.html), built from its own components and
 // theme; this frames it, wide enough for the form beside the live embed. It wears the reader's scheme and theme family
 // (ThemeProvider.astro): they go in the frame's URL, and to the frame as a message when they change.
-import { PLAYGROUND_URL } from "../../site-urls.mjs";
+import { PLAYGROUND_URL } from "../../site-urls.ts";
 
 const src = `${PLAYGROUND_URL}configure`;
 ---

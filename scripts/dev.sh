@@ -1,6 +1,6 @@
 #!/bin/sh
 # Runs the playground and docs dev servers together; Ctrl-C stops both. Usage: dev.sh
-# In dev the docs frame the playground at localhost:5173 (apps/docs/site-urls.mjs), so the playground has to get exactly
+# In dev the docs frame the playground at localhost:5173 (apps/docs/site-urls.ts), so the playground has to get exactly
 # that port: it fails instead of moving to another one when something else holds it.
 cd "$(dirname "$0")/.." || exit 1
 

@@ -14,10 +14,10 @@ const FILES = {
   "pierre-dark-vibrant": pierreDarkVibrant,
 };
 // A copy each time, as when they were read from disk: Expressive Code and highlights may adjust the objects.
-const json = (name) => structuredClone(FILES[name]);
+const json = (name: keyof typeof FILES) => structuredClone(FILES[name]);
 
-async function load(name) {
-  if (name in FILES) return json(name);
+async function load(name: string): Promise<any> {
+  if (name in FILES) return json(name as keyof typeof FILES);
   if (name.startsWith("pierre-")) return (await import(`@pierre/theme/${name}`)).default;
   return name;
 }
@@ -28,5 +28,5 @@ export const codeThemes = await Promise.all(names.map(load));
 
 /** The same themes for @runbun/astro: highlights bundles all but Elysia's, which go in as their VS Code JSON. */
 export const codeThemeOptions = [...new Set(themes.families.flatMap((f) => [f.dark, f.light]))].map((n) =>
-  n.startsWith("elysia-") ? json(n) : n,
+  n.startsWith("elysia-") ? json(n as keyof typeof FILES) : n,
 );

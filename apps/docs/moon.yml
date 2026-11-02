@@ -6,7 +6,6 @@ fileGroups:
   sources:
     - 'src/**/*'
     - 'public/**/*'
-    - '*.mjs'
     - '*.ts'
     - 'tsconfig.json'
     - 'package.json'
