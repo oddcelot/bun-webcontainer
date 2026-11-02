@@ -67,6 +67,7 @@ moon run <crate>:build|test                # one crate; config in .moon/ and <cr
 moon run playground:build docs:build       # playground after the wasm crates' builds; docs:check, playground:typecheck
 moon run docs:dev                          # docs dev server + playground:dev (like scripts/dev.ts)
 moon run root:typecheck-scripts root:typos docs:links  # scripts/ + hook types (tsrs), spelling, the built docs' internal links (typos, lychee: Brewfile)
+moon run root:secrets                                  # betterleaks over the git history, as CI does on every push (Brewfile)
 scripts/setup-bun.ts                       # recreate bun/ (pinned commit + patches/bun/ via git am); bun/ is not tracked
 scripts/export-bun-patches.ts              # after committing in bun/ on wasm-experiment
 scripts/bun-upgrade.ts --check             # newer Bun release? do patches/bun/ still apply? (changes nothing)

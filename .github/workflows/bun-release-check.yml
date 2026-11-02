@@ -1,5 +1,5 @@
 # Nightly: is there a newer Bun release, and do our patches (patches/bun/) still apply to it?
-# Opens one issue per new release with scripts/bun-upgrade.sh --check's report; fails (and GitHub emails) if the
+# Opens one issue per new release with scripts/bun-upgrade.ts --check's report; fails (and GitHub emails) if the
 # check itself breaks. A manual run can check a given tag; it only prints the issue it would open.
 name: Bun release check
 
@@ -69,8 +69,8 @@ jobs:
             echo
             echo "To upgrade in a local checkout:"
             echo
-            echo "1. \`scripts/bun-upgrade.sh $tag\`"
-            echo "2. On a conflict: resolve it in \`bun/\`, \`git -C bun rebase --continue\`, then \`scripts/bun-upgrade.sh --finish\`"
+            echo "1. \`scripts/bun-upgrade.ts $tag\`"
+            echo "2. On a conflict: resolve it in \`bun/\`, \`git -C bun rebase --continue\`, then \`scripts/bun-upgrade.ts --finish\`"
             echo "3. \`bun upgrade\`, so native bun matches for the comparison tests"
             echo "4. Review \`git status\` and commit as \`bun: upgrade to $tag\`"
           } > issue.md
