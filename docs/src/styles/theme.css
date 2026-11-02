@@ -37,14 +37,27 @@ html:root[data-theme="light"]:is(:not([data-family]), [data-family^="pierre-"]) 
   --sl-color-text-accent: var(--sl-color-accent-high);
 }
 
-/* The current page: the playground's selected tab (a raised surface with an accent edge), not a solid fill. */
+/* The current page: an accent dot on the section's guide line, and the label at full strength; no fill. */
 .sidebar-content a[aria-current="page"],
 .sidebar-content a[aria-current="page"]:hover,
 .sidebar-content a[aria-current="page"]:focus {
-  background: var(--control-hover);
+  position: relative;
+  background: none;
   color: var(--sl-color-white);
-  border-radius: 6px;
-  box-shadow: inset 2px 0 var(--accent);
+  font-weight: 600;
+}
+.sidebar-content a[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  /* Centered on the list item's 1px border, which sits the item's padding (plus half the border) to the left. */
+  left: calc(-1 * var(--sl-sidebar-item-padding-inline) - 4px);
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--sl-color-bg-sidebar);
+  transform: translateY(-50%);
 }
 
 /* Controls take the playground's 6px corners; cards its 12px panes. */

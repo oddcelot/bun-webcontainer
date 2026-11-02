@@ -14,7 +14,7 @@ export default defineConfig({
     // The playground's tokens and theme families (uno.config.ts); no reset, Starlight brings its own.
     UnoCSS({ injectReset: false }),
     starlight({
-      title: "Bun Playground",
+      title: "Run Bun",
       description: "Bun in the browser: what runs, where, and how.",
       logo: { src: "./src/favicon.svg" },
       favicon: "/favicon.svg",
