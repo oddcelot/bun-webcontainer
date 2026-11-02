@@ -42,5 +42,5 @@ tasks:
     inputs:
       - '*.mjs'
       # The tests run the wasm over the playground's VFS and host imports.
-      - '/playground/src/vfs.ts'
-      - '/playground/src/worker/sysHost.ts'
+      - '/apps/playground/src/vfs.ts'
+      - '/apps/playground/src/worker/sysHost.ts'

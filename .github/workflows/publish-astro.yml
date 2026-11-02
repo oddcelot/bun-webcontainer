@@ -39,7 +39,7 @@ jobs:
       - run: npm install -g npm@latest
 
       - name: Check the docs site builds with this package
-        working-directory: docs
+        working-directory: apps/docs
         run: |
           bun install --frozen-lockfile
           bun run check

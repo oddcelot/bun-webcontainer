@@ -1,5 +1,5 @@
 //! Acceptance probe: `bun_sys` file operations on wasm64, served by the host's `bun_sys` imports
-//! (playground/src/worker/sysHost.ts). Paths are UTF-8 `(ptr, len)`; results are `>= 0` or `-errno`.
+//! (apps/playground/src/worker/sysHost.ts). Paths are UTF-8 `(ptr, len)`; results are `>= 0` or `-errno`.
 
 use bun_sys_host as _; // defines the symbols bun_sys declares (as wasm imports)
 use bun_sys::{Fd, File, O, dir_iterator};

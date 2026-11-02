@@ -2,10 +2,10 @@
 // embed it turns into whatever family the reader picks. Pierre's come from @pierre/theme, Elysia's and Pierre
 // Vibrant's (in sRGB) from ui/code-themes/, the rest are Shiki's bundled themes, loaded by name.
 import { readFileSync } from "node:fs";
-import themes from "../../ui/themes.json" with { type: "json" };
+import themes from "../../../ui/themes.json" with { type: "json" };
 
 const FILES = new Set(["elysia-light", "elysia-dark", "pierre-light-vibrant", "pierre-dark-vibrant"]);
-const json = (name) => JSON.parse(readFileSync(new URL(`../../ui/code-themes/${name}.json`, import.meta.url), "utf8"));
+const json = (name) => JSON.parse(readFileSync(new URL(`../../../ui/code-themes/${name}.json`, import.meta.url), "utf8"));
 
 async function load(name) {
   if (FILES.has(name)) return json(name);

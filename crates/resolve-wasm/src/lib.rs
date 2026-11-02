@@ -1,5 +1,5 @@
 //! Bun's module resolver (`bun_resolver`) behind a pointer+length C ABI, reading the file system
-//! through `bun_sys` (host imports `bun_sys.*`, served by playground/src/worker/sysHost.ts).
+//! through `bun_sys` (host imports `bun_sys.*`, served by apps/playground/src/worker/sysHost.ts).
 //!
 //! Host flow: `alloc` input buffers, write UTF-8, call `resolve_c`, read the `Output`, then
 //! `output_free` it and `dealloc` the inputs. Directory/package.json/tsconfig lookups are cached

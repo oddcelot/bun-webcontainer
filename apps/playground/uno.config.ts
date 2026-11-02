@@ -1,5 +1,5 @@
 import { defineConfig, presetIcons, presetMini } from "unocss";
-import { uiPreset } from "../ui/uno.preset";
+import { uiPreset } from "../../ui/uno.preset";
 
 // The shared tokens (ui/uno.preset.ts), utilities over them (`bg-panel`, `text-muted`, `rounded-pane`), and icons:
 // `i-lucide-<name>` is a CSS mask over currentColor.

@@ -5,8 +5,8 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSy
 import { execFileSync, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { VFS } from "../../playground/src/vfs.ts";
-import { createSysImports } from "../../playground/src/worker/sysHost.ts";
+import { VFS } from "../../apps/playground/src/vfs.ts";
+import { createSysImports } from "../../apps/playground/src/worker/sysHost.ts";
 
 const wasm = readFileSync(new URL("../../target/wasm64-unknown-unknown/release/bun_fmt_wasm.wasm", import.meta.url));
 const t0 = performance.now();
@@ -62,7 +62,7 @@ for (const args of RUNS) {
   }
 }
 console.log(`${checked - fail}/${checked} identical to bun fmt, ${ms.toFixed(0)} ms formatting`);
-const before = w.memory.buffer.byteLength, big = readFileSync(new URL("playground/src/shell.ts", root), "utf8");
+const before = w.memory.buffer.byteLength, big = readFileSync(new URL("apps/playground/src/shell.ts", root), "utf8");
 for (let i = 0; i < 300; i++) format("shell.ts", big, []);
 console.log(`memory ${before} -> ${w.memory.buffer.byteLength} after 300 formats`);
 

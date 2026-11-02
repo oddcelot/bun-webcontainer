@@ -1,5 +1,5 @@
 import { defineConfig, presetIcons, presetMini } from "unocss";
-import { uiPreset } from "../ui/uno.preset";
+import { uiPreset } from "../../ui/uno.preset";
 import { STATUS } from "./src/status.mjs";
 
 // The playground's tokens with every theme family's colors (ui/uno.preset.ts), utilities over them, and the

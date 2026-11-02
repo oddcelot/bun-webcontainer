@@ -26,5 +26,5 @@ tasks:
     deps: ['~:build']
     inputs:
       - '*.mjs'
-      # Type-checks the .d.ts files in playground/node_modules.
-      - '/playground/bun.lock'
+      # Type-checks the .d.ts files in apps/playground/node_modules.
+      - '/bun.lock'

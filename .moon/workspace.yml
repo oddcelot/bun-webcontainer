@@ -14,8 +14,8 @@ projects:
   tsrs-ls-wasm: 'crates/tsrs-ls-wasm'
   sys-host: 'crates/sys-host'
   shim-test: 'crates/shim-test'
-  playground: 'playground'
-  docs: 'docs'
+  playground: 'apps/playground'
+  docs: 'apps/docs'
   astro: 'packages/astro'
 
 vcs:

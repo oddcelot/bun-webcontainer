@@ -7,7 +7,7 @@ import { dirname } from "node:path";
 
 const wasm = new URL("target/wasm32-wasip1/release/tsrs_ls_wasm.wasm", import.meta.url).pathname;
 if (isMainThread) {
-  const w = new Worker(new URL(import.meta.url), { workerData: process.argv[2] ?? new URL("../../playground/node_modules", import.meta.url).pathname, resourceLimits: { stackSizeMb: 256 } });
+  const w = new Worker(new URL(import.meta.url), { workerData: process.argv[2] ?? new URL("../../apps/playground/node_modules", import.meta.url).pathname, resourceLimits: { stackSizeMb: 256 } });
   w.on("message", (m) => console.log(m));
   w.on("error", (e) => { console.error(e); process.exitCode = 1; });
 } else {

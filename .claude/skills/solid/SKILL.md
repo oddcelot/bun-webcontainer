@@ -1,7 +1,7 @@
 ---
 name: solid
 description:
-  Use when writing or changing SolidJS 2 code in playground/src/ui (any .tsx in the playground),
+  Use when writing or changing SolidJS 2 code in apps/playground/src/ui (any .tsx in the playground),
   or debugging Solid dev warnings, reactivity, stores, async boundaries, refs, or the Solid Vite
   plugin. Solid 2 is not 1.x and
   not React; read this before generating Solid code.
@@ -10,7 +10,7 @@ description:
 # Solid 2 in the playground
 
 The playground interface is Solid 2 (moved from hand-built DOM in epic `bwc-k4r`). UI code lives in
-`playground/src/ui/`.
+`apps/playground/src/ui/`.
 
 **Training data is mostly Solid 1.x and React. Both are wrong here.** Before writing code, read
 [references/CHEATSHEET.md](references/CHEATSHEET.md) (its last section, the "footgun list", at
@@ -58,13 +58,13 @@ checks below.
   Function children of `For`/`Show`/`Match` are owners, not tracking scopes: read accessors in JSX.
 - **A throw in an effect's apply halts the whole page** (`REACTIVITY_HALTED`: no update runs
   again). createEffect's `error` option does not catch it; it only covers the compute step.
-  Wrap applies that call into libraries with `guarded()` (`playground/src/ui/guarded.ts`).
+  Wrap applies that call into libraries with `guarded()` (`apps/playground/src/ui/guarded.ts`).
   Errors that were harmless in a click handler become fatal once they run in an effect.
 - **Actions hold their frame.** Every write flushed together with an action's writes (including
   ones from a microtask that runs before Solid's flush) stays invisible until the action settles.
   For long work whose progress must show live (console counts during Run), start the action, call
   `flush()`, then start the work and hand the action its promise; see `task` in
-  `playground/src/ui/session.ts`.
+  `apps/playground/src/ui/session.ts`.
 - **Async:** a memo may return a Promise; wrap readers in `<Loading>`. `isPending(() => x())`
   for "updating…". `<Errored>` catches. No `createResource`, `Suspense`, `ErrorBoundary`.
 - **DOM:** `class={["base", { active: on() }]}` (no `classList`, no string-building), lowercase
@@ -111,7 +111,7 @@ checks below.
 In Chrome: the page loads, Run starts the demo and the preview shows, and the console has no Solid
 dev warnings or errors. Each diagnostic has a code; look it up in
 [references/08-dev-diagnostics.md](references/08-dev-diagnostics.md) or in the repair guide
-`solid-js` ships at `playground/node_modules/solid-js/skills/reactivity-diagnostics/SKILL.md`
+`solid-js` ships at `apps/playground/node_modules/solid-js/skills/reactivity-diagnostics/SKILL.md`
 (the warnings link to it). A common one here: an imperative library callback fired from inside an
 effect's apply (e.g. `tree.select()` → `onSelectionChange`) that reads a store is
 `STRICT_READ_UNTRACKED`; keep the value the effect applied in a local and read that.
