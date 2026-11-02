@@ -5,12 +5,13 @@ import { BASE, DOCS } from "../base";
 import { PRESETS } from "../embed/config";
 import { FEATURES, MODES, type Feature, type Mode } from "../embed/protocol";
 import { examples, repoExamples } from "../examples";
-import { createPierre, createViewer } from "../editors/pierre";
-import { FAMILIES, isFamily, pickFamily, setColorMode } from "../theme";
+import { createPierre } from "../editors/pierre";
+import { FAMILIES, isFamily, onTheme, pickFamily, setColorMode, themeName } from "../theme";
 import { guarded } from "../ui/guarded";
 import { Swatch } from "../ui/Swatch";
 import { TabItem, TabList } from "../ui/Tabs";
 import { Tip } from "../ui/Tip";
+import { highlightSnippet } from "./highlight";
 import { attributes, elementSnippet, iframeSnippet, inlineFile, type Attr, type Form } from "./snippet";
 
 // runbun.dev/configure: a form over every <bun-playground> option, a live embed with those options, and the snippet to
@@ -219,18 +220,29 @@ function CodeInput(props: { path: string; text: string; onInput: (text: string) 
   return <div class="code-editor" ref={el} />;
 }
 
-/** The snippet in the playground's read-only Pierre view: highlighted as HTML, in the page's theme. */
+/**
+ * The snippet, highlighted with @pierre/highlights in the page's theme: the HTML, and the inline file in its own
+ * language (highlight.ts). The highlighted HTML lands after the themes load; until then the text shows plain.
+ */
 function SnippetView(props: { text: string }) {
-  let el!: HTMLDivElement;
-  let viewer: ReturnType<typeof createViewer> | undefined;
+  let el!: HTMLPreElement;
+  const [theme, setTheme] = createSignal(themeName());
+  onSettled(() => onTheme((name) => setTheme(name)));
+  let seq = 0;
   createEffect(
-    () => props.text,
-    guarded("configure snippet", (text) => {
-      (viewer ??= createViewer(el)).show("snippet.html", text);
+    () => ({ text: props.text, theme: theme() }),
+    guarded("configure snippet", ({ text, theme }) => {
+      const n = ++seq;
+      if (!el.innerHTML) el.textContent = text;
+      void highlightSnippet(text, theme).then((r) => {
+        if (n !== seq) return;
+        el.innerHTML = r.html;
+        el.style.background = r.bg;
+        el.style.color = r.fg;
+      });
     }),
   );
-  onSettled(() => () => viewer?.destroy());
-  return <div class="snippet-code" ref={el} />;
+  return <pre class="snippet-code" ref={el} />;
 }
 
 export function Configurator() {
