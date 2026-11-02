@@ -1,16 +1,34 @@
 $schema: 'https://moonrepo.dev/schemas/project.json'
 
-# @runbun/astro: plain JS and .astro sources, nothing to build. Published by .github/workflows/publish-astro.yml.
-language: 'javascript'
+# @runbun/astro: TypeScript in src/, built with tsrs into dist/ (.js + .d.ts); the .astro components ship as they are and
+# import from ../dist. Published by .github/workflows/publish-astro.yml.
+language: 'typescript'
+
+fileGroups:
+  sources:
+    - 'src/**/*'
+    - 'components/**/*'
+    - 'virtual.d.ts'
+    - 'tsconfig.json'
+    - 'package.json'
 
 tasks:
+  build:
+    command: 'bun run build'
+    inputs:
+      - '@group(sources)'
+    outputs:
+      - 'dist/**/*'
+  typecheck:
+    command: 'bun run typecheck'
+    inputs:
+      - '@group(sources)'
   pack:
     # What npm would publish.
     command: 'npm pack --dry-run'
+    deps: ['~:build']
     inputs:
-      - '*.{js,ts}'
-      - 'components/**/*'
-      - 'package.json'
+      - '@group(sources)'
       - 'README.md'
     options:
       cache: false
