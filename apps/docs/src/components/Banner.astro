@@ -1,0 +1,35 @@
+---
+// Starlight's per-page banner (frontmatter `banner`), and on canary builds (site-urls.mjs IS_CANARY) a notice above
+// it that links the same page on docs.runbun.dev, so nobody mistakes docs-canary.runbun.dev for the real docs.
+import Default from "@astrojs/starlight/components/Banner.astro";
+import { IS_CANARY } from "../../site-urls.mjs";
+
+const production = new URL(Astro.url.pathname, "https://docs.runbun.dev/").href;
+---
+
+{
+  IS_CANARY && (
+    <div class="canary-banner" role="note" data-pagefind-ignore>
+      Canary build: these docs may describe unreleased changes. <a href={production}>Read this page on docs.runbun.dev</a>
+    </div>
+  )
+}
+<Default />
+
+<style>
+  /* The playground's canary badge colour (apps/playground/src/style.css), in every theme. */
+  .canary-banner {
+    padding: 0.4rem var(--sl-nav-pad-x);
+    background: #f5b400;
+    color: #1a1300;
+    font-size: var(--sl-text-sm);
+    font-weight: 600;
+    text-align: center;
+    text-wrap: balance;
+  }
+  .canary-banner a {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+</style>

@@ -59,6 +59,8 @@ tasks:
     env:
       DOCS_URL: 'https://docs-canary.runbun.dev/'
       PLAYGROUND_URL: 'https://canary.runbun.dev/'
+      # Shows the canary badge/banner (apps/playground/src/canary.ts, apps/docs/src/components/Banner.astro).
+      CANARY: '1'
     deps:
       - 'semver-wasm:build'
       - 'transpile-wasm:build'

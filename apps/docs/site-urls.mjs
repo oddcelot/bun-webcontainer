@@ -10,3 +10,6 @@ export const PLAYGROUND_URL = withSlash(process.env.PLAYGROUND_URL || (isDev ? "
 
 /** Pages link the playground as `https://runbun.dev/...`; this points those links in a page's HTML at `playground`. */
 export const toPlayground = (html, playground) => html.replace(/(href=["'])https:\/\/runbun\.dev(?:\/|(?=["']))/g, `$1${playground}`);
+
+/** A canary build (`CANARY=1`, docs:deploy-canary): every page shows a banner linking the page on docs.runbun.dev. */
+export const IS_CANARY = process.env.CANARY === "1";

@@ -78,7 +78,11 @@ function embedRoutes(): Plugin {
 }
 
 export default defineConfig(({ mode }) => ({
-  define: { "import.meta.env.DOCS_URL": JSON.stringify(docsUrl(mode)) },
+  define: {
+    "import.meta.env.DOCS_URL": JSON.stringify(docsUrl(mode)),
+    // CANARY=1 (playground:deploy-canary) shows the canary badge (src/canary.ts).
+    "import.meta.env.CANARY": JSON.stringify(process.env.CANARY === "1"),
+  },
   plugins: [UnoCSS(), solid(), hostPackageNames(), emnapiNotNode(), docsLink(docsUrl(mode)), embedRoutes()],
   build: {
     target: "esnext",
