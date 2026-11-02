@@ -1,9 +1,10 @@
 ---
-// A runnable embed for .mdx pages. The default slot is the poster (shown until the embed is ready); `files` become
-// inline sources. In plain .md pages use a ```ts playground fence instead (src/remark-playground.mjs).
-import { PLAYGROUND_URL } from "../../site-urls.mjs";
+// A runnable embed. The default slot is the poster (shown until the embed is ready); `files` become inline sources.
+// In Markdown, ```ts playground fences do the same (../remark.js).
+import { config } from "virtual:@runbun/astro/config";
+import { embedScripts, fileScript } from "../markup.js";
 
-interface Props {
+export interface Props {
   mode?: "code" | "preview" | "console" | "full" | "result";
   features?: string;
   file?: string;
@@ -23,10 +24,11 @@ interface Props {
 }
 const { files = {}, load = "click", ...attrs } = Astro.props;
 const bool = (v: unknown) => (v === undefined ? undefined : v ? "" : undefined);
-const escape = (s: string) => s.replace(/<\/(script)/gi, "<\\/$1").replace(/<!--/g, "<\\!--");
 ---
 
+<!-- not-content: Starlight's spacing between content elements would push the poster down below the file scripts. -->
 <bun-playground
+  class="not-content"
   load={load}
   mode={attrs.mode}
   features={attrs.features}
@@ -42,22 +44,8 @@ const escape = (s: string) => s.replace(/<\/(script)/gi, "<\\/$1").replace(/<!--
   title={attrs.title}
   expand={attrs.expand === undefined || attrs.expand === false ? undefined : attrs.expand === true ? "" : attrs.expand}
 >
-  {Object.entries(files).map(([path, text]) => <script type="text/plain" data-file={path} set:html={"\n" + escape(text) + "\n"} />)}
+  <Fragment set:html={Object.entries(files).map(([path, text]) => fileScript(path, text)).join("\n")} />
   {/* Without a poster of its own, the element shows the first file's code. */}
   {Astro.slots.has("default") && <div slot="poster"><slot /></div>}
 </bun-playground>
-
-<!-- Module scripts with the same URL run once, so several embeds on a page load embed.js a single time. -->
-<script is:inline type="module" src={`${PLAYGROUND_URL}embed.js`}></script>
-<script is:inline type="module">
-  // Embeds take the page's scheme and theme family (ThemeProvider.astro), and follow changes to either.
-  const sync = () => {
-    const { theme, family } = document.documentElement.dataset;
-    for (const el of document.querySelectorAll("bun-playground")) {
-      el.setAttribute("theme", theme === "light" ? "light" : "dark");
-      if (family) el.setAttribute("family", family);
-    }
-  };
-  sync();
-  new MutationObserver(sync).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-family"] });
-</script>
+<Fragment set:html={embedScripts(config.playgroundUrl, config.sync)} />

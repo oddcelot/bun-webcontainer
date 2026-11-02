@@ -1,0 +1,176 @@
+---
+title: Astro
+description: Runnable code blocks in an Astro site with @runbun/astro.
+sidebar:
+  order: 6
+---
+
+import { Code, Playground } from "@runbun/astro/components";
+import wordCount from "../../../examples/word-count.ts?raw";
+
+`@runbun/astro` adds code blocks to an Astro 7 site that are highlighted at build time with [@pierre/highlights](https://diffs.com/highlights) and turn into a live [embed](/guides/embedding/) when a reader clicks Run. Until then a block is plain HTML: no script runs and nothing downloads. The examples below show each source and, under it, what it renders.
+
+```sh
+bun add @runbun/astro
+```
+
+## Set up
+
+Add the integration, and the remark plugin if you want runnable fences in Markdown and MDX:
+
+```js
+// astro.config.mjs
+import { defineConfig } from "astro/config";
+import { unified } from "@astrojs/markdown-remark";
+import runbun from "@runbun/astro";
+import remarkRunbun from "@runbun/astro/remark";
+
+export default defineConfig({
+  integrations: [runbun()],
+  markdown: { processor: unified({ remarkPlugins: [remarkRunbun] }) },
+});
+```
+
+## Code blocks
+
+In `.mdx` or `.astro` files, `<Code>` renders a block. On its own it stays static:
+
+```mdx
+import { Code } from "@runbun/astro/components";
+
+<Code lang="ts" title="greet.ts" code={`export const greet = (name: string) => "Hello, " + name;`} />
+```
+
+<Code lang="ts" title="greet.ts" code={`export const greet = (name: string) => "Hello, " + name;`} />
+
+`playground` adds the Run button. The block takes every embed option (`mode`, `features`, `files`, `readonly`, `persist`, `expand`, …), and `title` names the file:
+
+```mdx
+<Code
+  playground
+  mode="code"
+  features="console"
+  title="index.ts"
+  code={`const langs = ["ts", "tsx", "js"];
+for (const lang of langs) console.log(lang, Bun.version);`}
+/>
+```
+
+<Code
+  playground
+  mode="code"
+  features="console"
+  title="index.ts"
+  code={`const langs = ["ts", "tsx", "js"];
+for (const lang of langs) console.log(lang, Bun.version);`}
+/>
+
+`files` adds more files. The block gets a tab per file, and the embed opens with the same tabs:
+
+```mdx
+<Code
+  playground
+  mode="code"
+  features="console,files"
+  title="index.ts"
+  files={{ "greet.ts": `export const greet = (name: string) => "Hello, " + name;` }}
+  code={`import { greet } from "./greet";
+console.log(greet("Astro"));`}
+/>
+```
+
+<Code
+  playground
+  mode="code"
+  features="console,files"
+  title="index.ts"
+  files={{ "greet.ts": `export const greet = (name: string) => "Hello, " + name;` }}
+  code={`import { greet } from "./greet";
+console.log(greet("Astro"));`}
+/>
+
+To show a file you keep in the repo, import it as a string with Vite's `?raw` suffix and pass it as `code`. The block stays in step with the file, and the file can be linted, formatted and type-checked like any other. Run starts the block's file; when it isn't an index file, the embed gets a `package.json` whose `main` points at it:
+
+```mdx
+import { Code } from "@runbun/astro/components";
+import wordCount from "../examples/word-count.ts?raw";
+
+<Code playground mode="code" features="console" title="word-count.ts" code={wordCount} />
+```
+
+<Code playground mode="code" features="console" title="word-count.ts" code={wordCount} />
+
+## Fences
+
+With the remark plugin, a fence marked `playground` becomes a runnable block:
+
+````md
+```ts playground title="index.ts"
+const res = new Response(JSON.stringify({ ok: true }));
+console.log(await res.json());
+```
+````
+
+```ts playground title="index.ts"
+const res = new Response(JSON.stringify({ ok: true }));
+console.log(await res.json());
+```
+
+Consecutive fences with the same `group=<name>` are one example with several files: one block with a tab per fence, and one embed with the same tabs. The first fence's options apply:
+
+````md
+```ts playground group=demo title="index.ts"
+import { greet } from "./greet";
+console.log(greet("Bun"));
+```
+
+```ts playground group=demo title="greet.ts"
+export const greet = (name: string) => "Hello, " + name;
+```
+````
+
+```ts playground group=demo title="index.ts"
+import { greet } from "./greet";
+console.log(greet("Bun"));
+```
+
+```ts playground group=demo title="greet.ts"
+export const greet = (name: string) => "Hello, " + name;
+```
+
+The meta also takes `mode`, `features`, `load`, `height`, `autorun`, `readonly`, `persist`, `theme`, `file` and `expand` (`expand=false` leaves the modal button out). Fences without `playground` stay as they were.
+
+## Playground
+
+`<Playground>` is the embed on its own: `files` are its sources, and its children are the poster shown until it starts. Without children it shows the first file's code.
+
+```mdx
+import { Playground } from "@runbun/astro/components";
+
+<Playground mode="preview" height="320px" files={{ "index.ts": server }}>
+  <p>A server that answers in the preview. Press Run to start it.</p>
+</Playground>
+```
+
+<Playground
+  mode="preview"
+  height="320px"
+  files={{
+    "index.ts": `Bun.serve({
+  fetch: () => new Response("<h1>Hello from Bun.serve</h1>", { headers: { "Content-Type": "text/html" } }),
+});`,
+  }}
+>
+  <p style="padding: 1rem; margin: 0">A server that answers in the preview. Press Run to start it.</p>
+</Playground>
+
+## Options
+
+| Option | Default | |
+| --- | --- | --- |
+| `playgroundUrl` | `https://runbun.dev/` | Where the embeds come from. |
+| `themes` | `["pierre-light", "pierre-dark"]` | The code themes: names of highlights' bundled themes, or Zed or VS Code theme objects. |
+| `themeSelector` | | The CSS selector each theme goes under, for a site with its own theme switch, e.g. ``({ name }) => `:root[data-code-theme='${name}']` ``. Without it the first light theme applies, and the first dark one under `prefers-color-scheme: dark`. |
+| `sync` | | `{ scheme, family }`: the `<html>` attributes that hold the page's scheme (`light` or `dark`) and theme family, for the embeds to follow. Without it embeds follow the OS. |
+
+The blocks' look comes from CSS properties you can set: `--runbun-code-border`, `--runbun-code-radius`, `--runbun-code-font`, `--runbun-code-size`, `--runbun-code-caption-size` and `--runbun-code-line-height`. Blocks carry Starlight's `not-content` class, so they work in Starlight pages as they are.

@@ -2,18 +2,27 @@
 import { defineConfig } from "astro/config";
 import { unified } from "@astrojs/markdown-remark";
 import starlight from "@astrojs/starlight";
+import runbun from "@runbun/astro";
+import remarkRunbun from "@runbun/astro/remark";
 import UnoCSS from "unocss/astro";
-import { codeThemes } from "./src/code-themes.mjs";
-import remarkPlayground from "./src/remark-playground.mjs";
+import { codeThemeOptions, codeThemes } from "./src/code-themes.mjs";
 import remarkStatus from "./src/remark-status.mjs";
 import { DOCS_URL, PLAYGROUND_URL } from "./site-urls.mjs";
 
 export default defineConfig({
   site: DOCS_URL,
-  markdown: { processor: unified({ remarkPlugins: [[remarkPlayground, { playgroundUrl: PLAYGROUND_URL }], remarkStatus] }) },
+  markdown: { processor: unified({ remarkPlugins: [remarkRunbun, remarkStatus] }) },
   integrations: [
     // The playground's tokens and theme families (uno.config.ts); no reset, Starlight brings its own.
     UnoCSS({ injectReset: false }),
+    // Runnable fences and <Code> blocks, in every family's code theme (data-code-theme, components/ThemeProvider.astro);
+    // embeds follow the page's scheme and family.
+    runbun({
+      playgroundUrl: PLAYGROUND_URL,
+      themes: codeThemeOptions,
+      themeSelector: ({ name }) => `:root[data-code-theme='${name}']`,
+      sync: { scheme: "data-theme", family: "data-family" },
+    }),
     starlight({
       title: "Run Bun",
       description: "Bun in the browser: what runs, where, and how.",

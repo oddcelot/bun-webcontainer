@@ -86,7 +86,7 @@ Each `<script type="text/plain" data-file="path">` is one file. The text is dede
 
 Other sources: `example="<name>"` (a bundled example), `repo="owner/repo"` (a public GitHub repo), or `share="#code=…"`.
 
-In these docs, a fence marked `playground` becomes an embed. Fences with the same `group=<name>` become one embed with several files:
+In these docs, a fence marked `playground` becomes an embed. Consecutive fences with the same `group=<name>` become one embed with a tab per file:
 
 ````md
 ```ts playground group=demo title="index.ts"
@@ -97,6 +97,8 @@ import { greet } from "./greet";
 export const greet = (n: string) => n;
 ```
 ````
+
+To get the same in your own Astro site, see [Astro](/guides/astro/).
 
 ## Turn features on and off
 

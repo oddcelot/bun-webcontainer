@@ -1,0 +1,37 @@
+---
+// A code block highlighted at build time with @pierre/highlights in the page's code theme. Static by default; with
+// `playground` it gets a Run button that turns it into an embed (Playground.astro) with the code as its file, and
+// every embed option passes through. `title` names the file, as in a fence. With `files` the block has a tab per file,
+// and so does the embed.
+import { config } from "virtual:@runbun/astro/config";
+import { codeBlock, codeTabs, cssLink, EXT, langOf, withEntry, withTabs } from "../markup.js";
+import Playground, { type Props as PlaygroundProps } from "./Playground.astro";
+
+export type Props = Omit<PlaygroundProps, "title"> & {
+  code: string;
+  lang?: string;
+  title?: string;
+  playground?: boolean;
+};
+const { code, lang = "ts", title, playground, files = {}, expand = "full", features, ...options } = Astro.props;
+const file = title || `index.${EXT[lang] ?? lang}`;
+const extra = Object.entries(files).map(([name, text]) => ({ name, code: text, lang: langOf(name) }));
+const block = extra.length ? codeTabs([{ name: file, code, lang }, ...extra], options.file ?? file) : codeBlock(code, lang, title);
+---
+
+<Fragment set:html={cssLink(config.base)} />
+{
+  playground ? (
+    <Playground
+      file={file}
+      {...options}
+      features={extra.length ? withTabs(features) : features}
+      expand={expand}
+      files={withEntry({ [file]: code, ...files }, file)}
+    >
+      <Fragment set:html={block} />
+    </Playground>
+  ) : (
+    <Fragment set:html={block} />
+  )
+}

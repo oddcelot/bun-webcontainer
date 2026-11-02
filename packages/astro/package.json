@@ -1,0 +1,23 @@
+{
+  "name": "@runbun/astro",
+  "version": "0.1.0",
+  "description": "Code blocks highlighted with @pierre/highlights that turn into a runnable Bun playground (runbun.dev) on click.",
+  "type": "module",
+  "keywords": ["astro-integration", "astro-component", "bun", "playground", "code", "highlight"],
+  "homepage": "https://docs.runbun.dev/guides/astro/",
+  "repository": { "type": "git", "url": "git+https://github.com/oddcelot/bun-webcontainer.git", "directory": "packages/astro" },
+  "bugs": "https://github.com/oddcelot/bun-webcontainer/issues",
+  "exports": {
+    ".": { "types": "./index.d.ts", "default": "./index.js" },
+    "./remark": { "types": "./remark.d.ts", "default": "./remark.js" },
+    "./components": { "types": "./components.d.ts", "default": "./components.js" },
+    "./Code.astro": "./components/Code.astro",
+    "./Playground.astro": "./components/Playground.astro",
+    "./virtual": { "types": "./virtual.d.ts" }
+  },
+  "files": ["*.js", "*.d.ts", "components", "README.md"],
+  "peerDependencies": { "astro": "^7.0.0" },
+  "dependencies": { "@pierre/highlights": "0.3.0" },
+  "devDependencies": { "@types/mdast": "^4.0.4" },
+  "publishConfig": { "access": "public", "provenance": true }
+}
