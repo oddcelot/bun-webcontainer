@@ -7,7 +7,7 @@
     "dev:all": "../../scripts/dev.sh",
     "build": "astro build",
     "preview": "astro preview",
-    "check": "astro check",
+    "check": "astro sync && tsc --noEmit --runExternalCode",
     "deploy": "astro build && wrangler deploy --env=\"\""
   },
   "dependencies": {
@@ -21,10 +21,11 @@
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.12",
+    "@astrojs/ts-content-mapper": "0.2.0",
     "@emnapi/runtime": "1.11.3",
     "@iconify-json/lucide": "catalog:",
     "@unocss/astro": "66.12.0",
-    "typescript": "^6",
+    "typescript": "7.1.0-beta",
     "unocss": "catalog:",
     "wrangler": "^4.156.2"
   }
