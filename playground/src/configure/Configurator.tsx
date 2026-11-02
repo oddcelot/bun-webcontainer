@@ -1,11 +1,11 @@
-import { For, Show, createEffect, createMemo, createSignal, createStore, onSettled, type ParentProps } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, createStore, onSettled, untrack, type ParentProps } from "solid-js";
 import { Select } from "@kobalte/core/select";
 import { ToggleGroup } from "@kobalte/core/toggle-group";
 import { BASE, DOCS } from "../base";
 import { PRESETS } from "../embed/config";
 import { FEATURES, MODES, type Feature, type Mode } from "../embed/protocol";
 import { examples, repoExamples } from "../examples";
-import { createViewer } from "../editors/pierre";
+import { createPierre, createViewer } from "../editors/pierre";
 import { FAMILIES, isFamily, pickFamily, setColorMode, setThemeVars } from "../theme";
 import { guarded } from "../ui/guarded";
 import { Swatch } from "../ui/Swatch";
@@ -203,6 +203,23 @@ function LiveEmbed(props: { form: Form; attrs: Attr[] }) {
   return <div class="live" ref={host} />;
 }
 
+/**
+ * The inline file in the playground's Pierre editor, highlighted by the file name's extension. A new name reopens it
+ * with the text as it is; edits go to `onInput`.
+ */
+function CodeInput(props: { path: string; text: string; onInput: (text: string) => void }) {
+  let el!: HTMLDivElement;
+  let editor: ReturnType<typeof createPierre> | undefined;
+  createEffect(
+    () => ({ path: props.path || "index.ts", text: untrack(() => props.text) }),
+    guarded("configure code", ({ path, text }) => {
+      (editor ??= createPierre(el)).open(path, text, (next) => props.onInput(next));
+    }),
+  );
+  onSettled(() => () => editor?.destroy());
+  return <div class="code-editor" ref={el} />;
+}
+
 /** The snippet in the playground's read-only Pierre view: highlighted as HTML, in the page's theme. */
 function SnippetView(props: { text: string }) {
   let el!: HTMLDivElement;
@@ -314,9 +331,11 @@ export function Configurator() {
               <Field label="File name">
                 <Text value={form.filename} onInput={set("filename")} />
               </Field>
-              <Field label="Code" wide>
-                <textarea class="dialog-input code" rows={8} spellcheck={false} value={form.code} onInput={(e) => set("code")(e.currentTarget.value)} />
-              </Field>
+              {/* Not a <label>: a click inside the editor mustn't go to a form control. */}
+              <div class="field wide">
+                <span class="field-label">Code</span>
+                <CodeInput path={form.filename.trim()} text={form.code} onInput={set("code")} />
+              </div>
             </Show>
             <Show when={form.source === "example"}>
               <Field label="Example" wide>

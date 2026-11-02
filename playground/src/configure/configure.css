@@ -15,7 +15,9 @@ body { color: var(--fg); }
 .field-hint::before { content: "· "; }
 .field .select-trigger { height: var(--control-height); }
 .field .select-trigger .value { overflow: hidden; }
-.cfg-form .dialog-input.code { height: auto; padding: 6px 8px; line-height: 1.5; resize: vertical; }
+/* The inline file's editor (Pierre): a box like the inputs, a few lines tall, scrolling past that; drag to resize. */
+.code-editor { height: 12rem; min-height: 6rem; overflow: auto; resize: vertical; border: 1px solid var(--control-border); border-radius: 6px; background: var(--bg); font-size: 12px; }
+.code-editor:focus-within { outline: 1px solid var(--accent); outline-offset: -1px; }
 .cfg-form .dialog-input:focus { outline: 1px solid var(--accent); outline-offset: -1px; }
 .segmented button { white-space: nowrap; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
