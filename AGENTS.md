@@ -141,7 +141,7 @@ These rules override the conservative Beads profile for commits (not for pushes)
 
 - `sd` for find-and-replace (`sd -F 'old/path' 'new/path' $(git grep -l 'old/path')`). Don't use `sed -i`/`sed -E`:
   macOS's BSD sed differs from GNU (`-i ''`, no `\1` in `-E` patterns). In Claude Code a hook
-  (`.claude/hooks/prefer-sd.sh`) refuses in-place `sed`/`perl` edits; read-only `sed` still runs.
+  (`.claude/hooks/prefer-sd.ts`) refuses in-place `sed`/`perl` edits; read-only `sed` still runs.
 - `ast-grep` for structural search/rewrite in Rust/TS/TSX, e.g.
   `ast-grep run -l ts -p 'import { $$$ } from "@runbun/vfs"' apps/` (add `-r '<rewrite>' -U` to apply).
 - `rg` always gets an explicit path (`rg -n foo .`): without one and with stdin not a terminal, it waits on stdin.
