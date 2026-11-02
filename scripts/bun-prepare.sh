@@ -23,7 +23,7 @@ vendor rust-argon2 sru-systems/rust-argon2 "$ARGON2_COMMIT"
 
 # Generated inputs that `bun bd --configure-only` would write.
 mkdir -p "$dir/build/debug/codegen"
-cp "$root/build_options.rs" "$dir/build/debug/codegen/"
+cp "$root/patches/bun-codegen/build_options.rs" "$dir/build/debug/codegen/"
 (cd "$dir" && bun -e '
 import { generateJsonByteClass } from "./scripts/build/jsonByteClass.ts";
 import { generateXmlByteClass } from "./scripts/build/xmlByteClass.ts";

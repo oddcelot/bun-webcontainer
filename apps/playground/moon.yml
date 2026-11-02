@@ -11,7 +11,7 @@ fileGroups:
     # Copied in from the wasm crates by scripts/copy-wasm.mjs; their builds are deps instead.
     - '!public/*.wasm'
     - 'scripts/**/*'
-    - 'patches/**/*'
+    - '/patches/npm/**/*'
     - '*.html'
     - '*.ts'
     - 'tsconfig.json'

@@ -4,20 +4,13 @@ $schema: 'https://moonrepo.dev/schemas/workspace.json'
 versionConstraint: '>=2.6.0'
 
 projects:
-  root: '.'
-  semver-wasm: 'crates/semver-wasm'
-  transpile-wasm: 'crates/transpile-wasm'
-  bundle-wasm: 'crates/bundle-wasm'
-  sys-wasm: 'crates/sys-wasm'
-  resolve-wasm: 'crates/resolve-wasm'
-  fmt-wasm: 'crates/fmt-wasm'
-  tsrs-ls-wasm: 'crates/tsrs-ls-wasm'
-  sys-host: 'crates/sys-host'
-  wasm-stubs: 'crates/wasm-stubs'
-  shim-test: 'crates/shim-test'
-  playground: 'apps/playground'
-  docs: 'apps/docs'
-  astro: 'packages/astro'
+  # Every apps/, crates/ and packages/ directory with a moon.yml; the id is the directory name.
+  globs:
+    - 'apps/*/moon.yml'
+    - 'crates/*/moon.yml'
+    - 'packages/*/moon.yml'
+  sources:
+    root: '.'
 
 vcs:
   client: 'git'
