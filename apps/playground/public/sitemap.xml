@@ -1,8 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Only the home page: ?example= and ?repo= are the same page (canonical https://runbun.dev/). -->
+<!-- The two indexable pages: ?example= and ?repo= are the home page (canonical https://runbun.dev/); /embed is
+     noindex (it only runs framed in other sites). The docs have their own: https://docs.runbun.dev/sitemap-index.xml -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://runbun.dev/</loc>
-    <lastmod>2026-10-28</lastmod>
+    <lastmod>2026-11-02</lastmod>
+  </url>
+  <url>
+    <loc>https://runbun.dev/configure</loc>
+    <lastmod>2026-11-02</lastmod>
   </url>
 </urlset>

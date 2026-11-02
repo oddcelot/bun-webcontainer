@@ -1,0 +1,6 @@
+# docs.runbun.dev: every page may be crawled. Cloudflare adds its content-signals policy above this.
+# The canary build replaces this file (scripts/canary-dist.sh).
+User-agent: *
+Allow: /
+
+Sitemap: https://docs.runbun.dev/sitemap-index.xml

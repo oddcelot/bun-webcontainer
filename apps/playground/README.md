@@ -107,8 +107,9 @@ The page must be cross-origin isolated (`Cross-Origin-Opener-Policy: same-origin
 `Cross-Origin-Embedder-Policy: credentialless`). `public/_headers` sets them on Cloudflare (Pages, and Workers
 static assets) and Netlify; hosts that can't send headers (GitHub Pages) need a COOP/COEP service-worker workaround.
 
-Cloudflare Workers: `wrangler.jsonc` deploys `dist/` as static assets: `bun run build && bunx wrangler deploy`.
-It serves on the custom domain https://runbun.dev and on https://bun-playground.oddcelot.workers.dev (`workers_dev`).
+Cloudflare Workers: `wrangler.jsonc` deploys `dist/` as static assets: `bun run build && bunx wrangler deploy --env=""` (the empty env is production; `--env canary` is the canary).
+It serves only on the custom domain https://runbun.dev: `workers_dev` and `preview_urls` are off, so search engines
+don't find a duplicate copy of the site (the same goes for the docs and both canaries).
 A small Worker (`worker/index.ts`) runs first only on `/api/*` and `/s/*`, for opt-in short links: `POST /api/short`
 stores a share payload in the `LINKS` KV namespace under a content-hash id (rate-limited per IP by `CREATE_LIMIT`,
 capped at ~64 KB packed) and `GET /s/<id>` redirects to `/#code=…`; everything else is the static site. It fits the

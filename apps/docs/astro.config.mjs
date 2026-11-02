@@ -49,6 +49,17 @@ export default defineConfig({
         { icon: "github", label: "GitHub", href: "https://github.com/oddcelot/bun-webcontainer" },
       ],
       editLink: { baseUrl: "https://github.com/oddcelot/bun-webcontainer/edit/main/apps/docs/" },
+      // Starlight sets the title, description, canonical, og:url and twitter:card per page; the share image is the
+      // playground's card (apps/playground/public/og.png), so links to the docs preview like links to the playground.
+      head: [
+        { tag: "meta", attrs: { property: "og:image", content: `${PLAYGROUND_URL}og.png` } },
+        { tag: "meta", attrs: { property: "og:image:type", content: "image/png" } },
+        { tag: "meta", attrs: { property: "og:image:width", content: "1200" } },
+        { tag: "meta", attrs: { property: "og:image:height", content: "630" } },
+        { tag: "meta", attrs: { property: "og:image:alt", content: "Bun's logo next to the words: Bun in your browser" } },
+        { tag: "meta", attrs: { name: "twitter:image", content: `${PLAYGROUND_URL}og.png` } },
+        { tag: "meta", attrs: { name: "twitter:site", content: "@oddcelot" } },
+      ],
       sidebar: [
         // The home page is the overview, first among the guides.
         { label: "Guides", items: [{ label: "Overview", link: "/" }, { autogenerate: { directory: "guides" } }] },
