@@ -1,19 +1,34 @@
-import { For, Show, createEffect, createMemo, createSignal, createStore, type ParentProps } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, createStore, onSettled, untrack, type ParentProps } from "solid-js";
 import { Select } from "@kobalte/core/select";
 import { ToggleGroup } from "@kobalte/core/toggle-group";
 import { BASE, DOCS } from "../base";
 import { PRESETS } from "../embed/config";
 import { FEATURES, MODES, type Feature, type Mode } from "../embed/protocol";
 import { examples, repoExamples } from "../examples";
-import { FAMILIES, pickFamily, setColorMode, setThemeVars } from "../theme";
+import { createPierre } from "../editors/pierre";
+import { FAMILIES, isFamily, onTheme, pickFamily, setColorMode, themeName } from "../theme";
 import { guarded } from "../ui/guarded";
 import { Swatch } from "../ui/Swatch";
 import { TabItem, TabList } from "../ui/Tabs";
 import { Tip } from "../ui/Tip";
+import { highlightSnippet } from "./highlight";
 import { attributes, elementSnippet, iframeSnippet, inlineFile, type Attr, type Form } from "./snippet";
 
 // runbun.dev/configure: a form over every <bun-playground> option, a live embed with those options, and the snippet to
-// paste. The page wears the embed's theme, family and vars, so the whole thing previews the look.
+// paste. The form's Look settings go to the embed only; the page wears the docs' theme when they frame it.
+
+/**
+ * The page framing the configurator (the docs): its color scheme and theme family, which this page wears. They come
+ * in the URL (`?theme=dark&family=…`) and later as messages (`{ bunConfigure: 1, theme, family }`), only from the docs.
+ */
+type Host = { theme?: "light" | "dark"; family?: string };
+const DOCS_ORIGIN = new URL(DOCS).origin;
+function hostLook(data: { theme?: unknown; family?: unknown }): Host {
+  const theme = data.theme === "light" || data.theme === "dark" ? data.theme : undefined;
+  const family = typeof data.family === "string" && isFamily(data.family) ? data.family : undefined;
+  return { theme, family };
+}
+const params = new URLSearchParams(location.search);
 
 /** Where snippets load the playground from: this deploy. */
 const PLAYGROUND = new URL(BASE, location.href).href;
@@ -188,6 +203,48 @@ function LiveEmbed(props: { form: Form; attrs: Attr[] }) {
   return <div class="live" ref={host} />;
 }
 
+/**
+ * The inline file in the playground's Pierre editor, highlighted by the file name's extension. A new name reopens it
+ * with the text as it is; edits go to `onInput`.
+ */
+function CodeInput(props: { path: string; text: string; onInput: (text: string) => void }) {
+  let el!: HTMLDivElement;
+  let editor: ReturnType<typeof createPierre> | undefined;
+  createEffect(
+    () => ({ path: props.path || "index.ts", text: untrack(() => props.text) }),
+    guarded("configure code", ({ path, text }) => {
+      (editor ??= createPierre(el)).open(path, text, (next) => props.onInput(next));
+    }),
+  );
+  onSettled(() => () => editor?.destroy());
+  return <div class="code-editor" ref={el} />;
+}
+
+/**
+ * The snippet, highlighted with @pierre/highlights in the page's theme: the HTML, and the inline file in its own
+ * language (highlight.ts). The highlighted HTML lands after the themes load; until then the text shows plain.
+ */
+function SnippetView(props: { text: string }) {
+  let el!: HTMLPreElement;
+  const [theme, setTheme] = createSignal(themeName());
+  onSettled(() => onTheme((name) => setTheme(name)));
+  let seq = 0;
+  createEffect(
+    () => ({ text: props.text, theme: theme() }),
+    guarded("configure snippet", ({ text, theme }) => {
+      const n = ++seq;
+      if (!el.innerHTML) el.textContent = text;
+      void highlightSnippet(text, theme).then((r) => {
+        if (n !== seq) return;
+        el.innerHTML = r.html;
+        el.style.background = r.bg;
+        el.style.color = r.fg;
+      });
+    }),
+  );
+  return <pre class="snippet-code" ref={el} />;
+}
+
 export function Configurator() {
   const [form, setForm] = createStore<Form>({
     source: "inline",
@@ -226,13 +283,22 @@ export function Configurator() {
   const snippet = createMemo(() => (tab() === "element" ? elementSnippet : iframeSnippet)(form, attrs(), PLAYGROUND));
   const [copied, setCopied] = createSignal(false);
 
-  // The page takes the embed's look: its color mode, family and chrome variables.
+  const [host, setHost] = createSignal<Host>(hostLook({ theme: params.get("theme"), family: params.get("family") }));
+  onSettled(() => {
+    const onMessage = (e: MessageEvent) => {
+      if (e.origin === DOCS_ORIGIN && e.data?.bunConfigure === 1) setHost(hostLook(e.data));
+    };
+    addEventListener("message", onMessage);
+    return () => removeEventListener("message", onMessage);
+  });
+
+  // The page wears the framing page's look (the docs'), else its own default; the form's Look settings are the
+  // embed's alone.
   createEffect(
-    () => ({ theme: form.theme, family: form.family, vars: attrs().find(([k]) => k === "vars")?.[1] }),
+    () => host(),
     guarded("configure theme", (look) => {
-      setColorMode(look.theme === "auto" ? "system" : look.theme);
-      pickFamily(look.family === "default" ? "pierre-light" : look.family);
-      setThemeVars(look.vars ? JSON.parse(look.vars) : undefined);
+      setColorMode(look.theme ?? "system");
+      pickFamily(look.family ?? "pierre-light");
     }),
   );
 
@@ -274,9 +340,11 @@ export function Configurator() {
               <Field label="File name">
                 <Text value={form.filename} onInput={set("filename")} />
               </Field>
-              <Field label="Code" wide>
-                <textarea class="dialog-input code" rows={8} spellcheck={false} value={form.code} onInput={(e) => set("code")(e.currentTarget.value)} />
-              </Field>
+              {/* Not a <label>: a click inside the editor mustn't go to a form control. */}
+              <div class="field wide">
+                <span class="field-label">Code</span>
+                <CodeInput path={form.filename.trim()} text={form.code} onInput={set("code")} />
+              </div>
             </Show>
             <Show when={form.source === "example"}>
               <Field label="Example" wide>
@@ -456,9 +524,7 @@ export function Configurator() {
                 {copied() ? "Copied" : "Copy"}
               </button>
             </div>
-            <pre>
-              <code>{snippet()}</code>
-            </pre>
+            <SnippetView text={snippet()} />
           </div>
         </aside>
       </main>
