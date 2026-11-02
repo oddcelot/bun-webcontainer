@@ -4,6 +4,10 @@
   "workspaces": {
     "": {
       "name": "bun-webcontainer",
+      "devDependencies": {
+        "@types/bun": "1.4.4",
+        "tsrs": "0.20.1-ts7.1.0-beta",
+      },
     },
     "apps/docs": {
       "name": "bun-playground-docs",

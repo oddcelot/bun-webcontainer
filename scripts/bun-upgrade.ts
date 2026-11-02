@@ -178,6 +178,9 @@ async function finish(): Promise<number> {
   const added = await $`bun add -d --exact ${`@types/bun@${ver}`} ${`bun-types@${ver}`}`.cwd(join(root, "apps/playground")).quiet().nothrow();
   if (added.exitCode !== 0) {
     say(`bun-upgrade: @types/bun@${ver} isn't published yet; run \`bun add -d --exact @types/bun@${ver} bun-types@${ver}\` in apps/playground/ once it is`);
+  } else {
+    // The root's @types/bun types the scripts (moon run root:typecheck-scripts).
+    await $`bun add -d --exact ${`@types/bun@${ver}`}`.cwd(root).quiet().nothrow();
   }
 
   await $`${join(root, "scripts/bun-prepare.ts")} ${bun}`;

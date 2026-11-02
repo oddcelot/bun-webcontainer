@@ -9,6 +9,16 @@ tasks:
       cache: false
       runInCI: true
       runFromWorkspaceRoot: true
+  typecheck-scripts:
+    # The bun scripts and the Claude Code hook (tsrs, TS 7); tsconfig in scripts/.
+    command: 'bunx tsrs -p scripts/tsconfig.json'
+    inputs:
+      - '/scripts/*.ts'
+      - '/scripts/tsconfig.json'
+      - '/.claude/hooks/*.ts'
+      - '/package.json'
+    options:
+      runFromWorkspaceRoot: true
   typos:
     # Spell check of tracked sources and docs; exceptions in _typos.toml. Needs typos-cli (Brewfile).
     command: 'typos'

@@ -66,7 +66,7 @@ moon run :test                             # build + test every wasm crate (cach
 moon run <crate>:build|test                # one crate; config in .moon/ and <crate>/moon.yml
 moon run playground:build docs:build       # playground after the wasm crates' builds; docs:check, playground:typecheck
 moon run docs:dev                          # docs dev server + playground:dev (like scripts/dev.ts)
-moon run root:lint-sh root:typos docs:links  # shellcheck, spelling, the built docs' internal links (tools: Brewfile)
+moon run root:typecheck-scripts root:typos docs:links  # scripts/ + hook types (tsrs), spelling, the built docs' internal links (typos, lychee: Brewfile)
 scripts/setup-bun.ts                       # recreate bun/ (pinned commit + patches/bun/ via git am); bun/ is not tracked
 scripts/export-bun-patches.ts              # after committing in bun/ on wasm-experiment
 scripts/bun-upgrade.ts --check             # newer Bun release? do patches/bun/ still apply? (changes nothing)
