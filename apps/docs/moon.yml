@@ -43,3 +43,14 @@ tasks:
     preset: 'server'
     deps:
       - 'playground:dev'
+  deploy-canary:
+    # docs-canary.runbun.dev (wrangler.jsonc env.canary), linking canary.runbun.dev; built into dist-canary/.
+    script: >-
+      bunx astro build --outDir dist-canary &&
+      ../../scripts/canary-dist.sh dist-canary && bunx wrangler deploy --env canary
+    env:
+      DOCS_URL: 'https://docs-canary.runbun.dev/'
+      PLAYGROUND_URL: 'https://canary.runbun.dev/'
+    options:
+      cache: false
+      runInCI: false

@@ -96,6 +96,10 @@ local Rust builds, so build them first). Any static HTTPS host works. For a sub-
 The Docs link goes to `DOCS_URL` when it's set at build or dev time, else to http://localhost:4321/ (`astro dev`) in
 dev and https://docs.runbun.dev/ in builds. For a canary or preview deploy, build both sites with the same pair:
 `DOCS_URL=https://docs.canary.example PLAYGROUND_URL=https://canary.example bun run build` (here and in `../docs`).
+The canary does that: `moon run playground:deploy-canary docs:deploy-canary` builds both into `dist-canary/` with
+https://canary.runbun.dev/ and https://docs-canary.runbun.dev/, adds `X-Robots-Tag: noindex`, and deploys them with
+`wrangler deploy --env canary` (workers `bun-playground-canary` and `bun-playground-docs-canary`, its own short-link
+KV namespace `runbun-links-canary`).
 When the default ports are taken, set them for local dev too.
 Browsers missing a requirement (WebAssembly Memory64, which Safari 27 and every iOS browser still lack; a secure context; service workers; module workers) still get the editor, examples and sharing, with a banner listing what passed and what failed; Run, Install and the preview request bar are disabled.
 
