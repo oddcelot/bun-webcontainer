@@ -28,7 +28,7 @@ JSC-independent Rust crates compiled to wasm64 (Memory64) plus JS shims for the 
 | `scripts/w64.sh` | wasm64 compile check of Bun crates |
 | `HANDOFF.md` | How the port works, findings, next steps |
 
-`brew bundle` installs the shell tools agents use (`Brewfile`: sd, ast-grep). `.prototools` pins Bun, Node 26 (the wasm64 tests need >= 24) and [moon](https://moonrepo.dev), which runs the wasm crates'
+`brew bundle` installs the shell tools agents use (`Brewfile`: sd, ast-grep, wasm-tools, twiggy, cargo-machete, shellcheck, lychee, typos, hyperfine). `.prototools` pins Bun, Node 26 (the wasm64 tests need >= 24) and [moon](https://moonrepo.dev), which runs the wasm crates'
 builds and tests with caching (`proto install` once):
 
 ```sh
