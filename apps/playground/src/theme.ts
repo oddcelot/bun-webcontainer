@@ -149,7 +149,7 @@ function themeApplied(timeout = 1500): Promise<void> {
 controller.subscribe(sync);
 sync();
 
-// Preview pages follow the mode (previewColorScheme in sw.js). The ones in this page's iframes switch right away,
+// Preview pages follow the mode (previewColorScheme in swPage.ts). The ones in this page's iframes switch right away,
 // so a theme view transition captures them in the new mode (a channel message arrives too late for that); the
 // channel reaches the rest, e.g. a preview opened in its own tab.
 const previewScheme = new BroadcastChannel("bun-color-scheme");

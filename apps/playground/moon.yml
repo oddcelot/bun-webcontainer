@@ -8,13 +8,13 @@ fileGroups:
     - 'worker/**/*'
     - 'embed-element/**/*'
     - 'public/**/*'
-    # Copied in from the wasm crates by scripts/copy-wasm.mjs; their builds are deps instead.
+    # Copied in from the wasm crates by scripts/copy-wasm.ts; their builds are deps instead.
     - '!public/*.wasm'
     - 'scripts/**/*'
     - '/patches/npm/**/*'
     - '*.html'
     - '*.ts'
-    - 'tsconfig.json'
+    - 'tsconfig*.json'
     - 'package.json'
     - '/packages/ui/**/*'
     - '/packages/vfs/**/*'
@@ -26,7 +26,7 @@ tasks:
     inputs:
       - '@group(sources)'
   build:
-    # prebuild (scripts/copy-wasm.mjs) copies the crates' .wasm into public/.
+    # prebuild (scripts/copy-wasm.ts) copies the crates' .wasm into public/.
     command: 'bun run build'
     deps:
       - 'semver-wasm:build'
@@ -40,7 +40,7 @@ tasks:
     outputs:
       - 'dist/**/*'
   dev:
-    # strictPort: the docs frame the playground at localhost:5173 (docs/site-urls.mjs).
+    # strictPort: the docs frame the playground at localhost:5173 (apps/docs/site-urls.ts).
     command: 'bun run dev --strictPort'
     preset: 'server'
     deps:
@@ -54,7 +54,7 @@ tasks:
     # canary.runbun.dev (wrangler.jsonc env.canary): a production build into dist-canary/ that links docs-canary, so
     # moon's cached dist/ stays the runbun.dev build. noindex keeps it out of search results.
     script: >-
-      bun scripts/copy-wasm.mjs --strip && bunx tsrs --noEmit && bunx vite build --outDir dist-canary &&
+      bun scripts/copy-wasm.ts --strip && bunx tsrs --noEmit && bunx tsrs -p tsconfig.sw.json && bunx vite build --outDir dist-canary &&
       ../../scripts/canary-dist.sh dist-canary && bunx wrangler deploy --env canary
     env:
       DOCS_URL: 'https://docs-canary.runbun.dev/'

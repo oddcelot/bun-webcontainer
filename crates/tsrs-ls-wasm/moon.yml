@@ -19,12 +19,12 @@ tasks:
     outputs:
       - 'target/wasm32-wasip1/release/*.wasm'
   test:
-    command: 'node test.mjs'
+    command: 'node test.ts'
     # Through moon's toolchains, child processes get PROTO_*_VERSION, so the `bun` the tests spawn in temp dirs
     # (outside this repo's .prototools) is still the pinned one, not proto's global default.
     toolchains: ['node', 'bun']
     deps: ['~:build']
     inputs:
-      - '*.mjs'
+      - '*.ts'
       # Type-checks the .d.ts files in apps/playground/node_modules.
       - '/bun.lock'

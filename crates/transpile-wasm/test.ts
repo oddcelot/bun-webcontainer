@@ -5,14 +5,15 @@ const wasm = readFileSync(new URL("../../target/wasm64-unknown-unknown/release/b
 const t0 = performance.now();
 const { instance } = await WebAssembly.instantiate(wasm, { env: { resolve_specifier: () => 0n } });
 console.log(`instantiate ${(performance.now() - t0).toFixed(1)} ms, imports: ${WebAssembly.Module.imports(new WebAssembly.Module(wasm)).length}`);
-const w = instance.exports;
+type Wasm = { memory: WebAssembly.Memory; [fn: string]: any };
+const w = instance.exports as Wasm;
 const enc = new TextEncoder(), dec = new TextDecoder();
-const LOADERS = { js: 0, mjs: 0, jsx: 1, ts: 2, tsx: 3 };
+const LOADERS: Record<string, number> = { js: 0, mjs: 0, jsx: 1, ts: 2, tsx: 3 };
 
-export function transpile(path, source) {
-  const put = (s) => { const b = enc.encode(s), n = BigInt(b.length), p = w.alloc(n); new Uint8Array(w.memory.buffer, Number(p), b.length).set(b); return [p, n]; };
+export function transpile(path: string, source: string) {
+  const put = (s: string): [bigint, bigint] => { const b = enc.encode(s), n = BigInt(b.length), p = w.alloc(n); new Uint8Array(w.memory.buffer, Number(p), b.length).set(b); return [p, n]; };
   const [pp, pl] = put(path), [sp, sl] = put(source);
-  const out = w.transpile_c(pp, pl, sp, sl, LOADERS[path.split(".").pop()] ?? 0);
+  const out = w.transpile_c(pp, pl, sp, sl, LOADERS[path.split(".").pop()!] ?? 0);
   const view = new DataView(w.memory.buffer);
   const status = view.getBigUint64(Number(out), true), ptr = view.getBigUint64(Number(out) + 8, true), len = view.getBigUint64(Number(out) + 16, true);
   const text = dec.decode(new Uint8Array(w.memory.buffer, Number(ptr), Number(len)));

@@ -108,7 +108,7 @@ bun-playground {
   --play-radius: 6px;
 }
 
-/* Status icons on the compatibility pages (remark-status.mjs): the playground's lucide icons in the status colors. */
+/* Status icons on the compatibility pages (remark-status.ts): the playground's lucide icons in the status colors. */
 .status {
   display: inline-flex;
   align-items: center;

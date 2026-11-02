@@ -35,12 +35,12 @@ tasks:
     # outputs: in each crate's moon.yml (the shared /target holds every crate's .wasm).
   test:
     # Node >= 24 (Memory64); bun lacks it. Both pinned in /.prototools.
-    command: 'node test.mjs'
+    command: 'node test.ts'
     # Through moon's toolchains, child processes get PROTO_*_VERSION, so the `bun` the tests spawn in temp dirs
     # (outside this repo's .prototools) is still the pinned one, not proto's global default.
     toolchains: ['node', 'bun']
     deps: ['~:build']
     inputs:
-      - '*.mjs'
+      - '*.ts'
       # The tests run the wasm over the playground's VFS and host imports (@runbun/vfs).
       - '/packages/vfs/*.ts'

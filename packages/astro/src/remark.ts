@@ -4,6 +4,7 @@
 // Meta words: `playground` (required), `mode=…`, `features=…`, `group=<name>`, `load=…`, `height=…`; `title="x.ts"`
 // names the file. Consecutive fences with the same `group` share one embed (the first fence's options apply).
 // Options default to the runbun() integration's (playgroundUrl, base, sync).
+import type { Code, Root, RootContent } from "mdast";
 import { CONFIG } from "./config.js";
 import { codeTabs, cssLink, embedScripts, EXT, fileScript, withEntry, withTabs } from "./markup.js";
 
@@ -11,38 +12,49 @@ const OWN_KEYS = new Set(["playground", "mode", "features", "group", "load", "he
 const ATTRS = ["mode", "features", "height", "autorun", "readonly", "persist", "theme", "file"];
 
 /** Splits `a b=c title="d e"` into [key, value|null] tokens. */
-function tokens(meta) {
-  const out = [];
+interface Token {
+  key: string | undefined;
+  value: string | null;
+}
+
+function tokens(meta: string): Token[] {
+  const out: Token[] = [];
   const re = /(?:([\w-]+)(?:=(?:"([^"]*)"|'([^']*)'|(\S*)))?)|(\S+)/g;
-  let m;
+  let m: RegExpExecArray | null;
   while ((m = re.exec(meta))) out.push({ key: m[1], value: m[2] ?? m[3] ?? m[4] ?? null });
   return out;
 }
 
-const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+const esc = (s: unknown) => String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 /**
  * Raw HTML for the page. MDX turns a raw `<script>`'s text into a literal `set:html` attribute, so the embed's files
  * would arrive empty; there the HTML goes through Astro's `<Fragment set:html>` untouched.
  */
 let mdx = false;
-const html = (value) =>
+const html = (value: string): RootContent =>
   mdx
-    ? { type: "mdxJsxFlowElement", name: "Fragment", attributes: [{ type: "mdxJsxAttribute", name: "set:html", value }], children: [] }
+    ? ({ type: "mdxJsxFlowElement", name: "Fragment", attributes: [{ type: "mdxJsxAttribute", name: "set:html", value }], children: [] } as unknown as RootContent)
     : { type: "html", value };
 
-function parse(node) {
+interface Entry {
+  opts: Record<string, string>;
+  title: string | null | undefined;
+  node: Code;
+}
+
+function parse(node: Code): Entry | null {
   const toks = tokens(node.meta ?? "");
   if (!toks.some((t) => t.key === "playground" && t.value === null)) return null;
-  const opts = {};
+  const opts: Record<string, string> = {};
   for (const t of toks) if (t.key && OWN_KEYS.has(t.key)) opts[t.key] = t.value ?? "";
   const title = toks.find((t) => t.key === "title")?.value;
   return { opts, title, node };
 }
 
-function embed(entries) {
+function embed(entries: [Entry, ...Entry[]]): RootContent {
   const { opts } = entries[0];
-  const sources = {};
-  const shown = [];
+  const sources: Record<string, string> = {};
+  const shown: { name: string; code: string; lang: string }[] = [];
   for (const { title, node } of entries) {
     const ext = EXT[node.lang ?? ""] ?? node.lang ?? "txt";
     let name = title || `index.${ext}`;
@@ -54,36 +66,36 @@ function embed(entries) {
   if (shown.length > 1) opts.features = withTabs(opts.features);
   // The first fence is the one Run starts, unless the group has an index file of its own.
   const names = Object.keys(sources);
-  const entry = names.find((n) => /^(src\/)?index\.[jt]sx?$/.test(n)) ?? names[0];
+  const entry = names.find((n) => /^(src\/)?index\.[jt]sx?$/.test(n)) ?? names[0]!;
   const files = Object.entries(withEntry(sources, entry)).map(([name, text]) => fileScript(name, text));
   const attrs = ATTRS.filter((k) => k in opts).map((k) => ` ${k}="${esc(opts[k])}"`).join("");
   // A docs snippet opens as the whole playground in a modal unless the fence says otherwise (`expand=false`, `expand=on`).
   const expand = opts.expand === "false" ? "" : ` expand="${esc(opts.expand || "full")}"`;
   // The tab checked first is the file the embed opens with: `file`, else the one Run starts.
   const opened = opts.file && opts.file in sources ? opts.file : entry;
-  const poster = shown.length > 1 || entries[0].title ? codeTabs(shown, opened) : codeTabs([{ ...shown[0], name: "" }]);
+  const poster = shown.length > 1 || entries[0].title ? codeTabs(shown, opened) : codeTabs([{ ...shown[0]!, name: "" }]);
   return html(
     `<bun-playground class="not-content" load="${esc(opts.load || "click")}"${expand}${attrs}>\n${files.join("\n")}\n` +
       `<div slot="poster">${poster}</div>\n</bun-playground>`,
   );
 }
 
-function transform(children) {
-  const out = [];
+function transform(children: RootContent[]): boolean {
+  const out: RootContent[] = [];
   let found = false;
   for (let i = 0; i < children.length; i++) {
-    const node = children[i];
+    const node = children[i]!;
     const first = node.type === "code" ? parse(node) : null;
     if (!first) {
-      if (node.children) found = transform(node.children) || found;
+      if ("children" in node) found = transform(node.children) || found;
       out.push(node);
       continue;
     }
     found = true;
-    const entries = [first];
+    const entries: [Entry, ...Entry[]] = [first];
     const group = first.opts.group;
     while (group && children[i + 1]?.type === "code") {
-      const next = parse(children[i + 1]);
+      const next = parse(children[i + 1] as Code);
       if (!next || next.opts.group !== group) break;
       entries.push(next);
       i++;
@@ -94,8 +106,10 @@ function transform(children) {
   return found;
 }
 
-/** @param {{ playgroundUrl?: string, base?: string, sync?: { scheme?: string, family?: string } }} [options] */
-export default function remarkRunbun(options = {}) {
+/** ```ts playground fences as embeds. Options default to the runbun() integration's. */
+export default function remarkRunbun(
+  options: { playgroundUrl?: string; base?: string; sync?: { scheme?: string; family?: string } } = {},
+): (tree: Root, file?: { path?: string }) => void {
   return (tree, file) => {
     mdx = /\.mdx$/.test(file?.path ?? "");
     if (!transform(tree.children)) return;

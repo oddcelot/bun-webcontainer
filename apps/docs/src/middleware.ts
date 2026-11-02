@@ -1,5 +1,5 @@
 import { defineMiddleware } from "astro:middleware";
-import { PLAYGROUND_URL, toPlayground } from "../site-urls.mjs";
+import { PLAYGROUND_URL, toPlayground } from "../site-urls.ts";
 
 /** Pages (Markdown and frontmatter alike) link https://runbun.dev; point those links at this environment's playground. */
 export const onRequest = defineMiddleware(async (_context, next) => {

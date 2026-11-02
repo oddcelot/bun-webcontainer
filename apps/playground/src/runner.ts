@@ -2,7 +2,7 @@ import { CookieJar } from "./cookieJar";
 import { serveModule, vfsRoot } from "./moduleServer";
 import type { VFS } from "@runbun/vfs";
 
-/** Tells preview pages (see previewWebSocket in sw.js) that their WebSockets' server is gone. */
+/** Tells preview pages (see previewWebSocket in swPage.ts) that their WebSockets' server is gone. */
 const previewChannel = new BroadcastChannel("bun-preview");
 /** A plain-text answer to a module request. */
 const textResponse = (status: number, text: string) => ({ status, statusText: "", headers: [["content-type", "text/plain"]], body: new TextEncoder().encode(text).buffer });

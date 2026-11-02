@@ -1,8 +1,8 @@
 ---
-// Starlight's per-page banner (frontmatter `banner`), and on canary builds (site-urls.mjs IS_CANARY) a notice above
+// Starlight's per-page banner (frontmatter `banner`), and on canary builds (site-urls.ts IS_CANARY) a notice above
 // it that links the same page on docs.runbun.dev, so nobody mistakes docs-canary.runbun.dev for the real docs.
 import Default from "@astrojs/starlight/components/Banner.astro";
-import { IS_CANARY } from "../../site-urls.mjs";
+import { IS_CANARY } from "../../site-urls.ts";
 
 const production = new URL(Astro.url.pathname, "https://docs.runbun.dev/").href;
 ---

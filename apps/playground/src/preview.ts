@@ -1,7 +1,7 @@
 import { BASE } from "./base";
 
 /**
- * Where the service worker serves the running Bun.serve app (see sw.js): `/__preview/@<client id>` once the worker
+ * Where the service worker serves the running Bun.serve app (see sw.ts): `/__preview/@<client id>` once the worker
  * has said which client this page is, so it reaches this page's server and not another playground's.
  */
 export let PREFIX = `${BASE}__preview`;
@@ -9,7 +9,7 @@ export function setPreviewOwner(clientId: string) {
   PREFIX = `${BASE}__preview/@${clientId}`;
 }
 
-// Added by sw.js to every preview response, not sent by the user's server.
+// Added by sw.ts to every preview response, not sent by the user's server.
 const SW_HEADERS = new Set(["cross-origin-embedder-policy", "cross-origin-resource-policy"]);
 
 export const normalize = (p: string) => (p.startsWith("/") ? p : `/${p}`);

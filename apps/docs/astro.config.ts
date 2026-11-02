@@ -5,9 +5,9 @@ import starlight from "@astrojs/starlight";
 import runbun from "@runbun/astro";
 import remarkRunbun from "@runbun/astro/remark";
 import UnoCSS from "unocss/astro";
-import { codeThemeOptions, codeThemes } from "./src/code-themes.mjs";
-import remarkStatus from "./src/remark-status.mjs";
-import { DOCS_URL, PLAYGROUND_URL } from "./site-urls.mjs";
+import { codeThemeOptions, codeThemes } from "./src/code-themes.ts";
+import remarkStatus from "./src/remark-status.ts";
+import { DOCS_URL, PLAYGROUND_URL } from "./site-urls.ts";
 
 export default defineConfig({
   site: DOCS_URL,

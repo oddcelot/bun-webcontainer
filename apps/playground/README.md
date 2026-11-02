@@ -56,7 +56,7 @@ The picker's "Astro + Solid" (`fixtures/astro-solid-demo`) runs an Astro 7 dev s
     src/persist.ts        OPFS write-behind persistence of projects
     src/worker/node/      Node built-ins (fs on the worker VFS, path, url, util, events, buffer, crypto, zlib, stream, process, http/https/net, ...) + `builtins` registry, which also holds `bun`, `bun:sqlite`, `bun:test`
     src/worker/hostPackages.ts  host packages (see below)
-    public/sw.js          service worker: /__vfs/*, /__preview/*, and absolute requests made by the preview page (so `fetch("/api/x")` reaches Bun.serve)
+    src/sw.ts             service worker (built to /sw.js; swPage.ts is what it injects into preview pages): /__vfs/*, /__preview/*, and absolute requests made by the preview page (so `fetch("/api/x")` reaches Bun.serve)
 
 Data flow:
 

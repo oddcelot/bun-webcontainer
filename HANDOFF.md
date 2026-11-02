@@ -23,12 +23,12 @@ patches/bun/             the bun changes as 5 commits (git format-patch), every 
 patches/bun-codegen/     build_options.rs, copied to bun/build/debug/codegen/
 patches/npm/             patches to npm dependencies (root package.json patchedDependencies)
 scripts/w64.sh crate...  wasm64 compile check of bun crates (errors in short form)
-crates/semver-wasm/      cdylib: Bun.semver order/satisfies; test.mjs, diff.mjs (vs real Bun)
+crates/semver-wasm/      cdylib: Bun.semver order/satisfies; test.ts, diff.ts (vs real Bun)
 crates/transpile-wasm/   cdylib: Bun's transpiler; src/lib.rs (parse→print),
-                         examples/smoke.rs (native), test.mjs + corpus/ (wasm vs `bun build --no-bundle`)
+                         examples/smoke.rs (native), test.ts + corpus/ (wasm vs `bun build --no-bundle`)
 crates/fmt-wasm/         cdylib: `bun fmt`; src/cli.rs (run_c: `bun fmt <args>` itself over the VFS, bunfig [fmt]),
                          src/lib.rs (format_c: defaults only), src/native.rs (Yarr stubs; the rest from wasm-stubs),
-                         test.mjs (wasm vs native `bun fmt`: the repo's files, and config/error scenarios)
+                         test.ts (wasm vs native `bun fmt`: the repo's files, and config/error scenarios)
 crates/shim-test/        runs the wasm mimalloc shim natively under cargo test (+ ASan)
 crates/wasm-stubs/       the C/C++ stand-ins the parser links against (transpile, bundle, resolve, fmt)
 apps/playground/         Vite app; README has architecture + limitations
@@ -42,8 +42,8 @@ packages/                @runbun/astro (npm), @runbun/ui (shared tokens), @runbu
 scripts/setup-bun.sh        # clone bun @ pinned commit, git am patches/bun/, vendor crates, codegen, toolchain
 
 W="-Zbuild-std=std,panic_abort --target wasm64-unknown-unknown --release"
-(cd crates/semver-wasm && cargo build $W && node test.mjs && bun gen-expected.ts && node diff.mjs)
-(cd crates/transpile-wasm && cargo build $W && node test.mjs)
+(cd crates/semver-wasm && cargo build $W && node test.ts && bun gen-expected.ts && node diff.ts)
+(cd crates/transpile-wasm && cargo build $W && node test.ts)
 (cd apps/playground && bun install && bun run dev)   # predev copies both .wasm into public/
 ```
 

@@ -8,16 +8,21 @@
   "repository": { "type": "git", "url": "git+https://github.com/oddcelot/bun-webcontainer.git", "directory": "packages/astro" },
   "bugs": "https://github.com/oddcelot/bun-webcontainer/issues",
   "exports": {
-    ".": { "types": "./index.d.ts", "default": "./index.js" },
-    "./remark": { "types": "./remark.d.ts", "default": "./remark.js" },
-    "./components": { "types": "./components.d.ts", "default": "./components.js" },
+    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+    "./remark": { "types": "./dist/remark.d.ts", "default": "./dist/remark.js" },
+    "./components": { "types": "./dist/components.d.ts", "default": "./dist/components.js" },
     "./Code.astro": "./components/Code.astro",
     "./Playground.astro": "./components/Playground.astro",
     "./virtual": { "types": "./virtual.d.ts" }
   },
-  "files": ["*.js", "*.d.ts", "components", "README.md"],
+  "files": ["dist", "components", "virtual.d.ts", "README.md"],
+  "scripts": {
+    "build": "rm -rf dist && tsrs",
+    "typecheck": "tsrs --noEmit",
+    "prepack": "bun run build"
+  },
   "peerDependencies": { "astro": "^7.0.0" },
   "dependencies": { "@pierre/highlights": "0.3.0" },
-  "devDependencies": { "@types/mdast": "^4.0.4" },
+  "devDependencies": { "@types/mdast": "^4.0.4", "astro": "^7.4.5", "tsrs": "0.20.1-ts7.1.0-beta" },
   "publishConfig": { "access": "public", "provenance": true }
 }
