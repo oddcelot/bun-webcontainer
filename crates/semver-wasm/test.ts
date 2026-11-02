@@ -5,20 +5,21 @@ import assert from "node:assert/strict";
 const path = new URL("../../target/wasm64-unknown-unknown/release/bun_semver_wasm.wasm", import.meta.url);
 const mod = new WebAssembly.Module(readFileSync(path));
 console.log("imports:", WebAssembly.Module.imports(mod));
-const { exports: w } = new WebAssembly.Instance(mod, {});
+type Wasm = { memory: WebAssembly.Memory; [fn: string]: any };
+const w = new WebAssembly.Instance(mod, {}).exports as Wasm;
 
 const enc = new TextEncoder();
-function withStr(s, f) {
+function withStr<T>(s: string, f: (p: bigint, len: bigint) => T): T {
   const b = enc.encode(s);
   const len = BigInt(b.length);
   const p = w.alloc(len); // wasm64: pointers and usize are i64 -> BigInt
   new Uint8Array(w.memory.buffer, Number(p), b.length).set(b);
   try { return f(p, len); } finally { w.dealloc(p, len); }
 }
-const order = (a, b) => withStr(a, (pa, la) => withStr(b, (pb, lb) => w.semver_order(pa, la, pb, lb)));
-const satisfies = (v, r) => withStr(v, (pv, lv) => withStr(r, (pr, lr) => w.semver_satisfies(pv, lv, pr, lr))) === 1;
+const order = (a: string, b: string): number => withStr(a, (pa, la) => withStr(b, (pb, lb) => w.semver_order(pa, la, pb, lb)));
+const satisfies = (v: string, r: string): boolean => withStr(v, (pv, lv) => withStr(r, (pr, lr) => w.semver_satisfies(pv, lv, pr, lr))) === 1;
 
-const cases = [
+const cases: [unknown, unknown][] = [
   [order("1.0.0", "1.0.0"), 0], [order("1.0.0", "1.0.1"), -1], [order("2.0.0", "1.9.9"), 1],
   [order("1.0.0-alpha", "1.0.0"), -1], [order("1.0.0-alpha.1", "1.0.0-alpha.beta"), -1],
   [order("1.0.0+build.1", "1.0.0+build.2"), 0], [order("v1.2.3", "1.2.3"), 0],

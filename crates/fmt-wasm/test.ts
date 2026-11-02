@@ -12,16 +12,18 @@ const wasm = readFileSync(new URL("../../target/wasm64-unknown-unknown/release/b
 const t0 = performance.now();
 const vfs = new VFS();
 let stdin = new Uint8Array(0);
-const { instance } = await WebAssembly.instantiate(wasm, createSysImports(vfs, () => instance.exports.memory, () => stdin));
+type Wasm = { memory: WebAssembly.Memory; [fn: string]: any };
+let w: Wasm;
+const { instance } = await WebAssembly.instantiate(wasm, createSysImports(vfs, () => w.memory, () => stdin));
+w = instance.exports as Wasm;
 console.log(`instantiate ${(performance.now() - t0).toFixed(1)} ms, ${(wasm.length / 1e6).toFixed(1)} MB, bun ${execFileSync("bun", ["--version"], { encoding: "utf8" }).trim()}`);
-const w = instance.exports;
 const enc = new TextEncoder(), dec = new TextDecoder();
-const FLAGS = { "--use-tabs": 1, "--no-semi": 2, "--single-quote": 4 };
+const FLAGS: Record<string, number> = { "--use-tabs": 1, "--no-semi": 2, "--single-quote": 4 };
 
-function format(path, text, args) {
+function format(path: string, text: string, args: string[]) {
   const flags = args.reduce((f, a) => f | (FLAGS[a] ?? 0), 0);
   const width = Number(args.find((a) => a.startsWith("--print-width="))?.slice(14) ?? 0);
-  const put = (s) => { const b = enc.encode(s), n = BigInt(b.length), p = w.alloc(n); new Uint8Array(w.memory.buffer, Number(p), b.length).set(b); return [p, n]; };
+  const put = (s: string): [bigint, bigint] => { const b = enc.encode(s), n = BigInt(b.length), p = w.alloc(n); new Uint8Array(w.memory.buffer, Number(p), b.length).set(b); return [p, n]; };
   const [pp, pl] = put(path), [tp, tl] = put(text);
   const out = w.format_c(pp, pl, tp, tl, flags, width);
   const view = new DataView(w.memory.buffer);
@@ -31,7 +33,7 @@ function format(path, text, args) {
   return { status: Number(status), text: result };
 }
 
-function native(path, text, args) {
+function native(path: string, text: string, args: string[]) {
   try {
     return execFileSync("bun", ["fmt", ...args, "--stdin-filepath", path], { input: text, encoding: "utf8", stdio: ["pipe", "pipe", "ignore"] });
   } catch {
@@ -67,7 +69,7 @@ for (let i = 0; i < 300; i++) format("shell.ts", big, []);
 console.log(`memory ${before} -> ${w.memory.buffer.byteLength} after 300 formats`);
 
 // bun fmt --stdin-filepath over a VFS with config files.
-function run(files, path, args = []) {
+function run(files: Record<string, string>, path: string, args: string[] = []) {
   vfs.clear();
   for (const [p, text] of Object.entries(files)) vfs.write(p, text);
   stdin = enc.encode(files[path] ?? "");
@@ -75,13 +77,13 @@ function run(files, path, args = []) {
   const n = BigInt(argv.length), p = w.alloc(n);
   new Uint8Array(w.memory.buffer, Number(p), argv.length).set(argv);
   const out = w.run_c(p, n, 0);
-  const view = new DataView(w.memory.buffer), at = (i) => view.getBigUint64(Number(out) + 8 * i, true);
-  const text = (ptr, len) => dec.decode(new Uint8Array(w.memory.buffer, Number(ptr), Number(len)));
+  const view = new DataView(w.memory.buffer), at = (i: number) => view.getBigUint64(Number(out) + 8 * i, true);
+  const text = (ptr: bigint, len: bigint) => dec.decode(new Uint8Array(w.memory.buffer, Number(ptr), Number(len)));
   const r = { exit: Number(at(0)), stdout: text(at(1), at(2)), stderr: text(at(3), at(4)) };
   w.run_output_free(out); w.dealloc(p, n);
   return r;
 }
-function nativeRun(files, path, args = []) {
+function nativeRun(files: Record<string, string>, path: string, args: string[] = []) {
   const dir = mkdtempSync(join(tmpdir(), "fmt-wasm-"));
   try {
     for (const [p, text] of Object.entries(files)) mkdirSync(dirname(join(dir, p)), { recursive: true }), writeFileSync(join(dir, p), text);
@@ -93,7 +95,7 @@ function nativeRun(files, path, args = []) {
   }
 }
 const ugly = "const user = {name: 'Ada', roles: ['admin', 'editor'], active: true, created: Date.now()}\nfunction save(u) { return fetch('/api/users', {method: 'POST', body: JSON.stringify(u)}) }\n";
-const SCENARIOS = {
+const SCENARIOS: Record<string, [Record<string, string>, string, string[]?]> = {
   "bunfig.toml [fmt]": [{ "bunfig.toml": "[fmt]\nprintWidth = 40\nsemi = false\n", "a.ts": ugly }, "a.ts"],
   ".prettierrc": [{ ".prettierrc": '{ "singleQuote": true, "tabWidth": 4 }', "a.ts": ugly }, "a.ts"],
   ".prettierrc.yaml": [{ ".prettierrc.yaml": "semi: false\nbracketSpacing: false\n", "a.ts": ugly }, "a.ts"],

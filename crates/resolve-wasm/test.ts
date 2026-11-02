@@ -1,7 +1,7 @@
 // Runs the resolve-wasm module (what the playground's module server resolves with) against a
 // playground-VFS fixture through the `bun_sys` host imports, and compares with real Bun
 // (`Bun.resolveSync` over the same fixture written to disk) if `bun` is on PATH.
-// Run with node >= 24 (Memory64 + native .ts type stripping; bun lacks Memory64):  node test.mjs
+// Run with node >= 24 (Memory64 + native .ts type stripping; bun lacks Memory64):  node test.ts
 import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { VFS } from "../../packages/vfs/vfs.ts";
 import { createSysImports } from "../../packages/vfs/sysHost.ts";
 
-const here = (p) => new URL(p, import.meta.url);
+const here = (p: string) => new URL(p, import.meta.url);
 const mod = new WebAssembly.Module(readFileSync(here("../../target/wasm64-unknown-unknown/release/bun_resolve_wasm.wasm")));
 
 const files = {
@@ -68,21 +68,23 @@ const files = {
 const vfs = new VFS();
 for (const [p, c] of Object.entries(files)) vfs.write(p, c);
 
-let memory;
-const w = new WebAssembly.Instance(mod, createSysImports(vfs, () => memory)).exports;
+let memory: WebAssembly.Memory;
+type Wasm = { memory: WebAssembly.Memory; [fn: string]: any };
+const w = new WebAssembly.Instance(mod, createSysImports(vfs, () => memory)).exports as Wasm;
 memory = w.memory;
 const enc = new TextEncoder();
 const dec = new TextDecoder();
-function put(s) {
+function put(s: string): [bigint, bigint] {
   const b = enc.encode(s);
   const p = w.alloc(BigInt(b.length));
   new Uint8Array(w.memory.buffer, Number(p), b.length).set(b);
   return [p, BigInt(b.length)];
 }
-const KIND = { import: 2, require: 3, dynamic: 4 };
-const TARGET = { browser: 0, bun: 1, node: 2 };
+const KIND: Record<string, number> = { import: 2, require: 3, dynamic: 4 };
+const TARGET: Record<string, number> = { browser: 0, bun: 1, node: 2 };
+type Res = { ok?: string; err?: string };
 /** -> {ok: "/abs/path"} | {err: "text"} */
-function wasmResolve(spec, dir, { kind = "import", target = "browser", conds = "" } = {}) {
+function wasmResolve(spec: string, dir: string, { kind = "import", target = "browser", conds = "" } = {}) {
   const a = put(spec), b = put(dir), c = put(conds);
   let out;
   try {
@@ -108,7 +110,7 @@ for (const [p, c] of Object.entries(files)) {
   writeFileSync(join(disk, p), c);
 }
 const hasBun = spawnSync("bun", ["--version"]).status === 0;
-function bunResolve(spec, dir) {
+function bunResolve(spec: string, dir: string): Res {
   const r = spawnSync("bun", ["-e", `try{console.log(Bun.resolveSync(process.argv[1],process.argv[2]))}catch(e){console.log("ERR "+e.message)}`, spec, join(disk, dir)], { encoding: "utf8" });
   const o = r.stdout.trim();
   // macOS tmp is a symlink; Bun reports the real path.
@@ -116,7 +118,7 @@ function bunResolve(spec, dir) {
 }
 
 // [spec, dir, wasm options, expected path (null = not found), (unused), compare with Bun?]
-const cases = [
+const cases: [string, string, Record<string, string>, string | null, number, number][] = [
   ["./a", "/src", {}, "/src/a.ts", 1, 1],
   ["./a.ts", "/src", {}, "/src/a.ts", 1, 1],
   ["./b", "/src", {}, "/src/b.js", 1, 1],
@@ -159,12 +161,12 @@ const cases = [
 
 let failed = 0;
 const mismatches = [];
-const show = (r) => ("ok" in r ? r.ok : `(${r.err.split("\n")[0].slice(0, 60)})`);
+const show = (r: Res) => ("ok" in r ? r.ok : `(${r.err!.split("\n")[0].slice(0, 60)})`);
 for (const [spec, dir, opts, expected, , vsBun] of cases) {
   const label = `${spec} from ${dir} ${JSON.stringify(opts)}`;
   const got = wasmResolve(spec, dir, opts);
   const want = expected === null ? { err: "" } : { ok: expected };
-  const pass = expected === null ? "err" in got && /ModuleNotFound/.test(got.err) : got.ok === expected;
+  const pass = expected === null ? "err" in got && /ModuleNotFound/.test(got.err!) : got.ok === expected;
   if (!pass) {
     failed++;
     console.log(`FAIL  ${label}\n      wasm=${show(got)} expected=${expected}`);
@@ -180,14 +182,14 @@ for (const [spec, dir, opts, expected, , vsBun] of cases) {
 }
 // Error text
 const nf = wasmResolve("nopkg", "/src");
-assert.match(nf.err, /ModuleNotFound: nopkg from \/src/);
+assert.match(nf.err!, /ModuleNotFound: nopkg from \/src/);
 // The caches survive between calls (as in Bun); a VFS change is invisible until reset.
 assert.ok("err" in wasmResolve("./late", "/src"));
 vfs.write("src/late.ts", "");
 const stale = wasmResolve("./late", "/src");
 assert.ok("err" in stale, "caches are process-wide until invalidated");
-const inval = (dir) => withStrBytes(dir, (p, l) => w.invalidate_c(p, l));
-function withStrBytes(s, f) {
+const inval = (dir: string) => withStrBytes(dir, (p, l) => w.invalidate_c(p, l));
+function withStrBytes<T>(s: string, f: (p: bigint, l: bigint) => T): T {
   const [p, l] = put(s);
   try { return f(p, l); } finally { w.dealloc(p, l); }
 }

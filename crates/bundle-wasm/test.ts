@@ -1,6 +1,6 @@
 // Runs the bundle-wasm module against a playground-VFS fixture through the `bun_sys` host imports and,
 // if `bun` is on PATH, compares the output with native `bun build` over the same fixture on disk.
-// Run with node >= 24 (Memory64 + native .ts type stripping; bun lacks Memory64):  node test.mjs
+// Run with node >= 24 (Memory64 + native .ts type stripping; bun lacks Memory64):  node test.ts
 import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { VFS } from "../../packages/vfs/vfs.ts";
 import { createSysImports } from "../../packages/vfs/sysHost.ts";
 
-const here = (p) => new URL(p, import.meta.url);
+const here = (p: string) => new URL(p, import.meta.url);
 const mod = new WebAssembly.Module(readFileSync(here("../../target/wasm64-unknown-unknown/release/bun_bundle_wasm.wasm")));
 
 const files = {
@@ -53,16 +53,17 @@ const vfs = new VFS();
 for (const [p, c] of Object.entries(files)) vfs.write(p, c);
 
 // A panic aborts (the instance is unusable afterwards), so every bundle gets a fresh instance.
-let w;
+type Wasm = { memory: WebAssembly.Memory; [fn: string]: any };
+let w: Wasm;
 function fresh() {
-  let memory;
-  w = new WebAssembly.Instance(mod, createSysImports(vfs, () => memory)).exports;
+  let memory: WebAssembly.Memory;
+  w = new WebAssembly.Instance(mod, createSysImports(vfs, () => memory)).exports as Wasm;
   memory = w.memory;
 }
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
-function wasmBundle(config) {
+function wasmBundle(config: Record<string, unknown>) {
   fresh();
   const b = enc.encode(JSON.stringify({ cwd: "/", ...config }));
   const p = w.alloc(BigInt(b.length));
@@ -73,7 +74,7 @@ function wasmBundle(config) {
   } catch (e) {
     const m = w.panic_message_c();
     const [, mp, ml] = new BigUint64Array(w.memory.buffer, Number(m), 3);
-    throw new Error(`bundle_c trapped (${e.message}): ${dec.decode(new Uint8Array(w.memory.buffer, Number(mp), Number(ml)))}`, { cause: e });
+    throw new Error(`bundle_c trapped (${(e as Error).message}): ${dec.decode(new Uint8Array(w.memory.buffer, Number(mp), Number(ml)))}`, { cause: e });
   }
   w.dealloc(p, BigInt(b.length));
   const [status, ptr, len] = new BigUint64Array(w.memory.buffer, Number(out), 3);
@@ -84,13 +85,13 @@ function wasmBundle(config) {
 }
 
 let failed = 0;
-const test = (name, fn) => {
-  try { fn(); console.log("ok  ", name); } catch (e) { failed++; console.log("FAIL", name, "\n", e.stack ?? e); }
+const test = (name: string, fn: () => void) => {
+  try { fn(); console.log("ok  ", name); } catch (e) { failed++; console.log("FAIL", name, "\n", (e as Error).stack ?? e); }
 };
 
 // --- native comparison -------------------------------------------------------------------------
 const hasBun = spawnSync("bun", ["--version"]).status === 0;
-let disk;
+let disk = "";
 if (hasBun) {
   disk = mkdtempSync(join(tmpdir(), "bundle-wasm-"));
   for (const [p, c] of Object.entries(files)) {
@@ -98,12 +99,12 @@ if (hasBun) {
     writeFileSync(join(disk, p), c);
   }
 }
-function native(args) {
+function native(args: string[]) {
   const r = spawnSync("bun", ["build", ...args], { cwd: disk, encoding: "utf8" });
   assert.equal(r.status, 0, r.stderr);
   return r.stdout;
 }
-const norm = (s) => s.replace(/\r\n/g, "\n").trimEnd();
+const norm = (s: string) => s.replace(/\r\n/g, "\n").trimEnd();
 
 test("single entry, esm, browser: output runs through wasm bundler", () => {
   const r = wasmBundle({ entryPoints: ["src/index.ts"], target: "browser", format: "esm" });
@@ -125,7 +126,7 @@ if (hasBun) {
     ["iife", { format: "iife" }, ["--format=iife"]],
     ["cjs", { format: "cjs" }, ["--format=cjs"]],
     ["external", { external: ["mathlib"] }, ["--external=mathlib"]],
-  ]) {
+  ] as [string, Record<string, unknown>, string[]][]) {
     test(`vs native bun build: ${name}`, () => {
       const r = wasmBundle({ entryPoints: ["src/index.ts"], target: "browser", format: "esm", ...config });
       assert.ok(r.success, JSON.stringify(r.logs));
@@ -138,7 +139,7 @@ if (hasBun) {
 test("multiple entry points + code splitting", () => {
   const r = wasmBundle({ entryPoints: ["src/index.ts", "src/other.ts"], outdir: "out", splitting: true, format: "esm" });
   assert.ok(r.success, JSON.stringify(r.logs));
-  const paths = r.outputs.map((o) => o.path).sort();
+  const paths = r.outputs.map((o: { path: string }) => o.path).sort();
   console.log("     outputs:", paths.join(" "));
   assert.ok(r.outputs.length >= 3, "entries + shared chunk(s)");
   if (hasBun) {
@@ -153,7 +154,7 @@ test("multiple entry points + code splitting", () => {
 });
 
 // Same bundle through native `bun build --outdir`, compared file by file (hashes in names are content hashes).
-function compareOutdir(name, entries, config, flags = []) {
+function compareOutdir(name: string, entries: string[], config: Record<string, unknown>, flags: string[] = []) {
   test(`${name}: wasm == native bun build`, () => {
     const r = wasmBundle({ entryPoints: entries, outdir: "out", format: "esm", target: "browser", ...config });
     assert.ok(r.success, JSON.stringify(r.logs));
@@ -162,7 +163,7 @@ function compareOutdir(name, entries, config, flags = []) {
     const n = spawnSync("bun", ["build", ...entries, "--outdir=out", "--target=browser", "--format=esm", ...flags], { cwd: disk, encoding: "utf8" });
     assert.equal(n.status, 0, n.stderr);
     for (const o of r.outputs) assert.equal(norm(o.contents), norm(readFileSync(join(disk, "out", o.path), "utf8")), o.path);
-    console.log("     outputs:", r.outputs.map((o) => o.path).join(" "));
+    console.log("     outputs:", r.outputs.map((o: { path: string }) => o.path).join(" "));
   });
 }
 compareOutdir("css entry", ["src/styles.css"], {});
@@ -174,14 +175,14 @@ test("write: true writes into the VFS and returns no contents", () => {
   const r = wasmBundle({ entryPoints: ["src/greet.ts"], outdir: "/wrote", write: true });
   assert.ok(r.success, JSON.stringify(r.logs));
   assert.equal(r.outputs[0].value, "saved");
-  assert.match(vfs.readText("wrote/greet.js"), /hello /);
+  assert.match(vfs.readText("wrote/greet.js")!, /hello /);
 });
 
 test("missing import reports a log error", () => {
   vfs.write("src/bad.ts", `import "./nope";\n`);
   const r = wasmBundle({ entryPoints: ["src/bad.ts"] });
   assert.equal(r.success, false);
-  assert.ok(r.logs.some((l) => l.level === "error" && /nope/.test(l.message)), JSON.stringify(r.logs));
+  assert.ok(r.logs.some((l: { level: string; message: string }) => l.level === "error" && /nope/.test(l.message)), JSON.stringify(r.logs));
 });
 
 test("inline sourcemap", () => {
@@ -196,11 +197,11 @@ test("binary assets come back as base64 bytes", () => {
   vfs.write("src/img.ts", `import logo from "./logo.png";\nconsole.log(logo);\n`);
   const r = wasmBundle({ entryPoints: ["src/img.ts"], outdir: "/out" });
   assert.ok(r.success, JSON.stringify(r.logs));
-  const asset = r.outputs.find((o) => o.path.endsWith(".png"));
-  assert.ok(asset, JSON.stringify(r.outputs.map((o) => o.path)));
+  const asset = r.outputs.find((o: { path: string }) => o.path.endsWith(".png"));
+  assert.ok(asset, JSON.stringify(r.outputs.map((o: { path: string }) => o.path)));
   assert.equal(asset.encoding, "base64");
   assert.deepEqual(new Uint8Array(Buffer.from(asset.contents, "base64")), png);
-  assert.equal(r.outputs.find((o) => o.path.endsWith(".js")).encoding, undefined);
+  assert.equal(r.outputs.find((o: { path: string }) => o.path.endsWith(".js")).encoding, undefined);
 });
 
 if (disk) rmSync(disk, { recursive: true, force: true });

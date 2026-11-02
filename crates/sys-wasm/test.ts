@@ -1,5 +1,5 @@
 // Runs the sys-wasm probe against the playground VFS through the `bun_sys` host imports.
-// Run with node >= 24 (Memory64 + native .ts type stripping; bun lacks Memory64):  node test.mjs
+// Run with node >= 24 (Memory64 + native .ts type stripping; bun lacks Memory64):  node test.ts
 import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import { VFS } from "../../packages/vfs/vfs.ts";
@@ -12,20 +12,21 @@ vfs.write("src/lib/util.ts", "export {}");
 vfs.write("data.bin", new Uint8Array([0, 1, 2, 255]));
 vfs.mkdir("empty");
 
-let memory;
-const w = new WebAssembly.Instance(mod, createSysImports(vfs, () => memory)).exports;
+let memory: WebAssembly.Memory;
+type Wasm = { memory: WebAssembly.Memory; [fn: string]: any };
+const w = new WebAssembly.Instance(mod, createSysImports(vfs, () => memory)).exports as Wasm;
 memory = w.memory;
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
-function withBytes(b, f) {
+function withBytes<T>(b: Uint8Array, f: (p: bigint, len: bigint) => T): T {
   const len = BigInt(b.length);
   const p = w.alloc(len);
   new Uint8Array(w.memory.buffer, Number(p), b.length).set(b);
   try { return f(p, len); } finally { w.dealloc(p, len); }
 }
-const withStr = (s, f) => withBytes(enc.encode(s), f);
-function withOut(cap, f) {
+const withStr = <T>(s: string, f: (p: bigint, len: bigint) => T): T => withBytes(enc.encode(s), f);
+function withOut(cap: number, f: (p: bigint, cap: bigint) => bigint): [bigint, Uint8Array] {
   const p = w.alloc(BigInt(cap));
   try {
     const n = f(p, BigInt(cap));
@@ -34,15 +35,15 @@ function withOut(cap, f) {
 }
 const ENOENT = -2n, ENOTDIR = -20n, EISDIR = -21n, EEXIST = -18n;
 
-const readFile = (path) => withStr(path, (pp, pl) => withOut(64, (o, c) => w.sys_read_file(pp, pl, o, c)));
-const stat = (path) => withStr(path, (pp, pl) => {
+const readFile = (path: string) => withStr(path, (pp, pl) => withOut(64, (o, c) => w.sys_read_file(pp, pl, o, c)));
+const stat = (path: string) => withStr(path, (pp, pl) => {
   const sp = w.alloc(8n);
   try {
     const r = w.sys_stat(pp, pl, sp);
     return [r, new BigInt64Array(w.memory.buffer, Number(sp), 1)[0]];
   } finally { w.dealloc(sp, 8n); }
 });
-const list = (path) => withStr(path, (pp, pl) => withOut(256, (o, c) => w.sys_list_dir(pp, pl, o, c)));
+const list = (path: string) => withStr(path, (pp, pl) => withOut(256, (o, c) => w.sys_list_dir(pp, pl, o, c)));
 
 // read: relative, absolute, binary
 let [n, b] = readFile("src/index.ts");

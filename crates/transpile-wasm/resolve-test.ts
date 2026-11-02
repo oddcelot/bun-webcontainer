@@ -3,13 +3,14 @@ import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 
 const wasm = readFileSync(new URL("../../target/wasm64-unknown-unknown/release/bun_transpile_wasm.wasm", import.meta.url));
-let resolver = () => null;
-const calls = [];
-let w;
+let resolver: (spec: string, kind: number) => string | null = () => null;
+const calls: [string, number][] = [];
+type Wasm = { memory: WebAssembly.Memory; [fn: string]: any };
+let w: Wasm;
 const enc = new TextEncoder(), dec = new TextDecoder();
 const { instance } = await WebAssembly.instantiate(wasm, {
   env: {
-    resolve_specifier(ptr, len, kind) {
+    resolve_specifier(ptr: bigint, len: bigint, kind: number) {
       const spec = dec.decode(new Uint8Array(w.memory.buffer, Number(ptr), Number(len)));
       calls.push([spec, kind]);
       const r = resolver(spec, kind);
@@ -21,14 +22,14 @@ const { instance } = await WebAssembly.instantiate(wasm, {
     },
   },
 });
-w = instance.exports;
-const LOADERS = { js: 0, jsx: 1, ts: 2, tsx: 3 };
+w = instance.exports as Wasm;
+const LOADERS: Record<string, number> = { js: 0, jsx: 1, ts: 2, tsx: 3 };
 
-function run(path, source, fn) {
+function run(path: string, source: string, fn: typeof resolver) {
   resolver = fn; calls.length = 0;
-  const put = (s) => { const b = enc.encode(s), p = w.alloc(BigInt(b.length)); new Uint8Array(w.memory.buffer, Number(p), b.length).set(b); return [p, BigInt(b.length)]; };
+  const put = (s: string): [bigint, bigint] => { const b = enc.encode(s), p = w.alloc(BigInt(b.length)); new Uint8Array(w.memory.buffer, Number(p), b.length).set(b); return [p, BigInt(b.length)]; };
   const [pp, pl] = put(path), [sp, sl] = put(source);
-  const out = w.transpile_resolve_c(pp, pl, sp, sl, LOADERS[path.split(".").pop()], 0);
+  const out = w.transpile_resolve_c(pp, pl, sp, sl, LOADERS[path.split(".").pop()!], 0);
   const v = new DataView(w.memory.buffer);
   const status = v.getBigUint64(Number(out), true), ptr = v.getBigUint64(Number(out) + 8, true), len = v.getBigUint64(Number(out) + 16, true);
   const text = dec.decode(new Uint8Array(w.memory.buffer, Number(ptr), Number(len)));
@@ -36,7 +37,7 @@ function run(path, source, fn) {
   assert.equal(status, 0n, text);
   return text;
 }
-const pre = (s) => (s === "keep" ? null : `/v/${s}`);
+const pre = (s: string) => (s === "keep" ? null : `/v/${s}`);
 
 // static import, side-effect import, export-from, dynamic import with a literal
 let out = run("a.js", `import a from "x"; import "y"; export { b } from 'z'; export * from "w"; const m = import("d"); use(a, b, m);`, pre);

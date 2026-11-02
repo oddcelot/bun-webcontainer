@@ -75,12 +75,12 @@ scripts/w64.sh <crate>...                  # wasm64 compile check of bun crates
 # The wrapper crates (crates/) are one Cargo workspace (root Cargo.toml, Cargo.lock, rust-toolchain.toml, target/;
 # not bun/ or crates/tsrs-ls-wasm). Build one crate per cargo run: built together, features unify (sys-host `imports` into transpile-wasm).
 W="-Zbuild-std=std,panic_abort --target wasm64-unknown-unknown --release"
-(cd crates/semver-wasm && cargo build $W && node test.mjs && node diff.mjs)
-(cd crates/transpile-wasm && cargo build $W && node test.mjs)   # diff vs `bun build --no-bundle` on corpus/
-(cd crates/sys-wasm && cargo build $W && node test.mjs)         # bun_sys over the VFS (node >= 24; bun lacks Memory64)
-(cd crates/resolve-wasm && cargo build $W && node test.mjs)     # bun_resolver over the VFS vs bun (node >= 24); the playground resolves with it
-(cd crates/tsrs-ls-wasm && cargo build --release --target wasm32-wasip1 && node test.mjs)  # TS7 language service (tsrs); own Rust pin
-(cd crates/fmt-wasm && cargo build $W && node test.mjs)         # `bun fmt` (bun_format) vs native bun fmt on the repo's files (node >= 24)
+(cd crates/semver-wasm && cargo build $W && node test.ts && node diff.ts)
+(cd crates/transpile-wasm && cargo build $W && node test.ts)   # diff vs `bun build --no-bundle` on corpus/
+(cd crates/sys-wasm && cargo build $W && node test.ts)         # bun_sys over the VFS (node >= 24; bun lacks Memory64)
+(cd crates/resolve-wasm && cargo build $W && node test.ts)     # bun_resolver over the VFS vs bun (node >= 24); the playground resolves with it
+(cd crates/tsrs-ls-wasm && cargo build --release --target wasm32-wasip1 && node test.ts)  # TS7 language service (tsrs); own Rust pin
+(cd crates/fmt-wasm && cargo build $W && node test.ts)         # `bun fmt` (bun_format) vs native bun fmt on the repo's files (node >= 24)
 (cd crates/shim-test && cargo +$TOOLCHAIN test)         # TOOLCHAIN from scripts/bun-pins.sh
 bun install                                # root bun workspace (playground, docs, packages/*): one bun.lock, isolated
                                            # node_modules per package; shared versions in package.json's catalog
