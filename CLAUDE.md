@@ -122,7 +122,7 @@ These rules override the conservative Beads profile for commits (not for pushes)
   unexported. Every change is cfg-gated (`target_family = "wasm"`), marked `// wasm-experiment`,
   and leaves native builds unchanged.
 - Don't touch `*_jsc` crates.
-- C/C++ symbol stand-ins belong in the wrapper crates (`transpile-wasm/src/native.rs`), not in bun.
+- C/C++ symbol stand-ins belong in the wrapper crates (`crates/wasm-stubs`), not in bun.
 - Stop the playground dev server by port (`kill $(lsof -tiTCP:5173 -sTCP:LISTEN)`), never `pkill vite`.
 - Keep the docs site in step with the code. When a change adds, removes or changes what users can
   do (a `Bun.*`/`bun:*`/`node:*` API, toolchain or install behavior, a playground feature, browser

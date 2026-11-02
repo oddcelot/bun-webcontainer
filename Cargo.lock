@@ -103,7 +103,6 @@ dependencies = [
 name = "bun_bundle_wasm"
 version = "0.0.0"
 dependencies = [
- "bstr",
  "bun_alloc",
  "bun_ast",
  "bun_base64",
@@ -121,7 +120,7 @@ dependencies = [
  "bun_sys",
  "bun_sys_host",
  "bun_threading",
- "libc",
+ "bun_wasm_stubs",
  "serde_json",
 ]
 
@@ -377,7 +376,6 @@ dependencies = [
 name = "bun_fmt_wasm"
 version = "0.0.0"
 dependencies = [
- "bstr",
  "bun_alloc",
  "bun_ast",
  "bun_core",
@@ -389,7 +387,7 @@ dependencies = [
  "bun_sys",
  "bun_sys_host",
  "bun_threading",
- "libc",
+ "bun_wasm_stubs",
 ]
 
 [[package]]
@@ -915,7 +913,6 @@ dependencies = [
 name = "bun_resolve_wasm"
 version = "0.0.0"
 dependencies = [
- "bstr",
  "bun_alloc",
  "bun_ast",
  "bun_collections",
@@ -929,7 +926,7 @@ dependencies = [
  "bun_sys",
  "bun_sys_host",
  "bun_threading",
- "libc",
+ "bun_wasm_stubs",
 ]
 
 [[package]]
@@ -1159,15 +1156,12 @@ dependencies = [
 name = "bun_transpile_wasm"
 version = "0.0.0"
 dependencies = [
- "bstr",
  "bun_alloc",
  "bun_ast",
- "bun_core",
  "bun_js_parser",
  "bun_js_printer",
  "bun_sys_host",
- "bun_threading",
- "libc",
+ "bun_wasm_stubs",
 ]
 
 [[package]]
@@ -1214,6 +1208,18 @@ dependencies = [
  "libc",
  "strum",
  "thiserror",
+]
+
+[[package]]
+name = "bun_wasm_stubs"
+version = "0.0.0"
+dependencies = [
+ "bstr",
+ "bun_ast",
+ "bun_core",
+ "bun_js_parser",
+ "bun_threading",
+ "libc",
 ]
 
 [[package]]

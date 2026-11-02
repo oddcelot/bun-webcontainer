@@ -20,6 +20,7 @@ fileGroups:
     - '/bun/src/**/Cargo.toml'
     - '/crates/sys-host/src/**/*'
     - '/crates/sys-host/Cargo.toml'
+    - '/crates/wasm-stubs/**/*'
     - '/scripts/bun-pins.sh'
 
 tasks:

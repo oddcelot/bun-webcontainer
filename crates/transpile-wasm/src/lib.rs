@@ -3,9 +3,10 @@
 //! Mirrors the no-bundle path of `bun_bundler::Transpiler` (`bundler/cache.rs` parse,
 //! `print_ast_esm_ascii` print) without the resolver, macros or defines.
 
-#![feature(linkage)]
-
-mod native;
+// The C/C++ stand-ins the parser and printer link against.
+use bun_wasm_stubs as _;
+// bun_sys declares bun_sys_host_* (syscalls); this crate never calls them, the stubs fail with ENOSYS.
+use bun_sys_host as _;
 
 use bun_alloc::Arena;
 use bun_js_parser::{Define, Parser, ParserOptions, options};

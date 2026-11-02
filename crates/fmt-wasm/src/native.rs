@@ -1,9 +1,10 @@
-//! The C/C++ symbols the formatter links against. The parser's are transpile-wasm's; `yarr` adds JavaScriptCore's
+//! The C/C++ symbols the formatter links against. The parser's come from bun_wasm_stubs; `yarr` adds JavaScriptCore's
 //! regular expressions, which the formatter only compiles for options it never gets here (`sortImports`,
 //! `sortTailwindcss`).
 
-#[path = "../../transpile-wasm/src/native.rs"]
-mod transpile;
+use bun_wasm_stubs as _;
+// The bun_sys_host_* symbols bun_sys declares, as `bun_sys.*` wasm imports served by the VFS.
+use bun_sys_host as _;
 
 mod yarr {
     use core::ffi::c_void;

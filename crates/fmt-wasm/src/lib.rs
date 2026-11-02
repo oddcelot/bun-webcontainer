@@ -4,8 +4,6 @@
 //! path, and `flags` / `print_width` are the command line's `--use-tabs`, `--no-semi`, `--single-quote` and
 //! `--print-width`.
 
-#![feature(linkage)]
-
 mod cli;
 mod native;
 

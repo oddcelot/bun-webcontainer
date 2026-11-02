@@ -1,0 +1,4 @@
+$schema: 'https://moonrepo.dev/schemas/project.json'
+
+# C/C++ stand-ins the wasm64 crates link; no tasks of its own (they hash its sources).
+language: 'rust'

@@ -5,10 +5,10 @@
 //! `output_free` it and `dealloc` the inputs. Directory/package.json/tsconfig lookups are cached
 //! process-wide (as in Bun); call `resolve_reset_c` after the VFS changed.
 
-#![feature(linkage)]
-
-#[path = "../../transpile-wasm/src/native.rs"]
-mod native;
+// The C/C++ stand-ins the parser and printer link against.
+use bun_wasm_stubs as _;
+// The bun_sys_host_* symbols bun_sys declares, as `bun_sys.*` wasm imports served by the VFS.
+use bun_sys_host as _;
 mod stubs;
 
 use bun_ast::ImportKind;

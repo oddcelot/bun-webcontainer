@@ -7,6 +7,8 @@ edition = "2024"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+# the C/C++ stand-ins the parser and printer link against
+bun_wasm_stubs = { path = "../wasm-stubs" }
 bun_resolver = { path = "../../bun/src/resolver" }
 bun_ast = { path = "../../bun/src/ast" }
 bun_alloc = { path = "../../bun/src/bun_alloc" }
@@ -21,5 +23,3 @@ bun_options_types = { path = "../../bun/src/options_types" }
 bun_js_parser = { path = "../../bun/src/js_parser" }
 # defines the bun_sys_host_* symbols bun_sys declares, as `bun_sys.*` wasm imports served by the VFS
 bun_sys_host = { path = "../sys-host", features = ["imports"] }
-bstr = "1"
-libc = "0.2"

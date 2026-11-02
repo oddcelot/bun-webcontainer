@@ -11,6 +11,7 @@ members = [
   "crates/resolve-wasm",
   "crates/fmt-wasm",
   "crates/sys-host",
+  "crates/wasm-stubs",
   "crates/shim-test",
 ]
 # bun/ is upstream's own workspace (the members depend on its crates by path); tsrs-ls-wasm has its own Rust pin.

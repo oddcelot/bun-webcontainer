@@ -62,9 +62,9 @@ W="-Zbuild-std=std,panic_abort --target wasm64-unknown-unknown --release"
   - Exit/abort calls `abort()`, the clock returns 0, and the entropy seed is fixed.
   - `is_writable` and `reload_process` are `unimplemented!`.
   - Everything else returns ENOSYS or is a no-op.
-- **Native symbols** are supplied by the wrapper crates, not by bun. `transpile-wasm` includes
-  upstream's `src/sema/standalone/native.rs` via `#[path]` (37 symbols, written for parser-only
-  binaries) and adds 9 more in `src/native.rs`.
+- **Native symbols** are supplied by the wrapper crates, not by bun. `crates/wasm-stubs` (linked by
+  transpile, bundle, resolve and fmt) includes upstream's `src/sema/standalone/native.rs` via `#[path]`
+  (37 symbols, written for parser-only binaries) and adds 9 more.
   - `**` and `StringToNumber` follow ECMAScript, because the parser's constant folding calls them.
   - ICU collation falls back to code-unit order.
   - Macros, the transpiler cache, WTF strings and URLs `unreachable!()`.

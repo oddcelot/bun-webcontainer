@@ -13,10 +13,10 @@
 //!   message, file, line, column}]}`. `contents` is text, or base64 with `encoding: "base64"` when the
 //!   output isn't valid UTF-8 (images, wasm and other binary assets).
 
-#![feature(linkage)]
-
-#[path = "../../transpile-wasm/src/native.rs"]
-mod native;
+// The C/C++ stand-ins the parser and printer link against.
+use bun_wasm_stubs as _;
+// The bun_sys_host_* symbols bun_sys declares, as `bun_sys.*` wasm imports served by the VFS.
+use bun_sys_host as _;
 mod stand_ins;
 mod stubs;
 

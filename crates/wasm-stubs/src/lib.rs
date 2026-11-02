@@ -1,9 +1,9 @@
-//! The C/C++ symbols the parser/printer closure links against, for when this crate is the final
-//! artifact. Most come from upstream's `src/sema/standalone/native.rs` (written for parser-only
-//! binaries); `extra` adds the ones it doesn't cover.
+//! The C/C++ symbols Bun's parser/printer closure links against, for the wasm64 crates that link it
+//! (transpile, bundle, resolve, fmt): each keeps a `use bun_wasm_stubs as _;` so this crate is linked. Most come
+//! from upstream's `src/sema/standalone/native.rs` (written for parser-only binaries); `extra` adds the ones it
+//! doesn't cover.
 
-// bun_sys declares bun_sys_host_* (syscalls); this crate never calls them, the stubs fail with ENOSYS.
-use bun_sys_host as _;
+#![feature(linkage)]
 
 #[allow(dead_code, unused_imports, unsafe_op_in_unsafe_fn)]
 #[path = "../../../bun/src/sema/standalone/native.rs"]

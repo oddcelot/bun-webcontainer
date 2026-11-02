@@ -13,6 +13,7 @@ projects:
   fmt-wasm: 'crates/fmt-wasm'
   tsrs-ls-wasm: 'crates/tsrs-ls-wasm'
   sys-host: 'crates/sys-host'
+  wasm-stubs: 'crates/wasm-stubs'
   shim-test: 'crates/shim-test'
   playground: 'apps/playground'
   docs: 'apps/docs'
