@@ -25,3 +25,9 @@ tasks:
     options:
       cache: false
       runFromWorkspaceRoot: true
+  secrets:
+    # Secret scan of the whole git history, as CI does (.github/workflows/secrets.yml). Needs betterleaks (Brewfile).
+    command: 'betterleaks git --no-banner --redact .'
+    options:
+      cache: false
+      runFromWorkspaceRoot: true
