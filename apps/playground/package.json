@@ -6,11 +6,11 @@
     "predev": "bun scripts/copy-wasm.mjs",
     "prebuild": "bun scripts/copy-wasm.mjs --strip",
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsrs --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsrs --noEmit",
     "og": "bun scripts/og.ts",
-    "typecheck:worker": "wrangler types worker/worker-configuration.d.ts && tsc -p worker",
+    "typecheck:worker": "wrangler types worker/worker-configuration.d.ts && tsrs -p worker",
     "swatches": "bun scripts/theme-swatches.ts"
   },
   "dependencies": {
@@ -53,7 +53,7 @@
     "bun-types": "1.4.4",
     "rolldown": "1.2.16",
     "satori": "^0.63.2",
-    "typescript": "^7.0.2",
+    "tsrs": "0.20.1-ts7.1.0-beta",
     "undici-types": "8.12.3",
     "unocss": "catalog:",
     "vite": "^8.3.5"

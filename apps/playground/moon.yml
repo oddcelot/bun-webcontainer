@@ -54,7 +54,7 @@ tasks:
     # canary.runbun.dev (wrangler.jsonc env.canary): a production build into dist-canary/ that links docs-canary, so
     # moon's cached dist/ stays the runbun.dev build. noindex keeps it out of search results.
     script: >-
-      bun scripts/copy-wasm.mjs --strip && bunx tsc --noEmit && bunx vite build --outDir dist-canary &&
+      bun scripts/copy-wasm.mjs --strip && bunx tsrs --noEmit && bunx vite build --outDir dist-canary &&
       ../../scripts/canary-dist.sh dist-canary && bunx wrangler deploy --env canary
     env:
       DOCS_URL: 'https://docs-canary.runbun.dev/'
