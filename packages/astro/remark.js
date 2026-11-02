@@ -5,7 +5,7 @@
 // names the file. Consecutive fences with the same `group` share one embed (the first fence's options apply).
 // Options default to the runbun() integration's (playgroundUrl, base, sync).
 import { CONFIG } from "./config.js";
-import { codeBlock, cssLink, embedScripts, EXT, fileScript, withEntry } from "./markup.js";
+import { codeTabs, cssLink, embedScripts, EXT, fileScript, withEntry, withTabs } from "./markup.js";
 
 const OWN_KEYS = new Set(["playground", "mode", "features", "group", "load", "height", "autorun", "readonly", "persist", "theme", "file", "expand"]);
 const ATTRS = ["mode", "features", "height", "autorun", "readonly", "persist", "theme", "file"];
@@ -42,12 +42,16 @@ function parse(node) {
 function embed(entries) {
   const { opts } = entries[0];
   const sources = {};
+  const shown = [];
   for (const { title, node } of entries) {
     const ext = EXT[node.lang ?? ""] ?? node.lang ?? "txt";
     let name = title || `index.${ext}`;
     for (let n = 2; name in sources; n++) name = `index${n}.${ext}`;
     sources[name] = node.value;
+    shown.push({ name, code: node.value, lang: node.lang ?? "plain" });
   }
+  // Several files show as tabs, before Run and after.
+  if (shown.length > 1) opts.features = withTabs(opts.features);
   // The first fence is the one Run starts, unless the group has an index file of its own.
   const names = Object.keys(sources);
   const entry = names.find((n) => /^(src\/)?index\.[jt]sx?$/.test(n)) ?? names[0];
@@ -55,7 +59,9 @@ function embed(entries) {
   const attrs = ATTRS.filter((k) => k in opts).map((k) => ` ${k}="${esc(opts[k])}"`).join("");
   // A docs snippet opens as the whole playground in a modal unless the fence says otherwise (`expand=false`, `expand=on`).
   const expand = opts.expand === "false" ? "" : ` expand="${esc(opts.expand || "full")}"`;
-  const poster = entries.map((e) => codeBlock(e.node.value, e.node.lang ?? "plain", e.title)).join("");
+  // The tab checked first is the file the embed opens with: `file`, else the one Run starts.
+  const opened = opts.file && opts.file in sources ? opts.file : entry;
+  const poster = shown.length > 1 || entries[0].title ? codeTabs(shown, opened) : codeTabs([{ ...shown[0], name: "" }]);
   return html(
     `<bun-playground class="not-content" load="${esc(opts.load || "click")}"${expand}${attrs}>\n${files.join("\n")}\n` +
       `<div slot="poster">${poster}</div>\n</bun-playground>`,

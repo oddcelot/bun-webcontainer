@@ -93,11 +93,33 @@ export function themeCss(options, selector) {
     .join("\n");
 }
 
-/** The look of a block, around the theme's colors. `--runbun-code-*` properties adjust it. */
+/**
+ * The look of a block, around the theme's colors; `--runbun-code-*` properties adjust it. A tabbed block's files share
+ * one grid cell, only the checked tab's visible, so the block keeps its longest file's height as tabs switch.
+ */
 export const BLOCK_CSS = `
 :where(.runbun-code){margin:0}
-.runbun-code+.runbun-code{margin-top:var(--runbun-code-gap,.75rem)}
 .runbun-code{border:1px solid var(--runbun-code-border,color-mix(in srgb,currentColor 15%,transparent));border-radius:var(--runbun-code-radius,8px);overflow:hidden;background:var(--hls-background);color:var(--hls-foreground)}
 .runbun-code figcaption{padding:.5rem 1rem;border-bottom:1px solid var(--runbun-code-border,color-mix(in srgb,currentColor 15%,transparent));font-family:var(--runbun-code-font,ui-monospace,monospace);font-size:var(--runbun-code-caption-size,.75rem);opacity:.8}
 .runbun-code pre{margin:0;padding:1rem;overflow-x:auto;font-family:var(--runbun-code-font,ui-monospace,monospace);font-size:var(--runbun-code-size,.875rem);line-height:var(--runbun-code-line-height,1.6)}
+.runbun-tabs{display:grid;border:1px solid var(--runbun-code-border,color-mix(in srgb,currentColor 15%,transparent));border-radius:var(--runbun-code-radius,8px);overflow:hidden;background:var(--hls-background);color:var(--hls-foreground)}
+.runbun-tabs>.runbun-code{grid-area:2/1;visibility:hidden;min-width:0;margin:0;border:0;border-radius:0}
+.runbun-tablist{grid-area:1/1;display:flex;overflow-x:auto;border-bottom:1px solid var(--runbun-code-border,color-mix(in srgb,currentColor 15%,transparent));font-family:var(--runbun-code-font,ui-monospace,monospace);font-size:var(--runbun-code-caption-size,.75rem)}
+.runbun-tablist label{position:relative;padding:.5rem 1rem;cursor:pointer;white-space:nowrap;opacity:.65;border-bottom:2px solid transparent;margin-bottom:-1px}
+.runbun-tablist label:hover{opacity:.9}
+.runbun-tablist label:has(input:checked){opacity:1;border-bottom-color:currentColor}
+.runbun-tablist label:has(input:focus-visible){outline:2px solid currentColor;outline-offset:-2px}
+.runbun-tablist input{position:absolute;opacity:0;pointer-events:none}
+.runbun-tabs:has(>.runbun-tablist>label:nth-of-type(1)>input:checked)>.runbun-code:nth-of-type(1){visibility:visible}
+.runbun-tabs:has(>.runbun-tablist>label:nth-of-type(2)>input:checked)>.runbun-code:nth-of-type(2){visibility:visible}
+.runbun-tabs:has(>.runbun-tablist>label:nth-of-type(3)>input:checked)>.runbun-code:nth-of-type(3){visibility:visible}
+.runbun-tabs:has(>.runbun-tablist>label:nth-of-type(4)>input:checked)>.runbun-code:nth-of-type(4){visibility:visible}
+.runbun-tabs:has(>.runbun-tablist>label:nth-of-type(5)>input:checked)>.runbun-code:nth-of-type(5){visibility:visible}
+.runbun-tabs:has(>.runbun-tablist>label:nth-of-type(6)>input:checked)>.runbun-code:nth-of-type(6){visibility:visible}
+.runbun-tabs:has(>.runbun-tablist>label:nth-of-type(7)>input:checked)>.runbun-code:nth-of-type(7){visibility:visible}
+.runbun-tabs:has(>.runbun-tablist>label:nth-of-type(8)>input:checked)>.runbun-code:nth-of-type(8){visibility:visible}
+.runbun-tabs:has(>.runbun-tablist>label:nth-of-type(9)>input:checked)>.runbun-code:nth-of-type(9){visibility:visible}
+.runbun-tabs:has(>.runbun-tablist>label:nth-of-type(10)>input:checked)>.runbun-code:nth-of-type(10){visibility:visible}
+.runbun-tabs:has(>.runbun-tablist>label:nth-of-type(11)>input:checked)>.runbun-code:nth-of-type(11){visibility:visible}
+.runbun-tabs:has(>.runbun-tablist>label:nth-of-type(12)>input:checked)>.runbun-code:nth-of-type(12){visibility:visible}
 `.trim();

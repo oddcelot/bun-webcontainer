@@ -65,7 +65,7 @@ for (const lang of langs) console.log(lang, Bun.version);`}
 for (const lang of langs) console.log(lang, Bun.version);`}
 />
 
-`files` adds more sources to the embed. The block shows its own code; the others are there once it runs:
+`files` adds more files. The block gets a tab per file, and the embed opens with the same tabs:
 
 ```mdx
 <Code
@@ -116,7 +116,7 @@ const res = new Response(JSON.stringify({ ok: true }));
 console.log(await res.json());
 ```
 
-Fences with the same `group=<name>` become one embed with several files; the first fence's options apply:
+Consecutive fences with the same `group=<name>` are one example with several files: one block with a tab per fence, and one embed with the same tabs. The first fence's options apply:
 
 ````md
 ```ts playground group=demo title="index.ts"
@@ -173,4 +173,4 @@ import { Playground } from "@runbun/astro/components";
 | `themeSelector` | | The CSS selector each theme goes under, for a site with its own theme switch, e.g. ``({ name }) => `:root[data-code-theme='${name}']` ``. Without it the first light theme applies, and the first dark one under `prefers-color-scheme: dark`. |
 | `sync` | | `{ scheme, family }`: the `<html>` attributes that hold the page's scheme (`light` or `dark`) and theme family, for the embeds to follow. Without it embeds follow the OS. |
 
-The blocks' look comes from CSS properties you can set: `--runbun-code-border`, `--runbun-code-radius`, `--runbun-code-font`, `--runbun-code-size`, `--runbun-code-caption-size`, `--runbun-code-line-height` and `--runbun-code-gap` (between the blocks of a grouped embed). Blocks carry Starlight's `not-content` class, so they work in Starlight pages as they are.
+The blocks' look comes from CSS properties you can set: `--runbun-code-border`, `--runbun-code-radius`, `--runbun-code-font`, `--runbun-code-size`, `--runbun-code-caption-size` and `--runbun-code-line-height`. Blocks carry Starlight's `not-content` class, so they work in Starlight pages as they are.

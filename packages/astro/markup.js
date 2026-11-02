@@ -15,6 +15,32 @@ export function codeBlock(code, lang, title) {
   return `<figure class="runbun-code not-content">${caption}${highlight(code.replace(/\n$/, ""), lang)}</figure>`;
 }
 
+let groups = 0;
+
+/**
+ * Several files as one block with a tab per file. Plain HTML: the tabs are radio buttons, and the stylesheet shows the
+ * file whose tab is checked, so switching needs no script. `selected` names the tab checked first (default: the
+ * first). One file is a plain block.
+ * @param {{ name: string, code: string, lang?: string }[]} files
+ * @param {string} [selected]
+ */
+export function codeTabs(files, selected) {
+  if (files.length === 1) return codeBlock(files[0].code, files[0].lang ?? langOf(files[0].name), files[0].name);
+  const group = `runbun-tabs-${++groups}`;
+  const checked = Math.max(0, files.findIndex((f) => f.name === selected));
+  const tabs = files
+    .map((f, i) => `<label><input type="radio" name="${group}"${i === checked ? " checked" : ""}>${esc(f.name)}</label>`)
+    .join("");
+  const panels = files.map((f) => codeBlock(f.code, f.lang ?? langOf(f.name))).join("");
+  return `<div class="runbun-tabs not-content"><div class="runbun-tablist" aria-label="Files">${tabs}</div>${panels}</div>`;
+}
+
+/** A highlights language for a file name: its extension. */
+export const langOf = (name) => name.slice(name.lastIndexOf(".") + 1) || "plain";
+
+/** `features` with the embed's tab bar on, unless the author's list already says either way. */
+export const withTabs = (features) => (/(^|,)\s*-?tabs\s*(,|$)/.test(features ?? "") ? features : [features, "tabs"].filter(Boolean).join(","));
+
 /** A file as an inline source of a <bun-playground>: `<\/script` and `<\!--` are how it is written inside a script. */
 export function fileScript(path, text) {
   const body = text.replace(/<\/(script)/gi, "<\\/$1").replace(/<!--/g, "<\\!--");
