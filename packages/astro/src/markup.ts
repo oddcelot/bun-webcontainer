@@ -15,7 +15,9 @@ export function codeBlock(code: string, lang: string, title?: string) {
   return `<figure class="runbun-code not-content">${caption}${highlight(code.replace(/\n$/, ""), lang)}</figure>`;
 }
 
-let groups = 0;
+// Tab groups' radio names must be unique per page. The remark plugin and the components load separate copies of this
+// module (Astro bundles them apart), so the counter lives on globalThis, shared by every copy.
+const counter = ((globalThis as { [k: symbol]: { n: number } })[Symbol.for("runbun.tabGroups")] ??= { n: 0 });
 
 /**
  * Several files as one block with a tab per file. Plain HTML: the tabs are radio buttons, and the stylesheet shows the
@@ -24,7 +26,7 @@ let groups = 0;
  */
 export function codeTabs(files: { name: string; code: string; lang?: string }[], selected?: string): string {
   if (files.length === 1) return codeBlock(files[0]!.code, files[0]!.lang ?? langOf(files[0]!.name), files[0]!.name);
-  const group = `runbun-tabs-${++groups}`;
+  const group = `runbun-tabs-${++counter.n}`;
   const checked = Math.max(0, files.findIndex((f) => f.name === selected));
   const tabs = files
     .map((f, i) => `<label><input type="radio" name="${group}"${i === checked ? " checked" : ""}>${esc(f.name)}</label>`)
