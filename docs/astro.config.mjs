@@ -5,11 +5,12 @@ import starlight from "@astrojs/starlight";
 import UnoCSS from "unocss/astro";
 import { codeThemes } from "./src/code-themes.mjs";
 import remarkPlayground from "./src/remark-playground.mjs";
+import remarkStatus from "./src/remark-status.mjs";
 import { DOCS_URL, PLAYGROUND_URL } from "./site-urls.mjs";
 
 export default defineConfig({
   site: DOCS_URL,
-  markdown: { processor: unified({ remarkPlugins: [[remarkPlayground, { playgroundUrl: PLAYGROUND_URL }]] }) },
+  markdown: { processor: unified({ remarkPlugins: [[remarkPlayground, { playgroundUrl: PLAYGROUND_URL }], remarkStatus] }) },
   integrations: [
     // The playground's tokens and theme families (uno.config.ts); no reset, Starlight brings its own.
     UnoCSS({ injectReset: false }),

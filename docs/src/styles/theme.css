@@ -107,3 +107,22 @@ bun-playground {
   --play-border: var(--control-border);
   --play-radius: 6px;
 }
+
+/* Status icons on the compatibility pages (remark-status.mjs): the playground's lucide icons in the status colors. */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  white-space: nowrap;
+}
+.status > span {
+  flex-shrink: 0;
+  font-size: 1.1em;
+}
+/* The icon takes the status color; the label stays in the text color, which reads in every theme. */
+.status-ok > span { color: var(--ok); }
+.status-warn > span { color: var(--warn); }
+/* Yellows are faint on light backgrounds; darken toward the text. */
+:root[data-theme="light"] .status-warn > span { color: color-mix(in srgb, var(--warn) 70%, var(--fg)); }
+.status-error > span { color: var(--error); }
+.status-muted > span { color: var(--muted); }
