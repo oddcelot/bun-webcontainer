@@ -1,0 +1,33 @@
+---
+// The embed configurator lives in the playground (playground/configure.html), built from its own components and
+// theme; this frames it, wide enough for the form beside the live embed.
+import { PLAYGROUND_URL } from "../../site-urls.mjs";
+
+const src = `${PLAYGROUND_URL}configure`;
+---
+
+<div class="not-content configurator">
+  <iframe src={src} title="Embed configurator" allow="clipboard-write"></iframe>
+  <p><a href={src}>Open the configurator on its own page</a></p>
+</div>
+
+<style>
+  /* This page gets a wider content column, so the form and the preview fit side by side. */
+  :global(:root:has(.configurator)) {
+    --sl-content-width: 96rem;
+  }
+  .configurator {
+    margin-top: 1.5rem;
+  }
+  iframe {
+    display: block;
+    width: 100%;
+    height: max(44rem, calc(100vh - var(--sl-nav-height) - 6rem));
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.75rem;
+  }
+  p {
+    margin-top: 0.5rem;
+    font-size: var(--sl-text-sm);
+  }
+</style>

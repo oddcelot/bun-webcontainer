@@ -4,8 +4,8 @@ import { Popover } from "@kobalte/core/popover";
 import { ToggleGroup } from "@kobalte/core/toggle-group";
 import type { ColorMode } from "@pierre/theming";
 import { FAMILIES, familyOf, pickFamily, setColorMode, switchTheme, themeState, watchTheme } from "../theme";
-import { SWATCHES } from "../themeSwatches";
 import { setStatusDisplay, statusDisplay } from "./StatusBar";
+import { Swatch } from "./Swatch";
 import { Tip } from "./Tip";
 
 const MODES: [ColorMode, string, string][] = [
@@ -25,17 +25,6 @@ const GROUPS: Group[] = Object.entries(FAMILIES).map(([label, list]) => ({
   options: list.map(([name, light, dark]) => ({ name, light, dark })),
 }));
 const ALL = GROUPS.flatMap((g) => g.options);
-
-/** A family's light and dark halves side by side: background with a strip of the accent along the bottom. */
-function Swatch(props: { light: string }) {
-  return (
-    <span class="swatch" aria-hidden="true">
-      <For each={[SWATCHES[props.light]?.light, SWATCHES[props.light]?.dark]}>
-        {(c) => <span style={{ background: c?.[0], "--swatch-accent": c?.[2] }} />}
-      </For>
-    </span>
-  );
-}
 
 /**
  * Appearance: a swatch button opening the system/light/dark toggle over the theme families, then where the run status

@@ -5,7 +5,7 @@ sidebar:
   order: 4
 ---
 
-An embed runs Bun code in your page, in the visitor's browser. Nothing runs on a server. This page shows the options; the full list is in the [embed reference](/reference/embed-api/).
+An embed runs Bun code in your page, in the visitor's browser. Nothing runs on a server. This page shows the options; the full list is in the [embed reference](/reference/embed-api/), and the [configurator](/guides/configurator/) builds a snippet from them with a live preview.
 
 This one is live. Click it to start:
 

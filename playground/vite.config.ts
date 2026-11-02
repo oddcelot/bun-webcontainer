@@ -60,19 +60,20 @@ function docsLink(url: string): Plugin {
 }
 
 /**
- * The embed (embed.html, src/embed/) at `/embed`, and the <bun-playground> element at `/embed.js`: in dev and preview
- * these paths are rewritten (Cloudflare serves /embed from embed.html itself); builds emit the element as dist/embed.js.
+ * The embed (embed.html, src/embed/) at `/embed`, its configurator (configure.html) at `/configure`, and the
+ * <bun-playground> element at `/embed.js`: in dev and preview these paths are rewritten (Cloudflare serves /embed from
+ * embed.html itself); builds emit the element as dist/embed.js.
  */
 function embedRoutes(): Plugin {
   const rewrite = (req: { url?: string }) => {
     const [path, rest = ""] = (req.url ?? "").split(/(?=[?#])/);
-    if (path.endsWith("/embed")) req.url = path + ".html" + rest;
+    if (path.endsWith("/embed") || path.endsWith("/configure")) req.url = path + ".html" + rest;
     else if (path.endsWith("/embed.js")) req.url = path.replace(/embed\.js$/, "embed-element/index.ts") + rest;
   };
   return {
     name: "embed-routes",
     configureServer: (server) => void server.middlewares.use((req, _res, next) => (rewrite(req), next())),
-    configurePreviewServer: (server) => void server.middlewares.use((req, _res, next) => (req.url = (req.url ?? "").replace(/\/embed(?=$|[?#])/, "/embed.html"), next())),
+    configurePreviewServer: (server) => void server.middlewares.use((req, _res, next) => (req.url = (req.url ?? "").replace(/\/(embed|configure)(?=$|[?#])/, "/$1.html"), next())),
   };
 }
 
@@ -82,7 +83,7 @@ export default defineConfig(({ mode }) => ({
   build: {
     target: "esnext",
     rollupOptions: {
-      input: { index: "index.html", embed: "embed.html", element: "embed-element/index.ts" },
+      input: { index: "index.html", embed: "embed.html", configure: "configure.html", element: "embed-element/index.ts" },
       // The element has a stable URL that host pages load (it imports nothing, so it's a single file).
       output: { entryFileNames: (chunk) => (chunk.name === "element" ? "embed.js" : "assets/[name]-[hash].js") },
     },
