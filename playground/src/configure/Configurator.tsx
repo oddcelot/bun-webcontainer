@@ -1,11 +1,12 @@
-import { For, Show, createEffect, createMemo, createSignal, createStore, type ParentProps } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, createStore, onSettled, type ParentProps } from "solid-js";
 import { Select } from "@kobalte/core/select";
 import { ToggleGroup } from "@kobalte/core/toggle-group";
 import { BASE, DOCS } from "../base";
 import { PRESETS } from "../embed/config";
 import { FEATURES, MODES, type Feature, type Mode } from "../embed/protocol";
 import { examples, repoExamples } from "../examples";
-import { FAMILIES, pickFamily, setColorMode, setThemeVars } from "../theme";
+import { createViewer } from "../editors/pierre";
+import { FAMILIES, isFamily, pickFamily, setColorMode, setThemeVars } from "../theme";
 import { guarded } from "../ui/guarded";
 import { Swatch } from "../ui/Swatch";
 import { TabItem, TabList } from "../ui/Tabs";
@@ -14,6 +15,20 @@ import { attributes, elementSnippet, iframeSnippet, inlineFile, type Attr, type 
 
 // runbun.dev/configure: a form over every <bun-playground> option, a live embed with those options, and the snippet to
 // paste. The page wears the embed's theme, family and vars, so the whole thing previews the look.
+
+/**
+ * The page framing the configurator (the docs): its color scheme and theme family, which this page wears wherever the
+ * form leaves them at their defaults. They come in the URL (`?theme=dark&family=…`) and later as messages
+ * (`{ bunConfigure: 1, theme, family }`), only from the docs.
+ */
+type Host = { theme?: "light" | "dark"; family?: string };
+const DOCS_ORIGIN = new URL(DOCS).origin;
+function hostLook(data: { theme?: unknown; family?: unknown }): Host {
+  const theme = data.theme === "light" || data.theme === "dark" ? data.theme : undefined;
+  const family = typeof data.family === "string" && isFamily(data.family) ? data.family : undefined;
+  return { theme, family };
+}
+const params = new URLSearchParams(location.search);
 
 /** Where snippets load the playground from: this deploy. */
 const PLAYGROUND = new URL(BASE, location.href).href;
@@ -188,6 +203,20 @@ function LiveEmbed(props: { form: Form; attrs: Attr[] }) {
   return <div class="live" ref={host} />;
 }
 
+/** The snippet in the playground's read-only Pierre view: highlighted as HTML, in the page's theme. */
+function SnippetView(props: { text: string }) {
+  let el!: HTMLDivElement;
+  let viewer: ReturnType<typeof createViewer> | undefined;
+  createEffect(
+    () => props.text,
+    guarded("configure snippet", (text) => {
+      (viewer ??= createViewer(el)).show("snippet.html", text);
+    }),
+  );
+  onSettled(() => () => viewer?.destroy());
+  return <div class="snippet-code" ref={el} />;
+}
+
 export function Configurator() {
   const [form, setForm] = createStore<Form>({
     source: "inline",
@@ -226,12 +255,23 @@ export function Configurator() {
   const snippet = createMemo(() => (tab() === "element" ? elementSnippet : iframeSnippet)(form, attrs(), PLAYGROUND));
   const [copied, setCopied] = createSignal(false);
 
-  // The page takes the embed's look: its color mode, family and chrome variables.
+  const [host, setHost] = createSignal<Host>(hostLook({ theme: params.get("theme"), family: params.get("family") }));
+  onSettled(() => {
+    const onMessage = (e: MessageEvent) => {
+      if (e.origin === DOCS_ORIGIN && e.data?.bunConfigure === 1) setHost(hostLook(e.data));
+    };
+    addEventListener("message", onMessage);
+    return () => removeEventListener("message", onMessage);
+  });
+
+  // The page takes the embed's look (its color mode, family and chrome variables), or the framing page's where the
+  // form leaves them at their defaults.
   createEffect(
-    () => ({ theme: form.theme, family: form.family, vars: attrs().find(([k]) => k === "vars")?.[1] }),
+    () => ({ theme: form.theme, family: form.family, vars: attrs().find(([k]) => k === "vars")?.[1], host: host() }),
     guarded("configure theme", (look) => {
-      setColorMode(look.theme === "auto" ? "system" : look.theme);
-      pickFamily(look.family === "default" ? "pierre-light" : look.family);
+      const theme = look.theme !== "auto" ? look.theme : (look.host.theme ?? "auto");
+      setColorMode(theme === "auto" ? "system" : theme);
+      pickFamily(look.family !== "default" ? look.family : (look.host.family ?? "pierre-light"));
       setThemeVars(look.vars ? JSON.parse(look.vars) : undefined);
     }),
   );
@@ -456,9 +496,7 @@ export function Configurator() {
                 {copied() ? "Copied" : "Copy"}
               </button>
             </div>
-            <pre>
-              <code>{snippet()}</code>
-            </pre>
+            <SnippetView text={snippet()} />
           </div>
         </aside>
       </main>
