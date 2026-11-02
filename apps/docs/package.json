@@ -15,6 +15,7 @@
     "@astrojs/starlight": "^0.42.7",
     "@pierre/theme": "2.0.0",
     "@runbun/astro": "workspace:*",
+    "@runbun/ui": "workspace:*",
     "astro": "^7.4.4",
     "sharp": "^0.35.5"
   },

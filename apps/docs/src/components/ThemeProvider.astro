@@ -3,7 +3,7 @@
 // appearance picker in ThemeSelect.astro) and `data-code-theme` (its variant for the scheme in effect, which the code
 // blocks' colors follow). Inline, so the first paint is already in the reader's family.
 import Default from "@astrojs/starlight/components/ThemeProvider.astro";
-import { DEFAULT_FAMILY, FAMILIES } from "../../../../ui/uno.preset";
+import { DEFAULT_FAMILY, FAMILIES } from "@runbun/ui/uno.preset";
 
 const darkOf = Object.fromEntries(FAMILIES.map((f) => [f.light, f.dark]));
 ---

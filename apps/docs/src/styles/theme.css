@@ -1,5 +1,5 @@
 /*
- * Starlight in the playground's look: its color scale read from the shared tokens (ui/uno.preset.ts, through UnoCSS),
+ * Starlight in the playground's look: its color scale read from the shared tokens (@runbun/ui, through UnoCSS),
  * which follow the reader's theme family and scheme. Starlight keeps its own CSS in cascade layers, so these unlayered
  * rules win in both schemes.
  */

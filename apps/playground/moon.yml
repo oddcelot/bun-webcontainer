@@ -16,7 +16,7 @@ fileGroups:
     - '*.ts'
     - 'tsconfig.json'
     - 'package.json'
-    - '/ui/**/*'
+    - '/packages/ui/**/*'
     - '/bun.lock'
 
 tasks:

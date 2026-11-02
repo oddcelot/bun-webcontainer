@@ -2,8 +2,8 @@
 // The appearance picker, in place of Starlight's light/dark select: like the playground's (playground/src/ui/
 // ThemePicker.tsx), a swatch button opening the color scheme toggle over the theme families. The scheme is Starlight's
 // (`starlight-theme` in localStorage, `data-theme`); the family is `data-family` (ThemeProvider.astro).
-import { FAMILIES } from "../../../../ui/uno.preset";
-import themes from "../../../../ui/themes.json";
+import { FAMILIES } from "@runbun/ui/uno.preset";
+import themes from "@runbun/ui/themes.json";
 
 const chrome: Record<string, Record<string, string>> = themes.chrome;
 const groups = [...new Set(FAMILIES.map((f) => f.group))].map((group) => ({ group, families: FAMILIES.filter((f) => f.group === group) }));

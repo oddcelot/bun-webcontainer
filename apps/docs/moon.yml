@@ -11,7 +11,7 @@ fileGroups:
     - 'tsconfig.json'
     - 'package.json'
     - 'wrangler.jsonc'
-    - '/ui/**/*'
+    - '/packages/ui/**/*'
     - '/bun.lock'
     # @runbun/astro (workspace:*), not built: the docs load its sources.
     - '/packages/astro/*.{js,ts}'
