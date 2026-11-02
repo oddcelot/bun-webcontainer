@@ -135,6 +135,8 @@ finish() {
   for f in "$root"/*-wasm/rust-toolchain.toml; do
     sed "s|^channel = \".*\"|channel = \"$toolchain\"|" "$f" > "$f.tmp" && mv "$f.tmp" "$f"
   done
+  # The tests compare against native Bun of the same release (proto pins it for moon and the shell).
+  sed "s|^bun = \".*\"|bun = \"$ver\"|" "$root/.prototools" > "$root/.prototools.tmp" && mv "$root/.prototools.tmp" "$root/.prototools"
   sed "s|BUN_VERSION = \".*\"|BUN_VERSION = \"$ver\"|" "$root/playground/src/worker/bunVersion.ts" > "$root/playground/src/worker/bunVersion.ts.tmp" &&
     mv "$root/playground/src/worker/bunVersion.ts.tmp" "$root/playground/src/worker/bunVersion.ts"
   # The editor's type checker bundles Bun's type definitions (playground/src/typecheck/bunTypes.ts).
