@@ -1,4 +1,4 @@
-// Bun's module resolver (bun_resolver, from ../resolve-wasm) over the page VFS, through the same `bun_sys` host
+// Bun's module resolver (bun_resolver, from crates/resolve-wasm) over the page VFS, through the same `bun_sys` host
 // imports the worker uses. Its directory, package.json and tsconfig caches live as long as the instance, as in Bun;
 // VFS changes invalidate the directories they touch, and clearing the VFS starts a fresh instance.
 import { BASE } from "./base";

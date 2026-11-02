@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 
-const wasm = readFileSync(new URL("../target/wasm64-unknown-unknown/release/bun_transpile_wasm.wasm", import.meta.url));
+const wasm = readFileSync(new URL("../../target/wasm64-unknown-unknown/release/bun_transpile_wasm.wasm", import.meta.url));
 let resolver = () => null;
 const calls = [];
 let w;

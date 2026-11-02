@@ -7,11 +7,11 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, dirname as pdirname } from "node:path";
 import assert from "node:assert/strict";
-import { VFS } from "../playground/src/vfs.ts";
-import { createSysImports } from "../playground/src/worker/sysHost.ts";
+import { VFS } from "../../playground/src/vfs.ts";
+import { createSysImports } from "../../playground/src/worker/sysHost.ts";
 
 const here = (p) => new URL(p, import.meta.url);
-const mod = new WebAssembly.Module(readFileSync(here("../target/wasm64-unknown-unknown/release/bun_resolve_wasm.wasm")));
+const mod = new WebAssembly.Module(readFileSync(here("../../target/wasm64-unknown-unknown/release/bun_resolve_wasm.wasm")));
 
 const files = {
   "package.json": JSON.stringify({ name: "app", imports: { "#internal": "./src/internal.ts", "#utils/*": "./src/utils/*.ts", "#dep": "pkgmain" } }),

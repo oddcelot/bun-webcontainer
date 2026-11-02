@@ -165,7 +165,7 @@ run_tests() {
   for d in semver-wasm transpile-wasm sys-wasm resolve-wasm bundle-wasm fmt-wasm; do
     say "bun-upgrade: $d…"
     # shellcheck disable=SC2086
-    if (cd "$root/$d" && cargo +"$1" build $W -q && node test.mjs > "/tmp/bun-upgrade-$d.log" 2>&1); then
+    if (cd "$root/crates/$d" && cargo +"$1" build $W -q && node test.mjs > "/tmp/bun-upgrade-$d.log" 2>&1); then
       say "  ok"
     else
       failed="$failed $d"

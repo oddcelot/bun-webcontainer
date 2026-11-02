@@ -9,7 +9,7 @@ https://docs.runbun.dev/compatibility/ (sources in `../docs`). This README cover
 ## Run
 
     bun install
-    bun run dev        # copies ../semver-wasm .wasm into public/, starts Vite on :5173
+    bun run dev        # copies the crates' .wasm into public/, starts Vite on :5173
     bunx tsc --noEmit
     bun run og         # regenerate public/og.png, public/badge.svg and the favicons (Satori + resvg; outputs are committed)
 
@@ -38,8 +38,8 @@ The picker's "Astro + Solid" (`fixtures/astro-solid-demo`) runs an Astro 7 dev s
     src/demo.ts           seed project (index.ts, util.ts, package.json)
     src/runner.ts         owns the worker; bridges SW messages and worker RPC
     src/moduleServer.ts   VFS path -> JS: transpile TS/JSX, rewrite relative + bare specifiers to /__vfs/...
-    src/resolver.ts       Bun's resolver (wasm64, ../resolve-wasm) over the page VFS
-    src/transpiler/       Bun's transpiler as wasm64 (../transpile-wasm): transpile(source, path) => Promise<string>
+    src/resolver.ts       Bun's resolver (wasm64, crates/resolve-wasm) over the page VFS
+    src/transpiler/       Bun's transpiler as wasm64 (crates/transpile-wasm): transpile(source, path) => Promise<string>
     src/editors/          pierre.ts: @pierre/diffs File + edit-mode Editor behind the CodeEditor interface
     src/preview.ts        requests to the running server for the preview (ui/Preview.tsx: request bar, tabs, one iframe each)
     src/ui/Tabs.tsx       open files as tabs above the editor; open ones get a dot in the file tree
@@ -50,7 +50,7 @@ The picker's "Astro + Solid" (`fixtures/astro-solid-demo`) runs an Astro 7 dev s
     src/install.ts        no lockfile: registry fetch, semver pick (wasm), flat node_modules
     src/lockfile.ts       bun.lock (text format; tested with lockfileVersion 2 from Bun 1.4.4): locked versions, nested node_modules, sha512 integrity check
     src/semver.ts         loader for public/bun_semver_wasm.wasm (wasm64, BigInt pointers)
-    src/fmt.ts            `bun fmt` as wasm64 (../fmt-wasm), loaded on first use: format(path, text) => { text } | { error }
+    src/fmt.ts            `bun fmt` as wasm64 (crates/fmt-wasm), loaded on first use: format(path, text) => { text } | { error }
     src/worker/runtime.ts worker: the `Bun` global (serve, file, write, build, hash, CryptoHasher, gzipSync, ...), console forwarding, worker-side VFS copy
     src/worker/hash.ts    Bun.hash: JS ports of Bun's wyhash, xxHash and murmur, checked against Bun
     src/persist.ts        OPFS write-behind persistence of projects
@@ -70,7 +70,7 @@ Data flow:
 - `import.meta.require("x")` (Bun's sync require, used by Vite): literal specifiers of installed packages become static imports, built-ins and `bun:x` come from the registry, anything else throws at call time.
 - `createRequire(import.meta.url)` in ES modules (Vite's bundles, napi-rs loaders): literal `__require("x")`/`require("x")` specifiers that resolve (relative ones only for JSON) are hoisted into static imports and served by that require; literal `require.resolve("x")` becomes the resolved path.
 
-Specifiers are resolved by Bun's resolver compiled to wasm (`src/resolver.ts`, from `../resolve-wasm`), reading the page VFS through the same `bun_sys` host imports as the worker (`src/worker/sysHost.ts`). Its directory, package.json and tsconfig caches persist; VFS events invalidate the directories they touch, and `vfs.clear()` starts a fresh instance. `import.meta.url`/`dirname`/`filename` become `file:///<vfs path>` values; worker code also gets `dir`, `file`, `path`, `env` and `main`.
+Specifiers are resolved by Bun's resolver compiled to wasm (`src/resolver.ts`, from `crates/resolve-wasm`), reading the page VFS through the same `bun_sys` host imports as the worker (`src/worker/sysHost.ts`). Its directory, package.json and tsconfig caches persist; VFS events invalidate the directories they touch, and `vfs.clear()` starts a fresh instance. `import.meta.url`/`dirname`/`filename` become `file:///<vfs path>` values; worker code also gets `dir`, `file`, `path`, `env` and `main`.
 
 ## Verification
 

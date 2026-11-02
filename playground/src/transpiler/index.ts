@@ -1,6 +1,6 @@
 import { BASE } from "../base";
 
-// Bun's own transpiler (bun_js_parser + bun_js_printer) compiled to wasm64; see ../../../transpile-wasm.
+// Bun's own transpiler (bun_js_parser + bun_js_printer) compiled to wasm64; see crates/transpile-wasm.
 // Output matches `bun build --no-bundle --target=browser`.
 
 type Exports = {
@@ -51,7 +51,7 @@ let wasmId = "";
 async function load(): Promise<Exports> {
   const res = await fetch(new URL(`${BASE}bun_transpile_wasm.wasm`, location.href));
   let w: Exports;
-  // ABI: see transpile-wasm/src/lib.rs ("Host resolver ABI"). Returns 0 (keep) or alloc'd [u64 len][utf-8 bytes].
+  // ABI: see crates/transpile-wasm/src/lib.rs ("Host resolver ABI"). Returns 0 (keep) or alloc'd [u64 len][utf-8 bytes].
   const env = {
     resolve_specifier(ptr: bigint, len: bigint, kind: number): bigint {
       try {

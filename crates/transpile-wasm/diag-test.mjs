@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 
-const wasm = readFileSync(new URL("../target/wasm64-unknown-unknown/release/bun_transpile_wasm.wasm", import.meta.url));
+const wasm = readFileSync(new URL("../../target/wasm64-unknown-unknown/release/bun_transpile_wasm.wasm", import.meta.url));
 const { instance } = await WebAssembly.instantiate(wasm, { env: { resolve_specifier: () => 0n } });
 const w = instance.exports;
 const enc = new TextEncoder(), dec = new TextDecoder();

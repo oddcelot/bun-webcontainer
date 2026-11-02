@@ -2,7 +2,7 @@ import { BASE } from "../base";
 import type { VFS } from "../vfs";
 import { createSysImports } from "./sysHost";
 
-/** What `bundle_c` takes (see bundle-wasm/src/lib.rs); `write` is left out: outputs always come back in memory. */
+/** What `bundle_c` takes (see crates/bundle-wasm/src/lib.rs); `write` is left out: outputs always come back in memory. */
 export interface BundleConfig {
   cwd?: string;
   entryPoints: string[];

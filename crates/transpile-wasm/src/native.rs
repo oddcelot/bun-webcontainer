@@ -6,7 +6,7 @@
 use bun_sys_host as _;
 
 #[allow(dead_code, unused_imports, unsafe_op_in_unsafe_fn)]
-#[path = "../../bun/src/sema/standalone/native.rs"]
+#[path = "../../../bun/src/sema/standalone/native.rs"]
 mod sema_native;
 
 #[allow(non_snake_case)]

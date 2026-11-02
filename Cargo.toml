@@ -4,17 +4,17 @@
 [workspace]
 resolver = "3"
 members = [
-  "semver-wasm",
-  "transpile-wasm",
-  "bundle-wasm",
-  "sys-wasm",
-  "resolve-wasm",
-  "fmt-wasm",
-  "sys-host",
-  "shim-test",
+  "crates/semver-wasm",
+  "crates/transpile-wasm",
+  "crates/bundle-wasm",
+  "crates/sys-wasm",
+  "crates/resolve-wasm",
+  "crates/fmt-wasm",
+  "crates/sys-host",
+  "crates/shim-test",
 ]
 # bun/ is upstream's own workspace (the members depend on its crates by path); tsrs-ls-wasm has its own Rust pin.
-exclude = ["bun", "tsrs-ls-wasm"]
+exclude = ["bun", "crates/tsrs-ls-wasm"]
 
 [profile.release]
 panic = "abort"

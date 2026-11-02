@@ -7,13 +7,13 @@ edition = "2024"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-bun_alloc = { path = "../bun/src/bun_alloc" }
-bun_ast = { path = "../bun/src/ast" }
-bun_js_parser = { path = "../bun/src/js_parser" }
-bun_js_printer = { path = "../bun/src/js_printer" }
+bun_alloc = { path = "../../bun/src/bun_alloc" }
+bun_ast = { path = "../../bun/src/ast" }
+bun_js_parser = { path = "../../bun/src/js_parser" }
+bun_js_printer = { path = "../../bun/src/js_printer" }
 # for the sema stand-ins in src/native.rs
-bun_core = { path = "../bun/src/bun_core" }
-bun_threading = { path = "../bun/src/threading" }
+bun_core = { path = "../../bun/src/bun_core" }
+bun_threading = { path = "../../bun/src/threading" }
 # defines the bun_sys_host_* symbols bun_sys declares, as -ENOSYS stubs (keeps the wasm import-free)
 bun_sys_host = { path = "../sys-host" }
 bstr = "1"

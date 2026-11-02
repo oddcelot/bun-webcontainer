@@ -1,6 +1,6 @@
 // Host side of the `bun_sys` wasm import module: Bun's syscall surface (bun/src/sys/wasm_impl.rs,
 // which documents the ABI) served from a VFS. Synchronous on purpose: the VFS lives in this worker.
-// Plain erasable TypeScript, so node can run it directly (sys-wasm/test.mjs needs Memory64, which bun lacks).
+// Plain erasable TypeScript, so node can run it directly (crates/*/test.mjs need Memory64, which bun lacks).
 // Linux numbering throughout (errno, O_* flags, AT_*, S_IF*, DT_*), because wasm_libc.rs does too.
 import { type FileData, type VFS, dirname, norm } from "../vfs.ts";
 

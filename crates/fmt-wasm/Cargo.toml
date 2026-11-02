@@ -1,0 +1,25 @@
+[package]
+name = "bun_fmt_wasm"
+version = "0.0.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+bun_format = { path = "../../bun/src/format" }
+bun_lint_driver = { path = "../../bun/src/lint/driver" }
+# for the stand-ins in transpile-wasm/src/native.rs, which src/native.rs reuses
+bun_alloc = { path = "../../bun/src/bun_alloc" }
+bun_ast = { path = "../../bun/src/ast" }
+bun_js_parser = { path = "../../bun/src/js_parser" }
+bun_core = { path = "../../bun/src/bun_core" }
+bun_threading = { path = "../../bun/src/threading" }
+# for `bun fmt` itself (src/cli.rs)
+bun_parsers = { path = "../../bun/src/parsers" }
+bun_sema_driver = { path = "../../bun/src/sema/driver" }
+bun_sys = { path = "../../bun/src/sys" }
+# defines the bun_sys_host_* symbols bun_sys declares, as `bun_sys.*` wasm imports served by the VFS
+bun_sys_host = { path = "../sys-host", features = ["imports"] }
+bstr = "1"
+libc = "0.2"

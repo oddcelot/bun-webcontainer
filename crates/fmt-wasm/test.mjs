@@ -5,10 +5,10 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSy
 import { execFileSync, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { VFS } from "../playground/src/vfs.ts";
-import { createSysImports } from "../playground/src/worker/sysHost.ts";
+import { VFS } from "../../playground/src/vfs.ts";
+import { createSysImports } from "../../playground/src/worker/sysHost.ts";
 
-const wasm = readFileSync(new URL("../target/wasm64-unknown-unknown/release/bun_fmt_wasm.wasm", import.meta.url));
+const wasm = readFileSync(new URL("../../target/wasm64-unknown-unknown/release/bun_fmt_wasm.wasm", import.meta.url));
 const t0 = performance.now();
 const vfs = new VFS();
 let stdin = new Uint8Array(0);
@@ -39,11 +39,11 @@ function native(path, text, args) {
   }
 }
 
-const root = new URL("../", import.meta.url);
+const root = new URL("../../", import.meta.url);
 // Every tracked text file: those bun fmt doesn't format must be refused (status 3) where the native one fails.
 const files = execFileSync("git", ["ls-files"], { cwd: root, encoding: "utf8" })
   .split("\n")
-  .filter((f) => f && !/\.(png|ico|wasm)$/.test(f) && !/^(transpile-wasm\/corpus|patches|\.agents|\.beads|\.claude|\.codex)\//.test(f));
+  .filter((f) => f && !/\.(png|ico|wasm)$/.test(f) && !/^(crates\/transpile-wasm\/corpus|patches|\.agents|\.beads|\.claude)\//.test(f));
 const RUNS = [[], ["--use-tabs", "--no-semi", "--single-quote", "--print-width=100"]];
 let fail = 0, checked = 0, ms = 0;
 for (const args of RUNS) {

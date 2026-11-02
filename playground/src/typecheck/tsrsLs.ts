@@ -1,10 +1,10 @@
 import { BASE } from "../base";
 
-// tsrs's language service (TypeScript 7 ported to Rust) as a wasm32-wasip1 module; see ../../../tsrs-ls-wasm for
+// tsrs's language service (TypeScript 7 ported to Rust) as a wasm32-wasip1 module; see crates/tsrs-ls-wasm for
 // its ABI. It reads no files through WASI (they come in through ls_set_files), so the WASI imports are a stub that
 // only does stdout/stderr, clocks and randomness.
 
-/** The tsrs release tsrs-ls-wasm/Cargo.toml builds from, and the TypeScript version it ports. */
+/** The tsrs release crates/tsrs-ls-wasm/Cargo.toml builds from, and the TypeScript version it ports. */
 export const TSRS_VERSION = "0.20.1";
 export const TS_VERSION = "7.1.0-beta";
 

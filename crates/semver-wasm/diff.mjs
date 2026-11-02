@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-const mod = new WebAssembly.Module(readFileSync(new URL("../target/wasm64-unknown-unknown/release/bun_semver_wasm.wasm", import.meta.url)));
+const mod = new WebAssembly.Module(readFileSync(new URL("../../target/wasm64-unknown-unknown/release/bun_semver_wasm.wasm", import.meta.url)));
 const { exports: w } = new WebAssembly.Instance(mod, {});
 const enc = new TextEncoder();
 const withStr = (s, f) => { const b = enc.encode(s), n = BigInt(b.length), p = w.alloc(n);

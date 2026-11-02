@@ -18,8 +18,8 @@ fileGroups:
     - '/bun/Cargo.lock'
     - '/bun/src/**/*.rs'
     - '/bun/src/**/Cargo.toml'
-    - '/sys-host/src/**/*'
-    - '/sys-host/Cargo.toml'
+    - '/crates/sys-host/src/**/*'
+    - '/crates/sys-host/Cargo.toml'
     - '/scripts/bun-pins.sh'
 
 tasks:

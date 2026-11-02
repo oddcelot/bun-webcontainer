@@ -2,10 +2,10 @@
 // Run with node >= 24 (Memory64 + native .ts type stripping; bun lacks Memory64):  node test.mjs
 import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
-import { VFS } from "../playground/src/vfs.ts";
-import { createSysImports } from "../playground/src/worker/sysHost.ts";
+import { VFS } from "../../playground/src/vfs.ts";
+import { createSysImports } from "../../playground/src/worker/sysHost.ts";
 
-const mod = new WebAssembly.Module(readFileSync(new URL("../target/wasm64-unknown-unknown/release/bun_sys_wasm.wasm", import.meta.url)));
+const mod = new WebAssembly.Module(readFileSync(new URL("../../target/wasm64-unknown-unknown/release/bun_sys_wasm.wasm", import.meta.url)));
 const vfs = new VFS();
 vfs.write("src/index.ts", "console.log('hi')\n");
 vfs.write("src/lib/util.ts", "export {}");

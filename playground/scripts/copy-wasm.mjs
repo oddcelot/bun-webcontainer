@@ -6,7 +6,7 @@ const files = [
   ["../../target/wasm64-unknown-unknown/release/bun_bundle_wasm.wasm", "bun_bundle_wasm.wasm"],
   ["../../target/wasm64-unknown-unknown/release/bun_resolve_wasm.wasm", "bun_resolve_wasm.wasm"],
   ["../../target/wasm64-unknown-unknown/release/bun_fmt_wasm.wasm", "bun_fmt_wasm.wasm"],
-  ["../../tsrs-ls-wasm/target/wasm32-wasip1/release/tsrs_ls_wasm.wasm", "tsrs_ls_wasm.wasm"],
+  ["../../crates/tsrs-ls-wasm/target/wasm32-wasip1/release/tsrs_ls_wasm.wasm", "tsrs_ls_wasm.wasm"],
 ];
 // Bun's runtime helpers, which transpiled code imports as "bun:wrap" (legacy decorators and the like). Tracked in
 // src/ so the playground builds without bun/; refreshed from the pinned checkout when there is one.

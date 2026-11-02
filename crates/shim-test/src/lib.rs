@@ -1,8 +1,8 @@
 //! Runs bun's wasm `mi_*` shim (src/mimalloc_sys/wasm.rs) natively so its heap semantics can be tested.
 #![allow(dead_code, unused_imports)]
-#[path = "../../bun/src/mimalloc_sys/mimalloc.rs"]
+#[path = "../../../bun/src/mimalloc_sys/mimalloc.rs"]
 pub mod mimalloc;
-#[path = "../../bun/src/mimalloc_sys/wasm.rs"]
+#[path = "../../../bun/src/mimalloc_sys/wasm.rs"]
 mod wasm;
 
 #[cfg(test)]
