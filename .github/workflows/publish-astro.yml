@@ -38,10 +38,14 @@ jobs:
       # Trusted publishing needs npm 11.5 or later.
       - run: npm install -g npm@latest
 
+      - name: Build the package
+        run: |
+          bun install --frozen-lockfile
+          bun run build
+
       - name: Check the docs site builds with this package
         working-directory: apps/docs
         run: |
-          bun install --frozen-lockfile
           bun run check
           bun run build
 

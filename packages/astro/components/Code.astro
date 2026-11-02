@@ -4,7 +4,7 @@
 // every embed option passes through. `title` names the file, as in a fence. With `files` the block has a tab per file,
 // and so does the embed.
 import { config } from "virtual:@runbun/astro/config";
-import { codeBlock, codeTabs, cssLink, EXT, langOf, withEntry, withTabs } from "../markup.js";
+import { codeBlock, codeTabs, cssLink, EXT, langOf, withEntry, withTabs } from "../dist/markup.js";
 import Playground, { type Props as PlaygroundProps } from "./Playground.astro";
 
 export type Props = Omit<PlaygroundProps, "title"> & {

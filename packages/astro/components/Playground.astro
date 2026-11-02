@@ -1,8 +1,8 @@
 ---
 // A runnable embed. The default slot is the poster (shown until the embed is ready); `files` become inline sources.
-// In Markdown, ```ts playground fences do the same (../remark.js).
+// In Markdown, ```ts playground fences do the same (../dist/remark.js).
 import { config } from "virtual:@runbun/astro/config";
-import { embedScripts, fileScript } from "../markup.js";
+import { embedScripts, fileScript } from "../dist/markup.js";
 
 export interface Props {
   mode?: "code" | "preview" | "console" | "full" | "result";

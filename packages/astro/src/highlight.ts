@@ -1,22 +1,22 @@
 // Code highlighted at build time with @pierre/highlights, the highlighter of the playground's Pierre views. Spans
 // color with CSS variables (its `cssVariables` theme); themeCss() defines them for each configured theme, so one copy
 // of the HTML takes whichever theme the page wears.
-import { codeToHtml, isSupportedLanguage, tokenNames } from "@pierre/highlights";
+import { codeToHtml, isSupportedLanguage, tokenNames, type Theme } from "@pierre/highlights";
 import * as bundled from "@pierre/highlights/themes";
 
-const ALIASES = { typescript: "ts", javascript: "js", shell: "sh", bash: "sh", zsh: "sh", jsonc: "json", md: "markdown" };
+const ALIASES: Record<string, string> = { typescript: "ts", javascript: "js", shell: "sh", bash: "sh", zsh: "sh", jsonc: "json", md: "markdown" };
 
 /** `code` as a `<pre class="highlights">`; languages highlights doesn't know stay plain. */
-export function highlight(code, lang = "plain") {
+export function highlight(code: string, lang = "plain"): string {
   const l = ALIASES[lang] ?? lang;
   const html = codeToHtml(code, { lang: isSupportedLanguage(l) ? l : "plain", theme: bundled.cssVariables });
   return new TextDecoder().decode(html);
 }
 
-const camel = (name) => name.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase());
+const camel = (name: string) => name.replace(/-([a-z0-9])/g, (_: string, c: string) => c.toUpperCase());
 
 /** TextMate scopes to look a Zed scope up by, for themes given as VS Code JSON. */
-const TEXTMATE = {
+const TEXTMATE: Record<string, string[]> = {
   comment: ["comment"],
   string: ["string"],
   number: ["constant.numeric"],
@@ -32,12 +32,32 @@ const TEXTMATE = {
   variable: ["variable"],
 };
 
+/** A bundled @pierre/highlights theme's name (`pierre-dark`), a Zed theme, or a VS Code theme (`{ name, type, tokenColors }`). */
+export type ThemeOption = string | { name: string; [key: string]: unknown };
+
+export type ThemeSelector = (theme: { name: string; appearance: string }) => string;
+
+interface Rule {
+  scope?: string | string[];
+  settings: { foreground?: string };
+}
+interface VscodeTheme {
+  name: string;
+  type: string;
+  tokenColors?: Rule[];
+  colors?: Record<string, string>;
+}
+interface Resolved {
+  name: string;
+  theme: Theme;
+}
+
 /** A VS Code theme as the Zed theme highlights reads. */
-function fromVscode(json) {
+function fromVscode(json: VscodeTheme): Theme {
   const rules = json.tokenColors ?? [];
-  const find = (scope) =>
-    rules.find((r) => [r.scope].flat().some((s) => s === scope || scope.startsWith(s + ".")))?.settings.foreground;
-  const syntax = {};
+  const find = (scope: string) =>
+    rules.find((r: Rule) => [r.scope].flat().some((s) => s === scope || scope.startsWith(s + ".")))?.settings.foreground;
+  const syntax: Record<string, { color: string }> = {};
   for (const [zed, scopes] of Object.entries(TEXTMATE)) {
     const color = scopes.map(find).find(Boolean);
     if (color) syntax[zed] = { color };
@@ -50,20 +70,20 @@ function fromVscode(json) {
  * A theme option as `{ name, theme }`: a bundled theme's name (`pierre-dark`), a Zed theme (`{ name, appearance,
  * style }`), or a VS Code theme (`{ name, type, tokenColors }`). Objects are named by their `name`.
  */
-export function resolveTheme(option) {
+export function resolveTheme(option: ThemeOption): { name: string; theme: Theme } {
   if (typeof option === "string") {
-    const theme = bundled[camel(option)];
+    const theme = (bundled as unknown as Record<string, Theme | undefined>)[camel(option)];
     if (!theme) throw new Error(`@runbun/astro: no bundled highlights theme "${option}"`);
     return { name: option, theme };
   }
-  return { name: option.name, theme: option.style ? option : fromVscode(option) };
+  return { name: option.name, theme: option.style ? (option as unknown as Theme) : fromVscode(option as unknown as VscodeTheme) };
 }
 
 /**
  * `theme` with a color for every scope highlights emits, as Zed falls back: `keyword.declaration` takes `keyword`'s
  * when the theme has none. Without that a span's variable would be unset and the token would lose its color.
  */
-function complete(theme) {
+function complete(theme: Theme): Theme {
   const syntax = { ...theme.style.syntax };
   for (const name of tokenNames) {
     if (name === "background" || name === "foreground" || syntax[name]) continue;
@@ -82,12 +102,12 @@ function complete(theme) {
  * The variables of every theme. With `selector`, each goes under `selector({ name, appearance })`. Without, the first
  * light theme applies on `:root` and the first dark one under `prefers-color-scheme: dark`.
  */
-export function themeCss(options, selector) {
+export function themeCss(options: ThemeOption[], selector?: ThemeSelector): string {
   const themes = options.map(resolveTheme);
-  const vars = (t) => bundled.toCSS(complete(t.theme));
-  if (selector) return themes.map((t) => `${selector({ name: t.name, appearance: t.theme.appearance })}{${vars(t)}}`).join("\n");
-  const light = themes.find((t) => t.theme.appearance === "light");
-  const dark = themes.find((t) => t.theme.appearance === "dark");
+  const vars = (t: Resolved) => bundled.toCSS(complete(t.theme));
+  if (selector) return themes.map((t: Resolved) => `${selector({ name: t.name, appearance: t.theme.appearance })}{${vars(t)}}`).join("\n");
+  const light = themes.find((t: Resolved) => t.theme.appearance === "light");
+  const dark = themes.find((t: Resolved) => t.theme.appearance === "dark");
   return [light && `:root{${vars(light)}}`, dark && `@media (prefers-color-scheme: dark){:root{${vars(dark)}}}`]
     .filter(Boolean)
     .join("\n");
