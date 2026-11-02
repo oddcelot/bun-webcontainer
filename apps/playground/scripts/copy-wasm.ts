@@ -14,7 +14,7 @@ const files = [
 const strip = process.argv.includes("--strip");
 
 /** The module without its custom sections (id 0); every other section is copied byte for byte. */
-function stripCustomSections(bytes) {
+function stripCustomSections(bytes: Uint8Array): Buffer {
   const keep = [bytes.subarray(0, 8)]; // magic + version
   let at = 8;
   while (at < bytes.length) {
@@ -38,7 +38,7 @@ function stripCustomSections(bytes) {
 try {
   copyFileSync(new URL("../../../bun/src/runtime.js", import.meta.url), new URL("../src/bunWrap.js", import.meta.url));
 } catch (e) {
-  console.warn("copy-wasm: using existing src/bunWrap.js:", e.message);
+  console.warn("copy-wasm: using existing src/bunWrap.js:", (e as Error).message);
 }
 mkdirSync(new URL("../public/", import.meta.url), { recursive: true });
 for (const [from, to] of files) {
@@ -47,6 +47,6 @@ for (const [from, to] of files) {
     if (strip) writeFileSync(dest, stripCustomSections(readFileSync(new URL(from, import.meta.url))));
     else copyFileSync(new URL(from, import.meta.url), dest);
   } catch (e) {
-    console.warn(`copy-wasm: using existing public/${to}:`, e.message);
+    console.warn(`copy-wasm: using existing public/${to}:`, (e as Error).message);
   }
 }

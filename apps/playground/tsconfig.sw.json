@@ -1,0 +1,11 @@
+{
+  // The service worker (src/sw.ts) is checked against the worker lib; the rest of src/ is tsconfig.json (DOM).
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "WebWorker"],
+    "types": [],
+    "paths": { "#sw-page": ["./src/swPage.sw.d.ts"] }
+  },
+  "include": ["src/sw.ts", "src/swPage.sw.d.ts"],
+  "exclude": []
+}
