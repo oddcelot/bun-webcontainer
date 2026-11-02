@@ -4,7 +4,7 @@ import { createSysImports } from "@runbun/vfs/sysHost";
 
 // `bun fmt` (Bun's own Prettier-compatible formatter) compiled to wasm64; see crates/fmt-wasm. Each call runs
 // `bun fmt [flags] --stdin-filepath <path>` itself over the VFS, so the project's configs apply as in Bun: bunfig.toml's
-// [fmt], .prettierrc*, package.json's "prettier", .editorconfig and .prettierignore. Loaded on first use (~2.5 MB
+// [fmt], .prettierrc*, package.json's "prettier", .editorconfig and .prettierignore. Loaded on first use (~2.3 MB
 // compressed).
 
 type Exports = {

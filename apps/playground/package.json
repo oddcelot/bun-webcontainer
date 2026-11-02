@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "predev": "bun scripts/copy-wasm.mjs",
-    "prebuild": "bun scripts/copy-wasm.mjs",
+    "prebuild": "bun scripts/copy-wasm.mjs --strip",
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",

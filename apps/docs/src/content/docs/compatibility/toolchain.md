@@ -38,7 +38,7 @@ console.log(Level[tasks[0].level], queue.size);
 
 The language service of [tsrs](https://github.com/oxc-project/tsrs) (TypeScript 7's compiler ported to Rust), compiled
 to WebAssembly. The editor shows type errors in `.ts`, `.tsx`, `.mts` and `.cts` files a moment after you stop typing,
-once the file parses. It loads with the first TypeScript file you open (~2.4 MB compressed, Bun's type definitions
+once the file parses. It loads with the first TypeScript file you open (~2.2 MB compressed, Bun's type definitions
 included) and keeps the project in memory: the first check takes a fraction of a second (about 0.6 s with the Astro
 example's `node_modules`), later ones a few milliseconds.
 
@@ -56,7 +56,7 @@ example's `node_modules`), later ones a few milliseconds.
 
 Bun's own formatter, compiled to WebAssembly. It formats like Prettier, and its output matches `bun fmt` byte for byte:
 each file goes through `bun fmt --stdin-filepath`, Bun's own code, with the project's files. It loads the first time you
-format (~2.5 MB compressed). Use **Format** in the tab bar or <kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd> for the open
+format (~2.3 MB compressed). Use **Format** in the tab bar or <kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd> for the open
 file, or `bun fmt` in the console.
 
 - ✅ JavaScript, TypeScript, JSX, JSON, CSS, SCSS, Less, HTML, Markdown, MDX, YAML, TOML, GraphQL, Handlebars and Svelte
@@ -166,7 +166,7 @@ console.log(pc.red("invalid:"), User.safeParse({ name: "Ada", age: "old" }).succ
 
 ## Bundler
 
-`Bun.build` and HTML imports use Bun's real bundler, compiled to WebAssembly (~10 MB, loaded on first use). See [`Bun.build`](/compatibility/bun/#the-bun-global) for the supported options.
+`Bun.build` and HTML imports use Bun's real bundler, compiled to WebAssembly (~7.5 MB, loaded on first use). See [`Bun.build`](/compatibility/bun/#the-bun-global) for the supported options.
 
 - Single-threaded; each build starts fresh
 - HTML imports in `Bun.serve` are built for the browser, without minification or source maps

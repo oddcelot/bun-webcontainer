@@ -55,7 +55,7 @@ type Exports = {
 
 let compiled: Promise<WebAssembly.Module> | undefined;
 
-/** Fetched and compiled on first use (about 10 MB), then kept: each bundle instantiates it afresh. */
+/** Fetched and compiled on first use (about 7.5 MB), then kept: each bundle instantiates it afresh. */
 function loadModule() {
   compiled ??= fetch(new URL(`${BASE}bun_bundle_wasm.wasm`, location.href))
     .then((r) => {
