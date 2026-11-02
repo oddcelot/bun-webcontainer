@@ -1,8 +1,6 @@
 ---
 title: Overview
 description: What the playground is and how it runs your code.
-sidebar:
-  order: 1
 ---
 
 The playground runs a Bun project entirely in your browser:

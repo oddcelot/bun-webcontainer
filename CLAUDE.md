@@ -77,6 +77,7 @@ W="-Zbuild-std=std,panic_abort --target wasm64-unknown-unknown --release"
 (cd playground && bunx tsc --noEmit && bun run dev)      # verify in Chrome (Memory64)
 (cd docs && bun run check && bun run build)               # docs site; `bun run deploy` publishes docs.runbun.dev
 scripts/dev.sh                                           # playground (:5173) + docs (:4321) dev servers; docs embeds need both
+(cd playground && bun run swatches)                       # after changing theme families: swatches, ui/themes.json, ui/code-themes/
 # Cross-links: DOCS_URL / PLAYGROUND_URL (both builds read them; default localhost in dev, runbun.dev in builds)
 ```
 

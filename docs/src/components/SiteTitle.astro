@@ -1,0 +1,26 @@
+---
+// Starlight's site title with the tagline beside it, on screens wide enough to keep the search clear.
+import Default from "@astrojs/starlight/components/SiteTitle.astro";
+import { TAGLINE } from "../tagline";
+---
+
+<Default />
+<span class="tagline">{TAGLINE}</span>
+
+<style>
+  .tagline {
+    display: none;
+    align-self: center;
+    margin-inline-start: 0.75rem;
+    padding-inline-start: 0.75rem;
+    border-inline-start: 1px solid var(--sl-color-gray-5);
+    color: var(--sl-color-gray-3);
+    font-size: var(--sl-text-sm);
+    white-space: nowrap;
+  }
+  @media (min-width: 72rem) {
+    .tagline {
+      display: inline;
+    }
+  }
+</style>

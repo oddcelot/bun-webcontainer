@@ -92,8 +92,9 @@ export default function remarkPlayground({ playgroundUrl = "https://runbun.dev/"
       html(
         `<script type="module" src="${esc(base)}embed.js"></script>\n` +
           `<script type="module">\n` +
-          `const sync = () => { const t = document.documentElement.dataset.theme === "light" ? "light" : "dark"; for (const el of document.querySelectorAll("bun-playground")) el.setAttribute("theme", t); };\n` +
-          `sync(); new MutationObserver(sync).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });\n` +
+          // Embeds take the page's scheme and theme family (components/ThemeProvider.astro), and follow changes.
+          `const sync = () => { const { theme, family } = document.documentElement.dataset; for (const el of document.querySelectorAll("bun-playground")) { el.setAttribute("theme", theme === "light" ? "light" : "dark"); if (family) el.setAttribute("family", family); } };\n` +
+          `sync(); new MutationObserver(sync).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-family"] });\n` +
           `</script>`,
       ),
     );

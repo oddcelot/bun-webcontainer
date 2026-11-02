@@ -50,10 +50,14 @@ const escape = (s: string) => s.replace(/<\/(script)/gi, "<\\/$1").replace(/<!--
 <!-- Module scripts with the same URL run once, so several embeds on a page load embed.js a single time. -->
 <script is:inline type="module" src={`${PLAYGROUND_URL}embed.js`}></script>
 <script is:inline type="module">
+  // Embeds take the page's scheme and theme family (ThemeProvider.astro), and follow changes to either.
   const sync = () => {
-    const t = document.documentElement.dataset.theme === "light" ? "light" : "dark";
-    for (const el of document.querySelectorAll("bun-playground")) el.setAttribute("theme", t);
+    const { theme, family } = document.documentElement.dataset;
+    for (const el of document.querySelectorAll("bun-playground")) {
+      el.setAttribute("theme", theme === "light" ? "light" : "dark");
+      if (family) el.setAttribute("family", family);
+    }
   };
   sync();
-  new MutationObserver(sync).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  new MutationObserver(sync).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-family"] });
 </script>

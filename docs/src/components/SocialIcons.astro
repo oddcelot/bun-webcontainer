@@ -1,0 +1,11 @@
+---
+// Starlight's social links plus an "Open playground" button in the playground's control style (src/styles/theme.css).
+import Default from "@astrojs/starlight/components/SocialIcons.astro";
+import { PLAYGROUND_URL } from "../../site-urls.mjs";
+---
+
+<Default />
+<a class="open-playground" href={PLAYGROUND_URL}>
+  <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M7 4v16l13-8z" fill="currentColor" /></svg>
+  Open playground
+</a>

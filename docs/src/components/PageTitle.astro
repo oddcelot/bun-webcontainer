@@ -1,0 +1,39 @@
+---
+// Page headings as Starlight draws them, except on the home page: there the heading is the site's name with its
+// tagline under it, while the page itself stays "Overview" (the sidebar entry and the tab title).
+import Default from "@astrojs/starlight/components/PageTitle.astro";
+import { TAGLINE } from "../tagline";
+
+const { siteTitle } = Astro.locals.starlightRoute;
+const home = Astro.url.pathname === import.meta.env.BASE_URL;
+---
+
+{
+  home ? (
+    <hgroup>
+      {/* `_top` is Starlight's page title id, which "On this page" links to. */}
+      <h1 id="_top">{siteTitle}</h1>
+      <p>{TAGLINE}</p>
+    </hgroup>
+  ) : (
+    <Default />
+  )
+}
+
+<style>
+  hgroup {
+    margin-top: 1rem;
+  }
+  h1 {
+    margin: 0;
+    font-size: var(--sl-text-h1);
+    line-height: var(--sl-line-height-headings);
+    font-weight: 600;
+    color: var(--sl-color-white);
+  }
+  p {
+    margin: 0.25rem 0 0;
+    font-size: var(--sl-text-xl);
+    color: var(--sl-color-gray-3);
+  }
+</style>
