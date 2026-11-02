@@ -1,6 +1,7 @@
 /*
- * Starlight in the playground's look: its color scale read from the shared tokens (ui/tokens.css, Pierre Dark and
- * Light). Starlight keeps its own CSS in cascade layers, so these unlayered rules win in both schemes.
+ * Starlight in the playground's look: its color scale read from the shared tokens (ui/uno.preset.ts, through UnoCSS),
+ * which follow the reader's theme family and scheme. Starlight keeps its own CSS in cascade layers, so these unlayered
+ * rules win in both schemes.
  */
 :root {
   --sl-color-white: var(--fg);
@@ -22,11 +23,14 @@
 }
 
 /*
- * Pierre Light's accent is near-black, which can't mark a link, so the light scheme takes its info blue. Link text uses
- * the darker accent-high: the blue itself is under 4.5:1 on white.
+ * Pierre's light accents are near-black or grey, which can't mark a link, so Pierre families take their info blue in
+ * the light scheme. `html:root` outranks the family rules (`:root[data-family][data-theme]`).
  */
-:root[data-theme="light"] {
+html:root[data-theme="light"]:is(:not([data-family]), [data-family^="pierre-"]) {
   --accent: var(--info);
+}
+/* Link text uses the darker accent-high in the light scheme: a mid accent (Pierre's blue too) is under 4.5:1 on white. */
+:root[data-theme="light"] {
   --sl-color-gray-7: color-mix(in srgb, var(--panel) 50%, var(--bg));
   --sl-color-accent-low: color-mix(in srgb, var(--accent) 14%, var(--bg));
   --sl-color-accent-high: color-mix(in srgb, var(--accent) 60%, var(--fg));

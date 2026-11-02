@@ -1,5 +1,5 @@
-/* The shared tokens (colors, fonts, radii, control sizes); theme.ts sets the colors from the chosen theme. */
-@import "../../ui/tokens.css";
+/* The shared tokens (colors, fonts, radii, control sizes) come from ui/uno.preset.ts through virtual:uno.css;
+ * theme.ts sets the colors from the chosen theme. */
 :root {
   /* The editor reads the diffs fonts. */
   --diffs-font-family: var(--font-mono);

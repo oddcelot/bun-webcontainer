@@ -1,7 +1,9 @@
-import { defineConfig, presetIcons } from "unocss";
+import { defineConfig, presetIcons, presetMini } from "unocss";
+import { uiPreset } from "../ui/uno.preset";
 
-// Icons only (no utility preset): `i-lucide-<name>` is a CSS mask over currentColor.
+// The shared tokens (ui/uno.preset.ts), utilities over them (`bg-panel`, `text-muted`, `rounded-pane`), and icons:
+// `i-lucide-<name>` is a CSS mask over currentColor.
 export default defineConfig({
-  presets: [presetIcons({ mode: "mask" })],
+  presets: [uiPreset(), presetMini({ preflight: false }), presetIcons({ mode: "mask" })],
   content: { pipeline: { include: [/\.(html|tsx?)($|\?)/] } },
 });
