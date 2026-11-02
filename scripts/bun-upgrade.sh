@@ -140,8 +140,9 @@ finish() {
   sed "s|BUN_VERSION = \".*\"|BUN_VERSION = \"$ver\"|" "$root/playground/src/worker/bunVersion.ts" > "$root/playground/src/worker/bunVersion.ts.tmp" &&
     mv "$root/playground/src/worker/bunVersion.ts.tmp" "$root/playground/src/worker/bunVersion.ts"
   # The editor's type checker bundles Bun's type definitions (playground/src/typecheck/bunTypes.ts).
-  (cd "$root/playground" && bun add -d --exact "@types/bun@$ver" > /dev/null 2>&1) ||
-    say "bun-upgrade: @types/bun@$ver isn't published yet; run \`bun add -d --exact @types/bun@$ver\` in playground/ once it is"
+  # It globs them from playground/node_modules, so bun-types (and @types/node, undici-types) are declared there too.
+  (cd "$root/playground" && bun add -d --exact "@types/bun@$ver" "bun-types@$ver" > /dev/null 2>&1) ||
+    say "bun-upgrade: @types/bun@$ver isn't published yet; run \`bun add -d --exact @types/bun@$ver bun-types@$ver\` in playground/ once it is"
 
   "$root/scripts/bun-prepare.sh" "$bun"
   "$root/scripts/export-bun-patches.sh" > /dev/null
