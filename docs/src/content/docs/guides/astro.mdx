@@ -6,6 +6,7 @@ sidebar:
 ---
 
 import { Code, Playground } from "@runbun/astro/components";
+import wordCount from "../../../examples/word-count.ts?raw";
 
 `@runbun/astro` adds code blocks to an Astro 7 site that are highlighted at build time with [@pierre/highlights](https://diffs.com/highlights) and turn into a live [embed](/guides/embedding/) when a reader clicks Run. Until then a block is plain HTML: no script runs and nothing downloads. The examples below show each source and, under it, what it renders.
 
@@ -87,6 +88,17 @@ console.log(greet("Astro"));`}
   code={`import { greet } from "./greet";
 console.log(greet("Astro"));`}
 />
+
+To show a file you keep in the repo, import it as a string with Vite's `?raw` suffix and pass it as `code`. The block stays in step with the file, and the file can be linted, formatted and type-checked like any other. Run starts the block's file; when it isn't an index file, the embed gets a `package.json` whose `main` points at it:
+
+```mdx
+import { Code } from "@runbun/astro/components";
+import wordCount from "../examples/word-count.ts?raw";
+
+<Code playground mode="code" features="console" title="word-count.ts" code={wordCount} />
+```
+
+<Code playground mode="code" features="console" title="word-count.ts" code={wordCount} />
 
 ## Fences
 
