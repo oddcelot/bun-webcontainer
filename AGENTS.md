@@ -65,13 +65,13 @@ proto install                              # tools pinned in .prototools: moon, 
 moon run :test                             # build + test every wasm crate (cached; sets up bun/ if missing)
 moon run <crate>:build|test                # one crate; config in .moon/ and <crate>/moon.yml
 moon run playground:build docs:build       # playground after the wasm crates' builds; docs:check, playground:typecheck
-moon run docs:dev                          # docs dev server + playground:dev (like scripts/dev.sh)
+moon run docs:dev                          # docs dev server + playground:dev (like scripts/dev.ts)
 moon run root:lint-sh root:typos docs:links  # shellcheck, spelling, the built docs' internal links (tools: Brewfile)
-scripts/setup-bun.sh                       # recreate bun/ (pinned commit + patches/bun/ via git am); bun/ is not tracked
-scripts/export-bun-patches.sh              # after committing in bun/ on wasm-experiment
-scripts/bun-upgrade.sh --check             # newer Bun release? do patches/bun/ still apply? (changes nothing)
-scripts/bun-upgrade.sh [tag]               # rebase bun/ onto a release (default: latest); on conflict resolve, then --finish
-scripts/w64.sh <crate>...                  # wasm64 compile check of bun crates
+scripts/setup-bun.ts                       # recreate bun/ (pinned commit + patches/bun/ via git am); bun/ is not tracked
+scripts/export-bun-patches.ts              # after committing in bun/ on wasm-experiment
+scripts/bun-upgrade.ts --check             # newer Bun release? do patches/bun/ still apply? (changes nothing)
+scripts/bun-upgrade.ts [tag]               # rebase bun/ onto a release (default: latest); on conflict resolve, then --finish
+scripts/w64.ts <crate>...                  # wasm64 compile check of bun crates
 # The wrapper crates (crates/) are one Cargo workspace (root Cargo.toml, Cargo.lock, rust-toolchain.toml, target/;
 # not bun/ or crates/tsrs-ls-wasm). Build one crate per cargo run: built together, features unify (sys-host `imports` into transpile-wasm).
 W="-Zbuild-std=std,panic_abort --target wasm64-unknown-unknown --release"
@@ -87,13 +87,13 @@ bun install                                # root bun workspace (playground, doc
 (cd apps/playground && bunx tsrs --noEmit && bun run dev)      # verify in Chrome (Memory64)
 (cd apps/docs && bun run check && bun run build)               # docs site; `bun run deploy` publishes docs.runbun.dev
 moon run playground:deploy-canary docs:deploy-canary      # canary.runbun.dev + docs-canary.runbun.dev (noindex)
-scripts/dev.sh                                           # playground (:5173) + docs (:4321) dev servers; docs embeds need both
+scripts/dev.ts                                           # playground (:5173) + docs (:4321) dev servers; docs embeds need both
 (cd apps/playground && bun run swatches)                       # after changing theme families: swatches, packages/ui/themes.json, code-themes/
 # Cross-links: DOCS_URL / PLAYGROUND_URL (both builds read them; default localhost in dev, runbun.dev in builds)
 ```
 
-Use `cargo +$TOOLCHAIN` (the nightly in `scripts/bun-pins.sh`) inside `bun/` (don't let its rust-toolchain.toml
-auto-install 11 targets). Follow Bun releases, not main: upgrade with `scripts/bun-upgrade.sh`, which also updates
+Use `cargo +$(bun scripts/bun-pins.ts TOOLCHAIN)` (the nightly pinned in `scripts/bun-pins.ts`) inside `bun/` (don't let its rust-toolchain.toml
+auto-install 11 targets). Follow Bun releases, not main: upgrade with `scripts/bun-upgrade.ts`, which also updates
 the pins, the wrapper crates' toolchains and the playground's reported version.
 
 ## Architecture Overview
@@ -122,8 +122,8 @@ These rules override the conservative Beads profile for commits (not for pushes)
 ## Conventions & Patterns
 
 - Changes to Bun: commit them in `bun/` on the `wasm-experiment` branch (one logical change per
-  commit, subject `crate: what`), then run `scripts/export-bun-patches.sh` and commit `patches/bun/`.
-  The pre-commit hook (`scripts/check-bun-patches.sh`) blocks commits while `bun/src` is dirty or
+  commit, subject `crate: what`), then run `scripts/export-bun-patches.ts` and commit `patches/bun/`.
+  The pre-commit hook (`scripts/check-bun-patches.ts`) blocks commits while `bun/src` is dirty or
   unexported. Every change is cfg-gated (`target_family = "wasm"`), marked `// wasm-experiment`,
   and leaves native builds unchanged.
 - Don't touch `*_jsc` crates.

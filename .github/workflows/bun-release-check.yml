@@ -25,13 +25,21 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # The pinned Bun (.prototools) runs the scripts and is the one the check compares against.
+      - id: bun
+        run: echo "version=$(sed -n 's/^bun = "\(.*\)"/\1/p' .prototools)" >> "$GITHUB_OUTPUT"
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ steps.bun.outputs.version }}
+
       - name: Check
         id: check
         env:
           TAG: ${{ inputs.tag }}
         run: |
           set +e
-          sh scripts/bun-upgrade.sh --check ${TAG:+"$TAG"} 2>&1 | tee check.txt
+          bun scripts/bun-upgrade.ts --check ${TAG:+"$TAG"} 2>&1 | tee check.txt
           code=${PIPESTATUS[0]}
           echo "code=$code" >> "$GITHUB_OUTPUT"
           # 0 up to date, 2 newer release and the patches apply, 3 newer release with conflicts, 1 error.

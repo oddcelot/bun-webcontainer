@@ -37,7 +37,7 @@ tasks:
     inputs:
       - 'dist/**/*'
   dev:
-    # The embeds frame the playground dev server, so it runs alongside (scripts/dev.sh does the same by hand).
+    # The embeds frame the playground dev server, so it runs alongside (scripts/dev.ts does the same by hand).
     # When an AI agent runs it, `astro dev` backgrounds itself (stop: `cd docs && bunx astro dev stop`) and the task
     # ends at once; from a terminal it stays in the foreground.
     command: 'bun run dev'
@@ -50,7 +50,7 @@ tasks:
     deps: ['astro:build']
     script: >-
       bunx astro build --outDir dist-canary &&
-      ../../scripts/canary-dist.sh dist-canary && bunx wrangler deploy --env canary
+      ../../scripts/canary-dist.ts dist-canary && bunx wrangler deploy --env canary
     env:
       DOCS_URL: 'https://docs-canary.runbun.dev/'
       PLAYGROUND_URL: 'https://canary.runbun.dev/'

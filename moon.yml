@@ -4,14 +4,14 @@ $schema: 'https://moonrepo.dev/schemas/project.json'
 tasks:
   setup-bun:
     # Recreates bun/ (pinned commit + patches/bun/) only when it is missing; never touches an existing checkout.
-    script: 'test -d bun || scripts/setup-bun.sh'
+    script: 'test -d bun || scripts/setup-bun.ts'
     options:
       cache: false
       runInCI: true
       runFromWorkspaceRoot: true
   lint-sh:
     # Warnings and errors only; style notes (SC2012 & co.) don't fail it. Needs shellcheck (Brewfile).
-    script: 'shellcheck -S warning scripts/*.sh .claude/hooks/*.sh'
+    script: 'shellcheck -S warning .claude/hooks/*.sh'
     inputs:
       - '/scripts/*.sh'
       - '/.claude/hooks/*.sh'
