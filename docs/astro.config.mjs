@@ -30,6 +30,8 @@ export default defineConfig({
       },
       components: {
         SocialIcons: "./src/components/SocialIcons.astro",
+        SiteTitle: "./src/components/SiteTitle.astro",
+        PageTitle: "./src/components/PageTitle.astro",
         ThemeProvider: "./src/components/ThemeProvider.astro",
         ThemeSelect: "./src/components/ThemeSelect.astro",
       },
