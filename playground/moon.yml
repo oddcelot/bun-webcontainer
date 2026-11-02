@@ -1,0 +1,51 @@
+$schema: 'https://moonrepo.dev/schemas/project.json'
+
+language: 'typescript'
+
+fileGroups:
+  sources:
+    - 'src/**/*'
+    - 'worker/**/*'
+    - 'embed-element/**/*'
+    - 'public/**/*'
+    # Copied in from the wasm crates by scripts/copy-wasm.mjs; their builds are deps instead.
+    - '!public/*.wasm'
+    - 'scripts/**/*'
+    - 'patches/**/*'
+    - '*.html'
+    - '*.ts'
+    - 'tsconfig.json'
+    - 'package.json'
+    - '/ui/**/*'
+    - '/bun.lock'
+
+tasks:
+  typecheck:
+    command: 'bun run typecheck'
+    inputs:
+      - '@group(sources)'
+  build:
+    # prebuild (scripts/copy-wasm.mjs) copies the crates' .wasm into public/.
+    command: 'bun run build'
+    deps:
+      - 'semver-wasm:build'
+      - 'transpile-wasm:build'
+      - 'bundle-wasm:build'
+      - 'resolve-wasm:build'
+      - 'fmt-wasm:build'
+      - 'tsrs-ls-wasm:build'
+    inputs:
+      - '@group(sources)'
+    outputs:
+      - 'dist/**/*'
+  dev:
+    # strictPort: the docs frame the playground at localhost:5173 (docs/site-urls.mjs).
+    command: 'bun run dev --strictPort'
+    preset: 'server'
+    deps:
+      - 'semver-wasm:build'
+      - 'transpile-wasm:build'
+      - 'bundle-wasm:build'
+      - 'resolve-wasm:build'
+      - 'fmt-wasm:build'
+      - 'tsrs-ls-wasm:build'

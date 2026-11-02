@@ -8,7 +8,7 @@ import { dirname, join } from "node:path";
 import { VFS } from "../playground/src/vfs.ts";
 import { createSysImports } from "../playground/src/worker/sysHost.ts";
 
-const wasm = readFileSync(new URL("./target/wasm64-unknown-unknown/release/bun_fmt_wasm.wasm", import.meta.url));
+const wasm = readFileSync(new URL("../target/wasm64-unknown-unknown/release/bun_fmt_wasm.wasm", import.meta.url));
 const t0 = performance.now();
 const vfs = new VFS();
 let stdin = new Uint8Array(0);

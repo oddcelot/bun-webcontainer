@@ -22,6 +22,18 @@ JSC-independent Rust crates compiled to wasm64 (Memory64) plus JS shims for the 
 | `scripts/w64.sh` | wasm64 compile check of Bun crates |
 | `HANDOFF.md` | How the port works, findings, next steps |
 
+`.prototools` pins Bun, Node 26 (the wasm64 tests need >= 24) and [moon](https://moonrepo.dev), which runs the wasm crates'
+builds and tests with caching (`proto install` once):
+
+```sh
+moon run :test                  # build every wasm crate (bun/ set up if missing) and run its test
+moon run transpile-wasm:test    # one crate
+moon run playground:build       # after the wasm builds it needs
+moon run docs:dev               # docs + playground dev servers
+```
+
+By hand (the wrapper crates are one Cargo workspace with a shared `target/`; build them one at a time, as below):
+
 ```sh
 scripts/setup-bun.sh
 W="-Zbuild-std=std,panic_abort --target wasm64-unknown-unknown --release"
@@ -31,7 +43,8 @@ W="-Zbuild-std=std,panic_abort --target wasm64-unknown-unknown --release"
 (cd resolve-wasm && cargo build $W && node test.mjs)
 (cd fmt-wasm && cargo build $W && node test.mjs)
 (cd tsrs-ls-wasm && cargo build --release --target wasm32-wasip1 && node test.mjs)   # tsrs's Rust 1.99.1, not the nightly
-(cd playground && bun install && bun run dev)   # http://localhost:5173, Chrome
+bun install                     # one bun workspace: playground, docs, packages/*
+(cd playground && bun run dev)  # http://localhost:5173, Chrome
 ```
 
 Work is tracked with [beads](https://github.com/steveyegge/beads): `bd ready`.

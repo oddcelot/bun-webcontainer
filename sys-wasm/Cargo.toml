@@ -10,11 +10,3 @@ crate-type = ["cdylib"]
 bun_sys = { path = "../bun/src/sys" }
 bun_core = { path = "../bun/src/bun_core" }
 bun_sys_host = { path = "../sys-host", features = ["imports"] }
-
-[profile.release]
-panic = "abort"
-opt-level = "s"
-lto = true
-
-[profile.dev]
-panic = "abort"

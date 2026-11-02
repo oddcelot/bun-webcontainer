@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 
-const path = new URL("./target/wasm64-unknown-unknown/release/bun_semver_wasm.wasm", import.meta.url);
+const path = new URL("../target/wasm64-unknown-unknown/release/bun_semver_wasm.wasm", import.meta.url);
 const mod = new WebAssembly.Module(readFileSync(path));
 console.log("imports:", WebAssembly.Module.imports(mod));
 const { exports: w } = new WebAssembly.Instance(mod, {});

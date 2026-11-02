@@ -61,11 +61,18 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 ## Build & Test
 
 ```bash
+proto install                              # tools pinned in .prototools: moon, bun, node 26 (wasm64 tests need >= 24)
+moon run :test                             # build + test every wasm crate (cached; sets up bun/ if missing)
+moon run <crate>:build|test                # one crate; config in .moon/ and <crate>/moon.yml
+moon run playground:build docs:build       # playground after the wasm crates' builds; docs:check, playground:typecheck
+moon run docs:dev                          # docs dev server + playground:dev (like scripts/dev.sh)
 scripts/setup-bun.sh                       # recreate bun/ (pinned commit + patches/bun/ via git am); bun/ is not tracked
 scripts/export-bun-patches.sh              # after committing in bun/ on wasm-experiment
 scripts/bun-upgrade.sh --check             # newer Bun release? do patches/bun/ still apply? (changes nothing)
 scripts/bun-upgrade.sh [tag]               # rebase bun/ onto a release (default: latest); on conflict resolve, then --finish
 scripts/w64.sh <crate>...                  # wasm64 compile check of bun crates
+# The wrapper crates are one Cargo workspace (root Cargo.toml, Cargo.lock, rust-toolchain.toml, target/; not bun/ or
+# tsrs-ls-wasm). Build one crate per cargo run: built together, features unify (sys-host `imports` into transpile-wasm).
 W="-Zbuild-std=std,panic_abort --target wasm64-unknown-unknown --release"
 (cd semver-wasm && cargo build $W && node test.mjs && node diff.mjs)
 (cd transpile-wasm && cargo build $W && node test.mjs)   # diff vs `bun build --no-bundle` on corpus/
@@ -74,6 +81,8 @@ W="-Zbuild-std=std,panic_abort --target wasm64-unknown-unknown --release"
 (cd tsrs-ls-wasm && cargo build --release --target wasm32-wasip1 && node test.mjs)  # TS7 language service (tsrs); own Rust pin
 (cd fmt-wasm && cargo build $W && node test.mjs)         # `bun fmt` (bun_format) vs native bun fmt on the repo's files (node >= 24)
 (cd shim-test && cargo +$TOOLCHAIN test)         # TOOLCHAIN from scripts/bun-pins.sh
+bun install                                # root bun workspace (playground, docs, packages/*): one bun.lock, isolated
+                                           # node_modules per package; shared versions in package.json's catalog
 (cd playground && bunx tsc --noEmit && bun run dev)      # verify in Chrome (Memory64)
 (cd docs && bun run check && bun run build)               # docs site; `bun run deploy` publishes docs.runbun.dev
 scripts/dev.sh                                           # playground (:5173) + docs (:4321) dev servers; docs embeds need both

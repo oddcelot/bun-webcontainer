@@ -1,5 +1,6 @@
 // @types/bun (the release BUN_VERSION names) and what it depends on, as checker files under /node_modules: the
 // globals Bun provides (Bun.*, node:*, HTML imports) type-check even when the project hasn't installed them.
+// Installs are isolated, so all four are devDependencies of the playground: only declared packages are linked here.
 const modules = import.meta.glob<string>(
   [
     "../../node_modules/{@types/bun,bun-types,@types/node,undici-types}/package.json",

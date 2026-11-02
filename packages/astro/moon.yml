@@ -1,0 +1,16 @@
+$schema: 'https://moonrepo.dev/schemas/project.json'
+
+# @runbun/astro: plain JS and .astro sources, nothing to build. Published by .github/workflows/publish-astro.yml.
+language: 'javascript'
+
+tasks:
+  pack:
+    # What npm would publish.
+    command: 'npm pack --dry-run'
+    inputs:
+      - '*.{js,ts}'
+      - 'components/**/*'
+      - 'package.json'
+      - 'README.md'
+    options:
+      cache: false

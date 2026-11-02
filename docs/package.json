@@ -14,16 +14,17 @@
     "@astrojs/markdown-remark": "^7.3.5",
     "@astrojs/starlight": "^0.42.7",
     "@pierre/theme": "2.0.0",
-    "@runbun/astro": "link:../packages/astro",
+    "@runbun/astro": "workspace:*",
     "astro": "^7.4.4",
     "sharp": "^0.35.5"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.12",
-    "@iconify-json/lucide": "^1.2.148",
+    "@emnapi/runtime": "1.11.1",
+    "@iconify-json/lucide": "catalog:",
     "@unocss/astro": "66.12.0",
     "typescript": "^6",
-    "unocss": "66.12.0",
+    "unocss": "catalog:",
     "wrangler": "^4.156.0"
   }
 }

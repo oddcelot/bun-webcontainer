@@ -1,0 +1,30 @@
+# https://moonrepo.dev/docs/config/workspace
+$schema: 'https://moonrepo.dev/schemas/workspace.json'
+
+versionConstraint: '>=2.6.0'
+
+projects:
+  root: '.'
+  semver-wasm: 'semver-wasm'
+  transpile-wasm: 'transpile-wasm'
+  bundle-wasm: 'bundle-wasm'
+  sys-wasm: 'sys-wasm'
+  resolve-wasm: 'resolve-wasm'
+  fmt-wasm: 'fmt-wasm'
+  tsrs-ls-wasm: 'tsrs-ls-wasm'
+  sys-host: 'sys-host'
+  shim-test: 'shim-test'
+  playground: 'playground'
+  docs: 'docs'
+  astro: 'packages/astro'
+
+vcs:
+  client: 'git'
+  defaultBranch: 'main'
+
+hasher:
+  # bun/ is gitignored (recreated by scripts/setup-bun.sh), but the wasm builds compile it. The default
+  # `vcs` walk only sees tracked files, so edits in bun/src would hit a stale cache.
+  walkStrategy: 'glob'
+  # The wasm64 task group lists build.rs; not every crate has one.
+  ignoreMissingPatterns: ['**/build.rs']

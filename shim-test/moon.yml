@@ -1,0 +1,16 @@
+$schema: 'https://moonrepo.dev/schemas/project.json'
+
+language: 'rust'
+
+tasks:
+  test:
+    command: 'cargo test'
+    deps: ['root:setup-bun']
+    inputs:
+      - 'src/**/*'
+      - 'Cargo.toml'
+      - '/Cargo.toml'
+      - '/Cargo.lock'
+      - '/rust-toolchain.toml'
+      - '/bun/src/opaque/**/*'
+      - '/scripts/bun-pins.sh'
