@@ -1,0 +1,11 @@
+$schema: 'https://moonrepo.dev/schemas/project.json'
+
+# Root-level project: workspace-wide tasks.
+tasks:
+  setup-bun:
+    # Recreates bun/ (pinned commit + patches/bun/) only when it is missing; never touches an existing checkout.
+    script: 'test -d bun || scripts/setup-bun.sh'
+    options:
+      cache: false
+      runInCI: true
+      runFromWorkspaceRoot: true

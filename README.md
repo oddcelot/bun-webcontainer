@@ -22,6 +22,16 @@ JSC-independent Rust crates compiled to wasm64 (Memory64) plus JS shims for the 
 | `scripts/w64.sh` | wasm64 compile check of Bun crates |
 | `HANDOFF.md` | How the port works, findings, next steps |
 
+`.prototools` pins Bun, Node (>= 24 for the wasm64 tests) and [moon](https://moonrepo.dev), which runs the wasm crates'
+builds and tests with caching (`proto install` once):
+
+```sh
+moon run :test                  # build every wasm crate (bun/ set up if missing) and run its test
+moon run transpile-wasm:test    # one crate
+```
+
+By hand:
+
 ```sh
 scripts/setup-bun.sh
 W="-Zbuild-std=std,panic_abort --target wasm64-unknown-unknown --release"

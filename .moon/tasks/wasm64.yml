@@ -1,0 +1,45 @@
+# Tasks for the wrapper crates that compile Bun's crates to wasm64 (projects tagged `wasm64`).
+$schema: 'https://moonrepo.dev/schemas/tasks.json'
+
+inheritedBy:
+  tags: ['wasm64']
+
+fileGroups:
+  sources:
+    - 'src/**/*'
+    - 'build.rs'
+    - 'Cargo.toml'
+    - 'Cargo.lock'
+    - 'rust-toolchain.toml'
+  bun:
+    - '/bun/Cargo.toml'
+    - '/bun/Cargo.lock'
+    - '/bun/src/**/*.rs'
+    - '/bun/src/**/Cargo.toml'
+    - '/sys-host/src/**/*'
+    - '/sys-host/Cargo.toml'
+    - '/scripts/bun-pins.sh'
+
+tasks:
+  build:
+    command: 'cargo'
+    # As a list: moon's command parser splits `-Zbuild-std=std,panic_abort`.
+    args: ['build', '-Zbuild-std=std,panic_abort', '--target', 'wasm64-unknown-unknown', '--release']
+    deps: ['root:setup-bun']
+    inputs:
+      - '@group(sources)'
+      - '@group(bun)'
+    outputs:
+      - 'target/wasm64-unknown-unknown/release/*.wasm'
+  test:
+    # Node >= 24 (Memory64); bun lacks it. Both pinned in /.prototools.
+    command: 'node test.mjs'
+    # Through moon's toolchains, child processes get PROTO_*_VERSION, so the `bun` the tests spawn in temp dirs
+    # (outside this repo's .prototools) is still the pinned one, not proto's global default.
+    toolchains: ['node', 'bun']
+    deps: ['~:build']
+    inputs:
+      - '*.mjs'
+      # The tests run the wasm over the playground's VFS and host imports.
+      - '/playground/src/vfs.ts'
+      - '/playground/src/worker/sysHost.ts'

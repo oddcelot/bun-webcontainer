@@ -1,0 +1,10 @@
+$schema: 'https://moonrepo.dev/schemas/project.json'
+
+language: 'rust'
+tags: ['wasm64']
+
+tasks:
+  test:
+    # Diffs against `bun build --no-bundle` (native Bun, pinned in /.prototools) on corpus/.
+    inputs:
+      - 'corpus/**/*'

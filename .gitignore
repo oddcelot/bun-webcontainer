@@ -29,3 +29,7 @@ node_modules/
 
 # wrangler local state
 .wrangler/
+
+# moon (cache and generated files)
+/.moon/cache/
+/.moon/docker/
