@@ -98,6 +98,13 @@ export const greet = (n: string) => n;
 ```
 ````
 
+In `.mdx` pages, `<Code>` (`src/components/Code.astro`) renders a code block at build time with [@pierre/highlights](https://diffs.com/highlights), in the reader's code theme. On its own it stays static; `playground` adds a Run button that turns it into an embed, and it takes the embed's other options (`mode`, `features`, `files`, `expand`, …). `title` names the file:
+
+```mdx
+<Code lang="ts" title="index.ts" code={`console.log(Bun.version);`} />
+<Code playground mode="code" features="console" title="index.ts" code={`console.log(Bun.version);`} />
+```
+
 ## Turn features on and off
 
 `features` is a comma list added to the mode's defaults. A leading `-` turns one off and locks it, so readers can't turn it back on.
