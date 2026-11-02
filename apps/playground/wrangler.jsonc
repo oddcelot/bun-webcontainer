@@ -13,7 +13,9 @@
   // New short links per client IP: 10 a minute keeps the Free plan's 1,000 KV writes a day for real use.
   "ratelimits": [{ "name": "CREATE_LIMIT", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } }],
   "routes": [{ "pattern": "runbun.dev", "custom_domain": true }],
-  "workers_dev": true,
+  // Only the custom domain: a workers.dev or preview-URL copy would be a duplicate site for search engines.
+  "workers_dev": false,
+  "preview_urls": false,
   "env": {
     // `moon run playground:deploy-canary`: worker bun-playground-canary on canary.runbun.dev, built into dist-canary/
     // with the docs-canary cross-links. routes is inherited, so it must be set here; bindings are not, so repeat them.
@@ -25,9 +27,7 @@
       },
       "kv_namespaces": [{ "binding": "LINKS", "id": "5823c967357a4e149e3fd4347898c0a2" }],
       "ratelimits": [{ "name": "CREATE_LIMIT", "namespace_id": "1002", "simple": { "limit": 10, "period": 60 } }],
-      "routes": [{ "pattern": "canary.runbun.dev", "custom_domain": true }],
-      // Only the custom domain: a workers.dev copy would be one more host for search engines to find.
-      "workers_dev": false
+      "routes": [{ "pattern": "canary.runbun.dev", "custom_domain": true }]
     }
   }
 }
