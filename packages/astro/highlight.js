@@ -96,6 +96,7 @@ export function themeCss(options, selector) {
 /** The look of a block, around the theme's colors. `--runbun-code-*` properties adjust it. */
 export const BLOCK_CSS = `
 :where(.runbun-code){margin:0}
+.runbun-code+.runbun-code{margin-top:var(--runbun-code-gap,.75rem)}
 .runbun-code{border:1px solid var(--runbun-code-border,color-mix(in srgb,currentColor 15%,transparent));border-radius:var(--runbun-code-radius,8px);overflow:hidden;background:var(--hls-background);color:var(--hls-foreground)}
 .runbun-code figcaption{padding:.5rem 1rem;border-bottom:1px solid var(--runbun-code-border,color-mix(in srgb,currentColor 15%,transparent));font-family:var(--runbun-code-font,ui-monospace,monospace);font-size:var(--runbun-code-caption-size,.75rem);opacity:.8}
 .runbun-code pre{margin:0;padding:1rem;overflow-x:auto;font-family:var(--runbun-code-font,ui-monospace,monospace);font-size:var(--runbun-code-size,.875rem);line-height:var(--runbun-code-line-height,1.6)}
