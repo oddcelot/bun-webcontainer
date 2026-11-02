@@ -1,0 +1,265 @@
+---
+// The embed configurator: a form over every <bun-playground> option, the snippet it adds up to (element or iframe),
+// and a live embed with the same settings. The form's state lives in the client script below; nothing is stored.
+import { PLAYGROUND_URL } from "../../site-urls.mjs";
+import { PRESETS } from "../../../playground/src/embed/config";
+import { FEATURES, MODES } from "../../../playground/src/embed/protocol";
+import { SWATCHES } from "../../../playground/src/themeSwatches";
+import { examples } from "../../../playground/src/examples";
+
+const families = Object.keys(SWATCHES);
+const data = JSON.stringify({ playground: PLAYGROUND_URL, presets: PRESETS });
+const sample = `const greet = (name: string) => \`Hello, \${name}!\`;
+
+console.log(greet("Bun"));
+console.log(Bun.version);
+`;
+---
+
+<div class="cfg not-content" data-config={data}>
+  <form class="form" autocomplete="off">
+    <fieldset>
+      <legend>Source</legend>
+      <label class="wide">
+        <span>From</span>
+        <select name="source">
+          <option value="inline">Inline file</option>
+          <option value="example">Bundled example</option>
+          <option value="repo">GitHub repo</option>
+        </select>
+      </label>
+      <label data-for="inline"><span>File name</span><input name="filename" value="index.ts" /></label>
+      <label class="wide" data-for="inline">
+        <span>Code</span>
+        <textarea name="code" rows="7" spellcheck="false">{sample}</textarea>
+      </label>
+      <label class="wide" data-for="example">
+        <span>Example</span>
+        <select name="example">{Object.entries(examples).map(([name, label]) => <option value={name}>{label}</option>)}</select>
+      </label>
+      <label class="wide" data-for="repo"><span>Repo</span><input name="repo" placeholder="owner/repo[@ref]" value="oddcelot/bun-elysia-demo" /></label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Layout</legend>
+      <label>
+        <span>Mode</span>
+        <select name="mode">{MODES.map((m) => <option>{m}</option>)}</select>
+      </label>
+      <label>
+        <span>Height</span>
+        <input name="height" placeholder="mode default" />
+      </label>
+      <div class="wide features">
+        <span>Features <small>on/off in this mode; an unticked default is locked off</small></span>
+        <div class="checks">
+          {FEATURES.map((f) => <label class="check"><input type="checkbox" name="feature" value={f} /> {f}</label>)}
+        </div>
+      </div>
+      <label>
+        <span>Expand</span>
+        <select name="expand">
+          <option value="none">none</option>
+          <option value="button">button</option>
+          {MODES.map((m) => <option value={m}>button, as {m}</option>)}
+        </select>
+      </label>
+      <label>
+        <span>Status</span>
+        <select name="status"><option>toast</option><option>bar</option></select>
+      </label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Behavior</legend>
+      <label>
+        <span>Load</span>
+        <select name="load"><option>visible</option><option>eager</option><option>click</option></select>
+      </label>
+      <label>
+        <span>Autorun</span>
+        <select name="autorun">
+          <option value="">mode default</option>
+          <option value="true">true</option>
+          <option value="false">false</option>
+        </select>
+      </label>
+      <label><span>Open file</span><input name="file" placeholder="the entry file" /></label>
+      <label><span>Preview path</span><input name="path" placeholder="/" /></label>
+      <label><span>Persist key</span><input name="persist" placeholder="none" /></label>
+      <label><span>Title</span><input name="title" placeholder="none" /></label>
+      <label class="check"><input type="checkbox" name="readonly" /> readonly</label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Look</legend>
+      <label>
+        <span>Theme</span>
+        <select name="theme"><option>auto</option><option>light</option><option>dark</option></select>
+      </label>
+      <label>
+        <span>Family</span>
+        <select name="family">
+          <option value="">default</option>
+          {families.map((f) => <option>{f}</option>)}
+        </select>
+      </label>
+      <label>
+        <span><input type="checkbox" name="accentOn" /> Accent</span>
+        <input type="color" name="accent" value="#ff5a5f" />
+      </label>
+      <label><span>Radius</span><input name="radius" placeholder="theme default" /></label>
+      <label><span>UI font</span><input name="fontUi" placeholder="Inter, sans-serif" /></label>
+      <label><span>Code font</span><input name="fontMono" placeholder="JetBrains Mono, monospace" /></label>
+      <label class="wide"><span>Font stylesheets</span><input name="fonts" placeholder="https://fonts.googleapis.com/css2?family=Inter&display=swap" /></label>
+    </fieldset>
+  </form>
+
+  <div class="side">
+    <p class="label">Live preview</p>
+    <div class="preview"></div>
+
+    <div class="out">
+      <div class="tabs" role="tablist">
+        <button type="button" role="tab" aria-selected="true" data-tab="element">Element</button>
+        <button type="button" role="tab" aria-selected="false" data-tab="iframe">iframe</button>
+        <button type="button" class="copy">Copy</button>
+      </div>
+      <pre data-out="element"><code></code></pre>
+      <pre data-out="iframe" hidden><code></code></pre>
+    </div>
+  </div>
+</div>
+
+<script>
+  import "./embed-configurator";
+</script>
+
+<script is:inline type="module" src={`${PLAYGROUND_URL}embed.js`}></script>
+
+<style>
+  /* This page gets a wider content column, so the form and the preview fit side by side. */
+  :global(:root:has(.cfg)) {
+    --sl-content-width: 90rem;
+  }
+  .cfg {
+    margin-top: 1.5rem;
+    font-size: var(--sl-text-sm);
+    display: grid;
+    gap: 1.5rem;
+    align-items: start;
+  }
+  @media (min-width: 72rem) {
+    .cfg {
+      grid-template-columns: minmax(22rem, 1fr) minmax(0, 1.4fr);
+    }
+    /* The preview and snippet stay in view while the form scrolls. */
+    .side {
+      position: sticky;
+      top: calc(var(--sl-nav-height) + 1rem);
+      max-height: calc(100vh - var(--sl-nav-height) - 2rem);
+      overflow-y: auto;
+    }
+  }
+  .form {
+    display: grid;
+    gap: 1rem;
+  }
+  fieldset {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+    gap: 0.75rem 1rem;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.5rem;
+    padding: 0.75rem 1rem 1rem;
+    margin: 0;
+  }
+  legend {
+    font-weight: 600;
+    color: var(--sl-color-white);
+    padding: 0 0.25rem;
+  }
+  label,
+  .features {
+    display: grid;
+    gap: 0.25rem;
+    align-content: start;
+    color: var(--sl-color-gray-2);
+  }
+  .wide {
+    grid-column: 1 / -1;
+  }
+  [hidden] {
+    display: none !important;
+  }
+  small {
+    color: var(--sl-color-gray-3);
+  }
+  input:not([type="checkbox"]),
+  select,
+  textarea {
+    width: 100%;
+    font: inherit;
+    color: var(--sl-color-white);
+    background: var(--sl-color-black);
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.25rem;
+    padding: 0.3rem 0.5rem;
+  }
+  input[type="color"] {
+    height: 2rem;
+    padding: 0.1rem;
+  }
+  textarea {
+    font-family: var(--sl-font-mono);
+    resize: vertical;
+  }
+  .check {
+    display: flex;
+    gap: 0.4rem;
+    align-items: center;
+  }
+  .checks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1rem;
+  }
+  .out {
+    margin-top: 1rem;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.5rem;
+    overflow: hidden;
+  }
+  .tabs {
+    display: flex;
+    background: var(--sl-color-gray-6);
+    border-bottom: 1px solid var(--sl-color-gray-5);
+  }
+  .tabs button {
+    font: inherit;
+    color: var(--sl-color-gray-2);
+    background: none;
+    border: 0;
+    padding: 0.4rem 0.9rem;
+    cursor: pointer;
+  }
+  .tabs [aria-selected="true"] {
+    color: var(--sl-color-white);
+    box-shadow: inset 0 -2px var(--sl-color-accent);
+  }
+  .tabs .copy {
+    margin-left: auto;
+  }
+  pre {
+    margin: 0;
+    padding: 0.75rem 1rem;
+    overflow-x: auto;
+    font-size: var(--sl-text-xs);
+    background: var(--sl-color-black);
+  }
+  .label {
+    margin: 0 0 0.5rem;
+    font-weight: 600;
+    color: var(--sl-color-white);
+  }
+</style>
