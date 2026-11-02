@@ -1,0 +1,73 @@
+# Publishes packages/astro (@runbun/astro) to npm, by hand: Actions → Publish @runbun/astro → Run workflow. A dry run
+# (the default) packs and prints what would go out. A real run publishes the version in packages/astro/package.json
+# with provenance, through npm's trusted publishing (no token: configure this repo and workflow on the package's
+# npm settings first), and tags the commit astro-v<version>.
+name: Publish @runbun/astro
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run: pack and check, publish nothing"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write # the astro-v<version> tag
+  id-token: write # npm provenance and trusted publishing
+
+concurrency: publish-astro
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: packages/astro
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      # Trusted publishing needs npm 11.5 or later.
+      - run: npm install -g npm@latest
+
+      - name: Check the docs site builds with this package
+        working-directory: docs
+        run: |
+          (cd ../packages/astro && bun install)
+          bun install
+          bun run check
+          bun run build
+
+      - name: Version
+        id: version
+        run: |
+          version=$(node -p "require('./package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if npm view "@runbun/astro@$version" version >/dev/null 2>&1; then
+            echo "::error::@runbun/astro@$version is already on npm; bump packages/astro/package.json"
+            exit 1
+          fi
+
+      - name: Pack
+        run: npm pack --dry-run
+
+      - name: Publish
+        if: ${{ !inputs.dry_run }}
+        run: npm publish --access public --provenance
+
+      - name: Tag
+        if: ${{ !inputs.dry_run }}
+        working-directory: .
+        env:
+          TAG: astro-v${{ steps.version.outputs.version }}
+        run: |
+          git tag "$TAG"
+          git push origin "$TAG"
