@@ -58,5 +58,5 @@ if command -v bd >/dev/null 2>&1; then
 fi
 # --- END BEADS INTEGRATION v1.3.0 ---
 
-# bun/ changes must be committed there and exported to patches/bun/ (scripts/export-bun-patches.sh).
-"$(git rev-parse --show-toplevel)/scripts/check-bun-patches.sh"
+# bun/ changes must be committed there and exported to patches/bun/ (scripts/export-bun-patches.ts).
+"$(git rev-parse --show-toplevel)/scripts/check-bun-patches.ts"

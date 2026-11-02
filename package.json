@@ -15,5 +15,9 @@
   "patchedDependencies": {
     "@solid-primitives/presence@1.0.0-next.2": "patches/npm/@solid-primitives%2Fpresence@1.0.0-next.2.patch",
     "@kobalte/core@2.0.0-alpha.4": "patches/npm/@kobalte%2Fcore@2.0.0-alpha.4.patch"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.4",
+    "tsrs": "0.20.1-ts7.1.0-beta"
   }
 }

@@ -18,11 +18,11 @@ A StackBlitz/WebContainers-style "Bun" in the browser. User code runs in the bro
 ## Layout
 
 ```
-bun/                     untracked; scripts/setup-bun.sh recreates it (upstream @ BUN_COMMIT in scripts/bun-pins.sh + patches/bun/ on branch wasm-experiment + vendor/ + codegen)
+bun/                     untracked; scripts/setup-bun.ts recreates it (upstream @ BUN_COMMIT in scripts/bun-pins.ts + patches/bun/ on branch wasm-experiment + vendor/ + codegen)
 patches/bun/             the bun changes as 5 commits (git format-patch), every hunk cfg-gated, marked `// wasm-experiment`
 patches/bun-codegen/     build_options.rs, copied to bun/build/debug/codegen/
 patches/npm/             patches to npm dependencies (root package.json patchedDependencies)
-scripts/w64.sh crate...  wasm64 compile check of bun crates (errors in short form)
+scripts/w64.ts crate...  wasm64 compile check of bun crates (errors in short form)
 crates/semver-wasm/      cdylib: Bun.semver order/satisfies; test.ts, diff.ts (vs real Bun)
 crates/transpile-wasm/   cdylib: Bun's transpiler; src/lib.rs (parse→print),
                          examples/smoke.rs (native), test.ts + corpus/ (wasm vs `bun build --no-bundle`)
@@ -39,7 +39,7 @@ packages/                @runbun/astro (npm), @runbun/ui (shared tokens), @runbu
 ## Reproduce
 
 ```sh
-scripts/setup-bun.sh        # clone bun @ pinned commit, git am patches/bun/, vendor crates, codegen, toolchain
+scripts/setup-bun.ts        # clone bun @ pinned commit, git am patches/bun/, vendor crates, codegen, toolchain
 
 W="-Zbuild-std=std,panic_abort --target wasm64-unknown-unknown --release"
 (cd crates/semver-wasm && cargo build $W && node test.ts && bun gen-expected.ts && node diff.ts)

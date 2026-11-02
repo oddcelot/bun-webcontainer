@@ -13,4 +13,4 @@ tasks:
       - '/Cargo.lock'
       - '/rust-toolchain.toml'
       - '/bun/src/opaque/**/*'
-      - '/scripts/bun-pins.sh'
+      - '/scripts/bun-pins.ts'
