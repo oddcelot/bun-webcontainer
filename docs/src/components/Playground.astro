@@ -26,7 +26,9 @@ const bool = (v: unknown) => (v === undefined ? undefined : v ? "" : undefined);
 const escape = (s: string) => s.replace(/<\/(script)/gi, "<\\/$1").replace(/<!--/g, "<\\!--");
 ---
 
+<!-- not-content: Starlight's spacing between content elements would push the poster down below the file scripts. -->
 <bun-playground
+  class="not-content"
   load={load}
   mode={attrs.mode}
   features={attrs.features}
