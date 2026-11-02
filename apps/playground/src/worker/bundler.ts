@@ -1,6 +1,6 @@
 import { BASE } from "../base";
-import type { VFS } from "../vfs";
-import { createSysImports } from "./sysHost";
+import type { VFS } from "@runbun/vfs";
+import { createSysImports } from "@runbun/vfs/sysHost";
 
 /** What `bundle_c` takes (see crates/bundle-wasm/src/lib.rs); `write` is left out: outputs always come back in memory. */
 export interface BundleConfig {

@@ -1,6 +1,6 @@
 import { strToU8, unzipSync, zipSync } from "fflate";
 import { SKIP } from "./persist";
-import type { VFS } from "./vfs";
+import type { VFS } from "@runbun/vfs";
 
 /** The project as a zip, without what `bun install` or the source brings back (node_modules, .git). */
 export function exportZip(vfs: VFS): Blob {

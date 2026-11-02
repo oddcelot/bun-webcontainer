@@ -1,4 +1,4 @@
-import { dirname, norm } from "../../vfs";
+import { dirname, norm } from "@runbun/vfs";
 
 /** Bun's resolver over the worker's VFS (see setResolve); unset on the page, which only reads export names. */
 let resolveFile: ((spec: string, dir: string) => string | null) | undefined;

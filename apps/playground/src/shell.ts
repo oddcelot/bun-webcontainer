@@ -1,6 +1,6 @@
 import type { CookieJar } from "./cookieJar";
 import { asConsoleEntry, fmt as formatFile, walks } from "./fmt";
-import type { VFS } from "./vfs";
+import type { VFS } from "@runbun/vfs";
 
 type Log = (level: string, text: string) => void;
 

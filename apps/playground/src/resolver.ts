@@ -2,8 +2,8 @@
 // imports the worker uses. Its directory, package.json and tsconfig caches live as long as the instance, as in Bun;
 // VFS changes invalidate the directories they touch, and clearing the VFS starts a fresh instance.
 import { BASE } from "./base";
-import { dirname, type VFS } from "./vfs";
-import { createSysImports } from "./worker/sysHost";
+import { dirname, type VFS } from "@runbun/vfs";
+import { createSysImports } from "@runbun/vfs/sysHost";
 
 type Exports = {
   memory: WebAssembly.Memory;

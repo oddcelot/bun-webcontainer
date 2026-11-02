@@ -1,4 +1,4 @@
-import type { VFS } from "./vfs";
+import type { VFS } from "@runbun/vfs";
 
 type Log = (level: "log" | "error", text: string) => void;
 

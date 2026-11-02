@@ -41,6 +41,5 @@ tasks:
     deps: ['~:build']
     inputs:
       - '*.mjs'
-      # The tests run the wasm over the playground's VFS and host imports.
-      - '/apps/playground/src/vfs.ts'
-      - '/apps/playground/src/worker/sysHost.ts'
+      # The tests run the wasm over the playground's VFS and host imports (@runbun/vfs).
+      - '/packages/vfs/*.ts'

@@ -2,7 +2,7 @@
 // which documents the ABI) served from a VFS. Synchronous on purpose: the VFS lives in this worker.
 // Plain erasable TypeScript, so node can run it directly (crates/*/test.mjs need Memory64, which bun lacks).
 // Linux numbering throughout (errno, O_* flags, AT_*, S_IF*, DT_*), because wasm_libc.rs does too.
-import { type FileData, type VFS, dirname, norm } from "../vfs.ts";
+import { type FileData, type VFS, dirname, norm } from "./vfs.ts";
 
 const E = { ENOENT: 2, EBADF: 9, EEXIST: 17, ENOTDIR: 20, EISDIR: 21, EINVAL: 22, ENOTEMPTY: 39, ENOSYS: 38 };
 const AT_FDCWD = -100;

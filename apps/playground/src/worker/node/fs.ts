@@ -1,6 +1,6 @@
 import { Buffer } from "buffer";
 import EventEmitter from "events";
-import { dirname, norm, VFS, type FileData } from "../../vfs";
+import { dirname, norm, VFS, type FileData } from "@runbun/vfs";
 import { codeError, fsError } from "./errors";
 import path from "./path";
 import { Readable, Writable } from "./stream";

@@ -1,4 +1,4 @@
-import type { VFS } from "./vfs";
+import type { VFS } from "@runbun/vfs";
 
 const indexTs = `import homepage from "./index.html";
 import { greet } from "./util.ts";

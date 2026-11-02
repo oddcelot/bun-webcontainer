@@ -2,7 +2,7 @@ import type { CodeEditor, EditorDiagnostic } from "./editors/types";
 import { tsconfigFor } from "./moduleServer";
 import { transpile, TranspileError } from "./transpiler";
 import { typecheck, TYPED } from "./typecheck";
-import type { VFS } from "./vfs";
+import type { VFS } from "@runbun/vfs";
 
 /** Files whose parse (and type) errors the editor marks as you type. */
 export const CHECKED = /\.(?:[cm]?[jt]s|[jt]sx)$/;

@@ -1,6 +1,6 @@
 import { CookieJar } from "./cookieJar";
 import { serveModule, vfsRoot } from "./moduleServer";
-import type { VFS } from "./vfs";
+import type { VFS } from "@runbun/vfs";
 
 /** Tells preview pages (see previewWebSocket in sw.js) that their WebSockets' server is gone. */
 const previewChannel = new BroadcastChannel("bun-preview");

@@ -1,7 +1,7 @@
 import { BASE } from "../base";
 import { loadResolver, resolve } from "../resolver";
 import { loadSemver } from "../semver";
-import { dirname, norm, VFS } from "../vfs";
+import { dirname, norm, VFS } from "@runbun/vfs";
 import { BUN_NAMES, builtins, installTimers, setFs, setResolve, setStdio } from "./node";
 import { bundle, type BundleConfig, type BundleLog } from "./bundler";
 import { setHostVfs } from "./hostPackages";

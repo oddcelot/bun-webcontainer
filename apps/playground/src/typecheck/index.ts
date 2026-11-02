@@ -1,5 +1,5 @@
 import type { CompletionKind, EditorCompletion, EditorCompletionDetails, EditorCompletions, EditorDiagnostic, EditorHover, EditorSignatureHelp } from "../editors/types";
-import { dirname, type FileData, type VFS } from "../vfs";
+import { dirname, type FileData, type VFS } from "@runbun/vfs";
 import type { LspCompletionItem } from "./tsrsLs";
 import type { LsOp, LsReply, LsRequest } from "./worker";
 

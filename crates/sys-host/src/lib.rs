@@ -3,7 +3,7 @@
 //!
 //! * default: every call returns `-ENOSYS`, so the wasm has no imports;
 //! * feature `imports`: every call is a wasm import `bun_sys.<name>`, provided by
-//!   `apps/playground/src/worker/sysHost.ts`.
+//!   `packages/vfs/sysHost.ts`.
 #![no_std]
 
 #[cfg(not(feature = "imports"))]

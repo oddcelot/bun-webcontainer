@@ -1,7 +1,7 @@
 // Host packages: the playground supplies these itself instead of the user's node_modules copy.
 // The specifiers are exactly the ones Vite 8 imports from rolldown (native bindings can't run in a browser).
 // Note: the wasm binding allocates a 1 GiB shared memory, so this module must only be imported by the worker.
-import { dirname, type FileData, type VFS } from "../vfs";
+import { dirname, type FileData, type VFS } from "@runbun/vfs";
 import { builtins } from "./node";
 
 const loaders: Record<string, () => Promise<object>> = {

@@ -2,7 +2,7 @@ import { createContext } from "solid-js";
 import type { createConsole } from "../console";
 import type { LogFn } from "../runner";
 import type { Check } from "../support";
-import type { VFS } from "../vfs";
+import type { VFS } from "@runbun/vfs";
 import type { Previews } from "./previews";
 import type { Session } from "./session";
 import type { Workspace } from "./workspace";

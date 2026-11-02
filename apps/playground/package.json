@@ -22,6 +22,7 @@
     "@pierre/theming": "1.0.2",
     "@pierre/trees": "^1.0.0-beta.6",
     "@rolldown/browser": "1.2.15",
+    "@runbun/vfs": "workspace:*",
     "@solid-primitives/storage": "5.0.0-next.7",
     "@solidjs/web": "2.0.0-rc.19",
     "@xterm/addon-fit": "^0.11.0",

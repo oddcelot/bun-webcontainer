@@ -4,7 +4,7 @@
 // (debounced after a write, and on close). Writes go through the fs shim, so the page's file tree and OPFS mirror see them.
 import type { BindParams, Database as SqlJsDb, SqlJsStatic } from "sql.js";
 import wasmUrl from "sql.js/dist/sql-wasm.wasm?url";
-import { norm } from "../../vfs";
+import { norm } from "@runbun/vfs";
 import fs from "./fs";
 import path from "./path";
 

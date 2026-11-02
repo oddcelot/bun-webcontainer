@@ -1,6 +1,6 @@
 import type { Semver } from "./semver";
 import { installFromBunLock, platformRestricted, untar } from "./lockfile";
-import type { VFS } from "./vfs";
+import type { VFS } from "@runbun/vfs";
 
 type Log = (level: "log" | "error", text: string) => void;
 type Packument = {

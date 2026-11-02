@@ -1,5 +1,5 @@
 import { BASE } from "./base";
-import type { VFS } from "./vfs";
+import type { VFS } from "@runbun/vfs";
 
 // A project as a link: its text files (no node_modules) as JSON, deflated, base64url, in the URL's #hash.
 // The hash never reaches the server, so nothing is uploaded or stored; opening the link installs as usual.

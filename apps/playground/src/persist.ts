@@ -1,5 +1,5 @@
 import { bucket } from "./storage";
-import type { VFS } from "./vfs";
+import type { VFS } from "@runbun/vfs";
 
 type Log = (level: string, text: string) => void;
 type Dir = FileSystemDirectoryHandle;

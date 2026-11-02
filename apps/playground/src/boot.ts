@@ -11,7 +11,7 @@ import { checkSupport } from "./support";
 import { createPreviews } from "./ui/previews";
 import { createSession, type Status } from "./ui/session";
 import { createWorkspace } from "./ui/workspace";
-import { VFS } from "./vfs";
+import { VFS } from "@runbun/vfs";
 
 /**
  * The engine both pages share (index.html's full playground and embed.html): the VFS, the console, the session the UI

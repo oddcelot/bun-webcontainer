@@ -32,7 +32,7 @@ The picker's "Astro + Solid" (`fixtures/astro-solid-demo`) runs an Astro 7 dev s
     src/ui/               the interface in Solid 2 (see .claude/skills/solid): App.tsx lays out the page; session.ts (status,
                           run/install actions, console counts), workspace.ts (open tabs) and previews.ts (preview tabs) are
                           the stores main.ts creates; context.ts is what the components get from it
-    src/vfs.ts            in-memory Map FS (read/write/list/exists/mkdir)
+    @runbun/vfs           in-memory Map FS (read/write/list/exists/mkdir) and the `bun_sys` host imports over it (packages/vfs)
     src/share.ts          share links (the UI is ui/ShareMenu.tsx): copy the link (the project's text files, no node_modules, deflated into #code=), a README badge (Markdown) or HTML; opening the link restores them
     src/github.ts         ?repo=: public GitHub repo -> VFS (API tree listing + raw.githubusercontent.com)
     src/demo.ts           seed project (index.ts, util.ts, package.json)
@@ -70,7 +70,7 @@ Data flow:
 - `import.meta.require("x")` (Bun's sync require, used by Vite): literal specifiers of installed packages become static imports, built-ins and `bun:x` come from the registry, anything else throws at call time.
 - `createRequire(import.meta.url)` in ES modules (Vite's bundles, napi-rs loaders): literal `__require("x")`/`require("x")` specifiers that resolve (relative ones only for JSON) are hoisted into static imports and served by that require; literal `require.resolve("x")` becomes the resolved path.
 
-Specifiers are resolved by Bun's resolver compiled to wasm (`src/resolver.ts`, from `crates/resolve-wasm`), reading the page VFS through the same `bun_sys` host imports as the worker (`src/worker/sysHost.ts`). Its directory, package.json and tsconfig caches persist; VFS events invalidate the directories they touch, and `vfs.clear()` starts a fresh instance. `import.meta.url`/`dirname`/`filename` become `file:///<vfs path>` values; worker code also gets `dir`, `file`, `path`, `env` and `main`.
+Specifiers are resolved by Bun's resolver compiled to wasm (`src/resolver.ts`, from `crates/resolve-wasm`), reading the page VFS through the same `bun_sys` host imports as the worker (`@runbun/vfs/sysHost`, packages/vfs/sysHost.ts). Its directory, package.json and tsconfig caches persist; VFS events invalidate the directories they touch, and `vfs.clear()` starts a fresh instance. `import.meta.url`/`dirname`/`filename` become `file:///<vfs path>` values; worker code also gets `dir`, `file`, `path`, `env` and `main`.
 
 ## Verification
 

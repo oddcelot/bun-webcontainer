@@ -4,7 +4,7 @@ import bunWrap from "./bunWrap.js?raw";
 import type { Resolver, TsconfigFlags } from "./transpiler";
 import { transpileCached } from "./transpileCache";
 import { loadResolver, resolve, type ResolveKind } from "./resolver";
-import { dirname, norm, type VFS } from "./vfs";
+import { dirname, norm, type VFS } from "@runbun/vfs";
 import hostNames, { version as hostVersion } from "virtual:host-package-names";
 import { builtins, exportNames } from "./worker/node";
 

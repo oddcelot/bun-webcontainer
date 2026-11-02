@@ -37,6 +37,7 @@
         "@pierre/theming": "1.0.2",
         "@pierre/trees": "^1.0.0-beta.6",
         "@rolldown/browser": "1.2.15",
+        "@runbun/vfs": "workspace:*",
         "@solid-primitives/storage": "5.0.0-next.7",
         "@solidjs/web": "2.0.0-rc.19",
         "@xterm/addon-fit": "^0.11.0",
@@ -88,6 +89,9 @@
     },
     "packages/ui": {
       "name": "@runbun/ui",
+    },
+    "packages/vfs": {
+      "name": "@runbun/vfs",
     },
   },
   "patchedDependencies": {
@@ -538,6 +542,8 @@
     "@runbun/astro": ["@runbun/astro@workspace:packages/astro"],
 
     "@runbun/ui": ["@runbun/ui@workspace:packages/ui"],
+
+    "@runbun/vfs": ["@runbun/vfs@workspace:packages/vfs"],
 
     "@shikijs/core": ["@shikijs/core@4.5.0", "", { "dependencies": { "@shikijs/primitive": "4.5.0", "@shikijs/types": "4.5.0", "@shikijs/vscode-textmate": "^10.0.2", "@types/hast": "^3.0.5", "hast-util-to-html": "^9.0.5" } }, "sha512-6CIgwq+bt2JZ3OSjb/nBkkwEf/CfpHcbam+Mg5Pllco7HAGRQ2/EFhZrrJtbyNTgKwknfVS+llsXGygiDGwJWw=="],
 

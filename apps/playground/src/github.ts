@@ -1,4 +1,4 @@
-import type { VFS } from "./vfs";
+import type { VFS } from "@runbun/vfs";
 
 type Log = (level: "sys" | "error", text: string) => void;
 export type Repo = { owner: string; repo: string; ref: string; dir: string };

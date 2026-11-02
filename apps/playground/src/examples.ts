@@ -1,4 +1,4 @@
-import type { VFS } from "./vfs";
+import type { VFS } from "@runbun/vfs";
 
 // Project files of each fixture (top level and src/), bundled as text. Their node_modules are never
 // included; "bun install" fetches packages from the lockfile.

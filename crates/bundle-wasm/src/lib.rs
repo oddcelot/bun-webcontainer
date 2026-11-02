@@ -1,5 +1,5 @@
 //! Bun's bundler (`bun_bundler::BundleV2`) behind a pointer+length C ABI, reading the file system
-//! through `bun_sys` (host imports `bun_sys.*`, served by apps/playground/src/worker/sysHost.ts).
+//! through `bun_sys` (host imports `bun_sys.*`, served by packages/vfs/sysHost.ts).
 //!
 //! Host flow: `alloc` the config JSON, call `bundle_c`, read the `Output` (JSON), then
 //! `output_free` it and `dealloc` the input. The bundle runs single-threaded: the worker pool is

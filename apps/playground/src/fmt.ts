@@ -1,6 +1,6 @@
 import { BASE } from "./base";
-import type { VFS } from "./vfs";
-import { createSysImports } from "./worker/sysHost";
+import type { VFS } from "@runbun/vfs";
+import { createSysImports } from "@runbun/vfs/sysHost";
 
 // `bun fmt` (Bun's own Prettier-compatible formatter) compiled to wasm64; see crates/fmt-wasm. Each call runs
 // `bun fmt [flags] --stdin-filepath <path>` itself over the VFS, so the project's configs apply as in Bun: bunfig.toml's
