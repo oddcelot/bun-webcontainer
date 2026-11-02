@@ -7,6 +7,7 @@ import { bundle, type BundleConfig, type BundleLog } from "./bundler";
 import { setHostVfs } from "./hostPackages";
 import { hash } from "./hash";
 import { CryptoHasher } from "./node/crypto";
+import { Transpiler } from "./transpiler";
 import { fsError } from "./node/errors";
 import { hooks, type NodeSocket } from "./node/serve";
 import { flushDatabases } from "./node/sqlite";
@@ -774,6 +775,7 @@ async function main() {
     gunzipSync: (d: Compressible) => fflate.gunzipSync(compressible(d)),
     deflateSync: (d: Compressible, o?: { level?: number }) => fflate.deflateSync(compressible(d), level(o)),
     inflateSync: (d: Compressible) => fflate.inflateSync(compressible(d)),
+    Transpiler,
   };
   g.Bun = Object.assign(builtins.bun, bun);
 

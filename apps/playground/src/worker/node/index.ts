@@ -34,7 +34,7 @@ const streamWeb = Object.fromEntries(
 );
 
 /** What `Bun` has; runtime.ts types the global against this list. */
-export const BUN_NAMES = ["version", "env", "gc", "main", "argv", "stdout", "stderr", "inspect", "deepEquals", "escapeHTML", "which", "sleep", "nanoseconds", "semver", "file", "write", "serve", "build", "CryptoHasher", "gzipSync", "gunzipSync", "deflateSync", "inflateSync", "hash"] as const;
+export const BUN_NAMES = ["version", "env", "gc", "main", "argv", "stdout", "stderr", "inspect", "deepEquals", "escapeHTML", "which", "sleep", "nanoseconds", "semver", "file", "write", "serve", "build", "CryptoHasher", "gzipSync", "gunzipSync", "deflateSync", "inflateSync", "hash", "Transpiler"] as const;
 /** `import ... from "bun"`: the worker copies the `Bun` global in once it exists; the page only needs the names. */
 const bun: Record<string, unknown> = Object.fromEntries(BUN_NAMES.map((k) => [k, undefined]));
 

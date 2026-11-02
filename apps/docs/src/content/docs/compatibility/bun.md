@@ -29,7 +29,8 @@ Reported version: `Bun.version` is `1.4.4-browser`. Labels are explained on the 
 | `Bun.CryptoHasher` | ✅ Works | md5, ripemd160, sha1, sha2, sha3, blake2; HMAC with a key; `copy`, static `hash`. No md4 or shake. |
 | `Bun.hash` | 🟡 Partial | `wyhash` (the default), `adler32`, `crc32`, `xxHash32`, `xxHash64`, `murmur32v2`, `murmur32v3`, `murmur64v2`, all matching Bun's output. `cityHash32`, `cityHash64`, `xxHash3` and `rapidhash` throw. |
 | `Bun.password` | ❌ Missing | Use `Bun.CryptoHasher`, `node:crypto` or `crypto.subtle`. |
-| `Bun.Glob`, `Bun.Transpiler` | ❌ Missing | |
+| `Bun.Glob` | ❌ Missing | |
+| `Bun.Transpiler` | 🟡 Partial | Bun's own parser and printer, as wasm (~3 MB, loaded on first use): `transformSync`, `transform`, `scan`, `scanImports` give Bun's output for the `js`, `jsx`, `ts` and `tsx` loaders. `tsconfig` reads `experimentalDecorators` and `emitDecoratorMetadata`; `target` is accepted. `define` (including Bun's default `process.env.NODE_ENV`), `macro`, `exports`, `minifyWhitespace`, `inline`, `trimUnusedImports` and the other options are ignored with a warning; the other loaders (`json`, `toml`, …) throw. |
 | `Bun.resolveSync`, `Bun.stdin` | ❌ Missing | |
 | `Bun.sql`, `Bun.redis`, `Bun.s3` | ❌ Missing | |
 | `Bun.connect`, `Bun.listen`, `Bun.udpSocket`, `Bun.dns` | ❌ Missing | No raw sockets in the browser. |
