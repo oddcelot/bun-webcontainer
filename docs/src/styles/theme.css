@@ -1,0 +1,92 @@
+/*
+ * Starlight in the playground's look: its color scale read from the shared tokens (ui/tokens.css, Pierre Dark and
+ * Light). Starlight keeps its own CSS in cascade layers, so these unlayered rules win in both schemes.
+ */
+:root {
+  --sl-color-white: var(--fg);
+  --sl-color-gray-1: color-mix(in srgb, var(--fg) 90%, var(--bg));
+  --sl-color-gray-2: color-mix(in srgb, var(--fg) 78%, var(--bg));
+  --sl-color-gray-3: var(--muted);
+  --sl-color-gray-4: color-mix(in srgb, var(--fg) 35%, var(--bg));
+  --sl-color-gray-5: var(--border);
+  --sl-color-gray-6: var(--panel);
+  --sl-color-black: var(--bg);
+  --sl-color-accent-low: color-mix(in srgb, var(--accent) 22%, var(--bg));
+  --sl-color-accent: var(--accent);
+  --sl-color-accent-high: color-mix(in srgb, var(--accent) 45%, var(--fg));
+  --sl-color-bg-nav: var(--panel);
+  --sl-color-bg-sidebar: var(--panel);
+  --sl-color-hairline: var(--border);
+  --sl-color-hairline-light: var(--border);
+  --sl-color-hairline-shade: var(--border);
+}
+
+/*
+ * Pierre Light's accent is near-black, which can't mark a link, so the light scheme takes its info blue. Link text uses
+ * the darker accent-high: the blue itself is under 4.5:1 on white.
+ */
+:root[data-theme="light"] {
+  --accent: var(--info);
+  --sl-color-gray-7: color-mix(in srgb, var(--panel) 50%, var(--bg));
+  --sl-color-accent-low: color-mix(in srgb, var(--accent) 14%, var(--bg));
+  --sl-color-accent-high: color-mix(in srgb, var(--accent) 60%, var(--fg));
+  --sl-color-text-accent: var(--sl-color-accent-high);
+}
+
+/* The current page: the playground's selected tab (a raised surface with an accent edge), not a solid fill. */
+.sidebar-content a[aria-current="page"],
+.sidebar-content a[aria-current="page"]:hover,
+.sidebar-content a[aria-current="page"]:focus {
+  background: var(--control-hover);
+  color: var(--sl-color-white);
+  border-radius: 6px;
+  box-shadow: inset 2px 0 var(--accent);
+}
+
+/* Controls take the playground's 6px corners; cards its 12px panes. */
+site-search button[data-open-modal],
+starlight-theme-select select,
+.sl-link-button {
+  border-radius: 6px;
+}
+.sl-link-card,
+.card,
+.pagination-links a {
+  border-radius: var(--radius);
+}
+
+/* The site title in plain text, like the playground's header. */
+.site-title {
+  color: var(--sl-color-white);
+}
+
+/* "Open playground" in the header (components/SocialIcons.astro): the playground's Run button. */
+.open-playground {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--control-height);
+  padding: 0 10px;
+  border: 1px solid var(--control-border);
+  border-radius: 6px;
+  background: var(--control);
+  color: var(--fg);
+  font-size: var(--sl-text-sm);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.open-playground:hover {
+  background: var(--control-hover);
+  color: var(--fg);
+}
+
+/* A runnable code block's poster sits on the page, and its Run button is the same control. */
+bun-playground {
+  --poster-bg: var(--bg);
+  --poster-fg: var(--fg);
+  --play-bg: var(--control);
+  --play-bg-hover: var(--control-hover);
+  --play-fg: var(--fg);
+  --play-border: var(--control-border);
+  --play-radius: 6px;
+}
