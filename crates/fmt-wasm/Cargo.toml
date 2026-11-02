@@ -12,9 +12,7 @@ bun_lint_driver = { path = "../../bun/src/lint/driver" }
 bun_wasm_stubs = { path = "../wasm-stubs" }
 bun_alloc = { path = "../../bun/src/bun_alloc" }
 bun_ast = { path = "../../bun/src/ast" }
-bun_js_parser = { path = "../../bun/src/js_parser" }
 bun_core = { path = "../../bun/src/bun_core" }
-bun_threading = { path = "../../bun/src/threading" }
 # for `bun fmt` itself (src/cli.rs)
 bun_parsers = { path = "../../bun/src/parsers" }
 bun_sema_driver = { path = "../../bun/src/sema/driver" }

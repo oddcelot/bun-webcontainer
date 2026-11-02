@@ -5,3 +5,7 @@ edition = "2024"
 
 [dependencies]
 bun_opaque = { path = "../../bun/src/opaque" }
+
+[package.metadata.cargo-machete]
+# Used by bun/src/mimalloc_sys/mimalloc.rs, which src/lib.rs includes with #[path].
+ignored = ["bun_opaque"]

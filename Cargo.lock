@@ -107,19 +107,15 @@ dependencies = [
  "bun_ast",
  "bun_base64",
  "bun_bundler",
- "bun_collections",
  "bun_core",
  "bun_dotenv",
  "bun_event_loop",
  "bun_install_types",
  "bun_js_parser",
- "bun_js_printer",
  "bun_options_types",
  "bun_resolver",
  "bun_semver",
- "bun_sys",
  "bun_sys_host",
- "bun_threading",
  "bun_wasm_stubs",
  "serde_json",
 ]
@@ -380,13 +376,11 @@ dependencies = [
  "bun_ast",
  "bun_core",
  "bun_format",
- "bun_js_parser",
  "bun_lint_driver",
  "bun_parsers",
  "bun_sema_driver",
  "bun_sys",
  "bun_sys_host",
- "bun_threading",
  "bun_wasm_stubs",
 ]
 
@@ -913,19 +907,13 @@ dependencies = [
 name = "bun_resolve_wasm"
 version = "0.0.0"
 dependencies = [
- "bun_alloc",
  "bun_ast",
- "bun_collections",
- "bun_core",
  "bun_dotenv",
  "bun_install_types",
- "bun_js_parser",
  "bun_options_types",
  "bun_resolver",
  "bun_semver",
- "bun_sys",
  "bun_sys_host",
- "bun_threading",
  "bun_wasm_stubs",
 ]
 
