@@ -1,6 +1,8 @@
 import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 import solid from "@solidjs/vite-plugin";
 import UnoCSS from "unocss/vite";
+import { rolldown } from "rolldown";
 import { defineConfig, type Plugin } from "vite";
 
 const isolation = {
@@ -77,13 +79,56 @@ function embedRoutes(): Plugin {
   };
 }
 
+/**
+ * The service worker (src/sw.ts) at `<base>sw.js`, the URL boot.ts registers: one classic script (an IIFE, no imports,
+ * no hash in the name), so installs from before it was TypeScript update in place. Bundled by rolldown on its own,
+ * apart from the app's graph: `vite build` emits it into the output dir (dist/sw.js), and the dev server answers
+ * `/sw.js` with a fresh bundle per request (the browser re-checks the worker script on every page load). It finds
+ * its base from its own URL, so any `--base` works.
+ */
+function serviceWorker(): Plugin {
+  const entry = fileURLToPath(new URL("src/sw.ts", import.meta.url));
+  const page = fileURLToPath(new URL("src/swPage.ts", import.meta.url));
+  async function bundle(): Promise<string> {
+    const build = await rolldown({ input: entry, platform: "browser", resolve: { alias: { "#sw-page": page } }, logLevel: "warn" });
+    try {
+      const { output } = await build.generate({ format: "iife", minify: false });
+      return output[0].code;
+    } finally {
+      await build.close();
+    }
+  }
+  return {
+    name: "service-worker",
+    async generateBundle() {
+      this.emitFile({ type: "asset", fileName: "sw.js", source: await bundle() });
+    },
+    configureServer(server) {
+      const url = `${server.config.base}sw.js`;
+      server.middlewares.use(async (req, res, next) => {
+        const path = req.url?.split("?")[0];
+        if (path !== url && path !== "/sw.js") return next();
+        try {
+          const code = await bundle();
+          for (const [k, v] of Object.entries(isolation)) res.setHeader(k, v);
+          res.setHeader("content-type", "text/javascript; charset=utf-8");
+          res.setHeader("cache-control", "no-cache");
+          res.end(code);
+        } catch (e) {
+          next(e);
+        }
+      });
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => ({
   define: {
     "import.meta.env.DOCS_URL": JSON.stringify(docsUrl(mode)),
     // CANARY=1 (playground:deploy-canary) shows the canary badge (src/canary.ts).
     "import.meta.env.CANARY": JSON.stringify(process.env.CANARY === "1"),
   },
-  plugins: [UnoCSS(), solid(), hostPackageNames(), emnapiNotNode(), docsLink(docsUrl(mode)), embedRoutes()],
+  plugins: [UnoCSS(), solid(), hostPackageNames(), emnapiNotNode(), docsLink(docsUrl(mode)), embedRoutes(), serviceWorker()],
   build: {
     target: "esnext",
     rollupOptions: {

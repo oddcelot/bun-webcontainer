@@ -102,7 +102,7 @@ const size = (m: WsPayload) => (typeof m === "string" ? new TextEncoder().encode
 const bytesOf = (m: Exclude<WsPayload, string>) =>
   m instanceof ArrayBuffer ? m.slice(0) : (m.buffer.slice(m.byteOffset, m.byteOffset + m.byteLength) as ArrayBuffer);
 
-/** Bun's `ServerWebSocket`, talking to the page's `WebSocket` over a MessagePort (see previewWebSocket in sw.js). */
+/** Bun's `ServerWebSocket`, talking to the page's `WebSocket` over a MessagePort (see previewWebSocket in swPage.ts). */
 class ServerWebSocket {
   readyState = 1;
   binaryType = "nodebuffer";

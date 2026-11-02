@@ -6,9 +6,9 @@
     "predev": "bun scripts/copy-wasm.ts",
     "prebuild": "bun scripts/copy-wasm.ts --strip",
     "dev": "vite",
-    "build": "tsrs --noEmit && vite build",
+    "build": "tsrs --noEmit && tsrs -p tsconfig.sw.json && vite build",
     "preview": "vite preview",
-    "typecheck": "tsrs --noEmit",
+    "typecheck": "tsrs --noEmit && tsrs -p tsconfig.sw.json",
     "og": "bun scripts/og.ts",
     "typecheck:worker": "wrangler types worker/worker-configuration.d.ts && tsrs -p worker",
     "swatches": "bun scripts/theme-swatches.ts"
