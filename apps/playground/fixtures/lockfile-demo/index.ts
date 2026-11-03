@@ -9,5 +9,8 @@ const width = stringWidth(fancy);
 console.log("width:", width);
 
 Bun.serve({
-  fetch: () => new Response(`<h1 id="w">width=${width}</h1>`, { headers: { "content-type": "text/html" } }),
+  fetch: () =>
+    new Response(`<h1 id="w">width=${width}</h1>`, {
+      headers: { "content-type": "text/html" },
+    }),
 });

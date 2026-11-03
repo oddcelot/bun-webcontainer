@@ -4,7 +4,11 @@ import { createSignal } from "solid-js";
 export default function Counter(props: { initial: number }) {
   const [count, setCount] = createSignal(props.initial);
   const add = async (by: number) => {
-    const res = await fetch("/api/count", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ by }) });
+    const res = await fetch("/api/count", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ by }),
+    });
     setCount(((await res.json()) as { count: number }).count);
   };
   return (

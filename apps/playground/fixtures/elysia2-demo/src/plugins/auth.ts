@@ -11,14 +11,20 @@ export const auth = new Elysia({ name: "auth" }).macro({
   auth: {
     headers: t.Object({ authorization: t.Optional(t.String()) }),
     derive({ headers }) {
-      const user = tokens.get(headers.authorization?.replace(/^Bearer /, "") ?? "");
-      return user ? { user } : status(401, "Send Authorization: Bearer ada-token");
+      const user = tokens.get(
+        headers.authorization?.replace(/^Bearer /, "") ?? "",
+      );
+      return user
+        ? { user }
+        : status(401, "Send Authorization: Bearer ada-token");
     },
   },
   // `{ role: "admin" }`: a macro that takes an argument
   role: (role: "admin" | "user") => ({
     beforeHandle({ headers }) {
-      const user = tokens.get(headers.authorization?.replace(/^Bearer /, "") ?? "");
+      const user = tokens.get(
+        headers.authorization?.replace(/^Bearer /, "") ?? "",
+      );
       if (user?.role !== role) return status(403, `Needs role ${role}`);
     },
   }),
