@@ -137,6 +137,11 @@ These rules override the conservative Beads profile for commits (not for pushes)
   support), update the matching page in `apps/docs/src/content/docs/` (`compatibility/bun.md`, `node.md`,
   `toolchain.md`, `browsers.md`, `frameworks.md`, `guides/features.md`) in the same commit, using
   the status labels from `compatibility/index.md`. Don't deploy the docs without asking.
+- Write CSS with native nesting: one block per root class, its states (`&:hover`, `&[data-selected]`), parts
+  (`.value`, `> span`) and variants (`&.primary`) inside it, one declaration per line. Don't repeat the root in flat
+  one-line rules (`.tabs .tab:hover { … }`). Every supported browser has nesting (Chrome 120, Firefox 117, Safari 17.2),
+  so it ships as written. Keep each selector's specificity when converting (nesting `.b` in `.a` is `.a .b`).
+  `packages/ui/css/` is all nested; in the apps' CSS, nest what you add or rework.
 
 ## Shell Tools
 
