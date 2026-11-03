@@ -95,7 +95,7 @@ builtins.module = createModule(builtins);
 
 export { setFs } from "./fs";
 export { setRequire } from "./module";
-export { setStdio } from "./process";
+export { setExit, setStdio } from "./process";
 export { installTimers } from "./timers";
 
 /** Names that can be `export const { name }` from a wrapper module. */

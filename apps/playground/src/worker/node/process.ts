@@ -9,6 +9,14 @@ export function setStdio(fn: Sink) {
   sink = fn;
 }
 
+/** Ends the program with an exit code (runtime.ts); never returns. */
+let exitHook: (code: number) => never = (code) => {
+  throw new Error(`process.exit(${code}) is not supported here`);
+};
+export function setExit(fn: (code: number) => never) {
+  exitHook = fn;
+}
+
 const dec = new TextDecoder();
 
 function stdio(fd: number, level: "log" | "error") {
@@ -116,8 +124,10 @@ const process: Record<string, any> = Object.assign(new EventEmitter(), {
   kill() {
     throw new Error("process.kill is not supported in the playground");
   },
-  exit(code = 0) {
-    throw new Error(`process.exit(${code}) is not supported in the playground`);
+  /** Ends the program as Bun's does: `exit` listeners run with the code (`process.exitCode` when none is given), nothing after it. */
+  exit(code?: number | string) {
+    if (code !== undefined && code !== null) process.exitCode = code;
+    exitHook(Number(process.exitCode ?? 0) | 0);
   },
 });
 

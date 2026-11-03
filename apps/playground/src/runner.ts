@@ -23,6 +23,10 @@ export type LogFn = (level: string, text: string) => void;
 export class Runner {
   private worker?: Worker;
   private ready: Promise<void> = Promise.resolve();
+  /** The exit code of the last started program once it ended itself (`process.exit`, an uncaught error). */
+  exitCode: number | undefined;
+  /** Called when a program that had started ends itself (one that ends while starting sets `exitCode` instead). */
+  onExit?: (code: number) => void;
 
   constructor(
     private vfs: VFS,
@@ -103,8 +107,9 @@ export class Runner {
   /**
    * Stops the worker. It first gets a moment to write open databases back (their bytes arrive as "vfs" messages),
    * so a Run or Stop doesn't drop a program's last writes; a worker that doesn't answer in time is terminated anyway.
+   * A worker that ended itself has written them already (`flush` false).
    */
-  async stop() {
+  async stop(flush = true) {
     const worker = this.worker;
     this.worker = undefined;
     for (const [port, started] of this.pending) {
@@ -114,15 +119,16 @@ export class Runner {
     this.pending.clear();
     if (!worker) return;
     previewChannel.postMessage("stopped");
-    await new Promise<void>((resolve) => {
-      const timer = setTimeout(resolve, FLUSH_TIMEOUT);
-      worker.addEventListener("message", (e) => {
-        if (e.data?.type !== "flushed") return;
-        clearTimeout(timer);
-        resolve();
+    if (flush)
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, FLUSH_TIMEOUT);
+        worker.addEventListener("message", (e) => {
+          if (e.data?.type !== "flushed") return;
+          clearTimeout(timer);
+          resolve();
+        });
+        worker.postMessage({ type: "flush" });
       });
-      worker.postMessage({ type: "flush" });
-    });
     worker.terminate();
   }
 
@@ -142,6 +148,8 @@ export class Runner {
     do await this.stop();
     while (this.worker);
     resetSyncEsm();
+    this.exitCode = undefined;
+    let started = false;
     const worker = new Worker(new URL("./worker/runtime.ts", import.meta.url), { type: "module" });
     this.worker = worker;
     this.ready = new Promise<void>((resolve) => {
@@ -158,6 +166,16 @@ export class Runner {
         else if (m.type === "ready") {
           clearTimeout(timer);
           this.failed = m.failed ?? 0;
+          started = true;
+          resolve();
+        } else if (m.type === "exit") {
+          // The program ended itself: process.exit, or an uncaught error.
+          if (this.worker !== worker) return;
+          clearTimeout(timer);
+          this.exitCode = m.code;
+          if (tests) this.failed = m.code ? 1 : 0;
+          void this.stop(false);
+          if (started) this.onExit?.(m.code);
           resolve();
         } else if (m.type === "vfs") {
           const [a, b] = m.args;
