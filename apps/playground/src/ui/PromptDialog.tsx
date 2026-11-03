@@ -1,6 +1,8 @@
 import { Show, createUniqueId } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { Dialog } from "@kobalte/core/dialog";
+import { Dialog, DialogActions, DialogClose, DialogDescription, DialogTitle } from "@runbun/ui/solid/Dialog";
+import { Button } from "@runbun/ui/solid/Button";
+import { Input } from "@runbun/ui/solid/Input";
 
 /**
  * A modal that asks for one line of text (the accessible stand-in for `prompt()`): a labelled input, preselected,
@@ -19,31 +21,25 @@ export function PromptDialog(props: {
   returnFocus?: () => HTMLElement | undefined | null;
 }) {
   return (
-    <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay class="dialog-overlay" />
-        <div class="dialog-positioner">
-          <Dialog.Content
-            class="dialog"
-            onOpenAutoFocus={(e) => {
-              // Past the close button's default: straight into the field, text selected for replacing.
-              e.preventDefault();
-              const input = (e.currentTarget as HTMLElement | null)?.querySelector("input");
-              input?.focus();
-              input?.select();
-            }}
-            onCloseAutoFocus={(e) => {
-              const el = props.returnFocus?.();
-              if (el) {
-                e.preventDefault();
-                el.focus();
-              }
-            }}
-          >
-            <PromptForm {...props} />
-          </Dialog.Content>
-        </div>
-      </Dialog.Portal>
+    <Dialog
+      open={props.open}
+      onOpenChange={props.onOpenChange}
+      onOpenAutoFocus={(e) => {
+        // Past the close button's default: straight into the field, text selected for replacing.
+        e.preventDefault();
+        const input = (e.currentTarget as HTMLElement | null)?.querySelector("input");
+        input?.focus();
+        input?.select();
+      }}
+      onCloseAutoFocus={(e) => {
+        const el = props.returnFocus?.();
+        if (el) {
+          e.preventDefault();
+          el.focus();
+        }
+      }}
+    >
+      <PromptForm {...props} />
     </Dialog>
   );
 }
@@ -62,22 +58,20 @@ function PromptForm(props: Parameters<typeof PromptDialog>[0]) {
         props.onSubmit(value);
       }}
     >
-      <Dialog.Title class="dialog-title">{props.title}</Dialog.Title>
+      <DialogTitle>{props.title}</DialogTitle>
       <Show when={props.description}>
-        <Dialog.Description class="dialog-description">{props.description}</Dialog.Description>
+        <DialogDescription>{props.description}</DialogDescription>
       </Show>
       <label class="dialog-label" for={id}>
         {props.label}
       </label>
-      <input ref={input} id={id} class="input" value={props.initial} spellcheck={false} autocomplete="off" />
-      <div class="dialog-actions">
-        <Dialog.CloseButton class="button" type="button">
-          Cancel
-        </Dialog.CloseButton>
-        <button class="button primary" type="submit">
+      <Input ref={input} id={id} value={props.initial} spellcheck={false} autocomplete="off" />
+      <DialogActions>
+        <DialogClose>Cancel</DialogClose>
+        <Button primary type="submit">
           {props.submit}
-        </button>
-      </div>
+        </Button>
+      </DialogActions>
     </form>
   );
 }
