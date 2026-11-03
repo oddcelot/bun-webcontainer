@@ -315,6 +315,11 @@ export class BunPlayground extends HTMLElement {
     return files;
   }
 
+  /** Inline files marked `data-hidden`: in the project, but not opened in the editor. */
+  #hidden(): string[] {
+    return [...this.querySelectorAll(":scope > script[data-file][data-hidden]")].map((s) => s.getAttribute("data-file")!);
+  }
+
   /** The `vars` attribute: a JSON object (see protocol.ts Vars) merged per scheme over the page default's. Malformed JSON
    * is ignored like other bad values (that layer is skipped). */
   #vars(): Vars | undefined {
@@ -370,7 +375,8 @@ export class BunPlayground extends HTMLElement {
     const def = document.createElement("div");
     def.className = "def";
     const pre = document.createElement("pre");
-    pre.textContent = Object.values(this.#files())[0] ?? "Bun playground";
+    const hidden = new Set(this.#hidden());
+    pre.textContent = Object.entries(this.#files()).find(([path]) => !hidden.has(path))?.[1] ?? "Bun playground";
     def.append(pre);
     this.#poster.prepend(def);
   }
@@ -505,7 +511,7 @@ export class BunPlayground extends HTMLElement {
     if (event === "expand") return void this.#setExpanded(data.open);
     if (event === "boot") {
       this.#booted = true;
-      void this.#request("init", { files: this.#files(), options: {}, vars: this.#vars() }).catch(() => {});
+      void this.#request("init", { files: this.#files(), hidden: this.#hidden(), options: {}, vars: this.#vars() }).catch(() => {});
     } else if (event === "ready" || event === "unsupported") {
       this.#isReady = true;
       this.#frame.classList.remove("wait");
