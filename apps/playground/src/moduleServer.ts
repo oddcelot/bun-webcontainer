@@ -102,19 +102,21 @@ function esmDirname(code: string, path: string): string {
  * registry; in the worker, anything else loads when called (see worker/node/module.ts).
  *
  * A free `require`'s literal specifiers load when required, as in Bun (ES modules too: the worker runs them
- * synchronously). In a page, which can't, ES modules among them are imported up front. (Calls on a `require` the
- * module binds itself in some inner scope match too there: such a module is then loaded with this one.)
+ * synchronously). In a page, which can't, ES modules among them are imported up front, and in the worker those that
+ * an ES module imports too (see importedByEsm). (Calls on a `require` the module binds itself in some inner scope
+ * match too there: such a module is then loaded with this one.)
  */
 function hoistMetaRequire(vfs: VFS, code: string, path: string, dir: string, url: (spec: string) => string, free: boolean): string {
   if (!code.includes("import.meta.require")) return code;
   const lits = [...new Set([...code.matchAll(/\bimport\.meta\.require\(\s*"([^"\n]+)"\s*\)/g)].map((m) => m[1]))];
-  // The worker loads them when required instead, as Bun does (worker/node/module.ts loadEsm).
-  if (free && TARGET !== "bun") {
+  // The worker loads them when required instead, as Bun does (worker/node/module.ts loadEsm), unless an ES module
+  // imports them too (see importedByEsm).
+  if (free) {
     const literal = literalRanges(code);
     for (const m of code.matchAll(/(?<![\w$.])require\(\s*(["'])([^"'\n]+)\1\s*\)/g)) {
       const t = inRanges(literal, m.index) ? null : resolveWith(vfs, m[2], dir, "require");
       const src = t && !DATA_FILE.test(t) && !/\.(css|node)$/.test(t) ? vfs.readText(t) : undefined;
-      if (src !== undefined && !isCommonJS(vfs, t!, src)) lits.push(m[2]);
+      if (src !== undefined && !isCommonJS(vfs, t!, src) && (TARGET !== "bun" || importedByEsm(vfs, t!))) lits.push(m[2]);
     }
   }
   // In the worker, data files load when required (see dataModule): an import here would make them return their namespace.
@@ -134,6 +136,31 @@ function hoistMetaRequire(vfs: VFS, code: string, path: string, dir: string, url
   if (globalThis.__cjsRequire) return globalThis.__cjsRequire(id, ${JSON.stringify("/" + path)});
   throw new Error("import.meta.require: cannot require " + JSON.stringify(id) + " (only literal specifiers of installed packages or built-ins are supported)");
 })({ ${table} }, globalThis.__nodeBuiltins);`.replace(/\n\s*/g, " ") + code.replace(/\bimport\.meta\.require\b/g, "__metaRequire");
+}
+
+/** `import`/`export ... from` statements' specifiers (not `import type`), as a rough scan. */
+const STATIC_IMPORT = /(?:^|[\n;])\s*(?:import|export)\s+(?!type\b)(?:[\w$*{},\s]*?\bfrom\s*)?["']([^"'\n]+)["']/g;
+const importSpecs = new Map<string, { src: string; specs: string[] }>();
+
+/**
+ * Whether an ES module statically imports the ES module at VFS `target`: a project file, or (for a package's file) one
+ * of the same package. A literal `require()` of such a module is imported up front in the worker, as before it ran ES
+ * modules synchronously: the imported instance may be fetched but not run yet when the `require` runs, and the
+ * worker can't run that one early, nor run the file itself without running it twice (worker/node/module.ts loadEsm).
+ * Bun runs it at the `require`; here it runs before the requiring module. Errs towards importing up front.
+ */
+function importedByEsm(vfs: VFS, target: string): boolean {
+  const pkg = /^(?:.*\/)?node_modules\/(?:@[^/]+\/)?[^/]+\//.exec(target)?.[0];
+  for (const path of vfs.files.keys()) {
+    if (path === target || !JS_LIKE.test(path)) continue;
+    if (pkg ? !path.startsWith(pkg) || path.includes("/node_modules/", pkg.length - 1) : path.includes("node_modules/")) continue;
+    const src = vfs.readText(path);
+    if (!src) continue;
+    let hit = importSpecs.get(path);
+    if (hit?.src !== src) importSpecs.set(path, (hit = { src, specs: [...new Set([...src.matchAll(STATIC_IMPORT)].map((m) => m[1]))] }));
+    if (hit.specs.some((spec) => resolveTarget(vfs, spec, dirname(path)) === target)) return true;
+  }
+  return false;
 }
 
 /**
@@ -318,8 +345,9 @@ async function serveCommonJS(vfs: VFS, path: string, onError: (msg: string) => v
     if (target === "bun" && DATA_FILE.test(t)) return null;
     const dep = vfs.readText(t);
     const cjs = dep !== undefined && isCommonJS(vfs, t, dep);
-    // In the worker an ES module loads when required, as in Bun (worker/node/module.ts loadEsm), not up front.
-    if (target === "bun" && !cjs && JS_LIKE.test(t)) return null;
+    // In the worker an ES module loads when required, as in Bun (worker/node/module.ts loadEsm), not up front, unless
+    // an ES module imports it too (see importedByEsm).
+    if (target === "bun" && !cjs && JS_LIKE.test(t) && !importedByEsm(vfs, t)) return null;
     return `${VFS_ROOT}${cjs ? "__cjs/" : ""}${t}`;
   });
   // The body is plain source: its `import("x")` calls still need their specifiers resolved.
