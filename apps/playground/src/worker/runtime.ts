@@ -885,9 +885,9 @@ async function main() {
     resolveSync,
     resolve: async (specifier: string, from: string | URL) => resolveSync(specifier, from),
     Glob,
-    YAML: { parse: (input: unknown) => parseData(dataText(input, "yaml"), "yaml"), stringify: yamlStringify },
-    TOML: { parse: (input: unknown) => parseData(dataText(input, "toml"), "toml"), stringify: tomlStringify },
-    // Wrapped so the functions are named `parse`/`stringify`, as in Bun.
+    // Wrapped so the functions are named `parse`/`stringify`, with Bun's lengths.
+    YAML: { parse: (input: unknown) => parseData(dataText(input, "yaml"), "yaml"), stringify: (value: unknown, replacer?: unknown, space?: unknown) => yamlStringify(value, replacer, space) },
+    TOML: { parse: (input: unknown) => parseData(dataText(input, "toml"), "toml"), stringify: (value: unknown, replacer?: unknown, _space?: unknown) => tomlStringify(value, replacer) },
     JSONC: { parse: (input: unknown) => jsoncParse(input) },
     JSON5: { parse: (input: unknown) => parseData(dataText(input, "json5"), "json5"), stringify: (value: unknown, replacer?: unknown, space?: unknown) => json5Stringify(value, replacer, space) },
     password,
