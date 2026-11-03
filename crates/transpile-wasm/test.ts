@@ -1,5 +1,5 @@
 // Runs the wasm64 build of Bun's transpiler on corpus/* and diffs against `bun build --no-bundle`.
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -11,7 +11,7 @@ console.log(`instantiate ${(performance.now() - t0).toFixed(1)} ms, imports: ${W
 type Wasm = { memory: WebAssembly.Memory; [fn: string]: any };
 const w = instance.exports as Wasm;
 const enc = new TextEncoder(), dec = new TextDecoder();
-const LOADERS: Record<string, number> = { js: 0, mjs: 0, jsx: 1, ts: 2, tsx: 3 };
+const LOADERS: Record<string, number> = { js: 0, mjs: 0, cjs: 0, jsx: 1, ts: 2, mts: 2, cts: 2, tsx: 3 };
 
 export function transpile(path: string, source: string) {
   const put = (s: string): [bigint, bigint] => { const b = enc.encode(s), n = BigInt(b.length), p = w.alloc(n); new Uint8Array(w.memory.buffer, Number(p), b.length).set(b); return [p, n]; };
@@ -131,6 +131,60 @@ if (spawnSync("bun", ["--version"]).status === 0) {
       const got = call("transpile_flags_c", file, code, 16);
       if (got.trim() !== expected.trim()) { fail++; console.log(`require ${file}: MISMATCH\n--- wasm\n${got}\n--- bun\n${expected}`); }
       else console.log(`require ${file}: identical to bun build --no-bundle --target=bun`);
+    }
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+// `module_kind_c`: whether Bun's runtime runs a file as CommonJS, per package.json `"type"` (flags 4096 commonjs, 8192
+// module), vs native Bun importing it (a CommonJS module's namespace has a `default`; these files export none).
+const kindCases: [string, string][] = [
+  ["plain.ts", "console.log(1);\n"],
+  ["mod.ts", "module.exports = 1;\n"],
+  ["exp.ts", "exports.x = 2;\n"],
+  ["req.ts", 'const p = require("node:path");\n'],
+  ["dir.ts", "console.log(typeof __dirname);\n"],
+  ["strict.ts", '"use strict";\nconsole.log(1);\n'],
+  ["this.js", "this.x = 1;\n"],
+  ["tla.ts", "module.exports = 1;\nawait 1;\n"],
+  ["export.ts", "export const a = 1;\nconsole.log(typeof module);\n"],
+  ["import.ts", 'import "node:path";\nrequire("node:fs");\n'],
+  ["typeimport.ts", 'import type { T } from "./t";\nconst p = require("node:path");\n'],
+  ["meta.ts", "console.log(typeof import.meta.url);\nmodule.exports = 1;\n"],
+  ["local.ts", "const module = { exports: 1 };\nconsole.log(module.exports);\n"],
+  ["localreq.js", "function f(require) { return require('x'); }\nf(String);\n"],
+  ["mod.mts", "module.exports = 1;\n"],
+  ["plain.cts", "console.log(1);\n"],
+  ["req.mjs", 'require("node:path");\n'],
+  ["tsx.tsx", "const a = <div />;\nmodule.exports = a;\n"],
+  ["dyn.js", 'import("node:path");\n'],
+];
+if (spawnSync("bun", ["--version"]).status === 0) {
+  const tmp = mkdtempSync(join(tmpdir(), "transpile-wasm-kind-"));
+  const KIND_LOADERS: Record<string, number> = { js: 1, mjs: 0, cjs: 0, ts: 2, mts: 2, cts: 2, tsx: 3 };
+  // For tsx.tsx's automatic JSX runtime import.
+  mkdirSync(join(tmp, "node_modules/react"), { recursive: true });
+  writeFileSync(join(tmp, "node_modules/react/package.json"), '{"name":"react"}');
+  for (const f of ["jsx-runtime.js", "jsx-dev-runtime.js"]) writeFileSync(join(tmp, "node_modules/react", f), "exports.jsx = exports.jsxs = exports.jsxDEV = () => 0; exports.Fragment = 0;");
+  try {
+    for (const [type, flag] of [["", 0], ["commonjs", 4096], ["module", 8192]] as const) {
+      const dir = join(tmp, type || "none");
+      mkdirSync(dir);
+      writeFileSync(join(dir, "package.json"), JSON.stringify(type ? { type } : { name: "x" }));
+      for (const [file, code] of kindCases) writeFileSync(join(dir, file), code);
+      const probe = `for (const f of ${JSON.stringify(kindCases.map(([f]) => f))}) { let k; try { k = "default" in (await import("./" + f)) ? "cjs" : "esm"; } catch (e) { k = /CommonJS-only/.test(e.message) ? "error" : e instanceof ReferenceError ? "esm" : "skip"; } console.log(f, k); }`;
+      writeFileSync(join(dir, "probe.mjs"), probe);
+      const r = spawnSync("bun", ["probe.mjs"], { cwd: dir, encoding: "utf8" });
+      const expected = new Map(r.stdout.split("\n").filter((l) => /^\S+ (cjs|esm|error|skip)$/.test(l)).map((l) => l.split(" ") as [string, string]));
+      for (const [file, code] of kindCases) {
+        const got = call("module_kind_c", file, code, flag);
+        const g = got.startsWith("ERR") ? (/CommonJS-only/.test(got) ? "error" : got) : got;
+        // Bun fails to run some (a local `const module` in its CommonJS wrapper): nothing to compare.
+        if (expected.get(file) === "skip") continue;
+        if (g !== expected.get(file)) { fail++; console.log(`kind ${type || "no type"} ${file}: MISMATCH wasm ${g}, bun ${expected.get(file)}`); }
+      }
+      console.log(`module_kind ${type || "no type"}: ${kindCases.length} files checked against bun`);
     }
   } finally {
     rmSync(tmp, { recursive: true, force: true });

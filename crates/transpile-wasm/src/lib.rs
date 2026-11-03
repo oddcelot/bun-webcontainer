@@ -70,6 +70,9 @@ pub const TRIM_UNUSED_IMPORTS: u32 = 256;
 pub const NO_DEAD_CODE_ELIMINATION: u32 = 512;
 pub const TREE_SHAKING: u32 = 1024;
 pub const INLINE: u32 = 2048;
+/// For `module_kind`: the nearest package.json's `"type"` (`commonjs`, `module`; neither bit = no `"type"`).
+pub const PACKAGE_TYPE_COMMONJS: u32 = 4096;
+pub const PACKAGE_TYPE_MODULE: u32 = 8192;
 
 /// tsconfig `compilerOptions` for JSX, as strings ("" = not set). Per-file pragmas still win.
 #[derive(Clone, Default, Debug)]
@@ -210,6 +213,22 @@ pub fn scan(path: &[u8], source: &[u8], loader: Loader, flags: u32) -> Result<Ve
     })
 }
 
+/// Whether Bun's runtime runs the file as CommonJS: `cjs` or `esm`. Parsed as Bun's runtime transpiler parses
+/// (`commonjs_at_runtime`, the package's `"type"` as `module_type`, see `PACKAGE_TYPE_*`), its verdict is the module
+/// loader's `is_commonjs_module`: an export or top-level await makes an ES module, a free `module`/`exports` (or
+/// top-level `this`, `return`, `with`) CommonJS, else the package type decides; with none, an import statement means
+/// ESM and a free `require`, `__dirname`, `__filename` or `"use strict"` CommonJS. The extension plays no part, as in
+/// Bun. CommonJS features next to an import statement are Bun's error.
+pub fn module_kind(path: &[u8], source: &[u8], loader: Loader, flags: u32) -> Result<Vec<u8>, Vec<u8>> {
+    if let Loader::Data(_) = loader {
+        return Ok(b"esm".to_vec());
+    }
+    with_ast_opts(path, source, loader, flags, true, |ast, _, _| {
+        let cjs = ast.has_commonjs_export_names || ast.exports_kind == bun_ast::ExportsKind::Cjs;
+        Ok(if cjs { b"cjs".to_vec() } else { b"esm".to_vec() })
+    })
+}
+
 /// What `Bun.Transpiler#scanImports` reports: the import records of Bun's quick scan pass
 /// (`Parser::scan_imports`, as `bun_bundler::cache::JavaScript::scan`), as `[{"kind":..,"path":..}]`.
 pub fn scan_imports(path: &[u8], source: &[u8], loader: Loader, flags: u32) -> Result<Vec<u8>, Vec<u8>> {
@@ -296,6 +315,18 @@ fn with_ast(
     flags: u32,
     f: impl for<'a> FnOnce(bun_ast::Ast<'a>, &'a Arena, &bun_ast::Source) -> Result<Vec<u8>, Vec<u8>>,
 ) -> Result<Vec<u8>, Vec<u8>> {
+    with_ast_opts(path, source, loader, flags, false, f)
+}
+
+/// `with_ast`; `runtime_module` parses for `module_kind`.
+fn with_ast_opts(
+    path: &[u8],
+    source: &[u8],
+    loader: Loader,
+    flags: u32,
+    runtime_module: bool,
+    f: impl for<'a> FnOnce(bun_ast::Ast<'a>, &'a Arena, &bun_ast::Source) -> Result<Vec<u8>, Vec<u8>>,
+) -> Result<Vec<u8>, Vec<u8>> {
     // Declared before the arena: the parser borrows the define table for as long as the AST lives.
     let rt = runtime::Taken::take();
     let empty = Define::default();
@@ -320,7 +351,18 @@ fn with_ast(
             _ => Err(fail(&log)),
         };
     }
-    let opts = parser_options(loader, flags, rt.get());
+    let mut opts = parser_options(loader, flags, rt.get());
+    if runtime_module {
+        // As the runtime's `ParseOptions { allow_commonjs: true, module_type, .. }` (`jsc_hooks.rs`).
+        opts.features.commonjs_at_runtime = true;
+        opts.module_type = if flags & PACKAGE_TYPE_COMMONJS != 0 {
+            options::ModuleType::Cjs
+        } else if flags & PACKAGE_TYPE_MODULE != 0 {
+            options::ModuleType::Esm
+        } else {
+            options::ModuleType::Unknown
+        };
+    }
     let parsed = Parser::init(opts, &mut log, &src, define, &arena).and_then(|p| p.parse());
     let ast = match parsed {
         Ok(bun_js_parser::Result::Ast(ast)) if log.errors == 0 => ast,
@@ -505,6 +547,22 @@ pub unsafe extern "C" fn scan_c(
     flags: u32,
 ) -> *mut Output {
     unsafe { run_with(path, path_len, src, src_len, loader, |path, src, loader| scan(path, src, loader, flags)) }
+}
+
+/// `module_kind` (`cjs` or `esm`, see there) behind the `transpile_flags_c` ABI.
+///
+/// # Safety
+/// Both input ranges must be readable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn module_kind_c(
+    path: *const u8,
+    path_len: usize,
+    src: *const u8,
+    src_len: usize,
+    loader: u32,
+    flags: u32,
+) -> *mut Output {
+    unsafe { run_with(path, path_len, src, src_len, loader, |path, src, loader| module_kind(path, src, loader, flags)) }
 }
 
 /// `scan_imports` (JSON, see there) behind the `transpile_flags_c` ABI.
