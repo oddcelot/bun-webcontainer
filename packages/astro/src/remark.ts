@@ -2,16 +2,17 @@
 // <Code> block is. Click-to-load: nothing downloads until a reader presses Run.
 //
 // Meta words: `playground` (required), `mode=…`, `features=…`, `group=<name>`, `load=…`, `height=…`, `path=…`,
-// `deps="elysia@rc,zod@^4"` (pinned in a package.json the poster doesn't show; a package.json fence wins), `label="…"`
-// (the embed's accessible name, its `title` attribute; default "Bun playground"); `title="x.ts"` names the file.
+// `layout=stack` (the preview under the editor), `deps="elysia@rc,zod@^4"` (pinned in a package.json the poster doesn't
+// show; a package.json fence wins), `label="…"` (the embed's accessible name, its `title` attribute; default "Bun
+// playground"); `title="x.ts"` names the file.
 // Consecutive fences with the same `group` share one embed (the first fence's options apply).
 // Options default to the runbun() integration's (playgroundUrl, base, sync).
 import type { Code, Root, RootContent } from "mdast";
 import { CONFIG } from "./config.js";
 import { codeTabs, cssLink, embedScripts, EXT, fileScript, withEntry, withTabs } from "./markup.js";
 
-const OWN_KEYS = new Set(["playground", "mode", "features", "group", "load", "height", "autorun", "readonly", "persist", "theme", "file", "path", "expand", "deps", "label"]);
-const ATTRS = ["mode", "features", "height", "autorun", "readonly", "persist", "theme", "file", "path"];
+const OWN_KEYS = new Set(["playground", "mode", "features", "group", "load", "height", "autorun", "readonly", "persist", "theme", "file", "path", "expand", "deps", "label", "layout"]);
+const ATTRS = ["mode", "features", "height", "autorun", "readonly", "persist", "theme", "file", "path", "layout"];
 
 /** Splits `a b=c title="d e"` into [key, value|null] tokens. */
 interface Token {
