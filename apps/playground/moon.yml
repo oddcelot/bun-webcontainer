@@ -43,6 +43,13 @@ tasks:
       - 'src/worker/node/inspect.ts'
       - 'src/worker/node/types.ts'
       - 'src/worker/node/util.ts'
+  fmt-fixtures:
+    # The bundled examples, fixtures/demo included, as `bun fmt` leaves them (`-- --write` formats them).
+    command: 'bun scripts/fmt-fixtures.ts'
+    toolchains: ['bun']
+    inputs:
+      - 'fixtures/**/*'
+      - 'scripts/fmt-fixtures.ts'
   build:
     # prebuild (scripts/copy-wasm.ts) copies the crates' .wasm into public/.
     command: 'bun run build'
