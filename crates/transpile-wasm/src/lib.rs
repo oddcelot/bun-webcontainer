@@ -162,6 +162,16 @@ pub const KIND_DYNAMIC: u32 = 4;
 /// `require()` and `require.resolve()` records are left alone.
 pub fn transpile_with(path: &[u8], source: &[u8], loader: Loader, flags: u32, resolve: Option<Resolver>) -> Result<Vec<u8>, Vec<u8>> {
     with_ast(path, source, loader, flags, |mut ast, arena, src| {
+        // Bun parses with `allow_runtime` off, so a `require("x")` has no import record there and its path stays in the
+        // character frequency the minifier names symbols by (`compute_character_frequency` subtracts the records'
+        // paths). This parser keeps those records: count their paths back in.
+        if flags & MINIFY_IDENTIFIERS != 0 {
+            if let Some(freq) = ast.char_freq.as_deref_mut() {
+                for record in ast.import_records.iter().filter(|r| r.kind == bun_ast::ImportKind::Require) {
+                    freq.scan(record.path.text, 1);
+                }
+            }
+        }
         if flags & SYNC_ESM != 0 {
             if !ast.top_level_await_keyword.is_empty() {
                 return Err(format!("require() async module \"{}\" is unsupported. use \"await import()\" instead.", String::from_utf8_lossy(path)).into_bytes());

@@ -266,6 +266,10 @@ const optionCases: [string, Record<string, unknown>, string, string, string?][] 
   ["minify", { minify: true }, "ts", optSrc],
   ["minify.syntax", { minify: { syntax: true } }, "ts", optSrc],
   ["minify.identifiers", { minify: { identifiers: true } }, "ts", optSrc],
+  // Bun keeps a `require()` path in the character frequency the names are picked by (it has no import record there).
+  ["minify.identifiers require", { minify: { identifiers: true } }, "js", 'const x = require("./zzzzzzzzzzzzzzzzzzzz");\nfunction foo(aa, bb, cc) { return aa + bb + cc; }'],
+  ["minify.identifiers large", { minify: { identifiers: true } }, "ts", 'const zq = require("./zzzz-qqqq/xxjj-vvkk");\n' + readFileSync(new URL("../../apps/playground/src/worker/runtime.ts", import.meta.url), "utf8")],
+  ["minify.identifiers large browser", { minify: { identifiers: true }, target: "browser" }, "ts", 'const zq = require("./zzzz-qqqq/xxjj-vvkk");\n' + readFileSync(new URL("../../apps/playground/src/moduleServer.ts", import.meta.url), "utf8")],
   ["inline", { inline: true }, "ts", optSrc],
   ["deadCodeElimination false", { deadCodeElimination: false }, "ts", optSrc],
   ["treeShaking", { treeShaking: true }, "ts", optSrc],
