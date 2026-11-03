@@ -5,7 +5,7 @@ import type { Resolver } from "./transpiler";
 import { transpileCached } from "./transpileCache";
 import { tsconfigFor } from "./tsconfig";
 import { inRanges, isMethod, literalRanges } from "./literals";
-import { loadResolver, parseData, resolve, type ResolveKind } from "./resolver";
+import { DATA_FILE, dataFormat, loadResolver, parseDataFile, resolve, type DataFormat, type ResolveKind } from "./resolver";
 import { dirname, norm, type VFS } from "@runbun/vfs";
 import hostNames, { version as hostVersion } from "virtual:host-package-names";
 import { builtins, exportNames } from "./worker/node";
@@ -62,12 +62,17 @@ function hoistRequires(vfs: VFS, code: string, dir: string, url: (spec: string) 
     const p = s.replace(/^node:/, "") in builtins ? null : resolveWith(vfs, s, dir, "require");
     return p ? JSON.stringify("/" + p) : m;
   });
-  const specs = [...new Set([...code.matchAll(/(?<![\w$.])(?:__)?require\(\s*(["'])([^"'\n]+)\1\s*\)/g)].map((m) => m[2]))].filter((s) => !(s.replace(/^node:/, "") in builtins) && (!s.startsWith(".") || DATA_FILE.test(s)) && resolveWith(vfs, s, dir, "require"));
+  // In the worker, data files load when required instead (see dataModule).
+  const hoist = (s: string) => {
+    const t = resolveWith(vfs, s, dir, "require");
+    return !!t && !(TARGET === "bun" && DATA_FILE.test(t));
+  };
+  const specs = [...new Set([...code.matchAll(/(?<![\w$.])(?:__)?require\(\s*(["'])([^"'\n]+)\1\s*\)/g)].map((m) => m[2]))].filter((s) => !(s.replace(/^node:/, "") in builtins) && (!s.startsWith(".") || DATA_FILE.test(s)) && hoist(s));
   if (!specs.length) return code;
   const imports = specs.map((s, i) => `import * as __h${i} from ${JSON.stringify(url(s))};`).join("");
   const table = specs.map((s, i) => `${JSON.stringify(s)}: __h${i}`).join(", ");
   return `${imports}const __hoisted = { ${table} };
-const __withHoisted = (r) => Object.assign((id) => (id in __hoisted ? ("__cjs" in __hoisted[id] ? __hoisted[id].__cjs : /\\.(json|toml|ya?ml)$/.test(id) ? __hoisted[id].default : __hoisted[id]) : r(id)), r);
+const __withHoisted = (r) => Object.assign((id) => (id in __hoisted ? ("__cjs" in __hoisted[id] ? __hoisted[id].__cjs : /\\.(json|jsonc|json5|toml|ya?ml)$/.test(id) ? __hoisted[id].default : __hoisted[id]) : r(id)), r);
 ${code.replace(CREATE_REQUIRE, "__withHoisted($&)")}`;
 }
 
@@ -107,11 +112,16 @@ function hoistMetaRequire(vfs: VFS, code: string, path: string, dir: string, url
     const literal = literalRanges(code);
     for (const m of code.matchAll(/(?<![\w$.])require\(\s*(["'])([^"'\n]+)\1\s*\)/g)) {
       const t = inRanges(literal, m.index) ? null : resolveWith(vfs, m[2], dir, "require");
-      const src = t && !/\.(json|toml|ya?ml|css|node)$/.test(t) ? vfs.readText(t) : undefined;
+      const src = t && !DATA_FILE.test(t) && !/\.(css|node)$/.test(t) ? vfs.readText(t) : undefined;
       if (src !== undefined && !isCommonJS(t!, src, packageType(vfs, t!))) lits.push(m[2]);
     }
   }
-  const specs = [...new Set(lits)].filter((s) => !(s.replace(/^node:/, "") in builtins) && resolveWith(vfs, s, dir, "require"));
+  // In the worker, data files load when required (see dataModule): an import here would make them return their namespace.
+  const specs = [...new Set(lits)].filter((s) => {
+    if (s.replace(/^node:/, "") in builtins) return false;
+    const t = resolveWith(vfs, s, dir, "require");
+    return !!t && !(TARGET === "bun" && DATA_FILE.test(t));
+  });
   const imports = specs.map((s, i) => `import * as __mr${i} from ${JSON.stringify(url(s))};`).join("");
   const table = specs.map((s, i) => `${JSON.stringify(s)}: __mr${i}`).join(", ");
   // On the module's first line, so the line numbers in its stack traces stay as they are.
@@ -220,29 +230,25 @@ export default m;
 export const __cjs = m;`;
 }
 
-/** Files `require` and `import` read as data: JSON, and TOML and YAML through Bun's parsers. */
-const DATA_FILE = /\.(json|toml|ya?ml)$/;
-
 /**
- * A `.toml`/`.yaml`/`.yml` file as a module, as Bun has it: the document is the default export and each top-level key a
- * named one. The worker parses it (`Bun.TOML.parse`, so dates are Temporal values); parsing here too finds the keys and
- * reports a syntax error as the module's error. `__cjsModule()` as for JSON, so `require` gets the same object.
+ * A data file (JSON, JSONC, JSON5, TOML, YAML) as an ES module, as Bun has it: the document is the default export, and
+ * an object's top-level keys (but `default`) named ones; anything else (an array, a string, null) comes with
+ * `__esModule: true` instead. It is parsed here too, to find the keys and report a syntax error as the module's error.
+ * In the worker it parses with Bun's parsers (`__parseDataFile`, so TOML dates are Temporal values) and registers its
+ * namespace for a later `require()`, which then returns it, as in Bun; a file required first stays its value there
+ * (worker/node/module.ts). Elsewhere it is the value as JSON.
  */
-function dataModule(path: string, src: string): string {
-  const format = path.endsWith(".toml") ? "TOML" : "YAML";
-  const value = parseData(src, format === "TOML" ? "toml" : "yaml");
-  const keys = value && typeof value === "object" && !Array.isArray(value) ? Object.keys(value).filter((k) => k !== "default" && k !== "__cjsModule") : [];
-  return `var __m;
-export function __cjsModule() {
-  const run = (m) => void (m.exports = globalThis.Bun.${format}.parse(${JSON.stringify(src)}));
-  if (globalThis.__cjsLoad) return globalThis.__cjsLoad(${JSON.stringify("/" + path)}, run, () => {});
-  if (!__m) run((__m = {}));
-  return __m;
-}
-const __d = __cjsModule().exports;
+function dataModule(path: string, src: string, format: DataFormat, target: ModuleTarget): string {
+  const value = parseDataFile(src, format);
+  const object = value !== null && typeof value === "object" && !Array.isArray(value);
+  const keys = object ? Object.keys(value).filter((k) => k !== "default") : [];
+  const q = JSON.stringify;
+  const parse = target === "bun" ? `globalThis.__parseDataFile(${q(src)}, ${q(format)})` : `JSON.parse(${q(JSON.stringify(value) ?? "null")})`;
+  return `const __d = ${parse};
 export default __d;
-${keys.map((k, i) => `const __k${i} = __d[${JSON.stringify(k)}];`).join("\n")}
-export { ${keys.map((k, i) => `__k${i} as ${JSON.stringify(k)}`).join(", ")} };`;
+${object ? `${keys.map((k, i) => `const __k${i} = __d[${q(k)}];`).join("\n")}
+export { ${keys.map((k, i) => `__k${i} as ${q(k)}`).join(", ")} };` : "export const __esModule = true;"}
+${target === "bun" ? `import * as __bwcSelf from ${q(`${VFS_ROOT}${path}`)};\nglobalThis.__esmLoaded?.(${q("/" + path)}, __bwcSelf);` : ""}`;
 }
 
 /** The module for a Node built-in: the worker registers the real object as `globalThis.__nodeBuiltins`. */
@@ -295,6 +301,8 @@ async function serveCommonJS(vfs: VFS, path: string, onError: (msg: string) => v
   const code = wrapCommonJS(path, src, (spec) => {
     const t = resolveTarget(vfs, spec, dir, "require");
     if (t === null || t.startsWith("__")) return t && `${VFS_ROOT}${t}`;
+    // In the worker, data files load when required, as their value (see dataModule).
+    if (target === "bun" && DATA_FILE.test(t)) return null;
     const dep = vfs.readText(t);
     return `${VFS_ROOT}${dep !== undefined && isCommonJS(t, dep, packageType(vfs, t)) ? "__cjs/" : ""}${t}`;
   });
@@ -339,11 +347,9 @@ export async function serveModule(vfs: VFS, rawPath: string, onError: (msg: stri
     let esm = false;
     if (path.endsWith(".html")) return { status: 200, body: `export default ${JSON.stringify({ __htmlImport: path })};` };
     if (path.endsWith(".css")) return { status: 200, body: src };
-    // __cjsModule() as wrapped CommonJS has it: a require() can run before this module is evaluated.
-    // In the worker, require.cache holds it (see wrapCommonJS).
-    if (/\.(toml|ya?ml)$/.test(path)) return { status: 200, body: dataModule(path, src) };
-    if (path.endsWith(".json")) code = `var __m;\nexport function __cjsModule() {\n  const run = (m) => void (m.exports = ${src});\n  if (globalThis.__cjsLoad) return globalThis.__cjsLoad(${JSON.stringify("/" + path)}, run, () => {});\n  if (!__m) run((__m = {}));\n  return __m;\n}\nexport default __cjsModule().exports;`;
-    else if (/\.(ts|tsx|jsx)$/.test(path)) {
+    const format = dataFormat(path);
+    if (format) return { status: 200, body: dataModule(path, src, format, target) };
+    if (/\.(ts|tsx|jsx)$/.test(path)) {
       TARGET = target;
       code = await transpileCached(src, path, tsconfigFor(vfs, path), resolver(vfs, dirname(path)), target === "bun");
       esm = true;

@@ -256,8 +256,11 @@ if (hasBun) {
   console.log(`ok    ${globMatches.length} glob matches compared`);
 }
 
-// Bun.YAML.parse / Bun.TOML.parse: data_parse_c's tree, rebuilt as the playground does, vs native Bun's values.
-const dataCases: ["yaml" | "toml", string][] = [
+// Bun.YAML.parse / Bun.TOML.parse / Bun.JSONC.parse / Bun.JSON5.parse: data_parse_c's tree, rebuilt as the playground
+// does, vs native Bun's values.
+type DataFormat = "yaml" | "toml" | "jsonc" | "json5";
+const DATA_FORMATS: Record<DataFormat, number> = { yaml: 0, toml: 1, jsonc: 2, json5: 3 };
+const dataCases: [DataFormat, string][] = [
   ["yaml", "a: 1\nb: [x, 'y', \"z\\n\"]\nc: {d: null, e: ~, f: true}\n"],
   ["yaml", "- .inf\n- -.Inf\n- .nan\n- -0\n- 0o17\n- 0x1F\n- 1e3\n- 2001-12-14\n- 12345678901234567890\n"],
   ["yaml", "base: &b {x: 1}\nderived:\n  <<: *b\n  y: 2\nsame: *b\n"],
@@ -274,6 +277,13 @@ const dataCases: ["yaml" | "toml", string][] = [
   ["toml", "[[fruit]]\nname = \"apple\"\n[[fruit.variety]]\nname = \"red\"\n[[fruit]]\nname = \"banana\"\n\"quoted key\" = \"\\u00e9\\t\"\nml = \"\"\"\nhi\nthere\"\"\"\n"],
   ["toml", "a = "],
   ["toml", "a = 1\na = 2"],
+  ["jsonc", "{\n  // c\n  \"a\": 1, /* b */ \"t\": {\"b\": \"x\"},\n  \"arr\": [1, 2,],\n}"],
+  ["jsonc", "[1, \"s\", null, true, 1e400, -0]"],
+  ["jsonc", "\"str\""],
+  ["jsonc", "{\"__proto__\": 1, \"a\": {\"a\": 2}}"],
+  ["json5", "{a: 1, 'b': \"x\", c: [1, 2,], d: +Infinity, e: NaN, f: 0x1F, g: .5, h: 'multi\\\nline', // c\n}"],
+  ["json5", "[1, -Infinity, null]"],
+  ["json5", "'s'"],
 ];
 const canonSrc = `(v) => { const seen = new Map(); const c = (v) => {
   if (typeof v === "number") return Object.is(v, -0) ? "-0" : String(v);
@@ -286,9 +296,9 @@ const canonSrc = `(v) => { const seen = new Map(); const c = (v) => {
 }; return c(v); }`;
 const canon = eval(canonSrc) as (v: unknown) => string;
 const { fromDataTree } = await import("../../apps/playground/src/dataTree.ts");
-function wasmData(text: string, format: "yaml" | "toml"): string {
+function wasmData(text: string, format: DataFormat): string {
   const a = put(text);
-  const out = w.data_parse_c(a[0], a[1], format === "toml" ? 1 : 0);
+  const out = w.data_parse_c(a[0], a[1], DATA_FORMATS[format]);
   w.dealloc(a[0], a[1]);
   const [status, ptr, len] = new BigUint64Array(w.memory.buffer, Number(out), 3);
   const json = dec.decode(new Uint8Array(w.memory.buffer, Number(ptr), Number(len)));
@@ -301,7 +311,7 @@ if (hasBun) {
   const want = JSON.parse(r.stdout) as string[];
   dataCases.forEach(([f, t], i) => want[i] !== dataGot[i] && mismatches.push(`bun: ${f} ${JSON.stringify(t)}: bun=${want[i]} wasm=${dataGot[i]}`));
 }
-console.log(`ok    ${dataCases.length} YAML/TOML documents parsed`);
+console.log(`ok    ${dataCases.length} YAML/TOML/JSONC/JSON5 documents parsed`);
 if (process.env.SHOW_DATA) for (const g of dataGot) console.log("  " + g);
 
 // Bun.password: hashes made here verify in native Bun and the other way round; malformed hashes fail with Bun's errors.

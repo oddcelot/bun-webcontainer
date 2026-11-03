@@ -1,7 +1,7 @@
 // Bun's module resolver (bun_resolver, from crates/resolve-wasm) over the page VFS, through the same `bun_sys` host
 // imports the worker uses. Its directory, package.json and tsconfig caches live as long as the instance, as in Bun;
 // VFS changes invalidate the directories they touch, and clearing the VFS starts a fresh instance. The same module
-// has `Bun.Glob`'s matcher and walker (bun_glob), Bun's YAML and TOML parsers and `Bun.password`'s argon2 and bcrypt,
+// has `Bun.Glob`'s matcher and walker (bun_glob), Bun's YAML, TOML, JSONC and JSON5 parsers and `Bun.password`'s argon2 and bcrypt,
 // which the worker uses.
 import { BASE } from "./base";
 import { dirname, type VFS } from "@runbun/vfs";
@@ -157,15 +157,33 @@ export function globScan(pattern: string, cwd: string, opts: GlobScanFlags): str
   return text ? text.slice(0, -1).split("\0") : [];
 }
 
-/** `Bun.YAML.parse`/`Bun.TOML.parse` (bun_parsers, in the same module). Throws Bun's SyntaxError. */
-export function parseData(text: string, format: "yaml" | "toml"): unknown {
+/** resolve-wasm's data formats (data.rs). */
+const DATA_FORMATS = { yaml: 0, toml: 1, jsonc: 2, json5: 3 } as const;
+
+/** `Bun.YAML.parse`/`Bun.TOML.parse`, JSONC and JSON5 (bun_parsers, in the same module). Throws Bun's SyntaxError. */
+export function parseData(text: string, format: keyof typeof DATA_FORMATS): unknown {
   if (!w) throw new Error("resolver not loaded");
-  const out = guard(`parsing ${format.toUpperCase()}`, () => withStr(text, (p, l) => w!.data_parse_c(p, l, format === "toml" ? 1 : 0)));
+  const out = guard(`parsing ${format.toUpperCase()}`, () => withStr(text, (p, l) => w!.data_parse_c(p, l, DATA_FORMATS[format])));
   const [status, ptr, len] = new BigUint64Array(w.memory.buffer, Number(out), 3);
   const json = dec.decode(new Uint8Array(w.memory.buffer, Number(ptr), Number(len)));
   w.output_free(out);
   if (status !== 0n) throw new SyntaxError(json);
   return fromDataTree(json);
+}
+
+/** Files `require` and `import` read as data, as Bun's loaders do. */
+export const DATA_FILE = /\.(json|jsonc|json5|toml|ya?ml)$/;
+export type DataFormat = "json" | keyof typeof DATA_FORMATS;
+/** The data format of the file at `path`, or undefined when it isn't one. */
+export function dataFormat(path: string): DataFormat | undefined {
+  const m = DATA_FILE.exec(path);
+  return m ? (m[1] === "yml" ? "yaml" : (m[1] as DataFormat)) : undefined;
+}
+
+/** The value of a data file, as `require` gets it in Bun: an empty file is an empty object, except for JSON. */
+export function parseDataFile(text: string, format: DataFormat): unknown {
+  if (format === "json") return JSON.parse(text);
+  return text ? parseData(text, format) : {};
 }
 
 /** `Bun.password`'s algorithms, numbered as resolve-wasm's password.rs. */

@@ -74,11 +74,12 @@ export function wrapCommonJS(path: string, source: string, depUrl: (spec: string
     return url ? [[s, url]] : [];
   });
   const imports = deps.map(([, url], i) => `import * as __req${i} from ${JSON.stringify(url)};`).join("\n");
-  const table = deps.map(([s], i) => `${JSON.stringify(s)}: __req${i}`).join(", ");
+  // A data file is its value (its default export); in the worker none is here (depUrl gives null: see dataModule).
+  const table = deps.map(([s, url], i) => `${JSON.stringify(s)}: ${/\.(json|jsonc|json5|toml|ya?ml)$/.test(url) ? `{ __cjs: __req${i}.default }` : `__req${i}`}`).join(", ");
   const dir = path.split("/").slice(0, -1).join("/");
   const file = JSON.stringify("/" + path);
   // Function declarations: a require in a cycle can call __cjsModule() before this module is evaluated.
-  // Wrapped CommonJS and JSON export __cjsModule(), built-ins __cjs; anything else is an ES namespace.
+  // Wrapped CommonJS exports __cjsModule(), built-ins __cjs; anything else is an ES namespace.
   // In the worker, globalThis.__cjsLoad keeps the instance in require.cache, so a require(variable) of this file
   // (which the worker evaluates itself) gets the same one; it also gives this require resolve, cache and main.
   // Other requires go to the worker's globalThis.__cjsRequire; in a page, where neither exists, they throw.

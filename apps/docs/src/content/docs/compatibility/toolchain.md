@@ -81,8 +81,8 @@ Bun's own resolver, compiled to WebAssembly (~900 KB, loaded with the first modu
 - ✅ Conditions: `bun`, `node`, `import` or `require`, `development`, `default` for server code; `browser`, `module`, `import`, `development`, `default` for code in the preview page
 - ✅ `#imports` from the nearest `package.json`
 - ✅ `tsconfig.json` `paths` and `baseUrl`
-- ✅ JSON imports
-- ✅ TOML and YAML imports (`.toml`, `.yaml`, `.yml`) with Bun's parsers: the document is the default export and each top-level key a named one; `require` works too
+- ✅ JSON, JSONC, JSON5, TOML and YAML imports (`.json`, `.jsonc`, `.json5`, `.toml`, `.yaml`, `.yml`) with Bun's parsers, as Bun has them: the document is the default export and an object's top-level keys (but `default`) named ones; anything else (an array, a string, `null`) comes with `__esModule: true` instead. An empty file is `{}`, except for JSON.
+- ✅ `require` of a data file returns the parsed value, or its namespace once the file has been imported, as in Bun (a file required first stays its value)
 - ✅ CSS imported from code that goes through an HTML import (bundled), or through Vite
 - ✅ CSS imported from server code (`import "./x.css"`, also `.module.css`) is `{}`, as in Bun's runtime. In a page served without bundling, it is linked as a stylesheet and CSS module class names map to themselves.
 - ✅ `http:`/`https:` imports are left to the browser
@@ -116,7 +116,7 @@ console.log(greet(config.name));
 - ✅ `.cjs` files, and `.js` files without ESM syntax in packages that aren't `"type": "module"`
 - ✅ `require("x")` with a string literal. Modules run on first `require`, as in Node; cycles see partial exports.
 - ✅ Named imports from CommonJS, found by a static scan (`exports.x =`, `module.exports = { … }`, re-exports). Exports computed at runtime aren't visible as named imports.
-- ✅ `require(variable)`, and `createRequire(import.meta.url)` and `import.meta.require` with any specifier: project files and installed packages load synchronously when required (TypeScript and JSX transpiled with the nearest `tsconfig.json`'s JSX and decorator options, as imported files are; JSON, TOML and YAML parsed). They share one module instance with literal requires and imports, so a file loaded both ways runs once. A `require` that can't be resolved throws `MODULE_NOT_FOUND` when it runs, as in Bun.
+- ✅ `require(variable)`, and `createRequire(import.meta.url)` and `import.meta.require` with any specifier: project files and installed packages load synchronously when required (TypeScript and JSX transpiled with the nearest `tsconfig.json`'s JSX and decorator options, as imported files are; data files parsed). They share one module instance with literal requires and imports, so a file loaded both ways runs once. A `require` that can't be resolved throws `MODULE_NOT_FOUND` when it runs, as in Bun.
 - ✅ `require.resolve`, `require.cache` (deleting an entry loads the file again), `require.main`
 - ✅ `require` in an ES module, as Bun defines it there (`import.meta.require`); a module that declares its own (`const require = createRequire(import.meta.url)`) keeps it. `__filename` and `__dirname` are the module's path and folder, as in Bun; `module` and `exports` are undefined, as in Bun's ES modules
 - 🟡 `require()` of an ES module returns its namespace, the same instance its imports get. With a string literal it always works: the module is imported up front, so it runs before the module that requires it rather than at the `require` call. With a computed specifier it works once the module has been imported (statically or by a finished `import()`); before that, or while it is still running (top-level `await`), it throws `ERR_REQUIRE_ESM`, as the browser can't load ES modules synchronously. Use `import()` instead.
