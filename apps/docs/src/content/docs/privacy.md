@@ -21,9 +21,19 @@ Clearing the site's data in your browser removes all of it.
 ## Share links
 
 - **A normal share link** (`runbun.dev/#code=…`) carries the project in the part of the URL after `#`. Browsers don't send that part to the server, so nothing is uploaded.
-- **A short link** (`runbun.dev/s/…`) is only made when you pick **Copy short link**. It stores a copy of the project on runbun.dev (Cloudflare Workers KV), and **anyone with the link can open it**. Files that may hold secrets (`.env`, keys, `.npmrc`) and binary files are left out. Next to the copy we keep the day it was created and the day it was last opened, and nothing about who made it.
+- **A short link** (`runbun.dev/s/…`) is only made when you pick **Copy short link**, or attach the project to [feedback](#feedback). It stores a copy of the project on runbun.dev (Cloudflare Workers KV), and **anyone with the link can open it**. Files that may hold secrets (`.env`, keys, `.npmrc`) and binary files are left out. Next to the copy we keep the day it was created and the day it was last opened, and nothing about who made it.
 
 Short links are kept until they're removed. To have one removed, email [privacy@runbun.dev](mailto:privacy@runbun.dev) with the link. The same address takes reports of illegal content and requests about personal data.
+
+## Feedback
+
+**Feedback** in the playground's status bar sends what you write to runbun.dev (Cloudflare Workers KV), with the time and the page's address (without the part after `#`). Only if you add them does it carry:
+
+- **an email address**, used only to answer you;
+- **the Bun release and your browser** (its user agent, window size and pixel ratio, and any feature the playground found missing); the form lists exactly what is sent;
+- **the open project**, as a [short link](#share-links) (stored like any other, secrets left out), or, while it is an unchanged example or repository, just its name.
+
+Your IP address is used to limit how much feedback can be sent a minute; it isn't stored. Feedback is kept until we've dealt with it. To have something you sent removed, email [privacy@runbun.dev](mailto:privacy@runbun.dev).
 
 ## Requests from your browser
 
