@@ -86,6 +86,7 @@ export function createPlayground() {
       lastEntry = entry;
       try {
         await runner!.start(entry);
+        if (runner!.exitCode !== undefined) return exited(runner!.exitCode);
         previews.reload();
         return { state: "running", text: `Running ${entry}` };
       } catch (e) {
@@ -122,6 +123,12 @@ export function createPlayground() {
     });
     if (wasRunning) await run(lastEntry);
     return failed;
+  }
+
+  /** The program ended itself (process.exit, an uncaught error): the console and status say with which code. */
+  function exited(code: number): Status {
+    log("sys", `[exited with code ${code}]`);
+    return code ? { state: "error", text: `Exited with code ${code}` } : { state: "idle", text: "Exited" };
   }
 
   function stop() {
@@ -171,6 +178,7 @@ export function createPlayground() {
       await setupServiceWorker();
       semver = await loadSemver();
       runner = new Runner(vfs, log);
+      runner.onExit = (code) => session.setStatus(exited(code));
     }
     exec = createShell({ vfs, log, run, install, test, stop, clear: clearConsole, reset, cookies: runner?.cookies });
     session.markReady();

@@ -2,7 +2,7 @@ import { BASE } from "../base";
 import { loadResolver, parseData, parseDataFile, resolve } from "../resolver";
 import { loadSemver } from "../semver";
 import { dirname, norm, VFS } from "@runbun/vfs";
-import { BUN_NAMES, builtins, installTimers, setFs, setRequire, setStdio } from "./node";
+import { BUN_NAMES, builtins, installTimers, setExit, setFs, setRequire, setStdio } from "./node";
 import { bundle, type BundleConfig, type BundleLog } from "./bundler";
 import { setHostVfs } from "./hostPackages";
 import { hash } from "./hash";
@@ -558,9 +558,82 @@ function uncaughtText(v: unknown): string {
 }
 
 const PLATFORMS: Record<string, string> = { linux: "Linux", darwin: "macOS", win32: "Windows" };
-/** An uncaught error ends a Bun process with it and Bun's version line (the program keeps running here). */
-const reportUncaught = (v: unknown) =>
-  post({ type: "console", level: "error", text: `${uncaughtText(v)}\nBun v${(g.Bun as { version: string }).version} (${PLATFORMS[process.platform] ?? process.platform} ${process.arch})` });
+const versionLine = () => `Bun v${(g.Bun as { version: string }).version} (${PLATFORMS[process.platform] ?? process.platform} ${process.arch})`;
+/** An uncaught error as Bun prints it when it isn't ending the program (`bun test`): the error, then Bun's version line. */
+const reportUncaught = (v: unknown) => post({ type: "console", level: "error", text: `${uncaughtText(v)}\n${versionLine()}` });
+
+/** True while `bun test` runs: an uncaught error is reported, and the run goes on. */
+let testing = false;
+/** The `exit` listeners ran; the worker is waiting to be terminated. */
+let exitEmitted = false;
+let halted = false;
+
+const printError = (err: unknown) => post({ type: "console", level: "error", text: uncaughtText(err).replace(/\n$/, "") });
+
+/** Runs the `exit` listeners, once, with `code` as `process.exitCode`. */
+function emitExit(code: number) {
+  if (exitEmitted) return;
+  exitEmitted = true;
+  process.exitCode = code;
+  try {
+    process.emit("exit", code);
+  } catch (err) {
+    printError(err);
+  }
+}
+
+/** `process.exit(code)`: the `exit` listeners, then the end of the program. */
+function exit(code: number): never {
+  emitExit(code);
+  return halt(code);
+}
+
+/**
+ * Ends the program: open databases are written back and the page terminates the worker (runner.ts). Nothing runs
+ * after it, as nothing runs after Bun's `process.exit`: the worker blocks until then.
+ */
+function halt(code: number): never {
+  if (!halted) {
+    halted = true;
+    try {
+      flushDatabases();
+    } catch (err) {
+      post({ type: "console", level: "error", text: fmt(err) });
+    }
+    post({ type: "exit", code });
+  }
+  if (typeof SharedArrayBuffer === "function") for (;;) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);
+  // Without shared memory (a page that isn't cross-origin isolated): no further task runs, and the throw ends this one.
+  self.close();
+  throw EXIT;
+}
+/** What `halt` throws where it can't block; the error handlers ignore it. */
+const EXIT = Symbol("exit");
+
+/**
+ * An uncaught error or unhandled rejection. `process.on("uncaughtException")`/`("unhandledRejection")` listeners get
+ * it, with `detail` (the origin, or the rejected promise), if there are any; one that throws ends the program with
+ * code 7, as in Bun. Otherwise it ends the program with code 1, printed as Bun prints it: the error, what `exit`
+ * listeners print, a blank line and Bun's version line.
+ */
+function uncaught(v: unknown, kind: "uncaughtException" | "unhandledRejection", detail: unknown = kind) {
+  if (v === EXIT || halted) return;
+  if (testing) return reportUncaught(v);
+  if (process.listenerCount(kind) > 0) {
+    try {
+      process.emit(kind, v, detail);
+      return;
+    } catch (err) {
+      if (err === EXIT) return;
+      printError(err);
+      exit(7);
+    }
+  }
+  printError(v);
+  emitExit(1);
+  post({ type: "console", level: "error", text: `\n${versionLine()}` });
+  halt(1);
+}
 
 const JS = "text/javascript;charset=utf-8";
 const MIME: Record<string, string> = {
@@ -909,14 +982,15 @@ async function main() {
   };
   g.Bun = Object.assign(builtins.bun, bun);
 
+  setExit(exit);
   self.addEventListener("unhandledrejection", (e) => {
     e.preventDefault();
-    reportUncaught(e.reason);
+    uncaught(e.reason, "unhandledRejection", e.promise);
   });
   // An exception out of a timer or event callback (the page's worker.onerror would only get its message).
   self.addEventListener("error", (e) => {
     e.preventDefault();
-    reportUncaught(e.error);
+    uncaught(e.error, "uncaughtException");
   });
 
   self.addEventListener("message", async (e: MessageEvent) => {
@@ -930,6 +1004,7 @@ async function main() {
         if (!inst) return sendText(port, 503, "No Bun.serve handler registered");
         out = await dispatch(inst, serverRequest(r.path, { method: r.method, body: r.body }, r.headers));
       } catch (err) {
+        if (halted) return;
         // Bun's development server (`development` is true here) reports it as uncaught, then which request failed.
         post({ type: "console", level: "error", text: `${uncaughtText(err)}${r.method} - ${new URL(r.path, "http://localhost/").pathname} failed` });
         return sendText(port, 500, fmt(err));
@@ -979,6 +1054,7 @@ self.addEventListener("message", async (e: MessageEvent) => {
   vfs.load(e.data.files, e.data.dirs);
   await booted;
   if (e.data.tests) {
+    testing = true;
     // `bun test`: load and run each file instead of an entry.
     const failed = await runTestFiles(e.data.tests, (f) => importUrl(`${VFS_ROOT}${f}`), (g.Bun as { version: string }).version).catch((err) => (post({ type: "console", level: "error", text: fmt(err) }), 1));
     post({ type: "ready", failed });
@@ -993,7 +1069,9 @@ self.addEventListener("message", async (e: MessageEvent) => {
     const port = Number(def?.port ?? env.PORT ?? env.BUN_PORT ?? 3000);
     if (typeof def?.fetch === "function" && !servers.some((s) => s.server === def || s.port === port)) createInstance(def);
   } catch (err) {
-    reportUncaught(err);
+    // Ends the program (the "exit" message ends the start too), unless an uncaughtException listener takes it; Bun
+    // passes it as the entry's rejection.
+    uncaught(err, "uncaughtException", "unhandledRejection");
   }
   post({ type: "ready" });
 });
