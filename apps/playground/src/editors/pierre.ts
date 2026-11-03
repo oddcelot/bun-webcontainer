@@ -1,6 +1,7 @@
 import { File, getHighlighterIfLoaded, getSharedHighlighter, registerCustomTheme } from "@pierre/diffs";
 import { Editor, type Marker } from "@pierre/diffs/edit";
 import { elysiaDark, elysiaLight } from "../elysiaTheme";
+import { isMac } from "../keymap";
 import { onTheme, themeName } from "../theme";
 import type { CodeEditor, CompletionKind, EditorCompletion, EditorCompletionDetails, EditorDiagnostic, EditorEvents, EditorHover, EditorSignatureHelp } from "./types";
 
@@ -39,7 +40,8 @@ const HOVER_CSS = `
   .hover-icon { flex: none; display: flex; height: 19px; align-items: center; color: var(--diffs-marker-bg); }
   .hover-icon svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .hover-text { white-space: pre-wrap; }
-  .hover-source { color: color-mix(in lab, var(--diffs-fg) 50%, transparent); white-space: nowrap; }`;
+  .hover-source { color: color-mix(in lab, var(--diffs-fg) 50%, transparent); white-space: nowrap; }
+  [data-goto] { text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }`;
 
 /** How long the pointer rests on a token before its hover is asked for, and how long a hover outlives the pointer leaving. */
 const HOVER_DELAY = 300;
@@ -306,7 +308,31 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
       placeHover(token.tokenElement);
     }, delay);
   }
-  const onTokenEnter = (token: Token) => hoverToken(token, HOVER_DELAY);
+  // Ctrl/Cmd+click on a name goes to its definition (events.goToDefinition); with the key held, the name under the
+  // pointer is underlined like a link.
+  const isMod = (e: { metaKey: boolean; ctrlKey: boolean }) => (isMac ? e.metaKey : e.ctrlKey);
+  let pointed: HTMLElement | undefined;
+  const markGoto = (on: boolean) => {
+    if (!pointed) return;
+    if (on && events.goToDefinition && editor) pointed.dataset.goto = "";
+    else delete pointed.dataset.goto;
+  };
+  const onModKey = (e: KeyboardEvent) => markGoto(isMod(e));
+  addEventListener("keydown", onModKey);
+  addEventListener("keyup", onModKey);
+  addEventListener("blur", () => markGoto(false));
+  const onTokenEnter = (token: Token, e: PointerEvent) => {
+    markGoto(false);
+    pointed = token.tokenElement;
+    markGoto(isMod(e));
+    hoverToken(token, HOVER_DELAY);
+  };
+  const onTokenClick = (token: Token, e: MouseEvent) => {
+    if (!isMod(e) || !events.goToDefinition || !editor) return;
+    e.preventDefault();
+    hideHover();
+    events.goToDefinition(path, token.lineNumber, token.lineCharStart + 1);
+  };
   /** The token at a zero-based position: the one it's in, else the one it ends (the cursor just after a name). */
   function tokenAt(line: number, character: number): Token | undefined {
     const root = host.querySelector("diffs-container")?.shadowRoot;
@@ -319,6 +345,8 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
     return span && { lineNumber: line + 1, lineCharStart: start(span), tokenElement: span };
   }
   function onTokenLeave() {
+    markGoto(false);
+    pointed = undefined;
     clearTimeout(hoverTimer);
     clearTimeout(hideTimer);
     hideTimer = setTimeout(hideHover, HIDE_DELAY);
@@ -691,6 +719,7 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
         code { align-self: stretch; align-content: start; }${HOVER_CSS}`,
       onTokenEnter,
       onTokenLeave,
+      onTokenClick,
       onEditChange(event) {
         const before = text;
         text = event.file.contents;
@@ -741,8 +770,19 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
       if (editor && host.contains(document.activeElement)) void requestSuggest();
     },
     reveal(line, column) {
-      editor?.focus({ lineNumber: line, character: column - 1 });
-      onMove();
+      // A just-opened editor sets up its text document a few frames later (see applyMarkers).
+      const current = editor;
+      const go = (frames: number) => {
+        if (editor !== current || !current) return;
+        try {
+          current.focus({ lineNumber: line, character: column - 1 });
+          onMove();
+        } catch (e) {
+          if (frames) requestAnimationFrame(() => go(frames - 1));
+          else console.warn("[editor] reveal dropped:", e);
+        }
+      };
+      go(30);
     },
     getText: () => editor?.getText() ?? text,
     replace(next) {
@@ -771,6 +811,8 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
     },
     destroy() {
       close();
+      removeEventListener("keydown", onModKey);
+      removeEventListener("keyup", onModKey);
       host.remove();
       tip.remove();
       suggestBox.remove();

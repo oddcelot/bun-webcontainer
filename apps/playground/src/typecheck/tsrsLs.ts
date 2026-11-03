@@ -71,6 +71,7 @@ type Exports = {
   ls_completion(): void;
   ls_completion_resolve(): void;
   ls_signature_help(): void;
+  ls_definition(): void;
   ls_diagnostics(): void;
 };
 
@@ -93,7 +94,7 @@ export class TsrsLs {
     return this.ex.memory.buffer.byteLength;
   }
 
-  private call(fn: "ls_set_files" | "ls_remove_files" | "ls_hover" | "ls_completion" | "ls_completion_resolve" | "ls_signature_help" | "ls_diagnostics", fields: string[]): string {
+  private call(fn: "ls_set_files" | "ls_remove_files" | "ls_hover" | "ls_completion" | "ls_completion_resolve" | "ls_signature_help" | "ls_definition" | "ls_diagnostics", fields: string[]): string {
     const bytes = new TextEncoder().encode(fields.join("\0"));
     // ls_input may grow memory, which detaches the old buffer: take the pointer first.
     const ptr = this.ex.ls_input(bytes.length);
@@ -132,6 +133,11 @@ export class TsrsLs {
     return JSON.parse(this.call("ls_signature_help", [config, path, String(line), String(character), trigger, retrigger ? "1" : "0"]));
   }
 
+  /** Where the name at `line`/`character` (0-based, UTF-16) is declared, or null. */
+  definition(config: string, path: string, line: number, character: number): LspDefinition {
+    return JSON.parse(this.call("ls_definition", [config, path, String(line), String(character)]));
+  }
+
   diagnostics(config: string, path: string): LspDiagnostic[] {
     return JSON.parse(this.call("ls_diagnostics", [config, path]));
   }
@@ -141,6 +147,10 @@ export type LspPosition = { line: number; character: number };
 export type LspRange = { start: LspPosition; end: LspPosition };
 /** 1 error, 2 warning, 3 information, 4 hint. */
 export type LspDiagnostic = { range: LspRange; severity?: 1 | 2 | 3 | 4; code?: number | string; message: string };
+export type LspLocation = { uri: string; range: LspRange };
+/** `targetSelectionRange` is the declaration's name, `targetRange` all of it. */
+export type LspLocationLink = { originSelectionRange?: LspRange; targetUri: string; targetRange: LspRange; targetSelectionRange: LspRange };
+export type LspDefinition = LspLocation | LspLocation[] | LspLocationLink[] | null;
 export type LspHover = { contents: { kind: "markdown" | "plaintext"; value: string }; range?: LspRange };
 type LspMarkup = { kind: "markdown" | "plaintext"; value: string };
 export type LspTextEdit = { newText: string } & ({ range: LspRange } | { insert: LspRange; replace: LspRange });

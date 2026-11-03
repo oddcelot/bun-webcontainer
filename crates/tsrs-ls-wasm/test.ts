@@ -1,5 +1,5 @@
 // The module over a small Bun project (index.ts importing util.ts, @types/bun from node_modules): diagnostics,
-// hovers, completions and signature help, then 100 edits to index.ts as typing would make them, then a tsconfig change. Prints times and memory.
+// hovers, definitions, completions and signature help, then 100 edits to index.ts as typing would make them, then a tsconfig change. Prints times and memory.
 //   cargo build --release --target wasm32-wasip1 && node test.ts [node_modules with @types/bun; default: the playground's]
 import { Worker, isMainThread, parentPort, workerData } from "node:worker_threads";
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
@@ -58,6 +58,9 @@ if (isMainThread) {
   log("set files", call("ls_set_files", ["/tsconfig.json", config, "/index.ts", index, "/util.ts", util, ...types]));
   log("diagnostics (cold)", call("ls_diagnostics", ["/tsconfig.json", "/index.ts"]));
   log("hover req", call("ls_hover", ["/tsconfig.json", "/index.ts", "1", "45"]));
+  const def = call("ls_definition", ["/tsconfig.json", "/index.ts", "1", String(index.split("\n")[1].indexOf("greet(") + 1)]);
+  log("definition greet", def);
+  if (!def.out.includes("util.ts")) throw new Error(`definition of greet isn't in util.ts: ${def.out}`);
   log("hover greet", call("ls_hover", ["/tsconfig.json", "/index.ts", "1", "80"]));
   // After `server.` on line 2: Server's members; then the first one with its type and docs.
   const done = call("ls_completion", ["/tsconfig.json", "/index.ts", "2", "25", "."]);
