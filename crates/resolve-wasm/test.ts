@@ -284,6 +284,16 @@ const dataCases: [DataFormat, string][] = [
   ["json5", "{a: 1, 'b': \"x\", c: [1, 2,], d: +Infinity, e: NaN, f: 0x1F, g: .5, h: 'multi\\\nline', // c\n}"],
   ["json5", "[1, -Infinity, null]"],
   ["json5", "'s'"],
+  ["jsonc", "{\"a\": 1, \"a\": 2}"],
+  ["jsonc", "{\"a\": 1, \"a\": 2, \"b\": }"],
+  ["jsonc", "[1] x"],
+  ["jsonc", "{a: 1}"],
+  ["jsonc", "[1, 2"],
+  ["json5", "{a: 1, a: 2}"],
+  ["json5", "{'__proto__': 1, a: [], b: {}}"],
+  ["json5", "{a:"],
+  ["json5", "[1] x"],
+  ["json5", "{a: undefined}"],
 ];
 const canonSrc = `(v) => { const seen = new Map(); const c = (v) => {
   if (typeof v === "number") return Object.is(v, -0) ? "-0" : String(v);

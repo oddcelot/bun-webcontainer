@@ -38,6 +38,8 @@ Reported version: `Bun.version` is `1.4.4-browser`. Labels are explained on the 
 | `Bun.gzipSync`, `Bun.gunzipSync`, `Bun.deflateSync`, `Bun.inflateSync` | 🟡 Partial | `level` is the only option read. Deflate is raw, as in Bun. |
 | `Bun.zstd*` | ❌ Missing | |
 | `Bun.YAML`, `Bun.TOML` | ✅ Works | `parse` is Bun's own YAML and TOML parser (`bun_parsers`, as wasm), with Bun's values and errors: YAML aliases stay shared, several documents give an array, TOML dates and times are `Temporal` values. `stringify` gives Bun's output. |
+| `Bun.JSONC`, `Bun.JSON5` | ✅ Works | `JSONC.parse` and `JSON5.parse` are Bun's own parsers (`bun_parsers`, as wasm), with Bun's values and errors (`JSONC Parse error: …`). `JSON5.stringify` gives Bun's output (no replacer, no `toJSON`, as in Bun); there is no `JSONC.stringify`, as in Bun. |
+| `Bun.JSONL`, `Bun.XML`, `Bun.markdown` | ❌ Missing | |
 | `Bun.Cookie`, `Bun.CookieMap` | ✅ Works | A port of Bun's: parsing, `set`/`delete`/`get`, `toSetCookieHeaders`, `toJSON`, iteration, `serialize`, with Bun's validation and errors. Route handlers get one as [`req.cookies`](#bunserve). |
 | `Bun.plugin`, `Bun.FileSystemRouter`, `Bun.mmap` | ❌ Missing | |
 | `HTMLRewriter` | ❌ Missing | |
