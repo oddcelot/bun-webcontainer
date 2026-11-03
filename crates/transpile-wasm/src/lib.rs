@@ -73,6 +73,12 @@ pub const INLINE: u32 = 2048;
 /// For `module_kind`: the nearest package.json's `"type"` (`commonjs`, `module`; neither bit = no `"type"`).
 pub const PACKAGE_TYPE_COMMONJS: u32 = 4096;
 pub const PACKAGE_TYPE_MODULE: u32 = 8192;
+/// Not a tsconfig option: an ES module as the body of a function of `hmr`, for the playground's synchronous
+/// `require()` of one. Bun's dev-server (HMR) output: its exports become `hmr.exports = { ... }` (getters for live
+/// bindings), `import.meta` `hmr.importMeta`, `import(x)` `hmr.dynamicImport(x)`, `require(x)` `hmr.require(x)` (a free
+/// `require` otherwise is `hmr.importMeta.require`); its imports, which the dev server's linker turns into requires,
+/// become `var ns = hmr.importSync("spec");` here, hoisted. A module with top-level await fails with Bun's error.
+pub const SYNC_ESM: u32 = 16384;
 
 /// tsconfig `compilerOptions` for JSX, as strings ("" = not set). Per-file pragmas still win.
 #[derive(Clone, Default, Debug)]
@@ -149,6 +155,12 @@ pub const KIND_DYNAMIC: u32 = 4;
 /// `require()` and `require.resolve()` records are left alone.
 pub fn transpile_with(path: &[u8], source: &[u8], loader: Loader, flags: u32, resolve: Option<Resolver>) -> Result<Vec<u8>, Vec<u8>> {
     with_ast(path, source, loader, flags, |mut ast, arena, src| {
+        if flags & SYNC_ESM != 0 {
+            if !ast.top_level_await_keyword.is_empty() {
+                return Err(format!("require() async module \"{}\" is unsupported. use \"await import()\" instead.", String::from_utf8_lossy(path)).into_bytes());
+            }
+            hoist_imports_as_requires(&mut ast, arena);
+        }
         if let Some(resolve) = resolve {
             for record in ast.import_records.iter_mut() {
                 let kind = record.kind as u32;
@@ -175,16 +187,72 @@ pub fn transpile_with(path: &[u8], source: &[u8], loader: Loader, flags: u32, re
             minify_whitespace: flags & MINIFY_WHITESPACE != 0,
             minify_syntax: flags & MINIFY_SYNTAX != 0,
             minify_identifiers: flags & MINIFY_IDENTIFIERS != 0,
+            module_type: if flags & SYNC_ESM != 0 { options::bundle_enums::Format::InternalBakeDev } else { options::bundle_enums::Format::Esm },
             ..Default::default()
         };
         // `uses_require_ref` means `require` is unbound, so the declaration never collides.
-        let require: &[u8] = if flags & IMPORT_META_REQUIRE != 0 && ast.uses_require_ref { b"var {require}=import.meta;" } else { b"" };
+        let require: &[u8] = match () {
+            _ if !ast.uses_require_ref => b"",
+            _ if flags & SYNC_ESM != 0 => b"var require = hmr.importMeta.require;",
+            _ if flags & IMPORT_META_REQUIRE != 0 => b"var {require}=import.meta;",
+            _ => b"",
+        };
         let mut writer = printer::BufferPrinter::init(printer::BufferWriter::init());
         match printer::print_ast::<_, false, false>(&mut writer, arena, &ast, symbols, src, opts) {
             Ok(_) => Ok([require, writer.ctx.written()].concat()),
             Err(e) => Err(format!("print failed: {e:?}").into_bytes()),
         }
     })
+}
+
+/// For `SYNC_ESM`: every import statement (left by the HMR transform, which rewrote the uses of its bindings as
+/// `ns.name`) becomes `var ns = hmr.importSync("spec");` (a bare one `hmr.importSync("spec");`), in order at the top.
+fn hoist_imports_as_requires<'a>(ast: &mut bun_ast::Ast<'a>, arena: &'a Arena) {
+    use bun_ast::{Binding, E, Expr, ExprNodeList, G, S, Stmt, StmtData, b};
+    use bun_collections::VecExt as _;
+    let hmr = Expr::init_identifier(ast.wrapper_ref, bun_ast::Loc::EMPTY);
+    let mut requires: Vec<Stmt> = Vec::new();
+    for part in ast.parts.iter_mut() {
+        let mut rest: Vec<Stmt> = Vec::new();
+        for stmt in part.stmts.slice().iter() {
+            let StmtData::SImport(st) = &stmt.data else {
+                rest.push(*stmt);
+                continue;
+            };
+            let record = &ast.import_records.as_slice()[st.import_record_index as usize];
+            let call = Expr::init(
+                E::Call {
+                    target: Expr::init(E::Dot { target: hmr, name: b"importSync".into(), name_loc: stmt.loc, ..Default::default() }, stmt.loc),
+                    args: ExprNodeList::from_slice(&[Expr::init(E::String { data: record.path.text.into(), ..Default::default() }, record.range.loc)]),
+                    ..Default::default()
+                },
+                stmt.loc,
+            );
+            let bare = st.star_name_loc.is_empty() && st.items.len() == 0 && st.default_name.is_none();
+            requires.push(if bare {
+                Stmt::alloc(S::SExpr { value: call, ..Default::default() }, stmt.loc)
+            } else {
+                Stmt::alloc(
+                    S::Local {
+                        kind: bun_ast::LocalKind::KVar,
+                        decls: G::DeclList::from_slice(&[G::Decl {
+                            binding: Binding::alloc(arena, b::Identifier { r#ref: st.namespace_ref }, stmt.loc),
+                            value: Some(call),
+                        }]),
+                        ..Default::default()
+                    },
+                    stmt.loc,
+                )
+            });
+        }
+        if rest.len() != part.stmts.slice().len() {
+            part.stmts = bun_ast::StoreSlice::new_mut(arena.alloc_slice_copy(&rest));
+        }
+    }
+    if let Some(first) = ast.parts.iter_mut().next() {
+        requires.extend_from_slice(first.stmts.slice());
+        first.stmts = bun_ast::StoreSlice::new_mut(arena.alloc_slice_copy(&requires));
+    }
 }
 
 /// What `Bun.Transpiler#scan` reports, from the same parse as `transpile`:
@@ -300,6 +368,10 @@ fn parser_options(loader: Loader, flags: u32, rt: Option<&runtime::Runtime>) -> 
     opts.features.trim_unused_imports = flags & TRIM_UNUSED_IMPORTS != 0;
     opts.features.inlining = flags & INLINE != 0;
     opts.tree_shaking = flags & TREE_SHAKING != 0;
+    if flags & SYNC_ESM != 0 {
+        opts.features.hot_module_reloading = true;
+        opts.tree_shaking = false;
+    }
     if let Some(rt) = rt {
         opts.features.replace_exports = ReplaceableExportMap { entries: rt.replace_exports.entries.clone().expect("OOM") };
     }

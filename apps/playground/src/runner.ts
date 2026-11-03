@@ -1,5 +1,5 @@
 import { CookieJar } from "./cookieJar";
-import { serveModule, vfsRoot } from "./moduleServer";
+import { resetSyncEsm, serveModule, vfsRoot } from "./moduleServer";
 import type { VFS } from "@runbun/vfs";
 
 /** Tells preview pages (see previewWebSocket in swPage.ts) that their WebSockets' server is gone. */
@@ -141,6 +141,7 @@ export class Runner {
     // got its worker going meanwhile (Run pressed twice), so none is left running unseen.
     do await this.stop();
     while (this.worker);
+    resetSyncEsm();
     const worker = new Worker(new URL("./worker/runtime.ts", import.meta.url), { type: "module" });
     this.worker = worker;
     this.ready = new Promise<void>((resolve) => {

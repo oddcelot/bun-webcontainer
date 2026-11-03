@@ -4,7 +4,7 @@ import { FLAGS, LOADER_NUMBERS, type RuntimeOptions } from "./options";
 // Bun's own transpiler (bun_js_parser + bun_js_printer) compiled to wasm64; see crates/transpile-wasm.
 // Output matches `bun build --no-bundle --target=browser`.
 
-const { RUNTIME_TRANSPILER, IMPORT_META_REQUIRE, PACKAGE_TYPE_COMMONJS, PACKAGE_TYPE_MODULE } = FLAGS;
+const { RUNTIME_TRANSPILER, IMPORT_META_REQUIRE, PACKAGE_TYPE_COMMONJS, PACKAGE_TYPE_MODULE, SYNC_ESM } = FLAGS;
 
 type Exports = {
   memory: WebAssembly.Memory;
@@ -271,4 +271,12 @@ export function moduleKind(source: string, path: string, tsconfig: TsconfigFlags
   const w = loaded ?? loadSync();
   const type = packageType === "commonjs" ? PACKAGE_TYPE_COMMONJS : packageType === "module" ? PACKAGE_TYPE_MODULE : 0;
   return call(w, "module_kind_c", path, source, loaderOf(path), tsFlags(tsconfig) | type, jsxKey(tsconfig), NO_OPTIONS) as "cjs" | "esm";
+}
+
+/**
+ * An ES module as the body of a function of `hmr` (transpile-wasm's SYNC_ESM): for `require()` of one the worker
+ * hasn't imported, which it runs synchronously (worker/node/module.ts). Throws Bun's error for top-level await.
+ */
+export function transpileSyncEsm(source: string, path: string, tsconfig: TsconfigFlags = {}): string {
+  return call(loadSync(), "transpile_flags_c", path, source, loaderOf(path), tsFlags(tsconfig) | SYNC_ESM, jsxKey(tsconfig), NO_OPTIONS);
 }

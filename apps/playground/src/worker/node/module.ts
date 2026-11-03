@@ -1,13 +1,17 @@
 import { dirname, norm, type VFS } from "@runbun/vfs";
 import bunWrapSource from "../../bunWrap.js?raw";
-import { hasModuleSyntax, isCommonJS, packageType, requireRuntimeImports, stripDirname } from "../../cjs";
+import { hasModuleSyntax, JS_LIKE, moduleKindOf, packageType, requireRuntimeImports, stripDirname } from "../../cjs";
 import { inRanges, isMethod, literalRanges } from "../../literals";
 import { dataFormat, parseDataFile } from "../../resolver";
-import { transpileSync } from "../../transpiler";
+import { transpileSync, transpileSyncEsm } from "../../transpiler";
 import { tsconfigFor } from "../../tsconfig";
 
 /** Bun's resolver over the worker's VFS (see setRequire); unset on the page, which only reads export names. */
 let resolveFile: ((spec: string, dir: string) => string | null) | undefined;
+/** The same with `import` conditions, for the imports of ES modules the worker runs itself. */
+let resolveImport: ((spec: string, dir: string) => string | null) | undefined;
+/** Where the page serves modules (moduleServer.ts `vfsRoot`), to tell it which ES modules the worker ran itself. */
+let vfsRoot: (() => string) | undefined;
 let vfs: VFS | undefined;
 
 /** A CommonJS module instance, as `require.cache` holds them (keyed by its path, leading `/`). */
@@ -32,6 +36,56 @@ const cache: Record<string, CjsModule> = Object.create(null);
  * await, a cycle) isn't here yet.
  */
 const esModules: Record<string, object> = Object.create(null);
+
+/**
+ * Served ES modules that have started but not finished evaluating (each marks itself first, see moduleServer.ts
+ * serveModule): a `require()` of one can't get its namespace yet (a cycle, top-level await).
+ */
+const importing = new Set<string>();
+
+/**
+ * Asks the page, synchronously (the service worker passes the request on), about an ES module the worker runs itself:
+ * `claim` before running it, so that a later `import` of it gets this instance (refused if the page has served the
+ * module already: it is being imported); `done` with its export names after, `fail` if it threw.
+ */
+function tellPage(what: "claim" | "done" | "fail", file: string, names?: string[]): boolean {
+  if (!vfsRoot) return true;
+  const xhr = new XMLHttpRequest();
+  // The names as one path segment: the service worker decodes the path once.
+  const arg = names ? `/${encodeURIComponent(encodeURIComponent(JSON.stringify(names)))}` : "";
+  xhr.open("GET", `${vfsRoot()}__esmsync/${what}${arg}${file}`, false);
+  try {
+    xhr.send();
+  } catch {
+    return true;
+  }
+  return xhr.status === 200;
+}
+
+const requireEsmError = (file: string, why: string) =>
+  Object.assign(new Error(`require() of ES module ${file} ${why}. Use import() instead.`), { code: "ERR_REQUIRE_ESM" });
+
+/** What `import * as ns` of a CommonJS module gives in Bun: its exports by name, and `default` (`module.exports`, or `exports.default` with `__esModule`). */
+const cjsNamespaces = new WeakMap<object, object>();
+function cjsNamespace(exports: unknown): object {
+  const key = (exports !== null && (typeof exports === "object" || typeof exports === "function") ? exports : null) as object | null;
+  const hit = key && cjsNamespaces.get(key);
+  if (hit) return hit;
+  const ns = Object.create(null) as Record<string, unknown>;
+  if (key) for (const k of Object.keys(key)) if (k !== "default" && k !== "__esModule") Object.defineProperty(ns, k, { get: () => (key as Record<string, unknown>)[k], enumerable: true });
+  const esModule = key && (key as { __esModule?: unknown }).__esModule && "default" in key;
+  Object.defineProperty(ns, "default", { value: esModule ? (key as { default: unknown }).default : exports, enumerable: true });
+  if (key) cjsNamespaces.set(key, ns);
+  return ns;
+}
+
+/** A Node built-in or `bun:` module as a namespace: its properties, and `default` the module itself (as builtinModule serves it). */
+const builtinNamespaces = new Map<string, object>();
+function builtinNamespace(id: string, m: object): object {
+  let ns = builtinNamespaces.get(id);
+  if (!ns) builtinNamespaces.set(id, (ns = Object.assign(Object.create(null) as object, m, { default: m })));
+  return ns;
+}
 
 /** The VFS directory a `createRequire` argument names: a `file:` URL or path of a module, or a directory ending in `/`. */
 function requireDir(from: string | URL): string {
@@ -90,32 +144,105 @@ export function createModule(registry: Record<string, object>) {
     const path = resolveFile?.(id, requireDir(from));
     if (!path || !vfs) throw notFound(id, from);
     const file = "/" + path;
-    return cache[file] ? cache[file].exports : (esModules[file] ?? loadFile(path).exports);
+    return cache[file] ? cache[file].exports : (esModules[file] ?? loadFile(path));
   }
 
-  /** Runs the file at VFS `path` as CommonJS (data files parsed, TypeScript and JSX transpiled first). */
-  function loadFile(path: string): CjsModule {
+  /** `import ... from spec` in an ES module the worker runs itself (see loadEsm): the namespace a static import gives. */
+  function importSync(spec: string, from: string): object {
+    spec = String(spec);
+    // The transpiler's helpers for decorators and `using` (see requireRuntimeImports), as required CommonJS gets them.
+    if (spec === "bun:wrap") return (bunWrap ??= evaluateBunWrap());
+    if (isBuiltin(spec)) return builtinNamespace(name(spec), registry[name(spec)]);
+    const path = resolveImport?.(spec, requireDir(from));
+    if (!path || !vfs) throw Object.assign(new Error(`Cannot find module '${spec}' from '${from}'`), { name: "ResolveMessage", code: "ERR_MODULE_NOT_FOUND" });
+    const file = "/" + path;
+    if (esModules[file]) return esModules[file];
+    const format = dataFormat(path);
+    const value = cache[file] ? cache[file].exports : loadFile(path);
+    if (esModules[file] === value) return value as object;
+    // A data file's namespace: the document as `default`, an object's keys by name (as moduleServer.ts dataModule).
+    if (format) return Object.assign(Object.create(null) as object, value !== null && typeof value === "object" && !Array.isArray(value) ? value : { __esModule: true }, { default: value });
+    return cjsNamespace(value);
+  }
+
+  /**
+   * `require()` of an ES module nothing has imported yet: transpiled to the body of a function (transpileSyncEsm, its
+   * imports loaded the same way), run, and registered, so that a later `import` of it gets this namespace too (the page
+   * serves a module that re-exports it, see moduleServer.ts). One with top-level await throws Bun's error.
+   */
+  function loadEsm(path: string, src: string): object {
+    const file = "/" + path;
+    if (importing.has(file)) throw requireEsmError(file, "can't load while the module is still being imported (a cycle or top-level await)");
+    let code: string;
+    try {
+      code = transpileSyncEsm(src, file, tsconfigFor(vfs!, path));
+    } catch (e) {
+      if (e instanceof Error && e.message.startsWith("require() async module")) throw new TypeError(e.message);
+      throw e;
+    }
+    if (!tellPage("claim", file)) throw requireEsmError(file, "can't load while the module is being imported (another module imports it and hasn't run yet)");
+    const ns = Object.create(null) as object;
+    Object.defineProperty(ns, Symbol.toStringTag, { value: "Module" });
+    esModules[file] = ns;
+    const g = globalThis as unknown as { Bun?: { main?: string }; process?: { env?: unknown }; __dynamicImport(from: string, spec: unknown, o?: unknown): Promise<unknown>; __importMetaResolve(from: string, spec: string): string };
+    const dir = dirname(file) || "/";
+    const importMeta = {
+      url: `file://${file}`,
+      dir,
+      dirname: dir,
+      file: file.slice(file.lastIndexOf("/") + 1),
+      filename: file,
+      path: file,
+      env: g.process?.env,
+      main: g.Bun?.main === file,
+      resolve: (s: string) => g.__importMetaResolve(file, s),
+      require: makeRequire(file),
+    };
+    const hmr: { exports?: object } & Record<string, unknown> = {
+      importMeta,
+      require: importMeta.require,
+      importSync: (s: string) => importSync(s, file),
+      dynamicImport: (s: unknown, o?: unknown) => g.__dynamicImport(`file://${file}`, s, o),
+    };
+    try {
+      new Function("hmr", `${code}\n//# sourceURL=${encodeURI(`file://${file}`)}`)(hmr);
+    } catch (e) {
+      delete esModules[file];
+      tellPage("fail", file);
+      throw e;
+    }
+    // The exports as a namespace has them: sorted, live (getters), not extensible.
+    const descs = Object.getOwnPropertyDescriptors(hmr.exports ?? {});
+    for (const k of Object.keys(descs).sort()) {
+      const d = descs[k];
+      Object.defineProperty(ns, k, d.get ? { get: d.get, enumerable: true } : { value: d.value, enumerable: true, writable: true });
+    }
+    Object.preventExtensions(ns);
+    tellPage("done", file, Object.keys(descs));
+    return ns;
+  }
+
+  /**
+   * What `require()` of the file at VFS `path` returns: CommonJS run (data files parsed, TypeScript and JSX transpiled
+   * first), an ES module's namespace (see loadEsm).
+   */
+  function loadFile(path: string): unknown {
     const file = "/" + path;
     const req = makeRequire(file);
     const src = vfs!.readText(path);
     if (src === undefined) throw notFound(path, file);
     const format = dataFormat(path);
-    if (format) return load(file, (m) => void (m.exports = parseDataFile(src, format)), req);
+    if (format) return load(file, (m) => void (m.exports = parseDataFile(src, format)), req).exports;
     if (path.endsWith(".node")) throw Object.assign(new Error(`Cannot load native addon ${file}: .node files are not supported in the playground`), { code: "ERR_DLOPEN_FAILED" });
     // With the nearest tsconfig's JSX and decorator options, as served modules have them; its JSX runtime and
     // `bun:wrap` imports become requires (see requireRuntimeImports).
     const transpile = () => requireRuntimeImports(stripDirname(transpileSync(src, file, tsconfigFor(vfs!, path))));
+    // What Bun runs as an ES module (see moduleKindOf, which throws Bun's error for CommonJS features next to an
+    // import) loads as one (loadEsm); a file of another extension only if it has module syntax or its package's type.
+    const esm = JS_LIKE.test(path) ? moduleKindOf(vfs!, path, src) === "esm" : packageType(vfs!, path) === "module" || hasModuleSyntax(src);
+    if (esm) return loadEsm(path, src);
     let code = /\.[cm]?(ts|tsx|jsx)$/.test(path) ? transpile() : src;
-    // What Bun runs as CommonJS (see moduleKindOf) runs here; an ES module only if it has no module syntax and isn't one
-    // by its extension or package type either (Bun's `require` of it returns its empty namespace, this `{}`).
-    const cjs = isCommonJS(vfs!, path, src);
-    const compile = () => {
-      if (!cjs && (/\.m[jt]s$/.test(path) || packageType(vfs!, path) === "module" || hasModuleSyntax(code)))
-        throw Object.assign(new Error(`require() of ES module ${file} works in the playground only once the module has been imported (it can't load ES modules synchronously). Use import() or a static import first.`), {
-          code: "ERR_REQUIRE_ESM",
-        });
-      return new Function("exports", "require", "module", "__filename", "__dirname", `${dynamicImports(code.replace(/^#!.*/, ""), file)}\n//# sourceURL=${encodeURI(`file://${file}`)}`);
-    };
+    const compile = () => new Function("exports", "require", "module", "__filename", "__dirname", `${dynamicImports(code.replace(/^#!.*/, ""), file)}\n//# sourceURL=${encodeURI(`file://${file}`)}`);
     let body: Function;
     try {
       body = compile();
@@ -126,7 +253,7 @@ export function createModule(registry: Record<string, object>) {
       code = transpile();
       body = compile();
     }
-    return load(file, (m) => body.call(m.exports, m.exports, req, m, file, dirname(file) || "/"), req);
+    return load(file, (m) => body.call(m.exports, m.exports, req, m, file, dirname(file) || "/"), req).exports;
   }
 
   /** `require.resolve`, `require.cache` & co. on a require bound to `from`. */
@@ -192,11 +319,19 @@ function dynamicImports(code: string, file: string): string {
  * The worker calls this once Bun's resolver has loaded: `require` then loads installed packages and project files
  * synchronously from `v`, and wrapped CommonJS shares the module cache (see wrapCommonJS).
  */
-export function setRequire(v: VFS, fn: (spec: string, dir: string) => string | null) {
+export function setRequire(v: VFS, fn: (spec: string, dir: string) => string | null, importFn: (spec: string, dir: string) => string | null, root: () => string) {
   vfs = v;
   resolveFile = fn;
+  resolveImport = importFn;
+  vfsRoot = root;
   const g = globalThis as Record<string, unknown>;
   g.__cjsLoad = hooks.load;
   g.__cjsRequire = hooks.require;
-  g.__esmLoaded = (file: string, ns: object) => void (esModules[file] = ns);
+  g.__esmLoaded = (file: string, ns: object) => {
+    esModules[file] = ns;
+    importing.delete(file);
+  };
+  g.__esmImporting = (file: string) => void importing.add(file);
+  // For the module the page serves in place of one the worker ran itself (moduleServer.ts syncEsmModule).
+  g.__esmNamespace = (file: string) => esModules[file];
 }
