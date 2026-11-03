@@ -142,7 +142,18 @@ export const greet = (name: string) => "Hello, " + name;
 
 The meta also takes `mode`, `features`, `load`, `height`, `autorun`, `readonly`, `persist`, `theme`, `file`, `path`, `layout` (`layout=stack` puts the preview under the editor, e.g. `playground mode=preview layout=stack height=auto`), `expand` (`expand=false` leaves the modal button out) and `label`, the embed's accessible name (`label="Elysia playground"`; `title` is taken by the file name). Fences without `playground` stay as they were.
 
-`deps` pins the packages a fence installs, in a generated `package.json` that doesn't open as a tab: `deps="elysia@rc,@elysia/openapi@rc,zod@^4"` (a name without a version gets `latest`). In a group the first fence's `deps` applies, and a `package.json` fence of the group's own wins over it. A `package.json` you write, as a fence or in `files`, opens like any other file.
+`deps` pins the packages a fence installs, in a generated `package.json` that doesn't open as a tab: `deps="elysia@rc,@elysia/openapi@rc,zod@^4"` (a name without a version gets `latest`). In a group the first fence's `deps` applies, and a `package.json` fence of the group's own wins over it. A `package.json` you write, as a fence or in `files`, opens like any other file, unless you mark its fence `hidden`: in a group, a `hidden` fence is a file of the embed but stays out of the block and the tabs (it's never the file Run starts or the one opened, and a group shows at least its first fence). A hidden `package.json` is still the group's, so `deps` and the generated `main` give way to it:
+
+````md
+```ts playground group=demo title="index.ts"
+import { Elysia } from "elysia";
+new Elysia().get("/", () => "hi").listen(3000);
+```
+
+```json playground group=demo title="package.json" hidden
+{ "dependencies": { "elysia": "rc" } }
+```
+````
 
 ## Playground
 

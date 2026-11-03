@@ -5,7 +5,10 @@
 // `layout=stack` (the preview under the editor), `deps="elysia@rc,zod@^4"` (pinned in a package.json the poster doesn't
 // show; a package.json fence wins), `label="…"` (the embed's accessible name, its `title` attribute; default "Bun
 // playground"); `title="x.ts"` names the file.
-// Consecutive fences with the same `group` share one embed (the first fence's options apply).
+// Consecutive fences with the same `group` share one embed (the first fence's options apply). In a group, `hidden`
+// keeps a fence out of the poster and the tabs (`data-hidden`) while it stays a file of the embed: a package.json the
+// author pins, say. It's never the file Run starts or the one opened; a group must show something, so `hidden` on its
+// first fence is ignored when every fence has it (or the fence is alone).
 // Options default to the runbun() integration's (playgroundUrl, base, sync).
 import type { Code, Root, RootContent } from "mdast";
 import { CONFIG } from "./config.js";
@@ -58,6 +61,8 @@ interface Entry {
   opts: Record<string, string>;
   title: string | null | undefined;
   node: Code;
+  /** `hidden`: a file of the embed, but not of the poster or the tabs. */
+  hidden: boolean;
 }
 
 function parse(node: Code): Entry | null {
@@ -66,7 +71,7 @@ function parse(node: Code): Entry | null {
   const opts: Record<string, string> = {};
   for (const t of toks) if (t.key && OWN_KEYS.has(t.key)) opts[t.key] = t.value ?? "";
   const title = toks.find((t) => t.key === "title")?.value;
-  return { opts, title, node };
+  return { opts, title, node, hidden: toks.some((t) => t.key === "hidden" && t.value === null) };
 }
 
 /** `elysia@rc, @elysia/openapi@rc, zod` → { elysia: "rc", "@elysia/openapi": "rc", zod: "latest" }; malformed entries are skipped. */
@@ -85,18 +90,29 @@ function embed(entries: [Entry, ...Entry[]]): RootContent {
   const { opts } = entries[0];
   const sources: Record<string, string> = {};
   const shown: { name: string; code: string; lang: string }[] = [];
-  for (const { title, node } of entries) {
+  const hidden = new Set<string>();
+  // The first fence shown: a lone block shows its title, or none.
+  let lead: string | null | undefined;
+  // Something has to show: with every fence hidden, the first one isn't.
+  const allHidden = entries.every((e) => e.hidden);
+  for (const [i, { title, node, hidden: hide }] of entries.entries()) {
     const ext = EXT[node.lang ?? ""] ?? node.lang ?? "txt";
     let name = title || `index.${ext}`;
     for (let n = 2; name in sources; n++) name = `index${n}.${ext}`;
     sources[name] = node.value;
-    shown.push({ name, code: node.value, lang: node.lang ?? "plain" });
+    if (hide && !(allHidden && i === 0)) hidden.add(name);
+    else {
+      if (!shown.length) lead = title;
+      shown.push({ name, code: node.value, lang: node.lang ?? "plain" });
+    }
   }
   // Several files show as tabs, before Run and after.
   if (shown.length > 1) opts.features = withTabs(opts.features);
-  // The first fence is the one Run starts, unless the group has an index file of its own.
-  const names = Object.keys(sources);
+  // The first fence shown is the one Run starts, unless the group shows an index file of its own.
+  const names = shown.map((f) => f.name);
   const entry = names.find((n) => /^(src\/)?index\.[jt]sx?$/.test(n)) ?? names[0]!;
+  // A hidden file isn't opened first either.
+  if (opts.file && hidden.has(opts.file)) delete opts.file;
   // A copy: withEntry hands `sources` back as is when it adds nothing, and `deps` may add the package.json below.
   const all = { ...withEntry(sources, entry) };
   // `deps` goes into the package.json withEntry may have made (its `main`), unless a fence is the package.json.
@@ -104,15 +120,16 @@ function embed(entries: [Entry, ...Entry[]]): RootContent {
   if (Object.keys(deps).length) {
     all["package.json"] = JSON.stringify({ ...JSON.parse(all["package.json"] ?? "{}"), dependencies: deps }, null, 2) + "\n";
   }
-  // The package.json made here (`main`, `deps`) runs but stays out of the tabs; one the author wrote is a fence.
-  const files = Object.entries(all).map(([name, text]) => fileScript(name, text, !(name in sources)));
+  // The package.json made here (`main`, `deps`) runs but stays out of the tabs, as do `hidden` fences; another fence
+  // is a tab.
+  const files = Object.entries(all).map(([name, text]) => fileScript(name, text, !(name in sources) || hidden.has(name)));
   // `title` names a fence's file, so the embed's own title (its accessible name) comes from `label`.
   const attrs = ATTRS.filter((k) => k in opts).map((k) => ` ${k}="${esc(opts[k])}"`).join("") + ("label" in opts ? ` title="${esc(opts.label)}"` : "");
   // A docs snippet opens as the whole playground in a modal unless the fence says otherwise (`expand=false`, `expand=on`).
   const expand = opts.expand === "false" ? "" : ` expand="${esc(opts.expand || "full")}"`;
   // The tab checked first is the file the embed opens with: `file`, else the one Run starts.
   const opened = opts.file && opts.file in sources ? opts.file : entry;
-  const poster = shown.length > 1 || entries[0].title ? codeTabs(shown, opened) : codeTabs([{ ...shown[0]!, name: "" }]);
+  const poster = shown.length > 1 || lead ? codeTabs(shown, opened) : codeTabs([{ ...shown[0]!, name: "" }]);
   return html(
     `<bun-playground class="not-content" load="${esc(opts.load || "click")}"${expand}${attrs}>\n${files.join("\n")}\n` +
       `<div slot="poster">${poster}</div>\n</bun-playground>`,
