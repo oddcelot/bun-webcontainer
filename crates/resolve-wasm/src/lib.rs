@@ -6,7 +6,7 @@
 //! process-wide (as in Bun); call `resolve_reset_c` after the VFS changed.
 //!
 //! It also carries `Bun.Glob` (`bun_glob`, which walks the same `bun_sys` host): `glob_match_c` and `glob_scan_c`;
-//! Bun's YAML and TOML parsers (`data_parse_c`); and `Bun.password`'s argon2 and bcrypt (`password_hash_c`, `password_verify_c`).
+//! Bun's YAML, TOML, JSONC and JSON5 parsers (`data_parse_c`); and `Bun.password`'s argon2 and bcrypt (`password_hash_c`, `password_verify_c`).
 
 // The C/C++ stand-ins the parser and printer link against.
 use bun_wasm_stubs as _;

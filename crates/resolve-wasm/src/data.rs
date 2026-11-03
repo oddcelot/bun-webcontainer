@@ -1,4 +1,5 @@
-//! `Bun.YAML.parse`, `Bun.TOML.parse` and `.yaml`/`.toml` imports: Bun's own parsers (`bun_parsers`), with the tree
+//! `Bun.YAML.parse`, `Bun.TOML.parse` and `.yaml`/`.toml`/`.jsonc`/`.json5` imports: Bun's own parsers (`bun_parsers`,
+//! the JSONC and JSON5 ones its runtime loads those files with), with the tree
 //! handed to the host as JSON it rebuilds the values from (`resolver.ts` `parseData`).
 //!
 //! The JSON is `{"root": V, "nodes": [N...]}`. A value `V` is a JSON null/boolean/finite number/string, or an array:
@@ -8,12 +9,16 @@
 //! so YAML aliases stay shared and cyclic ones stay cyclic, as with Bun's `ParserCtx::to_js`.
 
 use bun_ast::{Expr, ExprData};
+use bun_parsers::json::parse_package_json_utf8;
+use bun_parsers::json5::JSON5Parser;
 use bun_parsers::toml::TOML;
 use bun_parsers::yaml::{CyclicAliases, YAML};
 use std::collections::HashMap;
 
 pub const YAML_FORMAT: u32 = 0;
 pub const TOML_FORMAT: u32 = 1;
+pub const JSONC_FORMAT: u32 = 2;
+pub const JSON5_FORMAT: u32 = 3;
 
 struct Writer<'a> {
     arena: &'a bun_alloc::Arena,
@@ -122,9 +127,14 @@ impl Writer<'_> {
     }
 }
 
-/// Parses `text` as YAML (`format` 0) or TOML (1). Err: Bun's error message (`YAML Parse error: …`).
+/// Parses `text` as YAML (`format` 0), TOML (1), JSONC (2) or JSON5 (3). Err: Bun's error message (`YAML Parse error: …`).
 pub fn parse(text: &[u8], format: u32) -> Result<Vec<u8>, Vec<u8>> {
-    let name: &[u8] = if format == TOML_FORMAT { b"TOML" } else { b"YAML" };
+    let (name, path): (&[u8], &[u8]) = match format {
+        TOML_FORMAT => (b"TOML", b"input.toml"),
+        JSONC_FORMAT => (b"JSONC", b"input.jsonc"),
+        JSON5_FORMAT => (b"JSON5", b"input.json5"),
+        _ => (b"YAML", b"input.yaml"),
+    };
     let fail = |what: &[u8]| {
         let mut m = name.to_vec();
         m.extend_from_slice(b" Parse error: ");
@@ -135,12 +145,13 @@ pub fn parse(text: &[u8], format: u32) -> Result<Vec<u8>, Vec<u8>> {
     let mut ast_memory_allocator = bun_ast::ASTMemoryAllocator::borrowing(&arena);
     let _scope = ast_memory_allocator.enter();
     let mut log = bun_ast::Log::init();
-    let path: &[u8] = if format == TOML_FORMAT { b"input.toml" } else { b"input.yaml" };
     let source = bun_ast::Source::init_path_string(path, text);
-    let root = if format == TOML_FORMAT {
-        TOML::parse(&source, &mut log, &arena, false).map_err(|e| format!("{e:?}"))
-    } else {
-        YAML::parse(&source, &mut log, &arena, CyclicAliases::Allow).map_err(|e| format!("{e:?}"))
+    let root = match format {
+        TOML_FORMAT => TOML::parse(&source, &mut log, &arena, false).map_err(|e| format!("{e:?}")),
+        // package.json's dialect is JSONC (comments, trailing commas), parsed to the classic AST the writer walks.
+        JSONC_FORMAT => parse_package_json_utf8(&source, &mut log, &arena).map_err(|e| format!("{e:?}")),
+        JSON5_FORMAT => JSON5Parser::parse(&source, &mut log, &arena).map_err(|e| format!("{e:?}")),
+        _ => YAML::parse(&source, &mut log, &arena, CyclicAliases::Allow).map_err(|e| format!("{e:?}")),
     };
     let root = match root {
         Ok(root) => root,
@@ -149,7 +160,8 @@ pub fn parse(text: &[u8], format: u32) -> Result<Vec<u8>, Vec<u8>> {
                 Some(m) => fail(&m.data.text),
                 None if e.contains("StackOverflow") => b"Maximum call stack size exceeded.".to_vec(),
                 None if format == TOML_FORMAT => fail(b"Unable to parse TOML"),
-                None => fail(b"Unable to parse YAML string"),
+                None if format == YAML_FORMAT => fail(b"Unable to parse YAML string"),
+                None => fail(b"Unable to parse"),
             });
         }
     };
