@@ -112,6 +112,14 @@ export function EditorPane() {
     }),
   );
 
+  // Errors found while packages were still installing (a shared link checks before its install ends) are stale after it.
+  createEffect(
+    () => !!app.session.busy.install,
+    (installing) => {
+      if (!installing && current && editor) check?.(current, editor.getText());
+    },
+  );
+
   onSettled(() => {
     // The open file changed outside the editor (e.g. `Bun.write`); unsaved edits win over that.
     const unsubscribe = vfs.onChange(({ path, created, removed }) => {
