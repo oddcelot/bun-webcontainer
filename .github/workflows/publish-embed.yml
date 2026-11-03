@@ -3,7 +3,7 @@
 # package, publishes it through npm's trusted publishing (no token; set up once with `npm trust github --file
 # publish-embed.yml --repo oddcelot/bun-webcontainer --allow-publish`, which needs the package on npm already) and
 # creates the GitHub Release from the changelog section. A version already on npm is skipped, so a failed run can be
-# rerun. A tag with a `-` (embed-v0.3.0-beta.1) publishes under `next` and makes a prerelease. No provenance: npm only
+# rerun. A version with a `-` (embed-v0.3.0-beta.1) publishes under `next` and makes a prerelease. No provenance: npm only
 # generates it for public repos.
 #
 # Running it by hand (Actions → Publish @runbun/embed → Run workflow) is a dry run: it packs and prints what would go out.
@@ -67,7 +67,7 @@ jobs:
       - name: Publish
         if: ${{ env.RELEASE == 'true' && !steps.version.outputs.published }}
         run: |
-          case "$GITHUB_REF_NAME" in
+          case "${GITHUB_REF_NAME#embed-v}" in
             *-*) npm publish --access public --tag next ;;
             *) npm publish --access public ;;
           esac
@@ -82,6 +82,6 @@ jobs:
             exit 0
           fi
           prerelease=()
-          case "$GITHUB_REF_NAME" in *-*) prerelease=(--prerelease) ;; esac
+          case "${GITHUB_REF_NAME#embed-v}" in *-*) prerelease=(--prerelease) ;; esac
           gh release create "$GITHUB_REF_NAME" --verify-tag \
             --title "@runbun/embed ${GITHUB_REF_NAME#embed-v}" --notes-file "$RUNNER_TEMP/notes.md" "${prerelease[@]}"
