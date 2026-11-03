@@ -2,6 +2,7 @@ import { For, createSignal, type ParentProps } from "solid-js";
 import { Popover } from "@kobalte/core/popover";
 import { ToggleGroup } from "@kobalte/core/toggle-group";
 import { FAMILIES, FamilyListbox } from "./FamilyListbox";
+import { topLayerOf } from "./layer";
 import { Swatch } from "./Swatch";
 import { Tip } from "./Tip";
 
@@ -39,10 +40,8 @@ export function AppearancePicker(props: AppearanceProps) {
   const [kept, setKept] = createSignal("");
   const restore = () => props.family !== kept() && props.preview(kept());
   const [open, setOpen] = createSignal(false);
-  // The popover portals to <body>, unless the picker sits in a top-layer element (a [popover] or <dialog>, like
-  // Starlight's mobile menu), which would cover anything outside it: then into that element.
+  // Into the top layer the picker sits in, if any (layer.ts).
   let root: HTMLSpanElement | undefined;
-  const layer = () => root?.closest<HTMLElement>("[popover], dialog") ?? undefined;
   const onOpenChange = (next: boolean) => {
     setOpen(next);
     if (next) setKept(current().light);
@@ -64,7 +63,7 @@ export function AppearancePicker(props: AppearanceProps) {
           <i class={MODES.find(([m]) => m === props.mode)?.[1]} aria-hidden="true" />
           <i class="chevron i-lucide-chevron-down" aria-hidden="true" />
         </Tip>
-        <Popover.Portal mount={layer()}>
+        <Popover.Portal mount={topLayerOf(root)}>
           <Popover.Content class="appearance">
             {/* One mode is always on: clicking the pressed one again (onChange(null)) changes nothing. */}
             <ToggleGroup class="segmented" aria-label="Color scheme" value={props.mode} onChange={(mode) => mode && props.setMode(mode as Mode)}>
