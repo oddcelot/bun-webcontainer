@@ -6,7 +6,6 @@ import { TS_VERSION, TSRS_VERSION } from "../typecheck/tsrsLs";
 import { BUN_VERSION } from "../worker/bunVersion";
 import { pref } from "../prefs";
 import { AppContext } from "./context";
-import { Shortcuts } from "./Shortcuts";
 import { StatusPill } from "./Status";
 import { Tip } from "./Tip";
 
@@ -46,7 +45,7 @@ export const [statusDisplay, setStatusDisplay] = pref<"bar" | "toast">("runbun:s
 
 /**
  * The bar along the bottom, as in VS Code or Zed: panel toggles and the program's status on the left, the open
- * file's problems, cursor and language, the keyboard shortcuts and the Bun release on the right.
+ * file's problems, cursor and language, the Bun release and the privacy link on the right.
  */
 export function StatusBar(props: { treeShown: boolean; toggleTree(): void; previewShown: boolean; consoleShown: boolean; toggle(i: number): void }) {
   const app = useContext(AppContext);
@@ -132,7 +131,6 @@ export function StatusBar(props: { treeShown: boolean; toggleTree(): void; previ
           </>
         )}
       </Show>
-      <Shortcuts placement="top" />
       <Tip
         as="a"
         href={`${DOCS}compatibility/bun/`}

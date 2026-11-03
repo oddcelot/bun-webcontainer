@@ -5,12 +5,12 @@ import { Tip } from "./Tip";
 
 /**
  * The keyboard shortcuts in effect, each one re-recordable (or reset), and the JSON that changes them: command names
- * to a chord, a list of chords, or null to unbind. Kept in this browser, for every project. Its button is in the header and in the status bar.
+ * to a chord, a list of chords, or null to unbind. Kept in this browser, for every project. Its button is in the header.
  */
-export function Shortcuts(props: { id?: string; placement?: "top" | "bottom" }) {
+export function Shortcuts(props: { id?: string }) {
   return (
     <Dialog>
-      <Tip as={Dialog.Trigger} id={props.id} placement={props.placement} tip="Keyboard shortcuts" aria-label="Keyboard shortcuts">
+      <Tip as={Dialog.Trigger} id={props.id} tip="Keyboard shortcuts" aria-label="Keyboard shortcuts">
         <i class="i-lucide-keyboard" aria-hidden="true" />
       </Tip>
       <Dialog.Portal>
