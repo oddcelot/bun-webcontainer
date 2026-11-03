@@ -17,13 +17,20 @@ const KINDS = ["log", "inspect", "colors", "compact", "util", "console"] as cons
 type Kind = (typeof KINDS)[number];
 type Inspect = (v: unknown, o?: object) => string;
 
+const forKinds = (name: string, reason: string, kinds: readonly Kind[] = ["log", "inspect", "colors", "compact"]) => Object.fromEntries(kinds.map((k) => [`${name} :: ${k}`, reason]));
+
 const KNOWN: Record<string, string> = {
-  "symbol keys :: log": "Bun lists keys in insertion order across strings and symbols; JS only exposes strings first",
-  "symbol keys :: inspect": "Bun lists keys in insertion order across strings and symbols; JS only exposes strings first",
-  "symbol keys :: colors": "Bun lists keys in insertion order across strings and symbols; JS only exposes strings first",
-  "symbol keys :: compact": "Bun lists keys in insertion order across strings and symbols; JS only exposes strings first",
+  // Reflect.ownKeys (OrdinaryOwnPropertyKeys) returns integer keys, then strings, then symbols: the interleaving is lost.
+  ...forKinds("symbol keys", "Bun lists keys in insertion order across strings and symbols; JS only exposes strings first"),
   "map iterator :: util": "the Map behind an iterator isn't reachable from JS",
   "set iterator :: util": "the Set behind an iterator isn't reachable from JS",
+  ...forKinds("headers", "Bun's Headers keep insertion order; a browser's (and fetch's spec) iterate sorted"),
+  ...forKinds("formdata", "a Blob appended to a browser FormData becomes a File modified now; Bun's has lastModified 0"),
+  "file :: util": "Bun's File is its Blob class (util.inspect says Blob {})",
+  ...forKinds("request body", "browsers add content-type: text/plain;charset=UTF-8 to a Request with a string body; Bun doesn't"),
+  ...forKinds("event", "V8 lists Event's attributes in another order, and timeStamp is the time since the worker started"),
+  ...forKinds("error event", "V8's ErrorEvent.error is undefined without one; JSC's is null"),
+  ...forKinds("response clone", "native Bun's Response.prototype.clone can't be wrapped (in-process run only; the playground's can)"),
 };
 
 /**
@@ -91,8 +98,10 @@ async function native(): Promise<Map<string, string>> {
 
 async function ours(): Promise<Map<string, string>> {
   const { formatLog, bunInspect } = await import("../../src/worker/inspect");
-  // What the worker's runtime installs at start.
+  // What the worker's runtime installs at start (Bun's own URL inspect.custom is already there).
+  const { trackBodies } = await import("../../src/worker/bodies");
   const { trackPromises } = await import("../../src/worker/promises");
+  trackBodies(globalThis);
   trackPromises(globalThis);
   const { inspect } = await import("../../src/worker/node/util");
   let text = "";

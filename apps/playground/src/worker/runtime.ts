@@ -9,7 +9,8 @@ import { hash } from "./hash";
 import { CryptoHasher } from "./node/crypto";
 import { Glob } from "./glob";
 import { installConsole, table } from "./console";
-import { bunInspect } from "./inspect";
+import { bunInspect, installWebInspect } from "./inspect";
+import { trackBodies } from "./bodies";
 import { trackPromises } from "./promises";
 import { tomlStringify, yamlStringify } from "./dataStringify";
 import { password } from "./password";
@@ -283,10 +284,13 @@ class ServerResponse extends NativeResponse {
     return Object.defineProperty(c, "headers", { value: new Headers(this.headers) });
   }
 }
+Object.defineProperty(ServerResponse, "name", { value: "Response" });
 self.Response = ServerResponse as typeof Response;
 
-// Promise states for console.log (promises.ts).
+// For console.log: what Responses/Requests were made with, promise states, URL's inspect.custom (as in Bun).
+trackBodies(self);
 trackPromises(self);
+installWebInspect(self);
 
 /** The headers Bun.serve sends for `res`, then the Set-Cookie headers of the request's `req.cookies` changes. */
 function servedHeaders(res: Response, setCookies: string[]): [string, string][] {

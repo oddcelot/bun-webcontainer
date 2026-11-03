@@ -18,6 +18,13 @@ class Bar extends Foo {
   y = "s";
 }
 class Empty {}
+const el = (type: unknown, props: Record<string, unknown>, key: unknown = null) => ({ $$typeof: Symbol.for("react.transitional.element"), type, key, props });
+function Comp() {}
+const form = (...entries: [string, string | Blob, string?][]) => {
+  const f = new FormData();
+  for (const [k, v, name] of entries) typeof v === "string" ? f.append(k, v) : f.append(k, v, name);
+  return f;
+};
 const handled = <T>(p: Promise<T>) => (p.catch(() => {}), p);
 
 class MyErr extends Error {
@@ -124,4 +131,46 @@ export const cases: [name: string, args: () => unknown[]][] = [
   ["error empty message", () => [withStack(new Error(""))]],
   ["error then value", () => [withStack(new Error("first")), "after"]],
   ["error frames", () => [withStack(new Error("frames"), ["a (file.js:1:2)", "new Foo (lib/p.ts:3:4)", "Object.<anonymous> (a.js:1:1)"])]],
+  ["url", () => [new URL("https://user:pw@example.com:8080/p/a?x=1&y=2#h")]],
+  ["url nested", () => [{ u: new URL("http://a.com/") }]],
+  ["url in array", () => [[new URL("http://a.com/?q=1")]]],
+  ["urlsearchparams", () => [new URLSearchParams("a=1&b=2&a=3&a=4")]],
+  ["urlsearchparams empty", () => [new URLSearchParams()]],
+  ["urlsearchparams nested", () => [{ p: new URLSearchParams("a=1") }]],
+  ["headers", () => [new Headers({ "x-a": "1", b: "2" })]],
+  ["headers empty", () => [new Headers()]],
+  ["headers nested", () => [{ h: new Headers({ a: "1" }) }]],
+  ["blob", () => [new Blob(["abc"])]],
+  ["blob typed", () => [new Blob(["abc"], { type: "text/plain" }), new Blob(["{}"], { type: "application/json" }), new Blob([], { type: "image/png" })]],
+  ["blob empty", () => [new Blob([])]],
+  ["blob sizes", () => [new Blob([new Uint8Array(600)]), new Blob([new Uint8Array(2000)]), new Blob([new Uint8Array(2_500_000)])]],
+  ["blob nested", () => [{ b: new Blob(["abc"], { type: "a/b" }), n: 1 }]],
+  ["file", () => [new File(["abc"], "f.txt", { type: "text/plain", lastModified: 0 }), new File([], "e.txt", { lastModified: 5 })]],
+  ["formdata", () => [form(["a", "1"], ["f", new Blob(["x"]), "x.bin"], ["a", "2"])]],
+  ["formdata empty", () => [new FormData()]],
+  ["formdata nested", () => [{ fd: form(["k", "v"]) }]],
+  ["response", () => [new Response("hello", { status: 201, headers: { a: "b" } })]],
+  ["response empty", () => [new Response(null), new Response("")]],
+  ["response json", () => [Response.json({ a: 1 })]],
+  ["response blob", () => [new Response(new Blob(["xy"], { type: "a/b" }))]],
+  ["response bytes", () => [new Response(new Uint8Array(600))]],
+  ["response params", () => [new Response(new URLSearchParams("a=1"))]],
+  ["response redirect", () => [Response.redirect("https://a.com/", 302), Response.error()]],
+  ["response clone", () => [new Response("x", { statusText: "OK!" }).clone()]],
+  ["response nested", () => [{ r: new Response("x") }]],
+  ["request", () => [new Request("https://example.com/")]],
+  ["request body", () => [new Request("https://example.com/x", { method: "POST", headers: { "x-a": "1" }, body: "hi" })]],
+  ["request blob", () => [new Request("https://a.com/", { method: "PUT", body: new Blob(["abc"], { type: "a/b" }) })]],
+  ["event", () => [new Event("foo")]],
+  ["message event", () => [new MessageEvent("message", { data: { x: 1 } }), new Event("message")]],
+  ["error event", () => [new ErrorEvent("error", { message: "m" }), new MessageEvent("error", { data: 1 })]],
+  ["message event nested", () => [{ e: new MessageEvent("message", { data: [1, 2] }) }]],
+  ["domexception", () => [new DOMException("msg", "AbortError")]],
+  ["jsx", () => [el("div", { id: "a", children: "hello" })]],
+  ["jsx empty", () => [el("br", {}), el("input", { type: "text", value: "v", disabled: true })]],
+  ["jsx many props", () => [el("input", { a: 1, b: "2", c: true, d: null, e: [1], f: { g: 1 } })]],
+  ["jsx component", () => [el(Comp, { n: 1 }, "k1"), el(Symbol.for("react.fragment"), { children: "x" })]],
+  ["jsx children", () => [el("ul", { className: "l", children: [el("li", { children: "one" }, 1), "text", el("li", { children: el("b", { children: "two" }) })] })]],
+  ["jsx long text", () => [el("p", { children: "x".repeat(130) })]],
+  ["jsx nested", () => [{ el: el("div", { children: [el("span", {})] }) }]],
 ];

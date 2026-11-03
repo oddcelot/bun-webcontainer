@@ -20,7 +20,7 @@ Reported version: `Bun.version` is `1.4.4-browser`. Labels are explained on the 
 | `Bun.semver` | ✅ Works | `order` and `satisfies`, from Bun's own semver code. |
 | `Bun.sleep`, `Bun.sleepSync` | ✅ Works | `sleepSync` blocks the program's worker (`Atomics.wait`). |
 | `Bun.nanoseconds` | ✅ Works | Browser clock resolution. |
-| `Bun.inspect`, `Bun.deepEquals`, `Bun.escapeHTML` | ✅ Works | `inspect` is Bun's format with its `depth`, `colors`, `sorted` and `compact` options, and `Bun.inspect.table`. A promise shows its state when the playground saw it settle (made with `new Promise`, `Promise.resolve`/`reject`, or once its `.then`/`.catch` was called) and `<pending>` otherwise, e.g. an async function's result. |
+| `Bun.inspect`, `Bun.deepEquals`, `Bun.escapeHTML` | ✅ Works | `inspect` is Bun's format with its `depth`, `colors`, `sorted` and `compact` options, and `Bun.inspect.table`. Request, Response, Blob/File, FormData, URL, URLSearchParams, Headers, MessageEvent/ErrorEvent and React elements print as in Bun (Headers sorted). A promise shows its state when the playground saw it settle (made with `new Promise`, `Promise.resolve`/`reject`, or once its `.then`/`.catch` was called) and `<pending>` otherwise, e.g. an async function's result. Keys print strings first, then symbols. |
 | `Bun.main`, `Bun.argv` | ✅ Works | `Bun.main` is the entry's path; `Bun.argv` is `["bun", main]`, as `process.argv`. |
 | `Bun.stdout`, `Bun.stderr` | 🟡 Partial | Work as `Bun.write` destinations and print to the console. No `writer()`. |
 | `Bun.which` | ⚪ Stub | Returns `null`: there are no executables. |
