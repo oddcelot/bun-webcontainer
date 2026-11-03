@@ -3,10 +3,9 @@
   "version": "0.1.0",
   "description": "Code blocks highlighted with @pierre/highlights that turn into a runnable Bun playground (runbun.dev) on click.",
   "type": "module",
+  "license": "MIT",
   "keywords": ["astro-integration", "astro-component", "bun", "playground", "code", "highlight"],
   "homepage": "https://docs.runbun.dev/guides/astro/",
-  "repository": { "type": "git", "url": "git+https://github.com/oddcelot/bun-webcontainer.git", "directory": "packages/astro" },
-  "bugs": "https://github.com/oddcelot/bun-webcontainer/issues",
   "exports": {
     ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
     "./remark": { "types": "./dist/remark.d.ts", "default": "./dist/remark.js" },
@@ -15,7 +14,7 @@
     "./Playground.astro": "./components/Playground.astro",
     "./virtual": { "types": "./virtual.d.ts" }
   },
-  "files": ["dist", "components", "virtual.d.ts", "README.md"],
+  "files": ["dist", "components", "virtual.d.ts", "README.md", "LICENSE"],
   "scripts": {
     "build": "rm -rf dist && tsrs",
     "typecheck": "tsrs --noEmit",
@@ -24,5 +23,5 @@
   "peerDependencies": { "astro": "^7.0.0" },
   "dependencies": { "@pierre/highlights": "0.3.0" },
   "devDependencies": { "@types/mdast": "^4.0.4", "astro": "^7.4.5", "tsrs": "0.20.1-ts7.1.0-beta" },
-  "publishConfig": { "access": "public", "provenance": true }
+  "publishConfig": { "access": "public" }
 }
