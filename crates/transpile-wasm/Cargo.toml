@@ -13,5 +13,10 @@ bun_alloc = { path = "../../bun/src/bun_alloc" }
 bun_ast = { path = "../../bun/src/ast" }
 bun_js_parser = { path = "../../bun/src/js_parser" }
 bun_js_printer = { path = "../../bun/src/js_printer" }
+# Bun.Transpiler: define values (parse_env_json) and the data loaders
+bun_parsers = { path = "../../bun/src/parsers" }
+bun_core = { path = "../../bun/src/bun_core" }
+bun_paths = { path = "../../bun/src/paths" }
+bun_collections = { path = "../../bun/src/collections" }
 # defines the bun_sys_host_* symbols bun_sys declares, as -ENOSYS stubs (keeps the wasm import-free)
 bun_sys_host = { path = "../sys-host" }

@@ -1,8 +1,9 @@
 //! Bun's JS/TS/JSX transpiler (`bun_js_parser` + `bun_js_printer`) behind a pointer+length C ABI.
 //!
 //! Mirrors the no-bundle path of `bun_bundler::Transpiler` (`bundler/cache.rs` parse,
-//! `print_ast_esm_ascii` print) without the resolver, macros or defines. `scan` reports the imports and exports
-//! of the same parse (`Bun.Transpiler#scan`).
+//! `print_ast_esm_ascii` print) without the resolver or macros. Defines and Bun's data loaders apply to
+//! `Bun.Transpiler` only (`runtime`, `options_c`). `scan` reports the imports and exports of the same parse
+//! (`Bun.Transpiler#scan`).
 
 // The C/C++ stand-ins the parser and printer link against.
 use bun_wasm_stubs as _;
@@ -13,13 +14,39 @@ use bun_alloc::Arena;
 use bun_js_parser::{Define, Parser, ParserOptions, options};
 use bun_js_printer as printer;
 
+pub mod runtime;
+use bun_ast::runtime::ReplaceableExportMap;
+use runtime::Data;
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-#[repr(u32)]
 pub enum Loader {
-    Js = 0,
-    Jsx = 1,
-    Ts = 2,
-    Tsx = 3,
+    Js,
+    Jsx,
+    Ts,
+    Tsx,
+    /// `json`, `toml`, `text`, ...: for `Bun.Transpiler`; never parsed as JS.
+    Data(Data),
+}
+
+impl Loader {
+    /// The `transpile_flags_c` loader number: 0 js, 1 jsx, 2 ts, 3 tsx, 4 json, 5 jsonc, 6 json5, 7 toml, 8 yaml,
+    /// 9 xml, 10 text.
+    pub fn from_u32(n: u32) -> Option<Loader> {
+        Some(match n {
+            0 => Loader::Js,
+            1 => Loader::Jsx,
+            2 => Loader::Ts,
+            3 => Loader::Tsx,
+            4 => Loader::Data(Data::Json),
+            5 => Loader::Data(Data::Jsonc),
+            6 => Loader::Data(Data::Json5),
+            7 => Loader::Data(Data::Toml),
+            8 => Loader::Data(Data::Yaml),
+            9 => Loader::Data(Data::Xml),
+            10 => Loader::Data(Data::Text),
+            _ => return None,
+        })
+    }
 }
 
 /// tsconfig `compilerOptions` that change the output, as bits of `transpile_flags_c`'s `flags`.
@@ -34,6 +61,15 @@ pub const RUNTIME_TRANSPILER: u32 = 8;
 /// gives ES modules for its runtime (`bun build --no-bundle --target=bun`). Bun only does it for ES modules; with this
 /// flag a file it would run as CommonJS gets it too, as the playground runs every transpiled file as an ES module.
 pub const IMPORT_META_REQUIRE: u32 = 16;
+/// `Bun.Transpiler` options (`minifyWhitespace`, `minify`, `trimUnusedImports`, `deadCodeElimination: false`,
+/// `treeShaking`, `inline`), as Bun's runtime transpiler passes them to the parser and printer.
+pub const MINIFY_WHITESPACE: u32 = 32;
+pub const MINIFY_SYNTAX: u32 = 64;
+pub const MINIFY_IDENTIFIERS: u32 = 128;
+pub const TRIM_UNUSED_IMPORTS: u32 = 256;
+pub const NO_DEAD_CODE_ELIMINATION: u32 = 512;
+pub const TREE_SHAKING: u32 = 1024;
+pub const INLINE: u32 = 2048;
 
 /// tsconfig `compilerOptions` for JSX, as strings ("" = not set). Per-file pragmas still win.
 #[derive(Clone, Default, Debug)]
@@ -58,9 +94,11 @@ impl Jsx {
     }
 
     /// The parser's pragma, as Bun's `TSConfigJSON` parse plus `merge_jsx` build it from the defaults.
-    fn pragma(&self) -> options::JSX::Pragma {
+    fn pragma(&self, production: bool) -> options::JSX::Pragma {
         use options::JSX::{Pragma, RUNTIME_MAP};
         let mut out = Pragma::default();
+        // `BundleOptions::set_production`, before the tsconfig is merged.
+        out.development = !production;
         if let Some(f) = Pragma::member_list_to_components_if_different(&out.factory, &self.factory) {
             out.factory = f;
         }
@@ -131,6 +169,9 @@ pub fn transpile_with(path: &[u8], source: &[u8], loader: Loader, flags: u32, re
             import_meta_ref: ast.import_meta_ref,
             hmr_ref: ast.wrapper_ref,
             print_dce_annotations: flags & RUNTIME_TRANSPILER == 0,
+            minify_whitespace: flags & MINIFY_WHITESPACE != 0,
+            minify_syntax: flags & MINIFY_SYNTAX != 0,
+            minify_identifiers: flags & MINIFY_IDENTIFIERS != 0,
             ..Default::default()
         };
         // `uses_require_ref` means `require` is unbound, so the declaration never collides.
@@ -151,7 +192,10 @@ pub fn scan(path: &[u8], source: &[u8], loader: Loader, flags: u32) -> Result<Ve
     with_ast(path, source, loader, flags, |ast, _, _| {
         let mut out = b"{\"imports\":[".to_vec();
         // Bun's `scan` never lists `require()` calls (its scan pass, `scan_imports`, does).
-        import_records_json(&mut out, ast.import_records.iter().filter(|r| r.kind != bun_ast::ImportKind::Require));
+        // With `trimUnusedImports`, nor the imports the parser found unused (`named_imports_to_js`).
+        let trim = flags & TRIM_UNUSED_IMPORTS != 0;
+        let records = ast.import_records.iter().filter(|r| r.kind != bun_ast::ImportKind::Require);
+        import_records_json(&mut out, records.filter(|r| !(trim && r.flags.contains(bun_ast::ImportRecordFlags::IS_UNUSED))));
         out.extend_from_slice(b"],\"exports\":[");
         let mut names: Vec<&[u8]> = ast.named_exports.keys().iter().map(|k| &**k).collect();
         names.sort_unstable();
@@ -169,15 +213,20 @@ pub fn scan(path: &[u8], source: &[u8], loader: Loader, flags: u32) -> Result<Ve
 /// What `Bun.Transpiler#scanImports` reports: the import records of Bun's quick scan pass
 /// (`Parser::scan_imports`, as `bun_bundler::cache::JavaScript::scan`), as `[{"kind":..,"path":..}]`.
 pub fn scan_imports(path: &[u8], source: &[u8], loader: Loader, flags: u32) -> Result<Vec<u8>, Vec<u8>> {
+    if let Loader::Data(_) = loader {
+        return Err(b"Only JavaScript-like files support this fast path".to_vec());
+    }
+    let rt = runtime::Taken::take();
+    let empty = Define::default();
+    let define = rt.get().map_or(&empty, |r| &*r.define);
     let arena = Arena::new();
     let mut ast_alloc = bun_ast::ASTMemoryAllocator::borrowing(&arena);
     let _ast_scope = ast_alloc.enter();
     let src = bun_ast::Source::init_path_string(path, source);
-    let opts = parser_options(loader, flags);
-    let define = Define::default();
     let mut log = bun_ast::Log::init();
     let mut result = bun_js_parser::ScanPassResult::init();
-    let ok = Parser::init(opts, &mut log, &src, &define, &arena).and_then(|mut p| p.scan_imports(&mut result)).is_ok();
+    let opts = parser_options(loader, flags, rt.get());
+    let ok = Parser::init(opts, &mut log, &src, define, &arena).and_then(|mut p| p.scan_imports(&mut result)).is_ok();
     if !ok || log.errors > 0 {
         return Err(if flags & DIAGNOSTICS_JSON != 0 { format_json(&log) } else { format_log(&log) });
     }
@@ -206,14 +255,15 @@ fn import_records_json<'r, 'a: 'r>(out: &mut Vec<u8>, records: impl Iterator<Ite
     }
 }
 
-fn parser_options(loader: Loader, flags: u32) -> ParserOptions<'static> {
+fn parser_options(loader: Loader, flags: u32, rt: Option<&runtime::Runtime>) -> ParserOptions<'static> {
     let loader = match loader {
         Loader::Js => bun_ast::Loader::Js,
         Loader::Jsx => bun_ast::Loader::Jsx,
         Loader::Ts => bun_ast::Loader::Ts,
         Loader::Tsx => bun_ast::Loader::Tsx,
+        Loader::Data(_) => unreachable!("data loaders aren't parsed as JS"),
     };
-    let mut opts = ParserOptions::init(JSX.with(|j| j.borrow().pragma()), loader);
+    let mut opts = ParserOptions::init(JSX.with(|j| j.borrow().pragma(rt.is_some_and(|r| r.production))), loader);
     // As `bun build --no-bundle --target=browser` sets them (`bundler/transpiler.rs`).
     opts.features.auto_import_jsx = flags & RUNTIME_TRANSPILER == 0;
     opts.features.no_macros = true;
@@ -223,6 +273,17 @@ fn parser_options(loader: Loader, flags: u32) -> ParserOptions<'static> {
     let legacy = flags & (EXPERIMENTAL_DECORATORS | EMIT_DECORATOR_METADATA) != 0;
     opts.features.emit_decorator_metadata = flags & EMIT_DECORATOR_METADATA != 0;
     opts.features.standard_decorators = !loader.is_typescript() || !legacy;
+    // `Bun.Transpiler`'s options, as `bundler/transpiler.rs` passes them on.
+    opts.features.minify_syntax = flags & MINIFY_SYNTAX != 0;
+    opts.features.minify_identifiers = flags & MINIFY_IDENTIFIERS != 0;
+    opts.features.minify_whitespace = flags & MINIFY_WHITESPACE != 0;
+    opts.features.dead_code_elimination = flags & NO_DEAD_CODE_ELIMINATION == 0;
+    opts.features.trim_unused_imports = flags & TRIM_UNUSED_IMPORTS != 0;
+    opts.features.inlining = flags & INLINE != 0;
+    opts.tree_shaking = flags & TREE_SHAKING != 0;
+    if let Some(rt) = rt {
+        opts.features.replace_exports = ReplaceableExportMap { entries: rt.replace_exports.entries.clone().expect("OOM") };
+    }
     opts
 }
 
@@ -235,21 +296,35 @@ fn with_ast(
     flags: u32,
     f: impl for<'a> FnOnce(bun_ast::Ast<'a>, &'a Arena, &bun_ast::Source) -> Result<Vec<u8>, Vec<u8>>,
 ) -> Result<Vec<u8>, Vec<u8>> {
+    // Declared before the arena: the parser borrows the define table for as long as the AST lives.
+    let rt = runtime::Taken::take();
+    let empty = Define::default();
+    let define = rt.get().map_or(&empty, |r| &*r.define);
     let arena = Arena::new();
     let mut ast_alloc = bun_ast::ASTMemoryAllocator::borrowing(&arena);
     let _ast_scope = ast_alloc.enter();
 
     let src = bun_ast::Source::init_path_string(path, source);
-    let opts = parser_options(loader, flags);
-    let define = Define::default();
     let mut log = bun_ast::Log::init();
 
-    let parsed = Parser::init(opts, &mut log, &src, &define, &arena).and_then(|p| p.parse());
+    let fail = |log: &bun_ast::Log| if flags & DIAGNOSTICS_JSON != 0 { format_json(log) } else { format_log(log) };
+    if let Loader::Data(data) = loader {
+        // As `Transpiler::parse`: an empty (or blank and short) file is an empty module, unless it's text.
+        let blank = source.is_empty() || (source.len() < 33 && source.iter().all(|c| b"\n\r ".contains(c)));
+        if blank && data != Data::Text {
+            return f(bun_ast::Ast::empty_in(&arena), &arena, &src);
+        }
+        return match runtime::data_ast(data, &src, &mut log, &arena) {
+            // `Bun.Transpiler` fails on warnings too (a duplicate JSON key).
+            Some(ast) if log.errors == 0 && (flags & RUNTIME_TRANSPILER == 0 || log.warnings == 0) => f(ast, &arena, &src),
+            _ => Err(fail(&log)),
+        };
+    }
+    let opts = parser_options(loader, flags, rt.get());
+    let parsed = Parser::init(opts, &mut log, &src, define, &arena).and_then(|p| p.parse());
     let ast = match parsed {
         Ok(bun_js_parser::Result::Ast(ast)) if log.errors == 0 => ast,
-        Ok(_) | Err(_) => {
-            return Err(if flags & DIAGNOSTICS_JSON != 0 { format_json(&log) } else { format_log(&log) });
-        }
+        Ok(_) | Err(_) => return Err(fail(&log)),
     };
     f(*ast, &arena, &src)
 }
@@ -403,12 +478,8 @@ unsafe fn run_with(
     f: impl FnOnce(&[u8], &[u8], Loader) -> Result<Vec<u8>, Vec<u8>>,
 ) -> *mut Output {
     let slice = |p: *const u8, n: usize| if n == 0 { &[][..] } else { unsafe { core::slice::from_raw_parts(p, n) } };
-    let loader = match loader {
-        0 => Loader::Js,
-        1 => Loader::Jsx,
-        2 => Loader::Ts,
-        3 => Loader::Tsx,
-        _ => return Box::into_raw(Box::new(Output { status: 2, ptr: core::ptr::null_mut(), len: 0 })),
+    let Some(loader) = Loader::from_u32(loader) else {
+        return Box::into_raw(Box::new(Output { status: 2, ptr: core::ptr::null_mut(), len: 0 }));
     };
     let (status, bytes) = match f(slice(path, path_len), slice(src, src_len), loader) {
         Ok(b) => (0, b),
@@ -504,6 +575,24 @@ pub unsafe extern "C" fn transpile_resolve_c(
 pub unsafe extern "C" fn jsx_c(ptr: *const u8, len: usize) {
     let bytes = if len == 0 { &[][..] } else { unsafe { core::slice::from_raw_parts(ptr, len) } };
     JSX.with(|j| *j.borrow_mut() = Jsx::parse(bytes));
+}
+
+/// Sets `Bun.Transpiler`'s define table and export replacements (`runtime::fields`' format) for every later call; an
+/// empty input resets them. Returns an `Output`: status 0, or 1 with the define values' parse errors (JSON, as
+/// `DIAGNOSTICS_JSON`), which leaves the previous options in place.
+///
+/// # Safety
+/// The input range must be readable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn options_c(ptr: *const u8, len: usize) -> *mut Output {
+    let bytes = if len == 0 { &[][..] } else { unsafe { core::slice::from_raw_parts(ptr, len) } };
+    let (status, mut bytes) = match runtime::set(bytes) {
+        Ok(()) => (0, Box::<[u8]>::default()),
+        Err(log) => (1, format_json(&log).into_boxed_slice()),
+    };
+    let (ptr, len) = (bytes.as_mut_ptr(), bytes.len());
+    core::mem::forget(bytes);
+    Box::into_raw(Box::new(Output { status, ptr, len }))
 }
 
 /// # Safety
