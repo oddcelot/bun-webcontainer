@@ -45,8 +45,9 @@ dialog::backdrop{background:rgb(0 0 0/.55)}
 iframe{position:absolute;inset:0;display:block;width:100%;height:100%;border:0}
 iframe.wait{visibility:hidden}
 .overlay{position:absolute;inset:0;z-index:2;pointer-events:none}
-.poster{position:absolute;inset:0;overflow:auto;color-scheme:light dark;background:var(--poster-bg,Canvas);color:var(--poster-fg,CanvasText)}
+.poster{position:absolute;inset:0;z-index:1;overflow:auto;color-scheme:light dark;background:var(--poster-bg,Canvas);color:var(--poster-fg,CanvasText)}
 .poster[hidden]{display:none}
+:host(:state(live)) .poster{pointer-events:none}
 .def{display:block;position:relative;min-height:100%;box-sizing:border-box}
 pre{margin:0;padding:12px 16px;font:13px/1.5 var(--font-mono,ui-monospace,Menlo,Consolas,monospace);white-space:pre-wrap}
 .play{position:absolute;right:12px;bottom:12px;z-index:1;font:var(--play-font,inherit);padding:6px 14px;border:1px solid var(--play-border,GrayText);border-radius:var(--play-radius,6px);background:var(--play-bg,ButtonFace);color:var(--play-fg,ButtonText);cursor:pointer}
@@ -102,6 +103,8 @@ export class BunPlayground extends HTMLElement {
   #poster = document.createElement("div");
   /** Empty, click-through, above the poster and the frame: a page draws over the embed with `::part(overlay)`. */
   #overlay = document.createElement("div");
+  /** Its `live` state (`:state(live)`): the embed is ready and the poster on its way out. */
+  #internals = this.attachInternals();
   #frame: HTMLIFrameElement | null = null;
   #origin = "";
   #act: Promise<void> | null = null;
@@ -120,7 +123,9 @@ export class BunPlayground extends HTMLElement {
     super();
     this.#newReady();
     this.#box.className = "box";
+    this.#box.part.add("box");
     this.#poster.className = "poster";
+    this.#poster.part.add("poster");
     this.#poster.innerHTML = `<slot name="poster"></slot>`;
     this.#overlay.className = "overlay";
     this.#overlay.part.add("overlay");
@@ -387,7 +392,7 @@ export class BunPlayground extends HTMLElement {
       const px = auto ?? (this.#frame && this.#isReady ? this.#box.offsetHeight : this.#posterHeight() || 200);
       // A poster is as tall as its content, so a one-line block keeps its Run button on it; the live embed gets at
       // least room for its bar and a line of output.
-      const min = this.#poster.hidden ? 120 : 0;
+      const min = this.#isReady ? 120 : 0;
       css = Math.min(640, Math.max(min, px)) + "px";
     }
     this.#box.style.height = css;
@@ -400,6 +405,7 @@ export class BunPlayground extends HTMLElement {
     for (const p of this.#pending.values()) p.reject(new Error("embed reloaded"));
     this.#pending.clear();
     this.#newReady();
+    this.#setLive(false);
     this.#poster.hidden = false;
     void this.activate();
   }
@@ -427,6 +433,7 @@ export class BunPlayground extends HTMLElement {
     this.#sizeBox(this.#poster.hidden ? undefined : this.#posterHeight());
     const f = document.createElement("iframe");
     f.className = "wait";
+    f.part.add("frame");
     f.allow = "cross-origin-isolated; clipboard-write";
     f.title = this.getAttribute("title") || "Bun playground";
     f.src = url.href;
@@ -444,6 +451,24 @@ export class BunPlayground extends HTMLElement {
     this.#frame = f;
     this.#box.append(f);
     return this.#ready;
+  }
+
+  /** `:state(live)` on or off. Older browsers know only `--live` (or no states): there, no state, as before. */
+  #setLive(on: boolean) {
+    try {
+      on ? this.#internals.states.add("live") : this.#internals.states.delete("live");
+    } catch {}
+  }
+
+  /**
+   * Hides the poster once the transitions `:state(live)` starts on it (a page's `::part(poster)` styles) have finished;
+   * without any, two frames after `ready`, as good as at once. Unless the frame was rebuilt in the meantime.
+   */
+  async #hidePoster(frame: HTMLIFrameElement) {
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const finite = this.#poster.getAnimations().filter((a) => a.effect?.getComputedTiming().endTime !== Infinity);
+    await Promise.allSettled(finite.map((a) => a.finished));
+    if (this.#isReady && this.#frame === frame) this.#poster.hidden = true;
   }
 
   #send(msg: object) {
@@ -483,7 +508,8 @@ export class BunPlayground extends HTMLElement {
     } else if (event === "ready" || event === "unsupported") {
       this.#isReady = true;
       this.#frame.classList.remove("wait");
-      this.#poster.hidden = true;
+      this.#setLive(true);
+      void this.#hidePoster(this.#frame);
       this.#poster.removeAttribute("data-starting");
       clearTimeout(this.#startTimer);
       this.#done();
