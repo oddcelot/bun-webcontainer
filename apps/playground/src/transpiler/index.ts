@@ -48,7 +48,13 @@ const JSX_OPTIONS = ["jsx", "jsxImportSource", "jsxFactory", "jsxFragmentFactory
 /** The JSX options as transpile-wasm's `jsx_c` takes them (NUL-separated, non-strings unset); also a cache key. */
 export const jsxKey = (t: TsconfigFlags): string => JSX_OPTIONS.map((k) => (typeof t[k] === "string" ? t[k] : "")).join("\0");
 
-const LOADERS: Record<string, number> = { js: 0, mjs: 0, jsx: 1, ts: 2, mts: 2, cts: 2, tsx: 3 };
+/** transpile-wasm's loader numbers, by loader name (`Bun.Transpiler`'s `loader`). */
+const LOADERS: Record<string, number> = { js: 0, jsx: 1, ts: 2, tsx: 3 };
+/** The loader for a file extension, as Bun's defaults have them: `.js` is parsed as JSX, `.mjs` and `.cjs` are not. */
+const EXTENSIONS: Record<string, number> = { js: 1, mjs: 0, cjs: 0, jsx: 1, ts: 2, mts: 2, cts: 2, tsx: 3 };
+const loaderOf = (path: string) => EXTENSIONS[path.slice(path.lastIndexOf(".") + 1)] ?? 0;
+/** transpile-wasm's `flags` for the tsconfig options. */
+const tsFlags = (t: TsconfigFlags) => (t.experimentalDecorators ? 1 : 0) | (t.emitDecoratorMetadata ? 2 : 0);
 
 /** Import kinds the resolver is asked about (bun_ast::ImportKind): `import`/`export ... from`, and `import("literal")`. */
 export type ImportKind = "stmt" | "dynamic";
@@ -129,8 +135,8 @@ const dec = new TextDecoder();
  */
 export async function transpile(source: string, path: string, tsconfig: TsconfigFlags = {}, resolve?: Resolver): Promise<string> {
   const w = await (ready ??= load());
-  const flags = (tsconfig.experimentalDecorators ? 1 : 0) | (tsconfig.emitDecoratorMetadata ? 2 : 0);
-  const loader = LOADERS[path.slice(path.lastIndexOf(".") + 1)] ?? 0;
+  const flags = tsFlags(tsconfig);
+  const loader = loaderOf(path);
   current = resolve;
   resolveError = undefined;
   try {
@@ -192,7 +198,15 @@ const ENTRY: Record<RuntimeOp, Entry> = { transform: "transpile_flags_c", scan: 
 
 /** For `Bun.Transpiler` in the worker: synchronous, loading the module on first use. `loader` is js, jsx, ts or tsx. */
 export function runtimeTranspile(op: RuntimeOp, source: string, loader: "js" | "jsx" | "ts" | "tsx", tsconfig: TsconfigFlags = {}): string {
-  const flags = (tsconfig.experimentalDecorators ? 1 : 0) | (tsconfig.emitDecoratorMetadata ? 2 : 0) | RUNTIME_TRANSPILER;
+  const flags = tsFlags(tsconfig) | RUNTIME_TRANSPILER;
   // Bun names the source after the loader (`Loader::stdin_name`), which its messages show.
   return call(loadSync(), ENTRY[op], `input.${loader}`, source, LOADERS[loader], flags, jsxKey(tsconfig));
+}
+
+/**
+ * `transpile` without a resolver, synchronous (in the worker, loading the module on first use): for CommonJS the
+ * worker loads at run time, which Bun's runtime transpiles as `bun build --no-bundle` does (the JSX runtime imported).
+ */
+export function transpileSync(source: string, path: string, tsconfig: TsconfigFlags = {}): string {
+  return call(loadSync(), "transpile_flags_c", path, source, loaderOf(path), tsFlags(tsconfig), jsxKey(tsconfig));
 }

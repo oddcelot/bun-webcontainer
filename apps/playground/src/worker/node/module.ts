@@ -1,7 +1,8 @@
 import { dirname, norm, type VFS } from "@runbun/vfs";
 import { hasModuleSyntax, packageType } from "../../cjs";
 import { inRanges, isMethod, literalRanges } from "../../literals";
-import { runtimeTranspile } from "../../transpiler";
+import { transpileSync } from "../../transpiler";
+import { tsconfigFor } from "../../tsconfig";
 
 /** Bun's resolver over the worker's VFS (see setRequire); unset on the page, which only reads export names. */
 let resolveFile: ((spec: string, dir: string) => string | null) | undefined;
@@ -85,16 +86,27 @@ export function createModule(registry: Record<string, object>) {
     const data = /\.(toml|ya?ml)$/.exec(path);
     if (data) return load(file, (m) => void (m.exports = (globalThis as unknown as { Bun: Record<string, { parse(s: string): unknown }> }).Bun[data[1] === "toml" ? "TOML" : "YAML"].parse(src)), req);
     if (path.endsWith(".node")) throw Object.assign(new Error(`Cannot load native addon ${file}: .node files are not supported in the playground`), { code: "ERR_DLOPEN_FAILED" });
-    const ext = /\.([cm]?)(ts|tsx|jsx)$/.exec(path);
-    // The runtime transpiler declares `var __dirname = "";` (and __filename) for code it runs as a nameless input:
-    // drop them, so the wrapper's values show through.
-    const code = ext ? runtimeTranspile("transform", src, ext[2] === "ts" ? "ts" : (ext[2] as "tsx" | "jsx")).replace(/^(?:var (?:__dirname|__filename) = "[^"\n]*";\n)+/, "") : src;
-    const esm = /\.m[jt]s$/.test(path) || (!/\.c[jt]s$/.test(path) && (packageType(vfs!, path) === "module" || hasModuleSyntax(code)));
-    if (esm)
-      throw Object.assign(new Error(`require() of ES module ${file} is not supported in the playground (it can't load ES modules synchronously). Use import() or a static import instead.`), {
-        code: "ERR_REQUIRE_ESM",
-      });
-    const body = new Function("exports", "require", "module", "__filename", "__dirname", `${dynamicImports(code.replace(/^#!.*/, ""), file)}\n//# sourceURL=${encodeURI(`file://${file}`)}`);
+    // With the nearest tsconfig's JSX and decorator options, as served modules have them. The transpiler declares
+    // `var __dirname = "…"` (and __filename) for code that uses them: dropped, so the wrapper's values show through.
+    const transpile = () => transpileSync(src, file, tsconfigFor(vfs!, path)).replace(/^var (?:__dirname|__filename) = "[^"\n]*"(?:, __filename = "[^"\n]*")?;\n/, "");
+    let code = /\.[cm]?(ts|tsx|jsx)$/.test(path) ? transpile() : src;
+    const compile = () => {
+      if (/\.m[jt]s$/.test(path) || (!/\.c[jt]s$/.test(path) && (packageType(vfs!, path) === "module" || hasModuleSyntax(code))))
+        throw Object.assign(new Error(`require() of ES module ${file} is not supported in the playground (it can't load ES modules synchronously). Use import() or a static import instead.`), {
+          code: "ERR_REQUIRE_ESM",
+        });
+      return new Function("exports", "require", "module", "__filename", "__dirname", `${dynamicImports(code.replace(/^#!.*/, ""), file)}\n//# sourceURL=${encodeURI(`file://${file}`)}`);
+    };
+    let body: Function;
+    try {
+      body = compile();
+    } catch (e) {
+      // Plain .js is run as written (the transpiler loads only when a program needs it), unless it doesn't parse: Bun
+      // parses .js as JSX.
+      if (!(e instanceof SyntaxError) || !path.endsWith(".js") || code !== src) throw e;
+      code = transpile();
+      body = compile();
+    }
     return load(file, (m) => body.call(m.exports, m.exports, req, m, file, dirname(file) || "/"), req);
   }
 

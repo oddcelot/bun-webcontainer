@@ -9,7 +9,7 @@ sidebar:
 
 Bun's own parser and printer, compiled to WebAssembly. Output matches `bun build --no-bundle --target=browser`.
 
-- ✅ `.ts`, `.tsx`, `.jsx`, `.mts`, `.cts`, `.js`, `.mjs`
+- ✅ `.ts`, `.tsx`, `.jsx`, `.mts`, `.cts`, `.js`, `.mjs`; JSX in `.js` files too, as Bun parses them (not in `.mjs` or `.cjs`)
 - ✅ JSX with Bun's defaults (React automatic runtime, development `jsxDEV`)
 - ✅ `/** @jsxImportSource preact */` pragma comments
 - ✅ Legacy decorators with `experimentalDecorators` and `emitDecoratorMetadata` in `tsconfig.json`
@@ -116,7 +116,7 @@ console.log(greet(config.name));
 - ✅ `.cjs` files, and `.js` files without ESM syntax in packages that aren't `"type": "module"`
 - ✅ `require("x")` with a string literal. Modules run on first `require`, as in Node; cycles see partial exports.
 - ✅ Named imports from CommonJS, found by a static scan (`exports.x =`, `module.exports = { … }`, re-exports). Exports computed at runtime aren't visible as named imports.
-- ✅ `require(variable)`, and `createRequire(import.meta.url)` and `import.meta.require` with any specifier: project files and installed packages load synchronously when required (TypeScript and JSX transpiled, JSON, TOML and YAML parsed). They share one module instance with literal requires and imports, so a file loaded both ways runs once. A `require` that can't be resolved throws `MODULE_NOT_FOUND` when it runs, as in Bun.
+- ✅ `require(variable)`, and `createRequire(import.meta.url)` and `import.meta.require` with any specifier: project files and installed packages load synchronously when required (TypeScript and JSX transpiled with the nearest `tsconfig.json`'s JSX and decorator options, as imported files are; JSON, TOML and YAML parsed). They share one module instance with literal requires and imports, so a file loaded both ways runs once. A `require` that can't be resolved throws `MODULE_NOT_FOUND` when it runs, as in Bun.
 - ✅ `require.resolve`, `require.cache` (deleting an entry loads the file again), `require.main`
 - 🟡 `require()` of an ES module works for string literals; with a computed specifier it throws `ERR_REQUIRE_ESM` (the browser can't load ES modules synchronously). Use `import()` instead.
 - ❌ Native `.node` addons, and a bare `require` in an ES module (Bun defines one there; use `createRequire` or `import.meta.require`)

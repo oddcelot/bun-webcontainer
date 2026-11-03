@@ -1,8 +1,9 @@
 import { BASE } from "./base";
 import { commonJSFacade, exportNames as commonJSExportNames, isCommonJS, packageType, reexports, wrapCommonJS } from "./cjs";
 import bunWrap from "./bunWrap.js?raw";
-import type { Resolver, TsconfigFlags } from "./transpiler";
+import type { Resolver } from "./transpiler";
 import { transpileCached } from "./transpileCache";
+import { tsconfigFor } from "./tsconfig";
 import { inRanges, isMethod, literalRanges } from "./literals";
 import { loadResolver, parseData, resolve, type ResolveKind } from "./resolver";
 import { dirname, norm, type VFS } from "@runbun/vfs";
@@ -22,42 +23,6 @@ function resolveWith(vfs: VFS, spec: string, dir: string, kind: ResolveKind = "i
   const browser = wasi && (JSON.parse(vfs.readText(`${wasi}/package.json`)!) as { browser?: unknown }).browser;
   if (typeof browser === "string") return resolve(`./${browser.replace(/^\.\//, "")}`, wasi!, kind, TARGET);
   return resolve(spec, dir, kind, TARGET);
-}
-
-/** The nearest tsconfig.json (or, in the same folder, jsconfig.json) above `path`, as Bun and TypeScript look for it. */
-export function nearestTsconfig(vfs: VFS, path: string): string | undefined {
-  for (let dir = dirname(path); ; dir = dirname(dir)) {
-    for (const name of ["tsconfig.json", "jsconfig.json"]) {
-      const file = dir ? `${dir}/${name}` : name;
-      if (vfs.readText(file) !== undefined) return file;
-    }
-    if (!dir) return undefined;
-  }
-}
-
-/** `compilerOptions` of the nearest tsconfig.json (or jsconfig.json) above `path` (comments and trailing commas allowed), with `extends`. */
-export function tsconfigFor(vfs: VFS, path: string): TsconfigFlags {
-  const file = nearestTsconfig(vfs, path);
-  return file ? compilerOptions(vfs, file, new Set()) : {};
-}
-
-/**
- * `file`'s `compilerOptions` over those of the config it `extends`. As Bun's resolver: `extends` is a path relative to
- * the file, taken as written (no `.json` added, no packages); a config that is missing or not JSON ends the chain.
- */
-function compilerOptions(vfs: VFS, file: string, seen: Set<string>): TsconfigFlags {
-  const text = vfs.readText(file);
-  if (text === undefined || seen.has(file)) return {};
-  seen.add(file);
-  let config: { extends?: unknown; compilerOptions?: TsconfigFlags };
-  try {
-    config = JSON.parse(text.replace(/("(?:\\.|[^"\\])*")|\/\/[^\n]*|\/\*[\s\S]*?\*\//g, "$1").replace(/,(\s*[}\]])/g, "$1"));
-  } catch {
-    return {};
-  }
-  if (typeof config !== "object" || config === null) return {};
-  const base = typeof config.extends === "string" && !config.extends.startsWith("/") ? compilerOptions(vfs, norm(`${dirname(file)}/${config.extends}`), seen) : {};
-  return { ...base, ...config.compilerOptions };
 }
 
 /** Nearest `node_modules/<name>` walking up from `fromDir`, like Node's lookup. */
@@ -302,7 +267,7 @@ async function serveCommonJS(vfs: VFS, path: string, onError: (msg: string) => v
   });
   // The body is plain source: its `import("x")` calls still need their specifiers resolved.
   try {
-    return { status: 200, body: await transpileCached(rewriteMeta(code, path, target === "bun"), `${path}.js`, {}, resolver(vfs, dir)) };
+    return { status: 200, body: await transpileCached(rewriteMeta(code, path, target === "bun"), `${path}.js`, tsconfigFor(vfs, path), resolver(vfs, dir)) };
   } catch (e) {
     const msg = `${path}: ${e instanceof Error ? e.message : String(e)}`;
     onError(msg);

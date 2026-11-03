@@ -1,5 +1,5 @@
 import type { CodeEditor, EditorDiagnostic } from "./editors/types";
-import { tsconfigFor } from "./moduleServer";
+import { tsconfigFor } from "./tsconfig";
 import { transpile, TranspileError } from "./transpiler";
 import { typecheck, TYPED } from "./typecheck";
 import type { VFS } from "@runbun/vfs";
