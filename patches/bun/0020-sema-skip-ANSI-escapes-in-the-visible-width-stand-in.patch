@@ -1,0 +1,94 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Stefan Kopco <hey@oddcelot.dev>
+Date: Tue, 3 Nov 2026 12:41:57 +0100
+Subject: [PATCH] sema: skip ANSI escapes in the visible-width stand-ins on
+ wasm
+
+Bun.markdown.ansi measures styled text (heading underlines, wrapping) with
+Bun__visibleWidthExcludeANSI_utf8; the stand-in counted the escapes.
+---
+ src/sema/standalone/native.rs | 56 +++++++++++++++++++++++++++++++++--
+ 1 file changed, 54 insertions(+), 2 deletions(-)
+
+diff --git a/src/sema/standalone/native.rs b/src/sema/standalone/native.rs
+index 6ae5399c..b1f8f173 100644
+--- a/src/sema/standalone/native.rs
++++ b/src/sema/standalone/native.rs
+@@ -900,11 +900,55 @@ fn width_of(c: char) -> usize {
+     }
+ }
+ 
++/// The length of the ANSI escape sequence `bytes` starts with (CSI, OSC and the other ST-terminated strings, two-byte
++/// escapes), 0 if it doesn't start with one.
++// wasm-experiment: escapes are zero-width, as Bun's `stringWidth.cpp` has them (`Bun.markdown.ansi` measures
++// styled text in the playground).
++#[cfg(target_family = "wasm")]
++fn escape_len(bytes: &[u8]) -> usize {
++    if bytes.first() != Some(&0x1b) || bytes.len() < 2 {
++        return 0;
++    }
++    match bytes[1] {
++        b'[' => bytes[2..].iter().position(|c| (0x40..=0x7e).contains(c)).map_or(bytes.len(), |n| n + 3),
++        b']' | b'P' | b'X' | b'^' | b'_' => {
++            let mut i = 2;
++            while i < bytes.len() {
++                if bytes[i] == 0x07 && bytes[1] == b']' {
++                    return i + 1;
++                }
++                if bytes[i] == 0x1b && bytes.get(i + 1) == Some(&b'\\') {
++                    return i + 2;
++                }
++                i += 1;
++            }
++            bytes.len()
++        }
++        _ => 2,
++    }
++}
++#[cfg(not(target_family = "wasm"))]
++fn escape_len(_bytes: &[u8]) -> usize {
++    0
++}
++
+ #[unsafe(no_mangle)]
+ unsafe extern "C" fn Bun__visibleWidthExcludeANSI_utf8(p: *const u8, len: usize) -> usize {
+     // SAFETY: the caller passes a slice.
+     let bytes = unsafe { core::slice::from_raw_parts(p, len) };
+-    bstr::ByteSlice::chars(bytes).map(width_of).sum()
++    let mut width = 0;
++    let mut at = 0;
++    while at < bytes.len() {
++        let escape = escape_len(&bytes[at..]);
++        if escape > 0 {
++            at += escape;
++            continue;
++        }
++        let (c, size) = bstr::decode_utf8(&bytes[at..]);
++        width += width_of(c.unwrap_or('\u{FFFD}'));
++        at += size.max(1);
++    }
++    width
+ }
+ 
+ #[unsafe(no_mangle)]
+@@ -919,11 +963,19 @@ unsafe extern "C" fn Bun__visibleWidthExcludeANSI_utf8IndexAtWidth(
+         return len.min(max_width);
+     };
+     let mut width = 0;
+-    for (at, c) in text.char_indices() {
++    let mut at = 0;
++    while at < text.len() {
++        let escape = escape_len(&bytes[at..]);
++        if escape > 0 {
++            at += escape;
++            continue;
++        }
++        let c = text[at..].chars().next().expect("not at the end");
+         width += width_of(c);
+         if width > max_width {
+             return at;
+         }
++        at += c.len_utf8();
+     }
+     len
+ }
