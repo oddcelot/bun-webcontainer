@@ -1,5 +1,5 @@
 import { BASE } from "./base";
-import { commonJSFacade, exportNames as commonJSExportNames, isCommonJS, reexports, wrapCommonJS } from "./cjs";
+import { commonJSFacade, exportNames as commonJSExportNames, isCommonJS, packageType, reexports, wrapCommonJS } from "./cjs";
 import bunWrap from "./bunWrap.js?raw";
 import type { Resolver, TsconfigFlags } from "./transpiler";
 import { transpileCached } from "./transpileCache";
@@ -22,21 +22,6 @@ function resolveWith(vfs: VFS, spec: string, dir: string, kind: ResolveKind = "i
   const browser = wasi && (JSON.parse(vfs.readText(`${wasi}/package.json`)!) as { browser?: unknown }).browser;
   if (typeof browser === "string") return resolve(`./${browser.replace(/^\.\//, "")}`, wasi!, kind, TARGET);
   return resolve(spec, dir, kind, TARGET);
-}
-
-/** `"type"` of the nearest package.json above `path`. */
-function packageType(vfs: VFS, path: string): string | undefined {
-  for (let dir = dirname(path); ; dir = dirname(dir)) {
-    const text = vfs.readText(dir ? `${dir}/package.json` : "package.json");
-    if (text !== undefined) {
-      try {
-        return (JSON.parse(text) as { type?: string }).type;
-      } catch {
-        return undefined;
-      }
-    }
-    if (!dir) return undefined;
-  }
 }
 
 /** `compilerOptions` of the nearest tsconfig.json above `path` (comments and trailing commas allowed; no `extends`). */
@@ -105,7 +90,7 @@ ${code.replace(CREATE_REQUIRE, "__withHoisted($&)")}`;
  * Bun has a synchronous `import.meta.require` (Vite uses it for `ws`). Literal specifiers that resolve become static
  * imports; Node built-ins and `bun:<spec>` fallbacks come from the registry; anything else throws when called.
  */
-function hoistMetaRequire(vfs: VFS, code: string, dir: string, url: (spec: string) => string): string {
+function hoistMetaRequire(vfs: VFS, code: string, path: string, dir: string, url: (spec: string) => string): string {
   if (!code.includes("import.meta.require")) return code;
   const lits = [...new Set([...code.matchAll(/\bimport\.meta\.require\(\s*"([^"\n]+)"\s*\)/g)].map((m) => m[1]))];
   const specs = lits.filter((s) => !(s.replace(/^node:/, "") in builtins) && resolveWith(vfs, s, dir, "require"));
@@ -116,6 +101,7 @@ function hoistMetaRequire(vfs: VFS, code: string, dir: string, url: (spec: strin
   if (n in b) return b[n];
   if (id in t) return "__cjs" in t[id] ? t[id].__cjs : t[id];
   if ("bun:" + id in b) return b["bun:" + id];
+  if (globalThis.__cjsRequire) return globalThis.__cjsRequire(id, ${JSON.stringify("/" + path)});
   throw new Error("import.meta.require: cannot require " + JSON.stringify(id) + " (only literal specifiers of installed packages or built-ins are supported)");
 })({ ${table} }, globalThis.__nodeBuiltins);
 ${code.replace(/\bimport\.meta\.require\b/g, "__metaRequire")}`;
@@ -310,7 +296,8 @@ export async function serveModule(vfs: VFS, rawPath: string, onError: (msg: stri
     if (path.endsWith(".html")) return { status: 200, body: `export default ${JSON.stringify({ __htmlImport: path })};` };
     if (path.endsWith(".css")) return { status: 200, body: src };
     // __cjsModule() as wrapped CommonJS has it: a require() can run before this module is evaluated.
-    if (path.endsWith(".json")) code = `var __m;\nexport function __cjsModule() {\n  return (__m ??= { exports: ${src} });\n}\nexport default __cjsModule().exports;`;
+    // In the worker, require.cache holds it (see wrapCommonJS).
+    if (path.endsWith(".json")) code = `var __m;\nexport function __cjsModule() {\n  const run = (m) => void (m.exports = ${src});\n  if (globalThis.__cjsLoad) return globalThis.__cjsLoad(${JSON.stringify("/" + path)}, run, () => {});\n  if (!__m) run((__m = {}));\n  return __m;\n}\nexport default __cjsModule().exports;`;
     else if (/\.(ts|tsx|jsx)$/.test(path)) {
       TARGET = target;
       code = await transpileCached(src, path, tsconfigFor(vfs, path), resolver(vfs, dirname(path)));
@@ -329,7 +316,7 @@ export async function serveModule(vfs: VFS, rawPath: string, onError: (msg: stri
     const dir = dirname(path);
     const url = specifierUrl(vfs, dir);
     const final = (spec: string) => url(spec) ?? spec;
-    return { status: 200, body: rewriteMeta(hoistMetaRequire(vfs, hoistRequires(vfs, patchChokidar(code), dir, final), dir, final), path, target === "bun") };
+    return { status: 200, body: rewriteMeta(hoistMetaRequire(vfs, hoistRequires(vfs, patchChokidar(code), dir, final), path, dir, final), path, target === "bun") };
   } catch (e) {
     const msg = `${path}: ${e instanceof Error ? e.message : String(e)}`;
     onError(msg);

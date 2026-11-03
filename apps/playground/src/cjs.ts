@@ -1,11 +1,32 @@
 // CommonJS → ESM for modules served from /__vfs/. `require("x")` with a literal specifier that resolves becomes a
-// static import, so dependencies are loaded up front (and run when required); anything else throws at call time.
+// static import, so dependencies are loaded up front (and run when required); anything else (a computed specifier)
+// the worker loads synchronously when it runs (worker/node/module.ts), sharing one module cache with these.
+
+import { dirname } from "@runbun/vfs";
 
 const ESM_SYNTAX = /(^|[\n;])\s*(import(\s+[\w{*]|\s*[{*'"])|export\s*[{*]|export\s+\w)/;
 const REQUIRE = /\brequire\s*\(\s*(["'])([^"'\n]+)\1\s*\)/g;
 
 /** Whole-line comments (`// x`, ` * x`), so `require()` in doc comments isn't hoisted into an import (and a cycle). */
 const COMMENT_LINE = /^[ \t]*(?:\/\/|\/\*|\*).*$/gm;
+
+/** `"type"` of the nearest package.json above `path`. */
+export function packageType(vfs: { readText(path: string): string | undefined }, path: string): string | undefined {
+  for (let dir = dirname(path); ; dir = dirname(dir)) {
+    const text = vfs.readText(dir ? `${dir}/package.json` : "package.json");
+    if (text !== undefined) {
+      try {
+        return (JSON.parse(text) as { type?: string }).type;
+      } catch {
+        return undefined;
+      }
+    }
+    if (!dir) return undefined;
+  }
+}
+
+/** Whether `source` has `import`/`export` statements (a rough scan, as isCommonJS uses). */
+export const hasModuleSyntax = (source: string) => ESM_SYNTAX.test(source);
 
 /** A `.cjs` file, or a `.js` file with no ESM syntax in a package that isn't `"type": "module"`. */
 export function isCommonJS(path: string, source: string, packageType: string | undefined): boolean {
@@ -55,22 +76,31 @@ export function wrapCommonJS(path: string, source: string, depUrl: (spec: string
   const imports = deps.map(([, url], i) => `import * as __req${i} from ${JSON.stringify(url)};`).join("\n");
   const table = deps.map(([s], i) => `${JSON.stringify(s)}: __req${i}`).join(", ");
   const dir = path.split("/").slice(0, -1).join("/");
+  const file = JSON.stringify("/" + path);
   // Function declarations: a require in a cycle can call __cjsModule() before this module is evaluated.
   // Wrapped CommonJS and JSON export __cjsModule(), built-ins __cjs; anything else is an ES namespace.
+  // In the worker, globalThis.__cjsLoad keeps the instance in require.cache, so a require(variable) of this file
+  // (which the worker evaluates itself) gets the same one; it also gives this require resolve, cache and main.
+  // Other requires go to the worker's globalThis.__cjsRequire; in a page, where neither exists, they throw.
   return `${imports}
 function require(id) {
   const required = { ${table} };
-  if (!(id in required)) throw Object.assign(new Error("Cannot find module " + JSON.stringify(id) + " from ${path} (only literal require() calls of installed modules are supported)"), { code: "MODULE_NOT_FOUND" });
+  if (!(id in required)) {
+    if (globalThis.__cjsRequire) return globalThis.__cjsRequire(id, ${file});
+    throw Object.assign(new Error("Cannot find module " + JSON.stringify(id) + " from ${path} (only literal require() calls of installed modules are supported)"), { code: "MODULE_NOT_FOUND" });
+  }
   const ns = required[id];
   return "__cjsModule" in ns ? ns.__cjsModule().exports : "__cjs" in ns ? ns.__cjs : ns;
 }
-var module;
-export function __cjsModule() {
-  if (module) return module;
-  module = { exports: {} };
+function __run(module) {
   (function (exports, require, module, __filename, __dirname) {
 ${source}
-  }).call(module.exports, module.exports, require, module, ${JSON.stringify("/" + path)}, ${JSON.stringify("/" + dir)});
+  }).call(module.exports, module.exports, require, module, ${file}, ${JSON.stringify("/" + dir)});
+}
+var module;
+export function __cjsModule() {
+  if (globalThis.__cjsLoad) return globalThis.__cjsLoad(${file}, __run, require);
+  if (!module) __run((module = { exports: {} }));
   return module;
 }
 `;

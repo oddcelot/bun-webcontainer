@@ -27,7 +27,7 @@ Built-ins import with or without the `node:` prefix. Labels are explained on the
 | `https` | 🟡 Partial | Like `http`; no TLS. |
 | `http2` | ⚪ Stub | |
 | `inspector` | ⚪ Stub | |
-| `module` | 🟡 Partial | `builtinModules`, `isBuiltin`. `createRequire` serves built-ins, and its `require.resolve` finds installed packages and files with Bun's resolver, computed specifiers too; package `require`s in ES modules work for string literals (see [Toolchain](/compatibility/toolchain/#commonjs-and-require)). |
+| `module` | 🟡 Partial | `builtinModules`, `isBuiltin`. `createRequire` loads built-ins, project files and installed packages with Bun's resolver, computed specifiers too, and has `require.resolve`, `require.cache` and `require.main`; a computed `require()` of an ES module throws (see [Toolchain](/compatibility/toolchain/#commonjs-and-require)). |
 | `net` | ⚪ Stub | `isIP*` works; no sockets. |
 | `os` | 🟡 Partial | Fixed values: Linux, x64, `/home/user`, `/tmp`. `cpus()` and `networkInterfaces()` are empty. |
 | `path`, `path/posix` | ✅ Works | POSIX only. `path.win32` behaves like POSIX; `path/win32` is missing. |

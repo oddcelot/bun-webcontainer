@@ -115,10 +115,10 @@ console.log(greet(config.name));
 - ✅ `.cjs` files, and `.js` files without ESM syntax in packages that aren't `"type": "module"`
 - ✅ `require("x")` with a string literal. Modules run on first `require`, as in Node; cycles see partial exports.
 - ✅ Named imports from CommonJS, found by a static scan (`exports.x =`, `module.exports = { … }`, re-exports). Exports computed at runtime aren't visible as named imports.
-- ✅ `import.meta.require` with string literals
-- 🟡 `createRequire(import.meta.url)` serves built-ins only; its `require("./x.cjs")` throws
-- ❌ `require(variable)` throws. So does a `require` that can't be resolved, when it runs.
-- ❌ `require.cache`, `require.main`, native `.node` addons
+- ✅ `require(variable)`, and `createRequire(import.meta.url)` and `import.meta.require` with any specifier: project files and installed packages load synchronously when required (TypeScript and JSX transpiled, JSON parsed). They share one module instance with literal requires and imports, so a file loaded both ways runs once. A `require` that can't be resolved throws `MODULE_NOT_FOUND` when it runs, as in Bun.
+- ✅ `require.resolve`, `require.cache` (deleting an entry loads the file again), `require.main`
+- 🟡 `require()` of an ES module works for string literals; with a computed specifier it throws `ERR_REQUIRE_ESM` (the browser can't load ES modules synchronously). Use `import()` instead.
+- ❌ Native `.node` addons, and a bare `require` in an ES module (Bun defines one there; use `createRequire` or `import.meta.require`)
 
 ```js playground group=cjs title="counter.cjs"
 let count = 0;
