@@ -1,14 +1,15 @@
 // Turns ```ts playground … fences into runnable <bun-playground> embeds whose poster is the code, highlighted as a
 // <Code> block is. Click-to-load: nothing downloads until a reader presses Run.
 //
-// Meta words: `playground` (required), `mode=…`, `features=…`, `group=<name>`, `load=…`, `height=…`, `path=…`; `title="x.ts"`
+// Meta words: `playground` (required), `mode=…`, `features=…`, `group=<name>`, `load=…`, `height=…`, `path=…`,
+// `deps="elysia@rc,zod@^4"` (pinned in a package.json the poster doesn't show; a package.json fence wins); `title="x.ts"`
 // names the file. Consecutive fences with the same `group` share one embed (the first fence's options apply).
 // Options default to the runbun() integration's (playgroundUrl, base, sync).
 import type { Code, Root, RootContent } from "mdast";
 import { CONFIG } from "./config.js";
 import { codeTabs, cssLink, embedScripts, EXT, fileScript, withEntry, withTabs } from "./markup.js";
 
-const OWN_KEYS = new Set(["playground", "mode", "features", "group", "load", "height", "autorun", "readonly", "persist", "theme", "file", "path", "expand"]);
+const OWN_KEYS = new Set(["playground", "mode", "features", "group", "load", "height", "autorun", "readonly", "persist", "theme", "file", "path", "expand", "deps"]);
 const ATTRS = ["mode", "features", "height", "autorun", "readonly", "persist", "theme", "file", "path"];
 
 /** Splits `a b=c title="d e"` into [key, value|null] tokens. */
@@ -66,6 +67,18 @@ function parse(node: Code): Entry | null {
   return { opts, title, node };
 }
 
+/** `elysia@rc, @elysia/openapi@rc, zod` → { elysia: "rc", "@elysia/openapi": "rc", zod: "latest" }; malformed entries are skipped. */
+function parseDeps(list: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const item of list.split(",")) {
+    const s = item.trim();
+    const at = s.lastIndexOf("@");
+    const [name, range] = at > 0 ? [s.slice(0, at), s.slice(at + 1)] : [s, "latest"];
+    if (range && /^(@[\w.-]+\/)?[\w.-]+$/.test(name)) out[name] = range;
+  }
+  return out;
+}
+
 function embed(entries: [Entry, ...Entry[]]): RootContent {
   const { opts } = entries[0];
   const sources: Record<string, string> = {};
@@ -82,7 +95,13 @@ function embed(entries: [Entry, ...Entry[]]): RootContent {
   // The first fence is the one Run starts, unless the group has an index file of its own.
   const names = Object.keys(sources);
   const entry = names.find((n) => /^(src\/)?index\.[jt]sx?$/.test(n)) ?? names[0]!;
-  const files = Object.entries(withEntry(sources, entry)).map(([name, text]) => fileScript(name, text));
+  const all = withEntry(sources, entry);
+  // `deps` goes into the package.json withEntry may have made (its `main`), unless a fence is the package.json.
+  const deps = "package.json" in sources ? {} : parseDeps(opts.deps ?? "");
+  if (Object.keys(deps).length) {
+    all["package.json"] = JSON.stringify({ ...JSON.parse(all["package.json"] ?? "{}"), dependencies: deps }, null, 2) + "\n";
+  }
+  const files = Object.entries(all).map(([name, text]) => fileScript(name, text));
   const attrs = ATTRS.filter((k) => k in opts).map((k) => ` ${k}="${esc(opts[k])}"`).join("");
   // A docs snippet opens as the whole playground in a modal unless the fence says otherwise (`expand=false`, `expand=on`).
   const expand = opts.expand === "false" ? "" : ` expand="${esc(opts.expand || "full")}"`;

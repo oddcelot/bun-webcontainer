@@ -140,6 +140,8 @@ export const greet = (name: string) => "Hello, " + name;
 
 The meta also takes `mode`, `features`, `load`, `height`, `autorun`, `readonly`, `persist`, `theme`, `file`, `path` and `expand` (`expand=false` leaves the modal button out). Fences without `playground` stay as they were.
 
+`deps` pins the packages a fence installs, without a `package.json` tab: `deps="elysia@rc,@elysia/openapi@rc,zod@^4"` (a name without a version gets `latest`). In a group the first fence's `deps` applies, and a `package.json` fence of the group's own wins over it.
+
 ## Playground
 
 `<Playground>` is the embed on its own: `files` are its sources, and its children are the poster shown until it starts. Without children it shows the first file's code.
