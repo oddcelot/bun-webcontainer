@@ -65,6 +65,6 @@ State stays with the caller: components take values and callbacks (`value`/`onCh
 ## Adding a component
 
 Put it in `solid/<Name>.tsx` and its rules in `css/<name>.css` inside `@layer runbun-ui { }`, imported at the top of
-the component. Write the CSS
-over the preset's variables, with no hard-coded colors. Keep the component free of app imports: anything app-specific
-comes in through props.
+the component. Nest the rules: one block per root class, with its states, parts and variants inside (see AGENTS.md).
+Write them over the preset's variables, with no hard-coded colors. Keep the component free of app imports: anything
+app-specific comes in through props.

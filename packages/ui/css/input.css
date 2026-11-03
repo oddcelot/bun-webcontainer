@@ -1,5 +1,19 @@
-/* Input: a one-line text field. Over the uno preset's tokens (--control, --pad, ...). */
+/* Input: a one-line text field (or a textarea). Over the uno preset's tokens. */
 @layer runbun-ui {
-  .input { box-sizing: border-box; width: 100%; height: var(--control-height); padding: 0 8px; border: 1px solid var(--control-border); border-radius: 6px; background: var(--control); color: var(--fg); font: 12px var(--font-mono); }
-  .input:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+  .input {
+    box-sizing: border-box;
+    width: 100%;
+    height: var(--control-height);
+    padding: 0 8px;
+    border: 1px solid var(--control-border);
+    border-radius: 6px;
+    background: var(--control);
+    color: var(--fg);
+    font: 12px var(--font-mono);
+
+    &:focus-visible {
+      outline: 1px solid var(--accent);
+      outline-offset: -1px;
+    }
+  }
 }

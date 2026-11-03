@@ -1,16 +1,91 @@
-/* Select triggers, popup menus, listboxes and their options (Select, FamilyListbox, Menu). Over the uno preset's tokens (--control, --pad, ...). */
+/* Select triggers, popup menus, listboxes and their options (Select, FamilyListbox, Menu). Over the uno preset's tokens. */
 @layer runbun-ui {
-  .select-trigger { display: inline-flex; align-items: center; gap: 6px; min-width: 0; padding: 0 8px; background: var(--control); color: var(--fg); border: 1px solid var(--control-border); border-radius: 6px; font: inherit; cursor: pointer; }
-  .select-trigger:hover { background: var(--control-hover); }
-  .select-trigger .value { flex: 1; display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
-  .select-trigger .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .select-trigger .chevron { display: grid; color: var(--muted); }
-  .select-menu { z-index: 30; min-width: 16rem; border: 1px solid var(--control-border); border-radius: calc(var(--inner-radius) + 4px + 1px); background: var(--panel); color: var(--fg); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35); }
-  .select-list { max-height: min(28rem, 70vh); overflow-y: auto; margin: 0; padding: 4px; list-style: none; outline: none; }
-  .select-section { padding: 8px 8px 4px; font-size: 11px; font-weight: 600; color: var(--muted); }
-  .select-option { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: var(--inner-radius); cursor: pointer; outline: none; }
-  .select-option .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .select-option[data-highlighted] { background: var(--control-hover); }
-  .select-option .check { display: grid; color: var(--accent); }
-  .select-menu { font-size: var(--ui-font-size, 13px); }
+  .select-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    padding: 0 8px;
+    border: 1px solid var(--control-border);
+    border-radius: 6px;
+    background: var(--control);
+    color: var(--fg);
+    font: inherit;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--control-hover);
+    }
+
+    .value {
+      flex: 1;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+    .name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .chevron {
+      display: grid;
+      color: var(--muted);
+    }
+  }
+
+  /* The popup. It portals out of the page, so it sets its own font size. */
+  .select-menu {
+    z-index: 30;
+    min-width: 16rem;
+    border: 1px solid var(--control-border);
+    border-radius: calc(var(--inner-radius) + 4px + 1px);
+    background: var(--panel);
+    color: var(--fg);
+    font-size: var(--ui-font-size, 13px);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  }
+
+  .select-list {
+    max-height: min(28rem, 70vh);
+    overflow-y: auto;
+    margin: 0;
+    padding: 4px;
+    list-style: none;
+    outline: none;
+  }
+
+  .select-section {
+    padding: 8px 8px 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+
+  .select-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: var(--inner-radius);
+    cursor: pointer;
+    outline: none;
+
+    &[data-highlighted] {
+      background: var(--control-hover);
+    }
+
+    .name {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .check {
+      display: grid;
+      color: var(--accent);
+    }
+  }
 }

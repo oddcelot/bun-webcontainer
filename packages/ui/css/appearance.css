@@ -1,9 +1,29 @@
-/* AppearancePicker: the trigger and its popover (color scheme toggle over the theme list). Over the uno preset's tokens (--control, --pad, ...). */
+/* AppearancePicker: the trigger and its popover (the color scheme toggle over the theme list). Over the uno preset's tokens. */
 @layer runbun-ui {
-  /* Appearance popover: the color-scheme toggle over the theme list. Its padding is --pad, so the corners inside are --inner-radius. */
-  .appearance { z-index: 30; width: 18rem; padding: var(--pad); border: 1px solid var(--control-border); border-radius: calc(var(--inner-radius) + var(--pad) + 1px); background: var(--panel); color: var(--fg); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35); }
-  .appearance .select-list { max-height: min(24rem, 60vh); margin-top: var(--pad); padding: 0; }
-  .appearance-trigger { height: var(--control-height); }
-  .appearance-root { display: contents; }
-  .appearance { font-size: var(--ui-font-size, 13px); }
+  .appearance-root {
+    display: contents;
+  }
+
+  .appearance-trigger {
+    height: var(--control-height);
+  }
+
+  /* Its padding is --pad, so the corners inside are --inner-radius. It portals out of the page: its own font size. */
+  .appearance {
+    z-index: 30;
+    width: 18rem;
+    padding: var(--pad);
+    border: 1px solid var(--control-border);
+    border-radius: calc(var(--inner-radius) + var(--pad) + 1px);
+    background: var(--panel);
+    color: var(--fg);
+    font-size: var(--ui-font-size, 13px);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+
+    .select-list {
+      max-height: min(24rem, 60vh);
+      margin-top: var(--pad);
+      padding: 0;
+    }
+  }
 }
