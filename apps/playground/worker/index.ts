@@ -1,5 +1,5 @@
-// Feedback: POST /api/feedback (from the playground's Feedback dialog and the docs' page rating) stores one entry in
-// KV under "feedback:<time>:<random>"; see feedback() below and scripts/feedback.ts to read them.
+// Feedback: POST /api/feedback (from the playground's Feedback dialog and the docs' page rating) stores one row in the
+// FEEDBACK D1 database (worker/migrations/), not with the links; see feedback() below and scripts/feedback.ts to read them.
 //
 // Opt-in short links for Share: POST /api/short stores a share payload (the text after "#code=") in KV under an id
 // derived from its content, so sharing the same project twice gives the same link and costs no second write.
@@ -12,6 +12,7 @@
 interface Env {
   ASSETS: Fetcher;
   LINKS: KVNamespace;
+  FEEDBACK: D1Database;
   CREATE_LIMIT: RateLimit;
   FEEDBACK_LIMIT: RateLimit;
   /** The docs site's origin (wrangler.jsonc vars), which may send feedback from another origin. */
@@ -163,9 +164,9 @@ async function feedback(req: Request, env: Env, url: URL): Promise<Response> {
   }
   const fb = parseFeedback(body);
   if (typeof fb === "string") return reply(400, { error: fb });
-  const key = `feedback:${fb.at}:${crypto.randomUUID().slice(0, 8)}`;
-  // The metadata comes back with a key listing, so a list shows what each entry is without reading it.
-  await env.LINKS.put(key, JSON.stringify(fb), { metadata: { kind: fb.kind, rating: fb.rating, page: fb.page.slice(0, 200) } });
+  await env.FEEDBACK.prepare("INSERT INTO feedback (at, kind, page, rating, message, email, env, project) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+    .bind(fb.at, fb.kind, fb.page, fb.rating ?? null, fb.message ?? null, fb.email ?? null, fb.env ? JSON.stringify(fb.env) : null, fb.project ?? null)
+    .run();
   return reply(200, { ok: true });
 }
 

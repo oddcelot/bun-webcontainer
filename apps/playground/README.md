@@ -113,8 +113,12 @@ It serves only on the custom domain https://runbun.dev: `workers_dev` and `previ
 don't find a duplicate copy of the site (the same goes for the docs and both canaries).
 A small Worker (`worker/index.ts`) runs first only on `/api/*` and `/s/*`, for opt-in short links: `POST /api/short`
 stores a share payload in the `LINKS` KV namespace under a content-hash id (rate-limited per IP by `CREATE_LIMIT`,
-capped at ~64 KB packed) and `GET /s/<id>` redirects to `/#code=…`; everything else is the static site. It fits the
-Workers Free plan (1,000 new links and 100,000 opens a day). `bun run typecheck:worker` regenerates its types; locally,
+capped at ~64 KB packed) and `GET /s/<id>` redirects to `/#code=…`. `POST /api/feedback` (the playground's Feedback
+dialog and the docs' page rating, which it allows by CORS from `DOCS_ORIGIN`) stores a row in the `FEEDBACK` D1
+database (schema in `worker/migrations/`; `FEEDBACK_LIMIT` per IP); `bun scripts/feedback.ts` lists them and the
+ratings per page. Everything else is the static site. It fits the Workers Free plan (1,000 new links a day, KV's write
+limit; D1 allows 100,000 rows written a day). `bun run typecheck:worker` regenerates its types; locally,
 `bunx wrangler dev --local` runs it (pass `--compatibility-date` if your workerd is older than `wrangler.jsonc`'s).
 A fork deploying under its own account should drop or replace the `routes` entry and create its own KV namespace
-(`bunx wrangler kv namespace create runbun-links`).
+(`bunx wrangler kv namespace create runbun-links`) and D1 database (`bunx wrangler d1 create runbun-feedback`, then
+`bunx wrangler d1 migrations apply FEEDBACK --remote`).
