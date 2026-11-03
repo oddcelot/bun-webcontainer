@@ -323,17 +323,25 @@ function measuredHeight(stacked: boolean, below: boolean): number | undefined {
     if (observed) contentObserver.unobserve(observed);
     contentObserver.observe((observed = lines));
   }
+  // Boxes, not offsetHeight: a tab bar 38.5px tall at 2x read as 38 left the code half a pixel short, and the host
+  // showed a scrollbar for it.
+  const height = (e: Element) => e.getBoundingClientRect().height;
   const count = lines.children.length;
-  const lh = lines.getBoundingClientRect().height / count;
+  const lh = height(lines) / count;
   const box = getComputedStyle(code);
   const codeHeight = (Math.min(Math.max(count, 3), 30) * lh) + parseFloat(box.paddingTop) + parseFloat(box.paddingBottom) + code.offsetHeight - code.clientHeight;
   // The console under the editor (code mode) keeps the height it has; a reader may have dragged it.
-  const consoleH = below && document.getElementById("console-wrap")?.offsetHeight;
+  const consoleWrap = below && document.getElementById("console-wrap");
+  const consoleH = consoleWrap && height(consoleWrap);
   const rows = (stacked ? [embed.has("preview") && STACK_PREVIEW, embed.has("console") && STACK_CONSOLE] : [consoleH]).filter((h): h is number => !!h);
   const grid = getComputedStyle(main);
   const gaps = (parseFloat(grid.rowGap) || 0) * rows.length + parseFloat(grid.paddingTop) + parseFloat(grid.paddingBottom);
-  const outside = innerHeight - main.offsetHeight;
-  return Math.ceil(outside + gaps + (pane.offsetHeight - host.clientHeight) + codeHeight + rows.reduce((a, b) => a + b, 0));
+  // What sits above the panes (the bar, a notice), measured as such: the frame minus the grid is off by whatever the
+  // page overflows.
+  const outside = [...(main.parentElement?.children ?? [])].reduce((sum, e) => sum + (e === main ? 0 : height(e)), 0);
+  // The pane's tab bar, and a scrollbar of the host's own.
+  const paneChrome = height(pane) - height(host) + host.offsetHeight - host.clientHeight;
+  return Math.ceil(outside + gaps + paneChrome + codeHeight + rows.reduce((a, b) => a + b, 0));
 }
 let lastHeight = 0;
 const checkFit = () => embed.setFit(Math.abs(innerHeight - lastHeight) <= 1);
