@@ -1,17 +1,19 @@
 // `Bun.Transpiler`: Bun's parser and printer (transpile-wasm, loaded on first use) as Bun's runtime transpiler runs
-// them. js/jsx/ts/tsx only; the options the module can't honor are ignored with a warning.
+// them, with its define table, export replacements, minify options and data loaders (json, toml, yaml, text, ...).
+// The options the module can't honor are ignored with a warning.
 import { codeError } from "./node/errors";
-import { runtimeTranspile, TranspileError, type Diagnostic, type RuntimeOp, type TsconfigFlags } from "../transpiler";
+import { env } from "./node/process";
+import { runtimeTranspile, RUNTIME_LOADERS, TranspileError, type Diagnostic, type RuntimeOp, type TsconfigFlags } from "../transpiler";
+import { runtimeOptions, type RuntimeOptions } from "../transpiler/options";
 
-type JsLoader = "js" | "jsx" | "ts" | "tsx";
 const JS_LOADERS = ["js", "jsx", "ts", "tsx"];
 const LOADERS = ["js", "jsx", "tsx", "ts", "css", "json", "jsonc", "json5", "toml", "yaml", "xml", "text", "wasm", "md"];
 
 type Options = { loader?: string; target?: string; define?: Record<string, string>; tsconfig?: string | { compilerOptions?: Record<string, unknown> }; [option: string]: unknown };
 type Code = string | ArrayBuffer | ArrayBufferView;
 
-/** Options Bun's runtime transpiler has that this one ignores (it always behaves as if they were unset). */
-const UNSUPPORTED = ["macro", "exports", "minifyWhitespace", "inline", "trimUnusedImports", "treeShaking", "deadCodeElimination", "jsxOptimizationInline", "autoImportJSX", "allowBunRuntime", "replMode", "reactFastRefresh"];
+/** Options of Bun's runtime transpiler this one ignores when they're set (truthy): it behaves as if they were unset. */
+const UNSUPPORTED = ["jsxOptimizationInline", "autoImportJSX", "allowBunRuntime", "replMode", "reactFastRefresh"];
 const warned = new Set<string>();
 const warnOnce = (what: string) => {
   if (warned.has(what)) return;
@@ -71,32 +73,51 @@ function tsconfigFlags(t: Options["tsconfig"]): TsconfigFlags {
   return out;
 }
 
+/** Bun's `log.toJS`: the one message itself, or an AggregateError of all of them. */
+function buildError(e: TranspileError, source: string, file: string, message: string): Error {
+  const messages = e.diagnostics.map((d) => new BuildMessage(d, source, file));
+  return messages.length === 1 ? messages[0] : new AggregateError(messages, message);
+}
+
 export class Transpiler {
   readonly #loader: string;
   readonly #tsconfig: TsconfigFlags;
+  readonly #options: RuntimeOptions;
 
   constructor(options: Options = {}) {
     // Bun's default loader is jsx.
     this.#loader = loaderOf(options.loader) ?? "jsx";
-    if (!JS_LOADERS.includes(this.#loader)) throw new Error("only JavaScript-like loaders supported for now");
+    if (!JS_LOADERS.includes(this.#loader)) throw codeError(TypeError, "ERR_INVALID_ARG_TYPE", "only JavaScript-like loaders supported for now");
     this.#tsconfig = tsconfigFlags(options.tsconfig);
-    // `target` changes nothing a single file's transpiled output shows (it matters for bundling), so it's accepted.
-    if (options.define && Object.keys(options.define).length) warnOnce("define");
-    for (const k of UNSUPPORTED) if (options[k] !== undefined) warnOnce(k);
+    // As Bun, `process.env.NODE_ENV` when the transpiler is made sets its default define.
+    this.#options = runtimeOptions(options, env.NODE_ENV);
+    for (const what of this.#options.ignored) warnOnce(what);
+    // Macros never run here (Bun's `macro: false`).
+    if (options.macro !== undefined && options.macro !== null && options.macro !== false) warnOnce("macro");
+    for (const k of UNSUPPORTED) if (options[k]) warnOnce(k);
+    // Bun parses the define values here: a bad one throws now, not on the first transform.
+    if (options.define && typeof options.define === "object" && Object.keys(options.define).length) {
+      try {
+        runtimeTranspile("transform", null, this.#loader, this.#tsconfig, this.#options);
+      } catch (e) {
+        if (!(e instanceof TranspileError)) throw e;
+        throw buildError(e, "", "defines.json", "Failed to load define");
+      }
+    }
   }
 
   #run(op: RuntimeOp, source: Code, loader: unknown, message: string): string {
     const l = loaderOf(loader) ?? this.#loader;
-    if (!JS_LOADERS.includes(l)) throw new Error(op === "scanImports" ? "Only JavaScript-like files support this fast path" : `Bun.Transpiler: the ${l} loader is not supported in the playground`);
+    if (op === "scanImports" && !JS_LOADERS.includes(l)) throw new Error("Only JavaScript-like files support this fast path");
+    // css and wasm aren't modules Bun's runtime transpiler prints; md would need Bun's markdown renderer in the module.
+    if (l === "css" || l === "wasm") throw new Error(op === "scan" ? "Failed to parse" : "Failed to parse code");
+    if (!RUNTIME_LOADERS.includes(l)) throw new Error(`Bun.Transpiler: the ${l} loader is not supported in the playground`);
     const text = code(source);
     try {
-      return runtimeTranspile(op, text, l as JsLoader, this.#tsconfig);
+      return runtimeTranspile(op, text, l, this.#tsconfig, this.#options);
     } catch (e) {
       if (!(e instanceof TranspileError)) throw e;
-      throw new AggregateError(
-        e.diagnostics.map((d) => new BuildMessage(d, text, `input.${l}`)),
-        message,
-      );
+      throw buildError(e, text, `input.${l}`, message);
     }
   }
 
@@ -107,7 +128,7 @@ export class Transpiler {
 
   /** `transformSync`, as a Promise. */
   async transform(source: Code, loader?: string): Promise<string> {
-    return this.#run("transform", source, loader, "Parse error");
+    return this.#run("transform", source, loader, "Transform failed");
   }
 
   /** The imports and exports of `code` (a full parse). */

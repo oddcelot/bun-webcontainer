@@ -136,4 +136,98 @@ if (spawnSync("bun", ["--version"]).status === 0) {
     rmSync(tmp, { recursive: true, force: true });
   }
 }
+
+// Bun.Transpiler's options (`options_c` and the option flags, encoded by the playground's transpiler/options.ts) and
+// per-call data loaders, vs native Bun's transformSync and scan.
+import { runtimeOptions, FLAGS, LOADER_NUMBERS } from "../../apps/playground/src/transpiler/options.ts";
+function setOptions(bytes: Uint8Array): string | null {
+  const n = BigInt(bytes.length), p = w.alloc(n);
+  new Uint8Array(w.memory.buffer, Number(p), bytes.length).set(bytes);
+  const out = w.options_c(p, n);
+  const [status, ptr, len] = new BigUint64Array(w.memory.buffer, Number(out), 3);
+  const text = dec.decode(new Uint8Array(w.memory.buffer, Number(ptr), Number(len)));
+  w.output_free(out); w.dealloc(p, n);
+  return status === 0n ? null : text;
+}
+function runtimeCall(fn: string, loader: string, source: string, flags: number) {
+  const put = (s: string): [bigint, bigint] => { const b = enc.encode(s), n = BigInt(b.length), p = w.alloc(n); new Uint8Array(w.memory.buffer, Number(p), b.length).set(b); return [p, n]; };
+  const [pp, pl] = put(`input.${loader}`), [sp, sl] = put(source);
+  const out = w[fn](pp, pl, sp, sl, LOADER_NUMBERS[loader], flags | FLAGS.RUNTIME_TRANSPILER | 4);
+  const [status, ptr, len] = new BigUint64Array(w.memory.buffer, Number(out), 3);
+  const text = dec.decode(new Uint8Array(w.memory.buffer, Number(ptr), Number(len)));
+  w.output_free(out); w.dealloc(pp, pl); w.dealloc(sp, sl);
+  return status === 0n ? text : `ERR ${(JSON.parse(text).diagnostics as { text: string }[]).map((d) => d.text).join("\n")}`;
+}
+const optSrc = `import { a, b } from "a"; import d from "d"; import * as ns from "ns"; import type { T } from "t"; import "side";
+export const x = 1, y = 2; export function f() { return a; } export default class C {}
+const unused = 3; function g() {} if (false) { console.log("dead") }
+const e = { k: 1 }; console.log(1 + 2, "a" + "b", !true, typeof x === "undefined", e.k, x);
+enum E { A = 1, B = A * 2 } console.log(E.B);
+const long_name = 5; console.log(long_name);`;
+const defSrc = `console.log(process.env.NODE_ENV, process.env.BUN_ENV, process.browser, DEBUG, FOO.bar, a.b.c, X);
+if (process.env.NODE_ENV === "production") console.log("prod"); else console.log("dev");
+Math.PI; foo(); export const el = <div x={1}>{2}</div>;`;
+// [label, Bun.Transpiler options, loader (per call), code, NODE_ENV]
+const optionCases: [string, Record<string, unknown>, string, string, string?][] = [
+  ["defaults", {}, "tsx", defSrc],
+  ["NODE_ENV=production", {}, "tsx", defSrc, "production"],
+  ["NODE_ENV=staging", {}, "tsx", defSrc, "staging"],
+  ["define", { define: { DEBUG: "false", "FOO.bar": '{"x":[1,"y"]}', "a.b.c": "globalThis.zz", X: "hello world", "process.env.NODE_ENV": '"production"' } }, "tsx", defSrc],
+  ["define development", { define: { "process.env.NODE_ENV": '"development"' } }, "tsx", defSrc, "production"],
+  ["define values", { define: { DEBUG: "", X: "undefined", "FOO.bar": "null", "a.b.c": "-1.5" } }, "tsx", defSrc],
+  ["target node", { target: "node" }, "tsx", defSrc],
+  ["define + tsconfig jsx", { define: { "process.env.NODE_ENV": '"production"' }, tsconfig: { compilerOptions: { jsx: "react-jsxdev" } } }, "tsx", defSrc],
+  ["define bad JSON", { define: { X: "{bad" } }, "tsx", defSrc],
+  ["none", {}, "ts", optSrc],
+  ["trimUnusedImports", { trimUnusedImports: true }, "ts", optSrc],
+  ["minifyWhitespace", { minifyWhitespace: true }, "ts", optSrc],
+  ["minify", { minify: true }, "ts", optSrc],
+  ["minify.syntax", { minify: { syntax: true } }, "ts", optSrc],
+  ["minify.identifiers", { minify: { identifiers: true } }, "ts", optSrc],
+  ["inline", { inline: true }, "ts", optSrc],
+  ["deadCodeElimination false", { deadCodeElimination: false }, "ts", optSrc],
+  ["treeShaking", { treeShaking: true }, "ts", optSrc],
+  ["exports.eliminate", { exports: { eliminate: ["f", "x"] } }, "ts", optSrc],
+  ["exports.replace", { exports: { replace: { y: 42, f: "hello", C: true, x: null } } }, "ts", optSrc],
+  ["exports.replace inject", { exports: { replace: { f: ["g2", 1.5] } } }, "ts", optSrc],
+  ["exports + treeShaking false", { exports: { eliminate: ["f"] }, treeShaking: false }, "ts", optSrc],
+  ["json", {}, "json", '{"a": 1, "b-c": [true, null, "x"], "default": 2, "a": 3}'],
+  ["json array", {}, "json", "[1, 2]"],
+  ["json empty", {}, "json", "  \n"],
+  ["json error", {}, "json", "{bad"],
+  ["jsonc", {}, "jsonc", '{"a": 1, // c\n "b": 2,}'],
+  ["json5", {}, "json5", "{a: 1, 'b': 0x10, c: Infinity,}"],
+  ["toml", {}, "toml", 'a = 1\n[s]\nx = "y"\nd = 1979-05-27T07:32:00Z'],
+  ["yaml", {}, "yaml", "a: 1\nlist:\n  - x\n  - y\n"],
+  ["xml", {}, "xml", "<a>1</a>"],
+  ["text", {}, "text", 'hello "world"\n`x`'],
+  ["text empty", {}, "text", ""],
+];
+if (spawnSync("bun", ["--version"]).status === 0) {
+  const native = (c: (typeof optionCases)[number]) => {
+    const env = { ...process.env };
+    delete env.NODE_ENV;
+    if (c[4]) env.NODE_ENV = c[4];
+    const script = `const [o, l, c] = JSON.parse(process.argv[1]); const r = [];
+      for (const f of [(t) => t.transformSync(c, l), (t) => t.scan(c, l)]) { try { r.push(f(new Bun.Transpiler({ ...o, loader: ["js","jsx","ts","tsx"].includes(l) ? l : "js" }))); } catch (e) { r.push("ERR " + (e.errors ? e.errors.map((x) => x.message).join("\\n") : e.message)); } }
+      console.log(JSON.stringify(r));`;
+    const r = spawnSync("bun", ["-e", script, JSON.stringify([c[1], c[2], c[3]])], { encoding: "utf8", env });
+    return JSON.parse(r.stdout) as [string, unknown];
+  };
+  for (const c of optionCases) {
+    const [label, opts, loader, code, nodeEnv] = c;
+    const [js, scan] = native(c);
+    const { flags, options } = runtimeOptions(opts, nodeEnv);
+    const tsconfig = (opts.tsconfig as { compilerOptions?: Record<string, string> } | undefined)?.compilerOptions ?? {};
+    setJsx(tsconfig);
+    const err = setOptions(options);
+    const got = err ? [`ERR ${(JSON.parse(err).diagnostics as { text: string }[]).map((d) => d.text).join("\n")}`, null] : [runtimeCall("transpile_flags_c", loader, code, flags), runtimeCall("scan_c", loader, code, flags)];
+    setOptions(new Uint8Array()); setJsx({});
+    const norm = (s: unknown) => (s && typeof s === "object" ? JSON.stringify({ imports: (s as any).imports, exports: (s as any).exports }) : JSON.stringify(s));
+    const gotScan = typeof got[1] === "string" && !got[1].startsWith("ERR") ? JSON.parse(got[1]) : got[1];
+    const ok = err ? js.startsWith("ERR") && got[0] === js : got[0] === js && norm(gotScan) === norm(scan);
+    if (!ok) { fail++; console.log(`Bun.Transpiler ${label}: MISMATCH\n--- wasm\n${got[0]}\n${JSON.stringify(gotScan)}\n--- bun\n${js}\n${JSON.stringify(scan)}`); }
+    else console.log(`Bun.Transpiler ${label}: identical to bun`);
+  }
+}
 process.exit(fail ? 1 : 0);

@@ -1202,8 +1202,12 @@ version = "0.0.0"
 dependencies = [
  "bun_alloc",
  "bun_ast",
+ "bun_collections",
+ "bun_core",
  "bun_js_parser",
  "bun_js_printer",
+ "bun_parsers",
+ "bun_paths",
  "bun_sys_host",
  "bun_wasm_stubs",
 ]
