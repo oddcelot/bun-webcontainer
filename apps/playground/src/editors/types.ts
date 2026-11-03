@@ -17,6 +17,9 @@ export type EditorCursor = { line: number; column: number; selected: number };
 /** Type information shown when the pointer rests on a token: the declaration as code, then its documentation (markdown). */
 export type EditorHover = { code: string; docs: string };
 
+/** A place in a file: its VFS path, 1-based line and UTF-16 column. */
+export type EditorLocation = { path: string; line: number; column: number };
+
 /** What a completion is, for its icon. */
 export type CompletionKind =
   | "function"
@@ -83,6 +86,8 @@ export type EditorEvents = {
   resolveCompletion?(path: string, item: EditorCompletion): Promise<EditorCompletionDetails | null>;
   /** The signatures of the call around a 1-based line and UTF-16 column; `trigger` is the character just typed, `retrigger` while they're showing. */
   signatureHelp?(path: string, line: number, column: number, trigger?: string, retrigger?: boolean): Promise<EditorSignatureHelp | null>;
+  /** Go to where the name at a 1-based line and UTF-16 column of `path` is declared (Ctrl/Cmd+click on it). */
+  goToDefinition?(path: string, line: number, column: number): void;
 };
 
 /** One open file at a time. `text === null` means a binary file (shown read-only). */

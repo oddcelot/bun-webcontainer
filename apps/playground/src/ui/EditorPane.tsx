@@ -2,9 +2,9 @@ import { Show, createEffect, onSettled, useContext } from "solid-js";
 import { CHECKED, mountDiagnostics } from "../diagnostics";
 import { createPierre } from "../editors/pierre";
 import { formatChord, keysFor, matches } from "../keymap";
-import type { CodeEditor } from "../editors/types";
+import type { CodeEditor, EditorLocation } from "../editors/types";
 import { asConsoleEntry, errorLocation, fmt } from "../fmt";
-import { complete, hover, resolveCompletion, signatureHelp, TYPED } from "../typecheck";
+import { complete, definition, hover, resolveCompletion, signatureHelp, TYPED } from "../typecheck";
 import { AppContext } from "./context";
 import { guarded } from "./guarded";
 import { EditorTabs } from "./Tabs";
@@ -58,6 +58,18 @@ export function EditorPane() {
     },
   );
   ws.onReveal((line, column) => editor?.reveal(line, column));
+  // A definition in another file: where to put the cursor once its tab is open.
+  let revealOnOpen: EditorLocation | undefined;
+
+  /** Moves to where the name at `line`/`column` of `file` is declared, opening that file's tab if it's another. */
+  async function goToDefinition(file: string, line: number, column: number) {
+    if (!TYPED.test(file) || !editor || !has("types")) return;
+    const [to] = await definition(vfs, file, editor.getText(), line, column);
+    if (!to || file !== current) return;
+    if (to.path === current) return editor.reveal(to.line, to.column);
+    revealOnOpen = to;
+    ws.open(to.path);
+  }
   ws.onFormat(() => void formatOpenFile());
 
   async function formatOpenFile() {
@@ -90,6 +102,7 @@ export function EditorPane() {
         resolveCompletion: async (file, item) => (editor ? resolveCompletion(vfs, file, editor.getText(), item) : null),
         signatureHelp: async (file, line, column, trigger, retrigger) =>
           TYPED.test(file) && editor ? signatureHelp(vfs, file, editor.getText(), line, column, trigger, retrigger) : null,
+        goToDefinition: (file, line, column) => void goToDefinition(file, line, column),
       });
       check ??= mountDiagnostics(vfs, editor, () => has("types"));
       current = path;
@@ -109,6 +122,8 @@ export function EditorPane() {
         if (ws.autosave() || !has("autosave")) timer = setTimeout(() => saveAll() && ws.markSaved(), SAVE_DELAY);
       });
       check(path, text);
+      if (revealOnOpen?.path === path) editor.reveal(revealOnOpen.line, revealOnOpen.column);
+      revealOnOpen = undefined;
     }),
   );
 
@@ -134,6 +149,12 @@ export function EditorPane() {
       }
     });
     const onKey = (e: KeyboardEvent) => {
+      if (matches("goToDefinition", e)) {
+        e.preventDefault();
+        const at = ws.cursor();
+        if (current && at) void goToDefinition(current, at.line, at.column);
+        return;
+      }
       if (matches("showHover", e)) {
         e.preventDefault();
         editor?.showHover();

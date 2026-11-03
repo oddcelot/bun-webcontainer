@@ -11,6 +11,7 @@ export const COMMANDS = {
   stop: { label: "Stop the server", keys: ["Mod+."] },
   save: { label: "Save the file", keys: ["Mod+S"] },
   format: { label: "Format the file (bun fmt)", keys: ["Shift+Alt+F"] },
+  goToDefinition: { label: "Go to the definition", keys: ["F12"] },
   showHover: { label: "Show the type at the cursor", keys: ["Mod+I"] },
   // Ctrl on macOS too, as there: Cmd+Space opens Spotlight.
   suggest: { label: "Suggest completions", keys: ["Ctrl+Space"] },

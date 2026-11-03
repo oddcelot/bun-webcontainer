@@ -1,10 +1,10 @@
-import type { CompletionKind, EditorCompletion, EditorCompletionDetails, EditorCompletions, EditorDiagnostic, EditorHover, EditorSignatureHelp } from "../editors/types";
+import type { CompletionKind, EditorCompletion, EditorCompletionDetails, EditorCompletions, EditorDiagnostic, EditorHover, EditorLocation, EditorSignatureHelp } from "../editors/types";
 import type { FileData, VFS } from "@runbun/vfs";
 import { nearestTsconfig } from "../tsconfig";
 import type { LspCompletionItem } from "./tsrsLs";
 import type { LsOp, LsReply, LsRequest } from "./worker";
 
-// Type errors, hovers, completions and signature help from tsrs's language service (see ./worker.ts). The project's files go to it as absolute
+// Type errors, hovers, completions, signature help and definitions from tsrs's language service (see ./worker.ts). The project's files go to it as absolute
 // paths ("/" + VFS path); from node_modules only declarations and JSON (package.json, configs a tsconfig `extends`,
 // JSON imports), which is what type resolution reads. The worker adds Bun's own types where node_modules lacks them.
 
@@ -119,6 +119,25 @@ export async function hover(vfs: VFS, path: string, text: string, line: number, 
   // The language service's markdown: the declaration in a ```typescript block, then the JSDoc.
   const m = /^```\w*\n([\s\S]*?)\n```\n?([\s\S]*)$/.exec(value);
   return m ? { code: m[1], docs: m[2].trim() } : { code: "", docs: value.trim() };
+}
+
+/**
+ * Where the name at `line`/`column` (1-based, UTF-16) of `path` is declared: VFS paths and 1-based positions of the
+ * declarations' names. Declarations outside the VFS (TypeScript's libs, Bun's bundled types) are left out.
+ */
+export async function definition(vfs: VFS, path: string, text: string, line: number, column: number): Promise<EditorLocation[]> {
+  const r = await request(vfs, path, text, { kind: "definition", line: line - 1, character: column - 1 });
+  if (r.error) console.warn(`tsrs: ${r.error}`);
+  const d = r.definition;
+  const all = !d ? [] : Array.isArray(d) ? d : [d];
+  const out: EditorLocation[] = [];
+  for (const l of all) {
+    const [uri, { start }] = "targetUri" in l ? [l.targetUri, l.targetSelectionRange] : [l.uri, l.range];
+    if (!uri.startsWith("file:///")) continue;
+    const file = decodeURIComponent(uri.slice("file:///".length));
+    if (vfs.files.has(file)) out.push({ path: file, line: start.line + 1, column: start.character + 1 });
+  }
+  return out;
 }
 
 /** LSP's CompletionItemKind, by number. */
