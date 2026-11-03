@@ -1,5 +1,4 @@
-import { For, Show, createEffect, createMemo, createSignal, createStore, onSettled, untrack, type ParentProps } from "solid-js";
-import { Select } from "@kobalte/core/select";
+import { For, Show, createEffect, createMemo, createSignal, createStore, onSettled, untrack } from "solid-js";
 import { BASE, DOCS } from "../base";
 import { PRESETS } from "../embed/config";
 import { FEATURES, MODES, type Feature, type Mode } from "../embed/protocol";
@@ -11,7 +10,9 @@ import { Swatch } from "@runbun/ui/solid/Swatch";
 import { Chip, Chips } from "@runbun/ui/solid/Chips";
 import { Segmented } from "@runbun/ui/solid/Segmented";
 import { TabItem, TabList } from "@runbun/ui/solid/Tabs";
-import { Tip } from "@runbun/ui/solid/Tip";
+import { Field } from "@runbun/ui/solid/Field";
+import { Input } from "@runbun/ui/solid/Input";
+import { Select } from "@runbun/ui/solid/Select";
 import { highlightSnippet } from "./highlight";
 import { attributes, elementSnippet, iframeSnippet, inlineFile, type Attr, type Form } from "./snippet";
 
@@ -78,67 +79,23 @@ const AUTORUN_OPTIONS: Option[] = [
   { value: "false", label: "Wait for Run" },
 ];
 
-function Field(props: ParentProps<{ label: string; hint?: string; wide?: boolean }>) {
-  return (
-    <label class={["field", { wide: props.wide }]}>
-      <span class="field-label">
-        {props.label}
-        <Show when={props.hint}>
-          <span class="field-hint">{props.hint}</span>
-        </Show>
-      </span>
-      {props.children}
-    </label>
-  );
-}
-
-/** A Kobalte Select over a fixed list (changing a mounted Select's options warns; see ProjectPicker). */
+/** A Select over a fixed list. */
 function Choice(props: { label: string; value: string; options: Option[]; onChange: (v: string) => void }) {
   const selected = () => props.options.find((o) => o.value === props.value) ?? props.options[0];
   return (
     <Select<Option>
+      label={props.label}
       options={props.options}
       optionValue="value"
       optionTextValue="label"
       value={selected()}
       onChange={(o) => o && props.onChange(o.value)}
-      disallowEmptySelection
+      required
       gutter={4}
-      itemComponent={(p) => (
-        <Select.Item item={p.item} class="select-option">
-          <Show when={p.item.rawValue.swatch}>{(s) => <Swatch light={s()} />}</Show>
-          <Select.ItemLabel class="name">{p.item.rawValue.label}</Select.ItemLabel>
-          <Select.ItemIndicator class="check">
-            <i class="i-lucide-check" aria-hidden="true" />
-          </Select.ItemIndicator>
-        </Select.Item>
-      )}
-    >
-      <Select.Trigger class="select-trigger" aria-label={props.label}>
-        <Select.Value<Option> class="value">
-          {(s) => (
-            <>
-              <Show when={s.selectedOption().swatch}>{(sw) => <Swatch light={sw()} />}</Show>
-              <span class="name">{s.selectedOption().label}</span>
-            </>
-          )}
-        </Select.Value>
-        <Select.Icon class="chevron">
-          <i class="i-lucide-chevron-down" aria-hidden="true" />
-        </Select.Icon>
-      </Select.Trigger>
-      <Select.Portal>
-        <Select.Content class="select-menu">
-          <Select.Listbox class="select-list" />
-        </Select.Content>
-      </Select.Portal>
-    </Select>
+      leading={(o) => <Show when={o.swatch}>{(s) => <Swatch light={s()} />}</Show>}
+    />
   );
 }
-
-const Text = (props: { value: string; placeholder?: string; onInput: (v: string) => void; label?: string }) => (
-  <input class="input" value={props.value} placeholder={props.placeholder} aria-label={props.label} spellcheck={false} onInput={(e) => props.onInput(e.currentTarget.value)} />
-);
 
 /**
  * The live embed: a <bun-playground> kept in step with the form. Attribute changes go to the running element (it
@@ -321,7 +278,7 @@ export function Configurator() {
             />
             <Show when={form.source === "inline"}>
               <Field label="File name">
-                <Text value={form.filename} onInput={set("filename")} />
+                <Input value={form.filename} spellcheck={false} onInput={(e) => set("filename")(e.currentTarget.value)} />
               </Field>
               {/* Not a <label>: a click inside the editor mustn't go to a form control. */}
               <div class="field wide">
@@ -330,13 +287,13 @@ export function Configurator() {
               </div>
             </Show>
             <Show when={form.source === "example"}>
-              <Field label="Example" wide>
+              <Field label="Example" class="wide">
                 <Choice label="Example" value={form.example} options={EXAMPLE_OPTIONS} onChange={set("example")} />
               </Field>
             </Show>
             <Show when={form.source === "repo"}>
-              <Field label="Repo" hint="owner/repo[@ref] or a GitHub URL" wide>
-                <Text value={form.repo} onInput={set("repo")} />
+              <Field label="Repo" hint="owner/repo[@ref] or a GitHub URL" class="wide">
+                <Input value={form.repo} spellcheck={false} onInput={(e) => set("repo")(e.currentTarget.value)} />
               </Field>
               <div class="chips">
                 <For each={Object.entries(repoExamples)}>
@@ -364,7 +321,7 @@ export function Configurator() {
               }
               options={MODES.map((m) => [m, m, MODE_INFO[m][0], MODE_INFO[m][1]])}
             />
-            <Field label="Features" hint="a mode's feature turned off is locked for readers" wide>
+            <Field label="Features" hint="a mode's feature turned off is locked for readers" class="wide">
               <Chips label="Features" value={form.features} onChange={(v) =>
                   setForm((s) => {
                     s.features.splice(0, s.features.length, ...(v as Feature[]));
@@ -382,13 +339,13 @@ export function Configurator() {
             </Field>
             <div class="row">
               <Field label="Height" hint={form.mode === "code" ? "auto" : undefined}>
-                <Text value={form.height} placeholder="mode default" onInput={set("height")} />
+                <Input value={form.height} placeholder="mode default" spellcheck={false} onInput={(e) => set("height")(e.currentTarget.value)} />
               </Field>
               <Field label="Expand">
                 <Choice label="Expand" value={form.expand} options={EXPAND_OPTIONS} onChange={set("expand")} />
               </Field>
             </div>
-            <Field label="Run status" wide>
+            <Field label="Run status" class="wide">
               <Segmented
                 label="Run status"
                 value={form.status}
@@ -403,7 +360,7 @@ export function Configurator() {
 
           <section>
             <h2>Behavior</h2>
-            <Field label="Start" wide>
+            <Field label="Start" class="wide">
               <Segmented
                 label="Start"
                 value={form.load}
@@ -431,16 +388,16 @@ export function Configurator() {
                 />
               </Field>
               <Field label="Open file">
-                <Text value={form.file} placeholder="the entry file" onInput={set("file")} />
+                <Input value={form.file} placeholder="the entry file" spellcheck={false} onInput={(e) => set("file")(e.currentTarget.value)} />
               </Field>
               <Field label="Preview path">
-                <Text value={form.path} placeholder="/" onInput={set("path")} />
+                <Input value={form.path} placeholder="/" spellcheck={false} onInput={(e) => set("path")(e.currentTarget.value)} />
               </Field>
               <Field label="Persist key" hint="keeps edits">
-                <Text value={form.persist} placeholder="none" onInput={set("persist")} />
+                <Input value={form.persist} placeholder="none" spellcheck={false} onInput={(e) => set("persist")(e.currentTarget.value)} />
               </Field>
               <Field label="Title" hint="for screen readers">
-                <Text value={form.title} placeholder="none" onInput={set("title")} />
+                <Input value={form.title} placeholder="none" spellcheck={false} onInput={(e) => set("title")(e.currentTarget.value)} />
               </Field>
             </div>
           </section>
@@ -466,7 +423,7 @@ export function Configurator() {
               <Field label="Accent">
                 <span class="accent">
                   <input type="color" value={form.accent || "#009fff"} aria-label="Accent color" onInput={(e) => set("accent")(e.currentTarget.value)} />
-                  <Text value={form.accent} placeholder="theme's" label="Accent value" onInput={set("accent")} />
+                  <Input value={form.accent} placeholder="theme's" aria-label="Accent value" spellcheck={false} onInput={(e) => set("accent")(e.currentTarget.value)} />
                   <Show when={form.accent}>
                     <button type="button" class="clear" aria-label="Use the theme's accent" onClick={() => set("accent")("")}>
                       <i class="i-lucide-x" aria-hidden="true" />
@@ -475,17 +432,17 @@ export function Configurator() {
                 </span>
               </Field>
               <Field label="Corner radius">
-                <Text value={form.radius} placeholder="12px" onInput={set("radius")} />
+                <Input value={form.radius} placeholder="12px" spellcheck={false} onInput={(e) => set("radius")(e.currentTarget.value)} />
               </Field>
               <Field label="UI font">
-                <Text value={form.fontUi} placeholder="Inter, sans-serif" onInput={set("fontUi")} />
+                <Input value={form.fontUi} placeholder="Inter, sans-serif" spellcheck={false} onInput={(e) => set("fontUi")(e.currentTarget.value)} />
               </Field>
               <Field label="Code font">
-                <Text value={form.fontMono} placeholder="JetBrains Mono, monospace" onInput={set("fontMono")} />
+                <Input value={form.fontMono} placeholder="JetBrains Mono, monospace" spellcheck={false} onInput={(e) => set("fontMono")(e.currentTarget.value)} />
               </Field>
             </div>
-            <Field label="Font stylesheets" hint="loaded inside the embed" wide>
-              <Text value={form.fonts} placeholder="https://fonts.googleapis.com/css2?family=Inter&display=swap" onInput={set("fonts")} />
+            <Field label="Font stylesheets" hint="loaded inside the embed" class="wide">
+              <Input value={form.fonts} placeholder="https://fonts.googleapis.com/css2?family=Inter&display=swap" spellcheck={false} onInput={(e) => set("fonts")(e.currentTarget.value)} />
             </Field>
           </section>
         </form>

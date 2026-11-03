@@ -1,5 +1,4 @@
 /* The embed configurator (configure.html): the form beside the live embed and the snippet. Controls reuse style.css. */
-@import "@runbun/ui/css/field.css";
 body { color: var(--fg); }
 .cfg-header { display: flex; align-items: center; gap: 14px; flex: 0 0 auto; height: 44px; padding: 0 14px; background: var(--panel); border-bottom: 1px solid var(--border); }
 .cfg-header .title { font-weight: 600; margin-right: auto; }

@@ -1,5 +1,5 @@
 import { For, Show, createEffect, onSettled, untrack, useContext } from "solid-js";
-import { Select } from "@kobalte/core/select";
+import { Select } from "@runbun/ui/solid/Select";
 import { TabItem, TabList } from "@runbun/ui/solid/Tabs";
 import { isMac, matches } from "../keymap";
 import { createPierre, createViewer } from "../editors/pierre";
@@ -98,33 +98,18 @@ export function Preview() {
           }}
         >
           <Select<string>
+            id="req-method"
+            label="Method"
+            tip={disabled ? CANT_RUN : "Method"}
             options={METHODS}
             value={active().method}
             onChange={(m) => m && p.edit(s.active, "method", m)}
             disabled={disabled}
-            disallowEmptySelection
+            required
             placement="bottom-start"
-            gutter={6}
-            itemComponent={(props) => (
-              <Select.Item item={props.item} class="select-option">
-                <Select.ItemLabel class="name">
-                  <MethodBadge method={props.item.rawValue} />
-                </Select.ItemLabel>
-              </Select.Item>
-            )}
-          >
-            <Tip as={Select.Trigger} id="req-method" class="select-trigger" tip={disabled ? CANT_RUN : "Method"} aria-label="Method">
-              <Select.Value<string> class="value">{(state) => <MethodBadge method={state.selectedOption()} />}</Select.Value>
-              <Select.Icon class="chevron">
-                <i class="i-lucide-chevron-down" aria-hidden="true" />
-              </Select.Icon>
-            </Tip>
-            <Select.Portal>
-              <Select.Content class="select-menu method-menu">
-                <Select.Listbox class="select-list" />
-              </Select.Content>
-            </Select.Portal>
-          </Select>
+            menuClass="method-menu"
+            text={(m) => <MethodBadge method={m} />}
+          />
           <input
             id="req-path"
             spellcheck={false}
