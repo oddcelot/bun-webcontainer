@@ -15,14 +15,21 @@ const app = new Elysia()
   .onError(TeapotError, ({ error }) => status(418, { error: error.message }))
   // a page that uses the routes below (Elysia sends a BunFile with its type)
   .get("/", () => Bun.file(new URL("./src/index.html", import.meta.url)))
-  .get("/info", () => ({ framework: "elysia 2", runtime: `bun ${Bun.version}` }))
+  .get("/info", () => ({
+    framework: "elysia 2",
+    runtime: `bun ${Bun.version}`,
+  }))
   .get("/me", { auth: true }, ({ user }) => user)
   // cookies: typed, validated and written back as Set-Cookie
-  .get("/visits", { cookie: t.Cookie({ visits: t.Optional(t.Number()) }) }, ({ cookie: { visits } }) => {
-    visits.value = (visits.value ?? 0) + 1;
-    visits.httpOnly = true;
-    return `Visit number ${visits.value}`;
-  })
+  .get(
+    "/visits",
+    { cookie: t.Cookie({ visits: t.Optional(t.Number()) }) },
+    ({ cookie: { visits } }) => {
+      visits.value = (visits.value ?? 0) + 1;
+      visits.httpOnly = true;
+      return `Visit number ${visits.value}`;
+    },
+  )
   // server-sent events from an async generator
   .get("/count", async function* () {
     for (let i = 1; i <= 5; i++) {
