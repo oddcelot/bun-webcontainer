@@ -160,7 +160,7 @@ describe("add", () => {
 | API | Status | Notes |
 |---|---|---|
 | `import.meta.url`, `dirname`, `filename` | ✅ Works | `file:///<path>` in the project. |
-| `import.meta.require` | 🟡 Partial | String literals only (`import.meta.require("x")`). |
+| `import.meta.require` | ✅ Works | Any specifier, computed ones too: project files, installed packages, data files and built-ins load synchronously (see [CommonJS and `require`](/compatibility/toolchain/#commonjs-and-require)). |
 | `import.meta.dir`, `file`, `path`, `main`, `env` | ✅ Works | `env` is `process.env`. In browser code (HTML imports), only `url`, `dirname` and `filename` are filled in. |
 | `import.meta.resolve` | ✅ Works | As in Bun: a package resolves to its file's `file:///<path>` URL (or throws a `ResolveMessage`), a built-in to `node:x`, and a path is joined to the module's URL as written. Server code only; browser code (HTML imports) gets the browser's own, which returns the served URL. |
 | `import(expr)` with a computed path | ✅ Works | |
