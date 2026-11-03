@@ -241,6 +241,8 @@ pub enum Data {
     Yaml,
     Xml,
     Text,
+    /// Markdown, rendered to HTML (`parse_md_loader`).
+    Md,
 }
 
 /// The module `bundler/transpiler.rs` (`parse_data_loader`, `parse_text_loader`) makes of a data file: `export default`
@@ -263,6 +265,14 @@ pub fn data_ast<'a>(loader: Data, source: &'a bun_ast::Source<'a>, log: &mut bun
     let mut expr = match loader {
         Data::Text => {
             let expr = bun_ast::Expr::init(E::EString::init(&source.contents), bun_ast::Loc::EMPTY);
+            return Some(bun_ast::Ast::from_parts(part(&[export_default(expr)]), arena));
+        }
+        Data::Md => {
+            let Ok(html) = bun_md::root::render_to_html(&source.contents) else {
+                let _ = log.add_error_fmt(None, bun_ast::Loc::EMPTY, format_args!("Failed to render markdown to HTML"));
+                return None;
+            };
+            let expr = bun_ast::Expr::init(E::EString::init(arena.alloc_slice_copy(&html)), bun_ast::Loc::EMPTY);
             return Some(bun_ast::Ast::from_parts(part(&[export_default(expr)]), arena));
         }
         Data::Json => p::json::parse_json_into_arena(source, log, arena).ok()?,

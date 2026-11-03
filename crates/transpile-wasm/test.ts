@@ -273,6 +273,9 @@ const optionCases: [string, Record<string, unknown>, string, string, string?][] 
   ["xml", {}, "xml", "<a>1</a>"],
   ["text", {}, "text", 'hello "world"\n`x`'],
   ["text empty", {}, "text", ""],
+  ["md", {}, "md", "# Hi\n\nsome *text*, `code` and a [link](https://x.y \"t\").\n\n- [ ] task\n- ~~gone~~ https://auto.link\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n```js\nlet x = `y`;\n```\n<div>raw</div>\n"],
+  ["md entities", {}, "md", "&amp; &copy; &#x1F600; <br> \\* 'q' \"dq\" ${x}\n"],
+  ["md empty", {}, "md", "  \n"],
 ];
 if (spawnSync("bun", ["--version"]).status === 0) {
   const native = (c: (typeof optionCases)[number]) => {

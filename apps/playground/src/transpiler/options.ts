@@ -19,7 +19,7 @@ export const FLAGS = {
 } as const;
 
 /** transpile-wasm's loader numbers (`Loader::from_u32`), by `Bun.Transpiler` loader name. */
-export const LOADER_NUMBERS: Record<string, number> = { js: 0, jsx: 1, ts: 2, tsx: 3, json: 4, jsonc: 5, json5: 6, toml: 7, yaml: 8, xml: 9, text: 10 };
+export const LOADER_NUMBERS: Record<string, number> = { js: 0, jsx: 1, ts: 2, tsx: 3, json: 4, jsonc: 5, json5: 6, toml: 7, yaml: 8, xml: 9, text: 10, md: 11 };
 
 export type RuntimeOptions = {
   /** `flags` bits, without RUNTIME_TRANSPILER. */

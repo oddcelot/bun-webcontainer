@@ -109,7 +109,7 @@ export class Transpiler {
   #run(op: RuntimeOp, source: Code, loader: unknown, message: string): string {
     const l = loaderOf(loader) ?? this.#loader;
     if (op === "scanImports" && !JS_LOADERS.includes(l)) throw new Error("Only JavaScript-like files support this fast path");
-    // css and wasm aren't modules Bun's runtime transpiler prints; md would need Bun's markdown renderer in the module.
+    // css and wasm aren't modules Bun's runtime transpiler prints.
     if (l === "css" || l === "wasm") throw new Error(op === "scan" ? "Failed to parse" : "Failed to parse code");
     if (!RUNTIME_LOADERS.includes(l)) throw new Error(`Bun.Transpiler: the ${l} loader is not supported in the playground`);
     const text = code(source);

@@ -27,6 +27,8 @@ type CjsModule = {
 };
 type Require = ((id: string) => unknown) & { resolve?: unknown; cache?: unknown; main?: unknown };
 
+/** Markdown files, which Bun loads as an ES module of their HTML. */
+const MARKDOWN = /\.(md|markdown)$/;
 /** `require.cache`: every CommonJS module the worker runs, whether a literal require (wrapCommonJS) or a computed one loaded it. */
 const cache: Record<string, CjsModule> = Object.create(null);
 
@@ -239,7 +241,8 @@ export function createModule(registry: Record<string, object>) {
     const transpile = () => requireRuntimeImports(stripDirname(transpileSync(src, file, tsconfigFor(vfs!, path))));
     // What Bun runs as an ES module (see moduleKindOf, which throws Bun's error for CommonJS features next to an
     // import) loads as one (loadEsm); a file of another extension only if it has module syntax or its package's type.
-    const esm = JS_LIKE.test(path) ? moduleKindOf(vfs!, path, src) === "esm" : packageType(vfs!, path) === "module" || hasModuleSyntax(src);
+    // Markdown is an ES module of its HTML, as Bun requires it.
+    const esm = JS_LIKE.test(path) ? moduleKindOf(vfs!, path, src) === "esm" : MARKDOWN.test(path) || packageType(vfs!, path) === "module" || hasModuleSyntax(src);
     if (esm) return loadEsm(path, src);
     let code = /\.[cm]?(ts|tsx|jsx)$/.test(path) ? transpile() : src;
     const compile = () => new Function("exports", "require", "module", "__filename", "__dirname", `${dynamicImports(code.replace(/^#!.*/, ""), file)}\n//# sourceURL=${encodeURI(`file://${file}`)}`);

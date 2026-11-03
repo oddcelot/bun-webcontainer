@@ -30,7 +30,7 @@ pub enum Loader {
 
 impl Loader {
     /// The `transpile_flags_c` loader number: 0 js, 1 jsx, 2 ts, 3 tsx, 4 json, 5 jsonc, 6 json5, 7 toml, 8 yaml,
-    /// 9 xml, 10 text.
+    /// 9 xml, 10 text, 11 md.
     pub fn from_u32(n: u32) -> Option<Loader> {
         Some(match n {
             0 => Loader::Js,
@@ -44,6 +44,7 @@ impl Loader {
             8 => Loader::Data(Data::Yaml),
             9 => Loader::Data(Data::Xml),
             10 => Loader::Data(Data::Text),
+            11 => Loader::Data(Data::Md),
             _ => return None,
         })
     }
