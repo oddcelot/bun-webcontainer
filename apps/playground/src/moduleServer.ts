@@ -24,20 +24,34 @@ function resolveWith(vfs: VFS, spec: string, dir: string, kind: ResolveKind = "i
   return resolve(spec, dir, kind, TARGET);
 }
 
-/** `compilerOptions` of the nearest tsconfig.json above `path` (comments and trailing commas allowed; no `extends`). */
+/** `compilerOptions` of the nearest tsconfig.json (or jsconfig.json) above `path` (comments and trailing commas allowed), with `extends`. */
 export function tsconfigFor(vfs: VFS, path: string): TsconfigFlags {
   for (let dir = dirname(path); ; dir = dirname(dir)) {
-    const text = vfs.readText(dir ? `${dir}/tsconfig.json` : "tsconfig.json");
-    if (text !== undefined) {
-      try {
-        const json = text.replace(/("(?:\\.|[^"\\])*")|\/\/[^\n]*|\/\*[\s\S]*?\*\//g, "$1").replace(/,(\s*[}\]])/g, "$1");
-        return (JSON.parse(json) as { compilerOptions?: TsconfigFlags }).compilerOptions ?? {};
-      } catch {
-        return {};
-      }
+    for (const name of ["tsconfig.json", "jsconfig.json"]) {
+      const file = dir ? `${dir}/${name}` : name;
+      if (vfs.readText(file) !== undefined) return compilerOptions(vfs, file, new Set());
     }
     if (!dir) return {};
   }
+}
+
+/**
+ * `file`'s `compilerOptions` over those of the config it `extends`. As Bun's resolver: `extends` is a path relative to
+ * the file, taken as written (no `.json` added, no packages); a config that is missing or not JSON ends the chain.
+ */
+function compilerOptions(vfs: VFS, file: string, seen: Set<string>): TsconfigFlags {
+  const text = vfs.readText(file);
+  if (text === undefined || seen.has(file)) return {};
+  seen.add(file);
+  let config: { extends?: unknown; compilerOptions?: TsconfigFlags };
+  try {
+    config = JSON.parse(text.replace(/("(?:\\.|[^"\\])*")|\/\/[^\n]*|\/\*[\s\S]*?\*\//g, "$1").replace(/,(\s*[}\]])/g, "$1"));
+  } catch {
+    return {};
+  }
+  if (typeof config !== "object" || config === null) return {};
+  const base = typeof config.extends === "string" && !config.extends.startsWith("/") ? compilerOptions(vfs, norm(`${dirname(file)}/${config.extends}`), seen) : {};
+  return { ...base, ...config.compilerOptions };
 }
 
 /** Nearest `node_modules/<name>` walking up from `fromDir`, like Node's lookup. */
@@ -307,9 +321,9 @@ export async function serveModule(vfs: VFS, rawPath: string, onError: (msg: stri
       return { status: 200, body: commonJSFacade(commonJSNames(vfs, path, src), `${VFS_ROOT}__cjs/${path}`) };
     }
     else {
-      // Plain ES module: Bun's parser finds the specifiers, as `bun build --no-bundle` does.
+      // Plain ES module: Bun's parser finds the specifiers, as `bun build --no-bundle` does (JSX per tsconfig too).
       TARGET = target;
-      code = await transpileCached(src, path, {}, resolver(vfs, dirname(path)));
+      code = await transpileCached(src, path, tsconfigFor(vfs, path), resolver(vfs, dirname(path)));
     }
     TARGET = target;
     // The hoisted imports are final URLs already (the transpiler leaves those alone).
