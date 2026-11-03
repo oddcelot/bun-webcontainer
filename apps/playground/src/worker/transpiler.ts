@@ -62,8 +62,13 @@ function tsconfigFlags(t: Options["tsconfig"]): TsconfigFlags {
   } catch {
     warnOnce("a tsconfig that isn't plain JSON");
   }
-  for (const k of Object.keys(opts ?? {})) if (k !== "experimentalDecorators" && k !== "emitDecoratorMetadata") warnOnce(`tsconfig compilerOptions.${k}`);
-  return { experimentalDecorators: opts?.experimentalDecorators === true, emitDecoratorMetadata: opts?.emitDecoratorMetadata === true };
+  const out: TsconfigFlags = { experimentalDecorators: opts?.experimentalDecorators === true, emitDecoratorMetadata: opts?.emitDecoratorMetadata === true };
+  for (const [k, v] of Object.entries(opts ?? {})) {
+    if (k === "jsx" || k === "jsxImportSource" || k === "jsxFactory" || k === "jsxFragmentFactory") {
+      if (typeof v === "string") out[k] = v;
+    } else if (k !== "experimentalDecorators" && k !== "emitDecoratorMetadata") warnOnce(`tsconfig compilerOptions.${k}`);
+  }
+  return out;
 }
 
 export class Transpiler {

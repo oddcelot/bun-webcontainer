@@ -11,6 +11,7 @@ type Exports = {
   transpile_flags_c(pathPtr: bigint, pathLen: bigint, srcPtr: bigint, srcLen: bigint, loader: number, flags: number): bigint;
   scan_c(pathPtr: bigint, pathLen: bigint, srcPtr: bigint, srcLen: bigint, loader: number, flags: number): bigint;
   scan_imports_c(pathPtr: bigint, pathLen: bigint, srcPtr: bigint, srcLen: bigint, loader: number, flags: number): bigint;
+  jsx_c(ptr: bigint, len: bigint): void;
   output_free(out: bigint): void;
 };
 
@@ -32,8 +33,20 @@ export class TranspileError extends Error {
   }
 }
 
-/** tsconfig `compilerOptions` the output depends on (bits of transpile-wasm's `flags`). */
-export type TsconfigFlags = { experimentalDecorators?: boolean; emitDecoratorMetadata?: boolean };
+/** tsconfig `compilerOptions` the output depends on (bits of transpile-wasm's `flags`, and its `jsx_c`). */
+export type TsconfigFlags = {
+  experimentalDecorators?: boolean;
+  emitDecoratorMetadata?: boolean;
+  jsx?: string;
+  jsxImportSource?: string;
+  jsxFactory?: string;
+  jsxFragmentFactory?: string;
+};
+
+const JSX_OPTIONS = ["jsx", "jsxImportSource", "jsxFactory", "jsxFragmentFactory"] as const;
+
+/** The JSX options as transpile-wasm's `jsx_c` takes them (NUL-separated, non-strings unset); also a cache key. */
+export const jsxKey = (t: TsconfigFlags): string => JSX_OPTIONS.map((k) => (typeof t[k] === "string" ? t[k] : "")).join("\0");
 
 const LOADERS: Record<string, number> = { js: 0, mjs: 0, jsx: 1, ts: 2, mts: 2, cts: 2, tsx: 3 };
 
@@ -121,7 +134,7 @@ export async function transpile(source: string, path: string, tsconfig: Tsconfig
   current = resolve;
   resolveError = undefined;
   try {
-    return call(w, resolve ? "transpile_resolve_c" : "transpile_flags_c", path, source, loader, flags, () => {
+    return call(w, resolve ? "transpile_resolve_c" : "transpile_flags_c", path, source, loader, flags, jsxKey(tsconfig), () => {
       if (resolveError !== undefined) throw resolveError;
     });
   } finally {
@@ -131,8 +144,8 @@ export async function transpile(source: string, path: string, tsconfig: Tsconfig
 
 type Entry = "transpile_resolve_c" | "transpile_flags_c" | "scan_c" | "scan_imports_c";
 
-/** Calls `fn` (always with DIAGNOSTICS_JSON) and returns its text, or throws a TranspileError. `check` runs first. */
-function call(w: Exports, fn: Entry, path: string, source: string, loader: number, flags: number, check?: () => void): string {
+/** Calls `fn` (always with DIAGNOSTICS_JSON) with the JSX options `jsx` (`jsxKey`) and returns its text, or throws a TranspileError. `check` runs first. */
+function call(w: Exports, fn: Entry, path: string, source: string, loader: number, flags: number, jsx: string, check?: () => void): string {
   const put = (s: string): [bigint, bigint] => {
     const b = enc.encode(s);
     const len = BigInt(b.length);
@@ -140,6 +153,9 @@ function call(w: Exports, fn: Entry, path: string, source: string, loader: numbe
     new Uint8Array(w.memory.buffer, Number(ptr), b.length).set(b);
     return [ptr, len];
   };
+  const [jp, jl] = put(jsx);
+  w.jsx_c(jp, jl);
+  w.dealloc(jp, jl);
   const [pp, pl] = put(path);
   const [sp, sl] = put(source);
   const out = w[fn](pp, pl, sp, sl, loader, flags | 4); // 4: errors as JSON
@@ -178,5 +194,5 @@ const ENTRY: Record<RuntimeOp, Entry> = { transform: "transpile_flags_c", scan: 
 export function runtimeTranspile(op: RuntimeOp, source: string, loader: "js" | "jsx" | "ts" | "tsx", tsconfig: TsconfigFlags = {}): string {
   const flags = (tsconfig.experimentalDecorators ? 1 : 0) | (tsconfig.emitDecoratorMetadata ? 2 : 0) | RUNTIME_TRANSPILER;
   // Bun names the source after the loader (`Loader::stdin_name`), which its messages show.
-  return call(loadSync(), ENTRY[op], `input.${loader}`, source, LOADERS[loader], flags);
+  return call(loadSync(), ENTRY[op], `input.${loader}`, source, LOADERS[loader], flags, jsxKey(tsconfig));
 }

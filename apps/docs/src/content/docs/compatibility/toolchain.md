@@ -10,11 +10,11 @@ sidebar:
 Bun's own parser and printer, compiled to WebAssembly. Output matches `bun build --no-bundle --target=browser`.
 
 - ✅ `.ts`, `.tsx`, `.jsx`, `.mts`, `.cts`, `.js`, `.mjs`
-- ✅ JSX with Bun's defaults (React automatic runtime)
+- ✅ JSX with Bun's defaults (React automatic runtime, development `jsxDEV`)
 - ✅ `/** @jsxImportSource preact */` pragma comments
 - ✅ Legacy decorators with `experimentalDecorators` and `emitDecoratorMetadata` in `tsconfig.json`
 - ✅ Top-level `await`
-- ❌ `tsconfig.json` `jsx` and `jsxImportSource` are not read by the transpiler (`paths` and `baseUrl` are, by the resolver); use the `@jsxImportSource` pragma for another JSX runtime
+- ✅ `jsx` (`react`, `react-jsx`, `react-jsxdev`), `jsxImportSource`, `jsxFactory` and `jsxFragmentFactory` from the nearest `tsconfig.json` (or `jsconfig.json`), following a relative `extends` as Bun does (Preact, Solid or `hono/jsx` without a pragma); pragmas in a file still win. `NODE_ENV` doesn't change the JSX output, as in `bun build --no-bundle`
 
 ```ts playground title="index.ts"
 enum Level { Low = 1, High = 10 }

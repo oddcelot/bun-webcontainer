@@ -1,5 +1,7 @@
 // Runs the wasm64 build of Bun's transpiler on corpus/* and diffs against `bun build --no-bundle`.
-import { readFileSync, readdirSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 
 const wasm = readFileSync(new URL("../../target/wasm64-unknown-unknown/release/bun_transpile_wasm.wasm", import.meta.url));
@@ -66,6 +68,52 @@ if (spawnSync("bun", ["--version"]).status === 0) {
     const ok = same(got[0], js) && same(got[1].imports, scan.imports) && same(got[1].exports, scan.exports) && same(got[2], imports);
     if (!ok) { fail++; console.log(`Bun.Transpiler ${loader}: MISMATCH\n--- wasm\n${JSON.stringify(got)}\n--- bun\n${JSON.stringify([js, scan, imports])}`); }
     else console.log(`Bun.Transpiler ${loader}: transformSync, scan and scanImports identical to bun`);
+  }
+}
+
+// tsconfig JSX options (`jsx_c`), vs `bun build --no-bundle` with that tsconfig.json and Bun.Transpiler's `tsconfig`.
+function setJsx(o: Record<string, string>) {
+  const b = enc.encode([o.jsx, o.jsxImportSource, o.jsxFactory, o.jsxFragmentFactory].map((s) => s ?? "").join("\0"));
+  const n = BigInt(b.length), p = w.alloc(n);
+  new Uint8Array(w.memory.buffer, Number(p), b.length).set(b);
+  w.jsx_c(p, n); w.dealloc(p, n);
+}
+const jsxSrc = 'export const a = <div class="x"><>{1}</></div>';
+const jsxCases: [Record<string, string>, string, string][] = [
+  [{ jsx: "react-jsx", jsxImportSource: "preact" }, "a.tsx", jsxSrc],
+  [{ jsx: "react-jsxdev", jsxImportSource: "preact" }, "a.tsx", jsxSrc],
+  [{ jsx: "React-JSX" }, "a.jsx", jsxSrc],
+  [{ jsxImportSource: "solid-js" }, "a.tsx", jsxSrc],
+  [{ jsx: "react-jsx", jsxImportSource: "hono/jsx" }, "a.tsx", jsxSrc],
+  [{ jsx: "react", jsxFactory: "h", jsxFragmentFactory: "Fragment" }, "a.tsx", jsxSrc],
+  [{ jsx: "react" }, "a.jsx", jsxSrc],
+  [{ jsxFactory: "Preact.h" }, "a.tsx", jsxSrc],
+  [{ jsx: "preserve" }, "a.tsx", jsxSrc],
+  // Per-file pragmas win over tsconfig.
+  [{ jsx: "react-jsx", jsxImportSource: "preact" }, "p.tsx", `/** @jsxImportSource foo */\n${jsxSrc}`],
+  [{ jsx: "react", jsxFactory: "h" }, "r.tsx", `/** @jsxRuntime automatic */\n${jsxSrc}`],
+  [{ jsx: "react", jsxFactory: "h" }, "s.tsx", `/** @jsx React.createElement */\n${jsxSrc}`],
+];
+if (spawnSync("bun", ["--version"]).status === 0) {
+  const tmp = mkdtempSync(join(tmpdir(), "transpile-wasm-jsx-"));
+  try {
+    for (const [opts, file, code] of jsxCases) {
+      const label = `tsconfig ${JSON.stringify(opts)} ${file}`;
+      writeFileSync(join(tmp, "tsconfig.json"), JSON.stringify({ compilerOptions: opts }));
+      writeFileSync(join(tmp, file), code);
+      const expected = spawnSync("bun", ["build", "--no-bundle", file], { cwd: tmp, encoding: "utf8" }).stdout;
+      setJsx(opts);
+      const r = transpile(file, code);
+      const ext = file.split(".").pop()!;
+      const rt = spawnSync("bun", ["-e", "console.log(JSON.stringify(new Bun.Transpiler({ loader: process.argv[1], tsconfig: JSON.parse(process.argv[2]) }).transformSync(process.argv[3])))", ext, JSON.stringify({ compilerOptions: opts }), code], { encoding: "utf8" });
+      const gotRt = call("transpile_flags_c", `input.${ext}`, code, 8);
+      setJsx({});
+      if (!r.ok || r.text.trim() !== expected.trim()) { fail++; console.log(`${label}: MISMATCH\n--- wasm\n${r.text}\n--- bun\n${expected}`); }
+      else if (gotRt !== JSON.parse(rt.stdout)) { fail++; console.log(`${label} Bun.Transpiler: MISMATCH\n--- wasm\n${gotRt}\n--- bun\n${JSON.parse(rt.stdout)}`); }
+      else console.log(`${label}: identical to bun build --no-bundle and Bun.Transpiler`);
+    }
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
   }
 }
 process.exit(fail ? 1 : 0);

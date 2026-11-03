@@ -1,5 +1,5 @@
 import { bucket } from "./storage";
-import { transpile, transpilerId, type Resolver, type TsconfigFlags } from "./transpiler";
+import { jsxKey, transpile, transpilerId, type Resolver, type TsconfigFlags } from "./transpiler";
 
 /** Below this, transpiling (~15 ms/MB) is about as fast as hashing and a cache lookup. */
 const MIN_SIZE = 256 * 1024;
@@ -20,11 +20,11 @@ const hex = (b: ArrayBuffer) => [...new Uint8Array(b)].map((x) => x.toString(16)
 
 /**
  * `transpile`, cached in memory and in Cache Storage (so a reload doesn't transpile node_modules again), keyed by the
- * transpiler build, path, tsconfig flags and source.
+ * transpiler build, path, tsconfig options (decorators, JSX) and source.
  */
 export async function transpileCached(source: string, path: string, tsconfig: TsconfigFlags, resolve: Resolver): Promise<string> {
   if (source.length < MIN_SIZE) return transpile(source, path, tsconfig, resolve);
-  const flags = `${tsconfig.experimentalDecorators ? 1 : 0}${tsconfig.emitDecoratorMetadata ? 1 : 0}`;
+  const flags = `${tsconfig.experimentalDecorators ? 1 : 0}${tsconfig.emitDecoratorMetadata ? 1 : 0}\0${jsxKey(tsconfig)}`;
   const key = hex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${await transpilerId()}\0${path}\0${flags}\0${source}`)));
   const url = new URL(`__transpile/${key}`, location.href).href;
   let e = memory.get(key);
