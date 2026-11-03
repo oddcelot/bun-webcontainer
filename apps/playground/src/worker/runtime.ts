@@ -2,7 +2,7 @@ import { BASE } from "../base";
 import { loadResolver, resolve } from "../resolver";
 import { loadSemver } from "../semver";
 import { dirname, norm, VFS } from "@runbun/vfs";
-import { BUN_NAMES, builtins, installTimers, setFs, setResolve, setStdio } from "./node";
+import { BUN_NAMES, builtins, installTimers, setFs, setRequire, setStdio } from "./node";
 import { bundle, type BundleConfig, type BundleLog } from "./bundler";
 import { setHostVfs } from "./hostPackages";
 import { hash } from "./hash";
@@ -57,7 +57,9 @@ g.__dynamicImport = (from: string, spec: unknown, options?: ImportCallOptions) =
   const s = String(spec);
   const builtin = s.replace(/^node:/, "");
   if (builtin in builtins) return importUrl(`${VFS_ROOT}__node/${builtin}`);
-  const path = /^(file:|\/|\.)/.test(s) && decodeURIComponent(new URL(s, from).pathname);
+  // A package resolves from the importer's directory (CommonJS the worker runs itself rewrites literal imports to this too).
+  const pkg = !/^(file:|\/|\.|[a-z][a-z\d+.-]*:)/i.test(s) && from.startsWith("file:") ? resolve(s, dirname(norm(decodeURIComponent(new URL(from).pathname))), "import", "bun") : null;
+  const path = pkg ?? (/^(file:|\/|\.)/.test(s) && decodeURIComponent(new URL(s, from).pathname));
   if (!path) return importUrl(s, options);
   const file = norm(path);
   return importUrl(`${VFS_ROOT}${file.endsWith(".css") ? "__css/" : ""}${file}`, options);
@@ -747,9 +749,9 @@ const compressible = (d: Compressible) =>
 const level = (o?: { level?: number }) => ({ level: (o?.level === undefined || o.level < 0 ? 6 : Math.min(o.level, 9)) as fflate.DeflateOptions["level"] });
 
 async function main() {
-  // Bun's resolver, for `require.resolve` with a computed specifier (node/module.ts); the page has its own instance.
+  // Bun's resolver, for `require` and `require.resolve` with a computed specifier (node/module.ts); the page has its own instance.
   const [semver] = await Promise.all([loadSemver(), loadResolver(vfs)]);
-  setResolve((spec, dir) => resolve(spec, dir, "require", "bun"));
+  setRequire(vfs, (spec, dir) => resolve(spec, dir, "require", "bun"));
   const bun: Record<(typeof BUN_NAMES)[number], unknown> = {
     version: `${BUN_VERSION}-browser`,
     env,
