@@ -156,7 +156,12 @@ pub fn parse(text: &[u8], format: u32) -> Result<Vec<u8>, Vec<u8>> {
     let root = match root {
         Ok(root) => root,
         Err(e) => {
-            return Err(match log.msgs.first() {
+            // JSONC skips duplicate-key warnings so the message names the fatal error, as JSONCObject.rs does.
+            let first = match format {
+                JSONC_FORMAT => log.msgs.iter().find(|m| m.kind == bun_ast::Kind::Err).or_else(|| log.msgs.first()),
+                _ => log.msgs.first(),
+            };
+            return Err(match first {
                 Some(m) => fail(&m.data.text),
                 None if e.contains("StackOverflow") => b"Maximum call stack size exceeded.".to_vec(),
                 None if format == TOML_FORMAT => fail(b"Unable to parse TOML"),
