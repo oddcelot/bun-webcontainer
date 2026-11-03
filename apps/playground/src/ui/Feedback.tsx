@@ -177,7 +177,7 @@ function FeedbackForm() {
   );
 }
 
-/** After sending: a neon heart that draws itself (both halves from the tip up), then flickers on. */
+/** After sending: a neon heart that draws itself in one pen stroke, then flickers on. */
 function Thanks() {
   return (
     <div class="feedback-thanks">
@@ -189,13 +189,12 @@ function Thanks() {
   );
 }
 
-// Same drawing as the docs' (apps/docs/src/components/Footer.astro): two mirrored strokes, so pathLength="1"
-// lets one dash animation draw each half.
+// Same drawing as the docs' (apps/docs/src/components/Footer.astro): one stroke, a swoosh in, a loop for the heart
+// and a swoosh out; pathLength="1" lets a dash animation draw it from end to end.
 function NeonHeart() {
   return (
-    <svg class="neon-heart" viewBox="0 0 24 24" width="64" height="64" aria-hidden="true">
-      <path pathLength="1" d="M12 20.5C9 17.5 3 13.5 3 8.8 3 5.9 5.2 3.8 7.8 3.8c1.8 0 3.3 1 4.2 2.5" />
-      <path pathLength="1" d="M12 20.5c3-3 9-7 9-11.7 0-2.9-2.2-5-4.8-5-1.8 0-3.3 1-4.2 2.5" />
+    <svg class="neon-heart" viewBox="0 0 100 44" width="150" height="66" aria-hidden="true">
+      <path pathLength="1" d="M4 25C18 33 36 38 50 35 58 33 62 24 61 18 60 12 54 10 50 16 46 10 39 12 39 18 39 25 45 31 51 38 60 46 82 40 96 31" />
     </svg>
   );
 }
