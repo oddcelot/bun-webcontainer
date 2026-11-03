@@ -9,7 +9,10 @@
     ],
     "catalog": {
       "@iconify-json/lucide": "^1.2.148",
-      "unocss": "66.12.0"
+      "unocss": "66.12.0",
+      "solid-js": "2.0.0-rc.19",
+      "@solidjs/web": "2.0.0-rc.19",
+      "@solidjs/vite-plugin": "3.0.0-next.55"
     }
   },
   "patchedDependencies": {
