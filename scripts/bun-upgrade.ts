@@ -173,6 +173,7 @@ async function finish(): Promise<number> {
   // The tests compare against native Bun of the same release (proto pins it for moon and the shell).
   await edit(join(root, ".prototools"), /^bun = ".*"/m, `bun = "${ver}"`);
   await edit(join(root, "apps/playground/src/worker/bunVersion.ts"), /BUN_VERSION = ".*"/, `BUN_VERSION = "${ver}"`);
+  await edit(join(root, "apps/playground/src/worker/bunVersion.ts"), /BUN_REVISION = ".*"/, `BUN_REVISION = "${next}"`);
   // The editor's type checker bundles Bun's type definitions (apps/playground/src/typecheck/bunTypes.ts).
   // It globs them from apps/playground/node_modules, so bun-types (and @types/node, undici-types) are declared there too.
   const added = await $`bun add -d --exact ${`@types/bun@${ver}`} ${`bun-types@${ver}`}`.cwd(join(root, "apps/playground")).quiet().nothrow();

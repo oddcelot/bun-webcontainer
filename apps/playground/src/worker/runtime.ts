@@ -13,14 +13,14 @@ import { password } from "./password";
 import { Cookie, CookieMap } from "./cookie";
 import { importMetaResolve, resolveSync } from "./resolve";
 import { Transpiler } from "./transpiler";
-import { fsError } from "./node/errors";
+import { codeError, fsError } from "./node/errors";
 import { hooks, type NodeSocket } from "./node/serve";
 import { flushDatabases } from "./node/sqlite";
 import nodePath from "./node/path";
 import process, { env } from "./node/process";
 import util, { isDeepStrictEqual } from "./node/util";
 import { runTestFiles } from "./node/test";
-import { BUN_VERSION } from "./bunVersion";
+import { BUN_REVISION, BUN_VERSION } from "./bunVersion";
 import * as fflate from "fflate";
 
 type Handler = (req: Request, server: unknown) => Response | Promise<Response>;
@@ -752,6 +752,19 @@ const compressible = (d: Compressible) =>
 const level = (o?: { level?: number }) => ({ level: (o?.level === undefined || o.level < 0 ? 6 : Math.min(o.level, 9)) as fflate.DeflateOptions["level"] });
 
 /**
+ * `Bun.sleepSync`: blocks the worker. `Atomics.wait` on shared memory where the page is cross-origin isolated (as the
+ * playground serves it), else a busy loop.
+ */
+function sleepSync(ms: unknown) {
+  if (typeof ms !== "number") throw codeError(TypeError, "ERR_INVALID_ARG_TYPE", "milliseconds must be a number");
+  if (ms < 0) throw codeError(TypeError, "ERR_INVALID_ARG_TYPE", `argument to sleepSync must not be negative, got ${ms}`);
+  if (!(ms > 0)) return;
+  if (typeof SharedArrayBuffer === "function") return void Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  const end = performance.now() + ms;
+  while (performance.now() < end);
+}
+
+/**
  * The text `Bun.YAML.parse`/`Bun.TOML.parse` read: a string, buffer or Blob (read synchronously, as Bun does). YAML
  * takes anything else as its `String()`; TOML only a non-nullish value.
  */
@@ -780,6 +793,8 @@ async function main() {
     escapeHTML,
     which: () => null,
     sleep: (ms: number) => new Promise((r) => setTimeout(r, ms)),
+    sleepSync,
+    revision: BUN_REVISION,
     nanoseconds: () => Math.round(performance.now() * 1e6),
     semver: {
       order: semver.order,
