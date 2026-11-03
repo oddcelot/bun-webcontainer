@@ -109,6 +109,20 @@ html[data-booting] body > header > * { visibility: hidden; animation: boot-fallb
 .shortcuts-row .chord + .chord::before { content: "or"; align-self: center; margin-right: 4px; color: var(--muted); font-size: 11px; }
 .shortcuts-row kbd { min-width: 1.5em; padding: 1px 5px; border: 1px solid var(--control-border); border-bottom-width: 2px; border-radius: 4px; background: var(--control); font: 11px/16px var(--font-mono); text-align: center; }
 .shortcuts-row .unbound { color: var(--muted); }
+.shortcuts-row { position: relative; }
+.shortcuts-row.overridden::before { content: ""; position: absolute; left: -10px; top: 6px; bottom: 6px; width: 2px; border-radius: 1px; background: var(--accent); }
+.shortcuts-row.recording dd { color: var(--accent); }
+.shortcut-custom { margin-left: 6px; padding: 0 5px; border-radius: 3px; background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); font-size: 10px; line-height: 15px; vertical-align: 1px; }
+.shortcut-clash { display: inline-flex; align-items: center; gap: 3px; color: var(--warn); font-size: 11px; }
+.shortcut-recording { display: inline-flex; gap: 6px; align-items: center; padding: 1px 6px; border: 1px dashed var(--accent); border-radius: 4px; font-size: 11px; animation: shortcut-pulse 1.2s ease-in-out infinite; }
+@keyframes shortcut-pulse { 50% { border-color: transparent; } }
+@media (prefers-reduced-motion: reduce) { .shortcut-recording { animation: none; } }
+.shortcut-action { display: inline-grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--muted); cursor: pointer; opacity: 0; }
+.shortcut-action.text { width: auto; padding: 0 6px; font: inherit; font-size: 11px; opacity: 1; }
+.shortcut-action:hover { background: var(--control-hover); color: var(--fg); }
+.shortcut-action:focus-visible { opacity: 1; outline: 1px solid var(--accent); }
+.shortcuts-row:hover .shortcut-action, .shortcuts-row.overridden .shortcut-action[title^="Back"] { opacity: 1; }
+.shortcuts-note { margin: 10px 0 0; color: var(--muted); font-size: 11px; }
 .dialog-label code { color: var(--muted); font-size: 11px; }
 .shortcuts-custom { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--control-border); }
 .shortcuts-custom summary { cursor: pointer; font-size: 12px; font-weight: 600; }
