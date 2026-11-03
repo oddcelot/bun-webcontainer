@@ -84,6 +84,12 @@ const embed = createRoot(() => {
   let modeBefore: Mode | undefined;
   const [changes, setChanges] = createStore<Partial<Record<Feature, boolean>>>({});
   const features = createMemo(() => resolveFeatures(mode(), options.features, changes));
+  const has = (f: Feature) => features().includes(f);
+  // A column beside the editor: the preview, or the console in console mode. `layout=stack` puts it under the editor.
+  const side = () => mode() !== "result" && (has("preview") || (mode() === "console" && has("console")));
+  const stacked = () => side() && options.layout === "stack";
+  // The frame is as tall as the embed asked (`resize`): a host with height="auto". Stacked rows then fit the code.
+  const [fit, setFit] = createSignal(false);
   createEffect(
     () => ({ mode: mode(), features: features() }),
     (d) => {
@@ -102,7 +108,11 @@ const embed = createRoot(() => {
     sizesKey,
     mode,
     features,
-    has: (f: Feature) => features().includes(f),
+    has,
+    side,
+    stacked,
+    fit,
+    setFit,
     setMode,
     expanded,
     /** Asks the host for its modal (or to close it); it answers with `setExpanded`. */
@@ -274,19 +284,28 @@ createRoot(() =>
 const LINE = 20;
 /** Heights for the modes that don't fit their content (embed-element/index.ts HEIGHTS). */
 const MODE_HEIGHT: Partial<Record<Mode, number>> = { console: 360, preview: 420, full: 600, result: 420 };
+/** Stacked (`layout=stack`), the editor fits its lines and the rows under it get these (embed.css, `data-fit`). */
+const STACK_PREVIEW = 200;
+const STACK_CONSOLE = 120;
 function wantedHeight() {
+  const stacked = embed.stacked();
   const fixed = MODE_HEIGHT[embed.mode()];
-  if (fixed) return fixed;
+  if (fixed && !stacked) return fixed;
   const path = workspace.state.active;
   const lines = Math.min(Math.max((path ? (vfs.readText(path) ?? "") : "").split("\n").length, 3), 30);
   const below = embed.has("console") && !embed.has("preview") && embed.mode() === "code";
-  return 40 + (embed.has("tabs") || embed.has("autosave") ? 38 : 0) + lines * LINE + 24 + (below ? 160 : 0) + (pg.canRun ? 0 : 44);
+  // Each stacked row adds its height and the 4px grid gap.
+  const rows = stacked ? (embed.has("preview") ? STACK_PREVIEW + 4 : 0) + (embed.has("console") ? STACK_CONSOLE + 4 : 0) : 0;
+  return 40 + (embed.has("tabs") || embed.has("autosave") ? 38 : 0) + lines * LINE + 24 + (below ? 160 : 0) + rows + (pg.canRun ? 0 : 44);
 }
 let lastHeight = 0;
+const checkFit = () => embed.setFit(Math.abs(innerHeight - lastHeight) <= 1);
+addEventListener("resize", checkFit);
 function sendResize(height: number) {
   if (height === lastHeight) return;
   lastHeight = height;
   emit("resize", { height });
+  checkFit();
 }
 createRoot(() =>
   createEffect(wantedHeight, (height) => {
