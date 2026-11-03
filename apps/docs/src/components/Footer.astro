@@ -192,7 +192,7 @@ import { PLAYGROUND_URL } from "../../site-urls.ts";
     color: var(--sl-color-white);
   }
   /* A neon pen stroke: a white-hot core in a colored glow (on light themes the core takes the color). It draws in
-     (dash offset 1 → 0 of pathLength 1), flickers on, then glows steadily. */
+     (dash offset past 1 → 0 of pathLength 1; the gap of 2 keeps the next dash's round cap off the far end), flickers on, then glows steadily. */
   .neon-heart {
     --neon: #ff4fa3;
     flex: none;
@@ -207,8 +207,8 @@ import { PLAYGROUND_URL } from "../../site-urls.ts";
     stroke-width: 3.2;
     stroke-linecap: round;
     stroke-linejoin: round;
-    stroke-dasharray: 1;
-    stroke-dashoffset: 1;
+    stroke-dasharray: 1 2;
+    stroke-dashoffset: 1.05;
     filter: drop-shadow(0 0 1.5px var(--neon)) drop-shadow(0 0 5px var(--neon)) drop-shadow(0 0 14px color-mix(in srgb, var(--neon) 55%, transparent));
     animation:
       neon-draw 1.3s cubic-bezier(0.45, 0, 0.25, 1) 0.1s forwards,
