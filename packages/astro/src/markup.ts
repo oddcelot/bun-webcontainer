@@ -9,10 +9,14 @@ const slash = (url: string) => (url.endsWith("/") ? url : url + "/");
 /** The stylesheet with the blocks' look and theme colors (a route of the integration's). */
 export const cssLink = (base: string) => `<link rel="stylesheet" href="${esc(slash(base) + CSS_PATH)}">`;
 
-/** A highlighted block; `not-content` keeps Starlight's prose styles off it. */
+/**
+ * A highlighted block; `not-content` keeps Starlight's prose styles off it. Its `<pre>` says the language as Expressive
+ * Code's does (`data-language`), for tools that turn the page back into Markdown.
+ */
 export function codeBlock(code: string, lang: string, title?: string) {
   const caption = title ? `<figcaption>${esc(title)}</figcaption>` : "";
-  return `<figure class="runbun-code not-content">${caption}${highlight(code.replace(/\n$/, ""), lang)}</figure>`;
+  const pre = highlight(code.replace(/\n$/, ""), lang).replace(/^<pre /, `<pre data-language="${esc(lang)}" `);
+  return `<figure class="runbun-code not-content">${caption}${pre}</figure>`;
 }
 
 // Tab groups' radio names must be unique per page. The remark plugin and the components load separate copies of this
