@@ -27,8 +27,8 @@ tasks:
       - '@group(sources)'
   test:
     # Console/inspect formatting against native bun on a corpus of values (scripts/inspect-corpus/diff.ts), and the
-    # data APIs that need no wasm (scripts/data-apis: Bun.JSONL, Bun.XML.stringify; Bun.XML.parse is in
-    # transpile-wasm:test).
+    # data APIs that need no wasm (scripts/data-apis: Bun.JSONL, Bun.XML.stringify; Bun.markdown and Bun.XML.parse are
+    # in transpile-wasm:test).
     script: 'bun scripts/inspect-corpus/diff.ts && bun scripts/data-apis/jsonl.ts && bun scripts/data-apis/xml-stringify.ts'
     toolchains: ['bun']
     inputs:

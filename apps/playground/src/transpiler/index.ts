@@ -18,6 +18,9 @@ type Exports = {
   jsx_c(ptr: bigint, len: bigint): void;
   options_c(ptr: bigint, len: bigint): bigint;
   output_free(out: bigint): void;
+  markdown_html_c(ptr: bigint, len: bigint, options: number): bigint;
+  markdown_ansi_c(ptr: bigint, len: bigint, theme: number, columns: number): bigint;
+  markdown_events_c(ptr: bigint, len: bigint, options: number): bigint;
   xml_parse_c(ptr: bigint, len: bigint, flags: number): bigint;
 };
 
@@ -288,7 +291,7 @@ export function transpileSyncEsm(source: string, path: string, tsconfig: Tsconfi
   return call(loadSync(), "transpile_flags_c", path, source, loaderOf(path), tsFlags(tsconfig) | SYNC_ESM | (sourceMap ? SOURCE_MAP : 0), jsxKey(tsconfig), NO_OPTIONS);
 }
 
-type DataEntry = "xml_parse_c";
+type DataEntry = "markdown_html_c" | "markdown_ansi_c" | "markdown_events_c" | "xml_parse_c";
 
 /** One of transpile-wasm's data functions (`apis.rs`) on `input`: its text, or `{ error }` with the text of a failure. */
 function dataCall(fn: DataEntry, input: Uint8Array, ...args: number[]): string | { error: string } {
@@ -309,6 +312,13 @@ function dataCall(fn: DataEntry, input: Uint8Array, ...args: number[]): string |
     w.dealloc(ptr, len);
   }
 }
+
+/** `Bun.markdown`'s renderers (worker/markdown.ts), loading the module on first use (workers only). */
+export const markdownWasm = {
+  html: (input: Uint8Array, options: number) => dataCall("markdown_html_c", input, options),
+  ansi: (input: Uint8Array, theme: number, columns: number) => dataCall("markdown_ansi_c", input, theme, columns),
+  events: (input: Uint8Array, options: number) => dataCall("markdown_events_c", input, options),
+};
 
 /** `Bun.XML.parse`'s parser (worker/xml.ts), loading the module on first use (workers only). */
 export const xmlWasm = { parse: (input: Uint8Array, flags: number) => dataCall("xml_parse_c", input, flags) };

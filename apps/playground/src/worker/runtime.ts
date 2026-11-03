@@ -19,8 +19,9 @@ import { Cookie, CookieMap } from "./cookie";
 import { importMetaResolve, resolveSync } from "./resolve";
 import { Transpiler } from "./transpiler";
 import { makeJSONL } from "./jsonl";
+import { makeMarkdown } from "./markdown";
 import { makeXML } from "./xml";
-import { xmlWasm } from "../transpiler";
+import { markdownWasm, xmlWasm } from "../transpiler";
 import { codeError, fsError } from "./node/errors";
 import { hooks, type NodeSocket } from "./node/serve";
 import { flushDatabases } from "./node/sqlite";
@@ -937,6 +938,12 @@ function jsoncParse(input: unknown): unknown {
   return parseData(text, "jsonc");
 }
 
+/** `Bun.markdown.ansi`'s default background (ansi_renderer.rs `colorfgbg_light`): `COLORFGBG`'s last field is 7 or 15. */
+function colorfgbgLight(v: string | undefined): boolean {
+  const last = v?.split(";").pop();
+  return last === "7" || last === "15";
+}
+
 async function main() {
   // Bun's resolver, for `require` and `require.resolve` with a computed specifier (node/module.ts); the page has its own instance.
   const [semver] = await Promise.all([loadSemver(), loadResolver(vfs)]);
@@ -988,9 +995,10 @@ async function main() {
     TOML: { parse: (input: unknown) => parseData(dataText(input, "toml"), "toml"), stringify: (value: unknown, replacer?: unknown, _space?: unknown) => tomlStringify(value, replacer) },
     JSONC: { parse: (input: unknown) => jsoncParse(input) },
     JSON5: { parse: (input: unknown) => parseData(dataText(input, "json5"), "json5"), stringify: (value: unknown, replacer?: unknown, space?: unknown) => json5Stringify(value, replacer, space) },
+    // Bun's parsers and renderers in transpile-wasm, loaded on first use as Bun.Transpiler's.
     JSONL: makeJSONL(),
-    // Bun's parser in transpile-wasm, loaded on first use as Bun.Transpiler's.
     XML: makeXML(() => xmlWasm),
+    markdown: makeMarkdown(() => markdownWasm, () => colorfgbgLight(env.COLORFGBG)),
     password,
     Cookie,
     CookieMap,

@@ -331,6 +331,6 @@ if (spawnSync("bun", ["--version"]).status === 0) {
   }
   if (!fail) console.log("SOURCE_MAP: tokens map back to the source");
 }
-// Bun.XML.parse (apis-test.ts exits 1 on a mismatch).
+// Bun.markdown and Bun.XML.parse (apis-test.ts exits 1 on a mismatch).
 if (fail) process.exit(1);
 await import("./apis-test.ts");
