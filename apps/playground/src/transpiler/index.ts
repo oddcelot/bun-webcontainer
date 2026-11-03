@@ -4,7 +4,7 @@ import { FLAGS, LOADER_NUMBERS, type RuntimeOptions } from "./options";
 // Bun's own transpiler (bun_js_parser + bun_js_printer) compiled to wasm64; see crates/transpile-wasm.
 // Output matches `bun build --no-bundle --target=browser`.
 
-const { RUNTIME_TRANSPILER, IMPORT_META_REQUIRE } = FLAGS;
+const { RUNTIME_TRANSPILER, IMPORT_META_REQUIRE, PACKAGE_TYPE_COMMONJS, PACKAGE_TYPE_MODULE } = FLAGS;
 
 type Exports = {
   memory: WebAssembly.Memory;
@@ -13,6 +13,7 @@ type Exports = {
   transpile_resolve_c(pathPtr: bigint, pathLen: bigint, srcPtr: bigint, srcLen: bigint, loader: number, flags: number): bigint;
   transpile_flags_c(pathPtr: bigint, pathLen: bigint, srcPtr: bigint, srcLen: bigint, loader: number, flags: number): bigint;
   scan_c(pathPtr: bigint, pathLen: bigint, srcPtr: bigint, srcLen: bigint, loader: number, flags: number): bigint;
+  module_kind_c(pathPtr: bigint, pathLen: bigint, srcPtr: bigint, srcLen: bigint, loader: number, flags: number): bigint;
   scan_imports_c(pathPtr: bigint, pathLen: bigint, srcPtr: bigint, srcLen: bigint, loader: number, flags: number): bigint;
   jsx_c(ptr: bigint, len: bigint): void;
   options_c(ptr: bigint, len: bigint): bigint;
@@ -152,7 +153,7 @@ export async function transpile(source: string, path: string, tsconfig: Tsconfig
   }
 }
 
-type Entry = "transpile_resolve_c" | "transpile_flags_c" | "scan_c" | "scan_imports_c";
+type Entry = "transpile_resolve_c" | "transpile_flags_c" | "scan_c" | "scan_imports_c" | "module_kind_c";
 
 const NO_OPTIONS = new Uint8Array();
 
@@ -253,4 +254,21 @@ export function runtimeTranspile(op: RuntimeOp, source: string | null, loader: s
  */
 export function transpileSync(source: string, path: string, tsconfig: TsconfigFlags = {}): string {
   return call(loadSync(), "transpile_flags_c", path, source, loaderOf(path), tsFlags(tsconfig), jsxKey(tsconfig), NO_OPTIONS);
+}
+
+/** Loads the transpiler, so that `moduleKind` can run synchronously on the page too. */
+export async function loadTranspiler(): Promise<void> {
+  await (ready ??= load());
+}
+
+/**
+ * Whether Bun's runtime runs the file as CommonJS (transpile-wasm's `module_kind`): its parser's verdict given the
+ * nearest package.json's `"type"`, regardless of the extension. Synchronous: the worker loads the transpiler on first
+ * use, a page needs `loadTranspiler()` first. Throws a TranspileError for Bun's errors (a syntax error, CommonJS
+ * features next to an import statement).
+ */
+export function moduleKind(source: string, path: string, tsconfig: TsconfigFlags, packageType: string | undefined): "cjs" | "esm" {
+  const w = loaded ?? loadSync();
+  const type = packageType === "commonjs" ? PACKAGE_TYPE_COMMONJS : packageType === "module" ? PACKAGE_TYPE_MODULE : 0;
+  return call(w, "module_kind_c", path, source, loaderOf(path), tsFlags(tsconfig) | type, jsxKey(tsconfig), NO_OPTIONS) as "cjs" | "esm";
 }

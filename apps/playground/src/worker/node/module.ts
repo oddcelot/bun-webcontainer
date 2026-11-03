@@ -1,5 +1,5 @@
 import { dirname, norm, type VFS } from "@runbun/vfs";
-import { hasModuleSyntax, packageType } from "../../cjs";
+import { hasModuleSyntax, isCommonJS, packageType, stripDirname } from "../../cjs";
 import { inRanges, isMethod, literalRanges } from "../../literals";
 import { dataFormat, parseDataFile } from "../../resolver";
 import { transpileSync } from "../../transpiler";
@@ -93,12 +93,14 @@ export function createModule(registry: Record<string, object>) {
     const format = dataFormat(path);
     if (format) return load(file, (m) => void (m.exports = parseDataFile(src, format)), req);
     if (path.endsWith(".node")) throw Object.assign(new Error(`Cannot load native addon ${file}: .node files are not supported in the playground`), { code: "ERR_DLOPEN_FAILED" });
-    // With the nearest tsconfig's JSX and decorator options, as served modules have them. The transpiler declares
-    // `var __dirname = "…"` (and __filename) for code that uses them: dropped, so the wrapper's values show through.
-    const transpile = () => transpileSync(src, file, tsconfigFor(vfs!, path)).replace(/^var (?:__dirname|__filename) = "[^"\n]*"(?:, __filename = "[^"\n]*")?;\n/, "");
+    // With the nearest tsconfig's JSX and decorator options, as served modules have them.
+    const transpile = () => stripDirname(transpileSync(src, file, tsconfigFor(vfs!, path)));
     let code = /\.[cm]?(ts|tsx|jsx)$/.test(path) ? transpile() : src;
+    // What Bun runs as CommonJS (see moduleKindOf) runs here; an ES module only if it has no module syntax and isn't one
+    // by its extension or package type either (Bun's `require` of it returns its empty namespace, this `{}`).
+    const cjs = isCommonJS(vfs!, path, src);
     const compile = () => {
-      if (/\.m[jt]s$/.test(path) || (!/\.c[jt]s$/.test(path) && (packageType(vfs!, path) === "module" || hasModuleSyntax(code))))
+      if (!cjs && (/\.m[jt]s$/.test(path) || packageType(vfs!, path) === "module" || hasModuleSyntax(code)))
         throw Object.assign(new Error(`require() of ES module ${file} works in the playground only once the module has been imported (it can't load ES modules synchronously). Use import() or a static import first.`), {
           code: "ERR_REQUIRE_ESM",
         });

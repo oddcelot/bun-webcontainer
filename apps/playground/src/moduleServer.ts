@@ -1,7 +1,7 @@
 import { BASE } from "./base";
-import { commonJSFacade, exportNames as commonJSExportNames, isCommonJS, packageType, reexports, wrapCommonJS } from "./cjs";
+import { commonJSFacade, exportNames as commonJSExportNames, isCommonJS, JS_LIKE, moduleKindOf, reexports, stripDirname, wrapCommonJS } from "./cjs";
 import bunWrap from "./bunWrap.js?raw";
-import type { Resolver } from "./transpiler";
+import { loadTranspiler, type Resolver } from "./transpiler";
 import { transpileCached } from "./transpileCache";
 import { tsconfigFor } from "./tsconfig";
 import { inRanges, isMethod, literalRanges } from "./literals";
@@ -113,7 +113,7 @@ function hoistMetaRequire(vfs: VFS, code: string, path: string, dir: string, url
     for (const m of code.matchAll(/(?<![\w$.])require\(\s*(["'])([^"'\n]+)\1\s*\)/g)) {
       const t = inRanges(literal, m.index) ? null : resolveWith(vfs, m[2], dir, "require");
       const src = t && !DATA_FILE.test(t) && !/\.(css|node)$/.test(t) ? vfs.readText(t) : undefined;
-      if (src !== undefined && !isCommonJS(t!, src, packageType(vfs, t!))) lits.push(m[2]);
+      if (src !== undefined && !isCommonJS(vfs, t!, src)) lits.push(m[2]);
     }
   }
   // In the worker, data files load when required (see dataModule): an import here would make them return their namespace.
@@ -284,7 +284,7 @@ function commonJSNames(vfs: VFS, path: string, src: string, seen = new Set<strin
   for (const spec of reexports(src)) {
     const t = resolveTarget(vfs, spec, dirname(path));
     const dep = t && !t.startsWith("__") && !seen.has(t) ? vfs.readText(t) : undefined;
-    if (dep !== undefined && isCommonJS(t!, dep, packageType(vfs, t!))) for (const n of commonJSNames(vfs, t!, dep, seen)) names.add(n);
+    if (dep !== undefined && isCommonJS(vfs, t!, dep)) for (const n of commonJSNames(vfs, t!, dep, seen)) names.add(n);
   }
   return [...names];
 }
@@ -298,13 +298,24 @@ async function serveCommonJS(vfs: VFS, path: string, onError: (msg: string) => v
   }
   TARGET = target;
   const dir = dirname(path);
-  const code = wrapCommonJS(path, src, (spec) => {
+  // TypeScript and JSX first, without the `__dirname` and `__filename` the transpiler declares (the wrapper has them).
+  let body = src;
+  if (/\.(?:[cm]?tsx?|jsx)$/.test(path)) {
+    try {
+      body = stripDirname(await transpileCached(src, path, tsconfigFor(vfs, path), () => null));
+    } catch (e) {
+      const msg = `${path}: ${e instanceof Error ? e.message : String(e)}`;
+      onError(msg);
+      return { status: 500, body: msg };
+    }
+  }
+  const code = wrapCommonJS(path, body, (spec) => {
     const t = resolveTarget(vfs, spec, dir, "require");
     if (t === null || t.startsWith("__")) return t && `${VFS_ROOT}${t}`;
     // In the worker, data files load when required, as their value (see dataModule).
     if (target === "bun" && DATA_FILE.test(t)) return null;
     const dep = vfs.readText(t);
-    return `${VFS_ROOT}${dep !== undefined && isCommonJS(t, dep, packageType(vfs, t)) ? "__cjs/" : ""}${t}`;
+    return `${VFS_ROOT}${dep !== undefined && isCommonJS(vfs, t, dep) ? "__cjs/" : ""}${t}`;
   });
   // The body is plain source: its `import("x")` calls still need their specifiers resolved.
   try {
@@ -343,40 +354,31 @@ export async function serveModule(vfs: VFS, rawPath: string, onError: (msg: stri
     return { status: 404, body: `Not found: ${path}` };
   }
   try {
-    let code: string;
-    let esm = false;
     if (path.endsWith(".html")) return { status: 200, body: `export default ${JSON.stringify({ __htmlImport: path })};` };
     if (path.endsWith(".css")) return { status: 200, body: src };
     const format = dataFormat(path);
     if (format) return { status: 200, body: dataModule(path, src, format, target) };
-    if (/\.(ts|tsx|jsx)$/.test(path)) {
+    // Whatever its extension, a file Bun runs as CommonJS is served as such (see moduleKindOf).
+    if (JS_LIKE.test(path)) {
+      await loadTranspiler();
       TARGET = target;
-      code = await transpileCached(src, path, tsconfigFor(vfs, path), resolver(vfs, dirname(path)), target === "bun");
-      esm = true;
+      if (moduleKindOf(vfs, path, src) === "cjs") return { status: 200, body: commonJSFacade(commonJSNames(vfs, path, src), `${VFS_ROOT}__cjs/${path}`) };
     }
-    else if (isCommonJS(path, src, packageType(vfs, path))) {
-      TARGET = target;
-      return { status: 200, body: commonJSFacade(commonJSNames(vfs, path, src), `${VFS_ROOT}__cjs/${path}`) };
-    }
-    else {
-      // Plain ES module: Bun's parser finds the specifiers, as `bun build --no-bundle` does (JSX per tsconfig too).
-      TARGET = target;
-      code = await transpileCached(src, path, tsconfigFor(vfs, path), resolver(vfs, dirname(path)), target === "bun");
-      esm = true;
-    }
+    // An ES module: Bun's parser finds the specifiers, as `bun build --no-bundle` does (JSX per tsconfig too).
+    let code = await transpileCached(src, path, tsconfigFor(vfs, path), resolver(vfs, dirname(path)), target === "bun");
     TARGET = target;
     // The hoisted imports are final URLs already (the transpiler leaves those alone).
     const dir = dirname(path);
     const url = specifierUrl(vfs, dir);
     const final = (spec: string) => url(spec) ?? spec;
     // Bun's `require` in an ES module, `import.meta.require` (the transpiler declares it where the module uses a free one).
-    if (esm) code = esmDirname(code, path);
+    code = esmDirname(code, path);
     const free = code.startsWith(META_REQUIRE);
     if (free) code = `var require = import.meta.require;${code.slice(META_REQUIRE.length)}`;
     let body = rewriteMeta(hoistMetaRequire(vfs, hoistRequires(vfs, patchChokidar(code), dir, final), path, dir, final, free), path, target === "bun");
     // In the worker, the module's namespace once it has run, for a require() of it (worker/node/module.ts): imported
     // from its own URL, so it's this instance.
-    if (esm && target === "bun") body += `\nimport * as __bwcSelf from ${JSON.stringify(`${VFS_ROOT}${path}`)};\nglobalThis.__esmLoaded?.(${JSON.stringify("/" + path)}, __bwcSelf);`;
+    if (target === "bun") body += `\nimport * as __bwcSelf from ${JSON.stringify(`${VFS_ROOT}${path}`)};\nglobalThis.__esmLoaded?.(${JSON.stringify("/" + path)}, __bwcSelf);`;
     return { status: 200, body };
   } catch (e) {
     const msg = `${path}: ${e instanceof Error ? e.message : String(e)}`;

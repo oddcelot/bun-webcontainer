@@ -2,7 +2,9 @@
 // static import, so dependencies are loaded up front (and run when required); anything else (a computed specifier)
 // the worker loads synchronously when it runs (worker/node/module.ts), sharing one module cache with these.
 
-import { dirname } from "@runbun/vfs";
+import { dirname, type VFS } from "@runbun/vfs";
+import { jsxKey, moduleKind } from "./transpiler";
+import { tsconfigFor } from "./tsconfig";
 
 const ESM_SYNTAX = /(^|[\n;])\s*(import(\s+[\w{*]|\s*[{*'"])|export\s*[{*]|export\s+\w)/;
 const REQUIRE = /\brequire\s*\(\s*(["'])([^"'\n]+)\1\s*\)/g;
@@ -28,23 +30,95 @@ export function packageType(vfs: { readText(path: string): string | undefined },
 /** Whether `source` has `import`/`export` statements (a rough scan, as isCommonJS uses). */
 export const hasModuleSyntax = (source: string) => ESM_SYNTAX.test(source);
 
-/** A `.cjs` file, or a `.js` file with no ESM syntax in a package that isn't `"type": "module"`. */
-export function isCommonJS(path: string, source: string, packageType: string | undefined): boolean {
-  if (path.endsWith(".cjs")) return true;
-  if (path.endsWith(".mjs") || packageType === "module") return false;
-  return path.endsWith(".js") && !ESM_SYNTAX.test(source);
+/** Files Bun parses as JavaScript (and so may run as CommonJS). */
+export const JS_LIKE = /\.(?:[cm]?[jt]s|[jt]sx)$/;
+
+/** By path: the verdict for a source (FNV-1a hash and length, not the text, which installed packages would double). */
+const kinds = new Map<string, { hash: string; kind: "cjs" | "esm" | Error }>();
+const fnv = (s: string) => {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193);
+  return `${h >>> 0}:${s.length}`;
+};
+
+/**
+ * Whether Bun runs the file at VFS `path` as CommonJS, as its parser decides (transpiler `moduleKind`): an export or
+ * top-level await makes an ES module, a free `module` or `exports` CommonJS, else the package's `"type"` decides, and
+ * with none a free `require`, `__dirname`, `__filename` or `"use strict"` means CommonJS unless there's an import
+ * statement. The extension plays no part (`.mjs` with `module.exports` is CommonJS too), as in Bun. Throws Bun's error
+ * for CommonJS features next to an import statement, or a syntax error. Cached by path and source.
+ */
+export function moduleKindOf(vfs: VFS, path: string, source: string): "cjs" | "esm" {
+  if (!JS_LIKE.test(path)) return "esm";
+  const tsconfig = tsconfigFor(vfs, path);
+  const type = packageType(vfs, path);
+  const hash = `${type}\0${jsxKey(tsconfig)}\0${fnv(source)}`;
+  let hit = kinds.get(path);
+  if (!hit || hit.hash !== hash) {
+    let kind: "cjs" | "esm" | Error;
+    try {
+      kind = moduleKind(source, path, tsconfig, type);
+    } catch (e) {
+      kind = e instanceof Error ? e : new Error(String(e));
+    }
+    kinds.set(path, (hit = { hash, kind }));
+  }
+  if (hit.kind instanceof Error) throw hit.kind;
+  return hit.kind;
 }
+
+/** `moduleKindOf` as a boolean; a file Bun can't run counts as an ES module (its error shows when it is served). */
+export function isCommonJS(vfs: VFS, path: string, source: string): boolean {
+  try {
+    return moduleKindOf(vfs, path, source) === "cjs";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * TypeScript or JSX transpiled for a CommonJS wrapper: the transpiler declares `var __dirname = "…"` (and
+ * `__filename`) for code that uses them, from the path it was given; dropped, so the wrapper's values show through.
+ */
+export const stripDirname = (code: string) => code.replace(/^var (?:__dirname|__filename) = "[^"\n]*"(?:, __filename = "[^"\n]*")?;\n/, "");
 
 /** Names a CommonJS module assigns on `exports`, as far as a static scan can tell (like cjs-module-lexer). */
 export function exportNames(source: string): string[] {
   const names = new Set<string>();
   for (const m of source.matchAll(/\b(?:module\.)?exports\.([A-Za-z_$][\w$]*)\s*=[^=]/g)) names.add(m[1]);
   for (const m of source.matchAll(/Object\.defineProperty\(\s*(?:module\.)?exports\s*,\s*["']([A-Za-z_$][\w$]*)["']/g)) names.add(m[1]);
-  const literal = source.match(/module\.exports\s*=\s*\{([^{}]*)\}/);
-  if (literal) for (const m of literal[1].matchAll(/(?:^|,)\s*([A-Za-z_$][\w$]*)\s*(?=[:,]|$)/g)) names.add(m[1]);
+  for (const n of objectLiteralKeys(source)) names.add(n);
   names.delete("default");
   names.delete("__esModule");
   return [...names];
+}
+
+/** The keys of a `module.exports = { ... }` object literal: `a`, `a: x`, `"a": x`, methods `a() {}` (nested values skipped). */
+function objectLiteralKeys(source: string): string[] {
+  const m = /\bmodule\.exports\s*=\s*\{/.exec(source);
+  if (!m) return [];
+  const keys: string[] = [];
+  const key = /\s*(?:(?:async|get|set)\s+|\*\s*)?(?:([A-Za-z_$][\w$]*)|"([^"\\\n]*)"|'([^'\\\n]*)')\s*([:,(}])/y;
+  let i = m.index + m[0].length;
+  for (;;) {
+    key.lastIndex = i;
+    const k = key.exec(source);
+    if (!k) return keys;
+    keys.push(k[1] ?? k[2] ?? k[3]);
+    i = key.lastIndex;
+    if (k[4] === "}") return keys;
+    if (k[4] === ",") continue;
+    // Skip the value (or the method's parameters and body) to the next top-level comma; the literal's `}` ends it.
+    for (let depth = k[4] === "(" ? 1 : 0; i < source.length; i++) {
+      const c = source[i];
+      if (c === '"' || c === "'" || c === "`") for (i++; i < source.length && source[i] !== c; i += source[i] === "\\" ? 2 : 1);
+      else if (c === "(" || c === "[" || c === "{") depth++;
+      else if (c === ")" || c === "]" || c === "}") {
+        if (depth-- === 0) return keys;
+      } else if (c === "," && depth === 0) break;
+    }
+    i++;
+  }
 }
 
 /**
