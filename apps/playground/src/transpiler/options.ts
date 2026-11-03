@@ -12,6 +12,7 @@ export const FLAGS = {
   NO_DEAD_CODE_ELIMINATION: 512,
   TREE_SHAKING: 1024,
   INLINE: 2048,
+  SYNC_ESM: 16384,
 } as const;
 
 /** transpile-wasm's loader numbers (`Loader::from_u32`), by `Bun.Transpiler` loader name. */

@@ -810,7 +810,7 @@ function dataText(v: unknown, format: "yaml" | "toml"): string {
 async function main() {
   // Bun's resolver, for `require` and `require.resolve` with a computed specifier (node/module.ts); the page has its own instance.
   const [semver] = await Promise.all([loadSemver(), loadResolver(vfs)]);
-  setRequire(vfs, (spec, dir) => resolve(spec, dir, "require", "bun"));
+  setRequire(vfs, (spec, dir) => resolve(spec, dir, "require", "bun"), (spec, dir) => resolve(spec, dir, "import", "bun"), () => VFS_ROOT);
   const bun: Record<(typeof BUN_NAMES)[number], unknown> = {
     version: `${BUN_VERSION}-browser`,
     env,

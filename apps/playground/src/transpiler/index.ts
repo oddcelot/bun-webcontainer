@@ -4,7 +4,7 @@ import { FLAGS, LOADER_NUMBERS, type RuntimeOptions } from "./options";
 // Bun's own transpiler (bun_js_parser + bun_js_printer) compiled to wasm64; see crates/transpile-wasm.
 // Output matches `bun build --no-bundle --target=browser`.
 
-const { RUNTIME_TRANSPILER, IMPORT_META_REQUIRE } = FLAGS;
+const { RUNTIME_TRANSPILER, IMPORT_META_REQUIRE, SYNC_ESM } = FLAGS;
 
 type Exports = {
   memory: WebAssembly.Memory;
@@ -253,4 +253,12 @@ export function runtimeTranspile(op: RuntimeOp, source: string | null, loader: s
  */
 export function transpileSync(source: string, path: string, tsconfig: TsconfigFlags = {}): string {
   return call(loadSync(), "transpile_flags_c", path, source, loaderOf(path), tsFlags(tsconfig), jsxKey(tsconfig), NO_OPTIONS);
+}
+
+/**
+ * An ES module as the body of a function of `hmr` (transpile-wasm's SYNC_ESM): for `require()` of one the worker
+ * hasn't imported, which it runs synchronously (worker/node/module.ts). Throws Bun's error for top-level await.
+ */
+export function transpileSyncEsm(source: string, path: string, tsconfig: TsconfigFlags = {}): string {
+  return call(loadSync(), "transpile_flags_c", path, source, loaderOf(path), tsFlags(tsconfig) | SYNC_ESM, jsxKey(tsconfig), NO_OPTIONS);
 }
