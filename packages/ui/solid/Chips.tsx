@@ -2,6 +2,7 @@ import type { ParentProps } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { ToggleGroup } from "@kobalte/core/toggle-group";
 import { Tip } from "./Tip";
+import "../css/chips.css";
 
 /** Any number of values, as a wrapping row of small toggles (`Chip`s). A chip is pressed while its value is in `value`. */
 export function Chips(props: ParentProps<{ label: string; value: string[]; onChange: (value: string[]) => void }>) {

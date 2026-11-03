@@ -1,0 +1,13 @@
+/* Segmented: one of a few values, as a row of buttons. Over the uno preset's tokens (--control, --pad, ...). */
+.segmented { display: flex; }
+.segmented button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: var(--control-height); padding: 0 7px; margin-left: -1px; border: 1px solid var(--control-border); border-radius: 0; background: var(--control); color: inherit; font: inherit; cursor: pointer; }
+.segmented button:hover { background: var(--control-hover); }
+.segmented button:first-child { border-radius: var(--inner-radius) 0 0 var(--inner-radius); margin-left: 0; }
+.segmented button:last-child { border-radius: 0 var(--inner-radius) var(--inner-radius) 0; }
+/*
+ * Pressed: the icon keeps the text color (an accent icon can be fainter than its neighbours); the mark is an accent
+ * line on the bottom edge, inset from the sides (past the 6px corner radius) so it stays straight on the outer buttons.
+ */
+.segmented button { position: relative; }
+.segmented button[aria-pressed="true"] { background: var(--control-hover); }
+.segmented button[aria-pressed="true"]::after { content: ""; position: absolute; left: 7px; right: 7px; bottom: 0; height: 2px; border-radius: 1px 1px 0 0; background: var(--accent); }

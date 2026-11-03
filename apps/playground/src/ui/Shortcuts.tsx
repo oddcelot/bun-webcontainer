@@ -182,7 +182,7 @@ function ShortcutsForm() {
         <textarea
           ref={input}
           id={id}
-          class="dialog-input shortcuts-json"
+          class="input shortcuts-json"
           spellcheck={false}
           aria-invalid={error() ? "true" : undefined}
           aria-describedby={`${id}-error`}
@@ -203,10 +203,10 @@ function ShortcutsForm() {
         </p>
       </Show>
       <div class="dialog-actions">
-        <Dialog.CloseButton class="dialog-button" type="button">
+        <Dialog.CloseButton class="button" type="button">
           Cancel
         </Dialog.CloseButton>
-        <button class="dialog-button primary" type="submit">
+        <button class="button primary" type="submit">
           Save
         </button>
       </div>

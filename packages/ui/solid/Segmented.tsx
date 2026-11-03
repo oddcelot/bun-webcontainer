@@ -1,6 +1,7 @@
 import { For, Show } from "solid-js";
 import { ToggleGroup } from "@kobalte/core/toggle-group";
 import { Tip } from "./Tip";
+import "../css/segmented.css";
 
 /** One of a few values, as a row of buttons . */
 export function Segmented(props: { label: string; value: string; options: [value: string, label: string, icon?: string, tip?: string][]; onChange: (v: string) => void }) {

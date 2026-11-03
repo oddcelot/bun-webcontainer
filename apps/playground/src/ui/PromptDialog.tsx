@@ -69,12 +69,12 @@ function PromptForm(props: Parameters<typeof PromptDialog>[0]) {
       <label class="dialog-label" for={id}>
         {props.label}
       </label>
-      <input ref={input} id={id} class="dialog-input" value={props.initial} spellcheck={false} autocomplete="off" />
+      <input ref={input} id={id} class="input" value={props.initial} spellcheck={false} autocomplete="off" />
       <div class="dialog-actions">
-        <Dialog.CloseButton class="dialog-button" type="button">
+        <Dialog.CloseButton class="button" type="button">
           Cancel
         </Dialog.CloseButton>
-        <button class="dialog-button primary" type="submit">
+        <button class="button primary" type="submit">
           {props.submit}
         </button>
       </div>

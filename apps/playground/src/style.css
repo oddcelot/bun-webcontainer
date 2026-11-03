@@ -1,6 +1,11 @@
 /* The shared tokens (colors, fonts, radii, control sizes) come from @runbun/ui (packages/ui/uno.preset.ts) through virtual:uno.css;
  * theme.ts sets the colors from the chosen theme. */
-@import "@runbun/ui/components.css";
+/* @runbun/ui components import their own CSS; these are for markup here that uses the classes directly. */
+@import "@runbun/ui/css/select.css";
+@import "@runbun/ui/css/menu.css";
+@import "@runbun/ui/css/dialog.css";
+@import "@runbun/ui/css/button.css";
+@import "@runbun/ui/css/input.css";
 :root {
   /* The editor reads the diffs fonts. */
   --diffs-font-family: var(--font-mono);
@@ -21,7 +26,6 @@ header button, #docs, #clear, #request button { display: inline-flex; align-item
 #run-group { display: inline-flex; }
 #run { border-radius: 6px 0 0 6px; }
 #run-more { display: grid; place-items: center; margin-left: -1px; padding: 0 6px; border-radius: 0 6px 6px 0; }
-.menu { min-width: 10rem; padding: 4px; }
 header button, #docs, #clear { background: var(--control); color: inherit; border: 1px solid var(--control-border); border-radius: 6px; padding: 0 10px; cursor: pointer; }
 header button:hover, #docs:hover { background: var(--control-hover); }
 /* Docs sits right, before Share; a link styled as the buttons around it. */
@@ -64,20 +68,6 @@ html[data-booting] body > header > * { visibility: hidden; animation: boot-fallb
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 #example { min-width: 6rem; flex: 0 1 14rem; }
 /* The project and theme pickers: Kobalte Selects whose lists open in a portal. */
-/* Prompt dialogs (ui/PromptDialog.tsx): a Kobalte Dialog in a portal, a card like the menus. */
-.dialog-overlay { position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, 0.55); }
-.dialog-positioner { position: fixed; inset: 0; z-index: 41; display: grid; place-items: start center; padding-top: 14vh; pointer-events: none; }
-.dialog { width: min(28rem, calc(100vw - 2rem)); padding: 16px; border: 1px solid var(--control-border); border-radius: var(--radius); background: var(--panel); color: var(--fg); box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6); pointer-events: auto; }
-.dialog-title { margin: 0 0 4px; font-size: 14px; font-weight: 600; }
-.dialog-description { margin: 0 0 12px; color: var(--muted); }
-.dialog-label { display: block; margin: 12px 0 4px; font-size: 12px; color: var(--muted); }
-.dialog-description + .dialog-label { margin-top: 0; }
-.dialog-input { box-sizing: border-box; width: 100%; height: var(--control-height); padding: 0 8px; border: 1px solid var(--control-border); border-radius: 6px; background: var(--control); color: var(--fg); font: 12px var(--font-mono); }
-.dialog-input:focus-visible, .dialog-button:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
-.dialog-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 14px; }
-.dialog-button { height: var(--control-height); padding: 0 12px; border: 1px solid var(--control-border); border-radius: 6px; background: var(--control); color: inherit; font: inherit; cursor: pointer; }
-.dialog-button:hover { background: var(--control-hover); }
-.dialog-button.primary { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 22%, var(--panel)); }
 .dialog.shortcuts { width: min(44rem, calc(100vw - 2rem)); max-height: calc(100vh - 14vh - 2rem); overflow: auto; }
 .shortcuts-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); gap: 14px 24px; margin-top: 10px; }
 .shortcuts-group h3 { margin: 0 0 4px; color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
@@ -105,7 +95,6 @@ html[data-booting] body > header > * { visibility: hidden; animation: boot-fallb
 .shortcut-action:focus-visible { opacity: 1; outline: 1px solid var(--accent); }
 .shortcuts-row:hover .shortcut-action, .shortcuts-row.overridden .shortcut-action[title^="Back"] { opacity: 1; }
 .shortcuts-note { margin: 10px 0 0; color: var(--muted); font-size: 11px; }
-.dialog-label code { color: var(--muted); font-size: 11px; }
 .shortcuts-custom { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--control-border); }
 .shortcuts-custom summary { cursor: pointer; font-size: 12px; font-weight: 600; }
 .shortcuts-custom .dialog-label { margin-top: 8px; line-height: 1.5; }
@@ -119,9 +108,8 @@ html[data-booting] body > header > * { visibility: hidden; animation: boot-fallb
 .feedback-env summary { cursor: pointer; }
 .feedback-env dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; margin: 4px 0 0; }
 .feedback-env dd { margin: 0; overflow-wrap: anywhere; font-family: var(--font-mono); }
-.dialog-description a { color: var(--accent); }
 .feedback-thanks { display: grid; justify-items: center; gap: 2px; padding: 8px 0 4px; text-align: center; }
-.feedback-thanks .dialog-button { margin-top: 10px; }
+.feedback-thanks .button { margin-top: 10px; }
 /* A neon pen stroke: a white-hot core in a colored glow (on light themes the core takes the color). It draws in
    (dash offset past 1 → 0 of pathLength 1; the gap of 2 keeps the next dash's round cap off the far end), flickers on, then glows steadily. */
 .neon-heart { --neon: #ff4fa3; overflow: visible; margin-bottom: 6px; }
@@ -130,8 +118,6 @@ html[data-booting] body > header > * { visibility: hidden; animation: boot-fallb
 @keyframes neon-flicker { 0%, 100% { opacity: 1; } 15% { opacity: 0.35; } 25% { opacity: 1; } 45% { opacity: 0.55; } 55% { opacity: 1; } 70% { opacity: 0.8; } }
 @keyframes neon-glow { 50% { opacity: 0.82; } }
 @media (prefers-reduced-motion: reduce) { .neon-heart path { animation: none; stroke-dashoffset: 0; } }
-.dialog-error { min-height: 1em; margin: 4px 0 0; font-size: 12px; color: var(--error); }
-.dialog-button.primary:hover { background: color-mix(in srgb, var(--accent) 34%, var(--panel)); }
 /* The status bar, as in VS Code or Zed: one quiet line of small items straight on the canvas, under the panes. */
 #statusbar { display: flex; align-items: center; gap: 2px; height: 24px; margin: -2px 6px 4px; color: var(--muted); font-size: 12px; white-space: nowrap; }
 #statusbar .spacer { flex: 1; }

@@ -1,6 +1,7 @@
 import { Listbox } from "@kobalte/core/listbox";
 import themes from "../themes.json";
 import { Swatch } from "./Swatch";
+import "../css/select.css";
 
 /** A theme family: its name and its light and dark themes (themes.json). */
 export type Family = { group: string; name: string; light: string; dark: string };

@@ -1,0 +1,3 @@
+/* Swatch: a theme family's light and dark halves. Over the uno preset's tokens (--control, --pad, ...). */
+.swatch { display: inline-flex; flex-shrink: 0; width: 22px; height: 14px; overflow: hidden; border: 1px solid var(--control-border); border-radius: 3px; }
+.swatch > span { flex: 1; box-shadow: inset 0 -3px var(--swatch-accent, transparent); }

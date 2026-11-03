@@ -1,5 +1,6 @@
 import { For } from "solid-js";
 import themes from "../themes.json";
+import "../css/swatch.css";
 
 const chrome: Record<string, Record<string, string>> = themes.chrome;
 const darkOf: Record<string, string> = Object.fromEntries(themes.families.map((f) => [f.light, f.dark]));

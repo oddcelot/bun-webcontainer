@@ -123,7 +123,7 @@ function FeedbackForm() {
         <textarea
           ref={message}
           id={`${id}-message`}
-          class="dialog-input feedback-message"
+          class="input feedback-message"
           maxlength={4000}
           aria-describedby={`${id}-error`}
           aria-invalid={error() ? "true" : undefined}
@@ -135,7 +135,7 @@ function FeedbackForm() {
         <label class="dialog-label" for={`${id}-email`}>
           Email, if you'd like an answer (optional)
         </label>
-        <input ref={email} id={`${id}-email`} class="dialog-input" type="email" maxlength={200} autocomplete="email" spellcheck={false} />
+        <input ref={email} id={`${id}-email`} class="input" type="email" maxlength={200} autocomplete="email" spellcheck={false} />
         <label class="feedback-check">
           <input ref={withEnv} type="checkbox" checked />
           <span>Include the Bun release and browser</span>
@@ -165,10 +165,10 @@ function FeedbackForm() {
           <Show when={error()}>{error()}</Show>
         </p>
         <div class="dialog-actions">
-          <Dialog.CloseButton class="dialog-button" type="button">
+          <Dialog.CloseButton class="button" type="button">
             Cancel
           </Dialog.CloseButton>
-          <button class="dialog-button primary" type="submit" disabled={sending()}>
+          <button class="button primary" type="submit" disabled={sending()}>
             {sending() ? "Sending…" : "Send"}
           </button>
         </div>
@@ -184,7 +184,7 @@ function Thanks() {
       <NeonHeart />
       <Dialog.Title class="dialog-title">Thank you!</Dialog.Title>
       <Dialog.Description class="dialog-description">Your feedback is on its way.</Dialog.Description>
-      <Dialog.CloseButton class="dialog-button">Close</Dialog.CloseButton>
+      <Dialog.CloseButton class="button">Close</Dialog.CloseButton>
     </div>
   );
 }

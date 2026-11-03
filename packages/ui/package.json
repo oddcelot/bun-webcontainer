@@ -8,7 +8,7 @@
     "./themes.json": "./themes.json",
     "./code-themes/*": "./code-themes/*",
     "./solid/*": "./solid/*.tsx",
-    "./components.css": "./components.css"
+    "./css/*": "./css/*"
   },
   "peerDependencies": {
     "@kobalte/core": "catalog:",

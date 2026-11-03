@@ -2,6 +2,7 @@ import { createSignal, omit } from "solid-js";
 import type { JSX, ValidComponent } from "@solidjs/web";
 import { Tooltip } from "@kobalte/core/tooltip";
 import { topLayerOf } from "./layer";
+import "../css/tooltip.css";
 
 type TipProps = {
   /** What the tooltip says; none, no tooltip. */

@@ -1,5 +1,6 @@
 import { Show, type ParentProps } from "solid-js";
 import { Tip } from "./Tip";
+import "../css/tabs.css";
 
 /**
  * A row of tabs (role tablist), each a `TabItem`. Selection is the caller's: a click, or the arrow keys, Home and End

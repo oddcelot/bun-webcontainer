@@ -1,7 +1,6 @@
 import { createSignal, onSettled } from "solid-js";
 import { AppearancePicker, type Mode } from "@runbun/ui/solid/AppearancePicker";
 import { DEFAULT_FAMILY } from "@runbun/ui/uno.preset";
-import "@runbun/ui/components.css";
 
 // The shared appearance picker (@runbun/ui) over the docs' look: the scheme is Starlight's (`starlight-theme` in
 // localStorage, empty for "system"; `data-theme` on <html>), the family `data-family` (`docs-family`), which

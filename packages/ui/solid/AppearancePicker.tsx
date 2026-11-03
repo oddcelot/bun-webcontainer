@@ -5,6 +5,8 @@ import { FAMILIES, FamilyListbox } from "./FamilyListbox";
 import { topLayerOf } from "./layer";
 import { Swatch } from "./Swatch";
 import { Tip } from "./Tip";
+import "../css/segmented.css";
+import "../css/appearance.css";
 
 export type Mode = "system" | "light" | "dark";
 

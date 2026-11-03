@@ -137,7 +137,7 @@ function Choice(props: { label: string; value: string; options: Option[]; onChan
 }
 
 const Text = (props: { value: string; placeholder?: string; onInput: (v: string) => void; label?: string }) => (
-  <input class="dialog-input" value={props.value} placeholder={props.placeholder} aria-label={props.label} spellcheck={false} onInput={(e) => props.onInput(e.currentTarget.value)} />
+  <input class="input" value={props.value} placeholder={props.placeholder} aria-label={props.label} spellcheck={false} onInput={(e) => props.onInput(e.currentTarget.value)} />
 );
 
 /**

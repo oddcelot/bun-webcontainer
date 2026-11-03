@@ -1,0 +1,2 @@
+/* Menu: a popup list of actions (over select.css's .select-menu and .select-option). Over the uno preset's tokens (--control, --pad, ...). */
+.menu { min-width: 10rem; padding: 4px; }

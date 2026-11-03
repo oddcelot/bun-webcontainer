@@ -1,0 +1,36 @@
+/* TabList/TabItem: a row of tabs that scrolls sideways. Over the uno preset's tokens (--control, --pad, ...). */
+.tabs { display: flex; gap: 4px; padding: var(--pad); background: var(--bg); border-bottom: 1px solid var(--border); }
+.tabs .tablist, .tabs.tablist { display: flex; gap: 4px; }
+.tabs .tablist { flex: 0 1 auto; min-width: 0; }
+/*
+  The tab row scrolls without a scrollbar (TabList turns the wheel sideways). Instead its edges fade into the
+  background where tabs are scrolled out: each fade grows in over the first 24px scrolled away from its end, so it's
+  gone at either end and with nothing to scroll. Browsers without scroll-driven animations show no fades.
+*/
+@property --fade-start { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --fade-end { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@keyframes tabs-fade-start { from { --fade-start: 0px; } to { --fade-start: 24px; } }
+@keyframes tabs-fade-end { from { --fade-end: 24px; } to { --fade-end: 0px; } }
+.tablist { overflow-x: auto; scrollbar-width: none; }
+.tablist::-webkit-scrollbar { display: none; }
+@supports (animation-timeline: scroll()) {
+  .tablist {
+    mask-image: linear-gradient(to right, transparent, #000 var(--fade-start), #000 calc(100% - var(--fade-end)), transparent);
+    animation: tabs-fade-start linear both, tabs-fade-end linear both;
+    animation-timeline: scroll(self inline), scroll(self inline);
+    animation-range: 0 24px, calc(100% - 24px) 100%;
+  }
+}
+.tabs .tab { position: relative; display: flex; flex: 0 0 auto; align-items: center; gap: 6px; min-width: 6rem; max-width: 26rem; padding: 4px 6px 4px 10px; border-radius: var(--inner-radius); color: var(--muted); cursor: pointer; white-space: nowrap; user-select: none; }
+.tabs .tab:hover { color: var(--fg); background: var(--control); }
+.tabs .tab[data-selected] { background: var(--control-hover); color: var(--fg); }
+/* The same mark as the pressed color-scheme button: an accent line on the bottom edge, inset past the corners. */
+.tabs .tab[data-selected]::after { content: ""; position: absolute; left: 7px; right: 7px; bottom: 0; height: 2px; border-radius: 1px 1px 0 0; background: var(--accent); }
+.tabs .tab:has(:focus-visible) { outline: 1px solid var(--accent); outline-offset: -1px; }
+/* The tab button is the tab's label: a bare button inside the tab box, which draws the tab. */
+.tabs .tab-trigger { display: flex; flex: 1 1 auto; align-items: center; gap: 6px; min-width: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; outline: none; white-space: nowrap; }
+.tabs .name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* The × sits in the tab's padding (negative margin), so a tab is as tall with it as without: a preview tab gains one when a second opens. */
+.tabs .close { flex-shrink: 0; display: grid; place-items: center; margin-block: -2px; padding: 2px; border: 0; border-radius: calc(var(--inner-radius) - 4px); background: none; color: inherit; cursor: pointer; opacity: 0; }
+.tabs .tab:hover .close, .tabs .tab[data-selected] .close, .tabs .tab:focus-within .close { opacity: 0.7; }
+.tabs .close:hover { opacity: 1; background: var(--control-hover); }
