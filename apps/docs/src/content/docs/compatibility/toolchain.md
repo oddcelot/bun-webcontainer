@@ -113,14 +113,14 @@ console.log(greet(config.name));
 
 ## CommonJS and `require`
 
-- ✅ `.cjs` files, and `.js` files without ESM syntax in packages that aren't `"type": "module"`
+- ✅ CommonJS by Bun's rule, whatever the extension (`.js`, `.ts`, `.tsx`, `.cjs`, even `.mts`): a file that uses `module` or `exports` (or top-level `this`) is CommonJS unless it has an `export` or top-level `await`; otherwise the package's `"type"` decides, and without one a file that uses `require`, `__dirname`, `__filename` or `"use strict"` and has no `import` statement is CommonJS. Bun's parser makes the call. CommonJS features next to an `import` statement fail with Bun's error.
 - ✅ `require("x")` with a string literal. Modules run on first `require`, as in Node; cycles see partial exports.
 - ✅ Named imports from CommonJS, found by a static scan (`exports.x =`, `module.exports = { … }`, re-exports). Exports computed at runtime aren't visible as named imports.
 - ✅ `require(variable)`, and `createRequire(import.meta.url)` and `import.meta.require` with any specifier: project files and installed packages load synchronously when required (TypeScript and JSX transpiled with the nearest `tsconfig.json`'s JSX and decorator options, as imported files are; data files parsed). They share one module instance with literal requires and imports, so a file loaded both ways runs once. A `require` that can't be resolved throws `MODULE_NOT_FOUND` when it runs, as in Bun.
 - ✅ `require.resolve`, `require.cache` (deleting an entry loads the file again), `require.main`
 - ✅ `require` in an ES module, as Bun defines it there (`import.meta.require`); a module that declares its own (`const require = createRequire(import.meta.url)`) keeps it. `__filename` and `__dirname` are the module's path and folder, as in Bun; `module` and `exports` are undefined, as in Bun's ES modules
 - 🟡 `require()` of an ES module returns its namespace, the same instance its imports get. With a string literal it always works: the module is imported up front, so it runs before the module that requires it rather than at the `require` call. With a computed specifier it works once the module has been imported (statically or by a finished `import()`); before that, or while it is still running (top-level `await`), it throws `ERR_REQUIRE_ESM`, as the browser can't load ES modules synchronously. Use `import()` instead.
-- 🟡 A `.ts` file without `import` or `export` runs as an ES module, not as CommonJS as in Bun: `require` works, `module` and `exports` don't
+- 🟡 An ES module that imports CommonJS also sees `__cjs` and `__cjsModule` in its namespace (`import * as ns`), the playground's own exports
 - ❌ Native `.node` addons
 
 ```js playground group=cjs title="counter.cjs"
