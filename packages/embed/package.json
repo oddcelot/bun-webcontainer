@@ -1,0 +1,23 @@
+{
+  "name": "@runbun/embed",
+  "version": "0.1.0",
+  "description": "<bun-playground>: a custom element that embeds a runnable Bun playground (runbun.dev) in any page.",
+  "type": "module",
+  "license": "MIT",
+  "keywords": ["bun", "playground", "embed", "custom-element", "web-component", "repl", "sandbox"],
+  "homepage": "https://docs.runbun.dev/guides/embedding/",
+  "sideEffects": ["./dist/index.js", "./src/index.ts"],
+  "exports": {
+    ".": { "runbun-source": "./src/index.ts", "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+    "./element": { "runbun-source": "./src/element.ts", "types": "./dist/element.d.ts", "default": "./dist/element.js" },
+    "./protocol": { "runbun-source": "./src/protocol.ts", "types": "./dist/protocol.d.ts", "default": "./dist/protocol.js" }
+  },
+  "files": ["dist", "README.md", "LICENSE"],
+  "scripts": {
+    "build": "rm -rf dist && tsrs",
+    "typecheck": "tsrs --noEmit",
+    "prepack": "bun run build"
+  },
+  "devDependencies": { "tsrs": "0.20.1-ts7.1.0-beta" },
+  "publishConfig": { "access": "public" }
+}

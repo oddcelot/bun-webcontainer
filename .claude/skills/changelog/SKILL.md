@@ -2,9 +2,9 @@
 name: changelog
 description:
   Draft the user-facing Changelog trailer for a commit, or write a release's changelog section from the commits since
-  the last tag. Covers CHANGELOG.md (runbun, `v*` tags) and packages/astro/CHANGELOG.md (@runbun/astro, `astro-v*`).
-  Use at commit time (`/changelog entry`) and at release time (`/changelog release v0.2.0`,
-  `/changelog release astro-v0.2.0`).
+  the last tag. Covers CHANGELOG.md (runbun, `v*` tags) and packages/<name>/CHANGELOG.md (@runbun/astro `astro-v*`,
+  @runbun/embed `embed-v*`). Use at commit time (`/changelog entry`) and at release time (`/changelog release v0.2.0`,
+  `/changelog release embed-v0.2.0`).
 ---
 
 # Changelog
@@ -29,14 +29,16 @@ Changelog: Fixed playground
 
 | Part         | Changed files (typically)                                                                   |
 | ------------ | ------------------------------------------------------------------------------------------- |
-| `playground` | `apps/playground/src/ui/`, sharing, embeds, the preview, `packages/ui`                      |
+| `playground` | `apps/playground/src/ui/`, sharing, the embed page, the preview, `packages/ui`              |
 | `runtime`    | the `Bun.*` / `node:*` shims, the VFS (`packages/vfs`), the service worker, `Bun.serve`     |
 | `toolchain`  | `crates/` (transpile, resolve, fmt, bundle, semver), `bun install`, `patches/bun/`          |
 | `editor`     | `crates/tsrs-ls-wasm`, the editor's completions, hovers, diagnostics                        |
 | `docs`       | `apps/docs` content users read (not plumbing)                                               |
-| `astro`      | `packages/astro` (lands in packages/astro/CHANGELOG.md only)                                 |
+| `astro`      | `packages/astro` (lands in packages/astro/CHANGELOG.md only)                                |
+| `embed`      | `packages/embed`: `<bun-playground>`, the protocol (packages/embed/CHANGELOG.md only)       |
 
-Pick the part whose users notice the change; a crate change users meet as a shell command is `toolchain`, one they
+A change to `packages/embed` also reaches everyone loading runbun.dev/embed.js at the next deploy; when it changes
+what the embed page does too, it may need a `playground` commit of its own. Pick the part whose users notice the change; a crate change users meet as a shell command is `toolchain`, one they
 meet as a working `Bun.*` API is `runtime`. A change two kinds of user meet separately is better as two commits.
 
 Rules for the entry:
@@ -70,12 +72,12 @@ Nothing here tags, pushes or deploys; that stays with the person.
    ending in "See CHANGELOG.md for the full section.", its trailer `Changelog: skip`. After it merges to `main`:
    `git tag v0.2.0 && git push origin main --follow-tags` creates the GitHub Release; deploy separately.
 
-## `/changelog release astro-v0.2.0` (@runbun/astro)
+## `/changelog release astro-v0.2.0`, `embed-v0.2.0` (the npm packages)
 
-The same, with `moon run astro:changelog -- --tag astro-v0.2.0` (a flat list, no part headings),
-`packages/astro/CHANGELOG.md`, and `version` in `packages/astro/package.json`. The commit is
-`release: @runbun/astro 0.2.0`; the `astro-v0.2.0` tag publishes to npm and creates the GitHub Release
-(`.github/workflows/publish-astro.yml`). Before tagging, a dry run (Actions → Publish @runbun/astro → Run workflow)
+The same, with `moon run <name>:changelog -- --tag <name>-v0.2.0` (a flat list, no part headings),
+`packages/<name>/CHANGELOG.md`, and `version` in `packages/<name>/package.json`. The commit is
+`release: @runbun/<name> 0.2.0`; the `<name>-v0.2.0` tag publishes to npm and creates the GitHub Release
+(`.github/workflows/publish-<name>.yml`). Before tagging, a dry run (Actions → Publish @runbun/<name> → Run workflow)
 checks the pack.
 
 If a draft is empty, say so and stop: HEAD is already tagged or every commit since the tag was `skip`.

@@ -1,7 +1,7 @@
 import { For, Show, createEffect, createMemo, createSignal, createStore, onSettled, untrack } from "solid-js";
 import { BASE, DOCS } from "../base";
 import { PRESETS } from "../embed/config";
-import { FEATURES, MODES, type Feature, type Mode } from "../embed/protocol";
+import { FEATURES, MODES, type Feature, type Mode } from "@runbun/embed/protocol";
 import { examples, repoExamples } from "../examples";
 import { createPierre } from "../editors/pierre";
 import { FAMILIES, isFamily, onTheme, pickFamily, setColorMode, themeName } from "../theme";

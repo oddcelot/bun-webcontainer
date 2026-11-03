@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import solid from "@solidjs/vite-plugin";
 import UnoCSS from "unocss/vite";
 import { rolldown } from "rolldown";
-import { defineConfig, type Plugin } from "vite";
+import { defaultClientConditions, defineConfig, type Plugin } from "vite";
 
 const isolation = {
   "Cross-Origin-Opener-Policy": "same-origin",
@@ -143,6 +143,8 @@ export default defineConfig(({ mode }) => ({
   preview: { headers: isolation },
   optimizeDeps: { exclude: ["@rolldown/browser", "@napi-rs/wasm-runtime", "@emnapi/core", "@emnapi/runtime", "@emnapi/wasi-threads"] },
   resolve: {
+    // @runbun/embed publishes built files; `runbun-source` (no other package uses it) resolves its sources here.
+    conditions: ["runbun-source", ...defaultClientConditions],
     alias: [
       { find: /^@rolldown\/browser\/utils$/, replacement: browserDist + "utils-index.browser.mjs" },
       { find: /^(\.\.?\/)rolldown-binding\.wasi\.cjs$/, replacement: browserDist + "rolldown-binding.wasi-browser.js" },

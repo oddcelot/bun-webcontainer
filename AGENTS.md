@@ -106,7 +106,7 @@ playground runs user code in the browser engine with JS shims for `Bun.*`, a VFS
 (`/__vfs/` modules, `/__preview/` Bun.serve), and Bun's wasm transpiler.
 
 Layout: `apps/` (playground, docs), `crates/` (the Rust wrapper crates, one Cargo workspace), `packages/`
-(`@runbun/astro` on npm; private `@runbun/ui` (tokens, and Solid 2 components in `solid/`, each importing its CSS from `css/` in the `runbun-ui` layer; shipped as source; see its README) and `@runbun/vfs`; `astro-solid`: vendored `@astrojs/solid-js` v8 for Solid 2, see its README), `patches/` (`bun/`, `npm/`, `bun-codegen/`).
+(`@runbun/astro` and `@runbun/embed` on npm; private `@runbun/ui` (tokens, and Solid 2 components in `solid/`, each importing its CSS from `css/` in the `runbun-ui` layer; shipped as source; see its README) and `@runbun/vfs`; `astro-solid`: vendored `@astrojs/solid-js` v8 for Solid 2, see its README), `patches/` (`bun/`, `npm/`, `bun-codegen/`).
 
 ## Git Workflow
 
@@ -139,27 +139,34 @@ Changelog: skip              # tests, tooling, refactors, docs plumbing, CI
 The entry is one bullet from the user's side: a bold outcome, then the symptom that is gone or the thing now
 possible. `/changelog entry` drafts it from the staged diff.
 
-| Part         | What it covers                                                   | Changelog, heading         |
-| ------------ | ---------------------------------------------------------------- | -------------------------- |
-| `playground` | the playground UI, sharing, embeds, previews                     | CHANGELOG.md, Playground   |
-| `runtime`    | `Bun.*`, `bun:*`, `node:*` in the browser, the VFS, `Bun.serve`  | CHANGELOG.md, Runtime      |
-| `toolchain`  | `bun install`, transpiler, resolver, bundler, `bun fmt`          | CHANGELOG.md, Toolchain    |
-| `editor`     | the TypeScript language service: completions, hovers, diagnostics | CHANGELOG.md, Editor       |
-| `docs`       | docs.runbun.dev                                                  | CHANGELOG.md, Docs         |
-| `astro`      | `@runbun/astro` (`packages/astro`)                               | packages/astro/CHANGELOG.md |
+| Part         | What it covers                                                     | Changelog, heading          |
+| ------------ | ------------------------------------------------------------------ | --------------------------- |
+| `playground` | the playground UI, sharing, the embed page, previews               | CHANGELOG.md, Playground    |
+| `runtime`    | `Bun.*`, `bun:*`, `node:*` in the browser, the VFS, `Bun.serve`    | CHANGELOG.md, Runtime       |
+| `toolchain`  | `bun install`, transpiler, resolver, bundler, `bun fmt`            | CHANGELOG.md, Toolchain     |
+| `editor`     | the TypeScript language service: completions, hovers, diagnostics  | CHANGELOG.md, Editor        |
+| `docs`       | docs.runbun.dev                                                    | CHANGELOG.md, Docs          |
+| `astro`      | `@runbun/astro` (`packages/astro`)                                 | packages/astro/CHANGELOG.md |
+| `embed`      | `@runbun/embed` (`packages/embed`): `<bun-playground>`, the protocol | packages/embed/CHANGELOG.md |
 
-Two release lines, each a hand-written changelog drafted by git-cliff (Brewfile) from the trailers:
+Three release lines, each a hand-written changelog drafted by git-cliff (Brewfile) from the trailers:
 
-- **runbun** (every part but `astro`): version in the root `package.json`, `CHANGELOG.md`, `v<version>` tags;
+- **runbun** (every part but the packages'): version in the root `package.json`, `CHANGELOG.md`, `v<version>` tags;
   `moon run root:changelog` drafts the next section (`cliff.toml`). Pushing the tag runs
   `.github/workflows/release.yml`, which checks the tag and the section and creates the GitHub Release. Deploying
   runbun.dev and docs.runbun.dev stays a separate step.
-- **@runbun/astro**: `packages/astro/package.json`, `packages/astro/CHANGELOG.md`, `astro-v<version>` tags;
-  `moon run astro:changelog` (`packages/astro/cliff.toml`). Pushing the tag runs `.github/workflows/publish-astro.yml`,
-  which publishes to npm over trusted publishing and creates the GitHub Release. Don't `npm publish` by hand.
+- **@runbun/astro** and **@runbun/embed**: `packages/<name>/package.json`, `packages/<name>/CHANGELOG.md`,
+  `<name>-v<version>` tags; `moon run <name>:changelog` (`packages/<name>/cliff.toml`). Pushing the tag runs
+  `.github/workflows/publish-<name>.yml`, which publishes to npm over trusted publishing and creates the GitHub
+  Release. Don't `npm publish` by hand.
 
-`/changelog release v0.2.0` (or `astro-v0.2.0`) writes the section and bumps the version; the release commit is
-`release: runbun 0.2.0` (or `release: @runbun/astro 0.2.0`) with `Changelog: skip`, tagged on `main` after the merge.
+The element in `packages/embed` is also what runbun.dev serves as `/embed.js` (`apps/playground/embed-element/`), so
+a change to it ships with the next deploy as well as the next `@runbun/embed` release. An element from npm can be
+older or newer than the deployed `/embed`: the protocol (`packages/embed/src/protocol.ts`) only grows.
+
+`/changelog release v0.2.0` (or `astro-v0.2.0`, `embed-v0.2.0`) writes the section and bumps the version; the release
+commit is `release: runbun 0.2.0` (or `release: @runbun/embed 0.2.0`) with `Changelog: skip`, tagged on `main` after
+the merge.
 Section headings read `## 0.2.0 — 2026-11-03` (em dash); `scripts/release-notes.ts` finds them by it.
 
 ## Conventions & Patterns
