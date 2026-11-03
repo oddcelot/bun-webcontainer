@@ -255,6 +255,54 @@ if (hasBun) {
   globMatches.forEach(([p, s], i) => want[i] !== got[i] && mismatches.push(`bun: glob match ${p} ${s}: bun=${want[i]} wasm=${got[i]}`));
   console.log(`ok    ${globMatches.length} glob matches compared`);
 }
+
+// Bun.YAML.parse / Bun.TOML.parse: data_parse_c's tree, rebuilt as the playground does, vs native Bun's values.
+const dataCases: ["yaml" | "toml", string][] = [
+  ["yaml", "a: 1\nb: [x, 'y', \"z\\n\"]\nc: {d: null, e: ~, f: true}\n"],
+  ["yaml", "- .inf\n- -.Inf\n- .nan\n- -0\n- 0o17\n- 0x1F\n- 1e3\n- 2001-12-14\n- 12345678901234567890\n"],
+  ["yaml", "base: &b {x: 1}\nderived:\n  <<: *b\n  y: 2\nsame: *b\n"],
+  ["yaml", "a: &a [1, *a]\n"],
+  ["yaml", "--- 1\n--- two\n...\n"],
+  ["yaml", ""],
+  ["yaml", "text: |\n  line 1\n  line 2\nfolded: >\n  a\n  b\nuni: \"\\u00e9\\U0001F600 日本\"\n"],
+  ["yaml", "? [a, b]\n: 1\n__proto__: 2\n"],
+  ["yaml", "a: [1"],
+  ["yaml", "a: 1\n a: 2"],
+  ["toml", "title = \"x\"\n[owner]\nname = 'Tom'\ndob = 1979-05-27T07:32:00-08:00\n[db]\nports = [8000, 8001]\nenabled = true\ntemp = { cpu = 79.5, case = 72.0 }\n"],
+  ["toml", "a = inf\nb = -inf\nc = nan\nd = 0x10\ne = 0o17\nf = 0b11\ng = 1_000\nh = -0.0\ni = 1e400\n"],
+  ["toml", "ldt = 1979-05-27T07:32:00\nld = 1979-05-27\nlt = 07:32:00.999999\n"],
+  ["toml", "[[fruit]]\nname = \"apple\"\n[[fruit.variety]]\nname = \"red\"\n[[fruit]]\nname = \"banana\"\n\"quoted key\" = \"\\u00e9\\t\"\nml = \"\"\"\nhi\nthere\"\"\"\n"],
+  ["toml", "a = "],
+  ["toml", "a = 1\na = 2"],
+];
+const canonSrc = `(v) => { const seen = new Map(); const c = (v) => {
+  if (typeof v === "number") return Object.is(v, -0) ? "-0" : String(v);
+  if (v === null || typeof v !== "object") return JSON.stringify(v);
+  if (seen.has(v)) return "#" + seen.get(v);
+  seen.set(v, seen.size);
+  if (v.constructor && /^(Instant|Plain)/.test(v.constructor.name)) return v.constructor.name + "(" + v.toString() + ")";
+  if (Array.isArray(v)) return "[" + v.map(c).join(",") + "]";
+  return "{" + Object.keys(v).map((k) => JSON.stringify(k) + ":" + c(v[k])).join(",") + "}";
+}; return c(v); }`;
+const canon = eval(canonSrc) as (v: unknown) => string;
+const { fromDataTree } = await import("../../apps/playground/src/dataTree.ts");
+function wasmData(text: string, format: "yaml" | "toml"): string {
+  const a = put(text);
+  const out = w.data_parse_c(a[0], a[1], format === "toml" ? 1 : 0);
+  w.dealloc(a[0], a[1]);
+  const [status, ptr, len] = new BigUint64Array(w.memory.buffer, Number(out), 3);
+  const json = dec.decode(new Uint8Array(w.memory.buffer, Number(ptr), Number(len)));
+  w.output_free(out);
+  return status === 0n ? canon(fromDataTree(json)) : `SyntaxError: ${json}`;
+}
+const dataGot = dataCases.map(([f, t]) => wasmData(t, f));
+if (hasBun) {
+  const r = spawnSync("bun", ["-e", `const canon = ${canonSrc}; console.log(JSON.stringify(JSON.parse(process.argv[1]).map(([f, t]) => { try { return canon(Bun[f.toUpperCase()].parse(t)); } catch (e) { return e.name + ": " + e.message; } })))`, JSON.stringify(dataCases)], { encoding: "utf8" });
+  const want = JSON.parse(r.stdout) as string[];
+  dataCases.forEach(([f, t], i) => want[i] !== dataGot[i] && mismatches.push(`bun: ${f} ${JSON.stringify(t)}: bun=${want[i]} wasm=${dataGot[i]}`));
+}
+console.log(`ok    ${dataCases.length} YAML/TOML documents parsed`);
+if (process.env.SHOW_DATA) for (const g of dataGot) console.log("  " + g);
 rmSync(tmp, { recursive: true, force: true });
 
 console.log(hasBun ? "" : "(bun not on PATH: skipped native comparison)");

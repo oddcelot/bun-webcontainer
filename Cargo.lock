@@ -907,11 +907,13 @@ dependencies = [
 name = "bun_resolve_wasm"
 version = "0.0.0"
 dependencies = [
+ "bun_alloc",
  "bun_ast",
  "bun_dotenv",
  "bun_glob",
  "bun_install_types",
  "bun_options_types",
+ "bun_parsers",
  "bun_resolver",
  "bun_semver",
  "bun_sys",

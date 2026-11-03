@@ -20,3 +20,5 @@ bun_sys = { path = "../../bun/src/sys" }
 bun_options_types = { path = "../../bun/src/options_types" }
 # defines the bun_sys_host_* symbols bun_sys declares, as `bun_sys.*` wasm imports served by the VFS
 bun_sys_host = { path = "../sys-host", features = ["imports"] }
+bun_parsers = { path = "../../bun/src/parsers" }
+bun_alloc = { path = "../../bun/src/bun_alloc" }
