@@ -1,5 +1,5 @@
 import { BASE } from "./base";
-import { commonJSFacade, exportNames as commonJSExportNames, isCommonJS, JS_LIKE, moduleKindOf, reexports, stripDirname, wrapCommonJS } from "./cjs";
+import { commonJSFacade, exportNames as commonJSExportNames, isCommonJS, JS_LIKE, moduleKindOf, reexports, requireRuntimeImports, stripDirname, wrapCommonJS } from "./cjs";
 import bunWrap from "./bunWrap.js?raw";
 import { loadTranspiler, type Resolver } from "./transpiler";
 import { transpileCached } from "./transpileCache";
@@ -298,11 +298,12 @@ async function serveCommonJS(vfs: VFS, path: string, onError: (msg: string) => v
   }
   TARGET = target;
   const dir = dirname(path);
-  // TypeScript and JSX first, without the `__dirname` and `__filename` the transpiler declares (the wrapper has them).
+  // TypeScript and JSX first, without the `__dirname` and `__filename` the transpiler declares (the wrapper has them),
+  // its JSX runtime and `bun:wrap` imports as requires (see requireRuntimeImports).
   let body = src;
   if (/\.(?:[cm]?tsx?|jsx)$/.test(path)) {
     try {
-      body = stripDirname(await transpileCached(src, path, tsconfigFor(vfs, path), () => null));
+      body = requireRuntimeImports(stripDirname(await transpileCached(src, path, tsconfigFor(vfs, path), () => null)));
     } catch (e) {
       const msg = `${path}: ${e instanceof Error ? e.message : String(e)}`;
       onError(msg);

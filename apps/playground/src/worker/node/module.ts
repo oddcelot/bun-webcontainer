@@ -1,5 +1,6 @@
 import { dirname, norm, type VFS } from "@runbun/vfs";
-import { hasModuleSyntax, isCommonJS, packageType, stripDirname } from "../../cjs";
+import bunWrapSource from "../../bunWrap.js?raw";
+import { hasModuleSyntax, isCommonJS, packageType, requireRuntimeImports, stripDirname } from "../../cjs";
 import { inRanges, isMethod, literalRanges } from "../../literals";
 import { dataFormat, parseDataFile } from "../../resolver";
 import { transpileSync } from "../../transpiler";
@@ -37,6 +38,13 @@ function requireDir(from: string | URL): string {
   const s = String(from);
   const path = s.startsWith("file:") ? decodeURIComponent(new URL(s).pathname) : s;
   return path.endsWith("/") ? norm(path) : dirname(norm(path));
+}
+
+/** Bun's `bun:wrap` (the transpiler's helpers) for CommonJS the worker runs, which requires it (see requireRuntimeImports). */
+let bunWrap: object | undefined;
+function evaluateBunWrap(): object {
+  const names = [...bunWrapSource.matchAll(/^export var ([\w$]+)/gm)].map((m) => m[1]);
+  return new Function(`${bunWrapSource.replace(/^export var /gm, "var ")}\nreturn { ${names.join(", ")} };`)() as object;
 }
 
 /** Bun's error for a require that resolves to nothing. */
@@ -78,6 +86,7 @@ export function createModule(registry: Record<string, object>) {
   function requireFrom(id: string, from: string): unknown {
     id = String(id);
     if (isBuiltin(id)) return registry[name(id)];
+    if (id === "bun:wrap") return (bunWrap ??= evaluateBunWrap());
     const path = resolveFile?.(id, requireDir(from));
     if (!path || !vfs) throw notFound(id, from);
     const file = "/" + path;
@@ -93,8 +102,9 @@ export function createModule(registry: Record<string, object>) {
     const format = dataFormat(path);
     if (format) return load(file, (m) => void (m.exports = parseDataFile(src, format)), req);
     if (path.endsWith(".node")) throw Object.assign(new Error(`Cannot load native addon ${file}: .node files are not supported in the playground`), { code: "ERR_DLOPEN_FAILED" });
-    // With the nearest tsconfig's JSX and decorator options, as served modules have them.
-    const transpile = () => stripDirname(transpileSync(src, file, tsconfigFor(vfs!, path)));
+    // With the nearest tsconfig's JSX and decorator options, as served modules have them; its JSX runtime and
+    // `bun:wrap` imports become requires (see requireRuntimeImports).
+    const transpile = () => requireRuntimeImports(stripDirname(transpileSync(src, file, tsconfigFor(vfs!, path))));
     let code = /\.[cm]?(ts|tsx|jsx)$/.test(path) ? transpile() : src;
     // What Bun runs as CommonJS (see moduleKindOf) runs here; an ES module only if it has no module syntax and isn't one
     // by its extension or package type either (Bun's `require` of it returns its empty namespace, this `{}`).
