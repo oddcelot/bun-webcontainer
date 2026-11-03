@@ -116,4 +116,24 @@ if (spawnSync("bun", ["--version"]).status === 0) {
     rmSync(tmp, { recursive: true, force: true });
   }
 }
+// IMPORT_META_REQUIRE (16): a free `require` gets Bun's `var {require}=import.meta;` (`--target=bun`); a bound one doesn't.
+const requireCases: [string, string][] = [
+  ["free.js", 'import a from "a";\nconst b = require("b");\nconst n = "c";\nrequire(n);\nexport { a, b };\n'],
+  ["bound.js", 'import { createRequire } from "module";\nconst require = createRequire(import.meta.url);\nexport const b = require("b");\n'],
+  ["param.ts", "export function f(require: (id: string) => unknown) {\n  return require(\"x\");\n}\n"],
+];
+if (spawnSync("bun", ["--version"]).status === 0) {
+  const tmp = mkdtempSync(join(tmpdir(), "transpile-wasm-require-"));
+  try {
+    for (const [file, code] of requireCases) {
+      writeFileSync(join(tmp, file), code);
+      const expected = spawnSync("bun", ["build", "--no-bundle", "--target=bun", file], { cwd: tmp, encoding: "utf8" }).stdout;
+      const got = call("transpile_flags_c", file, code, 16);
+      if (got.trim() !== expected.trim()) { fail++; console.log(`require ${file}: MISMATCH\n--- wasm\n${got}\n--- bun\n${expected}`); }
+      else console.log(`require ${file}: identical to bun build --no-bundle --target=bun`);
+    }
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
 process.exit(fail ? 1 : 0);

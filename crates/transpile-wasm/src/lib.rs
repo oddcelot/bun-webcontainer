@@ -30,6 +30,10 @@ pub const DIAGNOSTICS_JSON: u32 = 4;
 /// Not a tsconfig option: output as `Bun.Transpiler` prints it (no JSX runtime import, no `/* @__PURE__ */`
 /// annotations) instead of as `bun build --no-bundle`.
 pub const RUNTIME_TRANSPILER: u32 = 8;
+/// Not a tsconfig option: a file that uses a free `require` starts with `var {require}=import.meta;`, as Bun's printer
+/// gives ES modules for its runtime (`bun build --no-bundle --target=bun`). Bun only does it for ES modules; with this
+/// flag a file it would run as CommonJS gets it too, as the playground runs every transpiled file as an ES module.
+pub const IMPORT_META_REQUIRE: u32 = 16;
 
 /// tsconfig `compilerOptions` for JSX, as strings ("" = not set). Per-file pragmas still win.
 #[derive(Clone, Default, Debug)]
@@ -129,9 +133,11 @@ pub fn transpile_with(path: &[u8], source: &[u8], loader: Loader, flags: u32, re
             print_dce_annotations: flags & RUNTIME_TRANSPILER == 0,
             ..Default::default()
         };
+        // `uses_require_ref` means `require` is unbound, so the declaration never collides.
+        let require: &[u8] = if flags & IMPORT_META_REQUIRE != 0 && ast.uses_require_ref { b"var {require}=import.meta;" } else { b"" };
         let mut writer = printer::BufferPrinter::init(printer::BufferWriter::init());
         match printer::print_ast::<_, false, false>(&mut writer, arena, &ast, symbols, src, opts) {
-            Ok(_) => Ok(writer.ctx.written().to_vec()),
+            Ok(_) => Ok([require, writer.ctx.written()].concat()),
             Err(e) => Err(format!("print failed: {e:?}").into_bytes()),
         }
     })
