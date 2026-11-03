@@ -6,5 +6,6 @@ brew "lychee"      # link checker for the built docs site (moon run docs:links)
 brew "typos-cli"   # source-aware spell checker (`typos`)
 brew "betterleaks" # secret scanner over the git history (moon run root:secrets; CI: .github/workflows/secrets.yml)
 brew "hyperfine"   # command benchmarks
+brew "git-cliff"   # changelog drafts from the commits' Changelog trailers (moon run root:changelog, astro:changelog)
 cargo "twiggy"         # what takes up space in a .wasm
 cargo "cargo-machete"  # unused Cargo dependencies

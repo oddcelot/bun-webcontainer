@@ -1,0 +1,82 @@
+# Draft generator for CHANGELOG.md, the changelog of runbun: the playground, its runtime and toolchain, the editor and
+# the docs, released together as one version (root package.json, `v*` tags). @runbun/astro keeps its own changelog,
+# drafted by packages/astro/cliff.toml.
+#
+# The committed changelog is hand-written prose; no generator writes a release's intro paragraph. This config does the
+# tedious half: what landed since the last tag, under which part, with which entry. `moon run root:changelog` prints a
+# draft (`-- --tag v0.2.0` to head it with the version); edit it into CHANGELOG.md (the /changelog skill does this).
+#
+# Subjects are `area: what`, which says where the code changed, not what a user gets, so the signal is a trailer in
+# the commit body: the kind of change, the part it belongs to, and the user-facing entry folded under it on lines
+# indented two spaces (git trailer folding):
+#
+#     Changelog: Fixed playground
+#       **Shared links open the file you shared.** A link made from a second
+#       tab opened the entry file instead.
+#
+#     Changelog: skip         (tests, tooling, refactors, docs plumbing)
+#
+# Parts and the heading each lands under:
+#   playground   Playground   the UI, sharing, embeds, previews
+#   runtime      Runtime      Bun.*, bun:*, node:* in the browser, the VFS, Bun.serve
+#   toolchain    Toolchain    bun install, the transpiler, resolver, bundler, bun fmt
+#   editor       Editor       the TypeScript language service: completions, hovers, diagnostics
+#   docs         Docs         docs.runbun.dev
+#   astro        (packages/astro/CHANGELOG.md only)
+#
+# A trailer with no entry folded under it still lands in the draft, drafted from the body and marked for a rewrite.
+# The commit-msg hook (scripts/check-changelog-trailer.ts) refuses a commit without a trailer.
+
+[changelog]
+header = ""
+# Groups sort by name, so each carries its order in a comment that `striptags` removes. Inside a part, bullets go by kind.
+body = """
+## {{ version | default(value="Unreleased") | trim_start_matches(pat="v") }} — {% if timestamp %}{{ timestamp | date(format="%Y-%m-%d") }}{% else %}{{ now() | date(format="%Y-%m-%d") }}{% endif %}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | striptags | trim }}
+{% for kind in ["Added", "Changed", "Fixed", "Removed"] %}
+{%- for commit in commits %}
+{%- if commit.message is containing("Changelog-Entry: " ~ kind) or commit.message is containing("Changelog: " ~ kind) %}
+{%- set lines = commit.message | split(pat="\n") %}
+{%- set head = lines | first %}
+{%- if head is starting_with("Changelog-Entry") %}
+- **{{ kind }}** — {{ lines | slice(start=1) | join(sep=" ") | trim }}
+{%- else %}
+- **{{ kind }}** — **{{ head }}** <!-- no entry under the trailer; drafted from the body -->
+{%- for line in lines | slice(start=1) %}
+{%- if not line is starting_with("Changelog:") and not line is starting_with("Co-Authored-By:") %}
+{{ "  " ~ line | trim_end }}
+{%- endif %}
+{%- endfor %}
+{%- endif %}
+{%- endif %}
+{%- endfor %}
+{%- endfor %}
+{% endfor %}"""
+trim = true
+
+[git]
+# `area: what` isn't a conventional type; the trailer carries the signal.
+conventional_commits = false
+filter_unconventional = false
+# Only commits that opted in with a trailer reach the draft.
+filter_commits = true
+# Anchored: `astro-v*` tags are @runbun/astro's releases, not runbun's.
+tag_pattern = "^v[0-9]"
+commit_preprocessors = [
+  # A folded trailer: keep only its kind, part and entry lines, so the template can tell an authored entry from a body
+  # it has to fall back on.
+  #   "subject\n\nbody\n\nChangelog: Fixed playground\n  **Entry.** text" -> "Changelog-Entry: Fixed playground\n**Entry.** text"
+  { pattern = '(?s)^.*?\nChangelog: ?(\w+( [\w-]+)?)\n((?:[ \t]+[^\n]*\n?)+).*$', replace = "Changelog-Entry: ${1}\n${3}" },
+  { pattern = '(?m)^[ \t]+', replace = "" },
+]
+# Merges carry no trailer and drop out with filter_commits. The first parser that matches wins.
+commit_parsers = [
+  { message = "(?ms)^Changelog(-Entry)?: ?skip", skip = true },
+  { message = "(?ms)^Changelog(-Entry)?: ?\\w+ astro$", skip = true },
+  { message = "(?ms)^Changelog(-Entry)?: ?\\w+ playground$", group = "<!-- 1 -->Playground" },
+  { message = "(?ms)^Changelog(-Entry)?: ?\\w+ runtime$", group = "<!-- 2 -->Runtime" },
+  { message = "(?ms)^Changelog(-Entry)?: ?\\w+ toolchain$", group = "<!-- 3 -->Toolchain" },
+  { message = "(?ms)^Changelog(-Entry)?: ?\\w+ editor$", group = "<!-- 4 -->Editor" },
+  { message = "(?ms)^Changelog(-Entry)?: ?\\w+ docs$", group = "<!-- 5 -->Docs" },
+]

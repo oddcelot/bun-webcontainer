@@ -32,3 +32,10 @@ tasks:
       - 'README.md'
     options:
       cache: false
+  changelog:
+    # Draft of CHANGELOG.md's next section from the `astro` Changelog trailers since the last astro-v* tag (cliff.toml).
+    # `-- --tag astro-v0.2.0` heads it with the version.
+    command: 'git-cliff --config packages/astro/cliff.toml --unreleased'
+    options:
+      cache: false
+      runFromWorkspaceRoot: true

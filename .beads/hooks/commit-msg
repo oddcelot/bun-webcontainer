@@ -1,0 +1,3 @@
+#!/usr/bin/env sh
+# Every non-merge commit carries a `Changelog:` trailer (see "Commits and the changelog" in AGENTS.md).
+exec "$(git rev-parse --show-toplevel)/scripts/check-changelog-trailer.ts" "$1"

@@ -1,20 +1,21 @@
-# Publishes packages/astro (@runbun/astro) to npm, by hand: Actions → Publish @runbun/astro → Run workflow. A dry run
-# (the default) packs and prints what would go out. A real run publishes the version in packages/astro/package.json
-# through npm's trusted publishing (no token; set up once with `npm trust github --file publish-astro.yml
-# --repo oddcelot/bun-webcontainer --allow-publish`), and tags the commit astro-v<version>. No provenance: npm only
-# generates it for public repos.
+# Publishes packages/astro (@runbun/astro) to npm. Pushing an `astro-v<version>` tag is the release: it checks the tag
+# against packages/astro/package.json and the section for it in packages/astro/CHANGELOG.md, builds the package and the
+# docs site with it, publishes through npm's trusted publishing (no token; set up once with `npm trust github --file
+# publish-astro.yml --repo oddcelot/bun-webcontainer --allow-publish`) and creates the GitHub Release from the
+# changelog section. A version already on npm is skipped, so a failed run can be rerun. A tag with a `-`
+# (astro-v0.3.0-beta.1) publishes under `next` and makes a prerelease. No provenance: npm only generates it for public
+# repos.
+#
+# Running it by hand (Actions → Publish @runbun/astro → Run workflow) is a dry run: it packs and prints what would go out.
 name: Publish @runbun/astro
 
 on:
+  push:
+    tags: ["astro-v[0-9]*"]
   workflow_dispatch:
-    inputs:
-      dry_run:
-        description: "Dry run: pack and check, publish nothing"
-        type: boolean
-        default: true
 
 permissions:
-  contents: write # the astro-v<version> tag
+  contents: write # the GitHub Release
   id-token: write # npm trusted publishing (OIDC)
 
 concurrency: publish-astro
@@ -23,6 +24,8 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      RELEASE: ${{ github.event_name == 'push' }}
     defaults:
       run:
         working-directory: packages/astro
@@ -39,6 +42,20 @@ jobs:
       # Trusted publishing needs npm 11.5 or later.
       - run: npm install -g npm@latest
 
+      - name: Version
+        id: version
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "$RELEASE" = "true" ] && [ "$GITHUB_REF_NAME" != "astro-v$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match packages/astro/package.json version $version"
+            exit 1
+          fi
+          ../../scripts/release-notes.ts "astro-v$version" > "$RUNNER_TEMP/notes.md"
+          if npm view "@runbun/astro@$version" version >/dev/null 2>&1; then
+            echo "::notice::@runbun/astro@$version is on npm already; not publishing it again."
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build the package
         run: |
           bun install --frozen-lockfile
@@ -52,35 +69,27 @@ jobs:
           bun run check
           bun run build
 
-      - name: Version
-        id: version
-        env:
-          DRY_RUN: ${{ inputs.dry_run }}
-        run: |
-          version=$(node -p "require('./package.json').version")
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          if npm view "@runbun/astro@$version" version >/dev/null 2>&1; then
-            # A dry run still packs; only a real run needs an unpublished version.
-            if [ "$DRY_RUN" = "true" ]; then
-              echo "::warning::@runbun/astro@$version is already on npm; bump packages/astro/package.json before publishing"
-            else
-              echo "::error::@runbun/astro@$version is already on npm; bump packages/astro/package.json"
-              exit 1
-            fi
-          fi
-
       - name: Pack
         run: npm pack --dry-run
 
       - name: Publish
-        if: ${{ !inputs.dry_run }}
-        run: npm publish --access public
-
-      - name: Tag
-        if: ${{ !inputs.dry_run }}
-        working-directory: .
-        env:
-          TAG: astro-v${{ steps.version.outputs.version }}
+        if: ${{ env.RELEASE == 'true' && !steps.version.outputs.published }}
         run: |
-          git tag "$TAG"
-          git push origin "$TAG"
+          case "$GITHUB_REF_NAME" in
+            *-*) npm publish --access public --tag next ;;
+            *) npm publish --access public ;;
+          esac
+
+      - name: Create the release
+        if: ${{ env.RELEASE == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "::notice::the $GITHUB_REF_NAME release exists already."
+            exit 0
+          fi
+          prerelease=()
+          case "$GITHUB_REF_NAME" in *-*) prerelease=(--prerelease) ;; esac
+          gh release create "$GITHUB_REF_NAME" --verify-tag \
+            --title "@runbun/astro ${GITHUB_REF_NAME#astro-v}" --notes-file "$RUNNER_TEMP/notes.md" "${prerelease[@]}"
