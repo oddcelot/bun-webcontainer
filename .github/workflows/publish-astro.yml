@@ -43,6 +43,8 @@ jobs:
         run: |
           bun install --frozen-lockfile
           bun run build
+          # The docs use the vendored @astrojs/solid-js (packages/astro-solid), served from its untracked dist/.
+          (cd ../astro-solid && bun run build)
 
       - name: Check the docs site builds with this package
         working-directory: apps/docs
