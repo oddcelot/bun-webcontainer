@@ -1,5 +1,6 @@
 import { dirname, norm, type VFS } from "@runbun/vfs";
-import { hasModuleSyntax, packageType } from "../../cjs";
+import bunWrapSource from "../../bunWrap.js?raw";
+import { hasModuleSyntax, packageType, requireRuntimeImports } from "../../cjs";
 import { inRanges, isMethod, literalRanges } from "../../literals";
 import { dataFormat, parseDataFile } from "../../resolver";
 import { transpileSync } from "../../transpiler";
@@ -37,6 +38,13 @@ function requireDir(from: string | URL): string {
   const s = String(from);
   const path = s.startsWith("file:") ? decodeURIComponent(new URL(s).pathname) : s;
   return path.endsWith("/") ? norm(path) : dirname(norm(path));
+}
+
+/** Bun's `bun:wrap` (the transpiler's helpers) for CommonJS the worker runs, which requires it (see requireRuntimeImports). */
+let bunWrap: object | undefined;
+function evaluateBunWrap(): object {
+  const names = [...bunWrapSource.matchAll(/^export var ([\w$]+)/gm)].map((m) => m[1]);
+  return new Function(`${bunWrapSource.replace(/^export var /gm, "var ")}\nreturn { ${names.join(", ")} };`)() as object;
 }
 
 /** Bun's error for a require that resolves to nothing. */
@@ -78,6 +86,7 @@ export function createModule(registry: Record<string, object>) {
   function requireFrom(id: string, from: string): unknown {
     id = String(id);
     if (isBuiltin(id)) return registry[name(id)];
+    if (id === "bun:wrap") return (bunWrap ??= evaluateBunWrap());
     const path = resolveFile?.(id, requireDir(from));
     if (!path || !vfs) throw notFound(id, from);
     const file = "/" + path;
@@ -95,7 +104,8 @@ export function createModule(registry: Record<string, object>) {
     if (path.endsWith(".node")) throw Object.assign(new Error(`Cannot load native addon ${file}: .node files are not supported in the playground`), { code: "ERR_DLOPEN_FAILED" });
     // With the nearest tsconfig's JSX and decorator options, as served modules have them. The transpiler declares
     // `var __dirname = "…"` (and __filename) for code that uses them: dropped, so the wrapper's values show through.
-    const transpile = () => transpileSync(src, file, tsconfigFor(vfs!, path)).replace(/^var (?:__dirname|__filename) = "[^"\n]*"(?:, __filename = "[^"\n]*")?;\n/, "");
+    // Its JSX runtime and `bun:wrap` imports become requires (see requireRuntimeImports).
+    const transpile = () => requireRuntimeImports(transpileSync(src, file, tsconfigFor(vfs!, path)).replace(/^var (?:__dirname|__filename) = "[^"\n]*"(?:, __filename = "[^"\n]*")?;\n/, ""));
     let code = /\.[cm]?(ts|tsx|jsx)$/.test(path) ? transpile() : src;
     const compile = () => {
       if (/\.m[jt]s$/.test(path) || (!/\.c[jt]s$/.test(path) && (packageType(vfs!, path) === "module" || hasModuleSyntax(code))))

@@ -35,6 +35,28 @@ export function isCommonJS(path: string, source: string, packageType: string | u
   return path.endsWith(".js") && !ESM_SYNTAX.test(source);
 }
 
+/**
+ * In TypeScript or JSX transpiled for CommonJS, the imports Bun's transpiler adds at the top (the automatic JSX
+ * runtime's, and `bun:wrap` helpers for decorators and `using`) as requires: an import can't run in a function body.
+ * Bun's own runtime fails there (a SyntaxError); this is the playground's extra. Only those imports, recognized by
+ * their specifier and the transpiler's `name as name_<hash>` items; each stays on its own line.
+ */
+export function requireRuntimeImports(code: string): string {
+  const at = code.match(/^var (?:__dirname|__filename) = [^\n]*\n/)?.[0].length ?? 0;
+  const injected = /import \{([^}]*)\} from ("bun:wrap"|"[^"\n]*\/jsx-(?:dev-)?runtime");\n/y;
+  const items = /^\s*([\w$]+) as \1_[a-z0-9]{8}\s*$/;
+  let out = "";
+  let i = at;
+  for (;;) {
+    injected.lastIndex = i;
+    const m = injected.exec(code);
+    if (!m || !m[1].split(",").every((x) => items.test(x))) break;
+    out += `var {${m[1].replace(/ as /g, ": ")}} = require(${m[2]});\n`;
+    i = injected.lastIndex;
+  }
+  return out ? code.slice(0, at) + out + code.slice(i) : code;
+}
+
 /** Names a CommonJS module assigns on `exports`, as far as a static scan can tell (like cjs-module-lexer). */
 export function exportNames(source: string): string[] {
   const names = new Set<string>();
