@@ -28,3 +28,7 @@ import { Code } from "@runbun/astro/components";
 
 In Markdown, a ` ```ts playground ` fence does the same. Options, themes and fences:
 [docs.runbun.dev/guides/astro](https://docs.runbun.dev/guides/astro/).
+
+The package is MIT-licensed (see LICENSE). The playground it embeds is a hosted service at runbun.dev with its own terms.
+
+runbun is an independent project, not affiliated with or endorsed by Oven or Bun.
