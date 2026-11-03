@@ -1,5 +1,5 @@
 import { BASE } from "./base";
-import { commonJSFacade, exportNames as commonJSExportNames, isCommonJS, JS_LIKE, moduleKindOf, reexports, requireRuntimeImports, stripDirname, wrapCommonJS } from "./cjs";
+import { commonJSFacade, exportNames as commonJSExportNames, isCommonJS, JS_LIKE, moduleKindOf, reexports, requireRuntimeImports, stripDirname, wrapCommonJS, wrappedBodyLine } from "./cjs";
 import { firstLineLength, shiftFirstColumn } from "./sourceMap";
 import bunWrap from "./bunWrap.js?raw";
 import { loadTranspiler, type Resolver } from "./transpiler";
@@ -317,6 +317,13 @@ function commonJSNames(vfs: VFS, path: string, src: string, seen = new Set<strin
   return [...names];
 }
 
+/**
+ * A source map comment for a served module (worker/sourceMaps.ts reads it). `extra` are the playground's own fields:
+ * `x_bwcLineOffset` lines of wrapper before the file's, and `x_bwcInner` the mappings of a transpile before that.
+ */
+const inlineSourceMap = (path: string, mappings: string, extra?: { x_bwcLineOffset: number; x_bwcInner?: string }) =>
+  `\n//# sourceMappingURL=data:application/json;base64,${btoa(JSON.stringify({ version: 3, sources: [path.slice(path.lastIndexOf("/") + 1)], names: [], mappings, ...extra }))}`;
+
 /** The body of a CommonJS file (see wrapCommonJS); requires of other CommonJS files load their bodies too. */
 async function serveCommonJS(vfs: VFS, path: string, onError: (msg: string) => void, target: ModuleTarget): Promise<ModuleResponse> {
   const src = vfs.readText(path);
@@ -327,11 +334,19 @@ async function serveCommonJS(vfs: VFS, path: string, onError: (msg: string) => v
   TARGET = target;
   const dir = dirname(path);
   // TypeScript and JSX first, without the `__dirname` and `__filename` the transpiler declares (the wrapper has them),
-  // its JSX runtime and `bun:wrap` imports as requires (see requireRuntimeImports).
+  // its JSX runtime and `bun:wrap` imports as requires (see requireRuntimeImports). In the worker with a source map,
+  // `stripped` lines fewer than it (requireRuntimeImports keeps them).
+  const bun = target === "bun";
   let body = src;
+  let inner: string | undefined;
+  let stripped = 0;
   if (/\.(?:[cm]?tsx?|jsx)$/.test(path)) {
     try {
-      body = requireRuntimeImports(stripDirname(await transpileCached(src, path, tsconfigFor(vfs, path), () => null)));
+      const [js, mappings] = (await transpileCached(src, path, tsconfigFor(vfs, path), () => null, false, bun)).split("\0");
+      body = stripDirname(js);
+      if (body !== js) stripped = 1;
+      body = requireRuntimeImports(body);
+      inner = mappings;
     } catch (e) {
       const msg = `${path}: ${e instanceof Error ? e.message : String(e)}`;
       onError(msg);
@@ -352,7 +367,11 @@ async function serveCommonJS(vfs: VFS, path: string, onError: (msg: string) => v
   });
   // The body is plain source: its `import("x")` calls still need their specifiers resolved.
   try {
-    return { status: 200, body: await transpileCached(rewriteMeta(code, path, target === "bun"), `${path}.js`, tsconfigFor(vfs, path), resolver(vfs, dir)) };
+    const [js, mappings] = (await transpileCached(rewriteMeta(code, path, bun), `${path}.js`, tsconfigFor(vfs, path), resolver(vfs, dir), false, bun)).split("\0");
+    // In the worker, its source map leads to the wrapper's lines, which are the file's (or the first transpile's, which
+    // `inner` maps back) after a header (worker/sourceMaps.ts).
+    if (mappings === undefined) return { status: 200, body: js };
+    return { status: 200, body: js + inlineSourceMap(path, mappings, { x_bwcLineOffset: wrappedBodyLine(code) - stripped, x_bwcInner: inner }) };
   } catch (e) {
     const msg = `${path}: ${e instanceof Error ? e.message : String(e)}`;
     onError(msg);
@@ -470,8 +489,7 @@ export async function serveModule(vfs: VFS, rawPath: string, onError: (msg: stri
       // Its first import marks it as being imported (before its dependencies run), on the first line.
       body = `import ${JSON.stringify(`data:text/javascript,${encodeURIComponent(`globalThis.__esmImporting?.(${JSON.stringify("/" + path)})`)}`)};${body}`;
       // What was put before or changed at the start of the transpiler's first line moves that line's columns.
-      if (mappings !== undefined)
-        body += `\n//# sourceMappingURL=data:application/json;base64,${btoa(JSON.stringify({ version: 3, sources: [path.slice(path.lastIndexOf("/") + 1)], names: [], mappings: shiftFirstColumn(mappings, firstLineLength(body) - firstLineLength(transpiled)) }))}`;
+      if (mappings !== undefined) body += inlineSourceMap(path, shiftFirstColumn(mappings, firstLineLength(body) - firstLineLength(transpiled)));
     }
     return { status: 200, body };
   } catch (e) {
