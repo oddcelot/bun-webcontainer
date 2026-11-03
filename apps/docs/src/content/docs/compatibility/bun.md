@@ -37,7 +37,8 @@ Reported version: `Bun.version` is `1.4.4-browser`. Labels are explained on the 
 | `Bun.connect`, `Bun.listen`, `Bun.udpSocket`, `Bun.dns` | ❌ Missing | No raw sockets in the browser. |
 | `Bun.gzipSync`, `Bun.gunzipSync`, `Bun.deflateSync`, `Bun.inflateSync` | 🟡 Partial | `level` is the only option read. Deflate is raw, as in Bun. |
 | `Bun.zstd*` | ❌ Missing | |
-| `Bun.CookieMap`, `Bun.YAML`, `Bun.TOML`, `Bun.plugin`, `Bun.FileSystemRouter`, `Bun.mmap` | ❌ Missing | |
+| `Bun.YAML`, `Bun.TOML` | ✅ Works | `parse` is Bun's own YAML and TOML parser (`bun_parsers`, as wasm), with Bun's values and errors: YAML aliases stay shared, several documents give an array, TOML dates and times are `Temporal` values. `stringify` gives Bun's output. |
+| `Bun.CookieMap`, `Bun.plugin`, `Bun.FileSystemRouter`, `Bun.mmap` | ❌ Missing | |
 | `HTMLRewriter` | ❌ Missing | |
 
 Try a few of them:

@@ -1,5 +1,5 @@
 import { BASE } from "../base";
-import { loadResolver, resolve } from "../resolver";
+import { loadResolver, parseData, resolve } from "../resolver";
 import { loadSemver } from "../semver";
 import { dirname, norm, VFS } from "@runbun/vfs";
 import { BUN_NAMES, builtins, installTimers, setFs, setRequire, setStdio } from "./node";
@@ -8,6 +8,7 @@ import { setHostVfs } from "./hostPackages";
 import { hash } from "./hash";
 import { CryptoHasher } from "./node/crypto";
 import { Glob } from "./glob";
+import { tomlStringify, yamlStringify } from "./dataStringify";
 import { importMetaResolve, resolveSync } from "./resolve";
 import { Transpiler } from "./transpiler";
 import { fsError } from "./node/errors";
@@ -748,6 +749,18 @@ const compressible = (d: Compressible) =>
   typeof d === "string" ? new TextEncoder().encode(d) : d instanceof ArrayBuffer ? new Uint8Array(d) : new Uint8Array(d.buffer, d.byteOffset, d.byteLength);
 const level = (o?: { level?: number }) => ({ level: (o?.level === undefined || o.level < 0 ? 6 : Math.min(o.level, 9)) as fflate.DeflateOptions["level"] });
 
+/**
+ * The text `Bun.YAML.parse`/`Bun.TOML.parse` read: a string, buffer or Blob (read synchronously, as Bun does). YAML
+ * takes anything else as its `String()`; TOML only a non-nullish value.
+ */
+function dataText(v: unknown, format: "yaml" | "toml"): string {
+  if (typeof v === "string") return v;
+  if (v instanceof ArrayBuffer || ArrayBuffer.isView(v)) return new TextDecoder().decode(v);
+  if (v instanceof Blob) return new (globalThis as unknown as { FileReaderSync: new () => { readAsText(b: Blob): string } }).FileReaderSync().readAsText(v);
+  if (format === "toml" && v == null) throw new TypeError("input must be a string, ArrayBuffer, ArrayBufferView or Blob");
+  return String(v);
+}
+
 async function main() {
   // Bun's resolver, for `require` and `require.resolve` with a computed specifier (node/module.ts); the page has its own instance.
   const [semver] = await Promise.all([loadSemver(), loadResolver(vfs)]);
@@ -785,6 +798,8 @@ async function main() {
     resolveSync,
     resolve: async (specifier: string, from: string | URL) => resolveSync(specifier, from),
     Glob,
+    YAML: { parse: (input: unknown) => parseData(dataText(input, "yaml"), "yaml"), stringify: yamlStringify },
+    TOML: { parse: (input: unknown) => parseData(dataText(input, "toml"), "toml"), stringify: tomlStringify },
   };
   g.Bun = Object.assign(builtins.bun, bun);
 

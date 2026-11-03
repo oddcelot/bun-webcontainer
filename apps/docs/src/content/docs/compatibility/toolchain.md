@@ -82,6 +82,7 @@ Bun's own resolver, compiled to WebAssembly (~900 KB, loaded with the first modu
 - ✅ `#imports` from the nearest `package.json`
 - ✅ `tsconfig.json` `paths` and `baseUrl`
 - ✅ JSON imports
+- ✅ TOML and YAML imports (`.toml`, `.yaml`, `.yml`) with Bun's parsers: the document is the default export and each top-level key a named one; `require` works too
 - ✅ CSS imported from code that goes through an HTML import (bundled), or through Vite
 - ✅ CSS imported from server code (`import "./x.css"`, also `.module.css`) is `{}`, as in Bun's runtime. In a page served without bundling, it is linked as a stylesheet and CSS module class names map to themselves.
 - ✅ `http:`/`https:` imports are left to the browser
@@ -115,7 +116,7 @@ console.log(greet(config.name));
 - ✅ `.cjs` files, and `.js` files without ESM syntax in packages that aren't `"type": "module"`
 - ✅ `require("x")` with a string literal. Modules run on first `require`, as in Node; cycles see partial exports.
 - ✅ Named imports from CommonJS, found by a static scan (`exports.x =`, `module.exports = { … }`, re-exports). Exports computed at runtime aren't visible as named imports.
-- ✅ `require(variable)`, and `createRequire(import.meta.url)` and `import.meta.require` with any specifier: project files and installed packages load synchronously when required (TypeScript and JSX transpiled, JSON parsed). They share one module instance with literal requires and imports, so a file loaded both ways runs once. A `require` that can't be resolved throws `MODULE_NOT_FOUND` when it runs, as in Bun.
+- ✅ `require(variable)`, and `createRequire(import.meta.url)` and `import.meta.require` with any specifier: project files and installed packages load synchronously when required (TypeScript and JSX transpiled, JSON, TOML and YAML parsed). They share one module instance with literal requires and imports, so a file loaded both ways runs once. A `require` that can't be resolved throws `MODULE_NOT_FOUND` when it runs, as in Bun.
 - ✅ `require.resolve`, `require.cache` (deleting an entry loads the file again), `require.main`
 - 🟡 `require()` of an ES module works for string literals; with a computed specifier it throws `ERR_REQUIRE_ESM` (the browser can't load ES modules synchronously). Use `import()` instead.
 - ❌ Native `.node` addons, and a bare `require` in an ES module (Bun defines one there; use `createRequire` or `import.meta.require`)

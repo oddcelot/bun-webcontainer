@@ -1,10 +1,11 @@
 // Bun's module resolver (bun_resolver, from crates/resolve-wasm) over the page VFS, through the same `bun_sys` host
 // imports the worker uses. Its directory, package.json and tsconfig caches live as long as the instance, as in Bun;
 // VFS changes invalidate the directories they touch, and clearing the VFS starts a fresh instance. The same module
-// has `Bun.Glob`'s matcher and walker (bun_glob), which the worker uses.
+// has `Bun.Glob`'s matcher and walker (bun_glob) and Bun's YAML and TOML parsers, which the worker uses.
 import { BASE } from "./base";
 import { dirname, type VFS } from "@runbun/vfs";
 import { createSysImports } from "@runbun/vfs/sysHost";
+import { fromDataTree } from "./dataTree";
 
 type Exports = {
   memory: WebAssembly.Memory;
@@ -16,6 +17,7 @@ type Exports = {
   panic_message_c(): bigint;
   glob_match_c(pp: bigint, pl: bigint, sp: bigint, sl: bigint): number;
   glob_scan_c(pp: bigint, pl: bigint, cp: bigint, cl: bigint, flags: number): bigint;
+  data_parse_c(p: bigint, l: bigint, format: number): bigint;
 };
 
 export type ResolveKind = "import" | "require";
@@ -136,4 +138,15 @@ export function globScan(pattern: string, cwd: string, opts: GlobScanFlags): str
     throw new GlobScanError(code, syscall ?? "", path ?? "");
   }
   return text ? text.slice(0, -1).split("\0") : [];
+}
+
+/** `Bun.YAML.parse`/`Bun.TOML.parse` (bun_parsers, in the same module). Throws Bun's SyntaxError. */
+export function parseData(text: string, format: "yaml" | "toml"): unknown {
+  if (!w) throw new Error("resolver not loaded");
+  const out = guard(`parsing ${format.toUpperCase()}`, () => withStr(text, (p, l) => w!.data_parse_c(p, l, format === "toml" ? 1 : 0)));
+  const [status, ptr, len] = new BigUint64Array(w.memory.buffer, Number(out), 3);
+  const json = dec.decode(new Uint8Array(w.memory.buffer, Number(ptr), Number(len)));
+  w.output_free(out);
+  if (status !== 0n) throw new SyntaxError(json);
+  return fromDataTree(json);
 }
