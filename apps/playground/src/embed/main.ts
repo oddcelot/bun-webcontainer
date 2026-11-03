@@ -291,12 +291,49 @@ function wantedHeight() {
   const stacked = embed.stacked();
   const fixed = MODE_HEIGHT[embed.mode()];
   if (fixed && !stacked) return fixed;
+  // Read first, so that another file measures again.
   const path = workspace.state.active;
-  const lines = Math.min(Math.max((path ? (vfs.readText(path) ?? "") : "").split("\n").length, 3), 30);
   const below = embed.has("console") && !embed.has("preview") && embed.mode() === "code";
-  // Each stacked row adds its height and the 4px grid gap.
+  const measured = measuredHeight(stacked, below);
+  if (measured) return measured;
+  // Before the editor is laid out, an estimate. Each stacked row adds its height and the 4px grid gap.
+  const lines = Math.min(Math.max((path ? (vfs.readText(path) ?? "") : "").split("\n").length, 3), 30);
   const rows = stacked ? (embed.has("preview") ? STACK_PREVIEW + 4 : 0) + (embed.has("console") ? STACK_CONSOLE + 4 : 0) : 0;
   return 40 + (embed.has("tabs") || embed.has("autosave") ? 38 : 0) + lines * LINE + 24 + (below ? 160 : 0) + rows + (pg.canRun ? 0 : 44);
+}
+
+/**
+ * The height as laid out, measured: constants missed what fonts and classic scrollbars add (the code's horizontal
+ * scrollbar is 11px), and the editor overflowed. It's what sits outside the panes (the bar, a notice), the grid's
+ * padding and gaps, the editor pane's chrome (tab bar), the code (its lines, held to 3 to 30, its padding and
+ * scrollbar) and the rows under it at their fitted sizes. Undefined until the editor (Pierre's, in a shadow root) is
+ * there.
+ */
+let observed: Element | undefined;
+const contentObserver = new ResizeObserver(() => sendResize(untrack(wantedHeight)));
+function measuredHeight(stacked: boolean, below: boolean): number | undefined {
+  const main = document.getElementById("embed-main");
+  const pane = document.getElementById("editor-pane");
+  const host = pane?.querySelector<HTMLElement>(".pierre-host");
+  const code = host?.firstElementChild?.shadowRoot?.querySelector<HTMLElement>("pre > code");
+  // The lines' grid is as tall as the lines; the code and the container around it stretch to fill the pane.
+  const lines = code?.querySelector<HTMLElement>("[data-content]");
+  if (!main || !pane || !host || !code || !lines?.children.length || !host.clientHeight) return;
+  if (lines !== observed) {
+    if (observed) contentObserver.unobserve(observed);
+    contentObserver.observe((observed = lines));
+  }
+  const count = lines.children.length;
+  const lh = lines.getBoundingClientRect().height / count;
+  const box = getComputedStyle(code);
+  const codeHeight = (Math.min(Math.max(count, 3), 30) * lh) + parseFloat(box.paddingTop) + parseFloat(box.paddingBottom) + code.offsetHeight - code.clientHeight;
+  // The console under the editor (code mode) keeps the height it has; a reader may have dragged it.
+  const consoleH = below && document.getElementById("console-wrap")?.offsetHeight;
+  const rows = (stacked ? [embed.has("preview") && STACK_PREVIEW, embed.has("console") && STACK_CONSOLE] : [consoleH]).filter((h): h is number => !!h);
+  const grid = getComputedStyle(main);
+  const gaps = (parseFloat(grid.rowGap) || 0) * rows.length + parseFloat(grid.paddingTop) + parseFloat(grid.paddingBottom);
+  const outside = innerHeight - main.offsetHeight;
+  return Math.ceil(outside + gaps + (pane.offsetHeight - host.clientHeight) + codeHeight + rows.reduce((a, b) => a + b, 0));
 }
 let lastHeight = 0;
 const checkFit = () => embed.setFit(Math.abs(innerHeight - lastHeight) <= 1);
@@ -310,6 +347,8 @@ function sendResize(height: number) {
 createRoot(() =>
   createEffect(wantedHeight, (height) => {
     sendResize(height);
+    // Once the change (another file, a feature) is laid out, measure again.
+    requestAnimationFrame(() => sendResize(untrack(wantedHeight)));
   }),
 );
 vfs.onChange(({ path }) => {
