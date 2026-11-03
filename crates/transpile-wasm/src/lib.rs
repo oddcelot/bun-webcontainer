@@ -435,7 +435,7 @@ fn parser_options(loader: Loader, flags: u32, rt: Option<&runtime::Runtime>) -> 
     // `Bun.Transpiler`'s options, as `bundler/transpiler.rs` passes them on.
     opts.features.minify_syntax = flags & MINIFY_SYNTAX != 0;
     opts.features.minify_identifiers = flags & MINIFY_IDENTIFIERS != 0;
-    opts.features.minify_whitespace = flags & MINIFY_WHITESPACE != 0;
+    // Not `minify_whitespace`: only Bun's bundler gives it to the parser (it turns `new Array(0)` into `[]`).
     opts.features.dead_code_elimination = flags & NO_DEAD_CODE_ELIMINATION == 0;
     opts.features.trim_unused_imports = flags & TRIM_UNUSED_IMPORTS != 0;
     opts.features.inlining = flags & INLINE != 0;
