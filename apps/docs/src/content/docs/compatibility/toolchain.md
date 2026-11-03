@@ -9,7 +9,7 @@ sidebar:
 
 Bun's own parser and printer, compiled to WebAssembly. Output matches `bun build --no-bundle --target=browser`.
 
-- ✅ `.ts`, `.tsx`, `.jsx`, `.mts`, `.cts`, `.js`, `.mjs`
+- ✅ `.ts`, `.tsx`, `.jsx`, `.mts`, `.cts`, `.js`, `.mjs`; JSX in `.js` files too, as Bun parses them (not in `.mjs` or `.cjs`)
 - ✅ JSX with Bun's defaults (React automatic runtime, development `jsxDEV`)
 - ✅ `/** @jsxImportSource preact */` pragma comments
 - ✅ Legacy decorators with `experimentalDecorators` and `emitDecoratorMetadata` in `tsconfig.json`
