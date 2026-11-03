@@ -70,7 +70,9 @@ export function AppearancePicker(props: AppearanceProps) {
         >
           <Swatch light={current().light} />
           <i class={MODES.find(([m]) => m === props.mode)?.[1]} aria-hidden="true" />
-          <i class="chevron i-lucide-chevron-down" aria-hidden="true" />
+          <span class="chevron">
+            <i class="i-lucide-chevron-down" aria-hidden="true" />
+          </span>
         </Tip>
         <Popover.Portal mount={topLayerOf(root)}>
           {/* Escape closes it from anywhere inside. Kobalte's own dismiss went to another layer (the trigger's tooltip,

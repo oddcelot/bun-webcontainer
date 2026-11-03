@@ -1,5 +1,7 @@
 /* Tip: a tooltip card with the text, then shortcut keys. Over the uno preset's tokens (--control, --pad, ...). */
-/* Kobalte tooltips (solid/Tip.tsx): a small card with the text, then the shortcut keys. */
-.tooltip { z-index: 40; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; max-width: 24rem; padding: 4px 8px; border: 1px solid var(--control-border); border-radius: var(--inner-radius); background: var(--panel); color: var(--fg); font-size: 12px; line-height: 1.4; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3); }
-.tooltip kbd { padding: 0 4px; border: 1px solid var(--control-border); border-radius: 4px; color: var(--muted); font: 11px/16px var(--font-mono); }
-.tooltip-note { flex-basis: 100%; color: var(--muted); font-size: 11px; }
+@layer runbun-ui {
+  /* Kobalte tooltips (solid/Tip.tsx): a small card with the text, then the shortcut keys. */
+  .tooltip { z-index: 40; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; max-width: 24rem; padding: 4px 8px; border: 1px solid var(--control-border); border-radius: var(--inner-radius); background: var(--panel); color: var(--fg); font-size: 12px; line-height: 1.4; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3); }
+  .tooltip kbd { padding: 0 4px; border: 1px solid var(--control-border); border-radius: 4px; color: var(--muted); font: 11px/16px var(--font-mono); }
+  .tooltip-note { flex-basis: 100%; color: var(--muted); font-size: 11px; }
+}

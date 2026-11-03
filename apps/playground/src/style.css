@@ -1,11 +1,5 @@
 /* The shared tokens (colors, fonts, radii, control sizes) come from @runbun/ui (packages/ui/uno.preset.ts) through virtual:uno.css;
  * theme.ts sets the colors from the chosen theme. */
-/* @runbun/ui components import their own CSS; these are for markup here that uses the classes directly. */
-@import "@runbun/ui/css/select.css";
-@import "@runbun/ui/css/menu.css";
-@import "@runbun/ui/css/dialog.css";
-@import "@runbun/ui/css/button.css";
-@import "@runbun/ui/css/input.css";
 :root {
   /* The editor reads the diffs fonts. */
   --diffs-font-family: var(--font-mono);
@@ -19,15 +13,16 @@
 html, body { height: 100%; margin: 0; background: var(--canvas); color: var(--fg); font: 13px var(--font-ui); }
 body { display: flex; flex-direction: column; }
 header { display: flex; gap: 8px; align-items: center; padding: 6px 10px 4px; }
-header button, #docs, #clear, #request button { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+header button:not(.select-trigger), #docs, #clear, #request button { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 /* By id: the share menu is in the header too, and its items mustn't take this height. */
 #example, #run, #run-more, #docs, #share, #shortcuts, #theme { height: var(--control-height); }
 /* Run and its menu (bun install): one control split in two. */
 #run-group { display: inline-flex; }
 #run { border-radius: 6px 0 0 6px; }
 #run-more { display: grid; place-items: center; margin-left: -1px; padding: 0 6px; border-radius: 0 6px 6px 0; }
-header button, #docs, #clear { background: var(--control); color: inherit; border: 1px solid var(--control-border); border-radius: 6px; padding: 0 10px; cursor: pointer; }
-header button:hover, #docs:hover { background: var(--control-hover); }
+/* Select triggers (@runbun/ui) style themselves; these rules would override them, since the library's CSS is in a lower layer. */
+header button:not(.select-trigger), #docs, #clear { background: var(--control); color: inherit; border: 1px solid var(--control-border); border-radius: 6px; padding: 0 10px; cursor: pointer; }
+header button:not(.select-trigger):hover, #docs:hover { background: var(--control-hover); }
 /* Docs sits right, before Share; a link styled as the buttons around it. */
 #docs { box-sizing: border-box; margin-left: auto; text-decoration: none; }
 /* Dim only when a button stays disabled a moment (an install, a slow start), so a quick run doesn't flicker. */
