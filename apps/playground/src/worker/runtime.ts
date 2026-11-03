@@ -8,6 +8,7 @@ import { setHostVfs } from "./hostPackages";
 import { hash } from "./hash";
 import { CryptoHasher } from "./node/crypto";
 import { Glob } from "./glob";
+import { installConsole } from "./console";
 import { importMetaResolve, resolveSync } from "./resolve";
 import { Transpiler } from "./transpiler";
 import { fsError } from "./node/errors";
@@ -479,13 +480,8 @@ const fmt = (v: unknown): string => {
   }
 };
 
-for (const level of ["log", "info", "warn", "error", "debug"] as const) {
-  const orig = console[level].bind(console);
-  console[level] = (...args: unknown[]) => {
-    orig(...args);
-    post({ type: "console", level, text: args.map(fmt).join(" ") });
-  };
-}
+// A served module's URL in a stack frame reads as its project path, as in Bun.
+installConsole((level, text) => post({ type: "console", level, text }), fmt, (frame) => frame.split(new URL(VFS_ROOT, location.href).href).join("/"));
 
 const JS = "text/javascript;charset=utf-8";
 const MIME: Record<string, string> = {
