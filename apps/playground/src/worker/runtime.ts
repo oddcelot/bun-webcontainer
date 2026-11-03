@@ -282,10 +282,11 @@ class ServerResponse extends NativeResponse {
 }
 self.Response = ServerResponse as typeof Response;
 
-/** The headers Bun.serve sends for `res`. */
-function servedHeaders(res: Response): [string, string][] {
+/** The headers Bun.serve sends for `res`, then the Set-Cookie headers of the request's `req.cookies` changes. */
+function servedHeaders(res: Response, setCookies: string[]): [string, string][] {
   const headers = [...res.headers];
   if (textBodies.has(res) && !res.headers.has("content-type")) headers.push(["content-type", "text/plain;charset=utf-8"]);
+  for (const c of setCookies) headers.push(["set-cookie", c]);
   return headers;
 }
 
@@ -433,8 +434,8 @@ async function serveBundledHtml(imp: HtmlImport): Promise<Response> {
  * A preview response goes back as it's produced (SSE, streamed HTML): `head`, then a `chunk` per piece of the body,
  * then `end`, or `error` if the body fails. A `cancel` from the other end (the page went away) cancels the body.
  */
-async function sendResponse(port: MessagePort, res: Response) {
-  port.postMessage({ type: "head", status: res.status, statusText: res.statusText, headers: servedHeaders(res) });
+async function sendResponse(port: MessagePort, res: Response, setCookies: string[] = []) {
+  port.postMessage({ type: "head", status: res.status, statusText: res.statusText, headers: servedHeaders(res, setCookies) });
   if (!res.body) return port.postMessage({ type: "end" });
   const reader = res.body.getReader();
   port.onmessage = (e) => {
@@ -456,7 +457,39 @@ async function sendResponse(port: MessagePort, res: Response) {
 
 const sendText = (port: MessagePort, status: number, text: string) => sendResponse(port, new Response(text, { status, headers: { "content-type": "text/plain" } }));
 
-async function dispatch(inst: Instance, req: Request): Promise<Response> {
+/** The `req.cookies` of a request a route handler got, once it has read them. */
+const requestCookies = new WeakMap<Request, CookieMap>();
+
+/**
+ * A route handler's request (Bun's BunRequest): `params`, and `cookies`, a CookieMap over its Cookie header made on
+ * first use. A `fetch` handler's request has neither, as in Bun.
+ */
+function routeRequest(req: Request, params: Record<string, string>) {
+  Object.defineProperties(req, {
+    params: { value: params, writable: true, enumerable: true, configurable: true },
+    cookies: {
+      get() {
+        let map = requestCookies.get(req);
+        if (!map) requestCookies.set(req, (map = new CookieMap(req.headers.get("cookie") ?? "")));
+        return map;
+      },
+      enumerable: true,
+      configurable: true,
+    },
+  });
+  return req;
+}
+
+/**
+ * Answers `req`, with the Set-Cookie headers for what a route handler set or deleted in `req.cookies` by the time it
+ * returned (Bun sends them after the response's own, and leaves the Response object itself alone).
+ */
+async function dispatch(inst: Instance, req: Request): Promise<{ res: Response; setCookies: string[] }> {
+  const res = await route(inst, req);
+  return { res, setCookies: requestCookies.get(req)?.toSetCookieHeaders() ?? [] };
+}
+
+async function route(inst: Instance, req: Request): Promise<Response> {
   const { routes, handler, server } = inst;
   const path = new URL(req.url).pathname;
   const asset = bundledAssets.get(path);
@@ -464,12 +497,11 @@ async function dispatch(inst: Instance, req: Request): Promise<Response> {
   for (const [pattern, value] of Object.entries(routes)) {
     const params = matchRoute(pattern, path);
     if (!params) continue;
-    Object.assign(req, { params });
     if (value instanceof Response) return value.clone();
     if (isHtmlImport(value)) return serveBundledHtml(value);
-    if (typeof value === "function") return value(req, server);
+    if (typeof value === "function") return value(routeRequest(req, params), server);
     const byMethod = value[req.method];
-    if (byMethod) return byMethod instanceof Response ? byMethod.clone() : byMethod(req, server);
+    if (byMethod) return byMethod instanceof Response ? byMethod.clone() : byMethod(routeRequest(req, params), server);
   }
   if (handler) return handler(req, server);
   return new Response("Not Found", { status: 404 });
@@ -831,17 +863,17 @@ async function main() {
     const m = e.data;
     if (m.type === "request") {
       const port = e.ports[0];
-      let res: Response;
+      let out: { res: Response; setCookies: string[] };
       try {
         const inst = previewServer();
         if (!inst) return sendText(port, 503, "No Bun.serve handler registered");
         const r = m.req;
-        res = await dispatch(inst, serverRequest(r.path, { method: r.method, body: r.body }, r.headers));
+        out = await dispatch(inst, serverRequest(r.path, { method: r.method, body: r.body }, r.headers));
       } catch (err) {
         console.error(err);
         return sendText(port, 500, fmt(err));
       }
-      await sendResponse(port, res);
+      await sendResponse(port, out.res, out.setCookies);
     } else if (m.type === "ws") {
       const port = e.ports[0];
       const inst = m.port === undefined ? previewServer() : servers.find((s) => s.port === m.port);
