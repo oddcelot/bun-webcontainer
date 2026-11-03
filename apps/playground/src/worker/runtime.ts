@@ -11,7 +11,6 @@ import { Glob } from "./glob";
 import { installConsole, table } from "./console";
 import { bunInspect, formatLog as formatValues, installWebInspect } from "./inspect";
 import { trackBodies } from "./bodies";
-import { trackPromises } from "./promises";
 import { frameMapper, previewSource } from "./sourceMaps";
 import { tomlStringify, yamlStringify } from "./dataStringify";
 import { password } from "./password";
@@ -290,7 +289,6 @@ self.Response = ServerResponse as typeof Response;
 
 // For console.log: what Responses/Requests were made with, promise states, URL's inspect.custom (as in Bun).
 trackBodies(self);
-trackPromises(self);
 installWebInspect(self);
 
 /** The headers Bun.serve sends for `res`, then the Set-Cookie headers of the request's `req.cookies` changes. */

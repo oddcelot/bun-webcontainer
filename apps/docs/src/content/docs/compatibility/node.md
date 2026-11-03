@@ -48,7 +48,7 @@ Built-ins import with or without the `node:` prefix. Labels are explained on the
 | `trace_events` | ❌ Missing | |
 | `tty` | 🟡 Partial | `isatty` returns `false`. |
 | `url` | ✅ Works | `URL`, `URLSearchParams`, `fileURLToPath`, `pathToFileURL`, `parse`. |
-| `util`, `util/types` | 🟡 Partial | `format`, `inspect` (Bun's port of Node's, with its options; a promise shows its state only when the playground saw it settle, a Map or Set iterator shows no entries and a Proxy shows as its target), `promisify`, `callbackify`, `inherits`, `deprecate`, `types`, `isDeepStrictEqual`, `parseEnv`, `parseArgs`, `styleText` (no colors). No `MIMEType`; `debuglog` does nothing. |
+| `util`, `util/types` | 🟡 Partial | `format`, `inspect` (Bun's port of Node's, with its options; a promise shows `<pending>` whatever its state, a Map or Set iterator shows no entries and a Proxy shows as its target), `promisify`, `callbackify`, `inherits`, `deprecate`, `types`, `isDeepStrictEqual`, `parseEnv`, `parseArgs`, `styleText` (no colors). No `MIMEType`; `debuglog` does nothing. |
 | `v8` | ⚪ Stub | |
 | `vm` | ⚪ Stub | |
 | `wasi` | ❌ Missing | |

@@ -22,6 +22,10 @@ const forKinds = (name: string, reason: string, kinds: readonly Kind[] = ["log",
 const KNOWN: Record<string, string> = {
   // Reflect.ownKeys (OrdinaryOwnPropertyKeys) returns integer keys, then strings, then symbols: the interleaving is lost.
   ...forKinds("symbol keys", "Bun lists keys in insertion order across strings and symbols; JS only exposes strings first"),
+  ...forKinds("promise resolved", "a promise's state isn't readable from JS; tracking it would mean replacing the global Promise", ["log", "inspect", "colors", "compact", "util"]),
+  ...forKinds("promise rejected", "a promise's state isn't readable from JS; tracking it would mean replacing the global Promise", ["log", "inspect", "colors", "compact", "util"]),
+  ...forKinds("promise executor", "a promise's state isn't readable from JS; tracking it would mean replacing the global Promise", ["log", "inspect", "colors", "compact", "util"]),
+  ...forKinds("promise nested", "a promise's state isn't readable from JS; tracking it would mean replacing the global Promise", ["log", "inspect", "colors", "compact", "util"]),
   "map iterator :: util": "the Map behind an iterator isn't reachable from JS",
   "set iterator :: util": "the Set behind an iterator isn't reachable from JS",
   ...forKinds("headers", "Bun's Headers keep insertion order; a browser's (and fetch's spec) iterate sorted"),
@@ -100,9 +104,7 @@ async function ours(): Promise<Map<string, string>> {
   const { formatLog, bunInspect } = await import("../../src/worker/inspect");
   // What the worker's runtime installs at start (Bun's own URL inspect.custom is already there).
   const { trackBodies } = await import("../../src/worker/bodies");
-  const { trackPromises } = await import("../../src/worker/promises");
   trackBodies(globalThis);
-  trackPromises(globalThis);
   const { inspect } = await import("../../src/worker/node/util");
   let text = "";
   const write = (s: string) => void (text += s + "\n");
