@@ -38,7 +38,7 @@ Reported version: `Bun.version` is `1.4.4-browser`. Labels are explained on the 
 | `Bun.gzipSync`, `Bun.gunzipSync`, `Bun.deflateSync`, `Bun.inflateSync` | 🟡 Partial | `level` is the only option read. Deflate is raw, as in Bun. |
 | `Bun.zstd*` | ❌ Missing | |
 | `Bun.YAML`, `Bun.TOML` | ✅ Works | `parse` is Bun's own YAML and TOML parser (`bun_parsers`, as wasm), with Bun's values and errors: YAML aliases stay shared, several documents give an array, TOML dates and times are `Temporal` values. `stringify` gives Bun's output. |
-| `Bun.Cookie`, `Bun.CookieMap` | 🟡 Partial | A port of Bun's: parsing, `set`/`delete`/`get`, `toSetCookieHeaders`, `toJSON`, iteration, `serialize`, with Bun's validation and errors. `Bun.serve` requests have no `cookies` map. |
+| `Bun.Cookie`, `Bun.CookieMap` | ✅ Works | A port of Bun's: parsing, `set`/`delete`/`get`, `toSetCookieHeaders`, `toJSON`, iteration, `serialize`, with Bun's validation and errors. Route handlers get one as [`req.cookies`](#bunserve). |
 | `Bun.plugin`, `Bun.FileSystemRouter`, `Bun.mmap` | ❌ Missing | |
 | `HTMLRewriter` | ❌ Missing | |
 
@@ -73,6 +73,7 @@ Servers answer requests from the [preview](/guides/features/#preview), not from 
 | `server.url`, `port`, `hostname` | ✅ Works | `port: 0` picks a port from 40001. |
 | `export default { fetch }` | ✅ Works | Served automatically, as in Bun (Hono, Elysia). |
 | Streaming responses, Server-Sent Events | ✅ Works | |
+| `req.cookies` | 🟡 Partial | A `Bun.CookieMap` over the request's Cookie header, in `routes` handlers (a `fetch` handler's request has none, as in Bun). What a handler sets or deletes in it by the time it returns goes out as Set-Cookie headers after the response's own. Not sent on a WebSocket upgrade, which Bun does. |
 | Cookies | ✅ Works | Kept in a cookie jar on the page. `cookies` in the console lists them. |
 | TLS | ❌ Missing | |
 | `error`, `idleTimeout`, `maxRequestBodySize`, `unix`, `reusePort` | ❌ Missing | A throwing handler returns a plain-text 500. |
