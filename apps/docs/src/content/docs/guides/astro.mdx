@@ -91,7 +91,7 @@ console.log(greet("Astro"));`}
 console.log(greet("Astro"));`}
 />
 
-To show a file you keep in the repo, import it as a string with Vite's `?raw` suffix and pass it as `code`. The block stays in step with the file, and the file can be linted, formatted and type-checked like any other. Run starts the block's file; when it isn't an index file, the embed gets a `package.json` whose `main` points at it:
+To show a file you keep in the repo, import it as a string with Vite's `?raw` suffix and pass it as `code`. The block stays in step with the file, and the file can be linted, formatted and type-checked like any other. Run starts the block's file; when it isn't an index file, the embed gets a `package.json` whose `main` points at it (it runs but doesn't open as a tab):
 
 ```mdx
 import { Code } from "@runbun/astro/components";
@@ -142,7 +142,7 @@ export const greet = (name: string) => "Hello, " + name;
 
 The meta also takes `mode`, `features`, `load`, `height`, `autorun`, `readonly`, `persist`, `theme`, `file`, `path`, `layout` (`layout=stack` puts the preview under the editor, e.g. `playground mode=preview layout=stack height=auto`), `expand` (`expand=false` leaves the modal button out) and `label`, the embed's accessible name (`label="Elysia playground"`; `title` is taken by the file name). Fences without `playground` stay as they were.
 
-`deps` pins the packages a fence installs, without a `package.json` tab: `deps="elysia@rc,@elysia/openapi@rc,zod@^4"` (a name without a version gets `latest`). In a group the first fence's `deps` applies, and a `package.json` fence of the group's own wins over it.
+`deps` pins the packages a fence installs, in a generated `package.json` that doesn't open as a tab: `deps="elysia@rc,@elysia/openapi@rc,zod@^4"` (a name without a version gets `latest`). In a group the first fence's `deps` applies, and a `package.json` fence of the group's own wins over it. A `package.json` you write, as a fence or in `files`, opens like any other file.
 
 ## Playground
 

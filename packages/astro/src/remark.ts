@@ -97,13 +97,15 @@ function embed(entries: [Entry, ...Entry[]]): RootContent {
   // The first fence is the one Run starts, unless the group has an index file of its own.
   const names = Object.keys(sources);
   const entry = names.find((n) => /^(src\/)?index\.[jt]sx?$/.test(n)) ?? names[0]!;
-  const all = withEntry(sources, entry);
+  // A copy: withEntry hands `sources` back as is when it adds nothing, and `deps` may add the package.json below.
+  const all = { ...withEntry(sources, entry) };
   // `deps` goes into the package.json withEntry may have made (its `main`), unless a fence is the package.json.
   const deps = "package.json" in sources ? {} : parseDeps(opts.deps ?? "");
   if (Object.keys(deps).length) {
     all["package.json"] = JSON.stringify({ ...JSON.parse(all["package.json"] ?? "{}"), dependencies: deps }, null, 2) + "\n";
   }
-  const files = Object.entries(all).map(([name, text]) => fileScript(name, text));
+  // The package.json made here (`main`, `deps`) runs but stays out of the tabs; one the author wrote is a fence.
+  const files = Object.entries(all).map(([name, text]) => fileScript(name, text, !(name in sources)));
   // `title` names a fence's file, so the embed's own title (its accessible name) comes from `label`.
   const attrs = ATTRS.filter((k) => k in opts).map((k) => ` ${k}="${esc(opts[k])}"`).join("") + ("label" in opts ? ` title="${esc(opts.label)}"` : "");
   // A docs snippet opens as the whole playground in a modal unless the fence says otherwise (`expand=false`, `expand=on`).

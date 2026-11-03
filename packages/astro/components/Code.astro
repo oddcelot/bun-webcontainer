@@ -19,6 +19,9 @@ export type Props = Omit<PlaygroundProps, "title"> & {
 const { code, lang = "ts", title, label, playground, files = {}, expand = "full", features, ...options } = Astro.props;
 const file = title || `index.${EXT[lang] ?? lang}`;
 const extra = Object.entries(files).map(([name, text]) => ({ name, code: text, lang: langOf(name) }));
+// The package.json withEntry may add (`main`) runs but stays out of the tabs.
+const sources = { [file]: code, ...files };
+const all = withEntry(sources, file);
 const block = extra.length ? codeTabs([{ name: file, code, lang }, ...extra], options.file ?? file) : codeBlock(code, lang, title);
 ---
 
@@ -30,7 +33,8 @@ const block = extra.length ? codeTabs([{ name: file, code, lang }, ...extra], op
       features={extra.length ? withTabs(features) : features}
       expand={expand}
       title={label}
-      files={withEntry({ [file]: code, ...files }, file)}
+      files={all}
+      hidden={Object.keys(all).filter((name) => !(name in sources))}
     >
       <Fragment set:html={block} />
     </Playground>

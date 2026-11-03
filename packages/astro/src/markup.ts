@@ -45,10 +45,13 @@ export const langOf = (name: string) => name.slice(name.lastIndexOf(".") + 1) ||
 /** `features` with the embed's tab bar on, unless the author's list already says either way. */
 export const withTabs = (features?: string): string => (/(^|,)\s*-?tabs\s*(,|$)/.test(features ?? "") ? (features as string) : [features, "tabs"].filter(Boolean).join(","));
 
-/** A file as an inline source of a <bun-playground>: `<\/script` and `<\!--` are how it is written inside a script. */
-export function fileScript(path: string, text: string) {
+/**
+ * A file as an inline source of a <bun-playground>: `<\/script` and `<\!--` are how it is written inside a script.
+ * `hidden` (a file the package generated) keeps it out of the embed's tabs.
+ */
+export function fileScript(path: string, text: string, hidden = false) {
   const body = text.replace(/<\/(script)/gi, "<\\/$1").replace(/<!--/g, "<\\!--");
-  return `<script type="text/plain" data-file="${esc(path)}">\n${body}\n</script>`;
+  return `<script type="text/plain" data-file="${esc(path)}"${hidden ? " data-hidden" : ""}>\n${body}\n</script>`;
 }
 
 /**
