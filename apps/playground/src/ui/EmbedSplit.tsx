@@ -50,7 +50,11 @@ export function createSizes(key: string) {
   };
 }
 
-/** Where a split's handle goes (over the gap between its panes, a little wider) and the panes' sizes along it. */
+/**
+ * Where a split's handle goes (over the gap between its panes, a little wider) and the panes' sizes along it. Its ends
+ * reach a gap further, across the gaps it meets, so that where a handle along a column meets one along a row the
+ * two overlap and a drag there moves both.
+ */
 function measure(split: Split) {
   const main = document.getElementById("embed-main")?.getBoundingClientRect();
   const a = document.getElementById(split.a)?.getBoundingClientRect();
@@ -58,10 +62,17 @@ function measure(split: Split) {
   if (!main || !a || !b || !a.width || !b.width || !a.height || !b.height) return;
   if (ACROSS[split.size]) {
     const top = Math.min(a.top, b.top);
-    return { left: a.right - main.left - 2, top: top - main.top, width: b.left - a.right + 4, height: Math.max(a.bottom, b.bottom) - top, a: a.width, b: b.width, main: main.width };
+    const gap = b.left - a.right;
+    // Within the grid: past its edge the handle would cover the bar above.
+    const y0 = Math.max(top - main.top - gap, 0);
+    const y1 = Math.min(Math.max(a.bottom, b.bottom) - main.top + gap, main.height);
+    return { left: a.right - main.left - 2, top: y0, width: gap + 4, height: y1 - y0, a: a.width, b: b.width, main: main.width };
   }
   const left = Math.min(a.left, b.left);
-  return { left: left - main.left, top: a.bottom - main.top - 2, width: Math.max(a.right, b.right) - left, height: b.top - a.bottom + 4, a: a.height, b: b.height, main: main.height };
+  const gap = b.top - a.bottom;
+  const x0 = Math.max(left - main.left - gap, 0);
+  const x1 = Math.min(Math.max(a.right, b.right) - main.left + gap, main.width);
+  return { left: x0, top: a.bottom - main.top - 2, width: x1 - x0, height: gap + 4, a: a.height, b: b.height, main: main.height };
 }
 
 /**
@@ -87,6 +98,10 @@ export function Splits(props: { splits: Split[]; sizes: ReturnType<typeof create
   return <For each={props.splits}>{(split) => <Handle split={split} sizes={props.sizes} tick={tick} />}</For>;
 }
 
+/** Each handle's drag, by its element: a drag that starts where two handles cross drives the other one too. */
+type Drag = { begin(x: number, y: number): boolean; move(x: number, y: number): void; end(): void };
+const drags = new WeakMap<Element, Drag>();
+
 function Handle(props: { split: Split; sizes: ReturnType<typeof createSizes>; tick: () => number }) {
   const { size, label } = props.split;
   const across = ACROSS[size];
@@ -103,22 +118,45 @@ function Handle(props: { split: Split; sizes: ReturnType<typeof createSizes>; ti
   }
 
   let start: { at: number; m: NonNullable<ReturnType<typeof measure>> } | undefined;
+  const drag: Drag = {
+    begin(x, y) {
+      const m = measure(props.split);
+      if (!m) return false;
+      start = { at: across ? x : y, m };
+      setDragging(true);
+      return true;
+    },
+    move(x, y) {
+      if (start) move(start.m, (across ? x : y) - start.at);
+    },
+    end() {
+      if (!start) return;
+      start = undefined;
+      setDragging(false);
+      props.sizes.save();
+    },
+  };
+  // The handles across this one under the pointer when the drag began (at a junction), moved along with it.
+  let partners: Drag[] = [];
   const onPointerDown = (e: PointerEvent) => {
-    const m = measure(props.split);
-    if (e.button !== 0 || !m) return;
+    if (e.button !== 0 || !drag.begin(e.clientX, e.clientY)) return;
     e.preventDefault();
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    start = { at: across ? e.clientX : e.clientY, m };
-    setDragging(true);
+    const el = e.currentTarget as HTMLElement;
+    el.setPointerCapture(e.pointerId);
+    partners = document
+      .elementsFromPoint(e.clientX, e.clientY)
+      .filter((h) => h !== el && h instanceof HTMLElement && h.dataset.orientation !== el.dataset.orientation)
+      .map((h) => drags.get(h))
+      .filter((d): d is Drag => !!d && d.begin(e.clientX, e.clientY));
   };
   const onPointerMove = (e: PointerEvent) => {
-    if (start) move(start.m, (across ? e.clientX : e.clientY) - start.at);
+    drag.move(e.clientX, e.clientY);
+    for (const d of partners) d.move(e.clientX, e.clientY);
   };
   const onPointerUp = () => {
-    if (!start) return;
-    start = undefined;
-    setDragging(false);
-    props.sizes.save();
+    drag.end();
+    for (const d of partners) d.end();
+    partners = [];
   };
   const onKeyDown = (e: KeyboardEvent) => {
     const d = { [across ? "ArrowLeft" : "ArrowUp"]: -STEP, [across ? "ArrowRight" : "ArrowDown"]: STEP, Home: -Infinity, End: Infinity }[e.key];
@@ -131,6 +169,7 @@ function Handle(props: { split: Split; sizes: ReturnType<typeof createSizes>; ti
 
   return (
     <div
+      ref={(el) => void drags.set(el, drag)}
       class="resize-handle"
       role="separator"
       tabindex="0"
