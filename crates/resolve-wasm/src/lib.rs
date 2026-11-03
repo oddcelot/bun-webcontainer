@@ -6,7 +6,7 @@
 //! process-wide (as in Bun); call `resolve_reset_c` after the VFS changed.
 //!
 //! It also carries `Bun.Glob` (`bun_glob`, which walks the same `bun_sys` host): `glob_match_c` and `glob_scan_c`;
-//! and Bun's YAML and TOML parsers (`data_parse_c`).
+//! Bun's YAML and TOML parsers (`data_parse_c`); and `Bun.password`'s argon2 and bcrypt (`password_hash_c`, `password_verify_c`).
 
 // The C/C++ stand-ins the parser and printer link against.
 use bun_wasm_stubs as _;
@@ -354,6 +354,43 @@ pub unsafe extern "C" fn data_parse_c(text: *const u8, text_len: usize, format: 
     install_panic_hook();
     let text = if text_len == 0 { &[][..] } else { unsafe { core::slice::from_raw_parts(text, text_len) } };
     let (status, bytes) = match data::parse(text, format) {
+        Ok(b) => (0, b),
+        Err(b) => (1, b),
+    };
+    let mut bytes = bytes.into_boxed_slice();
+    let (ptr, len) = (bytes.as_mut_ptr(), bytes.len());
+    core::mem::forget(bytes);
+    Box::into_raw(Box::new(Output { status, ptr, len }))
+}
+
+// ── Bun.password ──
+
+pub mod password;
+
+/// `password::hash`: status 0 = the encoded hash, 1 = Bun's error name.
+///
+/// # Safety
+/// Both input ranges must be readable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn password_hash_c(pw: *const u8, pw_len: usize, salt: *const u8, salt_len: usize, algorithm: u32, memory_cost: u32, time_cost: u32) -> *mut Output {
+    install_panic_hook();
+    let slice = |p: *const u8, n: usize| if n == 0 { &[][..] } else { unsafe { core::slice::from_raw_parts(p, n) } };
+    output(password::hash(slice(pw, pw_len), slice(salt, salt_len), algorithm, memory_cost, time_cost).map_err(|e| e.as_bytes().to_vec()))
+}
+
+/// `password::verify`: status 0 = `1` or `0` (match or not), 1 = Bun's error name.
+///
+/// # Safety
+/// Both input ranges must be readable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn password_verify_c(pw: *const u8, pw_len: usize, hash: *const u8, hash_len: usize, algorithm: u32) -> *mut Output {
+    install_panic_hook();
+    let slice = |p: *const u8, n: usize| if n == 0 { &[][..] } else { unsafe { core::slice::from_raw_parts(p, n) } };
+    output(password::verify(slice(pw, pw_len), slice(hash, hash_len), algorithm).map(|ok| vec![if ok { b'1' } else { b'0' }]).map_err(|e| e.as_bytes().to_vec()))
+}
+
+fn output(r: Result<Vec<u8>, Vec<u8>>) -> *mut Output {
+    let (status, bytes) = match r {
         Ok(b) => (0, b),
         Err(b) => (1, b),
     };
