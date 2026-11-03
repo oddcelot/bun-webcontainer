@@ -1,6 +1,8 @@
 // `Bun.password`: argon2 and bcrypt from resolve-wasm (the crates Bun uses), with PasswordObject.rs's argument handling
-// and errors around them. The async forms run on the worker's thread, a task later.
-import { passwordHash, passwordVerify, PasswordError, type PasswordAlgorithm } from "../resolver";
+// and errors around them. The sync forms run here; the async ones in a worker of their own (passwordWorker.ts), so a
+// hash (about a quarter second with the defaults) doesn't block the program and argon2's memory goes away with it.
+import { passwordHash, passwordVerify, PasswordError, resolverModule, type PasswordAlgorithm } from "../resolver";
+import type { PasswordJob, PasswordResult } from "./passwordWorker";
 import { codeError } from "./node/errors";
 import { CryptoHasher } from "./node/crypto";
 
@@ -76,19 +78,16 @@ function failure(e: unknown, verb: string): unknown {
 /** As Bun: bcrypt reads 72 bytes at most, so a longer password is hashed with SHA-512 first. */
 const forBcrypt = (pw: Uint8Array) => (pw.length > 72 ? new Uint8Array(new CryptoHasher("sha512").update(pw).digest() as Uint8Array) : pw);
 
-function hashNow(pw: Uint8Array, a: Algorithm): string {
+/** What resolve-wasm hashes: the password (bcrypt's prehashed when long), a fresh salt, the algorithm and costs. */
+function hashJob(pw: Uint8Array, a: Algorithm) {
   const bcrypt = a.name === "bcrypt";
   const salt = crypto.getRandomValues(new Uint8Array(bcrypt ? 16 : 32));
-  try {
-    return passwordHash(bcrypt ? forBcrypt(pw) : pw, salt, a.name, a.memoryCost, a.timeCost);
-  } catch (e) {
-    throw failure(e, "hashing");
-  }
+  return { op: "hash" as const, password: bcrypt ? forBcrypt(pw) : pw, salt, algorithm: a.name, memoryCost: a.memoryCost, timeCost: a.timeCost };
 }
 
-/** `PasswordObject::verify`: the algorithm given, or the one the hash names; false for an empty password or hash. */
-function verifyNow(pw: Uint8Array, hash: Uint8Array, algorithm: PasswordAlgorithm | undefined): boolean {
-  if (!pw.length || !hash.length) return false;
+/** `PasswordObject::verify`: the algorithm given, or the one the hash names; null (false) for an empty password or hash. */
+function verifyJob(pw: Uint8Array, hash: Uint8Array, algorithm: PasswordAlgorithm | undefined) {
+  if (!pw.length || !hash.length) return null;
   const text = new TextDecoder().decode(hash);
   const sniffed = !text.startsWith("$")
     ? undefined
@@ -102,11 +101,18 @@ function verifyNow(pw: Uint8Array, hash: Uint8Array, algorithm: PasswordAlgorith
             ? "bcrypt"
             : undefined;
   const name = algorithm ?? sniffed;
+  if (!name) throw failure(new PasswordError("UnsupportedAlgorithm"), "verification");
+  return { op: "verify" as const, password: name === "bcrypt" ? forBcrypt(pw) : pw, hash, algorithm: name };
+}
+
+type Job = PasswordJob extends infer J ? (J extends PasswordJob ? Omit<J, "id"> : never) : never;
+
+/** Runs a job on this thread. */
+function runNow(job: Job): string | boolean {
   try {
-    if (!name) throw new PasswordError("UnsupportedAlgorithm");
-    return passwordVerify(name === "bcrypt" ? forBcrypt(pw) : pw, hash, name);
+    return job.op === "hash" ? passwordHash(job.password, job.salt, job.algorithm, job.memoryCost, job.timeCost) : passwordVerify(job.password, job.hash, job.algorithm);
   } catch (e) {
-    throw failure(e, "verification");
+    throw failure(e, job.op === "hash" ? "hashing" : "verification");
   }
 }
 
@@ -117,6 +123,64 @@ const later = <T>(f: () => T) => new Promise<T>((resolve, reject) => setTimeout(
     reject(e);
   }
 }));
+
+/** The password worker stays this long after its last job, then goes, and its memory with it. */
+const IDLE_MS = 10_000;
+type Pending = { resolve(v: string | boolean): void; reject(e: unknown): void; verb: string };
+type Thread = { worker: Worker; ready: Promise<void>; pending: Map<number, Pending>; idle?: ReturnType<typeof setTimeout> };
+let thread: Thread | undefined;
+let nextJob = 0;
+
+function stopThread(t: Thread, err?: unknown) {
+  if (thread === t) thread = undefined;
+  clearTimeout(t.idle);
+  t.worker.terminate();
+  for (const p of t.pending.values()) p.reject(err);
+  t.pending.clear();
+}
+
+/** The password worker, started on first use; undefined where workers can't start one (then jobs run here). */
+function passwordThread(): Thread | undefined {
+  if (thread) return thread;
+  const module = resolverModule();
+  if (!module || typeof Worker === "undefined") return undefined;
+  let worker: Worker;
+  try {
+    worker = new Worker(new URL("./passwordWorker.ts", import.meta.url), { type: "module", name: "Bun.password" });
+  } catch {
+    return undefined;
+  }
+  // The module goes first: the worker instantiates it before any job.
+  const t: Thread = { worker, ready: module.then((m) => worker.postMessage({ module: m })), pending: new Map() };
+  worker.onmessage = (e: MessageEvent<PasswordResult>) => {
+    const r = e.data;
+    const p = t.pending.get(r.id);
+    if (!p) return;
+    t.pending.delete(r.id);
+    if ("value" in r) p.resolve(r.value);
+    else p.reject("password" in r ? failure(new PasswordError(r.password), p.verb) : new Error(r.message));
+    if (!t.pending.size) t.idle = setTimeout(() => stopThread(t), IDLE_MS);
+  };
+  worker.onerror = (e) => {
+    e.preventDefault();
+    stopThread(t, new Error(`Bun.password worker failed: ${e.message}`));
+  };
+  return (thread = t);
+}
+
+/** Runs a job in the password worker, or on this thread a task later when there is none. */
+function runAsync(job: Job): Promise<string | boolean> {
+  const t = passwordThread();
+  if (!t) return later(() => runNow(job));
+  clearTimeout(t.idle);
+  const id = nextJob++;
+  return new Promise((resolve, reject) => {
+    t.pending.set(id, { resolve, reject, verb: job.op === "hash" ? "hashing" : "verification" });
+    // Copies: a view (a pooled Buffer) would send its whole backing buffer.
+    const copy = job.op === "hash" ? { ...job, password: job.password.slice() } : { ...job, password: job.password.slice(), hash: job.hash.slice() };
+    t.ready.then(() => t.worker.postMessage({ ...copy, id }), (err) => stopThread(t, err));
+  });
+}
 
 function prepareHash(password: unknown, algorithm: unknown): [Uint8Array, Algorithm] {
   const pw = bytes(password);
@@ -130,16 +194,23 @@ const verifyLabel = (v: unknown) => (v === undefined || v === null ? undefined :
 export const password = {
   hash(password: unknown, algorithm?: unknown): Promise<string> {
     const [pw, a] = prepareHash(password, algorithm);
-    return later(() => hashNow(pw, a));
+    return runAsync(hashJob(pw, a)) as Promise<string>;
   },
   hashSync(password: unknown, algorithm?: unknown): string {
-    return hashNow(...prepareHash(password, algorithm));
+    return runNow(hashJob(...prepareHash(password, algorithm))) as string;
   },
   verify(password: unknown, hash: unknown, algorithm?: unknown): Promise<boolean> {
     const [pw, h, a] = [bytes(password), bytes(hash), verifyLabel(algorithm)];
-    return later(() => verifyNow(pw, h, a));
+    try {
+      const job = verifyJob(pw, h, a);
+      return job ? (runAsync(job) as Promise<boolean>) : Promise.resolve(false);
+    } catch (e) {
+      // An unknown hash format rejects, as in Bun; bad arguments (above) throw.
+      return Promise.reject(e);
+    }
   },
   verifySync(password: unknown, hash: unknown, algorithm?: unknown): boolean {
-    return verifyNow(bytes(password), bytes(hash), verifyLabel(algorithm));
+    const job = verifyJob(bytes(password), bytes(hash), verifyLabel(algorithm));
+    return job ? (runNow(job) as boolean) : false;
   },
 };

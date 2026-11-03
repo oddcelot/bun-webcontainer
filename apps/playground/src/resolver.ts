@@ -85,6 +85,17 @@ export async function loadResolver(vfs: VFS): Promise<void> {
   vfs.onClear(() => bound === vfs && instantiate(vfs));
 }
 
+/** The compiled module, once `loadResolver` has started (another worker can instantiate it: see passwordWorker.ts). */
+export const resolverModule = (): Promise<WebAssembly.Module> | undefined => compiled;
+
+/** Binds a module compiled elsewhere (and sent here) to `vfs`, instead of `loadResolver`. */
+export function startResolver(m: WebAssembly.Module, vfs: VFS) {
+  compiled = Promise.resolve(m);
+  module = m;
+  bound = vfs;
+  instantiate(vfs);
+}
+
 /** Runs a call into the module. panic=abort traps and leaves the instance unusable: report the panic and start over. */
 function guard<T>(what: string, f: () => T): T {
   try {
