@@ -1,5 +1,6 @@
 import { BASE } from "./base";
 import { commonJSFacade, exportNames as commonJSExportNames, isCommonJS, JS_LIKE, moduleKindOf, reexports, requireRuntimeImports, stripDirname, wrapCommonJS } from "./cjs";
+import { firstLineLength, shiftFirstColumn } from "./sourceMap";
 import bunWrap from "./bunWrap.js?raw";
 import { loadTranspiler, type Resolver } from "./transpiler";
 import { transpileCached } from "./transpileCache";
@@ -468,7 +469,9 @@ export async function serveModule(vfs: VFS, rawPath: string, onError: (msg: stri
       body += `\nimport * as __bwcSelf from ${JSON.stringify(`${VFS_ROOT}${path}`)};\nglobalThis.__esmLoaded?.(${JSON.stringify("/" + path)}, __bwcSelf);`;
       // Its first import marks it as being imported (before its dependencies run), on the first line.
       body = `import ${JSON.stringify(`data:text/javascript,${encodeURIComponent(`globalThis.__esmImporting?.(${JSON.stringify("/" + path)})`)}`)};${body}`;
-      if (mappings !== undefined) body += `\n//# sourceMappingURL=data:application/json;base64,${btoa(JSON.stringify({ version: 3, sources: [path.slice(path.lastIndexOf("/") + 1)], names: [], mappings }))}`;
+      // What was put before or changed at the start of the transpiler's first line moves that line's columns.
+      if (mappings !== undefined)
+        body += `\n//# sourceMappingURL=data:application/json;base64,${btoa(JSON.stringify({ version: 3, sources: [path.slice(path.lastIndexOf("/") + 1)], names: [], mappings: shiftFirstColumn(mappings, firstLineLength(body) - firstLineLength(transpiled)) }))}`;
     }
     return { status: 200, body };
   } catch (e) {
