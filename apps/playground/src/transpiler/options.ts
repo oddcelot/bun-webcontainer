@@ -16,10 +16,11 @@ export const FLAGS = {
   PACKAGE_TYPE_MODULE: 8192,
   SYNC_ESM: 16384,
   SOURCE_MAP: 32768,
+  TARGET_BUN: 65536,
 } as const;
 
 /** transpile-wasm's loader numbers (`Loader::from_u32`), by `Bun.Transpiler` loader name. */
-export const LOADER_NUMBERS: Record<string, number> = { js: 0, jsx: 1, ts: 2, tsx: 3, json: 4, jsonc: 5, json5: 6, toml: 7, yaml: 8, xml: 9, text: 10 };
+export const LOADER_NUMBERS: Record<string, number> = { js: 0, jsx: 1, ts: 2, tsx: 3, json: 4, jsonc: 5, json5: 6, toml: 7, yaml: 8, xml: 9, text: 10, md: 11 };
 
 export type RuntimeOptions = {
   /** `flags` bits, without RUNTIME_TRANSPILER. */
@@ -97,7 +98,7 @@ export function runtimeOptions(o: Record<string, unknown>, nodeEnv: string | und
   // `Bun.Transpiler` then sets back from its own options).
   if (target === "bun") {
     syntax = true;
-    ignored.push('target "bun" (printed as for the browser)');
+    flags |= FLAGS.TARGET_BUN;
   }
   if (typeof o.minify === "boolean") [whitespace, syntax, identifiers] = [o.minify, o.minify, o.minify];
   else if (o.minify && typeof o.minify === "object") {

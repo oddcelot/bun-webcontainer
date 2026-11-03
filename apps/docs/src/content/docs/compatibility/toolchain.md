@@ -83,6 +83,7 @@ Bun's own resolver, compiled to WebAssembly (~900 KB, loaded with the first modu
 - ✅ `tsconfig.json` `paths` and `baseUrl`
 - ✅ JSON, JSONC, JSON5, TOML and YAML imports (`.json`, `.jsonc`, `.json5`, `.toml`, `.yaml`, `.yml`) with Bun's parsers, as Bun has them: the document is the default export and an object's top-level keys (but `default`) named ones; anything else (an array, a string, `null`) comes with `__esModule: true` instead. An empty file is `{}`, except for JSON.
 - ✅ `require` of a data file returns the parsed value, or its namespace once the file has been imported, as in Bun (a file required first stays its value)
+- ✅ Markdown imports (`.md`, `.markdown`) with Bun's renderer, as Bun has them: the HTML is the default export; `require` returns the module's namespace
 - ✅ CSS imported from code that goes through an HTML import (bundled), or through Vite
 - ✅ CSS imported from server code (`import "./x.css"`, also `.module.css`) is `{}`, as in Bun's runtime. In a page served without bundling, it is linked as a stylesheet and CSS module class names map to themselves.
 - ✅ `http:`/`https:` imports are left to the browser

@@ -53,8 +53,11 @@ const JSX_OPTIONS = ["jsx", "jsxImportSource", "jsxFactory", "jsxFragmentFactory
 /** The JSX options as transpile-wasm's `jsx_c` takes them (NUL-separated, non-strings unset); also a cache key. */
 export const jsxKey = (t: TsconfigFlags): string => JSX_OPTIONS.map((k) => (typeof t[k] === "string" ? t[k] : "")).join("\0");
 
-/** The loader for a file extension, as Bun's defaults have them: `.js` is parsed as JSX, `.mjs` and `.cjs` are not. */
-const EXTENSIONS: Record<string, number> = { js: 1, mjs: 0, cjs: 0, jsx: 1, ts: 2, mts: 2, cts: 2, tsx: 3 };
+/**
+ * The loader for a file extension, as Bun's defaults have them: `.js` is parsed as JSX, `.mjs` and `.cjs` are not;
+ * Markdown is its HTML as the default export.
+ */
+const EXTENSIONS: Record<string, number> = { js: 1, mjs: 0, cjs: 0, jsx: 1, ts: 2, mts: 2, cts: 2, tsx: 3, md: 11, markdown: 11 };
 const loaderOf = (path: string) => EXTENSIONS[path.slice(path.lastIndexOf(".") + 1)] ?? 0;
 /** transpile-wasm's `flags` for the tsconfig options. */
 const tsFlags = (t: TsconfigFlags) => (t.experimentalDecorators ? 1 : 0) | (t.emitDecoratorMetadata ? 2 : 0);

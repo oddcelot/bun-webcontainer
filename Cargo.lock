@@ -1206,6 +1206,7 @@ dependencies = [
  "bun_core",
  "bun_js_parser",
  "bun_js_printer",
+ "bun_md",
  "bun_parsers",
  "bun_paths",
  "bun_sourcemap",

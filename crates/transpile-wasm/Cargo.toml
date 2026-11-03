@@ -19,5 +19,7 @@ bun_parsers = { path = "../../bun/src/parsers" }
 bun_core = { path = "../../bun/src/bun_core" }
 bun_paths = { path = "../../bun/src/paths" }
 bun_collections = { path = "../../bun/src/collections" }
+# Bun.Transpiler's md loader and .md imports (render_to_html)
+bun_md = { path = "../../bun/src/md" }
 # defines the bun_sys_host_* symbols bun_sys declares, as -ENOSYS stubs (keeps the wasm import-free)
 bun_sys_host = { path = "../sys-host" }

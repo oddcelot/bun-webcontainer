@@ -238,6 +238,12 @@ const long_name = 5; console.log(long_name);`;
 const defSrc = `console.log(process.env.NODE_ENV, process.env.BUN_ENV, process.browser, DEBUG, FOO.bar, a.b.c, X);
 if (process.env.NODE_ENV === "production") console.log("prod"); else console.log("dev");
 Math.PI; foo(); export const el = <div x={1}>{2}</div>;`;
+const bunSrc = `import fs from "fs"; import { serve, file as f } from "bun"; import * as B from "bun"; import type { T } from "t";
+const x = require("./a"); const b = await import("bun"); const r2 = require("bun");
+console.log(process.env.FOO, process.browser, "é\\u2028😀 日本", \`t é \${x}\`, /é/u, import.meta.dir, typeof Bun, fs, serve, f, B, b, r2);
+using r = getRes(); { await using q = getRes(); }
+export const y = 1; export default function g() { return "ü"; } // ü comment
+const re = { "é": 1, ü: 2 }; class C { #é = 1; }`;
 // [label, Bun.Transpiler options, loader (per call), code, NODE_ENV]
 const optionCases: [string, Record<string, unknown>, string, string, string?][] = [
   ["defaults", {}, "tsx", defSrc],
@@ -247,6 +253,11 @@ const optionCases: [string, Record<string, unknown>, string, string, string?][] 
   ["define development", { define: { "process.env.NODE_ENV": '"development"' } }, "tsx", defSrc, "production"],
   ["define values", { define: { DEBUG: "", X: "undefined", "FOO.bar": "null", "a.b.c": "-1.5" } }, "tsx", defSrc],
   ["target node", { target: "node" }, "tsx", defSrc],
+  ["target bun", { target: "bun" }, "tsx", defSrc],
+  ["target bun printing", { target: "bun" }, "ts", bunSrc],
+  ["target bun cjs", { target: "bun" }, "js", "const x = require('./a'); module.exports = { x, s: 'é' };"],
+  ["target bun minify", { target: "bun", minify: { whitespace: true, syntax: true } }, "ts", bunSrc],
+  ["target browser printing", {}, "ts", bunSrc],
   ["define + tsconfig jsx", { define: { "process.env.NODE_ENV": '"production"' }, tsconfig: { compilerOptions: { jsx: "react-jsxdev" } } }, "tsx", defSrc],
   ["define bad JSON", { define: { X: "{bad" } }, "tsx", defSrc],
   ["none", {}, "ts", optSrc],
@@ -273,6 +284,9 @@ const optionCases: [string, Record<string, unknown>, string, string, string?][] 
   ["xml", {}, "xml", "<a>1</a>"],
   ["text", {}, "text", 'hello "world"\n`x`'],
   ["text empty", {}, "text", ""],
+  ["md", {}, "md", "# Hi\n\nsome *text*, `code` and a [link](https://x.y \"t\").\n\n- [ ] task\n- ~~gone~~ https://auto.link\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n```js\nlet x = `y`;\n```\n<div>raw</div>\n"],
+  ["md entities", {}, "md", "&amp; &copy; &#x1F600; <br> \\* 'q' \"dq\" ${x}\n"],
+  ["md empty", {}, "md", "  \n"],
 ];
 if (spawnSync("bun", ["--version"]).status === 0) {
   const native = (c: (typeof optionCases)[number]) => {

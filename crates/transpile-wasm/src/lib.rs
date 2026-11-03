@@ -30,7 +30,7 @@ pub enum Loader {
 
 impl Loader {
     /// The `transpile_flags_c` loader number: 0 js, 1 jsx, 2 ts, 3 tsx, 4 json, 5 jsonc, 6 json5, 7 toml, 8 yaml,
-    /// 9 xml, 10 text.
+    /// 9 xml, 10 text, 11 md.
     pub fn from_u32(n: u32) -> Option<Loader> {
         Some(match n {
             0 => Loader::Js,
@@ -44,6 +44,7 @@ impl Loader {
             8 => Loader::Data(Data::Yaml),
             9 => Loader::Data(Data::Xml),
             10 => Loader::Data(Data::Text),
+            11 => Loader::Data(Data::Md),
             _ => return None,
         })
     }
@@ -82,6 +83,9 @@ pub const SYNC_ESM: u32 = 16384;
 /// Not a tsconfig option: the output is the JS, a NUL byte, then the source map's `mappings` (VLQ, one source,
 /// lines and columns of the JS as returned, its first line's `require` declaration included).
 pub const SOURCE_MAP: u32 = 32768;
+/// `Bun.Transpiler`'s `target: "bun"`: printed as Bun's runtime prints for itself (the `IS_BUN` printer: ASCII-only
+/// strings, `var {require}=import.meta;` in an ES module), `using` not lowered.
+pub const TARGET_BUN: u32 = 65536;
 
 /// tsconfig `compilerOptions` for JSX, as strings ("" = not set). Per-file pragmas still win.
 #[derive(Clone, Default, Debug)]
@@ -191,11 +195,12 @@ pub fn transpile_with(path: &[u8], source: &[u8], loader: Loader, flags: u32, re
             minify_syntax: flags & MINIFY_SYNTAX != 0,
             minify_identifiers: flags & MINIFY_IDENTIFIERS != 0,
             module_type: if flags & SYNC_ESM != 0 { options::bundle_enums::Format::InternalBakeDev } else { options::bundle_enums::Format::Esm },
+            target: if flags & TARGET_BUN != 0 { bun_ast::Target::Bun } else { bun_ast::Target::Browser },
             ..Default::default()
         };
         // `uses_require_ref` means `require` is unbound, so the declaration never collides.
         let require: &[u8] = match () {
-            _ if !ast.uses_require_ref => b"",
+            _ if !ast.uses_require_ref || flags & TARGET_BUN != 0 => b"",
             _ if flags & SYNC_ESM != 0 => b"var require = hmr.importMeta.require;",
             _ if flags & IMPORT_META_REQUIRE != 0 => b"var {require}=import.meta;",
             _ => b"",
@@ -212,7 +217,12 @@ pub fn transpile_with(path: &[u8], source: &[u8], loader: Loader, flags: u32, re
                 Err(e) => Err(format!("print failed: {e:?}").into_bytes()),
             };
         }
-        match printer::print_ast::<_, false, false>(&mut writer, arena, &ast, symbols, src, opts) {
+        let printed = if flags & TARGET_BUN != 0 {
+            printer::print_ast::<_, true, false>(&mut writer, arena, &ast, symbols, src, opts)
+        } else {
+            printer::print_ast::<_, false, false>(&mut writer, arena, &ast, symbols, src, opts)
+        };
+        match printed {
             Ok(_) => Ok([require, writer.ctx.written()].concat()),
             Err(e) => Err(format!("print failed: {e:?}").into_bytes()),
         }
@@ -406,7 +416,8 @@ fn parser_options(loader: Loader, flags: u32, rt: Option<&runtime::Runtime>) -> 
     opts.features.auto_import_jsx = flags & RUNTIME_TRANSPILER == 0;
     opts.features.no_macros = true;
     opts.features.top_level_await = true;
-    opts.features.lower_using = true;
+    // JavaScriptCore runs `using` itself.
+    opts.features.lower_using = flags & TARGET_BUN == 0;
     // As `bundler/transpiler.rs`: either tsconfig option means TypeScript's legacy decorators.
     let legacy = flags & (EXPERIMENTAL_DECORATORS | EMIT_DECORATOR_METADATA) != 0;
     opts.features.emit_decorator_metadata = flags & EMIT_DECORATOR_METADATA != 0;
