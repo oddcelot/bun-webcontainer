@@ -47,12 +47,19 @@ export function AppearancePicker(props: AppearanceProps) {
     if (next) setKept(current().light);
     else restore();
   };
+  // Closing with Escape puts focus back on the trigger (it would fall to <body>).
+  let trigger: HTMLElement | undefined;
+  const dismiss = () => {
+    onOpenChange(false);
+    trigger?.focus();
+  };
 
   return (
     <span ref={root} class="appearance-root">
       <Popover placement="bottom-end" gutter={6} open={open()} onOpenChange={onOpenChange}>
         <Tip
           as={Popover.Trigger}
+          ref={(el: HTMLElement) => (trigger = el)}
           id={props.id}
           class="select-trigger appearance-trigger"
           placement="bottom-end"
@@ -64,7 +71,9 @@ export function AppearancePicker(props: AppearanceProps) {
           <i class="chevron i-lucide-chevron-down" aria-hidden="true" />
         </Tip>
         <Popover.Portal mount={topLayerOf(root)}>
-          <Popover.Content class="appearance">
+          {/* Escape closes it from anywhere inside. Kobalte's own dismiss went to another layer (the trigger's tooltip,
+              which also marks the event handled), and the listbox keeps Escape to itself (so: onEscape below). */}
+          <Popover.Content class="appearance" onKeyDown={(e: KeyboardEvent) => e.key === "Escape" && dismiss()}>
             {/* One mode is always on: clicking the pressed one again (onChange(null)) changes nothing. */}
             <ToggleGroup class="segmented" aria-label="Color scheme" value={props.mode} onChange={(mode) => mode && props.setMode(mode as Mode)}>
               <For each={MODES}>
@@ -84,7 +93,7 @@ export function AppearancePicker(props: AppearanceProps) {
               }}
               onFocusFamily={(light) => props.preview(light)}
               onPointerLeave={restore}
-              onEscape={() => onOpenChange(false)}
+              onEscape={dismiss}
             />
             {props.children}
           </Popover.Content>
