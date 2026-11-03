@@ -122,6 +122,46 @@ These rules override the conservative Beads profile for commits (not for pushes)
   explains why when it isn't obvious.
 - Don't push, merge into `main`, rebase shared branches, or force-push without asking.
 
+## Commits and the changelog
+
+The subject says where the code changed; the changelog says what a user gets. Every non-merge commit carries one
+`Changelog:` trailer next to `Co-Authored-By` (the commit-msg hook, `scripts/check-changelog-trailer.ts`, refuses one
+without it). It names the kind of change and the part it changes, and a commit users should hear about folds its
+entry under it on lines indented two spaces:
+
+```
+Changelog: Fixed playground  # kind: Added | Changed | Fixed | Removed
+  **Shared links open the file you shared.** A link made from a second
+  tab opened the entry file instead.
+Changelog: skip              # tests, tooling, refactors, docs plumbing, CI
+```
+
+The entry is one bullet from the user's side: a bold outcome, then the symptom that is gone or the thing now
+possible. `/changelog entry` drafts it from the staged diff.
+
+| Part         | What it covers                                                   | Changelog, heading         |
+| ------------ | ---------------------------------------------------------------- | -------------------------- |
+| `playground` | the playground UI, sharing, embeds, previews                     | CHANGELOG.md, Playground   |
+| `runtime`    | `Bun.*`, `bun:*`, `node:*` in the browser, the VFS, `Bun.serve`  | CHANGELOG.md, Runtime      |
+| `toolchain`  | `bun install`, transpiler, resolver, bundler, `bun fmt`          | CHANGELOG.md, Toolchain    |
+| `editor`     | the TypeScript language service: completions, hovers, diagnostics | CHANGELOG.md, Editor       |
+| `docs`       | docs.runbun.dev                                                  | CHANGELOG.md, Docs         |
+| `astro`      | `@runbun/astro` (`packages/astro`)                               | packages/astro/CHANGELOG.md |
+
+Two release lines, each a hand-written changelog drafted by git-cliff (Brewfile) from the trailers:
+
+- **runbun** (every part but `astro`): version in the root `package.json`, `CHANGELOG.md`, `v<version>` tags;
+  `moon run root:changelog` drafts the next section (`cliff.toml`). Pushing the tag runs
+  `.github/workflows/release.yml`, which checks the tag and the section and creates the GitHub Release. Deploying
+  runbun.dev and docs.runbun.dev stays a separate step.
+- **@runbun/astro**: `packages/astro/package.json`, `packages/astro/CHANGELOG.md`, `astro-v<version>` tags;
+  `moon run astro:changelog` (`packages/astro/cliff.toml`). Pushing the tag runs `.github/workflows/publish-astro.yml`,
+  which publishes to npm over trusted publishing and creates the GitHub Release. Don't `npm publish` by hand.
+
+`/changelog release v0.2.0` (or `astro-v0.2.0`) writes the section and bumps the version; the release commit is
+`release: runbun 0.2.0` (or `release: @runbun/astro 0.2.0`) with `Changelog: skip`, tagged on `main` after the merge.
+Section headings read `## 0.2.0 — 2026-11-03` (em dash); `scripts/release-notes.ts` finds them by it.
+
 ## Conventions & Patterns
 
 - Changes to Bun: commit them in `bun/` on the `wasm-experiment` branch (one logical change per
