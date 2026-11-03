@@ -1,7 +1,7 @@
 # typos (Brewfile: typos-cli); `moon run root:typos`.
 [files]
 # Upstream Bun's code and git hashes, applied as-is.
-extend-exclude = ["patches/bun/"]
+extend-exclude = ["patches/bun/", "apps/playground/scripts/data-apis/"]
 
 [default.extend-words]
 WRONLY = "WRONLY"  # O_WRONLY
