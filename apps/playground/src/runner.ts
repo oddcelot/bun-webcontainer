@@ -153,6 +153,8 @@ export class Runner {
       worker.onmessage = (e) => {
         const m = e.data;
         if (m.type === "console") this.log(m.level, m.text);
+        // A WebSocket upgrade's Set-Cookie headers (an HTTP response's are read off its head in onSw).
+        else if (m.type === "cookies") this.cookies.store(m.path, m.setCookies);
         else if (m.type === "ready") {
           clearTimeout(timer);
           this.failed = m.failed ?? 0;

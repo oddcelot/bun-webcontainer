@@ -69,13 +69,13 @@ Servers answer requests from the [preview](/guides/features/#preview), not from 
 | `fetch(req, server)` | ✅ Works | |
 | `routes` | ✅ Works | Exact paths, `:param` (in `req.params`), trailing `*`, per-method handlers, static `Response`s. Globs in the middle of a path (`/a/*/b`) don't match. |
 | HTML imports in `routes` | ✅ Works | `import page from "./index.html"` is bundled with Bun's bundler. Assets are served under `/_bun/`. Rebuilt after any file change. No HMR. |
-| WebSockets | ✅ Works | `server.upgrade(req, { data })`, `open`/`message`/`close`/`drain`, `send`, `publish`, `subscribe`, `cork`, `close`. `ping`/`pong` do nothing. Only the preview page can connect. |
+| WebSockets | ✅ Works | `server.upgrade(req, { data, headers })` (of `headers`, only Set-Cookie has an effect: the page's socket never sees the others), `open`/`message`/`close`/`drain`, `send`, `publish`, `subscribe`, `cork`, `close`. `ping`/`pong` do nothing. Only the preview page can connect. |
 | `server.publish`, `subscriberCount`, `pendingWebSockets` | ✅ Works | |
 | `server.reload`, `server.stop` | ✅ Works | |
 | `server.url`, `port`, `hostname` | ✅ Works | `port: 0` picks a port from 40001. |
 | `export default { fetch }` | ✅ Works | Served automatically, as in Bun (Hono, Elysia). |
 | Streaming responses, Server-Sent Events | ✅ Works | |
-| `req.cookies` | 🟡 Partial | A `Bun.CookieMap` over the request's Cookie header, in `routes` handlers (a `fetch` handler's request has none, as in Bun). What a handler sets or deletes in it by the time it returns goes out as Set-Cookie headers after the response's own. Not sent on a WebSocket upgrade, which Bun does. |
+| `req.cookies` | ✅ Works | A `Bun.CookieMap` over the request's Cookie header, in `routes` handlers (a `fetch` handler's request has none, as in Bun). What a handler sets or deletes in it by the time it returns goes out as Set-Cookie headers after the response's own; on a WebSocket upgrade, the Set-Cookie headers of `upgrade`'s `headers` option and what the handler set or deleted before calling `server.upgrade(req)` go to the cookie jar, as Bun sends them on the 101. |
 | Cookies | ✅ Works | Kept in a cookie jar on the page. `cookies` in the console lists them. |
 | TLS | ❌ Missing | |
 | `error`, `idleTimeout`, `maxRequestBodySize`, `unix`, `reusePort` | ❌ Missing | A throwing handler returns a plain-text 500; the error prints as Bun's development server prints it, then `GET - /path failed`. |

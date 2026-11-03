@@ -111,8 +111,11 @@ hooks.set = (h) => {
 };
 hooks.get = () => nodeServer?.handler;
 
-/** Requests the worker made for a page's WebSocket: `server.upgrade(req)` accepts them, once. */
-const upgrades = new WeakMap<Request, (data: unknown) => void>();
+/**
+ * Requests the worker made for a page's WebSocket: `server.upgrade(req)` accepts them, once, with the Set-Cookie
+ * headers Bun's 101 response would carry.
+ */
+const upgrades = new WeakMap<Request, (data: unknown, setCookies: string[]) => void>();
 
 const size = (m: WsPayload) => (typeof m === "string" ? new TextEncoder().encode(m).length : m.byteLength);
 const bytesOf = (m: Exclude<WsPayload, string>) =>
@@ -222,11 +225,16 @@ function createInstance(opts: ServeOptions): Instance {
       if (next.routes) inst.routes = next.routes;
       if (next.websocket) inst.websocket = next.websocket;
     },
-    upgrade(req: Request, o?: { data?: unknown }) {
+    /**
+     * As in Bun, the 101 carries the Set-Cookie headers of `headers`, then those of what a route handler set or deleted
+     * in `req.cookies` so far (later changes are lost).
+     */
+    upgrade(req: Request, o?: { data?: unknown; headers?: HeadersInit }) {
       const accept = upgrades.get(req);
       if (!accept) return false;
       upgrades.delete(req);
-      accept(o?.data);
+      const setCookies = [...(o?.headers ? new Headers(o.headers).getSetCookie() : []), ...(requestCookies.get(req)?.toSetCookieHeaders() ?? [])];
+      accept(o?.data, setCookies);
       return true;
     },
     publish(topic: string, message: WsPayload) {
@@ -332,7 +340,12 @@ async function openSocket(inst: Instance, port: MessagePort, path: string, heade
   const key = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16))));
   const req = serverRequest(path, {}, [...headers, ["upgrade", "websocket"], ["connection", "Upgrade"], ["sec-websocket-version", "13"], ["sec-websocket-key", key]]);
   let ws: ServerWebSocket | undefined;
-  upgrades.set(req, (data) => (ws = new ServerWebSocket(port, inst, data)));
+  upgrades.set(req, (data, setCookies) => {
+    ws = new ServerWebSocket(port, inst, data);
+    // The page's WebSocket never sees the 101's headers: its cookies go to the preview's cookie jar (runner.ts),
+    // before the socket opens, so the page's next request carries them.
+    if (setCookies.length) post({ type: "cookies", path, setCookies });
+  });
   try {
     await dispatch(inst, req);
   } catch (err) {
