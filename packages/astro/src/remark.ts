@@ -36,6 +36,21 @@ const html = (value: string): RootContent =>
     ? ({ type: "mdxJsxFlowElement", name: "Fragment", attributes: [{ type: "mdxJsxAttribute", name: "set:html", value }], children: [] } as unknown as RootContent)
     : { type: "html", value };
 
+/** `import "virtual:@runbun/astro/blocks.css"` as an MDX ESM node (its estree is what MDX compiles). */
+const CSS_MODULE = "virtual:@runbun/astro/blocks.css";
+const cssImport = (): RootContent =>
+  ({
+    type: "mdxjsEsm",
+    value: `import ${JSON.stringify(CSS_MODULE)};`,
+    data: {
+      estree: {
+        type: "Program",
+        sourceType: "module",
+        body: [{ type: "ImportDeclaration", specifiers: [], attributes: [], source: { type: "Literal", value: CSS_MODULE, raw: JSON.stringify(CSS_MODULE) } }],
+      },
+    },
+  }) as unknown as RootContent;
+
 interface Entry {
   opts: Record<string, string>;
   title: string | null | undefined;
@@ -114,6 +129,9 @@ export default function remarkRunbun(
     mdx = /\.mdx$/.test(file?.path ?? "");
     if (!transform(tree.children)) return;
     const { playgroundUrl, base, sync } = { ...CONFIG(), ...options };
-    tree.children.push(html(cssLink(base) + "\n" + embedScripts(playgroundUrl, sync)));
+    // In MDX the blocks' CSS is an import, which Astro bundles into the page's stylesheet as it does for <Code> (one
+    // copy for both); Markdown can't import, so it links the integration's route.
+    if (mdx) tree.children.unshift(cssImport());
+    tree.children.push(html((mdx ? "" : cssLink(base) + "\n") + embedScripts(playgroundUrl, sync)));
   };
 }
