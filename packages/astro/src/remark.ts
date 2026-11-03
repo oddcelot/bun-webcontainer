@@ -9,7 +9,7 @@
 // Options default to the runbun() integration's (playgroundUrl, base, sync).
 import type { Code, Root, RootContent } from "mdast";
 import { CONFIG } from "./config.js";
-import { codeTabs, cssLink, embedScripts, EXT, fileScript, withEntry, withTabs } from "./markup.js";
+import { codeTabs, copyScript, cssLink, embedScripts, EXT, fileScript, withEntry, withTabs } from "./markup.js";
 
 const OWN_KEYS = new Set(["playground", "mode", "features", "group", "load", "height", "autorun", "readonly", "persist", "theme", "file", "path", "expand", "deps", "label", "layout"]);
 const ATTRS = ["mode", "features", "height", "autorun", "readonly", "persist", "theme", "file", "path", "layout"];
@@ -156,6 +156,6 @@ export default function remarkRunbun(
     // In MDX the blocks' CSS is an import, which Astro bundles into the page's stylesheet as it does for <Code> (one
     // copy for both); Markdown can't import, so it links the integration's route.
     if (mdx) tree.children.unshift(cssImport());
-    tree.children.push(html((mdx ? "" : cssLink(base) + "\n") + embedScripts(playgroundUrl, sync)));
+    tree.children.push(html((mdx ? "" : cssLink(base) + "\n") + embedScripts(playgroundUrl, sync) + copyScript()));
   };
 }

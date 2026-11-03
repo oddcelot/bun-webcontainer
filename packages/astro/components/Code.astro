@@ -2,10 +2,11 @@
 // A code block highlighted at build time with @pierre/highlights in the page's code theme. Static by default; with
 // `playground` it gets a Run button that turns it into an embed (Playground.astro) with the code as its file, and
 // every embed option passes through. `title` names the file, as in a fence; `label` is the embed's title. With `files`
-// the block has a tab per file, and so does the embed. A static block is HTML and CSS only: no script, no request beyond the page's own stylesheet,
-// which Astro bundles the blocks' CSS into (once per page, in <head>).
+// the block has a tab per file, and so does the embed. A static block is HTML and CSS, and one small script for its
+// Copy button (once per page); no request beyond the page's own stylesheet, which Astro bundles the blocks' CSS into
+// (once per page, in <head>).
 import "virtual:@runbun/astro/blocks.css";
-import { codeBlock, codeTabs, EXT, langOf, withEntry, withTabs } from "../dist/markup.js";
+import { codeBlock, codeTabs, copyScript, EXT, langOf, withEntry, withTabs } from "../dist/markup.js";
 import Playground, { type Props as PlaygroundProps } from "./Playground.astro";
 
 export type Props = Omit<PlaygroundProps, "title"> & {
@@ -22,6 +23,11 @@ const extra = Object.entries(files).map(([name, text]) => ({ name, code: text, l
 // The package.json withEntry may add (`main`) runs but stays out of the tabs.
 const sources = { [file]: code, ...files };
 const all = withEntry(sources, file);
+// The Copy buttons' script, with the page's first block only (the script would ignore a second run anyway).
+const locals = Astro.locals as Record<symbol, boolean>;
+const COPY = Symbol.for("runbun.copy");
+const copy = locals[COPY] ? "" : copyScript();
+locals[COPY] = true;
 const block = extra.length ? codeTabs([{ name: file, code, lang }, ...extra], options.file ?? file) : codeBlock(code, lang, title);
 ---
 
@@ -42,3 +48,4 @@ const block = extra.length ? codeTabs([{ name: file, code, lang }, ...extra], op
     <Fragment set:html={block} />
   )
 }
+<Fragment set:html={copy} />

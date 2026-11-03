@@ -11,13 +11,31 @@ export const cssLink = (base: string) => `<link rel="stylesheet" href="${esc(sla
 
 /**
  * A highlighted block; `not-content` keeps Starlight's prose styles off it. Its `<pre>` says the language as Expressive
- * Code's does (`data-language`), for tools that turn the page back into Markdown.
+ * Code's does (`data-language`), for tools that turn the page back into Markdown. The Copy button works with
+ * copyScript() on the page.
  */
 export function codeBlock(code: string, lang: string, title?: string) {
   const caption = title ? `<figcaption>${esc(title)}</figcaption>` : "";
   const pre = highlight(code.replace(/\n$/, ""), lang).replace(/^<pre /, `<pre data-language="${esc(lang)}" `);
-  return `<figure class="runbun-code not-content">${caption}${pre}</figure>`;
+  const copy = `<button type="button" class="runbun-copy" data-runbun-copy aria-label="Copy code" aria-live="polite">Copy</button>`;
+  return `<figure class="runbun-code not-content">${caption}${pre}${copy}</figure>`;
 }
+
+/**
+ * The Copy buttons' behaviour: one click listener on the document, for every block (later ones included, after a
+ * client-side navigation), registered once however often the script runs. It copies the code element's text, which is
+ * the block's source exactly (the highlighter only wraps it in spans), and says "Copied" for a moment; where the
+ * clipboard isn't available it selects the code instead. A click on Copy in a poster doesn't start the embed: only its
+ * Run button does.
+ */
+export const copyScript = () =>
+  `<script type="module" data-runbun-copy-script>if(!window.__runbunCopy){window.__runbunCopy=1;` +
+  `const set=(b,t,l)=>{b.textContent=t;b.setAttribute("aria-label",l)};` +
+  `document.addEventListener("click",async(e)=>{const b=e.target instanceof Element&&e.target.closest("[data-runbun-copy]");` +
+  `const c=b&&b.closest(".runbun-code")?.querySelector("pre code");if(!c)return;` +
+  `try{await navigator.clipboard.writeText(c.textContent)}catch{getSelection()?.selectAllChildren(c);return}` +
+  `set(b,"Copied","Copied");b.toggleAttribute("data-copied",true);clearTimeout(b.runbunCopy);` +
+  `b.runbunCopy=setTimeout(()=>{set(b,"Copy","Copy code");b.removeAttribute("data-copied")},1500)})}</script>`;
 
 // Tab groups' radio names must be unique per page. The remark plugin and the components load separate copies of this
 // module (Astro bundles them apart), so the counter lives on globalThis, shared by every copy.

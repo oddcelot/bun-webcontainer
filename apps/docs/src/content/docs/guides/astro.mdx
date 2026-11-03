@@ -33,7 +33,7 @@ export default defineConfig({
 
 ## Code blocks
 
-In `.mdx` or `.astro` files, `<Code>` renders a block. On its own it stays static: highlighted HTML and CSS, with no script and no request of its own. Its styles go into the page's own stylesheet, once however many blocks the page has.
+In `.mdx` or `.astro` files, `<Code>` renders a block. On its own it stays static: highlighted HTML and CSS, with no request of its own and one small script, for its Copy button. Its styles go into the page's own stylesheet, once however many blocks the page has.
 
 ```mdx
 import { Code } from "@runbun/astro/components";
@@ -177,4 +177,15 @@ import { Playground } from "@runbun/astro/components";
 | `themeSelector` | | The CSS selector each theme goes under, for a site with its own theme switch, e.g. ``({ name }) => `:root[data-code-theme='${name}']` ``. Without it the first light theme applies, and the first dark one under `prefers-color-scheme: dark`. |
 | `sync` | | `{ scheme, family }`: the `<html>` attributes that hold the page's scheme (`light` or `dark`) and theme family, for the embeds to follow. Without it embeds follow the OS. |
 
-The blocks' look comes from CSS properties you can set: `--runbun-code-border`, `--runbun-code-radius`, `--runbun-code-font`, `--runbun-code-size`, `--runbun-code-caption-size` and `--runbun-code-line-height`. Blocks carry Starlight's `not-content` class, so they work in Starlight pages as they are.
+The blocks' look comes from CSS properties you can set: `--runbun-code-border`, `--runbun-code-radius`, `--runbun-code-font`, `--runbun-code-size`, `--runbun-code-caption-size` and `--runbun-code-line-height`.
+
+Every block, a fence's too before you press Run, has a Copy button in its top-right corner (`.runbun-copy`, `[data-copied]` for a moment after a copy). It shows on hover and focus, and always on touch screens. Style it with `--runbun-copy-bg`, `--runbun-copy-fg`, `--runbun-copy-border`, `--runbun-copy-radius` and `--runbun-copy-inset`, or the class:
+
+```css
+.runbun-copy {
+  --runbun-copy-bg: var(--sl-color-gray-6);
+  --runbun-copy-radius: 4px;
+}
+```
+
+Blocks carry Starlight's `not-content` class, so they work in Starlight pages as they are.
