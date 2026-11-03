@@ -27,7 +27,7 @@ Short links are kept until they're removed. To have one removed, email [privacy@
 
 ## Feedback
 
-**Feedback** in the playground's status bar sends what you write to runbun.dev (Cloudflare Workers KV), with the time and the page's address (without the part after `#`). Only if you add them does it carry:
+**Feedback** in the playground's status bar sends what you write to runbun.dev (a Cloudflare D1 database, apart from short links), with the time and the page's address (without the part after `#`). Only if you add them does it carry:
 
 - **an email address**, used only to answer you;
 - **the Bun release and your browser** (its user agent, window size and pixel ratio, and any feature the playground found missing); the form lists exactly what is sent;

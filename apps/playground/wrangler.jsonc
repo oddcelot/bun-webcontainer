@@ -1,6 +1,6 @@
 // Everything runs in the browser from static assets (public/_headers, copied into dist/, sets COOP/COEP).
-// The Worker only handles opt-in short links (POST /api/short, GET /s/<id>) and feedback (POST /api/feedback,
-// stored in LINKS under "feedback:"); worker/index.ts.
+// The Worker only handles opt-in short links (POST /api/short, GET /s/<id>; KV LINKS) and feedback (POST /api/feedback;
+// D1 FEEDBACK, schema in worker/migrations/); worker/index.ts.
 {
   "name": "bun-playground",
   "compatibility_date": "2026-10-28",
@@ -11,6 +11,9 @@
     "run_worker_first": ["/api/*", "/s/*"]
   },
   "kv_namespaces": [{ "binding": "LINKS", "id": "af919e62d9334718b4e63cf62eb5bb28" }],
+  // Feedback is other data than links, kept for another time, and wants queries (ratings per page): its own D1 database.
+  // `bunx wrangler d1 migrations apply FEEDBACK --remote [--env canary]` after adding a migration.
+  "d1_databases": [{ "binding": "FEEDBACK", "database_name": "runbun-feedback", "database_id": "6799b822-f0fd-4c6e-9bc1-03fbc4c3a609", "migrations_dir": "worker/migrations" }],
   // New short links per client IP: 10 a minute keeps the Free plan's 1,000 KV writes a day for real use.
   "ratelimits": [
     { "name": "CREATE_LIMIT", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } },
@@ -33,6 +36,9 @@
         "run_worker_first": ["/api/*", "/s/*"]
       },
       "kv_namespaces": [{ "binding": "LINKS", "id": "5823c967357a4e149e3fd4347898c0a2" }],
+      "d1_databases": [
+        { "binding": "FEEDBACK", "database_name": "runbun-feedback-canary", "database_id": "128b1ceb-ded6-43aa-84e1-d1ab8e9d337c", "migrations_dir": "worker/migrations" }
+      ],
       "ratelimits": [
         { "name": "CREATE_LIMIT", "namespace_id": "1002", "simple": { "limit": 10, "period": 60 } },
         { "name": "FEEDBACK_LIMIT", "namespace_id": "1004", "simple": { "limit": 5, "period": 60 } }
