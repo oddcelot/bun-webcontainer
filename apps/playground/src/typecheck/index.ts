@@ -1,5 +1,6 @@
 import type { CompletionKind, EditorCompletion, EditorCompletionDetails, EditorCompletions, EditorDiagnostic, EditorHover, EditorSignatureHelp } from "../editors/types";
-import { dirname, type FileData, type VFS } from "@runbun/vfs";
+import type { FileData, VFS } from "@runbun/vfs";
+import { nearestTsconfig } from "../moduleServer";
 import type { LspCompletionItem } from "./tsrsLs";
 import type { LsOp, LsReply, LsRequest } from "./worker";
 
@@ -39,14 +40,6 @@ const waiting = new Map<number, (r: LsReply) => void>();
 // What the worker holds, so each request sends only the files that changed (VFS writes replace the data).
 const sent = new Map<string, FileData>();
 
-function nearestTsconfig(vfs: VFS, path: string): string | undefined {
-  for (let dir = dirname(path); ; dir = dirname(dir)) {
-    const p = dir ? `${dir}/tsconfig.json` : "tsconfig.json";
-    if (vfs.files.has(p)) return p;
-    if (!dir) return undefined;
-  }
-}
-
 /** Sends `op` for `path` (contents `text`, unsaved edits included) with what changed in the project since the last request. */
 function request(vfs: VFS, path: string, text: string, op: LsOp): Promise<LsReply> {
   if (!worker) {
@@ -61,6 +54,8 @@ function request(vfs: VFS, path: string, text: string, op: LsOp): Promise<LsRepl
     if (p.startsWith("node_modules/") || p.includes("/node_modules/") ? DECLARATIONS.test(p) : PROJECT.test(p)) files.set("/" + p, data);
   }
   files.set("/" + path, text);
+  // The config the transpiler reads too (moduleServer.ts); tsrs parses it itself, `extends` and jsconfig.json's
+  // defaults included, so the project's compilerOptions (JSX among them) apply as they would in `tsc`.
   const tsconfig = nearestTsconfig(vfs, path);
   const config = tsconfig ? "/" + tsconfig : DEFAULT_CONFIG;
   // Every script of the project, as `tsc` would see it, so completions can import from any of them and switching tabs

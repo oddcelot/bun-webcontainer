@@ -24,15 +24,21 @@ function resolveWith(vfs: VFS, spec: string, dir: string, kind: ResolveKind = "i
   return resolve(spec, dir, kind, TARGET);
 }
 
-/** `compilerOptions` of the nearest tsconfig.json (or jsconfig.json) above `path` (comments and trailing commas allowed), with `extends`. */
-export function tsconfigFor(vfs: VFS, path: string): TsconfigFlags {
+/** The nearest tsconfig.json (or, in the same folder, jsconfig.json) above `path`, as Bun and TypeScript look for it. */
+export function nearestTsconfig(vfs: VFS, path: string): string | undefined {
   for (let dir = dirname(path); ; dir = dirname(dir)) {
     for (const name of ["tsconfig.json", "jsconfig.json"]) {
       const file = dir ? `${dir}/${name}` : name;
-      if (vfs.readText(file) !== undefined) return compilerOptions(vfs, file, new Set());
+      if (vfs.readText(file) !== undefined) return file;
     }
-    if (!dir) return {};
+    if (!dir) return undefined;
   }
+}
+
+/** `compilerOptions` of the nearest tsconfig.json (or jsconfig.json) above `path` (comments and trailing commas allowed), with `extends`. */
+export function tsconfigFor(vfs: VFS, path: string): TsconfigFlags {
+  const file = nearestTsconfig(vfs, path);
+  return file ? compilerOptions(vfs, file, new Set()) : {};
 }
 
 /**
