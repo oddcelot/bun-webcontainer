@@ -301,4 +301,20 @@ if (spawnSync("bun", ["--version"]).status === 0) {
     else console.log(`Bun.Transpiler ${label}: identical to bun`);
   }
 }
+// SOURCE_MAP (32768): the JS, NUL, then the mappings. `bun build --no-bundle` ignores --sourcemap, so instead each
+// token below must map back to the same token in the source (with IMPORT_META_REQUIRE's prefix on line 1, and a
+// TypeScript enum that changes the line count).
+{
+  const { decodeMappings, originalPosition } = await import("../../apps/playground/src/sourceMap.ts");
+  const src = 'import { x } from "./x";\ninterface A { x: number }\nenum E { A, B }\n\nfunction f(a: A): number {\n  const y = a.x + 1;\n  throw new TypeError("bad " + y);\n}\nconst r = require("y");\nconsole.log(f({ x: 1 }), r, E.B, x);\n';
+  const [code, mappings = ""] = call("transpile_flags_c", "a.ts", src, 32768 | 16).split("\0");
+  const map = decodeMappings(mappings), gen = code.split("\n"), orig = src.split("\n");
+  for (const token of ["import {", "throw new", "TypeError(", "a.x + 1", "console.log(", "f({ x: 1 })", 'require("y")']) {
+    const line = gen.findIndex((l) => l.includes(token));
+    const at = line < 0 ? undefined : originalPosition(map, line, gen[line].indexOf(token));
+    const ok = !!at && orig[at[0]].startsWith(token, at[1]);
+    if (!ok) { fail++; console.log(`SOURCE_MAP ${token}: MISMATCH (maps to ${JSON.stringify(at)})\n${code}\n${mappings}`); }
+  }
+  if (!fail) console.log("SOURCE_MAP: tokens map back to the source");
+}
 process.exit(fail ? 1 : 0);

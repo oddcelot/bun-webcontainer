@@ -79,6 +79,9 @@ pub const PACKAGE_TYPE_MODULE: u32 = 8192;
 /// `require` otherwise is `hmr.importMeta.require`); its imports, which the dev server's linker turns into requires,
 /// become `var ns = hmr.importSync("spec");` here, hoisted. A module with top-level await fails with Bun's error.
 pub const SYNC_ESM: u32 = 16384;
+/// Not a tsconfig option: the output is the JS, a NUL byte, then the source map's `mappings` (VLQ, one source,
+/// lines and columns of the JS as returned, its first line's `require` declaration included).
+pub const SOURCE_MAP: u32 = 32768;
 
 /// tsconfig `compilerOptions` for JSX, as strings ("" = not set). Per-file pragmas still win.
 #[derive(Clone, Default, Debug)]
@@ -198,11 +201,59 @@ pub fn transpile_with(path: &[u8], source: &[u8], loader: Loader, flags: u32, re
             _ => b"",
         };
         let mut writer = printer::BufferPrinter::init(printer::BufferWriter::init());
+        if flags & SOURCE_MAP != 0 {
+            let mut chunk: Option<bun_sourcemap::Chunk> = None;
+            let printed = printer::print_ast::<_, false, true>(&mut writer, arena, &ast, symbols, src, printer::Options { source_map_handler: Some(printer::SourceMapHandler::for_(&mut chunk)), ..opts });
+            return match printed {
+                Ok(_) => {
+                    let mappings = chunk.map(|c| c.buffer.list.to_vec()).unwrap_or_default();
+                    Ok([require, writer.ctx.written(), b"\0", &shift_first_column(&mappings, require.len() as i64)].concat())
+                }
+                Err(e) => Err(format!("print failed: {e:?}").into_bytes()),
+            };
+        }
         match printer::print_ast::<_, false, false>(&mut writer, arena, &ast, symbols, src, opts) {
             Ok(_) => Ok([require, writer.ctx.written()].concat()),
             Err(e) => Err(format!("print failed: {e:?}").into_bytes()),
         }
     })
+}
+
+const BASE64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+/// `mappings` with the generated column of the first line's first segment moved by `by` (the later segments are
+/// relative to it): for text put before the printed code on its first line.
+fn shift_first_column(mappings: &[u8], by: i64) -> Vec<u8> {
+    if by == 0 || mappings.first().is_none_or(|&c| c == b';') {
+        return mappings.to_vec();
+    }
+    // The first VLQ value: 5 bits per digit, continuation bit 32, sign in the lowest bit.
+    let (mut value, mut shift, mut end) = (0i64, 0, 0);
+    for (i, &c) in mappings.iter().enumerate() {
+        let Some(digit) = BASE64.iter().position(|&b| b == c) else { return mappings.to_vec() };
+        value |= ((digit & 31) as i64) << shift;
+        shift += 5;
+        if digit & 32 == 0 {
+            end = i + 1;
+            break;
+        }
+    }
+    let column = if value & 1 != 0 { -(value >> 1) } else { value >> 1 } + by;
+    let mut vlq = if column < 0 { ((-column) << 1) | 1 } else { column << 1 };
+    let mut out = Vec::with_capacity(mappings.len() + 4);
+    loop {
+        let mut digit = (vlq & 31) as usize;
+        vlq >>= 5;
+        if vlq > 0 {
+            digit |= 32;
+        }
+        out.push(BASE64[digit]);
+        if vlq == 0 {
+            break;
+        }
+    }
+    out.extend_from_slice(&mappings[end..]);
+    out
 }
 
 /// For `SYNC_ESM`: every import statement (left by the HMR transform, which rewrote the uses of its bindings as

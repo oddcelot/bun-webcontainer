@@ -159,12 +159,7 @@ pub fn __bun_jsc_wtf_string_hash(_wtf8: &[u8]) -> u32 {
 
 // ── highway kernels ──
 
-#[unsafe(no_mangle)]
-unsafe extern "C" fn highway_index_of_newline_or_non_ascii(p: *const u8, len: usize) -> usize {
-    // SAFETY: the caller passes a slice, as a pointer and a length.
-    let s = if len == 0 { &[][..] } else { unsafe { core::slice::from_raw_parts(p, len) } };
-    s.iter().position(|&c| c == b'\r' || c == b'\n' || c > 0x7F).unwrap_or(len)
-}
+// highway_index_of_newline_or_non_ascii: crates/wasm-stubs (the transpiler's source maps need it too).
 
 const P1: u64 = 0x9E3779B185EBCA87;
 const P2: u64 = 0xC2B2AE3D27D4EB4F;

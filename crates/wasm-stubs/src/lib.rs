@@ -16,6 +16,13 @@ mod extra {
     use bun_ast::{Expr, Log, Range, Source};
     use bun_js_parser::Macro::MacroContext;
 
+    /// Highway's first control (`\n`, `\r`, tab…) or non-ASCII byte (`len` if none): bun_sourcemap's line offset tables.
+    #[unsafe(no_mangle)]
+    unsafe extern "C" fn highway_index_of_newline_or_non_ascii(ptr: *const u8, len: usize) -> usize {
+        let bytes = if len == 0 { &[][..] } else { unsafe { core::slice::from_raw_parts(ptr, len) } };
+        bytes.iter().position(|&c| c < 0x20 || c > 127).unwrap_or(len)
+    }
+
     /// ECMAScript `Number::exponentiate`: unlike `powf`, NaN for `(±1, ±∞)` and any NaN exponent.
     #[unsafe(no_mangle)]
     extern "C" fn Bun__JSC__operationMathPow(x: f64, y: f64) -> f64 {
