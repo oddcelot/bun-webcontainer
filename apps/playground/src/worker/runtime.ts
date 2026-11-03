@@ -18,6 +18,7 @@ import { password } from "./password";
 import { Cookie, CookieMap } from "./cookie";
 import { importMetaResolve, resolveSync } from "./resolve";
 import { Transpiler } from "./transpiler";
+import { makeJSONL } from "./jsonl";
 import { codeError, fsError } from "./node/errors";
 import { hooks, type NodeSocket } from "./node/serve";
 import { flushDatabases } from "./node/sqlite";
@@ -985,6 +986,7 @@ async function main() {
     TOML: { parse: (input: unknown) => parseData(dataText(input, "toml"), "toml"), stringify: (value: unknown, replacer?: unknown, _space?: unknown) => tomlStringify(value, replacer) },
     JSONC: { parse: (input: unknown) => jsoncParse(input) },
     JSON5: { parse: (input: unknown) => parseData(dataText(input, "json5"), "json5"), stringify: (value: unknown, replacer?: unknown, space?: unknown) => json5Stringify(value, replacer, space) },
+    JSONL: makeJSONL(),
     password,
     Cookie,
     CookieMap,

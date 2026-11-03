@@ -26,11 +26,14 @@ tasks:
     inputs:
       - '@group(sources)'
   test:
-    # Console/inspect formatting against native bun on a corpus of values (scripts/inspect-corpus/diff.ts).
-    command: 'bun scripts/inspect-corpus/diff.ts'
+    # Console/inspect formatting against native bun on a corpus of values (scripts/inspect-corpus/diff.ts), and the
+    # data APIs that need no wasm (scripts/data-apis: Bun.JSONL).
+    script: 'bun scripts/inspect-corpus/diff.ts && bun scripts/data-apis/jsonl.ts'
     toolchains: ['bun']
     inputs:
       - 'scripts/inspect-corpus/**/*'
+      - 'scripts/data-apis/**/*'
+      - 'src/worker/jsonl.ts'
       - 'src/worker/inspect.ts'
       - 'src/worker/promises.ts'
       - 'src/worker/node/inspect.ts'
