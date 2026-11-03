@@ -1,7 +1,7 @@
 import { For, Show, createEffect, onSettled, untrack, useContext } from "solid-js";
 import { Select } from "@kobalte/core/select";
 import { TabItem, TabList } from "./Tabs";
-import { matches } from "../keymap";
+import { isMac, matches } from "../keymap";
 import { createPierre, createViewer } from "../editors/pierre";
 import type { CodeEditor } from "../editors/types";
 import { PREFIX, type Card } from "../preview";
@@ -32,6 +32,22 @@ function forwardKeys(e: KeyboardEvent) {
   const copy = new KeyboardEvent("keydown", e);
   dispatchEvent(copy);
   if (copy.defaultPrevented) e.preventDefault();
+}
+
+/**
+ * The server path a link in a preview page opens in a new tab with (Cmd-click, Ctrl-click off macOS, or a middle
+ * click), or undefined to let the click be. Same-origin links outside `/__preview` are the app's own paths, as the
+ * service worker reads them (sw.ts leavePreview).
+ */
+function newTabPath(e: MouseEvent): string | undefined {
+  const modified = e.button === 0 && (isMac ? e.metaKey : e.ctrlKey);
+  if (e.defaultPrevented || !(modified || e.button === 1)) return;
+  const a = (e.target as Element | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
+  if (!a || a.hasAttribute("download")) return;
+  const url = new URL(a.href);
+  if (url.origin !== location.origin) return;
+  const path = url.pathname.startsWith(`${PREFIX}/`) ? url.pathname.slice(PREFIX.length) : url.pathname;
+  return path + url.search;
 }
 
 /**
@@ -161,7 +177,20 @@ export function Preview() {
                     ref={(el) => p.frames.set(id, el)}
                     onLoad={(e) => {
                       p.loaded(id, e.currentTarget);
-                      e.currentTarget.contentWindow?.addEventListener("keydown", forwardKeys);
+                      const win = e.currentTarget.contentWindow;
+                      win?.addEventListener("keydown", forwardKeys);
+                      // A link opened "in a new tab" from a page opens a preview tab: a browser tab has no server.
+                      // In the background, as browsers do; with Shift, switched to.
+                      const openInTab = (e: MouseEvent) => {
+                        const path = newTabPath(e);
+                        if (path === undefined) return;
+                        e.preventDefault();
+                        const from = s.active;
+                        p.request(p.open(path));
+                        if (!e.shiftKey) p.activate(from);
+                      };
+                      win?.addEventListener("click", openInTab);
+                      win?.addEventListener("auxclick", openInTab);
                     }}
                   />
                   <Response card={tab.response} hidden={id !== s.active || tab.view !== "response"} />

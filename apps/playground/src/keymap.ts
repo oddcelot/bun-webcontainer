@@ -27,7 +27,7 @@ type Overrides = Partial<Record<Command, string | string[] | null>>;
 
 const STORAGE_KEY = "keymap";
 const MODIFIERS = ["mod", "ctrl", "alt", "shift", "meta"];
-const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+export const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
 type Chord = { ctrl: boolean; alt: boolean; shift: boolean; meta: boolean; key: string };
 

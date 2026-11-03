@@ -76,7 +76,7 @@ The console is not a full shell: no quotes, pipes, `&&`, `bunx`, or file command
 When your code starts a server (`Bun.serve`, `node:http`, or `export default { fetch }`), the preview shows it.
 
 - **Request bar:** send any method, path and body. The body is written in the same editor as files, highlighted as JSON, and each preview tab keeps its own. HTML responses open in the page; anything else shows status, headers and the body: JSON formatted, and JSON, HTML, CSS, JavaScript, XML and Markdown highlighted. A link or redirect in a page that leads to JSON or plain text shows it the same way, with its status but not its headers (the request isn't sent again; press Send for them).
-- **Tabs:** several previews at once.
+- **Tabs:** several previews at once. <kbd>Cmd</kbd>-click (<kbd>Ctrl</kbd>-click off macOS) or middle-click a link in a page to open it in a new preview tab in the background; add <kbd>Shift</kbd> to switch to it.
 - **Open in a new tab:** the page gets its own browser tab, still served by the playground (keep the playground tab open).
 - **Requests stay inside:** `fetch("/api/x")`, links, forms and redirects from the preview page reach your server.
 - **WebSockets:** the preview page's `WebSocket` connects to your server (`Bun.serve` `upgrade`, `node:http` `upgrade`, the `ws` package). `localhost:<port>` URLs pick the server on that port.
