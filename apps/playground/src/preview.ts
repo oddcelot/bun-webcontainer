@@ -37,15 +37,35 @@ export async function sendRequest(method: string, path: string, body: string): P
   const res = await fetch(PREFIX + path, init);
   const type = res.headers.get("content-type") ?? "";
   if (method === "GET" && type.startsWith("text/html")) return "page";
-  let text = await res.text();
-  if (/[/+]json\b/.test(type)) {
-    try {
-      text = JSON.stringify(JSON.parse(text), null, 2);
-    } catch {}
-  }
   const head = [...res.headers]
     .filter(([k]) => !SW_HEADERS.has(k))
     .map(([k, v]) => `${k}: ${v}`)
     .join("\n");
-  return { ok: res.ok, line: `${method} ${path}`, status: `${res.status} ${res.statusText}`.trim(), head, type, text };
+  return { ok: res.ok, line: `${method} ${path}`, status: `${res.status} ${res.statusText}`.trim(), head, type, text: pretty(type, await res.text()) };
+}
+
+/** JSON bodies indented, as the card shows them; anything else (or JSON that doesn't parse) as it came. */
+function pretty(type: string, text: string): string {
+  if (!/[/+]json\b/.test(type)) return text;
+  try {
+    return JSON.stringify(JSON.parse(text), null, 2);
+  } catch {
+    return text;
+  }
+}
+
+/**
+ * A frame that navigated to JSON or plain text (a link or redirect in a page) as a card, from the document it loaded:
+ * no second request, so the handler doesn't run twice. Its headers aren't readable from the document, and its status
+ * only where the browser reports it (PerformanceNavigationTiming.responseStatus). Null for anything else.
+ */
+export function cardFromFrame(path: string, frame: HTMLIFrameElement): Card | null {
+  const doc = frame.contentDocument;
+  const type = doc?.contentType ?? "";
+  if (!doc?.body || !/[/+]json\b|^text\/plain\b/.test(type)) return null;
+  const nav = frame.contentWindow?.performance.getEntriesByType("navigation")[0] as { responseStatus?: number } | undefined;
+  const code = nav?.responseStatus || 0;
+  // The browser shows such a document as one <pre> (Chrome adds its JSON viewer's controls around it).
+  const text = (doc.querySelector("body > pre") ?? doc.body).textContent ?? "";
+  return { ok: !code || code < 400, line: `GET ${path}`, status: code ? String(code) : "", head: "", type, text: pretty(type, text) };
 }

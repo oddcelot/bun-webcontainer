@@ -1,5 +1,5 @@
 import { createStore, flush, reconcile } from "solid-js";
-import { PREFIX, normalize, sendRequest, type Card } from "../preview";
+import { PREFIX, cardFromFrame, normalize, sendRequest, type Card } from "../preview";
 
 /** One preview tab: its own request, and the page (kept loaded while hidden) or response it shows. */
 export type PreviewTab = {
@@ -95,13 +95,22 @@ export function createPreviews() {
         });
       }
     },
-    /** A tab's page loaded: keep its path in sync when the page navigates itself (links, forms, redirects). */
+    /**
+     * A tab's page loaded: keep its path in sync when the page navigates itself (links, forms, redirects). Where that
+     * lands on JSON or plain text, the tab shows it as a response card, as if requested from the bar.
+     */
     loaded(id: number, frame: HTMLIFrameElement) {
       const loc = frame.contentWindow?.location;
       if (!loc?.pathname.startsWith(PREFIX)) return;
+      const path = loc.pathname.slice(PREFIX.length) + loc.search;
+      const card = cardFromFrame(path, frame);
       update(id, (t) => {
-        t.path = loc.pathname.slice(PREFIX.length) + loc.search;
-        t.title = frame.contentDocument?.title ?? "";
+        t.path = path;
+        t.title = card ? "" : (frame.contentDocument?.title ?? "");
+        if (!card) return;
+        if (t.response) reconcile(card)(t.response);
+        else t.response = card;
+        t.view = "response";
       });
     },
     /** Where the first tab requests before anything has been sent: the embed's `path` option. */
