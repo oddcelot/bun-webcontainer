@@ -13,6 +13,7 @@ bun_alloc = { path = "../../bun/src/bun_alloc" }
 bun_ast = { path = "../../bun/src/ast" }
 bun_js_parser = { path = "../../bun/src/js_parser" }
 bun_js_printer = { path = "../../bun/src/js_printer" }
+bun_sourcemap = { path = "../../bun/src/sourcemap" }
 # Bun.Transpiler: define values (parse_env_json) and the data loaders
 bun_parsers = { path = "../../bun/src/parsers" }
 bun_core = { path = "../../bun/src/bun_core" }

@@ -76,7 +76,7 @@ Servers answer requests from the [preview](/guides/features/#preview), not from 
 | `req.cookies` | 🟡 Partial | A `Bun.CookieMap` over the request's Cookie header, in `routes` handlers (a `fetch` handler's request has none, as in Bun). What a handler sets or deletes in it by the time it returns goes out as Set-Cookie headers after the response's own. Not sent on a WebSocket upgrade, which Bun does. |
 | Cookies | ✅ Works | Kept in a cookie jar on the page. `cookies` in the console lists them. |
 | TLS | ❌ Missing | |
-| `error`, `idleTimeout`, `maxRequestBodySize`, `unix`, `reusePort` | ❌ Missing | A throwing handler returns a plain-text 500. |
+| `error`, `idleTimeout`, `maxRequestBodySize`, `unix`, `reusePort` | ❌ Missing | A throwing handler returns a plain-text 500; the error prints as Bun's development server prints it, then `GET - /path failed`. |
 | `server.requestIP`, `server.timeout`, `server.ref`/`unref` | ❌ Missing | |
 
 Routes with parameters, JSON and a streamed response. Send requests from the bar above the preview:
