@@ -98,17 +98,20 @@ export function matches(command: Command, e: KeyboardEvent): boolean {
   return chords(command).some((c) => c.key === key && c.ctrl === e.ctrlKey && c.alt === e.altKey && c.shift === e.shiftKey && c.meta === e.metaKey);
 }
 
-/** A chord for display: `⌘⇧↵` on macOS, `Ctrl+Shift+Enter` elsewhere. */
-export function formatChord(chord: string): string {
+/** A chord's keys for display, one per key: `⌘ ⇧ ↵` on macOS, `Ctrl Shift Enter` elsewhere. */
+export function chordKeys(chord: string): string[] {
   const p = parse(chord);
-  if (typeof p === "string") return chord;
+  if (typeof p === "string") return [chord];
   const key = p.key.length === 1 ? p.key.toUpperCase() : p.key[0].toUpperCase() + p.key.slice(1);
   if (isMac) {
     const symbol: Record<string, string> = { Enter: "↵", Escape: "Esc", Delete: "⌦", Backspace: "⌫", Arrowup: "↑", Arrowdown: "↓", Arrowleft: "←", Arrowright: "→" };
-    return (p.ctrl ? "⌃" : "") + (p.alt ? "⌥" : "") + (p.shift ? "⇧" : "") + (p.meta ? "⌘" : "") + (symbol[key] ?? key);
+    return [p.ctrl && "⌃", p.alt && "⌥", p.shift && "⇧", p.meta && "⌘", symbol[key] ?? key].filter((k): k is string => !!k);
   }
-  return [p.ctrl && "Ctrl", p.alt && "Alt", p.shift && "Shift", p.meta && "Meta", key].filter(Boolean).join("+");
+  return [p.ctrl && "Ctrl", p.alt && "Alt", p.shift && "Shift", p.meta && "Meta", key].filter((k): k is string => !!k);
 }
+
+/** A chord for display: `⌘⇧↵` on macOS, `Ctrl+Shift+Enter` elsewhere. */
+export const formatChord = (chord: string) => chordKeys(chord).join(isMac ? "" : "+");
 
 /** The overrides as JSON for editing. */
 export const overridesText = () => JSON.stringify(overrides(), null, 2);
