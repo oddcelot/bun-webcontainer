@@ -39,6 +39,10 @@ export function AppearancePicker(props: AppearanceProps) {
   const [kept, setKept] = createSignal("");
   const restore = () => props.family !== kept() && props.preview(kept());
   const [open, setOpen] = createSignal(false);
+  // The popover portals to <body>, unless the picker sits in a top-layer element (a [popover] or <dialog>, like
+  // Starlight's mobile menu), which would cover anything outside it: then into that element.
+  let root: HTMLSpanElement | undefined;
+  const layer = () => root?.closest<HTMLElement>("[popover], dialog") ?? undefined;
   const onOpenChange = (next: boolean) => {
     setOpen(next);
     if (next) setKept(current().light);
@@ -46,45 +50,47 @@ export function AppearancePicker(props: AppearanceProps) {
   };
 
   return (
-    <Popover placement="bottom-end" gutter={6} open={open()} onOpenChange={onOpenChange}>
-      <Tip
-        as={Popover.Trigger}
-        id={props.id}
-        class="select-trigger appearance-trigger"
-        placement="bottom-end"
-        tip={`Appearance: ${current().name}, ${props.mode}`}
-        aria-label="Appearance"
-      >
-        <Swatch light={current().light} />
-        <i class={MODES.find(([m]) => m === props.mode)?.[1]} aria-hidden="true" />
-        <i class="chevron i-lucide-chevron-down" aria-hidden="true" />
-      </Tip>
-      <Popover.Portal>
-        <Popover.Content class="appearance">
-          {/* One mode is always on: clicking the pressed one again (onChange(null)) changes nothing. */}
-          <ToggleGroup class="segmented" aria-label="Color scheme" value={props.mode} onChange={(mode) => mode && props.setMode(mode as Mode)}>
-            <For each={MODES}>
-              {([mode, icon, label]) => (
-                <ToggleGroup.Item value={mode} title={`${label} color scheme`}>
-                  <i class={icon} aria-hidden="true" />
-                  {label}
-                </ToggleGroup.Item>
-              )}
-            </For>
-          </ToggleGroup>
-          <FamilyListbox
-            value={kept()}
-            onPick={(light) => {
-              setKept(light);
-              props.pick(light); // previewed already, unless picked from the keyboard without moving focus
-            }}
-            onFocusFamily={(light) => props.preview(light)}
-            onPointerLeave={restore}
-            onEscape={() => onOpenChange(false)}
-          />
-          {props.children}
-        </Popover.Content>
-      </Popover.Portal>
-    </Popover>
+    <span ref={root} class="appearance-root">
+      <Popover placement="bottom-end" gutter={6} open={open()} onOpenChange={onOpenChange}>
+        <Tip
+          as={Popover.Trigger}
+          id={props.id}
+          class="select-trigger appearance-trigger"
+          placement="bottom-end"
+          tip={`Appearance: ${current().name}, ${props.mode}`}
+          aria-label="Appearance"
+        >
+          <Swatch light={current().light} />
+          <i class={MODES.find(([m]) => m === props.mode)?.[1]} aria-hidden="true" />
+          <i class="chevron i-lucide-chevron-down" aria-hidden="true" />
+        </Tip>
+        <Popover.Portal mount={layer()}>
+          <Popover.Content class="appearance">
+            {/* One mode is always on: clicking the pressed one again (onChange(null)) changes nothing. */}
+            <ToggleGroup class="segmented" aria-label="Color scheme" value={props.mode} onChange={(mode) => mode && props.setMode(mode as Mode)}>
+              <For each={MODES}>
+                {([mode, icon, label]) => (
+                  <ToggleGroup.Item value={mode} title={`${label} color scheme`}>
+                    <i class={icon} aria-hidden="true" />
+                    {label}
+                  </ToggleGroup.Item>
+                )}
+              </For>
+            </ToggleGroup>
+            <FamilyListbox
+              value={kept()}
+              onPick={(light) => {
+                setKept(light);
+                props.pick(light); // previewed already, unless picked from the keyboard without moving focus
+              }}
+              onFocusFamily={(light) => props.preview(light)}
+              onPointerLeave={restore}
+              onEscape={() => onOpenChange(false)}
+            />
+            {props.children}
+          </Popover.Content>
+        </Popover.Portal>
+      </Popover>
+    </span>
   );
 }
