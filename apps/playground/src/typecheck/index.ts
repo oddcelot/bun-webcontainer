@@ -1,6 +1,6 @@
 import type { CompletionKind, EditorCompletion, EditorCompletionDetails, EditorCompletions, EditorDiagnostic, EditorHover, EditorSignatureHelp } from "../editors/types";
 import type { FileData, VFS } from "@runbun/vfs";
-import { nearestTsconfig } from "../moduleServer";
+import { nearestTsconfig } from "../tsconfig";
 import type { LspCompletionItem } from "./tsrsLs";
 import type { LsOp, LsReply, LsRequest } from "./worker";
 
