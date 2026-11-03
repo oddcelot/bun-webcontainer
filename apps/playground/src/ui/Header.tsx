@@ -1,5 +1,4 @@
 import { useContext } from "solid-js";
-import { DropdownMenu } from "@kobalte/core/dropdown-menu";
 import { DOCS } from "../base";
 import { formatChord, keysFor } from "../keymap";
 import logo from "../bun-logo.svg";
@@ -9,6 +8,7 @@ import { ShareMenu } from "./ShareMenu";
 import { Shortcuts } from "./Shortcuts";
 import { ThemePicker } from "./ThemePicker";
 import { Title } from "./Title";
+import { Menu, MenuItem, MenuTrigger } from "@runbun/ui/solid/Menu";
 import { Tip } from "@runbun/ui/solid/Tip";
 
 const CANT_RUN = "This browser can't run code here";
@@ -38,19 +38,16 @@ export function Header() {
         >
           <i class="i-lucide-play" aria-hidden="true" /> Run
         </Tip>
-        <DropdownMenu placement="bottom-start" gutter={6}>
-          <Tip as={DropdownMenu.Trigger} id="run-more" disabled={!s.canRun} tip={s.canRun ? "More" : CANT_RUN} aria-label="More run actions">
-            <i class="i-lucide-chevron-down" aria-hidden="true" />
-          </Tip>
-          <DropdownMenu.Portal>
-            <DropdownMenu.Content class="select-menu menu">
-              <DropdownMenu.Item class="select-option" disabled={!!s.busy.install} onSelect={() => s.ready() && app.install()}>
-                <i class="i-lucide-download" aria-hidden="true" />
-                <DropdownMenu.ItemLabel class="name">bun install</DropdownMenu.ItemLabel>
-              </DropdownMenu.Item>
-            </DropdownMenu.Content>
-          </DropdownMenu.Portal>
-        </DropdownMenu>
+        <Menu
+          placement="bottom-start"
+          trigger={
+            <Tip as={MenuTrigger} id="run-more" disabled={!s.canRun} tip={s.canRun ? "More" : CANT_RUN} aria-label="More run actions">
+              <i class="i-lucide-chevron-down" aria-hidden="true" />
+            </Tip>
+          }
+        >
+          <MenuItem icon="i-lucide-download" label="bun install" disabled={!!s.busy.install} onSelect={() => s.ready() && app.install()} />
+        </Menu>
       </span>
       <Tip as="a" id="docs" href={DOCS} target="_blank" rel="noopener" tip="Documentation: what works, and how (opens in a new tab)">
         <i class="i-lucide-book-open" aria-hidden="true" /> Docs

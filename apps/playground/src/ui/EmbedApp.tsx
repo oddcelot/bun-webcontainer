@@ -1,5 +1,5 @@
 import { For, Show, createContext, createMemo, useContext } from "solid-js";
-import { DropdownMenu } from "@kobalte/core/dropdown-menu";
+import { Menu, MenuCheckItem, MenuGroup, MenuItem, MenuSeparator, MenuTrigger } from "@runbun/ui/solid/Menu";
 import logo from "../bun-logo.svg";
 import { COST } from "../embed/config";
 import type { Embed } from "../embed/main";
@@ -159,59 +159,46 @@ function EmbedMenu() {
   const e = useContext(EmbedContext);
   const open = (list: [Feature, string][]) => list.filter(([f]) => !e.locked.has(f));
   const Toggle = (props: { feature: Feature; label: string }) => (
-    <DropdownMenu.Item class="select-option" closeOnSelect={false} onSelect={() => e.setFeatures({ [props.feature]: !e.has(props.feature) }, true)}>
-      <span class="check" aria-hidden="true">
-        <Show when={e.has(props.feature)}>
-          <i class="i-lucide-check" />
-        </Show>
-      </span>
-      <DropdownMenu.ItemLabel class="name">{props.label}</DropdownMenu.ItemLabel>
+    <MenuCheckItem checked={e.has(props.feature)} label={props.label} onSelect={() => e.setFeatures({ [props.feature]: !e.has(props.feature) }, true)}>
       <Show when={!e.has(props.feature) && COST[props.feature]}>{(cost) => <span class="cost">{cost()}</span>}</Show>
-    </DropdownMenu.Item>
+    </MenuCheckItem>
   );
   return (
-    <DropdownMenu placement="bottom-end" gutter={6}>
-      <DropdownMenu.Trigger class="more" aria-label="More">
-        <i class="i-lucide-ellipsis" aria-hidden="true" />
-      </DropdownMenu.Trigger>
-      <DropdownMenu.Portal>
-        <DropdownMenu.Content class="select-menu menu embed-menu">
-          <DropdownMenu.Group>
-            <DropdownMenu.GroupLabel class="select-section">View</DropdownMenu.GroupLabel>
-            <For each={open(PANES)}>{([f, label]) => <Toggle feature={f} label={label} />}</For>
-          </DropdownMenu.Group>
-          <Show when={open(TOOLS).length}>
-            <DropdownMenu.Group>
-              <DropdownMenu.GroupLabel class="select-section">Tools</DropdownMenu.GroupLabel>
-              <For each={open(TOOLS)}>{([f, label]) => <Toggle feature={f} label={label} />}</For>
-            </DropdownMenu.Group>
-          </Show>
-          <DropdownMenu.Separator class="separator" />
-          <Show when={e.has("format")}>
-            <DropdownMenu.Item class="select-option" disabled={!app.workspace.state.active} onSelect={() => app.workspace.format()}>
-              <i class="i-lucide-wand-sparkles" aria-hidden="true" />
-              <DropdownMenu.ItemLabel class="name">Format file</DropdownMenu.ItemLabel>
-            </DropdownMenu.Item>
-          </Show>
-          <Show when={e.has("install")}>
-            <DropdownMenu.Item class="select-option" disabled={!app.session.canRun || !!app.session.busy.install} onSelect={() => app.session.ready() && e.install()}>
-              <i class="i-lucide-download" aria-hidden="true" />
-              <DropdownMenu.ItemLabel class="name">bun install</DropdownMenu.ItemLabel>
-            </DropdownMenu.Item>
-          </Show>
-          <DropdownMenu.Item class="select-option" onSelect={() => void e.reset()}>
-            <i class="i-lucide-rotate-ccw" aria-hidden="true" />
-            <DropdownMenu.ItemLabel class="name">Reset</DropdownMenu.ItemLabel>
-          </DropdownMenu.Item>
-          <Show when={e.has("open")}>
-            <DropdownMenu.Item class="select-option" onSelect={() => void e.openInPlayground()}>
-              <img src={logo} alt="" width="14" height="12" />
-              <DropdownMenu.ItemLabel class="name">Open in runbun.dev</DropdownMenu.ItemLabel>
-              <i class="i-lucide-arrow-up-right" aria-hidden="true" />
-            </DropdownMenu.Item>
-          </Show>
-        </DropdownMenu.Content>
-      </DropdownMenu.Portal>
-    </DropdownMenu>
+    <Menu
+      placement="bottom-end"
+      class="embed-menu"
+      trigger={
+        <MenuTrigger class="more" aria-label="More">
+          <i class="i-lucide-ellipsis" aria-hidden="true" />
+        </MenuTrigger>
+      }
+    >
+      <MenuGroup label="View">
+        <For each={open(PANES)}>{([f, label]) => <Toggle feature={f} label={label} />}</For>
+      </MenuGroup>
+      <Show when={open(TOOLS).length}>
+        <MenuGroup label="Tools">
+          <For each={open(TOOLS)}>{([f, label]) => <Toggle feature={f} label={label} />}</For>
+        </MenuGroup>
+      </Show>
+      <MenuSeparator />
+      <Show when={e.has("format")}>
+        <MenuItem icon="i-lucide-wand-sparkles" label="Format file" disabled={!app.workspace.state.active} onSelect={() => app.workspace.format()} />
+      </Show>
+      <Show when={e.has("install")}>
+        <MenuItem
+          icon="i-lucide-download"
+          label="bun install"
+          disabled={!app.session.canRun || !!app.session.busy.install}
+          onSelect={() => app.session.ready() && e.install()}
+        />
+      </Show>
+      <MenuItem icon="i-lucide-rotate-ccw" label="Reset" onSelect={() => void e.reset()} />
+      <Show when={e.has("open")}>
+        <MenuItem icon={<img src={logo} alt="" width="14" height="12" />} label="Open in runbun.dev" onSelect={() => void e.openInPlayground()}>
+          <i class="i-lucide-arrow-up-right" aria-hidden="true" />
+        </MenuItem>
+      </Show>
+    </Menu>
   );
 }
