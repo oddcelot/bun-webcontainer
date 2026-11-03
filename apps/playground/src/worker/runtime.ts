@@ -11,6 +11,7 @@ import { Glob } from "./glob";
 import { installConsole, table } from "./console";
 import { bunInspect, formatLog as formatValues, installWebInspect } from "./inspect";
 import { trackBodies } from "./bodies";
+import { fulfilled, tracked, trackedFn } from "./promises";
 import { frameMapper, previewSource } from "./sourceMaps";
 import { json5Stringify, tomlStringify, yamlStringify } from "./dataStringify";
 import { password } from "./password";
@@ -693,25 +694,26 @@ class BunFile extends Blob {
   get lastModified() {
     return vfs.mtimes.get(this.name) ?? Date.now();
   }
-  async exists() {
-    return vfs.files.has(this.name);
+  // Bun's reads settle a tick later (exists() before it returns): their promises show their state in console.log.
+  exists() {
+    return fulfilled(vfs.files.has(this.name));
   }
   #read() {
     const d = vfs.readBytes(this.name);
     if (d === undefined) throw fsError("ENOENT", "open", "/" + this.name);
     return d.slice(this.#start, this.#end);
   }
-  async bytes() {
-    return this.#read();
+  bytes() {
+    return tracked((async () => this.#read())());
   }
-  async arrayBuffer() {
-    return this.#read().buffer as ArrayBuffer;
+  arrayBuffer() {
+    return tracked((async () => this.#read().buffer as ArrayBuffer)());
   }
-  async text() {
-    return new TextDecoder().decode(this.#read());
+  text() {
+    return tracked((async () => new TextDecoder().decode(this.#read()))());
   }
-  async json() {
-    return JSON.parse(await this.text());
+  json() {
+    return tracked((async () => JSON.parse(new TextDecoder().decode(this.#read())))());
   }
   stream() {
     try {
@@ -730,10 +732,10 @@ class BunFile extends Blob {
     return new BunFile("/" + this.name, type ?? "", this.#start + from, this.#start + to);
   }
   write(data: unknown) {
-    return write(this, data);
+    return tracked(writeFile(this, data));
   }
-  async delete() {
-    (builtins.fs as { rmSync(p: string): void }).rmSync("/" + this.name);
+  delete() {
+    return tracked((async () => (builtins.fs as { rmSync(p: string): void }).rmSync("/" + this.name))());
   }
   async unlink() {
     return this.delete();
@@ -746,7 +748,7 @@ class BunFile extends Blob {
       const all = new Uint8Array(parts.reduce((n, p) => n + p.byteLength, 0));
       let o = 0;
       for (const p of parts) all.set(p, (o += p.byteLength) - p.byteLength);
-      await write(this, all);
+      await writeFile(this, all);
       return all.byteLength;
     };
     return {
@@ -772,7 +774,7 @@ class BunFile extends Blob {
 const stdout = new BunFile("/dev/stdout");
 const stderr = new BunFile("/dev/stderr");
 
-async function write(dest: string | URL | BunFile, data: unknown): Promise<number> {
+async function writeFile(dest: string | URL | BunFile, data: unknown): Promise<number> {
   let out: string | Uint8Array;
   if (typeof data === "string") out = data;
   else if (data instanceof BunFile) out = await data.bytes();
@@ -868,7 +870,7 @@ async function build(opts: BuildOptions) {
     outputs.push(Object.assign(blob, { path, kind: o.kind as BuildArtifact["kind"], loader, hash: o.hash && o.hash !== "0" ? o.hash : null, sourcemap: null as BuildArtifact | null }));
   }
   for (const o of outputs) o.sourcemap = outputs.find((m) => m.kind === "sourcemap" && m.path === `${o.path}.map`) ?? null;
-  if (outdir) for (const o of outputs) await write(o.path, o);
+  if (outdir) for (const o of outputs) await writeFile(o.path, o);
   return { success: true, outputs, logs };
 }
 
@@ -877,7 +879,7 @@ async function build(opts: BuildOptions) {
  * A relative URL is invalid, as in Bun: the worker's own URL would make it a request to the playground.
  */
 const networkFetch = globalThis.fetch;
-globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+const fileFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = input instanceof Request ? input.url : String(input);
   if (!URL.canParse(url)) throw Object.assign(new TypeError("fetch() URL is invalid"), { code: "ERR_INVALID_URL" });
   if (!url.startsWith("file:")) return networkFetch(input, init);
@@ -886,6 +888,9 @@ globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   if (data === undefined) throw new TypeError(`fetch failed: no such file /${path}`);
   return new Response(data.slice());
 };
+globalThis.fetch = trackedFn(function fetch(input: RequestInfo | URL, init?: RequestInit) {
+  return fileFetch(input, init);
+}) as typeof fetch;
 
 const HTML_ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#x27;" };
 /** `Bun.escapeHTML`: like Bun's, non-strings are stringified first. */
@@ -948,7 +953,9 @@ async function main() {
     deepEquals: (a: unknown, b: unknown, strict = false) => isDeepStrictEqual(a, b, strict),
     escapeHTML,
     which: () => null,
-    sleep: (ms: number) => new Promise((r) => setTimeout(r, ms)),
+    sleep: trackedFn(function sleep(ms: number) {
+      return new Promise<void>((r) => setTimeout(r, ms));
+    }),
     sleepSync,
     revision: BUN_REVISION,
     nanoseconds: () => Math.round(performance.now() * 1e6),
@@ -957,7 +964,9 @@ async function main() {
       satisfies: semver.satisfies,
     },
     file: (path: string | URL, opts?: { type?: string }) => new BunFile(path instanceof URL ? decodeURIComponent(path.pathname) : path, opts?.type),
-    write,
+    write: trackedFn(function write(dest: string | URL | BunFile, data: unknown) {
+      return writeFile(dest, data);
+    }),
     serve: (opts: ServeOptions) => createInstance(opts).server,
     build,
     CryptoHasher,

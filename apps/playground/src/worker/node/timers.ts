@@ -1,3 +1,5 @@
+import { tracked } from "../promises";
+
 const native = {
   setTimeout: globalThis.setTimeout.bind(globalThis),
   clearTimeout: globalThis.clearTimeout.bind(globalThis),
@@ -41,12 +43,13 @@ const setImmediate = (fn: Fn, ...args: unknown[]) => new Timeout(native.setTimeo
 
 const abortError = () => Object.assign(new Error("The operation was aborted"), { name: "AbortError", code: "ABORT_ERR" });
 
+/** Its promise shows its state in console.log once settled (promises.ts). */
 function sleep<T>(ms?: number, value?: T, opts?: { signal?: AbortSignal }): Promise<T> {
-  return new Promise((resolve, reject) => {
+  return tracked(new Promise((resolve, reject) => {
     if (opts?.signal?.aborted) return reject(abortError());
     const t = native.setTimeout(() => resolve(value as T), ms);
     opts?.signal?.addEventListener("abort", () => (native.clearTimeout(t), reject(abortError())));
-  });
+  }));
 }
 
 export const promises = {

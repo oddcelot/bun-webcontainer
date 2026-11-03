@@ -5,6 +5,7 @@ import { codeError, fsError } from "./errors";
 import path from "./path";
 import { Readable, Writable } from "./stream";
 import { fileURLToPath } from "./url";
+import { tracked } from "../promises";
 
 type Mirror = (op: "write" | "mkdir" | "remove" | "rename", ...args: unknown[]) => void;
 type Any = any;
@@ -794,12 +795,13 @@ Object.assign(fs, callbacks, {
   unwatchFile,
 });
 
+// Their promises show their state in console.log once settled (promises.ts).
 const promises: Record<string, any> = { constants };
 for (const n of "readFile writeFile appendFile stat lstat readdir mkdir rm rmdir unlink rename copyFile cp access realpath readlink symlink link chmod chown lchown utimes lutimes truncate mkdtemp".split(" ")) {
   const fn = sync[n + "Sync"];
-  promises[n] = async (...args: unknown[]) => fn(...args);
+  promises[n] = (...args: unknown[]) => tracked((async () => fn(...args))());
 }
-promises.open = async (p: unknown, flags?: string | number, mode?: number) => new FileHandle(openSync(p, flags, mode));
+promises.open = (p: unknown, flags?: string | number, mode?: number) => tracked((async () => new FileHandle(openSync(p, flags, mode)))());
 promises.watch = (p: unknown, opts?: { signal?: AbortSignal }) => {
   toPath(p);
   return {
