@@ -31,3 +31,10 @@ tasks:
     options:
       cache: false
       runFromWorkspaceRoot: true
+  changelog:
+    # Draft of CHANGELOG.md's next section from the Changelog trailers since the last v* tag (cliff.toml). Needs git-cliff
+    # (Brewfile). `-- --tag v0.2.0` heads it with the version.
+    command: 'git-cliff --unreleased'
+    options:
+      cache: false
+      runFromWorkspaceRoot: true
