@@ -348,7 +348,11 @@ async function openSocket(inst: Instance, port: MessagePort, path: string, heade
     if (setCookies.length) post({ type: "cookies", path, setCookies });
   });
   try {
-    await dispatch(inst, req);
+    const { res, setCookies } = await dispatch(inst, req);
+    // Not upgraded: as in Bun, the handler's Response goes back with its Set-Cookie headers, then those of what it
+    // set or deleted in `req.cookies`. The page's socket only fails; the cookies go to the jar all the same.
+    const all = ws ? [] : [...(res instanceof Response ? res.headers.getSetCookie() : []), ...setCookies];
+    if (all.length) post({ type: "cookies", path, setCookies: all });
   } catch (err) {
     console.error(err);
   }

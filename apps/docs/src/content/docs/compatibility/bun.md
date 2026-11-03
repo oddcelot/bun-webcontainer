@@ -75,7 +75,7 @@ Servers answer requests from the [preview](/guides/features/#preview), not from 
 | `server.url`, `port`, `hostname` | ✅ Works | `port: 0` picks a port from 40001. |
 | `export default { fetch }` | ✅ Works | Served automatically, as in Bun (Hono, Elysia). |
 | Streaming responses, Server-Sent Events | ✅ Works | |
-| `req.cookies` | ✅ Works | A `Bun.CookieMap` over the request's Cookie header, in `routes` handlers (a `fetch` handler's request has none, as in Bun). What a handler sets or deletes in it by the time it returns goes out as Set-Cookie headers after the response's own; on a WebSocket upgrade, the Set-Cookie headers of `upgrade`'s `headers` option and what the handler set or deleted before calling `server.upgrade(req)` go to the cookie jar, as Bun sends them on the 101. |
+| `req.cookies` | ✅ Works | A `Bun.CookieMap` over the request's Cookie header, in `routes` handlers (a `fetch` handler's request has none, as in Bun). What a handler sets or deletes in it by the time it returns goes out as Set-Cookie headers after the response's own; on a WebSocket upgrade, the Set-Cookie headers of `upgrade`'s `headers` option and what the handler set or deleted before calling `server.upgrade(req)` go to the cookie jar, as Bun sends them on the 101; a handler that returns a Response instead of upgrading sends that Response's Set-Cookie headers and its `req.cookies` changes, which go to the jar too. |
 | Cookies | ✅ Works | Kept in a cookie jar on the page. `cookies` in the console lists them. |
 | TLS | ❌ Missing | |
 | `error`, `idleTimeout`, `maxRequestBodySize`, `unix`, `reusePort` | ❌ Missing | A throwing handler returns a plain-text 500; the error prints as Bun's development server prints it, then `GET - /path failed`. |
