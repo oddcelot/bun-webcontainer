@@ -15,6 +15,7 @@ export const FLAGS = {
   PACKAGE_TYPE_COMMONJS: 4096,
   PACKAGE_TYPE_MODULE: 8192,
   SYNC_ESM: 16384,
+  SOURCE_MAP: 32768,
 } as const;
 
 /** transpile-wasm's loader numbers (`Loader::from_u32`), by `Bun.Transpiler` loader name. */

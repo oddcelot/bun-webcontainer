@@ -5,7 +5,7 @@ import { settledPromise } from "./promises";
  * Bun's value formatter (`console.log`, `Bun.inspect`): a port of bun/src/jsc/ConsoleObject.rs's `Formatter`, quirks
  * included. Objects print one property per line with a trailing comma, arrays break once Bun's running estimate of
  * the line passes 80 columns, strings inside values get double quotes, and errors print `error: message` and their
- * frames (without Bun's source preview). `util.inspect` is Node's format (node/util.ts), not this one.
+ * frames, after Bun's source preview where the worker knows the top frame's file and line. `util.inspect` is\n * Node's format (node/util.ts), not this one.
  *
  * Differences that can't be ported: a promise's state isn't readable synchronously, so promises print `<pending>`
  * unless promises.ts saw them settle; a Proxy prints as what its traps return.
@@ -959,6 +959,8 @@ class Formatter {
       const message = str(safeGet(err, "message"));
       const codeValue = safeGet(err, "code");
       const code = typeof codeValue === "string" && /^[\x00-\xff]*$/.test(codeValue) ? codeValue : undefined;
+      const frames = stackFrames(err);
+      this.sourcePreview(frames[0]);
       this.nameAndMessage(name, message, code);
 
       const appended: Error[] = [];
@@ -1014,7 +1016,7 @@ class Formatter {
       }
       if (!first) this.w("\n");
 
-      for (const frame of stackFrames(err)) {
+      for (const frame of frames) {
         const m = /^(.*?) \((.*)\)$/.exec(frame);
         if (m) this.w(this.p("<r>      <d>at <r>") + m[1] + this.p("<d> (<r>") + this.location(m[2]) + this.p("<d>)<r>") + "\n");
         else this.w(this.p("<r>      <d>at <r>") + this.location(frame) + "\n");
@@ -1047,6 +1049,32 @@ class Formatter {
     if (m[2]) s += this.p("<d>:<r><yellow>") + m[2] + this.p("<r>");
     if (m[3]) s += this.p("<d>:<yellow>") + m[3] + this.p("<r>");
     return s;
+  }
+
+  /**
+   * Bun's source preview for an error's top frame: up to six lines ending at its line, numbered, and a caret under
+   * its column (VirtualMachine::print_error_instance_body). Only where the frame's file and line are known.
+   */
+  sourcePreview(frame: string | undefined) {
+    const m = frame && /^(?:.* \()?(.+):(\d+):(\d+)\)?$/.exec(frame);
+    if (!m) return;
+    const source = sourceOf(m[1]);
+    const line = +m[2] - 1;
+    const column = +m[3] - 1;
+    const lines = source?.split("\n");
+    if (!lines || line >= lines.length) return;
+    const first = Math.max(0, line - 5);
+    const width = String(line + 1).length;
+    for (let i = first; i <= line; i++) {
+      const text = lines[i].replace(/^\n+|\n+$/g, "").replace(/[\t \r]+$/, "");
+      const shown = text.length > 1024 ? text.slice(0, 1024) : text;
+      const n = String(i + 1);
+      this.w(" ".repeat(width - n.length) + this.p(`<r><b>${n} |<r> `) + shown + (shown.length < text.length && this.colors ? this.p("<r><d> | ... truncated <r>") : "") + "\n");
+      if (i === line && shown.length === text.length) {
+        if (text.length < 512 || column > 512) this.w(" ".repeat(width + 3 + Math.max(0, column)) + this.p("<red><b>^<r>") + "\n");
+        else this.w("\n");
+      }
+    }
   }
 
   nameAndMessage(name: string, message: string, code: string | undefined) {
@@ -1099,13 +1127,16 @@ function toInt(v: unknown): number | undefined {
 
 let mapFrame = (frame: string) => frame;
 let topLevelDir = "";
+let sourceOf = (_path: string): string | undefined => undefined;
 /**
  * How an error's stack frames read (`fn (location)`): the worker turns served-module URLs into project paths
- * under `dir` (with a trailing slash), which colored output dims like Bun dims its working directory.
+ * under `dir` (with a trailing slash), which colored output dims like Bun dims its working directory. `source`
+ * gives a mapped frame's file text for the source preview (undefined where its lines aren't the file's).
  */
-export function setFrameMapper(fn: (frame: string) => string, dir = "") {
+export function setFrameMapper(fn: (frame: string) => string, dir = "", source?: (path: string) => string | undefined) {
   mapFrame = fn;
   topLevelDir = dir;
+  if (source) sourceOf = source;
 }
 
 /** An error's frames from its `stack` (V8's `    at …` lines, or SpiderMonkey/JSC's `fn@url:1:2`). */
@@ -1115,12 +1146,11 @@ function stackFrames(err: Error): string[] {
   const out: string[] = [];
   for (const line of stack.split("\n")) {
     let m = /^\s+at (.*)$/.exec(line);
-    if (m) {
-      out.push(mapFrame(m[1]));
-      continue;
-    }
-    m = /^(.*)@(.+:\d+:\d+)$/.exec(line);
-    if (m) out.push(mapFrame(m[1] ? `${m[1]} (${m[2]})` : m[2]));
+    let frame: string | undefined;
+    if (m) frame = mapFrame(m[1]);
+    else if ((m = /^(.*)@(.+:\d+:\d+)$/.exec(line))) frame = mapFrame(m[1] ? `${m[1]} (${m[2]})` : m[2]);
+    // "": a frame the mapper hides.
+    if (frame) out.push(frame);
   }
   return out;
 }

@@ -4,7 +4,7 @@ import { FLAGS, LOADER_NUMBERS, type RuntimeOptions } from "./options";
 // Bun's own transpiler (bun_js_parser + bun_js_printer) compiled to wasm64; see crates/transpile-wasm.
 // Output matches `bun build --no-bundle --target=browser`.
 
-const { RUNTIME_TRANSPILER, IMPORT_META_REQUIRE, PACKAGE_TYPE_COMMONJS, PACKAGE_TYPE_MODULE, SYNC_ESM } = FLAGS;
+const { RUNTIME_TRANSPILER, IMPORT_META_REQUIRE, PACKAGE_TYPE_COMMONJS, PACKAGE_TYPE_MODULE, SYNC_ESM, SOURCE_MAP } = FLAGS;
 
 type Exports = {
   memory: WebAssembly.Memory;
@@ -136,11 +136,12 @@ const dec = new TextDecoder();
  * JS/TS to browser JS. With `resolve`, every import specifier Bun's parser found (static import, `export ... from`,
  * `import("literal")`; never `require()` or text in strings/comments) is replaced by its result before printing.
  * With `metaRequire`, a file that uses a free `require` starts with `var {require}=import.meta;`, as Bun prints ES
- * modules for its runtime.
+ * modules for its runtime. With `sourceMap`, the JS is followed by a NUL and its source map's `mappings` (see
+ * src/sourceMap.ts).
  */
-export async function transpile(source: string, path: string, tsconfig: TsconfigFlags = {}, resolve?: Resolver, metaRequire = false): Promise<string> {
+export async function transpile(source: string, path: string, tsconfig: TsconfigFlags = {}, resolve?: Resolver, metaRequire = false, sourceMap = false): Promise<string> {
   const w = await (ready ??= load());
-  const flags = tsFlags(tsconfig) | (metaRequire ? IMPORT_META_REQUIRE : 0);
+  const flags = tsFlags(tsconfig) | (metaRequire ? IMPORT_META_REQUIRE : 0) | (sourceMap ? SOURCE_MAP : 0);
   const loader = loaderOf(path);
   current = resolve;
   resolveError = undefined;

@@ -22,9 +22,9 @@ const hex = (b: ArrayBuffer) => [...new Uint8Array(b)].map((x) => x.toString(16)
  * `transpile`, cached in memory and in Cache Storage (so a reload doesn't transpile node_modules again), keyed by the
  * transpiler build, path, tsconfig options (decorators, JSX) and source.
  */
-export async function transpileCached(source: string, path: string, tsconfig: TsconfigFlags, resolve: Resolver, metaRequire = false): Promise<string> {
-  if (source.length < MIN_SIZE) return transpile(source, path, tsconfig, resolve, metaRequire);
-  const flags = `${tsconfig.experimentalDecorators ? 1 : 0}${tsconfig.emitDecoratorMetadata ? 1 : 0}${metaRequire ? 1 : 0}\0${jsxKey(tsconfig)}`;
+export async function transpileCached(source: string, path: string, tsconfig: TsconfigFlags, resolve: Resolver, metaRequire = false, sourceMap = false): Promise<string> {
+  if (source.length < MIN_SIZE) return transpile(source, path, tsconfig, resolve, metaRequire, sourceMap);
+  const flags = `${tsconfig.experimentalDecorators ? 1 : 0}${tsconfig.emitDecoratorMetadata ? 1 : 0}${metaRequire ? 1 : 0}${sourceMap ? 1 : 0}\0${jsxKey(tsconfig)}`;
   const key = hex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${await transpilerId()}\0${path}\0${flags}\0${source}`)));
   const url = new URL(`__transpile/${key}`, location.href).href;
   let e = memory.get(key);
@@ -35,7 +35,7 @@ export async function transpileCached(source: string, path: string, tsconfig: Ts
     if (!e) {
       const nonce = crypto.randomUUID().slice(0, 8);
       const specs: string[] = [];
-      const code = await transpile(source, path, tsconfig, (spec) => `__bwc${nonce}_${specs.push(spec) - 1}__`, metaRequire);
+      const code = await transpile(source, path, tsconfig, (spec) => `__bwc${nonce}_${specs.push(spec) - 1}__`, metaRequire, sourceMap);
       e = { code, specs, nonce };
       void cache?.put(url, new Response(JSON.stringify(e), { headers: { "content-type": "application/json" } })).catch(() => {});
     }

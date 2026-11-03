@@ -71,9 +71,8 @@ function hoistRequires(vfs: VFS, code: string, dir: string, url: (spec: string) 
   if (!specs.length) return code;
   const imports = specs.map((s, i) => `import * as __h${i} from ${JSON.stringify(url(s))};`).join("");
   const table = specs.map((s, i) => `${JSON.stringify(s)}: __h${i}`).join(", ");
-  return `${imports}const __hoisted = { ${table} };
-const __withHoisted = (r) => Object.assign((id) => (id in __hoisted ? ("__cjs" in __hoisted[id] ? __hoisted[id].__cjs : /\\.(json|jsonc|json5|toml|ya?ml)$/.test(id) ? __hoisted[id].default : __hoisted[id]) : r(id)), r);
-${code.replace(CREATE_REQUIRE, "__withHoisted($&)")}`;
+  // On the module's first line, so its lines stay the transpiler's (its source map's).
+  return `${imports}const __hoisted = { ${table} }; const __withHoisted = (r) => Object.assign((id) => (id in __hoisted ? ("__cjs" in __hoisted[id] ? __hoisted[id].__cjs : /\\.(json|jsonc|json5|toml|ya?ml)$/.test(id) ? __hoisted[id].default : __hoisted[id]) : r(id)), r);${code.replace(CREATE_REQUIRE, "__withHoisted($&)")}`;
 }
 
 /** What the transpiler starts a module that uses a free `require` with (`transpile`'s `metaRequire`), as Bun does. */
@@ -444,7 +443,9 @@ export async function serveModule(vfs: VFS, rawPath: string, onError: (msg: stri
       if (moduleKindOf(vfs, path, src) === "cjs") return { status: 200, body: commonJSFacade(commonJSNames(vfs, path, src), `${VFS_ROOT}__cjs/${path}`) };
     }
     // An ES module: Bun's parser finds the specifiers, as `bun build --no-bundle` does (JSX per tsconfig too).
-    let code = await transpileCached(src, path, tsconfigFor(vfs, path), resolver(vfs, dirname(path)), target === "bun");
+    // In the worker, with a source map: its error printer maps stack frames back to the file's lines (worker/sourceMaps.ts).
+    const [transpiled, mappings] = (await transpileCached(src, path, tsconfigFor(vfs, path), resolver(vfs, dirname(path)), target === "bun", target === "bun")).split("\0");
+    let code = transpiled;
     if (target === "bun") {
       const sync = syncEsm.get(path);
       const names = sync && (await sync.names);
@@ -467,6 +468,7 @@ export async function serveModule(vfs: VFS, rawPath: string, onError: (msg: stri
       body += `\nimport * as __bwcSelf from ${JSON.stringify(`${VFS_ROOT}${path}`)};\nglobalThis.__esmLoaded?.(${JSON.stringify("/" + path)}, __bwcSelf);`;
       // Its first import marks it as being imported (before its dependencies run), on the first line.
       body = `import ${JSON.stringify(`data:text/javascript,${encodeURIComponent(`globalThis.__esmImporting?.(${JSON.stringify("/" + path)})`)}`)};${body}`;
+      if (mappings !== undefined) body += `\n//# sourceMappingURL=data:application/json;base64,${btoa(JSON.stringify({ version: 3, sources: [path.slice(path.lastIndexOf("/") + 1)], names: [], mappings }))}`;
     }
     return { status: 200, body };
   } catch (e) {

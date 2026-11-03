@@ -69,10 +69,11 @@ export function table(data: object, properties?: string[], depth = 0): string {
  * print in Bun's format (inspect.ts), without colors since stdout isn't a TTY. Quirks follow Bun's: `group` indents
  * formatted values but not the lines inside a string and `groupCollapsed` doesn't indent; `table`, `count` and
  * `time*` aren't indented; unknown `countReset`/`timeEnd` labels are ignored.
- * `frame` rewrites a stack frame's location (`console.trace` and printed errors).
+ * `frame` rewrites a stack frame's location (`console.trace` and printed errors); `source` gives the file text for an
+ * error's source preview (see setFrameMapper).
  */
-export function installConsole(emit: Emit, frame: (line: string) => string) {
-  setFrameMapper(frame, "/");
+export function installConsole(emit: Emit, frame: (line: string) => string, source?: (path: string) => string | undefined) {
+  setFrameMapper(frame, "/", source);
   const c = console as unknown as Record<string, (...args: unknown[]) => void>;
   const orig = (name: string) => (c[name] ?? (() => {})).bind(console);
   let depth = 0;
@@ -146,7 +147,10 @@ export function installConsole(emit: Emit, frame: (line: string) => string) {
       .map((l) => (/^\s+at /.test(l) ? l.replace(/^\s+at /, "") : /^(.*)@(.+)$/.test(l) ? l.replace(/^(.*)@(.+)$/, (_, fn, loc) => (fn ? `${fn} (${loc})` : loc)) : ""))
       .filter(Boolean)
       .slice(2);
-    const stack = frames.map((l) => "      at " + frame(l));
+    const stack = frames
+      .map(frame)
+      .filter(Boolean)
+      .map((l) => "      at " + l);
     emit("log", [...(args.length ? [out(args)] : []), ...stack].join("\n"));
   });
 }

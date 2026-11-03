@@ -9,7 +9,8 @@ import { hash } from "./hash";
 import { CryptoHasher } from "./node/crypto";
 import { Glob } from "./glob";
 import { installConsole, table } from "./console";
-import { bunInspect } from "./inspect";
+import { bunInspect, formatLog as formatValues } from "./inspect";
+import { frameMapper, previewSource } from "./sourceMaps";
 import { tomlStringify, yamlStringify } from "./dataStringify";
 import { password } from "./password";
 import { Cookie, CookieMap } from "./cookie";
@@ -518,8 +519,29 @@ const fmt = (v: unknown): string => {
   }
 };
 
-// A served module's URL in a stack frame reads as its project path, as in Bun.
-installConsole((level, text) => post({ type: "console", level, text }), (frame) => frame.split(new URL(VFS_ROOT, location.href).href).join("/"));
+// A served module's URL in a stack frame reads as its project path, and its line and column the file's, as in Bun.
+installConsole(
+  (level, text) => post({ type: "console", level, text }),
+  frameMapper(() => new URL(VFS_ROOT, location.href).href),
+  previewSource((path) => vfs.readText(path)),
+);
+
+/** How Bun reports an uncaught error or rejection: its error printer for errors, `error: value` and the value otherwise. */
+function uncaughtText(v: unknown): string {
+  if (v instanceof Error || (Error as { isError?: (v: unknown) => boolean }).isError?.(v)) return formatValues([v], "error");
+  const primitive = v === null || (typeof v !== "object" && typeof v !== "function");
+  let head = "error";
+  if (primitive)
+    try {
+      head = `error: ${String(v)}`;
+    } catch {}
+  return `${head}\n${formatValues([v], "error")}\n`;
+}
+
+const PLATFORMS: Record<string, string> = { linux: "Linux", darwin: "macOS", win32: "Windows" };
+/** An uncaught error ends a Bun process with it and Bun's version line (the program keeps running here). */
+const reportUncaught = (v: unknown) =>
+  post({ type: "console", level: "error", text: `${uncaughtText(v)}\nBun v${(g.Bun as { version: string }).version} (${PLATFORMS[process.platform] ?? process.platform} ${process.arch})` });
 
 const JS = "text/javascript;charset=utf-8";
 const MIME: Record<string, string> = {
@@ -858,7 +880,13 @@ async function main() {
   g.Bun = Object.assign(builtins.bun, bun);
 
   self.addEventListener("unhandledrejection", (e) => {
-    post({ type: "console", level: "error", text: `Uncaught (in promise) ${fmt(e.reason)}` });
+    e.preventDefault();
+    reportUncaught(e.reason);
+  });
+  // An exception out of a timer or event callback (the page's worker.onerror would only get its message).
+  self.addEventListener("error", (e) => {
+    e.preventDefault();
+    reportUncaught(e.error);
   });
 
   self.addEventListener("message", async (e: MessageEvent) => {
@@ -866,13 +894,14 @@ async function main() {
     if (m.type === "request") {
       const port = e.ports[0];
       let out: { res: Response; setCookies: string[] };
+      const r = m.req;
       try {
         const inst = previewServer();
         if (!inst) return sendText(port, 503, "No Bun.serve handler registered");
-        const r = m.req;
         out = await dispatch(inst, serverRequest(r.path, { method: r.method, body: r.body }, r.headers));
       } catch (err) {
-        console.error(err);
+        // Bun's development server (`development` is true here) reports it as uncaught, then which request failed.
+        post({ type: "console", level: "error", text: `${uncaughtText(err)}${r.method} - ${new URL(r.path, "http://localhost/").pathname} failed` });
         return sendText(port, 500, fmt(err));
       }
       await sendResponse(port, out.res, out.setCookies);
@@ -934,7 +963,7 @@ self.addEventListener("message", async (e: MessageEvent) => {
     const port = Number(def?.port ?? env.PORT ?? env.BUN_PORT ?? 3000);
     if (typeof def?.fetch === "function" && !servers.some((s) => s.server === def || s.port === port)) createInstance(def);
   } catch (err) {
-    post({ type: "console", level: "error", text: fmt(err) });
+    reportUncaught(err);
   }
   post({ type: "ready" });
 });
