@@ -43,7 +43,7 @@ included) and keeps the project in memory: the first check takes a fraction of a
 example's `node_modules`), later ones a few milliseconds.
 
 - 🟡 Errors for the open file only, with the editor's unsaved text; other files are checked as saved
-- ✅ Uses the nearest `tsconfig.json`, including `extends` (relative, from packages, or a list); without one, the options `bun init` writes plus `types: ["bun"]`
+- ✅ Uses the nearest `tsconfig.json` or `jsconfig.json` (the one the transpiler reads, so `jsxImportSource: "hono/jsx"` or Preact type-check as they run), including `extends` (relative, from packages, or a list); without one, the options `bun init` writes plus `types: ["bun"]`
 - ✅ Types for `Bun.*`, `bun:*`, `node:*` and HTML imports from `@types/bun`, bundled; a project's own `@types/bun` or `@types/node` takes their place
 - ✅ Package types from installed `node_modules` (`.d.ts` files and `package.json` `types`/`exports`)
 - ✅ Hover info: rest the pointer on a name for its type and documentation (JSDoc, with examples)

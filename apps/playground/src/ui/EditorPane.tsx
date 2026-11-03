@@ -12,6 +12,8 @@ import { Tip } from "./Tip";
 
 /** How long auto-save waits after the last keystroke. */
 const SAVE_DELAY = 300;
+/** tsconfig.json, jsconfig.json and configs named like them (tsconfig.base.json, which another may `extends`). */
+const CONFIG = /(?:^|\/)[jt]sconfig(?:\.[^/]*)?\.json$/;
 
 /**
  * The open-file tabs over the editor, which shows the active tab and writes edits back to the VFS: shortly after
@@ -114,6 +116,8 @@ export function EditorPane() {
     // The open file changed outside the editor (e.g. `Bun.write`); unsaved edits win over that.
     const unsubscribe = vfs.onChange(({ path, created, removed }) => {
       if (removed && pending.delete(path)) ws.setDirty(path, false);
+      // A tsconfig.json/jsconfig.json (or a config one extends) changes how the open file transpiles and type-checks.
+      if (current && editor && path !== current && CONFIG.test(path)) return check?.(current, editor.getText());
       if (created || removed || path !== current || pending.has(path)) return;
       const d = vfs.read(path);
       if (typeof d === "string") {
