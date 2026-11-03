@@ -1,0 +1,25 @@
+---
+// Static blocks only: highlighted HTML and CSS. `bun run check-static` fails if this page gets a script, a request to
+// another origin, or a stylesheet of its own.
+import { Code } from "@runbun/astro/components";
+import Layout from "../Layout.astro";
+
+const server = `const server = Bun.serve({
+  port: 3000,
+  fetch: (req) => new Response(\`Hello from \${new URL(req.url).pathname}\`),
+});
+console.log(\`Listening on \${server.url}\`);`;
+---
+
+<Layout title="Static blocks">
+  <p>Each block below is plain HTML and CSS: no script runs and nothing else downloads.</p>
+  <Code lang="ts" title="greet.ts" code={`export const greet = (name: string) => "Hello, " + name;`} />
+  <Code lang="ts" title="server.ts" code={server} />
+  <Code
+    lang="ts"
+    title="index.ts"
+    code={`import { greet } from "./greet";\nconsole.log(greet("Bun"));`}
+    files={{ "greet.ts": `export const greet = (name: string) => "Hello, " + name;` }}
+  />
+  <Code lang="sh" code="bun add @runbun/astro" />
+</Layout>

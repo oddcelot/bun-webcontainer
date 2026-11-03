@@ -68,6 +68,7 @@ moon run playground:build docs:build       # playground after the wasm crates' b
 moon run docs:dev                          # docs dev server + playground:dev (like scripts/dev.ts)
 moon run root:typecheck-scripts root:typos docs:links  # scripts/ + hook types (tsrs), spelling, the built docs' internal links (typos, lychee: Brewfile)
 moon run root:secrets                                  # betterleaks over the git history, as CI does on every push (Brewfile)
+moon run astro-demo:check-static                       # a static <Code> page stays HTML + CSS (examples/astro-demo; dev: astro-demo:dev)
 moon run playground:fmt-fixtures                       # the bundled examples (fixtures/, demo included) are `bun fmt`-clean (`-- --write` fixes)
 scripts/setup-bun.ts                       # recreate bun/ (pinned commit + patches/bun/ via git am); bun/ is not tracked
 scripts/export-bun-patches.ts              # after committing in bun/ on wasm-experiment
@@ -105,7 +106,7 @@ See README.md and HANDOFF.md. In short: Bun's JSC-independent Rust crates compil
 playground runs user code in the browser engine with JS shims for `Bun.*`, a VFS, a service worker
 (`/__vfs/` modules, `/__preview/` Bun.serve), and Bun's wasm transpiler.
 
-Layout: `apps/` (playground, docs), `crates/` (the Rust wrapper crates, one Cargo workspace), `packages/`
+Layout: `apps/` (playground, docs), `examples/` (`astro-demo`: a minimal site on `@runbun/astro`'s defaults), `crates/` (the Rust wrapper crates, one Cargo workspace), `packages/`
 (`@runbun/astro` and `@runbun/embed` on npm; private `@runbun/ui` (tokens, and Solid 2 components in `solid/`, each importing its CSS from `css/` in the `runbun-ui` layer; shipped as source; see its README) and `@runbun/vfs`; `astro-solid`: vendored `@astrojs/solid-js` v8 for Solid 2, see its README), `patches/` (`bun/`, `npm/`, `bun-codegen/`).
 
 ## Git Workflow

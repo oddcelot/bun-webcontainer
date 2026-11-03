@@ -1,0 +1,35 @@
+$schema: 'https://moonrepo.dev/schemas/project.json'
+
+# A minimal Astro site on @runbun/astro's defaults (workspace:*, its dist/ built by astro:build). `check-static` is the
+# guard that a static <Code> block stays HTML and CSS only.
+language: 'typescript'
+
+fileGroups:
+  sources:
+    - 'src/**/*'
+    - '*.ts'
+    - 'tsconfig.json'
+    - 'package.json'
+    - '/bun.lock'
+    - '/packages/astro/src/**/*'
+    - '/packages/astro/components/**/*'
+    - '/packages/astro/package.json'
+
+tasks:
+  build:
+    command: 'bun run build'
+    deps: ['astro:build']
+    inputs:
+      - '@group(sources)'
+    outputs:
+      - 'dist/**/*'
+  check-static:
+    command: 'bun run check-static'
+    deps: ['~:build']
+    inputs:
+      - 'scripts/check-static.ts'
+      - 'dist/**/*'
+  dev:
+    command: 'bun run dev'
+    deps: ['astro:build']
+    preset: 'server'

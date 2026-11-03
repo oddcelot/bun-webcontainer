@@ -1,0 +1,37 @@
+---
+// Pages pass `title`; a Markdown page's layout gets its frontmatter.
+const title: string = Astro.props.title ?? Astro.props.frontmatter?.title;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>{title} · @runbun/astro demo</title>
+  </head>
+  <body>
+    <nav><a href="/">Static</a> · <a href="/playground/">Playground</a> · <a href="/fence/">Fence</a></nav>
+    <main>
+      <h1>{title}</h1>
+      <slot />
+    </main>
+  </body>
+</html>
+
+<style is:global>
+  /* On the root, so the page's background follows the OS as the blocks' theme does. */
+  html {
+    color-scheme: light dark;
+  }
+  body {
+    max-width: 48rem;
+    margin: 2rem auto;
+    padding: 0 1rem;
+    font-family: system-ui, sans-serif;
+  }
+  main {
+    display: grid;
+    gap: 1rem;
+  }
+</style>

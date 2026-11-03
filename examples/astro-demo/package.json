@@ -1,0 +1,17 @@
+{
+  "name": "astro-demo",
+  "private": true,
+  "type": "module",
+  "description": "A minimal Astro site using @runbun/astro with its defaults: static blocks, playground blocks, a fence.",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check-static": "bun scripts/check-static.ts"
+  },
+  "dependencies": {
+    "@astrojs/markdown-remark": "^7.3.5",
+    "@runbun/astro": "workspace:*",
+    "astro": "^7.4.5"
+  }
+}
