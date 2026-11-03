@@ -14,6 +14,7 @@ use bun_alloc::Arena;
 use bun_js_parser::{Define, Parser, ParserOptions, options};
 use bun_js_printer as printer;
 
+pub mod apis;
 pub mod runtime;
 use bun_ast::runtime::ReplaceableExportMap;
 use runtime::Data;
@@ -514,7 +515,7 @@ fn format_log(log: &bun_ast::Log) -> Vec<u8> {
     out
 }
 
-fn json_str(out: &mut Vec<u8>, s: &[u8]) {
+pub(crate) fn json_str(out: &mut Vec<u8>, s: &[u8]) {
     out.push(b'"');
     for ch in String::from_utf8_lossy(s).chars() {
         match ch {

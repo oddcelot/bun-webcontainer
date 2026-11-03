@@ -11,3 +11,6 @@ tasks:
     # Diffs against `bun build --no-bundle` (native Bun, pinned in /.prototools) on corpus/.
     inputs:
       - 'corpus/**/*'
+      # apis-test.ts runs Bun.markdown and Bun.XML.parse as the playground's worker does.
+      - '/apps/playground/src/worker/markdown.ts'
+      - '/apps/playground/src/worker/xml.ts'
