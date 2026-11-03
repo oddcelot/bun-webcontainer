@@ -2,14 +2,15 @@
 // <Code> block is. Click-to-load: nothing downloads until a reader presses Run.
 //
 // Meta words: `playground` (required), `mode=…`, `features=…`, `group=<name>`, `load=…`, `height=…`, `path=…`,
-// `deps="elysia@rc,zod@^4"` (pinned in a package.json the poster doesn't show; a package.json fence wins); `title="x.ts"`
-// names the file. Consecutive fences with the same `group` share one embed (the first fence's options apply).
+// `deps="elysia@rc,zod@^4"` (pinned in a package.json the poster doesn't show; a package.json fence wins), `label="…"`
+// (the embed's accessible name, its `title` attribute; default "Bun playground"); `title="x.ts"` names the file.
+// Consecutive fences with the same `group` share one embed (the first fence's options apply).
 // Options default to the runbun() integration's (playgroundUrl, base, sync).
 import type { Code, Root, RootContent } from "mdast";
 import { CONFIG } from "./config.js";
 import { codeTabs, cssLink, embedScripts, EXT, fileScript, withEntry, withTabs } from "./markup.js";
 
-const OWN_KEYS = new Set(["playground", "mode", "features", "group", "load", "height", "autorun", "readonly", "persist", "theme", "file", "path", "expand", "deps"]);
+const OWN_KEYS = new Set(["playground", "mode", "features", "group", "load", "height", "autorun", "readonly", "persist", "theme", "file", "path", "expand", "deps", "label"]);
 const ATTRS = ["mode", "features", "height", "autorun", "readonly", "persist", "theme", "file", "path"];
 
 /** Splits `a b=c title="d e"` into [key, value|null] tokens. */
@@ -102,7 +103,8 @@ function embed(entries: [Entry, ...Entry[]]): RootContent {
     all["package.json"] = JSON.stringify({ ...JSON.parse(all["package.json"] ?? "{}"), dependencies: deps }, null, 2) + "\n";
   }
   const files = Object.entries(all).map(([name, text]) => fileScript(name, text));
-  const attrs = ATTRS.filter((k) => k in opts).map((k) => ` ${k}="${esc(opts[k])}"`).join("");
+  // `title` names a fence's file, so the embed's own title (its accessible name) comes from `label`.
+  const attrs = ATTRS.filter((k) => k in opts).map((k) => ` ${k}="${esc(opts[k])}"`).join("") + ("label" in opts ? ` title="${esc(opts.label)}"` : "");
   // A docs snippet opens as the whole playground in a modal unless the fence says otherwise (`expand=false`, `expand=on`).
   const expand = opts.expand === "false" ? "" : ` expand="${esc(opts.expand || "full")}"`;
   // The tab checked first is the file the embed opens with: `file`, else the one Run starts.

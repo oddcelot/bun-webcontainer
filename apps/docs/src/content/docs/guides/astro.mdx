@@ -65,6 +65,8 @@ for (const lang of langs) console.log(lang, Bun.version);`}
 for (const lang of langs) console.log(lang, Bun.version);`}
 />
 
+Since `title` is the file's name, `label` sets the embed's accessible name, the title of its frame (default "Bun playground"): `<Code playground label="Greeting example" … />`.
+
 `files` adds more files. The block gets a tab per file, and the embed opens with the same tabs:
 
 ```mdx
@@ -138,13 +140,13 @@ console.log(greet("Bun"));
 export const greet = (name: string) => "Hello, " + name;
 ```
 
-The meta also takes `mode`, `features`, `load`, `height`, `autorun`, `readonly`, `persist`, `theme`, `file`, `path` and `expand` (`expand=false` leaves the modal button out). Fences without `playground` stay as they were.
+The meta also takes `mode`, `features`, `load`, `height`, `autorun`, `readonly`, `persist`, `theme`, `file`, `path`, `expand` (`expand=false` leaves the modal button out) and `label`, the embed's accessible name (`label="Elysia playground"`; `title` is taken by the file name). Fences without `playground` stay as they were.
 
 `deps` pins the packages a fence installs, without a `package.json` tab: `deps="elysia@rc,@elysia/openapi@rc,zod@^4"` (a name without a version gets `latest`). In a group the first fence's `deps` applies, and a `package.json` fence of the group's own wins over it.
 
 ## Playground
 
-`<Playground>` is the embed on its own: `files` are its sources, and its children are the poster shown until it starts. Without children it shows the first file's code.
+`<Playground>` is the embed on its own: `files` are its sources, and its children are the poster shown until it starts. Without children it shows the first file's code. Here `title` is the embed's accessible name (default "Bun playground"), as on `<bun-playground>`.
 
 ```mdx
 import { Playground } from "@runbun/astro/components";
