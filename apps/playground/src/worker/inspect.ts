@@ -1,5 +1,6 @@
 import { inspect as nodeInspect } from "./node/inspect";
 import { settledPromise } from "./promises";
+import { bodyOf, type BodyInfo } from "./bodies";
 
 /**
  * Bun's value formatter (`console.log`, `Bun.inspect`): a port of bun/src/jsc/ConsoleObject.rs's `Formatter`, quirks
@@ -8,7 +9,10 @@ import { settledPromise } from "./promises";
  * frames (without Bun's source preview). `util.inspect` is Node's format (node/util.ts), not this one.
  *
  * Differences that can't be ported: a promise's state isn't readable synchronously, so promises print `<pending>`
- * unless promises.ts saw them settle; a Proxy prints as what its traps return.
+ * unless promises.ts saw them settle; a Proxy prints as what its traps return; keys come strings first, then
+ * symbols (Reflect.ownKeys' order: the interleaving Bun shows isn't observable). Host objects print their native
+ * accessors' values (as Bun reads JSC's custom accessors) and Bun's runtime classes (Response, Request, Blob…)
+ * print with their own writers, the body sizes from bodies.ts.
  */
 
 export type InspectOptions = { depth?: number | null; colors?: boolean; sorted?: boolean; compact?: boolean };
@@ -38,11 +42,18 @@ type Tag =
   | "Date"
   | "GetterSetter"
   | "RevokedProxy"
-  | "Headers";
+  | "Headers"
+  | "Response"
+  | "Request"
+  | "Blob"
+  | "FormData"
+  | "URLSearchParams"
+  | "Event"
+  | "JSX";
 type TagResult = { tag: Tag; stringLike: boolean; custom?: Function };
 
 const PRIMITIVE = new Set<Tag>(["String", "StringPossiblyFormatted", "Undefined", "Double", "Null", "Boolean", "Symbol", "BigInt"]);
-const CIRCULAR = new Set<Tag>(["Function", "Array", "Object", "Map", "Set", "Class"]);
+const CIRCULAR = new Set<Tag>(["Function", "Array", "Object", "Map", "Set", "Class", "Event", "JSX"]);
 const SGR: Record<string, string> = { r: "0", d: "2", b: "1", red: "31", green: "32", yellow: "33", blue: "34", magenta: "35", cyan: "36" };
 const CUSTOM = Symbol.for("nodejs.util.inspect.custom");
 const IDENT = /^[A-Za-z_$][\w$]*$/;
@@ -109,6 +120,21 @@ function objectName(v: object): string | undefined {
   if (Object.getPrototypeOf(v) === null) return "[Object: null prototype]";
 }
 
+const nativeFns = new WeakMap<Function, boolean>();
+/** A builtin (host) function rather than JS source: `function get href() { [native code] }`. */
+function isNative(fn: Function): boolean {
+  let r = nativeFns.get(fn);
+  if (r === undefined) {
+    try {
+      r = /\{\s*\[native code\]\s*\}$/.test(Function.prototype.toString.call(fn));
+    } catch {
+      r = false;
+    }
+    nativeFns.set(fn, r);
+  }
+  return r;
+}
+
 /** An accessor property, printed as `[Getter]`/`[Setter]`/`[Getter/Setter]` rather than called. */
 class Accessor {
   constructor(
@@ -141,6 +167,13 @@ function properties(v: object, nonIndexedOnly: boolean): Prop[] {
       seen.add(k);
       const d = Object.getOwnPropertyDescriptor(level, k);
       if (!d) continue;
+      if (d.get && isNative(d.get)) {
+        // A host attribute (URL's href, AbortSignal's aborted…): JSC's are custom accessors, which Bun reads.
+        try {
+          out.push([k, d.get.call(v)]);
+        } catch {}
+        continue;
+      }
       if (d.get || d.set) {
         out.push([k, new Accessor(!!d.get, !!d.set)]);
         continue;
@@ -194,6 +227,8 @@ function getTag(v: unknown, disableCustom = false): TagResult {
   }
   const o = v as object;
   if (o instanceof Accessor) return t("GetterSetter");
+  // Bun prints URLSearchParams from its entries (a JSAsJSON type), ahead of its inspect.custom (util.inspect's).
+  if (typeof URLSearchParams !== "undefined" && o instanceof URLSearchParams) return t("URLSearchParams");
   if (!disableCustom) {
     let fn: unknown;
     try {
@@ -204,6 +239,15 @@ function getTag(v: unknown, disableCustom = false): TagResult {
     if (typeof fn === "function") return { tag: "Custom", stringLike: false, custom: fn };
   }
   if (typeof o === "function") return t(isClass(o) ? "Class" : "Function");
+  // Bun's runtime classes with their own printers (Response/Request/Blob write_format), and DOM wrappers.
+  if (typeof Response !== "undefined" && o instanceof Response) return t("Response");
+  if (typeof Request !== "undefined" && o instanceof Request) return t("Request");
+  if (typeof Blob !== "undefined" && o instanceof Blob) return t("Blob");
+  if (typeof FormData !== "undefined" && o instanceof FormData) return t("FormData");
+  if (typeof Headers !== "undefined" && o instanceof Headers) return t("Headers");
+  if (typeof Event !== "undefined" && o instanceof Event) return t("Event");
+  if (typeof DOMException !== "undefined" && o instanceof DOMException) return t("Object");
+  if (isReactElement(o)) return t("JSX");
   if (isError(o)) return t("Error");
   if (Array.isArray(o) || Object.prototype.toString.call(o) === "[object Arguments]") return t("Array");
   if (brand(Number.prototype.valueOf, o)) return t("Double");
@@ -219,8 +263,20 @@ function getTag(v: unknown, disableCustom = false): TagResult {
   if (o instanceof Promise) return t("Promise");
   if (ArrayBuffer.isView(o) || brand(getter(ArrayBuffer.prototype, "byteLength"), o)) return t("TypedArray");
   if (typeof SharedArrayBuffer !== "undefined" && brand(getter(SharedArrayBuffer.prototype, "byteLength"), o)) return t("TypedArray");
-  if (typeof Headers !== "undefined" && o instanceof Headers) return t("Headers");
   return t("Object");
+}
+
+const REACT_ELEMENT = new Set([Symbol.for("react.element"), Symbol.for("react.transitional.element"), Symbol.for("react.fragment")]);
+/** A React element: an own, truthy `$$typeof` that is one of React's element symbols. */
+function isReactElement(o: object): boolean {
+  try {
+    const d = Object.getOwnPropertyDescriptor(o, "$$typeof");
+    if (!d) return false;
+    const v = "value" in d ? d.value : d.get?.call(o);
+    return REACT_ELEMENT.has(v);
+  } catch {
+    return false;
+  }
 }
 
 type ErrorLevel = "normal" | "warn" | "full";
@@ -360,6 +416,19 @@ class Formatter {
         return this.printTypedArray(v as ArrayBufferView | ArrayBuffer);
       case "Headers":
         return this.printHeaders(v as Headers);
+      case "Response":
+        return this.printResponse(v as Response);
+      case "Request":
+        return this.printRequest(v as Request);
+      case "Blob":
+        return this.printBlob(v as Blob);
+      case "FormData":
+      case "URLSearchParams":
+        return this.printEntries(v as FormData | URLSearchParams, tag);
+      case "Event":
+        return this.printEvent(v as Event);
+      case "JSX":
+        return this.printJSX(v as ReactElement);
       case "RevokedProxy":
         this.add(15);
         return this.w(this.p("<r><cyan><Revoked Proxy><r>"));
@@ -793,18 +862,306 @@ class Formatter {
     this.w("}");
   }
 
-  printHeaders(h: Headers) {
-    const entries = [...h.entries()];
-    if (!entries.length) return this.w("Headers {}");
+  /** An object of entries with quoted keys, the way Bun prints a `toJSON()` result (repeated names as arrays). */
+  printEntriesObject(entries: Iterable<[string, unknown]>, View?: new () => object) {
+    const obj = (View ? new View() : {}) as Record<string, unknown>;
+    for (const [k, v] of entries) {
+      if (!has(obj, k)) Object.defineProperty(obj, k, { value: v, enumerable: true, writable: true, configurable: true });
+      else if (Array.isArray(obj[k])) (obj[k] as unknown[]).push(v);
+      else obj[k] = [obj[k], v];
+    }
     const prevKeys = this.quoteKeys;
     this.quoteKeys = true;
-    const obj = new HeadersView() as unknown as Record<string, string>;
-    for (const [k, v] of entries) obj[k] = v;
     try {
-      this.printObject(obj);
+      this.printAs("Object", obj);
     } finally {
       this.quoteKeys = prevKeys;
     }
+  }
+
+  printHeaders(h: Headers) {
+    this.add(8);
+    this.w(this.p("<r>") + "Headers ");
+    this.printEntriesObject(Headers.prototype.entries.call(h));
+  }
+
+  /** FormData and URLSearchParams: their entries under the class name (an empty FormData is just `{}`). */
+  printEntries(v: FormData | URLSearchParams, tag: Tag) {
+    const entries = [...(v.entries() as Iterable<[string, unknown]>)];
+    const View = tag === "FormData" ? (entries.length ? FormDataView : undefined) : URLSearchParamsView;
+    this.printEntriesObject(entries, View);
+  }
+
+  field(name: string) {
+    this.writeIndent();
+    this.w(this.p(`<r>${name}<d>:<r> `));
+  }
+
+  /** Response's write_format: its fields, then the body it was made with (bodies.ts). */
+  printResponse(r: Response) {
+    const used = !!safeGet(r, "bodyUsed");
+    const body: BodyInfo | undefined = used ? { kind: "none" } : bodyOf(r);
+    this.w(body ? `Response (${formatSize(bodySize(body))}) {\n` : "Response {\n");
+    this.indent++;
+    try {
+      const line = (name: string, print: () => void) => {
+        this.field(name);
+        print();
+        this.comma();
+        this.w("\n");
+      };
+      line("ok", () => this.printBoolean(!!safeGet(r, "ok")));
+      line("url", () => this.w('"' + this.p("<r><b>") + str(safeGet(r, "url")) + this.p("<r>") + '"'));
+      line("status", () => this.printNumber(Number(safeGet(r, "status"))));
+      line("statusText", () => this.w(this.p("<r>") + '"' + this.p("<b>") + str(safeGet(r, "statusText")) + this.p("<r>") + '"'));
+      line("headers", () => this.printHeaders(safeGet(r, "headers") as Headers));
+      line("redirected", () => this.printBoolean(!!safeGet(r, "redirected")));
+      this.resetLine();
+      this.field("bodyUsed");
+      this.printBoolean(used);
+      if (body && body.kind !== "none") {
+        this.comma();
+        this.printBody(body);
+      }
+    } finally {
+      this.indent--;
+    }
+    this.w("\n");
+    this.writeIndent();
+    this.w("}");
+    this.resetLine();
+  }
+
+  printRequest(r: Request) {
+    const used = !!safeGet(r, "bodyUsed");
+    const body: BodyInfo | undefined = used ? { kind: "none" } : bodyOf(r);
+    this.w(body ? `Request (${formatSize(bodySize(body))}) {\n` : "Request {\n");
+    this.indent++;
+    try {
+      this.field("method");
+      this.w('"' + str(safeGet(r, "method")) + '"');
+      this.comma();
+      this.w("\n");
+      this.field("url");
+      this.w('"' + this.p("<b>") + str(safeGet(r, "url")) + this.p("<r>") + '"');
+      this.comma();
+      this.w("\n");
+      this.field("headers");
+      this.printHeaders(safeGet(r, "headers") as Headers);
+      if (body && body.kind !== "none") this.printBody(body);
+    } finally {
+      this.indent--;
+    }
+    this.w("\n");
+    this.writeIndent();
+    this.w("}");
+  }
+
+  /** A body on its own line: a Blob (with its type), the size of bytes, or the stream. */
+  printBody(body: Exclude<BodyInfo, { kind: "none" }>) {
+    this.w("\n");
+    this.writeIndent();
+    if (body.kind === "blob") this.printBlob(body.blob);
+    else if (body.kind === "stream") this.printAs("Object", body.stream);
+    else {
+      this.w(this.p("<r>") + "Blob" + this.p("<r>") + " (" + this.p("<yellow>") + formatSize(body.size) + this.p("<r>") + ")");
+      if (body.type) this.blobFields(undefined, body.type, 0);
+    }
+  }
+
+  /** Blob's write_format: `Blob (3 bytes)`, then name, type and lastModified when there are any. */
+  printBlob(b: Blob) {
+    const file = typeof File !== "undefined" && b instanceof File;
+    this.w(this.p("<r>") + (file ? "File" : "Blob") + this.p("<r>") + " (" + this.p("<yellow>") + formatSize(b.size) + this.p("<r>") + ")");
+    this.blobFields(file ? (b as File).name : undefined, mimeType(b.type), file ? (b as File).lastModified : 0);
+  }
+
+  blobFields(name: string | undefined, type: string, lastModified: number) {
+    if (name === undefined && !type && !lastModified) return;
+    this.w(" {\n");
+    this.indent++;
+    if (name !== undefined) {
+      this.writeIndent();
+      this.w("name" + this.p("<d>:<r> <green>") + `"${name}"` + this.p("<r>"));
+      if (type || lastModified) this.comma();
+      this.w("\n");
+    }
+    if (type) {
+      this.writeIndent();
+      this.w("type" + this.p("<d>:<r> <green>") + `"${type}"` + this.p("<r>"));
+      if (lastModified) this.comma();
+      this.w("\n");
+    }
+    if (lastModified) {
+      this.writeIndent();
+      this.w("lastModified" + this.p("<d>:<r> <yellow>") + lastModified + this.p("<r>") + "\n");
+    }
+    this.indent--;
+    this.writeIndent();
+    this.w("}");
+  }
+
+  /** print_event: an event whose `type` is "message" or "error" prints as a MessageEvent/ErrorEvent, others as objects. */
+  printEvent(e: Event) {
+    const type = safeGet(e, "type");
+    const name = type === "message" ? "MessageEvent" : type === "error" ? "ErrorEvent" : undefined;
+    if (!name) return this.printObject(e);
+    if (this.depth > this.maxDepth) return this.depthMarker(name);
+    this.w(this.p("<r><cyan>") + name + this.p("<r>") + " {\n");
+    const prevQuote = this.quoteStrings;
+    this.indent++;
+    this.depth++;
+    this.quoteStrings = true;
+    try {
+      this.writeIndent();
+      this.w(this.p("<r>") + "type: " + this.p("<green>") + `"${type}"` + this.p("<r><d>,<r>") + (this.singleLine ? " " : "\n"));
+      const member = (key: string, value: unknown) => {
+        if (!this.singleLine) this.writeIndent();
+        this.w(this.p("<r><blue>") + key + this.p("<d>:<r> "));
+        this.format(getTag(value, this.disableCustom), value);
+        this.comma();
+        if (!this.singleLine) this.w("\n");
+      };
+      const message = safeGet(e, "message");
+      if (typeof message === "string") member("message", message);
+      if (name === "MessageEvent") member("data", safeGet(e, "data"));
+      else {
+        const error = safeGet(e, "error");
+        if (error !== undefined) member("error", error);
+      }
+    } finally {
+      this.indent--;
+      this.depth--;
+      this.quoteStrings = prevQuote;
+    }
+    if (!this.singleLine) this.writeIndent();
+    this.w("}");
+  }
+
+  /** print_jsx: `<div id="a">text</div>`, children on their own lines. */
+  printJSX(el: ReactElement) {
+    this.w(this.p("<r>") + "<");
+    let needsSpace = true;
+    let name = "unknown";
+    let primitive = false;
+    const type = safeGet(el, "type");
+    if (type !== undefined && type !== null) {
+      if (typeof type === "symbol") name = "";
+      else if (typeof type === "string" || (typeof type === "object" && brand(String.prototype.valueOf, type))) {
+        name = String(type);
+        primitive = true;
+      } else if (typeof type === "object" || typeof type === "function") name = nameProperty(type) || "NoName";
+      else name = String(type);
+    } else if (type === null) name = "null";
+    this.w(this.p(primitive ? "<green>" : "<cyan>") + name + this.p("<r>"));
+
+    const key = safeGet(el, "key");
+    if (key !== undefined && key !== null) {
+      this.w(needsSpace ? " key=" : "key=");
+      const prev = this.quoteStrings;
+      this.quoteStrings = true;
+      try {
+        this.format(getTag(key, this.disableCustom), key);
+      } finally {
+        this.quoteStrings = prev;
+      }
+      needsSpace = true;
+    }
+
+    const props = safeGet(el, "props");
+    if (props !== undefined && props !== null) {
+      const prevQuote = this.quoteStrings;
+      this.quoteStrings = true;
+      try {
+        if (typeof props !== "object" && typeof props !== "function") return this.w(" />");
+        const keys = Object.keys(props).filter((k) => k !== "");
+        const children = safeGet(props, "children");
+        if (keys.length) {
+          this.indent++;
+          try {
+            const count = keys.length - (children !== undefined ? 1 : 0);
+            keys.forEach((k, i) => {
+              if (k === "children") return;
+              const value = safeGet(props, k);
+              const tag = getTag(value, this.disableCustom);
+              if (needsSpace) this.space();
+              needsSpace = false;
+              this.w(this.p("<r><blue>") + k.slice(0, 128) + this.p("<d>") + "=" + this.p("<r>"));
+              if (tag.stringLike && this.colors) this.w(this.p("<r><green>"));
+              this.format(tag, value);
+              if (tag.stringLike && this.colors) this.w(this.p("<r>"));
+              if (!this.singleLine && i + 1 < count && i > 3) {
+                this.w("\n");
+                this.writeIndent();
+              } else if (i + 1 < count) this.space();
+            });
+          } finally {
+            this.indent--;
+          }
+          if (children !== undefined) {
+            const tag = getTag(children);
+            if ((tag.tag === "String" || tag.tag === "JSX" || tag.tag === "Array") && !this.singleLine) {
+              this.jsxChildren(tag.tag, children);
+              this.w("</" + this.p(primitive ? "<r><green>" : "<r><cyan>") + name + this.p("<r>") + ">");
+              return;
+            }
+          }
+        }
+      } finally {
+        this.quoteStrings = prevQuote;
+      }
+    }
+    this.w(" />");
+  }
+
+  jsxChildren(tag: Tag, children: unknown) {
+    if (tag === "String") {
+      const s = String(children);
+      if (!s) return;
+      this.w(this.p("<r>") + ">");
+      if (s.length < 128) return this.w(s);
+      this.indent++;
+      this.w("\n");
+      this.writeIndent();
+      this.indent--;
+      this.w(s + "\n");
+      return this.writeIndent();
+    }
+    if (tag === "JSX") {
+      this.w(">\n");
+      this.indent++;
+      this.writeIndent();
+      try {
+        this.format(getTag(children), children);
+      } finally {
+        this.indent--;
+      }
+      this.w("\n");
+      return this.writeIndent();
+    }
+    const list = children as unknown[];
+    const len = list.length;
+    if (!len) return;
+    this.w(">\n");
+    this.indent++;
+    this.writeIndent();
+    const prevQuote = this.quoteStrings;
+    this.quoteStrings = false;
+    try {
+      for (let j = 0; j < len; j++) {
+        const child = list[j];
+        this.format(getTag(child, this.disableCustom), child);
+        if (j + 1 < len) {
+          this.w("\n");
+          this.writeIndent();
+        }
+      }
+    } finally {
+      this.quoteStrings = prevQuote;
+      this.indent--;
+    }
+    this.w("\n");
+    this.writeIndent();
   }
 
   printTypedArray(v: ArrayBufferView | ArrayBuffer) {
@@ -1073,8 +1430,44 @@ class Formatter {
   }
 }
 
-/** What `Headers` prints as: its entries under the class name, keys quoted. */
-const HeadersView = class Headers {};
+/** What FormData and URLSearchParams print as: their entries under the class name, keys quoted. */
+const FormDataView = class FormData {};
+const URLSearchParamsView = class URLSearchParams {};
+
+type ReactElement = { $$typeof: symbol; type?: unknown; key?: unknown; props?: unknown };
+
+/** JSC's getNameProperty: a non-empty `Symbol.toStringTag`, else a function's name. */
+function nameProperty(v: object): string {
+  const tag = safeGet(v, Symbol.toStringTag);
+  if (typeof tag === "string" && tag) return tag;
+  return typeof v === "function" ? fnName(v) : "";
+}
+
+/** bun_core::fmt::size: `0 KB`, `5 bytes`, `0.60 KB`, `2.0 KB`, `2.50 MB`. */
+function formatSize(n: number): string {
+  if (n === 0) return "0 KB";
+  if (n < 512) return `${n} bytes`;
+  const mag = Math.min(Math.floor(Math.floor(Math.log2(n)) / 9), 8);
+  const v = n / 1000 ** mag;
+  if (mag === 0) return `${(v / 1000).toFixed(2)} KB`;
+  return `${v.toFixed(Math.abs(v - Math.trunc(v)) <= 0.1 ? 1 : 2)} ${" KMGTPEZY"[mag]}B`;
+}
+
+const bodySize = (b: BodyInfo) => (b.kind === "bytes" ? b.size : b.kind === "blob" ? b.blob.size : 0);
+
+/** A Blob's type as Bun stores it: the well-known ones get their canonical form (MimeType::by_name_static). */
+const JS_MIME = "text/javascript;charset=utf-8";
+const CANONICAL_MIME: Record<string, string> = {
+  "application/javascript": JS_MIME,
+  "text/javascript": JS_MIME,
+  "text/jsx": JS_MIME,
+  "application/json": "application/json;charset=utf-8",
+  "application/x-www-form-urlencoded": "application/x-www-form-urlencoded;charset=UTF-8",
+  "text/css": "text/css;charset=utf-8",
+  "text/html": "text/html;charset=utf-8",
+  "text/plain": "text/plain;charset=utf-8",
+};
+const mimeType = (t: string) => (has(CANONICAL_MIME, t) ? CANONICAL_MIME[t] : t);
 
 const str = (v: unknown) => (typeof v === "string" ? v : v === undefined || v === null ? "" : typeof v === "symbol" ? v.toString() : String(v));
 const keyText = (k: string | symbol) => (typeof k === "symbol" ? k.toString() : k);
@@ -1216,4 +1609,46 @@ export function formatCell(value: unknown, startDepth = 0): string {
   f.quoteStrings = tag.tag !== "String";
   f.format(tag, value);
   return f.out;
+}
+
+/** getConstructorOf(v).name: the first `constructor` data property on the chain, else `fallback`. */
+function constructorNameOf(v: object, fallback: string): string {
+  for (let o: object | null = v; o; o = Object.getPrototypeOf(o)) {
+    const d = Object.getOwnPropertyDescriptor(o, "constructor");
+    if (d && "value" in d && typeof d.value === "function" && d.value.name) return d.value.name;
+  }
+  return fallback;
+}
+
+/**
+ * Bun's `[util.inspect.custom]` for URL and URLSearchParams (JSDOMURL.cpp, JSURLSearchParams.cpp), which
+ * console.log (URL only) and util.inspect use: `URL { href: '…', … }` and `URLSearchParams { 'a' => '1' }`.
+ */
+export function installWebInspect(g: { URL?: typeof URL; URLSearchParams?: typeof URLSearchParams }) {
+  const define = (proto: object, fn: Function) => Object.defineProperty(proto, CUSTOM, { value: fn, writable: true, configurable: true, enumerable: false });
+  if (g.URL)
+    define(g.URL.prototype, function (this: URL, depth: unknown, options: Record<string, unknown> = {}) {
+      if (!(this instanceof (g.URL as typeof URL))) return this;
+      if (typeof depth === "number" && depth < 0) return this;
+      const data: Record<string, unknown> = {};
+      for (const k of ["href", "origin", "protocol", "username", "password", "host", "hostname", "port", "pathname", "search", "searchParams", "hash"] as const) data[k] = this[k];
+      // WebStreamsInspectCustom.cpp's customInspect: the child depth is options.depth - 1 (null without one).
+      const opts = { ...options, depth: options.depth === undefined || options.depth === null ? null : Number(options.depth) - 1 };
+      return `${constructorNameOf(this, "URL")} ${nodeInspect(data, opts)}`;
+    });
+  if (g.URLSearchParams)
+    define(g.URLSearchParams.prototype, function (this: URLSearchParams, depth: unknown, options?: Record<string, unknown>) {
+      if (!(this instanceof (g.URLSearchParams as typeof URLSearchParams))) return this;
+      const d = Number(depth);
+      if (d < 0) return typeof options?.stylize === "function" ? (options.stylize as Function)("[Object]", "special") : "[Object]";
+      const opts: Record<string, unknown> = options ? { ...options } : {};
+      opts.depth = options && depth !== undefined && depth !== null ? d - 1 : null;
+      const visible = (s: string) => s.replace(/\x1b\[[^A-Za-z]*[A-Za-z]/g, "").length;
+      const output = [...this].map(([k, v]) => `${nodeInspect(k, opts)} => ${nodeInspect(v, opts)}`);
+      const name = constructorNameOf(this, "URLSearchParams");
+      if (!output.length) return `${name} {}`;
+      const total = output.reduce((n, s) => n + visible(s), 0) + (output.length - 1) * 2;
+      const breakLength = typeof options?.breakLength === "number" ? options.breakLength : 128;
+      return total > breakLength ? `${name} {\n  ${output.join(",\n  ")} }` : `${name} { ${output.join(", ")} }`;
+    });
 }
