@@ -1,6 +1,7 @@
 import { dirname, norm, type VFS } from "@runbun/vfs";
 import { hasModuleSyntax, packageType } from "../../cjs";
 import { inRanges, isMethod, literalRanges } from "../../literals";
+import { dataFormat, parseDataFile } from "../../resolver";
 import { transpileSync } from "../../transpiler";
 import { tsconfigFor } from "../../tsconfig";
 
@@ -83,15 +84,14 @@ export function createModule(registry: Record<string, object>) {
     return cache[file] ? cache[file].exports : (esModules[file] ?? loadFile(path).exports);
   }
 
-  /** Runs the file at VFS `path` as CommonJS (JSON, TOML and YAML parsed, TypeScript and JSX transpiled first). */
+  /** Runs the file at VFS `path` as CommonJS (data files parsed, TypeScript and JSX transpiled first). */
   function loadFile(path: string): CjsModule {
     const file = "/" + path;
     const req = makeRequire(file);
     const src = vfs!.readText(path);
     if (src === undefined) throw notFound(path, file);
-    if (path.endsWith(".json")) return load(file, (m) => void (m.exports = JSON.parse(src)), req);
-    const data = /\.(toml|ya?ml)$/.exec(path);
-    if (data) return load(file, (m) => void (m.exports = (globalThis as unknown as { Bun: Record<string, { parse(s: string): unknown }> }).Bun[data[1] === "toml" ? "TOML" : "YAML"].parse(src)), req);
+    const format = dataFormat(path);
+    if (format) return load(file, (m) => void (m.exports = parseDataFile(src, format)), req);
     if (path.endsWith(".node")) throw Object.assign(new Error(`Cannot load native addon ${file}: .node files are not supported in the playground`), { code: "ERR_DLOPEN_FAILED" });
     // With the nearest tsconfig's JSX and decorator options, as served modules have them. The transpiler declares
     // `var __dirname = "…"` (and __filename) for code that uses them: dropped, so the wrapper's values show through.

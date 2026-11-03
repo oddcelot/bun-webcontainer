@@ -1,5 +1,5 @@
 import { BASE } from "../base";
-import { loadResolver, parseData, resolve } from "../resolver";
+import { loadResolver, parseData, parseDataFile, resolve } from "../resolver";
 import { loadSemver } from "../semver";
 import { dirname, norm, VFS } from "@runbun/vfs";
 import { BUN_NAMES, builtins, installTimers, setFs, setRequire, setStdio } from "./node";
@@ -71,6 +71,8 @@ g.__dynamicImport = (from: string, spec: unknown, options?: ImportCallOptions) =
 };
 /** `import.meta.resolve` in served modules (see rewriteMeta), bound to the module's path. */
 g.__importMetaResolve = importMetaResolve;
+/** A served data file's value (see moduleServer.ts dataModule). */
+g.__parseDataFile = parseDataFile;
 g.process = process;
 g.global ??= globalThis;
 g.Buffer ??= (builtins.buffer as { Buffer: unknown }).Buffer;
