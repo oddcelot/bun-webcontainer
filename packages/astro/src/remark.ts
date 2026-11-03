@@ -1,15 +1,15 @@
 // Turns ```ts playground … fences into runnable <bun-playground> embeds whose poster is the code, highlighted as a
 // <Code> block is. Click-to-load: nothing downloads until a reader presses Run.
 //
-// Meta words: `playground` (required), `mode=…`, `features=…`, `group=<name>`, `load=…`, `height=…`; `title="x.ts"`
+// Meta words: `playground` (required), `mode=…`, `features=…`, `group=<name>`, `load=…`, `height=…`, `path=…`; `title="x.ts"`
 // names the file. Consecutive fences with the same `group` share one embed (the first fence's options apply).
 // Options default to the runbun() integration's (playgroundUrl, base, sync).
 import type { Code, Root, RootContent } from "mdast";
 import { CONFIG } from "./config.js";
 import { codeTabs, cssLink, embedScripts, EXT, fileScript, withEntry, withTabs } from "./markup.js";
 
-const OWN_KEYS = new Set(["playground", "mode", "features", "group", "load", "height", "autorun", "readonly", "persist", "theme", "file", "expand"]);
-const ATTRS = ["mode", "features", "height", "autorun", "readonly", "persist", "theme", "file"];
+const OWN_KEYS = new Set(["playground", "mode", "features", "group", "load", "height", "autorun", "readonly", "persist", "theme", "file", "path", "expand"]);
+const ATTRS = ["mode", "features", "height", "autorun", "readonly", "persist", "theme", "file", "path"];
 
 /** Splits `a b=c title="d e"` into [key, value|null] tokens. */
 interface Token {

@@ -43,7 +43,7 @@ import { Code } from "@runbun/astro/components";
 
 <Code lang="ts" title="greet.ts" code={`export const greet = (name: string) => "Hello, " + name;`} />
 
-`playground` adds the Run button. The block takes every embed option (`mode`, `features`, `files`, `readonly`, `persist`, `expand`, …), and `title` names the file:
+`playground` adds the Run button. The block takes every embed option (`mode`, `features`, `files`, `path`, `readonly`, `persist`, `expand`, …), and `title` names the file:
 
 ```mdx
 <Code
@@ -138,7 +138,7 @@ console.log(greet("Bun"));
 export const greet = (name: string) => "Hello, " + name;
 ```
 
-The meta also takes `mode`, `features`, `load`, `height`, `autorun`, `readonly`, `persist`, `theme`, `file` and `expand` (`expand=false` leaves the modal button out). Fences without `playground` stay as they were.
+The meta also takes `mode`, `features`, `load`, `height`, `autorun`, `readonly`, `persist`, `theme`, `file`, `path` and `expand` (`expand=false` leaves the modal button out). Fences without `playground` stay as they were.
 
 ## Playground
 

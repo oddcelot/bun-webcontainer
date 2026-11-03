@@ -8,6 +8,8 @@ export interface Props {
   mode?: "code" | "preview" | "console" | "full" | "result";
   features?: string;
   file?: string;
+  /** What the preview requests first (default: `/`), e.g. `/user/123`. */
+  path?: string;
   autorun?: boolean;
   theme?: string;
   readonly?: boolean;
@@ -33,6 +35,7 @@ const bool = (v: unknown) => (v === undefined ? undefined : v ? "" : undefined);
   mode={attrs.mode}
   features={attrs.features}
   file={attrs.file}
+  path={attrs.path}
   autorun={attrs.autorun === undefined ? undefined : String(attrs.autorun)}
   theme={attrs.theme}
   readonly={bool(attrs.readonly)}
