@@ -54,12 +54,19 @@ jobs:
 
       - name: Version
         id: version
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
           version=$(node -p "require('./package.json').version")
           echo "version=$version" >> "$GITHUB_OUTPUT"
           if npm view "@runbun/astro@$version" version >/dev/null 2>&1; then
-            echo "::error::@runbun/astro@$version is already on npm; bump packages/astro/package.json"
-            exit 1
+            # A dry run still packs; only a real run needs an unpublished version.
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "::warning::@runbun/astro@$version is already on npm; bump packages/astro/package.json before publishing"
+            else
+              echo "::error::@runbun/astro@$version is already on npm; bump packages/astro/package.json"
+              exit 1
+            fi
           fi
 
       - name: Pack
