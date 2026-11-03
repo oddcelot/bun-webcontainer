@@ -8,3 +8,17 @@ declare module "virtual:starlight/user-config" {
 declare module "virtual:starlight/user-images" {
   export const logos: { dark?: import("astro").ImageMetadata; light?: import("astro").ImageMetadata };
 }
+
+// The overridable components Footer.astro (src/components/Footer.astro wraps it) renders.
+declare module "virtual:starlight/components/EditLink" {
+  const Component: (props: Record<string, never>) => unknown;
+  export default Component;
+}
+declare module "virtual:starlight/components/LastUpdated" {
+  const Component: (props: Record<string, never>) => unknown;
+  export default Component;
+}
+declare module "virtual:starlight/components/Pagination" {
+  const Component: (props: Record<string, never>) => unknown;
+  export default Component;
+}

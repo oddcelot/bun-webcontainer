@@ -1,3 +1,6 @@
+// Feedback: POST /api/feedback (from the playground's Feedback dialog and the docs' page rating) stores one entry in
+// KV under "feedback:<time>:<random>"; see feedback() below and scripts/feedback.ts to read them.
+//
 // Opt-in short links for Share: POST /api/short stores a share payload (the text after "#code=") in KV under an id
 // derived from its content, so sharing the same project twice gives the same link and costs no second write.
 // GET /s/<id> redirects to /#code=<payload>, which the playground already knows how to open. Everything else is
@@ -10,6 +13,9 @@ interface Env {
   ASSETS: Fetcher;
   LINKS: KVNamespace;
   CREATE_LIMIT: RateLimit;
+  FEEDBACK_LIMIT: RateLimit;
+  /** The docs site's origin (wrangler.jsonc vars), which may send feedback from another origin. */
+  DOCS_ORIGIN: string;
 }
 
 /** The longest payload kept: about 64 KB of compressed project, as base64url. */
@@ -63,10 +69,111 @@ async function open(id: string, env: Env, url: URL, ctx: ExecutionContext): Prom
   return Response.redirect(`${url.origin}/#code=${payload}`, 302);
 }
 
+/** One piece of feedback as stored: what the sender typed or picked, and only what they chose to include. */
+export interface Feedback {
+  kind: "message" | "rating";
+  /** "YYYY-MM-DDTHH:MM:SSZ". */
+  at: string;
+  /** The page it was sent from (path and query; no hash, which may carry a whole project). */
+  page: string;
+  message?: string;
+  email?: string;
+  rating?: "up" | "down";
+  /** Bun release, browser and the like, when the sender ticked "include". */
+  env?: Record<string, string>;
+  /** A short link (/s/<id>) to the project, when the sender ticked "attach". */
+  project?: string;
+}
+
+const MAX_MESSAGE = 4000;
+const str = (v: unknown, max: number) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : undefined);
+
+/** The request body, checked and trimmed; a string says what's wrong with it. */
+function parseFeedback(body: unknown): Feedback | string {
+  if (!body || typeof body !== "object") return "not a feedback entry";
+  const b = body as Record<string, unknown>;
+  if (b.kind !== "message" && b.kind !== "rating") return "unknown kind";
+  const fb: Feedback = { kind: b.kind, at: new Date().toISOString().slice(0, 19) + "Z", page: "" };
+  const page = str(b.page, 2000);
+  if (page) {
+    try {
+      const u = new URL(page);
+      fb.page = (u.origin + u.pathname + u.search).slice(0, 300);
+    } catch {
+      return "page is not a URL";
+    }
+  }
+  fb.message = str(b.message, MAX_MESSAGE);
+  if (b.kind === "rating") {
+    if (b.rating !== "up" && b.rating !== "down") return "rating must be up or down";
+    fb.rating = b.rating;
+  } else if (!fb.message) return "the message is empty";
+  const email = str(b.email, 200);
+  if (email) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "that email address doesn't look right";
+    fb.email = email;
+  }
+  if (b.env && typeof b.env === "object") {
+    const env = Object.entries(b.env as Record<string, unknown>)
+      .slice(0, 12)
+      .flatMap(([k, v]) => (typeof v === "string" ? [[k.slice(0, 40), v.slice(0, 300)]] : []));
+    if (env.length) fb.env = Object.fromEntries(env);
+  }
+  const project = str(b.project, 20);
+  if (project) {
+    if (!/^\/s\/[0-9A-Za-z]{10}$/.test(project)) return "project is not a short link";
+    fb.project = project;
+  }
+  return fb;
+}
+
+/** The playground and the docs may send feedback; the docs from their own origin, so they get CORS headers. */
+const feedbackOrigin = (req: Request, env: Env, url: URL) => {
+  const origin = req.headers.get("origin");
+  return origin === url.origin || (origin !== null && origin === env.DOCS_ORIGIN) ? origin : null;
+};
+
+const cors = (origin: string) => ({
+  "access-control-allow-origin": origin,
+  "access-control-allow-methods": "POST",
+  "access-control-allow-headers": "content-type",
+  "access-control-max-age": "86400",
+  vary: "origin",
+});
+
+async function feedback(req: Request, env: Env, url: URL): Promise<Response> {
+  const origin = feedbackOrigin(req, env, url);
+  if (!origin) return json(403, { error: "forbidden" });
+  const reply = (status: number, body: object) => {
+    const res = json(status, body);
+    for (const [k, v] of Object.entries(cors(origin))) res.headers.set(k, v);
+    return res;
+  };
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors(origin) });
+  // The IP only keys the limit; it isn't stored with the entry.
+  const ip = req.headers.get("cf-connecting-ip") ?? "unknown";
+  if (!(await env.FEEDBACK_LIMIT.limit({ key: ip })).success) return reply(429, { error: "too much feedback at once, try again in a minute" });
+  const text = await req.text();
+  if (text.length > 16 * 1024) return reply(413, { error: "too long" });
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    return reply(400, { error: "not JSON" });
+  }
+  const fb = parseFeedback(body);
+  if (typeof fb === "string") return reply(400, { error: fb });
+  const key = `feedback:${fb.at}:${crypto.randomUUID().slice(0, 8)}`;
+  // The metadata comes back with a key listing, so a list shows what each entry is without reading it.
+  await env.LINKS.put(key, JSON.stringify(fb), { metadata: { kind: fb.kind, rating: fb.rating, page: fb.page.slice(0, 200) } });
+  return reply(200, { ok: true });
+}
+
 export default {
   async fetch(req, env, ctx): Promise<Response> {
     const url = new URL(req.url);
     if (url.pathname === "/api/short" && req.method === "POST") return create(req, env, url);
+    if (url.pathname === "/api/feedback" && (req.method === "POST" || req.method === "OPTIONS")) return feedback(req, env, url);
     if (url.pathname.startsWith("/s/")) return open(url.pathname.slice(3), env, url, ctx);
     if (url.pathname.startsWith("/api/")) return json(404, { error: "not found" });
     return env.ASSETS.fetch(req);

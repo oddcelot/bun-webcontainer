@@ -128,6 +128,26 @@ html[data-booting] body > header > * { visibility: hidden; animation: boot-fallb
 .shortcuts-custom summary { cursor: pointer; font-size: 12px; font-weight: 600; }
 .shortcuts-custom .dialog-label { margin-top: 8px; line-height: 1.5; }
 .shortcuts-json { height: 7.5rem; padding: 6px 8px; resize: vertical; }
+/* The Feedback dialog (ui/Feedback.tsx). */
+.feedback-message { height: 7.5rem; padding: 6px 8px; resize: vertical; font-family: inherit; }
+.feedback-check { display: flex; align-items: flex-start; gap: 8px; margin-top: 12px; font-size: 12px; cursor: pointer; }
+.feedback-check input { margin: 2px 0 0; accent-color: var(--accent); }
+.feedback-check .sub { display: block; color: var(--muted); font-size: 11px; }
+.feedback-env { margin: 4px 0 0 21px; font-size: 11px; color: var(--muted); }
+.feedback-env summary { cursor: pointer; }
+.feedback-env dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; margin: 4px 0 0; }
+.feedback-env dd { margin: 0; overflow-wrap: anywhere; font-family: var(--font-mono); }
+.dialog-description a { color: var(--accent); }
+.feedback-thanks { display: grid; justify-items: center; gap: 2px; padding: 8px 0 4px; text-align: center; }
+.feedback-thanks .dialog-button { margin-top: 10px; }
+/* A neon pen stroke: a white-hot core in a colored glow (on light themes the core takes the color). It draws in
+   (dash offset 1 → 0 of pathLength 1), flickers on, then glows steadily. */
+.neon-heart { --neon: #ff4fa3; overflow: visible; margin-bottom: 6px; }
+.neon-heart path { fill: none; stroke: light-dark(var(--neon), #fff4fa); stroke-width: 3.2; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; filter: drop-shadow(0 0 1.5px var(--neon)) drop-shadow(0 0 5px var(--neon)) drop-shadow(0 0 14px color-mix(in srgb, var(--neon) 55%, transparent)); animation: neon-draw 1.3s cubic-bezier(0.45, 0, 0.25, 1) 0.1s forwards, neon-flicker 0.6s linear 1.4s, neon-glow 2.4s ease-in-out 2s infinite; }
+@keyframes neon-draw { to { stroke-dashoffset: 0; } }
+@keyframes neon-flicker { 0%, 100% { opacity: 1; } 15% { opacity: 0.35; } 25% { opacity: 1; } 45% { opacity: 0.55; } 55% { opacity: 1; } 70% { opacity: 0.8; } }
+@keyframes neon-glow { 50% { opacity: 0.82; } }
+@media (prefers-reduced-motion: reduce) { .neon-heart path { animation: none; stroke-dashoffset: 0; } }
 .dialog-error { min-height: 1em; margin: 4px 0 0; font-size: 12px; color: var(--error); }
 .dialog-button.primary:hover { background: color-mix(in srgb, var(--accent) 34%, var(--panel)); }
 .swatch { display: inline-flex; flex-shrink: 0; width: 22px; height: 14px; overflow: hidden; border: 1px solid var(--control-border); border-radius: 3px; }

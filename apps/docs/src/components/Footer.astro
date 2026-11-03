@@ -1,0 +1,263 @@
+---
+// Starlight's footer with a page rating above it: a thumb sends right away, then an optional comment can follow.
+// Both go to the playground's Worker (apps/playground/worker/index.ts, POST /api/feedback), which allows this origin;
+// /privacy/#feedback says what's kept.
+import Default from "@astrojs/starlight/components/Footer.astro";
+import { PLAYGROUND_URL } from "../../site-urls.ts";
+---
+
+<section id="page-feedback" class="page-feedback not-content" data-endpoint={`${PLAYGROUND_URL}api/feedback`} aria-labelledby="page-feedback-title">
+  <div class="row">
+    <h2 id="page-feedback-title">Was this page helpful?</h2>
+    <button type="button" data-rating="up" aria-pressed="false">
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"
+        ><path d="M7 10v12M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+        ></path></svg
+      >
+      Yes
+    </button>
+    <button type="button" data-rating="down" aria-pressed="false">
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"
+        ><path d="M17 14V2M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+        ></path></svg
+      >
+      No
+    </button>
+  </div>
+  <form hidden>
+    <label for="page-feedback-message">Thanks! Anything to add? What was missing, wrong or unclear? (optional)</label>
+    <textarea id="page-feedback-message" maxlength="4000" rows="3"></textarea>
+    <label for="page-feedback-email">Email, if you'd like an answer (optional)</label>
+    <input id="page-feedback-email" type="email" maxlength="200" autocomplete="email" />
+    <button type="submit">Send</button>
+  </form>
+  <div class="done">
+    {/* Shown once the comment is sent; same drawing as the playground's (apps/playground/src/ui/Feedback.tsx). */}
+    <svg class="neon-heart" viewBox="0 0 100 44" width="64" height="28" aria-hidden="true">
+      <path pathLength="1" d="M4 25C18 33 36 38 50 35 58 33 62 24 61 18 60 12 54 10 50 16 46 10 39 12 39 18 39 25 45 31 51 38 60 46 82 40 96 31"></path>
+    </svg>
+    <p class="status" role="status"></p>
+  </div>
+  <p class="note">Sends the rating and this page's address; nothing else unless you write it. <a href="/privacy/#feedback">Privacy</a></p>
+</section>
+
+<Default />
+
+<script>
+  const root = document.getElementById("page-feedback");
+  if (root) {
+    const endpoint = root.dataset.endpoint!;
+    const form = root.querySelector("form")!;
+    const status = root.querySelector<HTMLElement>(".status")!;
+    const buttons = [...root.querySelectorAll<HTMLButtonElement>("[data-rating]")];
+    const post = async (body: object) => {
+      const res = await fetch(endpoint, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ page: location.href.split("#")[0], ...body }) });
+      const answer = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(answer.error ?? `the server answered ${res.status}`);
+    };
+    const failed = (e: unknown) => {
+      const why = e instanceof Error ? e.message : String(e);
+      status.textContent = /fetch|answered 404/i.test(why) ? "Couldn't reach runbun.dev to send it." : `Not sent: ${why}`;
+    };
+    let rated = false;
+    for (const button of buttons)
+      button.addEventListener("click", async () => {
+        if (rated) return;
+        rated = true;
+        for (const b of buttons) {
+          b.setAttribute("aria-pressed", String(b === button));
+          b.disabled = true;
+        }
+        try {
+          await post({ kind: "rating", rating: button.dataset.rating });
+          form.hidden = false;
+          form.querySelector("textarea")!.focus();
+        } catch (e) {
+          failed(e);
+          rated = false;
+          for (const b of buttons) b.disabled = false;
+        }
+      });
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const message = form.querySelector("textarea")!.value.trim();
+      if (!message) return void (status.textContent = "Write a few words first, or leave it at the rating.");
+      const submit = form.querySelector<HTMLButtonElement>("button[type=submit]")!;
+      submit.disabled = true;
+      try {
+        await post({ kind: "message", message, email: form.querySelector("input")!.value.trim() || undefined });
+        form.hidden = true;
+        status.textContent = "Sent, thank you.";
+        root.querySelector("svg.neon-heart")?.classList.add("on");
+      } catch (err) {
+        failed(err);
+      } finally {
+        submit.disabled = false;
+      }
+    });
+  }
+</script>
+
+<style>
+  .page-feedback {
+    margin-top: 3rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--sl-color-hairline);
+    font-size: var(--sl-text-sm);
+    color: var(--sl-color-gray-2);
+  }
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  h2 {
+    margin: 0 0.5rem 0 0;
+    font-size: var(--sl-text-base);
+    font-weight: 600;
+    color: var(--sl-color-white);
+  }
+  button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    height: 2rem;
+    padding: 0 0.75rem;
+    border: 1px solid var(--control-border, var(--sl-color-gray-5));
+    border-radius: var(--inner-radius, 6px);
+    background: var(--control, transparent);
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+  button:hover:not(:disabled) {
+    background: var(--control-hover, var(--sl-color-gray-6));
+    color: var(--sl-color-white);
+  }
+  button:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
+  button[aria-pressed="true"] {
+    opacity: 1;
+    border-color: var(--sl-color-accent);
+    color: var(--sl-color-white);
+  }
+  form {
+    display: grid;
+    gap: 0.375rem;
+    max-width: 36rem;
+    margin-top: 1rem;
+  }
+  form[hidden] {
+    display: none;
+  }
+  textarea,
+  input {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 0.375rem 0.5rem;
+    border: 1px solid var(--control-border, var(--sl-color-gray-5));
+    border-radius: var(--inner-radius, 6px);
+    background: var(--control, var(--sl-color-black));
+    color: var(--sl-color-white);
+    font: inherit;
+  }
+  textarea {
+    resize: vertical;
+  }
+  label:not(:first-child) {
+    margin-top: 0.375rem;
+  }
+  form button {
+    justify-self: start;
+    margin-top: 0.5rem;
+    border-color: var(--sl-color-accent);
+  }
+  .done {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    margin-top: 0.75rem;
+  }
+  .done:has(.status:empty) {
+    display: none;
+  }
+  .status:empty {
+    display: none;
+  }
+  .status {
+    margin: 0;
+    color: var(--sl-color-white);
+  }
+  /* A neon pen stroke: a white-hot core in a colored glow (on light themes the core takes the color). It draws in
+     (dash offset 1 → 0 of pathLength 1), flickers on, then glows steadily. */
+  .neon-heart {
+    --neon: #ff4fa3;
+    flex: none;
+    overflow: visible;
+  }
+  .neon-heart:not(.on) {
+    display: none;
+  }
+  .neon-heart path {
+    fill: none;
+    stroke: light-dark(var(--neon), #fff4fa);
+    stroke-width: 3.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    filter: drop-shadow(0 0 1.5px var(--neon)) drop-shadow(0 0 5px var(--neon)) drop-shadow(0 0 14px color-mix(in srgb, var(--neon) 55%, transparent));
+    animation:
+      neon-draw 1.3s cubic-bezier(0.45, 0, 0.25, 1) 0.1s forwards,
+      neon-flicker 0.6s linear 1.4s,
+      neon-glow 2.4s ease-in-out 2s infinite;
+  }
+  @keyframes neon-draw {
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+  @keyframes neon-flicker {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    15% {
+      opacity: 0.35;
+    }
+    25% {
+      opacity: 1;
+    }
+    45% {
+      opacity: 0.55;
+    }
+    55% {
+      opacity: 1;
+    }
+    70% {
+      opacity: 0.8;
+    }
+  }
+  @keyframes neon-glow {
+    50% {
+      opacity: 0.82;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .neon-heart path {
+      animation: none;
+      stroke-dashoffset: 0;
+    }
+  }
+  .note {
+    margin: 0.75rem 0 0;
+    font-size: var(--sl-text-xs);
+    color: var(--sl-color-gray-3);
+  }
+  .note a {
+    color: inherit;
+  }
+</style>

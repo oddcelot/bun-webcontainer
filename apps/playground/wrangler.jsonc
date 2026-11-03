@@ -1,5 +1,6 @@
 // Everything runs in the browser from static assets (public/_headers, copied into dist/, sets COOP/COEP).
-// The Worker only handles opt-in short links: POST /api/short and GET /s/<id> (worker/index.ts).
+// The Worker only handles opt-in short links (POST /api/short, GET /s/<id>) and feedback (POST /api/feedback,
+// stored in LINKS under "feedback:"); worker/index.ts.
 {
   "name": "bun-playground",
   "compatibility_date": "2026-10-28",
@@ -11,7 +12,13 @@
   },
   "kv_namespaces": [{ "binding": "LINKS", "id": "af919e62d9334718b4e63cf62eb5bb28" }],
   // New short links per client IP: 10 a minute keeps the Free plan's 1,000 KV writes a day for real use.
-  "ratelimits": [{ "name": "CREATE_LIMIT", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } }],
+  "ratelimits": [
+    { "name": "CREATE_LIMIT", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } },
+    // Feedback and page ratings per client IP: plenty for a person, and it caps the KV writes a script can burn.
+    { "name": "FEEDBACK_LIMIT", "namespace_id": "1003", "simple": { "limit": 5, "period": 60 } }
+  ],
+  // The docs post page ratings and feedback from their own origin (worker/index.ts allows it with CORS).
+  "vars": { "DOCS_ORIGIN": "https://docs.runbun.dev" },
   "routes": [{ "pattern": "runbun.dev", "custom_domain": true }],
   // Only the custom domain: a workers.dev or preview-URL copy would be a duplicate site for search engines.
   "workers_dev": false,
@@ -26,7 +33,11 @@
         "run_worker_first": ["/api/*", "/s/*"]
       },
       "kv_namespaces": [{ "binding": "LINKS", "id": "5823c967357a4e149e3fd4347898c0a2" }],
-      "ratelimits": [{ "name": "CREATE_LIMIT", "namespace_id": "1002", "simple": { "limit": 10, "period": 60 } }],
+      "ratelimits": [
+        { "name": "CREATE_LIMIT", "namespace_id": "1002", "simple": { "limit": 10, "period": 60 } },
+        { "name": "FEEDBACK_LIMIT", "namespace_id": "1004", "simple": { "limit": 5, "period": 60 } }
+      ],
+      "vars": { "DOCS_ORIGIN": "https://docs-canary.runbun.dev" },
       "routes": [{ "pattern": "canary.runbun.dev", "custom_domain": true }]
     }
   }

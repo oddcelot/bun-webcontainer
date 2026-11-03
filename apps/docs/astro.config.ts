@@ -45,6 +45,7 @@ export default defineConfig({
         ThemeProvider: "./src/components/ThemeProvider.astro",
         ThemeSelect: "./src/components/ThemeSelect.astro",
         Banner: "./src/components/Banner.astro",
+        Footer: "./src/components/Footer.astro",
       },
       social: [
         { icon: "github", label: "GitHub", href: "https://github.com/oddcelot/bun-webcontainer" },
