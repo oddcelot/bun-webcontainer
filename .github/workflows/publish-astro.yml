@@ -1,7 +1,8 @@
 # Publishes packages/astro (@runbun/astro) to npm, by hand: Actions → Publish @runbun/astro → Run workflow. A dry run
 # (the default) packs and prints what would go out. A real run publishes the version in packages/astro/package.json
-# with provenance, through npm's trusted publishing (no token: configure this repo and workflow on the package's
-# npm settings first), and tags the commit astro-v<version>.
+# through npm's trusted publishing (no token; set up once with `npm trust github --file publish-astro.yml
+# --repo oddcelot/bun-webcontainer --allow-publish`), and tags the commit astro-v<version>. No provenance: npm only
+# generates it for public repos.
 name: Publish @runbun/astro
 
 on:
@@ -14,7 +15,7 @@ on:
 
 permissions:
   contents: write # the astro-v<version> tag
-  id-token: write # npm provenance and trusted publishing
+  id-token: write # npm trusted publishing (OIDC)
 
 concurrency: publish-astro
 
@@ -64,7 +65,7 @@ jobs:
 
       - name: Publish
         if: ${{ !inputs.dry_run }}
-        run: npm publish --access public --provenance
+        run: npm publish --access public
 
       - name: Tag
         if: ${{ !inputs.dry_run }}
