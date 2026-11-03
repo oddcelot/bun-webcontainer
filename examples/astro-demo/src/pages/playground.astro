@@ -1,0 +1,10 @@
+---
+// For comparison: `playground` adds a Run button, and with it the element from runbun.dev.
+import { Code } from "@runbun/astro/components";
+import Layout from "../Layout.astro";
+---
+
+<Layout title="Playground blocks">
+  <p>Click Run to load the playground from runbun.dev; until then the block is the same HTML as a static one.</p>
+  <Code playground mode="code" features="console" title="index.ts" code={`console.log("Hello from", Bun.version);`} />
+</Layout>

@@ -4,9 +4,10 @@ $schema: 'https://moonrepo.dev/schemas/workspace.json'
 versionConstraint: '>=2.6.0'
 
 projects:
-  # Every apps/, crates/ and packages/ directory with a moon.yml; the id is the directory name.
+  # Every apps/, crates/, examples/ and packages/ directory with a moon.yml; the id is the directory name.
   globs:
     - 'apps/*/moon.yml'
+    - 'examples/*/moon.yml'
     - 'crates/*/moon.yml'
     - 'packages/*/moon.yml'
   sources:

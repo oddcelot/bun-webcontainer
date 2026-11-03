@@ -26,6 +26,10 @@ export interface RunbunOptions {
 }
 
 const VIRTUAL = "virtual:@runbun/astro/config";
+/** The blocks' stylesheet as a CSS module: <Code> imports it, so Astro bundles it into the page's own CSS. */
+const VIRTUAL_CSS = "virtual:@runbun/astro/blocks.css";
+// Not `\0`-prefixed: Vite's CSS plugins only take ids that end in `.css` and aren't virtual-internal.
+const RESOLVED_CSS = "/@runbun/astro/blocks.css";
 
 export default function runbun(options: RunbunOptions = {}): AstroIntegration {
   const { playgroundUrl = "https://runbun.dev/", themes = ["pierre-light", "pierre-dark"], themeSelector, sync } = options;
@@ -43,8 +47,8 @@ export default function runbun(options: RunbunOptions = {}): AstroIntegration {
             plugins: [
               {
                 name: "@runbun/astro:config",
-                resolveId: (id: string) => (id === VIRTUAL ? "\0" + VIRTUAL : undefined),
-                load: (id: string) => (id === "\0" + VIRTUAL ? source : undefined),
+                resolveId: (id: string) => (id === VIRTUAL ? "\0" + VIRTUAL : id === VIRTUAL_CSS ? RESOLVED_CSS : undefined),
+                load: (id: string) => (id === "\0" + VIRTUAL ? source : id === RESOLVED_CSS ? css : undefined),
               },
             ],
           },
