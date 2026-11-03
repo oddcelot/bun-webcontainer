@@ -65,3 +65,42 @@ export function originalPosition(map: Mappings, line: number, column: number): [
   if (found < 0) found = 0;
   return [segs[found + 1], segs[found + 2]];
 }
+
+const BASE64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+/**
+ * `mappings` with the generated columns of the first line moved by `by` (only its first segment's is absolute): for
+ * text put before the printed code on its first line, as transpile-wasm does for its own (`shift_first_column`).
+ */
+export function shiftFirstColumn(mappings: string, by: number): string {
+  if (!by || !mappings || mappings[0] === ";") return mappings;
+  let value = 0;
+  let shift = 0;
+  let end = 0;
+  for (let i = 0; i < mappings.length; i++) {
+    const digit = DIGITS[mappings.charCodeAt(i)] ?? -1;
+    if (digit < 0) return mappings;
+    value |= (digit & 31) << shift;
+    shift += 5;
+    if (!(digit & 32)) {
+      end = i + 1;
+      break;
+    }
+  }
+  const column = (value & 1 ? -(value >>> 1) : value >>> 1) + by;
+  let vlq = column < 0 ? (-column << 1) | 1 : column << 1;
+  let out = "";
+  do {
+    let digit = vlq & 31;
+    vlq >>>= 5;
+    if (vlq > 0) digit |= 32;
+    out += BASE64[digit];
+  } while (vlq > 0);
+  return out + mappings.slice(end);
+}
+
+/** The length of `text`'s first line. */
+export const firstLineLength = (text: string) => {
+  const nl = text.indexOf("\n");
+  return nl < 0 ? text.length : nl;
+};

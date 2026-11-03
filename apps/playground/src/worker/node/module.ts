@@ -4,6 +4,7 @@ import { hasModuleSyntax, JS_LIKE, moduleKindOf, packageType, requireRuntimeImpo
 import { inRanges, isMethod, literalRanges } from "../../literals";
 import { dataFormat, parseDataFile } from "../../resolver";
 import { transpileSync, transpileSyncEsm } from "../../transpiler";
+import { FUNCTION_HEADER_LINES, registerSource } from "../sourceMaps";
 import { tsconfigFor } from "../../tsconfig";
 
 /** Bun's resolver over the worker's VFS (see setRequire); unset on the page, which only reads export names. */
@@ -176,8 +177,9 @@ export function createModule(registry: Record<string, object>) {
     const file = "/" + path;
     if (importing.has(file)) throw requireEsmError(file, "can't load while the module is still being imported (a cycle or top-level await)");
     let code: string;
+    let mappings: string | undefined;
     try {
-      code = transpileSyncEsm(src, file, tsconfigFor(vfs!, path));
+      [code, mappings] = transpileSyncEsm(src, file, tsconfigFor(vfs!, path), true).split("\0");
     } catch (e) {
       if (e instanceof Error && e.message.startsWith("require() async module")) throw new TypeError(e.message);
       throw e;
@@ -206,8 +208,10 @@ export function createModule(registry: Record<string, object>) {
       importSync: (s: string) => importSync(s, file),
       dynamicImport: (s: unknown, o?: unknown) => g.__dynamicImport(`file://${file}`, s, o),
     };
+    const url = encodeURI(`file://${file}`);
+    registerSource(url, FUNCTION_HEADER_LINES, mappings);
     try {
-      new Function("hmr", `${code}\n//# sourceURL=${encodeURI(`file://${file}`)}`)(hmr);
+      new Function("hmr", `${code}\n//# sourceURL=${url}`)(hmr);
     } catch (e) {
       delete esModules[file];
       tellPage("fail", file);
@@ -238,14 +242,27 @@ export function createModule(registry: Record<string, object>) {
     if (path.endsWith(".node")) throw Object.assign(new Error(`Cannot load native addon ${file}: .node files are not supported in the playground`), { code: "ERR_DLOPEN_FAILED" });
     // With the nearest tsconfig's JSX and decorator options, as served modules have them; its JSX runtime and
     // `bun:wrap` imports become requires (see requireRuntimeImports).
-    const transpile = () => requireRuntimeImports(stripDirname(transpileSync(src, file, tsconfigFor(vfs!, path))));
+    // With its source map: the frames of `compile`'s function then read in the file's lines, as do those of plain JS.
+    let mappings: string | undefined;
+    let stripped = 0;
+    const transpile = () => {
+      const [js, map] = transpileSync(src, file, tsconfigFor(vfs!, path), true).split("\0");
+      const body = stripDirname(js);
+      stripped = body === js ? 0 : 1;
+      mappings = map;
+      return requireRuntimeImports(body);
+    };
     // What Bun runs as an ES module (see moduleKindOf, which throws Bun's error for CommonJS features next to an
     // import) loads as one (loadEsm); a file of another extension only if it has module syntax or its package's type.
     // Markdown is an ES module of its HTML, as Bun requires it.
     const esm = JS_LIKE.test(path) ? moduleKindOf(vfs!, path, src) === "esm" : MARKDOWN.test(path) || packageType(vfs!, path) === "module" || hasModuleSyntax(src);
     if (esm) return loadEsm(path, src);
     let code = /\.[cm]?(ts|tsx|jsx)$/.test(path) ? transpile() : src;
-    const compile = () => new Function("exports", "require", "module", "__filename", "__dirname", `${dynamicImports(code.replace(/^#!.*/, ""), file)}\n//# sourceURL=${encodeURI(`file://${file}`)}`);
+    const url = encodeURI(`file://${file}`);
+    const compile = () => {
+      registerSource(url, FUNCTION_HEADER_LINES - stripped, mappings);
+      return new Function("exports", "require", "module", "__filename", "__dirname", `${dynamicImports(code.replace(/^#!.*/, ""), file)}\n//# sourceURL=${url}`);
+    };
     let body: Function;
     try {
       body = compile();

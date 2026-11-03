@@ -164,6 +164,11 @@ export function reexports(source: string): string[] {
  * evaluated: that order (dependencies first) isn't Node's. `depUrl(spec)` is the URL a literal require loads, null
  * if it can't load (an optional dependency), which then throws when called.
  */
+const CJS_FUNCTION = "  (function (exports, require, module, __filename, __dirname) {\n";
+
+/** The 0-based line of `wrapped` (wrapCommonJS's output, edited on its lines only) where the file's source starts. */
+export const wrappedBodyLine = (wrapped: string) => wrapped.slice(0, wrapped.indexOf(CJS_FUNCTION) + CJS_FUNCTION.length).split("\n").length - 1;
+
 export function wrapCommonJS(path: string, source: string, depUrl: (spec: string) => string | null): string {
   const deps = [...new Set([...source.replace(COMMENT_LINE, "").matchAll(REQUIRE)].map((m) => m[2]))].flatMap((s) => {
     const url = depUrl(s);
@@ -190,8 +195,7 @@ function require(id) {
   return "__cjsModule" in ns ? ns.__cjsModule().exports : "__cjs" in ns ? ns.__cjs : ns;
 }
 function __run(module) {
-  (function (exports, require, module, __filename, __dirname) {
-${source}
+${CJS_FUNCTION}${source}
   }).call(module.exports, module.exports, require, module, ${file}, ${JSON.stringify("/" + dir)});
 }
 var module;
