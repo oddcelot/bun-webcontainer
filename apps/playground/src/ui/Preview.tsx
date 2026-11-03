@@ -1,6 +1,6 @@
 import { For, Show, createEffect, onSettled, untrack, useContext } from "solid-js";
 import { Select } from "@kobalte/core/select";
-import { TabItem, TabList } from "./Tabs";
+import { TabItem, TabList } from "@runbun/ui/solid/Tabs";
 import { isMac, matches } from "../keymap";
 import { createPierre, createViewer } from "../editors/pierre";
 import type { CodeEditor } from "../editors/types";

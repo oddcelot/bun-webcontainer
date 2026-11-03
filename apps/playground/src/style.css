@@ -1,5 +1,6 @@
 /* The shared tokens (colors, fonts, radii, control sizes) come from @runbun/ui (packages/ui/uno.preset.ts) through virtual:uno.css;
  * theme.ts sets the colors from the chosen theme. */
+@import "@runbun/ui/components.css";
 :root {
   /* The editor reads the diffs fonts. */
   --diffs-font-family: var(--font-mono);
@@ -57,31 +58,12 @@ html[data-booting] body > header > * { visibility: hidden; animation: boot-fallb
 #share-menu button[hidden] { display: none; }
 #share-menu button:disabled { opacity: 0.5; cursor: default; }
 #share-menu button:disabled:hover { background: none; }
-/* Appearance popover: the color-scheme toggle over the theme list. Its padding is --pad, so the corners inside are --inner-radius. */
-.appearance { z-index: 30; width: 18rem; padding: var(--pad); border: 1px solid var(--control-border); border-radius: calc(var(--inner-radius) + var(--pad) + 1px); background: var(--panel); color: var(--fg); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35); }
-.appearance .select-list { max-height: min(24rem, 60vh); margin-top: var(--pad); padding: 0; }
-:is(#modes, #status-display, .segmented) { display: flex; }
 #status-display { margin-top: var(--pad); }
-:is(#modes, #status-display, .segmented) button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: var(--control-height); padding: 0 7px; margin-left: -1px; border: 1px solid var(--control-border); border-radius: 0; background: var(--control); color: inherit; font: inherit; cursor: pointer; }
-:is(#modes, #status-display, .segmented) button:hover { background: var(--control-hover); }
-:is(#modes, #status-display, .segmented) button:first-child { border-radius: var(--inner-radius) 0 0 var(--inner-radius); margin-left: 0; }
-:is(#modes, #status-display, .segmented) button:last-child { border-radius: 0 var(--inner-radius) var(--inner-radius) 0; }
-/*
- * Pressed: the icon keeps the text color (an accent icon can be fainter than its neighbours); the mark is an accent
- * line on the bottom edge, inset from the sides (past the 6px corner radius) so it stays straight on the outer buttons.
- */
-:is(#modes, #status-display, .segmented) button { position: relative; }
-:is(#modes, #status-display, .segmented) button[aria-pressed="true"] { background: var(--control-hover); }
-:is(#modes, #status-display, .segmented) button[aria-pressed="true"]::after { content: ""; position: absolute; left: 7px; right: 7px; bottom: 0; height: 2px; border-radius: 1px 1px 0 0; background: var(--accent); }
 .title { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: inherit; white-space: nowrap; }
 /* Read by screen readers and crawlers, not shown: the h1's stable name next to the random visible one. */
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 #example { min-width: 6rem; flex: 0 1 14rem; }
 /* The project and theme pickers: Kobalte Selects whose lists open in a portal. */
-.select-trigger { display: inline-flex; align-items: center; gap: 6px; min-width: 0; padding: 0 8px; background: var(--control); color: var(--fg); border: 1px solid var(--control-border); border-radius: 6px; font: inherit; cursor: pointer; }
-.select-trigger .value { flex: 1; display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
-.select-trigger .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.select-trigger .chevron { display: grid; color: var(--muted); }
 /* Prompt dialogs (ui/PromptDialog.tsx): a Kobalte Dialog in a portal, a card like the menus. */
 .dialog-overlay { position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, 0.55); }
 .dialog-positioner { position: fixed; inset: 0; z-index: 41; display: grid; place-items: start center; padding-top: 14vh; pointer-events: none; }
@@ -150,15 +132,6 @@ html[data-booting] body > header > * { visibility: hidden; animation: boot-fallb
 @media (prefers-reduced-motion: reduce) { .neon-heart path { animation: none; stroke-dashoffset: 0; } }
 .dialog-error { min-height: 1em; margin: 4px 0 0; font-size: 12px; color: var(--error); }
 .dialog-button.primary:hover { background: color-mix(in srgb, var(--accent) 34%, var(--panel)); }
-.swatch { display: inline-flex; flex-shrink: 0; width: 22px; height: 14px; overflow: hidden; border: 1px solid var(--control-border); border-radius: 3px; }
-.swatch > span { flex: 1; box-shadow: inset 0 -3px var(--swatch-accent, transparent); }
-.select-menu { z-index: 30; min-width: 16rem; border: 1px solid var(--control-border); border-radius: calc(var(--inner-radius) + 4px + 1px); background: var(--panel); color: var(--fg); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35); }
-.select-list { max-height: min(28rem, 70vh); overflow-y: auto; margin: 0; padding: 4px; list-style: none; outline: none; }
-.select-section { padding: 8px 8px 4px; font-size: 11px; font-weight: 600; color: var(--muted); }
-.select-option { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: var(--inner-radius); cursor: pointer; outline: none; }
-.select-option .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.select-option[data-highlighted] { background: var(--control-hover); }
-.select-option .check { display: grid; color: var(--accent); }
 /* The status bar, as in VS Code or Zed: one quiet line of small items straight on the canvas, under the panes. */
 #statusbar { display: flex; align-items: center; gap: 2px; height: 24px; margin: -2px 6px 4px; color: var(--muted); font-size: 12px; white-space: nowrap; }
 #statusbar .spacer { flex: 1; }
@@ -169,10 +142,6 @@ html[data-booting] body > header > * { visibility: hidden; animation: boot-fallb
 #statusbar > button[aria-disabled] { cursor: default; }
 #statusbar .problems:not([aria-disabled]) { color: var(--fg); }
 #statusbar #status { height: 18px; margin-left: 4px; min-width: 0; font-size: 11px; }
-/* Kobalte tooltips (ui/Tip.tsx): a small card with the text, then the shortcut keys. */
-.tooltip { z-index: 40; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; max-width: 24rem; padding: 4px 8px; border: 1px solid var(--control-border); border-radius: var(--inner-radius); background: var(--panel); color: var(--fg); font-size: 12px; line-height: 1.4; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3); }
-.tooltip kbd { padding: 0 4px; border: 1px solid var(--control-border); border-radius: 4px; color: var(--muted); font: 11px/16px var(--font-mono); }
-.tooltip-note { flex-basis: 100%; color: var(--muted); font-size: 11px; }
 @media (max-width: 640px) { #statusbar .language, #statusbar .cursor { display: none; } }
 /* The dot sits in the pill's round left end, 4px from the border all round (18px tall in the status bar, 8px dot). */
 #status { min-width: 7.5em; display: inline-flex; align-items: center; gap: 6px; padding: 0 9px 0 4px; border: 1px solid var(--control-border); border-radius: 999px; color: var(--muted); white-space: nowrap; --dot: var(--muted); }
@@ -235,7 +204,6 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
 #editor { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 /* Over the editor surface, not above it: the surface stays put when a file opens. */
 #editor[data-empty]::before { content: "No file open"; position: absolute; inset: 0; z-index: 1; display: grid; place-items: center; background: var(--bg); color: var(--muted); }
-.tabs { display: flex; gap: 4px; padding: var(--pad); background: var(--bg); border-bottom: 1px solid var(--border); }
 /* Tabs size to their name up to 26rem (about 42 characters) (then "…"; the tooltip has the full path) and don't shrink: a full bar scrolls. */
 .tabs-bar { display: flex; align-items: center; min-width: 0; background: var(--bg); border-bottom: 1px solid var(--border); }
 .tabs-bar .tabs { flex: 1 1 auto; min-width: 0; border-bottom: 0; }
@@ -247,42 +215,8 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
 .tabs-bar .format + .autosave { margin-left: 4px; }
 .tabs-bar .autosave[aria-pressed="false"] { color: var(--fg); border-color: var(--control-border); }
 .tabs .tab .unsaved { color: var(--accent); font-size: 10px; line-height: 1; }
-.tabs .tablist, .tabs.tablist { display: flex; gap: 4px; }
-.tabs .tablist { flex: 0 1 auto; min-width: 0; }
-/*
-  The tab row scrolls without a scrollbar (TabList turns the wheel sideways). Instead its edges fade into the
-  background where tabs are scrolled out: each fade grows in over the first 24px scrolled away from its end, so it's
-  gone at either end and with nothing to scroll. Browsers without scroll-driven animations show no fades.
-*/
-@property --fade-start { syntax: "<length>"; inherits: false; initial-value: 0px; }
-@property --fade-end { syntax: "<length>"; inherits: false; initial-value: 0px; }
-@keyframes tabs-fade-start { from { --fade-start: 0px; } to { --fade-start: 24px; } }
-@keyframes tabs-fade-end { from { --fade-end: 24px; } to { --fade-end: 0px; } }
-.tablist { overflow-x: auto; scrollbar-width: none; }
-.tablist::-webkit-scrollbar { display: none; }
-@supports (animation-timeline: scroll()) {
-  .tablist {
-    mask-image: linear-gradient(to right, transparent, #000 var(--fade-start), #000 calc(100% - var(--fade-end)), transparent);
-    animation: tabs-fade-start linear both, tabs-fade-end linear both;
-    animation-timeline: scroll(self inline), scroll(self inline);
-    animation-range: 0 24px, calc(100% - 24px) 100%;
-  }
-}
-.tabs .tab { position: relative; display: flex; flex: 0 0 auto; align-items: center; gap: 6px; min-width: 6rem; max-width: 26rem; padding: 4px 6px 4px 10px; border-radius: var(--inner-radius); color: var(--muted); cursor: pointer; white-space: nowrap; user-select: none; }
-.tabs .tab:hover { color: var(--fg); background: var(--control); }
-.tabs .tab[data-selected] { background: var(--control-hover); color: var(--fg); }
-/* The same mark as the pressed color-scheme button: an accent line on the bottom edge, inset past the corners. */
-.tabs .tab[data-selected]::after { content: ""; position: absolute; left: 7px; right: 7px; bottom: 0; height: 2px; border-radius: 1px 1px 0 0; background: var(--accent); }
-.tabs .tab:has(:focus-visible) { outline: 1px solid var(--accent); outline-offset: -1px; }
-/* The tab button is the tab's label: a bare button inside the tab box, which draws the tab. */
-.tabs .tab-trigger { display: flex; flex: 1 1 auto; align-items: center; gap: 6px; min-width: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; outline: none; white-space: nowrap; }
-.tabs .name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* The folder hint gives way before the name does. */
 .tabs .dir { flex: 0 1000 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 11px; opacity: 0.7; }
-/* The × sits in the tab's padding (negative margin), so a tab is as tall with it as without: a preview tab gains one when a second opens. */
-.tabs .close { flex-shrink: 0; display: grid; place-items: center; margin-block: -2px; padding: 2px; border: 0; border-radius: calc(var(--inner-radius) - 4px); background: none; color: inherit; cursor: pointer; opacity: 0; }
-.tabs .tab:hover .close, .tabs .tab[data-selected] .close, .tabs .tab:focus-within .close { opacity: 0.7; }
-.tabs .close:hover { opacity: 1; background: var(--control-hover); }
 /* The editor's hover (editors/pierre.ts): the same surface as its error popovers. */
 .editor-hover { position: fixed; z-index: 50; max-width: min(36rem, calc(100vw - 8px)); max-height: 40vh; overflow: auto; padding: 6px 10px; border: 1px solid color-mix(in srgb, var(--fg) 18%, transparent); border-radius: 6px; background: color-mix(in srgb, var(--fg) 4%, var(--bg)); color: var(--fg); font-size: 13px; line-height: 19px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3); }
 .editor-hover[hidden] { display: none; }

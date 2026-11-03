@@ -20,11 +20,6 @@ body { color: var(--fg); }
 .code-editor:focus-within { outline: 1px solid var(--accent); outline-offset: -1px; }
 .cfg-form .dialog-input:focus { outline: 1px solid var(--accent); outline-offset: -1px; }
 .segmented button { white-space: nowrap; }
-.chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.chip { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border: 1px solid var(--control-border); border-radius: 999px; background: none; color: var(--muted); font: 12px var(--font-mono); cursor: pointer; }
-.chip:hover { background: var(--control); color: var(--fg); }
-.chip[aria-pressed="true"], .chip[data-pressed] { border-color: color-mix(in srgb, var(--accent) 60%, var(--control-border)); background: color-mix(in srgb, var(--accent) 16%, var(--panel)); color: var(--fg); }
-.chip i { font-size: 12px; }
 .accent { display: flex; align-items: center; gap: 6px; }
 .accent input[type="color"] { flex: 0 0 auto; width: 28px; height: var(--control-height); padding: 2px; border: 1px solid var(--control-border); border-radius: 6px; background: var(--control); cursor: pointer; }
 .accent .clear { display: grid; place-items: center; flex: 0 0 auto; width: var(--control-height); height: var(--control-height); border: 1px solid var(--control-border); border-radius: 6px; background: var(--control); color: var(--muted); cursor: pointer; }

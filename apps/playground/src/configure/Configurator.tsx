@@ -1,6 +1,5 @@
 import { For, Show, createEffect, createMemo, createSignal, createStore, onSettled, untrack, type ParentProps } from "solid-js";
 import { Select } from "@kobalte/core/select";
-import { ToggleGroup } from "@kobalte/core/toggle-group";
 import { BASE, DOCS } from "../base";
 import { PRESETS } from "../embed/config";
 import { FEATURES, MODES, type Feature, type Mode } from "../embed/protocol";
@@ -9,7 +8,9 @@ import { createPierre } from "../editors/pierre";
 import { FAMILIES, isFamily, onTheme, pickFamily, setColorMode, themeName } from "../theme";
 import { guarded } from "../ui/guarded";
 import { Swatch } from "@runbun/ui/solid/Swatch";
-import { TabItem, TabList } from "../ui/Tabs";
+import { Chip, Chips } from "@runbun/ui/solid/Chips";
+import { Segmented } from "@runbun/ui/solid/Segmented";
+import { TabItem, TabList } from "@runbun/ui/solid/Tabs";
 import { Tip } from "@runbun/ui/solid/Tip";
 import { highlightSnippet } from "./highlight";
 import { attributes, elementSnippet, iframeSnippet, inlineFile, type Attr, type Form } from "./snippet";
@@ -132,24 +133,6 @@ function Choice(props: { label: string; value: string; options: Option[]; onChan
         </Select.Content>
       </Select.Portal>
     </Select>
-  );
-}
-
-/** One of a few values, as a row of buttons (the theme picker's look). */
-function Segmented(props: { label: string; value: string; options: [value: string, label: string, icon?: string, tip?: string][]; onChange: (v: string) => void }) {
-  return (
-    <ToggleGroup class="segmented" aria-label={props.label} value={props.value} onChange={(v) => v && props.onChange(v)}>
-      <For each={props.options}>
-        {([value, label, icon, tip]) => (
-          <Tip as={ToggleGroup.Item} value={value} tip={tip}>
-            <Show when={icon}>
-              <i class={icon} aria-hidden="true" />
-            </Show>
-            {label}
-          </Tip>
-        )}
-      </For>
-    </ToggleGroup>
   );
 }
 
@@ -382,20 +365,20 @@ export function Configurator() {
               options={MODES.map((m) => [m, m, MODE_INFO[m][0], MODE_INFO[m][1]])}
             />
             <Field label="Features" hint="a mode's feature turned off is locked for readers" wide>
-              <ToggleGroup class="chips" multiple aria-label="Features" value={form.features} onChange={(v) =>
+              <Chips label="Features" value={form.features} onChange={(v) =>
                   setForm((s) => {
                     s.features.splice(0, s.features.length, ...(v as Feature[]));
                   })
                 }>
                 <For each={FEATURES}>
                   {(f) => (
-                    <Tip as={ToggleGroup.Item} class="chip" value={f} tip={FEATURE_INFO[f]}>
+                    <Chip value={f} tip={FEATURE_INFO[f]}>
                       <i class={form.features.includes(f) ? "i-lucide-check" : PRESETS[form.mode].includes(f) ? "i-lucide-lock" : "i-lucide-plus"} aria-hidden="true" />
                       {f}
-                    </Tip>
+                    </Chip>
                   )}
                 </For>
-              </ToggleGroup>
+              </Chips>
             </Field>
             <div class="row">
               <Field label="Height" hint={form.mode === "code" ? "auto" : undefined}>

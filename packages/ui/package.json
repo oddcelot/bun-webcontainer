@@ -7,7 +7,8 @@
     "./uno.preset": "./uno.preset.ts",
     "./themes.json": "./themes.json",
     "./code-themes/*": "./code-themes/*",
-    "./solid/*": "./solid/*.tsx"
+    "./solid/*": "./solid/*.tsx",
+    "./components.css": "./components.css"
   },
   "peerDependencies": {
     "@kobalte/core": "catalog:",

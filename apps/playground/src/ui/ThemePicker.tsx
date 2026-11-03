@@ -61,6 +61,7 @@ export function ThemePicker() {
           {/* One mode is always on: clicking the pressed one again (onChange(null)) changes nothing. */}
           <ToggleGroup
             id="modes"
+            class="segmented"
             aria-label="Color scheme"
             value={theme().mode}
             onChange={(mode) => mode && switchTheme(() => setColorMode(mode as ColorMode))}
@@ -105,7 +106,7 @@ export function ThemePicker() {
             )}
             renderSection={(section) => <Listbox.Section class="select-section">{section.rawValue.label}</Listbox.Section>}
           />
-          <ToggleGroup id="status-display" aria-label="Run status" value={statusDisplay()} onChange={(v) => v && setStatusDisplay(v as "bar" | "toast")}>
+          <ToggleGroup id="status-display" class="segmented" aria-label="Run status" value={statusDisplay()} onChange={(v) => v && setStatusDisplay(v as "bar" | "toast")}>
             <For each={STATUS}>
               {([value, icon, label, title]) => (
                 <ToggleGroup.Item value={value} title={title}>
