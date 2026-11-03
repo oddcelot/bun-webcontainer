@@ -1,0 +1,18 @@
+$schema: 'https://moonrepo.dev/schemas/project.json'
+
+# Vendored @astrojs/solid-js v8 (README.md): src/ is upstream's, built with tsrs into dist/.
+language: 'typescript'
+
+fileGroups:
+  sources:
+    - 'src/**/*'
+    - 'tsconfig.json'
+    - 'package.json'
+
+tasks:
+  build:
+    command: 'bun run build'
+    inputs:
+      - '@group(sources)'
+    outputs:
+      - 'dist/**/*'

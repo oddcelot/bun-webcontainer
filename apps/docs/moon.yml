@@ -16,16 +16,19 @@ fileGroups:
     - '/packages/astro/src/**/*'
     - '/packages/astro/components/**/*'
     - '/packages/astro/package.json'
+    # @astrojs/solid-js (workspace:*, vendored v8): its dist/, built by astro-solid:build.
+    - '/packages/astro-solid/src/**/*'
+    - '/packages/astro-solid/package.json'
 
 tasks:
   check:
     command: 'bun run check'
-    deps: ['astro:build']
+    deps: ['astro:build', 'astro-solid:build']
     inputs:
       - '@group(sources)'
   build:
     command: 'bun run build'
-    deps: ['astro:build']
+    deps: ['astro:build', 'astro-solid:build']
     inputs:
       - '@group(sources)'
     outputs:
@@ -44,10 +47,11 @@ tasks:
     preset: 'server'
     deps:
       - 'astro:build'
+      - 'astro-solid:build'
       - 'playground:dev'
   deploy-canary:
     # docs-canary.runbun.dev (wrangler.jsonc env.canary), linking canary.runbun.dev; built into dist-canary/.
-    deps: ['astro:build']
+    deps: ['astro:build', 'astro-solid:build']
     script: >-
       bunx astro build --outDir dist-canary &&
       ../../scripts/canary-dist.ts dist-canary && bunx wrangler deploy --env canary

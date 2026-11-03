@@ -1,5 +1,6 @@
 {
   "extends": "astro/tsconfigs/strict",
+  "compilerOptions": { "jsx": "preserve", "jsxImportSource": "@solidjs/web" },
   "include": [".astro/types.d.ts", "**/*"],
   "exclude": ["dist", "dist-canary"],
   "contentMappers": [{ "package": "@astrojs/ts-content-mapper", "extensions": [".astro"] }]

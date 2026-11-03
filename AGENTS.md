@@ -74,6 +74,7 @@ scripts/export-bun-patches.ts              # after committing in bun/ on wasm-ex
 scripts/bun-upgrade.ts --check             # newer Bun release? do patches/bun/ still apply? (changes nothing)
 scripts/bun-upgrade.ts [tag]               # rebase bun/ onto a release (default: latest); on conflict resolve, then --finish
 scripts/w64.ts <crate>...                  # wasm64 compile check of bun crates
+scripts/vendor-astro-solid.ts --check      # withastro/astro#17891 merged? @astrojs/solid-js v8 on npm? ([sha]: re-vendor)
 # The wrapper crates (crates/) are one Cargo workspace (root Cargo.toml, Cargo.lock, rust-toolchain.toml, target/;
 # not bun/ or crates/tsrs-ls-wasm). Build one crate per cargo run: built together, features unify (sys-host `imports` into transpile-wasm).
 W="-Zbuild-std=std,panic_abort --target wasm64-unknown-unknown --release"
@@ -105,7 +106,7 @@ playground runs user code in the browser engine with JS shims for `Bun.*`, a VFS
 (`/__vfs/` modules, `/__preview/` Bun.serve), and Bun's wasm transpiler.
 
 Layout: `apps/` (playground, docs), `crates/` (the Rust wrapper crates, one Cargo workspace), `packages/`
-(`@runbun/astro` on npm; private `@runbun/ui` tokens and `@runbun/vfs`), `patches/` (`bun/`, `npm/`, `bun-codegen/`).
+(`@runbun/astro` on npm; private `@runbun/ui` tokens and `@runbun/vfs`; `astro-solid`: vendored `@astrojs/solid-js` v8 for Solid 2, see its README), `patches/` (`bun/`, `npm/`, `bun-codegen/`).
 
 ## Git Workflow
 
