@@ -3,7 +3,7 @@
 // scripts/bun-upgrade.ts rewrites this file (a regex replace on each `export const NAME = "…"` line); follow releases (BUN_TAG), not main.
 // Run directly for a shell: `bun scripts/bun-pins.ts TOOLCHAIN` prints one value (`cargo +$(bun scripts/bun-pins.ts TOOLCHAIN)`),
 // no argument prints every `NAME=value`.
-export const BUN_COMMIT = "7942008688acad538e64933b82465dc614fe7536";
+export const BUN_COMMIT = "7942008688acad538e64933b82465dc614fe7536"; // apps/playground/src/worker/bunVersion.ts (Bun.revision)
 export const BUN_TAG = ""; // release tag BUN_COMMIT is (empty: a main commit after BUN_VERSION)
 export const BUN_VERSION = "1.4.4"; // apps/playground/src/worker/bunVersion.ts
 export const BUN_BRANCH = "wasm-experiment";

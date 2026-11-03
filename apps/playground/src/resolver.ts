@@ -1,10 +1,12 @@
 // Bun's module resolver (bun_resolver, from crates/resolve-wasm) over the page VFS, through the same `bun_sys` host
 // imports the worker uses. Its directory, package.json and tsconfig caches live as long as the instance, as in Bun;
 // VFS changes invalidate the directories they touch, and clearing the VFS starts a fresh instance. The same module
-// has `Bun.Glob`'s matcher and walker (bun_glob), which the worker uses.
+// has `Bun.Glob`'s matcher and walker (bun_glob), Bun's YAML and TOML parsers and `Bun.password`'s argon2 and bcrypt,
+// which the worker uses.
 import { BASE } from "./base";
 import { dirname, type VFS } from "@runbun/vfs";
 import { createSysImports } from "@runbun/vfs/sysHost";
+import { fromDataTree } from "./dataTree";
 
 type Exports = {
   memory: WebAssembly.Memory;
@@ -16,6 +18,9 @@ type Exports = {
   panic_message_c(): bigint;
   glob_match_c(pp: bigint, pl: bigint, sp: bigint, sl: bigint): number;
   glob_scan_c(pp: bigint, pl: bigint, cp: bigint, cl: bigint, flags: number): bigint;
+  data_parse_c(p: bigint, l: bigint, format: number): bigint;
+  password_hash_c(pp: bigint, pl: bigint, sp: bigint, sl: bigint, algorithm: number, memoryCost: number, timeCost: number): bigint;
+  password_verify_c(pp: bigint, pl: bigint, hp: bigint, hl: bigint, algorithm: number): bigint;
 };
 
 export type ResolveKind = "import" | "require";
@@ -41,7 +46,10 @@ function instantiate(vfs: VFS) {
 }
 
 function withStr<T>(s: string, f: (ptr: bigint, len: bigint) => T): T {
-  const b = enc.encode(s);
+  return withBytes(enc.encode(s), f);
+}
+
+function withBytes<T>(b: Uint8Array, f: (ptr: bigint, len: bigint) => T): T {
   const len = BigInt(b.length);
   const ptr = w!.alloc(len);
   new Uint8Array(w!.memory.buffer, Number(ptr), b.length).set(b);
@@ -136,4 +144,42 @@ export function globScan(pattern: string, cwd: string, opts: GlobScanFlags): str
     throw new GlobScanError(code, syscall ?? "", path ?? "");
   }
   return text ? text.slice(0, -1).split("\0") : [];
+}
+
+/** `Bun.YAML.parse`/`Bun.TOML.parse` (bun_parsers, in the same module). Throws Bun's SyntaxError. */
+export function parseData(text: string, format: "yaml" | "toml"): unknown {
+  if (!w) throw new Error("resolver not loaded");
+  const out = guard(`parsing ${format.toUpperCase()}`, () => withStr(text, (p, l) => w!.data_parse_c(p, l, format === "toml" ? 1 : 0)));
+  const [status, ptr, len] = new BigUint64Array(w.memory.buffer, Number(out), 3);
+  const json = dec.decode(new Uint8Array(w.memory.buffer, Number(ptr), Number(len)));
+  w.output_free(out);
+  if (status !== 0n) throw new SyntaxError(json);
+  return fromDataTree(json);
+}
+
+/** `Bun.password`'s algorithms, numbered as resolve-wasm's password.rs. */
+export const PASSWORD_ALGORITHMS = { argon2d: 1, argon2i: 2, argon2id: 3, bcrypt: 4 } as const;
+export type PasswordAlgorithm = keyof typeof PASSWORD_ALGORITHMS;
+
+/** Thrown by `passwordHash`/`passwordVerify`: Bun's error name (`InvalidEncoding`, `WeakParameters`, …). */
+export class PasswordError extends Error {}
+
+function passwordOutput(out: bigint): string {
+  const [status, ptr, len] = new BigUint64Array(w!.memory.buffer, Number(out), 3);
+  const text = dec.decode(new Uint8Array(w!.memory.buffer, Number(ptr), Number(len)));
+  w!.output_free(out);
+  if (status !== 0n) throw new PasswordError(text);
+  return text;
+}
+
+/** The encoded hash (PHC for argon2, `$2b$` for bcrypt) of `password` with `salt` (32 bytes for argon2, 16 for bcrypt). */
+export function passwordHash(password: Uint8Array, salt: Uint8Array, algorithm: PasswordAlgorithm, memoryCost: number, timeCost: number): string {
+  if (!w) throw new Error("resolver not loaded");
+  return passwordOutput(guard("hashing a password", () => withBytes(password, (pp, pl) => withBytes(salt, (sp, sl) => w!.password_hash_c(pp, pl, sp, sl, PASSWORD_ALGORITHMS[algorithm], memoryCost, timeCost)))));
+}
+
+/** Whether `password` matches `hash`, checked as `algorithm`. */
+export function passwordVerify(password: Uint8Array, hash: Uint8Array, algorithm: PasswordAlgorithm): boolean {
+  if (!w) throw new Error("resolver not loaded");
+  return passwordOutput(guard("verifying a password", () => withBytes(password, (pp, pl) => withBytes(hash, (hp, hl) => w!.password_verify_c(pp, pl, hp, hl, PASSWORD_ALGORITHMS[algorithm]))))) === "1";
 }

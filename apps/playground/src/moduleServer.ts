@@ -4,7 +4,7 @@ import bunWrap from "./bunWrap.js?raw";
 import type { Resolver, TsconfigFlags } from "./transpiler";
 import { transpileCached } from "./transpileCache";
 import { inRanges, isMethod, literalRanges } from "./literals";
-import { loadResolver, resolve, type ResolveKind } from "./resolver";
+import { loadResolver, parseData, resolve, type ResolveKind } from "./resolver";
 import { dirname, norm, type VFS } from "@runbun/vfs";
 import hostNames, { version as hostVersion } from "virtual:host-package-names";
 import { builtins, exportNames } from "./worker/node";
@@ -91,12 +91,12 @@ function hoistRequires(vfs: VFS, code: string, dir: string, url: (spec: string) 
     const p = s.replace(/^node:/, "") in builtins ? null : resolveWith(vfs, s, dir, "require");
     return p ? JSON.stringify("/" + p) : m;
   });
-  const specs = [...new Set([...code.matchAll(/(?<![\w$.])(?:__)?require\(\s*(["'])([^"'\n]+)\1\s*\)/g)].map((m) => m[2]))].filter((s) => !(s.replace(/^node:/, "") in builtins) && (!s.startsWith(".") || s.endsWith(".json")) && resolveWith(vfs, s, dir, "require"));
+  const specs = [...new Set([...code.matchAll(/(?<![\w$.])(?:__)?require\(\s*(["'])([^"'\n]+)\1\s*\)/g)].map((m) => m[2]))].filter((s) => !(s.replace(/^node:/, "") in builtins) && (!s.startsWith(".") || DATA_FILE.test(s)) && resolveWith(vfs, s, dir, "require"));
   if (!specs.length) return code;
   const imports = specs.map((s, i) => `import * as __h${i} from ${JSON.stringify(url(s))};`).join("");
   const table = specs.map((s, i) => `${JSON.stringify(s)}: __h${i}`).join(", ");
   return `${imports}const __hoisted = { ${table} };
-const __withHoisted = (r) => Object.assign((id) => (id in __hoisted ? ("__cjs" in __hoisted[id] ? __hoisted[id].__cjs : id.endsWith(".json") ? __hoisted[id].default : __hoisted[id]) : r(id)), r);
+const __withHoisted = (r) => Object.assign((id) => (id in __hoisted ? ("__cjs" in __hoisted[id] ? __hoisted[id].__cjs : /\\.(json|toml|ya?ml)$/.test(id) ? __hoisted[id].default : __hoisted[id]) : r(id)), r);
 ${code.replace(CREATE_REQUIRE, "__withHoisted($&)")}`;
 }
 
@@ -216,6 +216,31 @@ export default m;
 export const __cjs = m;`;
 }
 
+/** Files `require` and `import` read as data: JSON, and TOML and YAML through Bun's parsers. */
+const DATA_FILE = /\.(json|toml|ya?ml)$/;
+
+/**
+ * A `.toml`/`.yaml`/`.yml` file as a module, as Bun has it: the document is the default export and each top-level key a
+ * named one. The worker parses it (`Bun.TOML.parse`, so dates are Temporal values); parsing here too finds the keys and
+ * reports a syntax error as the module's error. `__cjsModule()` as for JSON, so `require` gets the same object.
+ */
+function dataModule(path: string, src: string): string {
+  const format = path.endsWith(".toml") ? "TOML" : "YAML";
+  const value = parseData(src, format === "TOML" ? "toml" : "yaml");
+  const keys = value && typeof value === "object" && !Array.isArray(value) ? Object.keys(value).filter((k) => k !== "default" && k !== "__cjsModule") : [];
+  return `var __m;
+export function __cjsModule() {
+  const run = (m) => void (m.exports = globalThis.Bun.${format}.parse(${JSON.stringify(src)}));
+  if (globalThis.__cjsLoad) return globalThis.__cjsLoad(${JSON.stringify("/" + path)}, run, () => {});
+  if (!__m) run((__m = {}));
+  return __m;
+}
+const __d = __cjsModule().exports;
+export default __d;
+${keys.map((k, i) => `const __k${i} = __d[${JSON.stringify(k)}];`).join("\n")}
+export { ${keys.map((k, i) => `__k${i} as ${JSON.stringify(k)}`).join(", ")} };`;
+}
+
 /** The module for a Node built-in: the worker registers the real object as `globalThis.__nodeBuiltins`. */
 function builtinModule(name: string): string {
   const names = exportNames(name);
@@ -311,6 +336,7 @@ export async function serveModule(vfs: VFS, rawPath: string, onError: (msg: stri
     if (path.endsWith(".css")) return { status: 200, body: src };
     // __cjsModule() as wrapped CommonJS has it: a require() can run before this module is evaluated.
     // In the worker, require.cache holds it (see wrapCommonJS).
+    if (/\.(toml|ya?ml)$/.test(path)) return { status: 200, body: dataModule(path, src) };
     if (path.endsWith(".json")) code = `var __m;\nexport function __cjsModule() {\n  const run = (m) => void (m.exports = ${src});\n  if (globalThis.__cjsLoad) return globalThis.__cjsLoad(${JSON.stringify("/" + path)}, run, () => {});\n  if (!__m) run((__m = {}));\n  return __m;\n}\nexport default __cjsModule().exports;`;
     else if (/\.(ts|tsx|jsx)$/.test(path)) {
       TARGET = target;

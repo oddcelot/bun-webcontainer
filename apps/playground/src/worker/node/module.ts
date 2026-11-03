@@ -75,13 +75,15 @@ export function createModule(registry: Record<string, object>) {
     return (cache[file] ?? loadFile(path)).exports;
   }
 
-  /** Runs the file at VFS `path` as CommonJS (JSON parsed, TypeScript and JSX transpiled first). */
+  /** Runs the file at VFS `path` as CommonJS (JSON, TOML and YAML parsed, TypeScript and JSX transpiled first). */
   function loadFile(path: string): CjsModule {
     const file = "/" + path;
     const req = makeRequire(file);
     const src = vfs!.readText(path);
     if (src === undefined) throw notFound(path, file);
     if (path.endsWith(".json")) return load(file, (m) => void (m.exports = JSON.parse(src)), req);
+    const data = /\.(toml|ya?ml)$/.exec(path);
+    if (data) return load(file, (m) => void (m.exports = (globalThis as unknown as { Bun: Record<string, { parse(s: string): unknown }> }).Bun[data[1] === "toml" ? "TOML" : "YAML"].parse(src)), req);
     if (path.endsWith(".node")) throw Object.assign(new Error(`Cannot load native addon ${file}: .node files are not supported in the playground`), { code: "ERR_DLOPEN_FAILED" });
     const ext = /\.([cm]?)(ts|tsx|jsx)$/.exec(path);
     // The runtime transpiler declares `var __dirname = "";` (and __filename) for code it runs as a nameless input:

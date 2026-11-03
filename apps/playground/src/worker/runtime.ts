@@ -1,5 +1,5 @@
 import { BASE } from "../base";
-import { loadResolver, resolve } from "../resolver";
+import { loadResolver, parseData, resolve } from "../resolver";
 import { loadSemver } from "../semver";
 import { dirname, norm, VFS } from "@runbun/vfs";
 import { BUN_NAMES, builtins, installTimers, setFs, setRequire, setStdio } from "./node";
@@ -9,16 +9,19 @@ import { hash } from "./hash";
 import { CryptoHasher } from "./node/crypto";
 import { Glob } from "./glob";
 import { installConsole } from "./console";
+import { tomlStringify, yamlStringify } from "./dataStringify";
+import { password } from "./password";
+import { Cookie, CookieMap } from "./cookie";
 import { importMetaResolve, resolveSync } from "./resolve";
 import { Transpiler } from "./transpiler";
-import { fsError } from "./node/errors";
+import { codeError, fsError } from "./node/errors";
 import { hooks, type NodeSocket } from "./node/serve";
 import { flushDatabases } from "./node/sqlite";
 import nodePath from "./node/path";
 import process, { env } from "./node/process";
 import util, { isDeepStrictEqual } from "./node/util";
 import { runTestFiles } from "./node/test";
-import { BUN_VERSION } from "./bunVersion";
+import { BUN_REVISION, BUN_VERSION } from "./bunVersion";
 import * as fflate from "fflate";
 
 type Handler = (req: Request, server: unknown) => Response | Promise<Response>;
@@ -744,6 +747,31 @@ const compressible = (d: Compressible) =>
   typeof d === "string" ? new TextEncoder().encode(d) : d instanceof ArrayBuffer ? new Uint8Array(d) : new Uint8Array(d.buffer, d.byteOffset, d.byteLength);
 const level = (o?: { level?: number }) => ({ level: (o?.level === undefined || o.level < 0 ? 6 : Math.min(o.level, 9)) as fflate.DeflateOptions["level"] });
 
+/**
+ * `Bun.sleepSync`: blocks the worker. `Atomics.wait` on shared memory where the page is cross-origin isolated (as the
+ * playground serves it), else a busy loop.
+ */
+function sleepSync(ms: unknown) {
+  if (typeof ms !== "number") throw codeError(TypeError, "ERR_INVALID_ARG_TYPE", "milliseconds must be a number");
+  if (ms < 0) throw codeError(TypeError, "ERR_INVALID_ARG_TYPE", `argument to sleepSync must not be negative, got ${ms}`);
+  if (!(ms > 0)) return;
+  if (typeof SharedArrayBuffer === "function") return void Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  const end = performance.now() + ms;
+  while (performance.now() < end);
+}
+
+/**
+ * The text `Bun.YAML.parse`/`Bun.TOML.parse` read: a string, buffer or Blob (read synchronously, as Bun does). YAML
+ * takes anything else as its `String()`; TOML only a non-nullish value.
+ */
+function dataText(v: unknown, format: "yaml" | "toml"): string {
+  if (typeof v === "string") return v;
+  if (v instanceof ArrayBuffer || ArrayBuffer.isView(v)) return new TextDecoder().decode(v);
+  if (v instanceof Blob) return new (globalThis as unknown as { FileReaderSync: new () => { readAsText(b: Blob): string } }).FileReaderSync().readAsText(v);
+  if (format === "toml" && v == null) throw new TypeError("input must be a string, ArrayBuffer, ArrayBufferView or Blob");
+  return String(v);
+}
+
 async function main() {
   // Bun's resolver, for `require` and `require.resolve` with a computed specifier (node/module.ts); the page has its own instance.
   const [semver] = await Promise.all([loadSemver(), loadResolver(vfs)]);
@@ -761,6 +789,8 @@ async function main() {
     escapeHTML,
     which: () => null,
     sleep: (ms: number) => new Promise((r) => setTimeout(r, ms)),
+    sleepSync,
+    revision: BUN_REVISION,
     nanoseconds: () => Math.round(performance.now() * 1e6),
     semver: {
       order: semver.order,
@@ -781,6 +811,11 @@ async function main() {
     resolveSync,
     resolve: async (specifier: string, from: string | URL) => resolveSync(specifier, from),
     Glob,
+    YAML: { parse: (input: unknown) => parseData(dataText(input, "yaml"), "yaml"), stringify: yamlStringify },
+    TOML: { parse: (input: unknown) => parseData(dataText(input, "toml"), "toml"), stringify: tomlStringify },
+    password,
+    Cookie,
+    CookieMap,
   };
   g.Bun = Object.assign(builtins.bun, bun);
 

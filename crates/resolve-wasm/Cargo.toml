@@ -20,3 +20,10 @@ bun_sys = { path = "../../bun/src/sys" }
 bun_options_types = { path = "../../bun/src/options_types" }
 # defines the bun_sys_host_* symbols bun_sys declares, as `bun_sys.*` wasm imports served by the VFS
 bun_sys_host = { path = "../sys-host", features = ["imports"] }
+bun_parsers = { path = "../../bun/src/parsers" }
+bun_alloc = { path = "../../bun/src/bun_alloc" }
+# `Bun.password`: the argon2 (vendored by scripts/bun-prepare.ts) and bcrypt crates Bun uses
+rust-argon2 = { path = "../../bun/vendor/rust-argon2", default-features = false }
+# Without features: its `alloc` API needs getrandom, which has no wasm64 backend; password.rs does that part.
+bcrypt = { version = "0.19", default-features = false }
+base64 = { version = "0.23", default-features = false }

@@ -16,9 +16,9 @@ Reported version: `Bun.version` is `1.4.4-browser`. Labels are explained on the 
 | `Bun.write` | 🟡 Partial | Destination is a path, `file:` URL, `BunFile`, `Bun.stdout` or `Bun.stderr` (file descriptors aren't). Accepts strings, `BunFile`, `Blob`, `Response`, `ArrayBuffer`, typed arrays. Creates parent folders. |
 | `Bun.build` | 🟡 Partial | Bun's real bundler, as wasm (~7.5 MB, loaded on first use). Supports `entrypoints`, `outdir`, `target`, `format`, `minify`, `splitting`, `sourcemap`, `naming`, `publicPath`, `external`, `define`, `conditions`, `banner`, `footer`, `throw`. `plugins` are ignored with a warning; `loader`, `env`, `packages`, `drop`, `compile`, `root` aren't supported. |
 | `Bun.env` | ✅ Works | Same object as `process.env`; starts as `{ NODE_ENV: "development" }`. `.env` files aren't loaded. |
-| `Bun.version` | ✅ Works | `Bun.revision` is missing. |
+| `Bun.version`, `Bun.revision` | ✅ Works | `Bun.revision` is the Bun commit the wasm crates are built from. |
 | `Bun.semver` | ✅ Works | `order` and `satisfies`, from Bun's own semver code. |
-| `Bun.sleep` | ✅ Works | `sleepSync` is missing. |
+| `Bun.sleep`, `Bun.sleepSync` | ✅ Works | `sleepSync` blocks the program's worker (`Atomics.wait`). |
 | `Bun.nanoseconds` | ✅ Works | Browser clock resolution. |
 | `Bun.inspect`, `Bun.deepEquals`, `Bun.escapeHTML` | ✅ Works | `inspect` is `node:util`'s, without colors. |
 | `Bun.main`, `Bun.argv` | ✅ Works | `Bun.main` is the entry's path; `Bun.argv` is `["bun", main]`, as `process.argv`. |
@@ -28,7 +28,7 @@ Reported version: `Bun.version` is `1.4.4-browser`. Labels are explained on the 
 | `Bun.spawn`, `Bun.spawnSync`, `Bun.$` | ❌ Missing | No processes in the browser. |
 | `Bun.CryptoHasher` | ✅ Works | md5, ripemd160, sha1, sha2, sha3, blake2; HMAC with a key; `copy`, static `hash`. No md4 or shake. |
 | `Bun.hash` | 🟡 Partial | `wyhash` (the default), `adler32`, `crc32`, `xxHash32`, `xxHash64`, `murmur32v2`, `murmur32v3`, `murmur64v2`, all matching Bun's output. `cityHash32`, `cityHash64`, `xxHash3` and `rapidhash` throw. |
-| `Bun.password` | ❌ Missing | Use `Bun.CryptoHasher`, `node:crypto` or `crypto.subtle`. |
+| `Bun.password` | ✅ Works | `hash`, `hashSync`, `verify`, `verifySync` with argon2id (the default), argon2i, argon2d and bcrypt, through the argon2 and bcrypt code Bun uses (as wasm). Hashes made here verify in Bun and the other way round. `hash` and `verify` run on the program's thread, so a hash (about a quarter second with the defaults) blocks it meanwhile. |
 | `Bun.Glob` | ✅ Works | Bun's own matcher and walker (`bun_glob`, as wasm) over the project's files: `match`, `scan`, `scanSync` with `cwd`, `dot`, `absolute`, `onlyFiles`, `followSymlinks`, `throwErrorOnBrokenSymlink`. The default `cwd` is `process.cwd()` (`/`). |
 | `Bun.Transpiler` | 🟡 Partial | Bun's own parser and printer, as wasm (~3 MB, loaded on first use): `transformSync`, `transform`, `scan`, `scanImports` give Bun's output for the `js`, `jsx`, `ts` and `tsx` loaders. `tsconfig` reads `experimentalDecorators`, `emitDecoratorMetadata`, `jsx`, `jsxFactory` and `jsxFragmentFactory` (`jsxImportSource` too, though the runtime transpiler never imports the JSX runtime); `target` is accepted. `define` (including Bun's default `process.env.NODE_ENV`), `macro`, `exports`, `minifyWhitespace`, `inline`, `trimUnusedImports` and the other options are ignored with a warning; the other loaders (`json`, `toml`, …) throw. |
 | `Bun.resolveSync`, `Bun.resolve` | ✅ Works | Bun's resolver over the project's files; returns the file's path (`/src/x.ts`), `node:fs` for built-ins. `from` is a directory, as in Bun. Throws a `ResolveMessage` (`Cannot find module …`, `code: "ERR_MODULE_NOT_FOUND"`) when nothing matches. |
@@ -37,7 +37,9 @@ Reported version: `Bun.version` is `1.4.4-browser`. Labels are explained on the 
 | `Bun.connect`, `Bun.listen`, `Bun.udpSocket`, `Bun.dns` | ❌ Missing | No raw sockets in the browser. |
 | `Bun.gzipSync`, `Bun.gunzipSync`, `Bun.deflateSync`, `Bun.inflateSync` | 🟡 Partial | `level` is the only option read. Deflate is raw, as in Bun. |
 | `Bun.zstd*` | ❌ Missing | |
-| `Bun.CookieMap`, `Bun.YAML`, `Bun.TOML`, `Bun.plugin`, `Bun.FileSystemRouter`, `Bun.mmap` | ❌ Missing | |
+| `Bun.YAML`, `Bun.TOML` | ✅ Works | `parse` is Bun's own YAML and TOML parser (`bun_parsers`, as wasm), with Bun's values and errors: YAML aliases stay shared, several documents give an array, TOML dates and times are `Temporal` values. `stringify` gives Bun's output. |
+| `Bun.Cookie`, `Bun.CookieMap` | 🟡 Partial | A port of Bun's: parsing, `set`/`delete`/`get`, `toSetCookieHeaders`, `toJSON`, iteration, `serialize`, with Bun's validation and errors. `Bun.serve` requests have no `cookies` map. |
+| `Bun.plugin`, `Bun.FileSystemRouter`, `Bun.mmap` | ❌ Missing | |
 | `HTMLRewriter` | ❌ Missing | |
 
 Try a few of them:

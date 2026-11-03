@@ -255,6 +255,114 @@ if (hasBun) {
   globMatches.forEach(([p, s], i) => want[i] !== got[i] && mismatches.push(`bun: glob match ${p} ${s}: bun=${want[i]} wasm=${got[i]}`));
   console.log(`ok    ${globMatches.length} glob matches compared`);
 }
+
+// Bun.YAML.parse / Bun.TOML.parse: data_parse_c's tree, rebuilt as the playground does, vs native Bun's values.
+const dataCases: ["yaml" | "toml", string][] = [
+  ["yaml", "a: 1\nb: [x, 'y', \"z\\n\"]\nc: {d: null, e: ~, f: true}\n"],
+  ["yaml", "- .inf\n- -.Inf\n- .nan\n- -0\n- 0o17\n- 0x1F\n- 1e3\n- 2001-12-14\n- 12345678901234567890\n"],
+  ["yaml", "base: &b {x: 1}\nderived:\n  <<: *b\n  y: 2\nsame: *b\n"],
+  ["yaml", "a: &a [1, *a]\n"],
+  ["yaml", "--- 1\n--- two\n...\n"],
+  ["yaml", ""],
+  ["yaml", "text: |\n  line 1\n  line 2\nfolded: >\n  a\n  b\nuni: \"\\u00e9\\U0001F600 日本\"\n"],
+  ["yaml", "? [a, b]\n: 1\n__proto__: 2\n"],
+  ["yaml", "a: [1"],
+  ["yaml", "a: 1\n a: 2"],
+  ["toml", "title = \"x\"\n[owner]\nname = 'Tom'\ndob = 1979-05-27T07:32:00-08:00\n[db]\nports = [8000, 8001]\nenabled = true\ntemp = { cpu = 79.5, case = 72.0 }\n"],
+  ["toml", "a = inf\nb = -inf\nc = nan\nd = 0x10\ne = 0o17\nf = 0b11\ng = 1_000\nh = -0.0\ni = 1e400\n"],
+  ["toml", "ldt = 1979-05-27T07:32:00\nld = 1979-05-27\nlt = 07:32:00.999999\n"],
+  ["toml", "[[fruit]]\nname = \"apple\"\n[[fruit.variety]]\nname = \"red\"\n[[fruit]]\nname = \"banana\"\n\"quoted key\" = \"\\u00e9\\t\"\nml = \"\"\"\nhi\nthere\"\"\"\n"],
+  ["toml", "a = "],
+  ["toml", "a = 1\na = 2"],
+];
+const canonSrc = `(v) => { const seen = new Map(); const c = (v) => {
+  if (typeof v === "number") return Object.is(v, -0) ? "-0" : String(v);
+  if (v === null || typeof v !== "object") return JSON.stringify(v);
+  if (seen.has(v)) return "#" + seen.get(v);
+  seen.set(v, seen.size);
+  if (v.constructor && /^(Instant|Plain)/.test(v.constructor.name)) return v.constructor.name + "(" + v.toString() + ")";
+  if (Array.isArray(v)) return "[" + v.map(c).join(",") + "]";
+  return "{" + Object.keys(v).map((k) => JSON.stringify(k) + ":" + c(v[k])).join(",") + "}";
+}; return c(v); }`;
+const canon = eval(canonSrc) as (v: unknown) => string;
+const { fromDataTree } = await import("../../apps/playground/src/dataTree.ts");
+function wasmData(text: string, format: "yaml" | "toml"): string {
+  const a = put(text);
+  const out = w.data_parse_c(a[0], a[1], format === "toml" ? 1 : 0);
+  w.dealloc(a[0], a[1]);
+  const [status, ptr, len] = new BigUint64Array(w.memory.buffer, Number(out), 3);
+  const json = dec.decode(new Uint8Array(w.memory.buffer, Number(ptr), Number(len)));
+  w.output_free(out);
+  return status === 0n ? canon(fromDataTree(json)) : `SyntaxError: ${json}`;
+}
+const dataGot = dataCases.map(([f, t]) => wasmData(t, f));
+if (hasBun) {
+  const r = spawnSync("bun", ["-e", `const canon = ${canonSrc}; console.log(JSON.stringify(JSON.parse(process.argv[1]).map(([f, t]) => { try { return canon(Bun[f.toUpperCase()].parse(t)); } catch (e) { return e.name + ": " + e.message; } })))`, JSON.stringify(dataCases)], { encoding: "utf8" });
+  const want = JSON.parse(r.stdout) as string[];
+  dataCases.forEach(([f, t], i) => want[i] !== dataGot[i] && mismatches.push(`bun: ${f} ${JSON.stringify(t)}: bun=${want[i]} wasm=${dataGot[i]}`));
+}
+console.log(`ok    ${dataCases.length} YAML/TOML documents parsed`);
+if (process.env.SHOW_DATA) for (const g of dataGot) console.log("  " + g);
+
+// Bun.password: hashes made here verify in native Bun and the other way round; malformed hashes fail with Bun's errors.
+const ALGO: Record<string, number> = { argon2d: 1, argon2i: 2, argon2id: 3, bcrypt: 4 };
+function pwCall(out: bigint): { ok?: string; err?: string } {
+  const [status, ptr, len] = new BigUint64Array(w.memory.buffer, Number(out), 3);
+  const text = dec.decode(new Uint8Array(w.memory.buffer, Number(ptr), Number(len)));
+  w.output_free(out);
+  return status === 0n ? { ok: text } : { err: text };
+}
+function wasmHash(pw: string, algorithm: string, m: number, t: number) {
+  const a = put(pw);
+  const salt = crypto.getRandomValues(new Uint8Array(algorithm === "bcrypt" ? 16 : 32));
+  const sp = w.alloc(BigInt(salt.length));
+  new Uint8Array(w.memory.buffer, Number(sp), salt.length).set(salt);
+  const r = pwCall(w.password_hash_c(a[0], a[1], sp, BigInt(salt.length), ALGO[algorithm], m, t));
+  w.dealloc(a[0], a[1]);
+  w.dealloc(sp, BigInt(salt.length));
+  return r;
+}
+function wasmVerify(pw: string, hash: string, algorithm: string) {
+  const a = put(pw), b = put(hash);
+  const r = pwCall(w.password_verify_c(a[0], a[1], b[0], b[1], ALGO[algorithm]));
+  w.dealloc(a[0], a[1]);
+  w.dealloc(b[0], b[1]);
+  return r.err ? `ERR ${r.err}` : r.ok === "1";
+}
+const pwCases: [string, string, number, number][] = [
+  ["hunter2", "argon2id", 65536, 2],
+  ["pässwörd 🔑", "argon2id", 8, 1],
+  ["x", "argon2i", 64, 3],
+  ["x", "argon2d", 16, 1],
+  ["hunter2", "bcrypt", 4, 0],
+  ["a".repeat(72), "bcrypt", 5, 0],
+];
+const made = pwCases.map(([pw, alg, m, t]) => {
+  const r = wasmHash(pw, alg, m, t);
+  if (r.err) throw new Error(`password_hash_c ${alg}: ${r.err}`);
+  assert.equal(wasmVerify(pw, r.ok!, alg), true);
+  assert.equal(wasmVerify("Z" + pw.slice(1), r.ok!, alg), false);
+  return r.ok!;
+});
+const badHashes = ["$argon2id$garbage", "$argon2id$v=16$m=65536,t=2,p=1$c29tZXNhbHQ$abc", "$argon2id$v=19$m=99999999,t=2,p=1$c29tZXNhbHQ$abc", "$2b$10$abc", "$bcrypt$r=4$abc$def"];
+if (hasBun) {
+  const script = `const [cases, made, bad] = JSON.parse(process.argv[1]);
+const out = { verify: made.map((h, i) => Bun.password.verifySync(cases[i][0], h) && !Bun.password.verifySync("Z" + cases[i][0].slice(1), h)),
+  native: cases.map(([pw, alg, m, t]) => Bun.password.hashSync(pw, alg === "bcrypt" ? { algorithm: alg, cost: m } : { algorithm: alg, memoryCost: m, timeCost: t })),
+  bad: bad.map((h) => { try { return Bun.password.verifySync("x", h, h.startsWith("$2") || h.startsWith("$bcrypt") ? "bcrypt" : "argon2id"); } catch (e) { return "ERR " + e.message.match(/"(.*)"/)[1]; } }) };
+console.log(JSON.stringify(out));`;
+  const r = spawnSync("bun", ["-e", script, JSON.stringify([pwCases, made, badHashes])], { encoding: "utf8" });
+  const want = JSON.parse(r.stdout) as { verify: boolean[]; native: string[]; bad: (boolean | string)[] };
+  pwCases.forEach(([pw, alg], i) => {
+    if (!want.verify[i]) mismatches.push(`bun: native Bun doesn't verify the ${alg} hash made here: ${made[i]}`);
+    if (wasmVerify(pw, want.native[i], alg) !== true || wasmVerify("Z" + pw.slice(1), want.native[i], alg) !== false) mismatches.push(`bun: the ${alg} hash native Bun made doesn't verify here: ${want.native[i]}`);
+  });
+  badHashes.forEach((h, i) => {
+    const got = wasmVerify("x", h, h.startsWith("$2") || h.startsWith("$bcrypt") ? "bcrypt" : "argon2id");
+    if (got !== want.bad[i]) mismatches.push(`bun: verify ${h}: bun=${want.bad[i]} wasm=${got}`);
+  });
+}
+console.log(`ok    ${pwCases.length} password hashes, ${badHashes.length} malformed hashes`);
 rmSync(tmp, { recursive: true, force: true });
 
 console.log(hasBun ? "" : "(bun not on PATH: skipped native comparison)");
