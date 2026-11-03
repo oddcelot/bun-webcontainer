@@ -8,7 +8,8 @@ import { setHostVfs } from "./hostPackages";
 import { hash } from "./hash";
 import { CryptoHasher } from "./node/crypto";
 import { Glob } from "./glob";
-import { installConsole } from "./console";
+import { installConsole, table } from "./console";
+import { bunInspect } from "./inspect";
 import { tomlStringify, yamlStringify } from "./dataStringify";
 import { password } from "./password";
 import { Cookie, CookieMap } from "./cookie";
@@ -19,7 +20,7 @@ import { hooks, type NodeSocket } from "./node/serve";
 import { flushDatabases } from "./node/sqlite";
 import nodePath from "./node/path";
 import process, { env } from "./node/process";
-import util, { isDeepStrictEqual } from "./node/util";
+import { isDeepStrictEqual } from "./node/util";
 import { runTestFiles } from "./node/test";
 import { BUN_REVISION, BUN_VERSION } from "./bunVersion";
 import * as fflate from "fflate";
@@ -484,7 +485,7 @@ const fmt = (v: unknown): string => {
 };
 
 // A served module's URL in a stack frame reads as its project path, as in Bun.
-installConsole((level, text) => post({ type: "console", level, text }), fmt, (frame) => frame.split(new URL(VFS_ROOT, location.href).href).join("/"));
+installConsole((level, text) => post({ type: "console", level, text }), (frame) => frame.split(new URL(VFS_ROOT, location.href).href).join("/"));
 
 const JS = "text/javascript;charset=utf-8";
 const MIME: Record<string, string> = {
@@ -784,7 +785,10 @@ async function main() {
     argv: process.argv,
     stdout,
     stderr,
-    inspect: util.inspect,
+    inspect: Object.assign(bunInspect, {
+      // `Bun.inspect.table(data, properties?, options?)`: console.table's box as a string, nested values collapsed.
+      table: (data: unknown, properties?: unknown) => (typeof data === "object" && data !== null ? table(data, Array.isArray(properties) ? properties.map(String) : undefined, 5) + "\n" : ""),
+    }),
     deepEquals: (a: unknown, b: unknown, strict = false) => isDeepStrictEqual(a, b, strict),
     escapeHTML,
     which: () => null,

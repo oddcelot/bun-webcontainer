@@ -1,6 +1,5 @@
-import { format, inspect } from "./node/util";
+import { formatCell, formatLog, setFrameMapper, type Level } from "./inspect";
 
-type Level = "log" | "info" | "warn" | "error" | "debug";
 type Emit = (level: Level, text: string) => void;
 
 /** Terminal columns a string takes: East Asian wide characters and emoji take two, combining marks none. */
@@ -24,11 +23,14 @@ function width(s: string): number {
   return w;
 }
 
-const cell = (v: unknown) => (typeof v === "string" ? v : inspect(v));
 const isObject = (v: unknown): v is object => (typeof v === "object" && v !== null) || typeof v === "function";
 
-/** `console.table`'s box, as Bun draws it: an unlabeled index column, the rows' keys, then `Values` for primitives. */
-export function table(data: object, properties?: string[]): string {
+/**
+ * `console.table`'s box, as Bun draws it: an unlabeled index column, the rows' keys, then `Values` for primitives.
+ * Cells are formatted from nesting level `depth` (`Bun.inspect.table` starts at 5, so nested values collapse).
+ */
+export function table(data: object, properties?: string[], depth = 0): string {
+  const cell = (v: unknown) => formatCell(v, depth);
   const rows: [index: string, value: unknown, key?: unknown][] = [];
   if (data instanceof Map) {
     let i = 0;
@@ -63,21 +65,20 @@ export function table(data: object, properties?: string[]): string {
 }
 
 /**
- * Forwards the global console to the playground's console pane (`emit`), keeping the browser's own output. Text and
- * quirks follow Bun's: `group` indents formatted values but not the lines inside a string and `groupCollapsed` doesn't indent;
- * `table`, `count` and `time*` aren't indented; unknown `countReset`/`timeEnd` labels are ignored.
- * `fmt` formats one argument the way `console.log` does; `frame` rewrites a stack frame's location (`console.trace`).
+ * Forwards the global console to the playground's console pane (`emit`), keeping the browser's own output. Values
+ * print in Bun's format (inspect.ts), without colors since stdout isn't a TTY. Quirks follow Bun's: `group` indents
+ * formatted values but not the lines inside a string and `groupCollapsed` doesn't indent; `table`, `count` and
+ * `time*` aren't indented; unknown `countReset`/`timeEnd` labels are ignored.
+ * `frame` rewrites a stack frame's location (`console.trace` and printed errors).
  */
-export function installConsole(emit: Emit, fmt: (v: unknown) => string, frame: (line: string) => string) {
+export function installConsole(emit: Emit, frame: (line: string) => string) {
+  setFrameMapper(frame, "/");
   const c = console as unknown as Record<string, (...args: unknown[]) => void>;
   const orig = (name: string) => (c[name] ?? (() => {})).bind(console);
   let depth = 0;
   /** A message's text inside the current groups: formatted values are indented throughout, strings only where they start. */
-  const out = (args: unknown[]) => {
-    const pad = "  ".repeat(depth);
-    if (typeof args[0] === "string" && /%[sdifjoOc%]/.test(args[0])) return pad + format(...args);
-    return pad + args.map((a) => (typeof a === "string" ? a : fmt(a).replaceAll("\n", "\n" + pad))).join(" ");
-  };
+  const out = (args: unknown[], level: Level = "log", opts?: { depth?: number; colors?: boolean }) => formatLog(args, level, depth, opts);
+  const fmt = (v: unknown) => formatLog([v]);
   const wrap = (name: string, fn: (...args: unknown[]) => void) => {
     const o = orig(name);
     c[name] = (...args: unknown[]) => {
@@ -86,10 +87,17 @@ export function installConsole(emit: Emit, fmt: (v: unknown) => string, frame: (
     };
   };
 
-  for (const level of ["log", "info", "warn", "error", "debug"] as const) wrap(level, (...args) => emit(level, out(args)));
-  wrap("dir", (v) => emit("log", out([v])));
+  for (const level of ["log", "info", "warn", "error", "debug"] as const) wrap(level, (...args) => emit(level, out(args, level)));
+  // `console.dir(value, { depth, colors })`: only the value prints.
+  wrap("dir", (...args) => {
+    const o = args[1];
+    if (args.length < 2 || typeof o !== "object" || o === null) return emit("log", out(args));
+    const { depth: d, colors } = o as { depth?: unknown; colors?: unknown };
+    const dirDepth = typeof d === "number" ? Math.max(0, Math.trunc(d)) : typeof d === "bigint" ? Number(d) : d === null ? Infinity : undefined;
+    emit("log", out([args[0]], "log", { depth: dirDepth, colors: typeof colors === "boolean" ? colors : undefined }));
+  });
   wrap("assert", (cond, ...args) => {
-    if (!cond) emit("error", out(args.length ? args : ["Assertion failed"]));
+    if (!cond) emit("error", out(args.length ? args : ["Assertion failed"], "error"));
   });
   wrap("table", (...args) => {
     if (!args.length) return;
@@ -108,7 +116,7 @@ export function installConsole(emit: Emit, fmt: (v: unknown) => string, frame: (
   wrap("countReset", (label = "default") => void counts.delete(String(label)));
 
   const timers = new Map<string, number>();
-  const elapsed = (k: string, extra: unknown[]) => emit("log", [`[${(performance.now() - timers.get(k)!).toFixed(2)}ms] ${k}`, ...extra.map(fmt)].join(" "));
+  const elapsed = (k: string, extra: unknown[]) => emit("log", [`[${(performance.now() - timers.get(k)!).toFixed(2)}ms] ${k}`, ...(extra.length ? [formatLog(extra)] : [])].join(" "));
   wrap("time", (label = "default") => {
     const k = String(label);
     if (!timers.has(k)) timers.set(k, performance.now());

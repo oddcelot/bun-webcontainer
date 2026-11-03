@@ -25,6 +25,17 @@ tasks:
     command: 'bun run typecheck'
     inputs:
       - '@group(sources)'
+  test:
+    # Console/inspect formatting against native bun on a corpus of values (scripts/inspect-corpus/diff.ts).
+    command: 'bun scripts/inspect-corpus/diff.ts'
+    toolchains: ['bun']
+    inputs:
+      - 'scripts/inspect-corpus/**/*'
+      - 'src/worker/inspect.ts'
+      - 'src/worker/promises.ts'
+      - 'src/worker/node/inspect.ts'
+      - 'src/worker/node/types.ts'
+      - 'src/worker/node/util.ts'
   build:
     # prebuild (scripts/copy-wasm.ts) copies the crates' .wasm into public/.
     command: 'bun run build'
