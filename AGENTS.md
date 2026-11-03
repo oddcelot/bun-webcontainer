@@ -91,7 +91,7 @@ bun install                                # root bun workspace (playground, doc
 (cd apps/docs && bun run check && bun run build)               # docs site; `bun run deploy` publishes docs.runbun.dev
 moon run playground:deploy-canary docs:deploy-canary      # canary.runbun.dev + docs-canary.runbun.dev (noindex)
 scripts/dev.ts                                           # playground (:5173) + docs (:4321) dev servers; docs embeds need both
-(cd apps/playground && bun run swatches)                       # after changing theme families: swatches, packages/ui/themes.json, code-themes/
+(cd apps/playground && bun run swatches)                       # after changing theme families: packages/ui/themes.json (also the swatches), code-themes/
 # Cross-links: DOCS_URL / PLAYGROUND_URL (both builds read them; default localhost in dev, runbun.dev in builds)
 ```
 
@@ -106,7 +106,7 @@ playground runs user code in the browser engine with JS shims for `Bun.*`, a VFS
 (`/__vfs/` modules, `/__preview/` Bun.serve), and Bun's wasm transpiler.
 
 Layout: `apps/` (playground, docs), `crates/` (the Rust wrapper crates, one Cargo workspace), `packages/`
-(`@runbun/astro` on npm; private `@runbun/ui` tokens and `@runbun/vfs`; `astro-solid`: vendored `@astrojs/solid-js` v8 for Solid 2, see its README), `patches/` (`bun/`, `npm/`, `bun-codegen/`).
+(`@runbun/astro` on npm; private `@runbun/ui` (tokens, and Solid 2 components in `solid/` with `components.css`, shipped as source for each app's Solid plugin) and `@runbun/vfs`; `astro-solid`: vendored `@astrojs/solid-js` v8 for Solid 2, see its README), `patches/` (`bun/`, `npm/`, `bun-codegen/`).
 
 ## Git Workflow
 
