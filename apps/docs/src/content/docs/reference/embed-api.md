@@ -196,6 +196,8 @@ The poster (shown until the embed is ready) is styled by CSS custom properties s
 
 If the embed isn't ready after 60 seconds, the spinner turns back into the button, as "Try again".
 
+Beyond these, style the button as `::part(play)` (also as "Try again") and the spinner as `::part(spinner)`, e.g. `bun-playground::part(play):hover { background: linear-gradient(90deg, #f472b6, #a78bfa); }`.
+
 ## Versioning
 
 This is version 1. Changes only add: new methods, events, options, features and fields. Nothing is renamed or removed within a version. Ignore message keys and events you don't know; the embed does the same. So an `@runbun/embed` element from npm keeps working as runbun.dev updates.

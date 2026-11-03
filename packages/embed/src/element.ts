@@ -347,12 +347,15 @@ export class BunPlayground extends HTMLElement {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "play";
+      // `::part(play)` and `::part(spinner)` let a page style them beyond --play-*; "↻ Try again" is this button.
+      btn.part.add("play");
       btn.textContent = "▶ Run";
       // Only the button starts it: the poster's code stays selectable. After a start timed out, it starts over.
       btn.addEventListener("click", () => (this.#poster.hasAttribute("data-failed") ? this.#rebuild() : void this.activate()));
       // In the button's place from the click until the embed is ready (the poster hides then).
       const spin = document.createElement("span");
       spin.className = "spin";
+      spin.part.add("spinner");
       spin.setAttribute("role", "status");
       spin.innerHTML = `<span class="sr"></span>`;
       this.#poster.append(btn, spin);
