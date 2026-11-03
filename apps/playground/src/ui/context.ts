@@ -37,7 +37,7 @@ export type App = {
   /** The `?repo=` the page was opened with, as the repo prompt's default. */
   repoParam: string;
   /** What an embed has turned on (embed/config.ts); absent on the full playground, which has everything. */
-  features?: { has(name: "types" | "format" | "tabs" | "autosave" | "edit"): boolean };
+  features?: { has(name: "types" | "format" | "tabs" | "autosave" | "edit" | "close"): boolean };
 };
 
 export const AppContext = createContext<App>();
