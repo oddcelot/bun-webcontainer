@@ -402,7 +402,11 @@ export async function serveModule(vfs: VFS, rawPath: string, onError: (msg: stri
     if (esm) code = esmDirname(code, path);
     const free = code.startsWith(META_REQUIRE);
     if (free) code = `var require = import.meta.require;${code.slice(META_REQUIRE.length)}`;
-    return { status: 200, body: rewriteMeta(hoistMetaRequire(vfs, hoistRequires(vfs, patchChokidar(code), dir, final), path, dir, final, free), path, target === "bun") };
+    let body = rewriteMeta(hoistMetaRequire(vfs, hoistRequires(vfs, patchChokidar(code), dir, final), path, dir, final, free), path, target === "bun");
+    // In the worker, the module's namespace once it has run, for a require() of it (worker/node/module.ts): imported
+    // from its own URL, so it's this instance.
+    if (esm && target === "bun") body += `\nimport * as __bwcSelf from ${JSON.stringify(`${VFS_ROOT}${path}`)};\nglobalThis.__esmLoaded?.(${JSON.stringify("/" + path)}, __bwcSelf);`;
+    return { status: 200, body };
   } catch (e) {
     const msg = `${path}: ${e instanceof Error ? e.message : String(e)}`;
     onError(msg);

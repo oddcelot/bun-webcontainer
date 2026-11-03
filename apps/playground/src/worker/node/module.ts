@@ -23,6 +23,13 @@ type Require = ((id: string) => unknown) & { resolve?: unknown; cache?: unknown;
 /** `require.cache`: every CommonJS module the worker runs, whether a literal require (wrapCommonJS) or a computed one loaded it. */
 const cache: Record<string, CjsModule> = Object.create(null);
 
+/**
+ * The namespace of each ES module the worker has run, by path (served modules register themselves once evaluated, see
+ * moduleServer.ts serveModule): what `require()` of one returns, as in Bun. One that is still evaluating (top-level
+ * await, a cycle) isn't here yet.
+ */
+const esModules: Record<string, object> = Object.create(null);
+
 /** The VFS directory a `createRequire` argument names: a `file:` URL or path of a module, or a directory ending in `/`. */
 function requireDir(from: string | URL): string {
   const s = String(from);
@@ -72,7 +79,7 @@ export function createModule(registry: Record<string, object>) {
     const path = resolveFile?.(id, requireDir(from));
     if (!path || !vfs) throw notFound(id, from);
     const file = "/" + path;
-    return (cache[file] ?? loadFile(path)).exports;
+    return cache[file] ? cache[file].exports : (esModules[file] ?? loadFile(path).exports);
   }
 
   /** Runs the file at VFS `path` as CommonJS (JSON, TOML and YAML parsed, TypeScript and JSX transpiled first). */
@@ -91,7 +98,7 @@ export function createModule(registry: Record<string, object>) {
     const code = ext ? runtimeTranspile("transform", src, ext[2] === "ts" ? "ts" : (ext[2] as "tsx" | "jsx")).replace(/^(?:var (?:__dirname|__filename) = "[^"\n]*";\n)+/, "") : src;
     const esm = /\.m[jt]s$/.test(path) || (!/\.c[jt]s$/.test(path) && (packageType(vfs!, path) === "module" || hasModuleSyntax(code)));
     if (esm)
-      throw Object.assign(new Error(`require() of ES module ${file} is not supported in the playground (it can't load ES modules synchronously). Use import() or a static import instead.`), {
+      throw Object.assign(new Error(`require() of ES module ${file} works in the playground only once the module has been imported (it can't load ES modules synchronously). Use import() or a static import first.`), {
         code: "ERR_REQUIRE_ESM",
       });
     const body = new Function("exports", "require", "module", "__filename", "__dirname", `${dynamicImports(code.replace(/^#!.*/, ""), file)}\n//# sourceURL=${encodeURI(`file://${file}`)}`);
@@ -167,4 +174,5 @@ export function setRequire(v: VFS, fn: (spec: string, dir: string) => string | n
   const g = globalThis as Record<string, unknown>;
   g.__cjsLoad = hooks.load;
   g.__cjsRequire = hooks.require;
+  g.__esmLoaded = (file: string, ns: object) => void (esModules[file] = ns);
 }
