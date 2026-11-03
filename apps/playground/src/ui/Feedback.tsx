@@ -4,7 +4,7 @@ import { BASE, DOCS } from "../base";
 import { MAX_SHORT, shareLink, shortLink } from "../share";
 import { BUN_VERSION } from "../worker/bunVersion";
 import { AppContext } from "./context";
-import { Tip } from "./Tip";
+import { Tip } from "@runbun/ui/solid/Tip";
 
 /**
  * The status bar's Feedback button and its dialog: a message, an optional address to answer, and, if the sender

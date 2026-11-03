@@ -8,9 +8,9 @@ import { examples, repoExamples } from "../examples";
 import { createPierre } from "../editors/pierre";
 import { FAMILIES, isFamily, onTheme, pickFamily, setColorMode, themeName } from "../theme";
 import { guarded } from "../ui/guarded";
-import { Swatch } from "../ui/Swatch";
+import { Swatch } from "@runbun/ui/solid/Swatch";
 import { TabItem, TabList } from "../ui/Tabs";
-import { Tip } from "../ui/Tip";
+import { Tip } from "@runbun/ui/solid/Tip";
 import { highlightSnippet } from "./highlight";
 import { attributes, elementSnippet, iframeSnippet, inlineFile, type Attr, type Form } from "./snippet";
 

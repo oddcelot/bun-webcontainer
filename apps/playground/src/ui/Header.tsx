@@ -9,7 +9,7 @@ import { ShareMenu } from "./ShareMenu";
 import { Shortcuts } from "./Shortcuts";
 import { ThemePicker } from "./ThemePicker";
 import { Title } from "./Title";
-import { Tip } from "./Tip";
+import { Tip } from "@runbun/ui/solid/Tip";
 
 const CANT_RUN = "This browser can't run code here";
 

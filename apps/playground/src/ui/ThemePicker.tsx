@@ -5,8 +5,8 @@ import { ToggleGroup } from "@kobalte/core/toggle-group";
 import type { ColorMode } from "@pierre/theming";
 import { FAMILIES, familyOf, pickFamily, setColorMode, switchTheme, themeState, watchTheme } from "../theme";
 import { setStatusDisplay, statusDisplay } from "./StatusBar";
-import { Swatch } from "./Swatch";
-import { Tip } from "./Tip";
+import { Swatch } from "@runbun/ui/solid/Swatch";
+import { Tip } from "@runbun/ui/solid/Tip";
 
 const MODES: [ColorMode, string, string][] = [
   ["system", "i-lucide-monitor", "System"],

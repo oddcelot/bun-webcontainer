@@ -3,7 +3,7 @@ import { Select } from "@kobalte/core/select";
 import { examples, repoExamples } from "../examples";
 import { AppContext } from "./context";
 import { PromptDialog } from "./PromptDialog";
-import { Tip } from "./Tip";
+import { Tip } from "@runbun/ui/solid/Tip";
 
 type Project = { label: string; value: string; icon?: string };
 

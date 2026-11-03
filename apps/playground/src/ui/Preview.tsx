@@ -7,7 +7,7 @@ import type { CodeEditor } from "../editors/types";
 import { PREFIX, type Card } from "../preview";
 import { AppContext } from "./context";
 import type { PreviewTab } from "./previews";
-import { Tip } from "./Tip";
+import { Tip } from "@runbun/ui/solid/Tip";
 
 const CANT_RUN = "This browser can't run code here";
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"];

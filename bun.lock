@@ -36,7 +36,7 @@
     "apps/playground": {
       "name": "bun-playground",
       "dependencies": {
-        "@kobalte/core": "2.0.0-alpha.4",
+        "@kobalte/core": "catalog:",
         "@napi-rs/wasm-runtime": "1.2.6",
         "@noble/hashes": "^2.4.0",
         "@pierre/diffs": "^1.6.2",
@@ -117,6 +117,11 @@
     },
     "packages/ui": {
       "name": "@runbun/ui",
+      "peerDependencies": {
+        "@kobalte/core": "catalog:",
+        "@solidjs/web": "catalog:",
+        "solid-js": "catalog:",
+      },
     },
     "packages/vfs": {
       "name": "@runbun/vfs",
@@ -128,6 +133,7 @@
   },
   "catalog": {
     "@iconify-json/lucide": "^1.2.148",
+    "@kobalte/core": "2.0.0-alpha.4",
     "@solidjs/vite-plugin": "3.0.0-next.55",
     "@solidjs/web": "2.0.0-rc.19",
     "solid-js": "2.0.0-rc.19",

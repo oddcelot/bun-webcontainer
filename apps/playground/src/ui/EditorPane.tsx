@@ -8,7 +8,7 @@ import { complete, definition, hover, resolveCompletion, signatureHelp, TYPED } 
 import { AppContext } from "./context";
 import { guarded } from "./guarded";
 import { EditorTabs } from "./Tabs";
-import { Tip } from "./Tip";
+import { Tip } from "@runbun/ui/solid/Tip";
 
 /** How long auto-save waits after the last keystroke. */
 const SAVE_DELAY = 300;

@@ -1,11 +1,17 @@
 {
   "name": "@runbun/ui",
   "private": true,
-  "description": "Design tokens the playground and the docs share: the UnoCSS preset, theme families and code themes.",
+  "description": "The design system the playground and the docs share: tokens (the UnoCSS preset, theme families, code themes) and Solid 2 components (solid/, shipped as source; each app's Solid plugin compiles them).",
   "type": "module",
   "exports": {
     "./uno.preset": "./uno.preset.ts",
     "./themes.json": "./themes.json",
-    "./code-themes/*": "./code-themes/*"
+    "./code-themes/*": "./code-themes/*",
+    "./solid/*": "./solid/*.tsx"
+  },
+  "peerDependencies": {
+    "@kobalte/core": "catalog:",
+    "@solidjs/web": "catalog:",
+    "solid-js": "catalog:"
   }
 }

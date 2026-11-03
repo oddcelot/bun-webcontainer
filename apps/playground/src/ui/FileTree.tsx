@@ -10,7 +10,7 @@ import { onTheme } from "../theme";
 import { AppContext } from "./context";
 import { guarded } from "./guarded";
 import { PromptDialog } from "./PromptDialog";
-import { Tip } from "./Tip";
+import { Tip } from "@runbun/ui/solid/Tip";
 
 const TREE_VARS_KEY = "tree-vars";
 

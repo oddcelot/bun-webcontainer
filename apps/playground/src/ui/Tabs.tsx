@@ -1,7 +1,7 @@
 import { For, Show, createEffect, createMemo, flush, useContext, type ParentProps } from "solid-js";
 import { formatChord, keysFor, matches } from "../keymap";
 import { AppContext } from "./context";
-import { Tip } from "./Tip";
+import { Tip } from "@runbun/ui/solid/Tip";
 
 const name = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 

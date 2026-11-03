@@ -14,7 +14,7 @@
     "swatches": "bun scripts/theme-swatches.ts"
   },
   "dependencies": {
-    "@kobalte/core": "2.0.0-alpha.4",
+    "@kobalte/core": "catalog:",
     "@napi-rs/wasm-runtime": "1.2.6",
     "@noble/hashes": "^2.4.0",
     "@pierre/diffs": "^1.6.2",

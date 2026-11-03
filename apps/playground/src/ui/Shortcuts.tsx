@@ -1,7 +1,7 @@
 import { For, Show, createSignal, createUniqueId, onSettled, untrack } from "solid-js";
 import { Dialog, useDialogContext } from "@kobalte/core/dialog";
 import { COMMANDS, checkOverrides, chordKeys, chordOf, currentOverrides, keysFor, sameChord, setOverrides, type Command, type Overrides } from "../keymap";
-import { Tip } from "./Tip";
+import { Tip } from "@runbun/ui/solid/Tip";
 
 /**
  * The keyboard shortcuts in effect, each one re-recordable (or reset), and the JSON that changes them: command names
