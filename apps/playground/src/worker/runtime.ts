@@ -10,6 +10,7 @@ import { CryptoHasher } from "./node/crypto";
 import { Glob } from "./glob";
 import { installConsole, table } from "./console";
 import { bunInspect } from "./inspect";
+import { trackPromises } from "./promises";
 import { tomlStringify, yamlStringify } from "./dataStringify";
 import { password } from "./password";
 import { Cookie, CookieMap } from "./cookie";
@@ -283,6 +284,9 @@ class ServerResponse extends NativeResponse {
   }
 }
 self.Response = ServerResponse as typeof Response;
+
+// Promise states for console.log (promises.ts).
+trackPromises(self);
 
 /** The headers Bun.serve sends for `res`, then the Set-Cookie headers of the request's `req.cookies` changes. */
 function servedHeaders(res: Response, setCookies: string[]): [string, string][] {

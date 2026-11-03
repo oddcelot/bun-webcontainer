@@ -18,6 +18,8 @@ class Bar extends Foo {
   y = "s";
 }
 class Empty {}
+const handled = <T>(p: Promise<T>) => (p.catch(() => {}), p);
+
 class MyErr extends Error {
   override name = "MyErr";
 }
@@ -82,6 +84,10 @@ export const cases: [name: string, args: () => unknown[]][] = [
   ["arraybuffer", () => [new ArrayBuffer(4), new DataView(new ArrayBuffer(2))]],
   ["promise pending", () => [new Promise(() => {})]],
   ["promise resolved", () => [Promise.resolve(1)]],
+  ["promise rejected", () => [handled(Promise.reject(2))]],
+  ["promise executor", () => [new Promise((r) => r({ a: 1 })), new Promise((_, r) => r(3)).catch(() => {}), new Promise((r) => r(Promise.resolve(1)))]],
+  ["promise nested", () => [{ p: Promise.resolve("s"), q: handled(new Promise((_, r) => r("no"))) }]],
+  ["promise thenable", () => [new Promise((r) => r({ then() {} }))]],
   ["getters", () => [{ get g() { return 1; }, set s(_v: unknown) {}, get gs() { return 1; }, set gs(_v: unknown) {} }]],
   ["class instance", () => [new Foo()]],
   ["subclass instance", () => [new Bar()]],

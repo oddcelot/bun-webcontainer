@@ -18,15 +18,10 @@ type Kind = (typeof KINDS)[number];
 type Inspect = (v: unknown, o?: object) => string;
 
 const KNOWN: Record<string, string> = {
-  "promise resolved :: log": "a promise's state can't be read synchronously in the browser",
-  "promise resolved :: inspect": "a promise's state can't be read synchronously in the browser",
-  "promise resolved :: colors": "a promise's state can't be read synchronously in the browser",
-  "promise resolved :: compact": "a promise's state can't be read synchronously in the browser",
   "symbol keys :: log": "Bun lists keys in insertion order across strings and symbols; JS only exposes strings first",
   "symbol keys :: inspect": "Bun lists keys in insertion order across strings and symbols; JS only exposes strings first",
   "symbol keys :: colors": "Bun lists keys in insertion order across strings and symbols; JS only exposes strings first",
   "symbol keys :: compact": "Bun lists keys in insertion order across strings and symbols; JS only exposes strings first",
-  "promise resolved :: util": "a promise's state can't be read synchronously in the browser",
   "map iterator :: util": "the Map behind an iterator isn't reachable from JS",
   "set iterator :: util": "the Set behind an iterator isn't reachable from JS",
 };
@@ -96,6 +91,9 @@ async function native(): Promise<Map<string, string>> {
 
 async function ours(): Promise<Map<string, string>> {
   const { formatLog, bunInspect } = await import("../../src/worker/inspect");
+  // What the worker's runtime installs at start.
+  const { trackPromises } = await import("../../src/worker/promises");
+  trackPromises(globalThis);
   const { inspect } = await import("../../src/worker/node/util");
   let text = "";
   const write = (s: string) => void (text += s + "\n");
