@@ -31,6 +31,62 @@ pub const DIAGNOSTICS_JSON: u32 = 4;
 /// annotations) instead of as `bun build --no-bundle`.
 pub const RUNTIME_TRANSPILER: u32 = 8;
 
+/// tsconfig `compilerOptions` for JSX, as strings ("" = not set). Per-file pragmas still win.
+#[derive(Clone, Default, Debug)]
+pub struct Jsx {
+    /// `jsx`: `react`, `react-jsx`, `react-jsxdev`, ... (`preserve` and unknown values are ignored, as in Bun).
+    pub jsx: Vec<u8>,
+    pub import_source: Vec<u8>,
+    pub factory: Vec<u8>,
+    pub fragment_factory: Vec<u8>,
+}
+
+impl Jsx {
+    /// The four fields separated by NUL bytes (`jsx_c`'s format); missing trailing fields are unset.
+    pub fn parse(bytes: &[u8]) -> Jsx {
+        let mut it = bytes.split(|&b| b == 0).map(<[u8]>::to_vec);
+        Jsx {
+            jsx: it.next().unwrap_or_default(),
+            import_source: it.next().unwrap_or_default(),
+            factory: it.next().unwrap_or_default(),
+            fragment_factory: it.next().unwrap_or_default(),
+        }
+    }
+
+    /// The parser's pragma, as Bun's `TSConfigJSON` parse plus `merge_jsx` build it from the defaults.
+    fn pragma(&self) -> options::JSX::Pragma {
+        use options::JSX::{Pragma, RUNTIME_MAP};
+        let mut out = Pragma::default();
+        if let Some(f) = Pragma::member_list_to_components_if_different(&out.factory, &self.factory) {
+            out.factory = f;
+        }
+        if let Some(f) = Pragma::member_list_to_components_if_different(&out.fragment, &self.fragment_factory) {
+            out.fragment = f;
+        }
+        if !self.jsx.is_empty() && self.jsx.len() <= 12 {
+            if let Some(r) = RUNTIME_MAP.get(&self.jsx.to_ascii_lowercase()[..]) {
+                out.runtime = r.runtime;
+                if let Some(dev) = r.development {
+                    out.development = dev;
+                }
+            }
+        }
+        if !self.import_source.is_empty() {
+            // `merge_jsx` copies only `import_source` (not `package_name`).
+            let mut p = Pragma::default();
+            p.package_name = self.import_source.clone().into();
+            p.set_import_source();
+            out.import_source = p.import_source;
+        }
+        out
+    }
+}
+
+thread_local! {
+    /// Set by `jsx_c`; applies to every later call.
+    static JSX: core::cell::RefCell<Jsx> = Default::default();
+}
+
 /// Transpiled JS on success; formatted diagnostics on failure.
 pub fn transpile(path: &[u8], source: &[u8], loader: Loader, flags: u32) -> Result<Vec<u8>, Vec<u8>> {
     transpile_with(path, source, loader, flags, None)
@@ -151,7 +207,7 @@ fn parser_options(loader: Loader, flags: u32) -> ParserOptions<'static> {
         Loader::Ts => bun_ast::Loader::Ts,
         Loader::Tsx => bun_ast::Loader::Tsx,
     };
-    let mut opts = ParserOptions::init(options::JSX::Pragma::default(), loader);
+    let mut opts = ParserOptions::init(JSX.with(|j| j.borrow().pragma()), loader);
     // As `bun build --no-bundle --target=browser` sets them (`bundler/transpiler.rs`).
     opts.features.auto_import_jsx = flags & RUNTIME_TRANSPILER == 0;
     opts.features.no_macros = true;
@@ -432,6 +488,16 @@ pub unsafe extern "C" fn transpile_resolve_c(
         Some(out)
     };
     unsafe { run(path, path_len, src, src_len, loader, flags, Some(&mut host)) }
+}
+
+/// Sets the tsconfig JSX options (`Jsx::parse`'s format) for every later call; an empty input resets them.
+///
+/// # Safety
+/// The input range must be readable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn jsx_c(ptr: *const u8, len: usize) {
+    let bytes = if len == 0 { &[][..] } else { unsafe { core::slice::from_raw_parts(ptr, len) } };
+    JSX.with(|j| *j.borrow_mut() = Jsx::parse(bytes));
 }
 
 /// # Safety
