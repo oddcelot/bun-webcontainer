@@ -46,7 +46,7 @@ example's `node_modules`), later ones a few milliseconds.
 - ✅ Uses the nearest `tsconfig.json` or `jsconfig.json` (the one the transpiler reads, so `jsxImportSource: "hono/jsx"` or Preact type-check as they run), including `extends` (relative, from packages, or a list); without one, the options `bun init` writes plus `types: ["bun"]`
 - ✅ Types for `Bun.*`, `bun:*`, `node:*` and HTML imports from `@types/bun`, bundled; a project's own `@types/bun` or `@types/node` takes their place
 - ✅ Package types from installed `node_modules` (`.d.ts` files and `package.json` `types`/`exports`)
-- ✅ Hover info: rest the pointer on a name for its type and documentation (JSDoc, with examples)
+- ✅ Hover info: rest the pointer on a name for its type and documentation (JSDoc, with examples), highlighted in the editor's theme
 - ✅ Completions: members after `.`, names in scope, keywords, and import paths, each with its type and documentation. Auto-imports offer what the project's other files, its installed packages and Bun's and Node's built-in modules (`bun:sqlite`, `node:fs`) export, and add the import
 - ✅ Parameter hints in calls: the signature, its overloads, and the current parameter's documentation
 - ❌ No go-to-definition yet

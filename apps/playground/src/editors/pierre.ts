@@ -1,4 +1,4 @@
-import { File, registerCustomTheme } from "@pierre/diffs";
+import { File, getHighlighterIfLoaded, getSharedHighlighter, registerCustomTheme } from "@pierre/diffs";
 import { Editor, type Marker } from "@pierre/diffs/edit";
 import { elysiaDark, elysiaLight } from "../elysiaTheme";
 import { onTheme, themeName } from "../theme";
@@ -45,6 +45,52 @@ const HOVER_CSS = `
 const HOVER_DELAY = 300;
 const HIDE_DELAY = 200;
 
+/** Shiki's FontStyle bits. */
+const ITALIC = 1;
+const BOLD = 2;
+const UNDERLINE = 4;
+
+/**
+ * `code` highlighted as TypeScript in the editor's theme, with `[start, end)` (UTF-16 offsets) in <strong>. The editor
+ * loads the highlighter for the file it shows; until it has TypeScript (a .tsx file is open), it's asked for here and
+ * this hover stays plain.
+ */
+function codeHtml(code: string, strong?: [number, number]): string {
+  const theme = themeName();
+  const highlighter = getHighlighterIfLoaded({ theme, lang: "typescript" });
+  const mark = (s: string, from: number, style = "") => {
+    const span = (t: string) => (style ? `<span style="${style}">${escapeHtml(t)}</span>` : escapeHtml(t));
+    if (!strong) return span(s);
+    const [a, b] = [Math.max(0, strong[0] - from), Math.min(s.length, strong[1] - from)];
+    if (a >= b) return span(s);
+    return span(s.slice(0, a)) + `<strong>${span(s.slice(a, b))}</strong>` + span(s.slice(b));
+  };
+  if (!highlighter) {
+    void getSharedHighlighter({ themes: [theme], langs: ["typescript"] }).catch(() => {});
+    return mark(code, 0);
+  }
+  const { tokens } = highlighter.codeToTokens(code, { lang: "typescript", theme });
+  return tokens
+    .map((line) =>
+      line
+        .map((t) => {
+          const f = t.fontStyle ?? 0;
+          const style = [
+            t.color && `color:${t.color}`,
+            f & ITALIC && "font-style:italic",
+            f & BOLD && "font-weight:bold",
+            f & UNDERLINE && "text-decoration:underline",
+          ].filter(Boolean).join(";");
+          return mark(t.content, t.offset, style);
+        })
+        .join(""),
+    )
+    .join("\n");
+}
+
+/** Fence languages highlighted as TypeScript (a JSDoc @example without one is, too). */
+const SCRIPT_FENCE = /^(?:|[jt]sx?|typescript|javascript)$/i;
+
 /** Inline markdown: `code`, **strong**, *emphasis*; links keep their text. */
 const inlineHtml = (md: string) =>
   escapeHtml(md)
@@ -63,7 +109,7 @@ function docsHtml(md: string): string {
     para = [];
   };
   for (let i = 0; i < lines.length; i++) {
-    const open = /^(`{3,})/.exec(lines[i]);
+    const open = /^(`{3,})\s*([\w-]*)/.exec(lines[i]);
     if (!open) {
       if (lines[i].trim()) para.push(lines[i]);
       else flush();
@@ -74,27 +120,25 @@ function docsHtml(md: string): string {
     const body: string[] = [];
     while (++i < lines.length && !close.test(lines[i])) body.push(lines[i]);
     // TypeScript wraps a JSDoc @example in a longer fence; inside is markdown again (a caption, then the code).
-    out.push(body.some((l) => l.startsWith("```")) ? docsHtml(body.join("\n")) : `<pre>${escapeHtml(body.join("\n"))}</pre>`);
+    const code = body.join("\n");
+    out.push(body.some((l) => l.startsWith("```")) ? docsHtml(code) : `<pre>${SCRIPT_FENCE.test(open[2]) ? codeHtml(code) : escapeHtml(code)}</pre>`);
   }
   flush();
   return out.join("");
 }
 
-/** A signature with the active parameter in bold, its docs, then the signature's docs. */
+/** A signature (highlighted) with the active parameter in bold, its docs, then the signature's docs. */
 function signatureHtml(help: EditorSignatureHelp): string {
   const sig = help.signatures[help.active];
   const param = help.param === undefined ? undefined : sig.params[help.param];
-  const label =
-    param && param.start >= 0
-      ? `${escapeHtml(sig.label.slice(0, param.start))}<strong>${escapeHtml(sig.label.slice(param.start, param.end))}</strong>${escapeHtml(sig.label.slice(param.end))}`
-      : escapeHtml(sig.label);
+  const label = codeHtml(sig.label, param && param.start >= 0 ? [param.start, param.end] : undefined);
   const count = help.signatures.length > 1 ? `<span class="editor-signature-count">${help.active + 1}/${help.signatures.length}</span>` : "";
   const docs = [param?.docs, sig.docs].filter(Boolean).map((d) => docsHtml(d!)).join("");
   return `<pre class="editor-hover-code">${count}${label}</pre>` + (docs ? `<div class="editor-hover-docs">${docs}</div>` : "");
 }
 
 const tipHtml = (h: EditorHover) =>
-  (h.code ? `<pre class="editor-hover-code">${escapeHtml(h.code)}</pre>` : "") + (h.docs ? `<div class="editor-hover-docs">${docsHtml(h.docs)}</div>` : "");
+  (h.code ? `<pre class="editor-hover-code">${codeHtml(h.code)}</pre>` : "") + (h.docs ? `<div class="editor-hover-docs">${docsHtml(h.docs)}</div>` : "");
 
 /** Lucide icons for completion kinds (literal class names, so UnoCSS finds them). */
 const KIND_ICONS: Record<CompletionKind, string> = {
