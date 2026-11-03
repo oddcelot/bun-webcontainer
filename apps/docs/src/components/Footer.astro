@@ -43,6 +43,8 @@ import { PLAYGROUND_URL } from "../../site-urls.ts";
 
 <Default />
 
+<p class="disclaimer not-content">runbun is an independent project, not affiliated with or endorsed by Oven or Bun.</p>
+
 <script>
   const root = document.getElementById("page-feedback");
   if (root) {
@@ -259,5 +261,10 @@ import { PLAYGROUND_URL } from "../../site-urls.ts";
   }
   .note a {
     color: inherit;
+  }
+  .disclaimer {
+    margin: 1.5rem 0 0;
+    font-size: var(--sl-text-xs);
+    color: var(--sl-color-gray-3);
   }
 </style>
