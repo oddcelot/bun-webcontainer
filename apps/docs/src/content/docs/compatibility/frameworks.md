@@ -43,4 +43,4 @@ The Vite and Astro examples need cross-origin isolation, which this site doesn't
 - **Child processes** (`child_process`, `Bun.spawn`).
 - **Install scripts**, which never run.
 
-Tried something? [Tell us](https://github.com/oddcelot/bun-webcontainer/issues) whether it worked.
+Tried something? [Tell us](#page-feedback) whether it worked.

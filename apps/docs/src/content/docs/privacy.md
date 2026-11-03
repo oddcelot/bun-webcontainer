@@ -33,6 +33,8 @@ Short links are kept until they're removed. To have one removed, email [privacy@
 - **the Bun release and your browser** (its user agent, window size and pixel ratio, and any feature the playground found missing); the form lists exactly what is sent;
 - **the open project**, as a [short link](#share-links) (stored like any other, secrets left out), or, while it is an unchanged example or repository, just its name.
 
+**Was this page helpful?** at the bottom of each docs page sends your answer and the page's address the same way, and a comment and email address only if you write them.
+
 Your IP address is used to limit how much feedback can be sent a minute; it isn't stored. Feedback is kept until we've dealt with it. To have something you sent removed, email [privacy@runbun.dev](mailto:privacy@runbun.dev).
 
 ## Requests from your browser

@@ -24,4 +24,4 @@ Sections:
 - [Toolchain](/compatibility/toolchain/): transpiler, module resolution, CommonJS, `bun install`, the bundler.
 - [Frameworks](/compatibility/frameworks/): projects known to run.
 
-The status comes from reading the playground's source and from the bundled examples, checked in Chrome. Found something wrong? [Open an issue](https://github.com/oddcelot/bun-webcontainer/issues).
+The status comes from reading the playground's source and from the bundled examples, checked in Chrome. Found something wrong? [Tell us](#page-feedback) at the bottom of the page.
