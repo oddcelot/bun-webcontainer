@@ -87,11 +87,38 @@ export function exportNames(source: string): string[] {
   const names = new Set<string>();
   for (const m of source.matchAll(/\b(?:module\.)?exports\.([A-Za-z_$][\w$]*)\s*=[^=]/g)) names.add(m[1]);
   for (const m of source.matchAll(/Object\.defineProperty\(\s*(?:module\.)?exports\s*,\s*["']([A-Za-z_$][\w$]*)["']/g)) names.add(m[1]);
-  const literal = source.match(/module\.exports\s*=\s*\{([^{}]*)\}/);
-  if (literal) for (const m of literal[1].matchAll(/(?:^|,)\s*([A-Za-z_$][\w$]*)\s*(?=[:,]|$)/g)) names.add(m[1]);
+  for (const n of objectLiteralKeys(source)) names.add(n);
   names.delete("default");
   names.delete("__esModule");
   return [...names];
+}
+
+/** The keys of a `module.exports = { ... }` object literal: `a`, `a: x`, `"a": x`, methods `a() {}` (nested values skipped). */
+function objectLiteralKeys(source: string): string[] {
+  const m = /\bmodule\.exports\s*=\s*\{/.exec(source);
+  if (!m) return [];
+  const keys: string[] = [];
+  const key = /\s*(?:(?:async|get|set)\s+|\*\s*)?(?:([A-Za-z_$][\w$]*)|"([^"\\\n]*)"|'([^'\\\n]*)')\s*([:,(}])/y;
+  let i = m.index + m[0].length;
+  for (;;) {
+    key.lastIndex = i;
+    const k = key.exec(source);
+    if (!k) return keys;
+    keys.push(k[1] ?? k[2] ?? k[3]);
+    i = key.lastIndex;
+    if (k[4] === "}") return keys;
+    if (k[4] === ",") continue;
+    // Skip the value (or the method's parameters and body) to the next top-level comma; the literal's `}` ends it.
+    for (let depth = k[4] === "(" ? 1 : 0; i < source.length; i++) {
+      const c = source[i];
+      if (c === '"' || c === "'" || c === "`") for (i++; i < source.length && source[i] !== c; i += source[i] === "\\" ? 2 : 1);
+      else if (c === "(" || c === "[" || c === "{") depth++;
+      else if (c === ")" || c === "]" || c === "}") {
+        if (depth-- === 0) return keys;
+      } else if (c === "," && depth === 0) break;
+    }
+    i++;
+  }
 }
 
 /**
