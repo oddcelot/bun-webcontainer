@@ -137,6 +137,23 @@ if (spawnSync("bun", ["--version"]).status === 0) {
   }
 }
 
+// SYNC_ESM (16384): an ES module as a function of `hmr` (Bun's dev-server output, imports as `hmr.importSync`), run
+// here with a stand-in `hmr`: imports load first and in order, bindings stay live, `export *` spreads.
+{
+  const src = 'import d, { a as b } from "./dep";\nimport * as ns from "./ns";\nexport * from "./star";\nimport "./side";\nexport let n = b;\nexport function inc() { n++; }\nexport default d + ns.x;\nexport const r = require("./req");\n';
+  const code = call("transpile_flags_c", "m.ts", src, 16384);
+  const order: string[] = [];
+  const mods: Record<string, object> = { "./dep": { default: 1, a: 2 }, "./ns": { x: 10 }, "./star": { s: 3 }, "./side": {} };
+  const hmr = { exports: {} as Record<string, unknown>, importSync: (s: string) => (order.push(s), mods[s]), require: (s: string) => `required ${s}`, importMeta: { require: () => {} } };
+  new Function("hmr", code)(hmr);
+  const e = hmr.exports;
+  (e.inc as () => void)();
+  const ok = order.join() === "./dep,./ns,./star,./side" && e.n === 3 && e.default === 11 && e.s === 3 && e.r === "required ./req";
+  const tla = call("transpile_flags_c", "t.ts", "await 1;\nexport {};\n", 16384);
+  if (!ok || !tla.includes("require() async module")) { fail++; console.log(`SYNC_ESM: MISMATCH\n${code}\n${JSON.stringify(e)} ${order}\n${tla}`); }
+  else console.log("SYNC_ESM: imports in order, live exports, export *, require, top-level await refused");
+}
+
 // Bun.Transpiler's options (`options_c` and the option flags, encoded by the playground's transpiler/options.ts) and
 // per-call data loaders, vs native Bun's transformSync and scan.
 import { runtimeOptions, FLAGS, LOADER_NUMBERS } from "../../apps/playground/src/transpiler/options.ts";
