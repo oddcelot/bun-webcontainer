@@ -14,7 +14,7 @@ Built-ins import with or without the `node:` prefix. Labels are explained on the
 | `buffer` | ✅ Works | Includes `Blob`, `File`, `atob`, `btoa`, `isUtf8`, `isAscii`. |
 | `child_process` | ⚪ Stub | No processes in the browser. |
 | `cluster` | ⚪ Stub | `isPrimary` is `true`; `fork` throws. |
-| `console` | 🟡 Partial | The global `console`: `log`, `info`, `warn`, `error`, `debug`, `dir`, `table` (drawn as Bun draws it), `trace`, `assert`, `count`/`countReset`, `time`/`timeLog`/`timeEnd` and `group`/`groupCollapsed`/`groupEnd` reach the console pane with Bun's text. Objects print as JSON rather than in Bun's inspect format. No `Console` class. |
+| `console` | 🟡 Partial | The global `console`: `log`, `info`, `warn`, `error`, `debug`, `dir`, `table` (drawn as Bun draws it), `trace`, `assert`, `count`/`countReset`, `time`/`timeLog`/`timeEnd` and `group`/`groupCollapsed`/`groupEnd` reach the console pane with Bun's text. Values print in Bun's format (`Bun.inspect`'s, two levels deep), without colors since stdout isn't a TTY. Errors print `error: message` and their frames without Bun's source preview, and frames point into the transpiled code. A promise shows `<pending>` whatever its state. No `Console` class. |
 | `constants` | ⚪ Stub | Empty object. |
 | `crypto` | 🟡 Partial | `createHash`/`createHmac` (md5, ripemd160, sha1, sha2, sha3, blake2), `hash`, `pbkdf2`, `scrypt` (sync and callback), `randomBytes`, `randomUUID`, `randomInt`, `getRandomValues`, `timingSafeEqual`, `webcrypto`/`subtle`. No ciphers, `sign`/`verify`, `KeyObject`, `generateKey*`. |
 | `dgram` | ❌ Missing | |
