@@ -10,6 +10,7 @@ import { CryptoHasher } from "./node/crypto";
 import { Glob } from "./glob";
 import { tomlStringify, yamlStringify } from "./dataStringify";
 import { password } from "./password";
+import { Cookie, CookieMap } from "./cookie";
 import { importMetaResolve, resolveSync } from "./resolve";
 import { Transpiler } from "./transpiler";
 import { fsError } from "./node/errors";
@@ -802,6 +803,8 @@ async function main() {
     YAML: { parse: (input: unknown) => parseData(dataText(input, "yaml"), "yaml"), stringify: yamlStringify },
     TOML: { parse: (input: unknown) => parseData(dataText(input, "toml"), "toml"), stringify: tomlStringify },
     password,
+    Cookie,
+    CookieMap,
   };
   g.Bun = Object.assign(builtins.bun, bun);
 
