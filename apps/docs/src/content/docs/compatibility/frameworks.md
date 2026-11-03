@@ -10,7 +10,7 @@ These ship as examples in the playground (project picker → Examples). Unless n
 | Project | Status | Notes |
 |---|---|---|
 | [Elysia](https://runbun.dev/?example=elysia-demo) 1.4 | ✅ Works | Every route returns the same status and body as real Bun. |
-| [Elysia 2 (rc)](https://runbun.dev/?example=elysia2-demo) | ✅ Works | Same check as above. |
+| [Elysia 2 (rc)](https://runbun.dev/?example=elysia2-demo) | ✅ Works | Plugins, macros, guards, models and validation (422 problem+json), cookies, error classes, server-sent events, a WebSocket chat with pub/sub, and an HTML page that uses them. Every route returns the same status and body as real Bun. Elysia compiles handlers at runtime; its build-time AOT plugin (`elysia/plugin/aot/bun`) doesn't run, as `Bun.build` ignores `plugins`. |
 | [Hono](https://runbun.dev/?repo=honojs/starter/tree/main/templates/bun) | ✅ Works | Bun starter template, from GitHub. Installs and serves `Hello Hono!`. |
 | [Lit SSR + Elysia](https://runbun.dev/?repo=oddcelot/lit-devtools/tree/main/examples/elysia) | ✅ Works | Streams Lit SSR, hydrates, uses `bun:sqlite` and WebSockets. |
 | [Astro + Solid](https://runbun.dev/?example=astro-solid-demo) | ✅ Works | Astro 7 dev server with its default config: on-demand pages, a hydrated Solid island, an API route, the dev toolbar, and HMR (Solid edits swap in place, `.astro` edits reload the page). |

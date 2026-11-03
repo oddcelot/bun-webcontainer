@@ -300,6 +300,21 @@ class ServerResponse extends NativeResponse {
 Object.defineProperty(ServerResponse, "name", { value: "Response" });
 self.Response = ServerResponse as typeof Response;
 
+/**
+ * Bun's `Headers#toJSON`: a plain object of lower-cased names, values joined with ", " except Set-Cookie (an array).
+ * Elysia 2 reads WebSocket upgrade headers with it when `typeof Bun` is defined.
+ */
+Object.defineProperty(Headers.prototype, "toJSON", {
+  value: function toJSON(this: Headers) {
+    const out: Record<string, string | string[]> = {};
+    for (const [k, v] of this) out[k] = k === "set-cookie" ? this.getSetCookie() : v;
+    return out;
+  },
+  writable: true,
+  enumerable: true,
+  configurable: true,
+});
+
 // For console.log: what Responses/Requests were made with, promise states, URL's inspect.custom (as in Bun).
 trackBodies(self);
 installWebInspect(self);

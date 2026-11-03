@@ -7,6 +7,8 @@ fileGroups:
     - 'src/**/*'
     - 'worker/**/*'
     - 'embed-element/**/*'
+    # The bundled examples (src/examples.ts globs them into the build).
+    - 'fixtures/**/*'
     - 'public/**/*'
     # Copied in from the wasm crates by scripts/copy-wasm.ts; their builds are deps instead.
     - '!public/*.wasm'
