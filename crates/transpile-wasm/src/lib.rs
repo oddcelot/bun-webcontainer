@@ -14,6 +14,7 @@ use bun_alloc::Arena;
 use bun_js_parser::{Define, Parser, ParserOptions, options};
 use bun_js_printer as printer;
 
+pub mod apis;
 pub mod runtime;
 use bun_ast::runtime::ReplaceableExportMap;
 use runtime::Data;

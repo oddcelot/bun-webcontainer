@@ -19,6 +19,8 @@ import { Cookie, CookieMap } from "./cookie";
 import { importMetaResolve, resolveSync } from "./resolve";
 import { Transpiler } from "./transpiler";
 import { makeJSONL } from "./jsonl";
+import { makeXML } from "./xml";
+import { xmlWasm } from "../transpiler";
 import { codeError, fsError } from "./node/errors";
 import { hooks, type NodeSocket } from "./node/serve";
 import { flushDatabases } from "./node/sqlite";
@@ -987,6 +989,8 @@ async function main() {
     JSONC: { parse: (input: unknown) => jsoncParse(input) },
     JSON5: { parse: (input: unknown) => parseData(dataText(input, "json5"), "json5"), stringify: (value: unknown, replacer?: unknown, space?: unknown) => json5Stringify(value, replacer, space) },
     JSONL: makeJSONL(),
+    // Bun's parser in transpile-wasm, loaded on first use as Bun.Transpiler's.
+    XML: makeXML(() => xmlWasm),
     password,
     Cookie,
     CookieMap,
