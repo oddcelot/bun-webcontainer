@@ -5,7 +5,7 @@ sidebar:
   order: 1
 ---
 
-Version 1. For how to use it, see [Embedding](/guides/embedding/). The element comes from `https://runbun.dev/embed.js`; the page it wraps is `https://runbun.dev/embed`.
+Version 1. For how to use it, see [Embedding](/guides/embedding/). The element comes from `https://runbun.dev/embed.js`, or from npm as `@runbun/embed` (with the types of everything below); the page it wraps is `https://runbun.dev/embed`.
 
 ## Attributes and URL parameters
 
@@ -31,7 +31,7 @@ The element's attributes and the iframe's URL parameters share names.
 | `share` | `#code=…` | none | A share link's hash. In an iframe URL put it after `#`. |
 | `load` | `eager`, `visible`, `click` | `visible` | Element only. When the embed starts. |
 | `height` | CSS length, `auto` | `code`: `auto`; `console`: `360px`; `preview`: `420px`; `full`: `600px`; `result`: `420px` | Element only. |
-| `src` | URL | where `embed.js` came from | Element only. Another playground base URL. |
+| `src` | URL | where `embed.js` came from; `https://runbun.dev/` from npm, or what `define({ src })` set | Element only. Another playground base URL. |
 | `title` | text | none | The iframe's title, for assistive technology. |
 
 A boolean is on unless it is `false` or `0`. Unknown or malformed values fall back to the default.
@@ -198,4 +198,4 @@ If the embed isn't ready after 60 seconds, the spinner turns back into the butto
 
 ## Versioning
 
-This is version 1. Changes only add: new methods, events, options, features and fields. Nothing is renamed or removed within a version. Ignore message keys and events you don't know; the embed does the same.
+This is version 1. Changes only add: new methods, events, options, features and fields. Nothing is renamed or removed within a version. Ignore message keys and events you don't know; the embed does the same. So an `@runbun/embed` element from npm keeps working as runbun.dev updates.

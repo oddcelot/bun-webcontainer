@@ -1,4 +1,4 @@
-import { FEATURES, MODES, type Feature, type Mode, type Options } from "./protocol";
+import { FEATURES, MODES, type Feature, type Mode, type Options } from "@runbun/embed/protocol";
 
 /** What each mode shows and turns on before the author's `features` list. */
 export const PRESETS: Record<Mode, readonly Feature[]> = {

@@ -20,6 +20,7 @@ fileGroups:
     - 'package.json'
     - '/packages/ui/**/*'
     - '/packages/vfs/**/*'
+    - '/packages/embed/src/**/*'
     - '/bun.lock'
 
 tasks:

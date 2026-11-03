@@ -1,5 +1,6 @@
-// The embed API (v1): what a host page and runbun.dev/embed say to each other over postMessage. The custom element
-// (embed-element/) imports these types too. Names here are public: add, don't rename.
+// The embed API (v1): what a host page and runbun.dev/embed say to each other over postMessage. The element
+// (element.ts) and the playground's embed page (apps/playground/src/embed/) both import it. Names here are public: add,
+// don't rename. An element from npm can be older or newer than the deployed embed, so a change must work with both.
 
 /** Every message either way carries this key with the protocol version; anything else is ignored. */
 export const TAG = "bunPlayground";

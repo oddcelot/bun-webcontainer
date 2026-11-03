@@ -1,6 +1,6 @@
 import { deflateSync, strToU8 } from "fflate";
 import { PRESETS } from "../embed/config";
-import type { Feature, Mode } from "../embed/protocol";
+import type { Feature, Mode } from "@runbun/embed/protocol";
 
 // What the configurator's form adds up to: the <bun-playground> attributes, and the element and iframe snippets a page
 // pastes. Plain functions over the form's state; Configurator.tsx renders them.

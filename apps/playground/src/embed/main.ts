@@ -11,7 +11,7 @@ import { isFamily, pickFamily, setColorMode, setThemeVars } from "../theme";
 import { BUN_VERSION } from "../worker/bunVersion";
 import { isFeature, isMode, lockedFeatures, optionsFromUrl, resolveFeatures } from "./config";
 import { mountEmbed } from "./mount";
-import { isMessage, TAG, VERSION, type Event, type Feature, type Mode, type Options, type Request } from "./protocol";
+import { isMessage, TAG, VERSION, type Event, type Feature, type Mode, type Options, type Request } from "@runbun/embed/protocol";
 
 // runbun.dev/embed: the playground inside another page (an iframe, or <bun-playground>, which builds one). The URL's
 // parameters (embed/config.ts) pick the mode, features and project; with `?init=1` the host sends the files first.

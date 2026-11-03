@@ -40,6 +40,28 @@ The code runs when the element comes into view and the page is ready. Add `load=
 </bun-playground>
 ```
 
+### From npm
+
+With a bundler, install the element as [`@runbun/embed`](https://www.npmjs.com/package/@runbun/embed) instead of loading the script. It's the same element, with TypeScript types for its attributes, methods, events and the postMessage protocol:
+
+```sh
+bun add @runbun/embed
+```
+
+```ts
+import "@runbun/embed";
+```
+
+Importing it registers `<bun-playground>`, framing `https://runbun.dev/`. To frame another playground, such as a local dev server, register it yourself:
+
+```ts
+import { define } from "@runbun/embed/element";
+
+define({ src: "http://localhost:5173/" });
+```
+
+The package has its own versions. Every version works with the playground at runbun.dev, because the protocol between them only grows (see [Versioning](/reference/embed-api/#versioning)).
+
 ## Embed with an iframe
 
 No script needed. The URL parameters have the same names as the attributes:

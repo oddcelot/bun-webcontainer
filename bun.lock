@@ -45,6 +45,7 @@
         "@pierre/theming": "1.0.2",
         "@pierre/trees": "^1.0.0-beta.6",
         "@rolldown/browser": "1.2.16",
+        "@runbun/embed": "workspace:*",
         "@runbun/vfs": "workspace:*",
         "@solid-primitives/storage": "5.0.0-next.7",
         "@solidjs/web": "catalog:",
@@ -114,6 +115,13 @@
       "peerDependencies": {
         "@solidjs/web": "catalog:",
         "solid-js": "catalog:",
+      },
+    },
+    "packages/embed": {
+      "name": "@runbun/embed",
+      "version": "0.1.0",
+      "devDependencies": {
+        "tsrs": "0.20.1-ts7.1.0-beta",
       },
     },
     "packages/ui": {
@@ -564,6 +572,8 @@
     "@rolldown/pluginutils": ["@rolldown/pluginutils@1.0.1", "", {}, "sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw=="],
 
     "@runbun/astro": ["@runbun/astro@workspace:packages/astro"],
+
+    "@runbun/embed": ["@runbun/embed@workspace:packages/embed"],
 
     "@runbun/ui": ["@runbun/ui@workspace:packages/ui"],
 

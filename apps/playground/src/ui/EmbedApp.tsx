@@ -3,7 +3,7 @@ import { Menu, MenuCheckItem, MenuGroup, MenuItem, MenuSeparator, MenuTrigger } 
 import logo from "../bun-logo.svg";
 import { COST } from "../embed/config";
 import type { Embed } from "../embed/main";
-import type { Feature } from "../embed/protocol";
+import type { Feature } from "@runbun/embed/protocol";
 import { AppContext } from "./context";
 import { Console } from "./Console";
 import { EditorPane } from "./EditorPane";

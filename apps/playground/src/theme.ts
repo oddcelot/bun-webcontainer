@@ -1,6 +1,6 @@
 import { createThemeCatalog, createThemeController, type ColorMode, type ThemeLike } from "@pierre/theming";
 import { themes } from "@pierre/theming/themes";
-import type { Vars } from "./embed/protocol";
+import type { Vars } from "@runbun/embed/protocol";
 import { THEME_VARS, elysiaThemes } from "./elysiaTheme";
 import { FAMILIES, chromeVars, withRealColors } from "./themeColors";
 

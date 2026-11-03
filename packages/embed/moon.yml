@@ -1,0 +1,40 @@
+$schema: 'https://moonrepo.dev/schemas/project.json'
+
+# @runbun/embed: <bun-playground> and its postMessage protocol in src/, built with tsrs into dist/ (.js + .d.ts).
+# runbun.dev serves the same element as /embed.js (apps/playground/embed-element/). Published by
+# .github/workflows/publish-embed.yml.
+language: 'typescript'
+
+fileGroups:
+  sources:
+    - 'src/**/*'
+    - 'tsconfig.json'
+    - 'package.json'
+
+tasks:
+  build:
+    command: 'bun run build'
+    inputs:
+      - '@group(sources)'
+    outputs:
+      - 'dist/**/*'
+  typecheck:
+    command: 'bun run typecheck'
+    inputs:
+      - '@group(sources)'
+  pack:
+    # What npm would publish.
+    command: 'npm pack --dry-run'
+    deps: ['~:build']
+    inputs:
+      - '@group(sources)'
+      - 'README.md'
+    options:
+      cache: false
+  changelog:
+    # Draft of CHANGELOG.md's next section from the `embed` Changelog trailers since the last embed-v* tag (cliff.toml).
+    # `-- --tag embed-v0.2.0` heads it with the version.
+    command: 'git-cliff --config packages/embed/cliff.toml --unreleased'
+    options:
+      cache: false
+      runFromWorkspaceRoot: true
