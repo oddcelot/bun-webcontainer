@@ -1,5 +1,5 @@
-// `Bun.YAML.stringify` / `Bun.TOML.stringify`: ports of Bun's Stringifiers
-// (bun/src/runtime/api/YAMLObject.rs, TOMLObject.rs) so the output is byte-identical.
+// `Bun.YAML.stringify` / `Bun.TOML.stringify` / `Bun.JSON5.stringify`: ports of Bun's Stringifiers
+// (bun/src/runtime/api/YAMLObject.rs, TOMLObject.rs, JSON5Object.rs) so the output is byte-identical.
 
 type Obj = Record<string, unknown>;
 
@@ -631,4 +631,97 @@ function basicQuoted(s: string): string {
     }
   }
   return r + '"';
+}
+
+// ── JSON5 ─────────────────────────────────────────────────────────────────────
+
+/** `Bun.JSON5.stringify(value, replacer?, space?)`; `undefined` where Bun returns it. No `toJSON`, as in Bun. */
+export function json5Stringify(value: unknown, replacer?: unknown, space?: unknown): string | undefined {
+  if (skipped(value)) return undefined;
+  if (replacer !== undefined && replacer !== null) throw new Error("JSON5.stringify does not support the replacer argument");
+  const sp = yamlSpace(space);
+  const unit = sp.kind === "num" ? " ".repeat(sp.n) : sp.kind === "str" ? sp.s.slice(0, 10) : "";
+  const visiting = new Set<object>();
+  let out = "";
+  let indent = 0;
+  const newline = () => {
+    if (sp.kind !== "min") out += "\n" + unit.repeat(indent);
+  };
+  const item = (v: unknown) => (skipped(v) ? (out += "null") : write(v));
+  const write = (value: unknown): void => {
+    const v = unbox(value);
+    if (v === null) out += "null";
+    else if (typeof v === "number") out += String(v);
+    else if (typeof v === "bigint") throw new Error("JSON5.stringify cannot serialize BigInt");
+    else if (typeof v === "boolean") out += v ? "true" : "false";
+    else if (typeof v === "string") out += json5Quoted(v);
+    else if (isObj(v)) {
+      if (visiting.has(v)) throw new Error("Converting circular structure to JSON5");
+      visiting.add(v);
+      if (Array.isArray(v)) {
+        if (v.length === 0) out += "[]";
+        else {
+          out += "[";
+          indent++;
+          for (let i = 0; i < v.length; i++) {
+            if (i > 0) out += ",";
+            newline();
+            item(v[i]);
+          }
+          if (sp.kind !== "min") out += ",";
+          indent--;
+          newline();
+          out += "]";
+        }
+      } else {
+        const keys = keysOf(v);
+        if (keys.length === 0) out += "{}";
+        else {
+          out += "{";
+          indent++;
+          let first = true;
+          for (const k of keys) {
+            const u = (v as Obj)[k];
+            if (skipped(u)) continue;
+            if (!first) out += ",";
+            first = false;
+            newline();
+            out += (isJson5Identifier(k) ? k : json5Quoted(k)) + (sp.kind === "min" ? ":" : ": ");
+            write(u);
+          }
+          indent--;
+          if (!first && sp.kind !== "min") {
+            out += ",";
+            newline();
+          }
+          out += "}";
+        }
+      }
+      visiting.delete(v);
+    }
+  };
+  write(value);
+  return out;
+}
+
+const ID_START = /[\p{ID_Start}$_]/u;
+const ID_CONTINUE = /[\p{ID_Continue}$\u200c\u200d]/u;
+/** `lexer::is_identifier_start`/`_continue` per UTF-16 unit, so a key with an astral character is quoted, as in Bun. */
+function isJson5Identifier(k: string): boolean {
+  if (!k || !ID_START.test(k[0]!)) return false;
+  for (let i = 1; i < k.length; i++) if (!ID_CONTINUE.test(k[i]!)) return false;
+  return true;
+}
+
+const JSON5_ESCAPES: Record<number, string> = { 0: "\\0", 8: "\\b", 9: "\\t", 10: "\\n", 11: "\\v", 12: "\\f", 13: "\\r", 0x27: "\\'", 0x5c: "\\\\", 0x2028: "\\u2028", 0x2029: "\\u2029" };
+function json5Quoted(s: string): string {
+  let r = "'";
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    const e = JSON5_ESCAPES[c];
+    if (e) r += e;
+    else if (c < 0x20 || c === 0x7f) r += "\\x" + c.toString(16).padStart(2, "0");
+    else r += s[i];
+  }
+  return r + "'";
 }

@@ -12,7 +12,7 @@ import { installConsole, table } from "./console";
 import { bunInspect, formatLog as formatValues, installWebInspect } from "./inspect";
 import { trackBodies } from "./bodies";
 import { frameMapper, previewSource } from "./sourceMaps";
-import { tomlStringify, yamlStringify } from "./dataStringify";
+import { json5Stringify, tomlStringify, yamlStringify } from "./dataStringify";
 import { password } from "./password";
 import { Cookie, CookieMap } from "./cookie";
 import { importMetaResolve, resolveSync } from "./resolve";
@@ -824,15 +824,23 @@ function sleepSync(ms: unknown) {
 }
 
 /**
- * The text `Bun.YAML.parse`/`Bun.TOML.parse` read: a string, buffer or Blob (read synchronously, as Bun does). YAML
- * takes anything else as its `String()`; TOML only a non-nullish value.
+ * The text `Bun.YAML.parse`/`Bun.TOML.parse`/`Bun.JSON5.parse` read: a string, buffer or Blob (read synchronously, as
+ * Bun does). YAML takes anything else as its `String()`; TOML and JSON5 only a non-nullish value.
  */
-function dataText(v: unknown, format: "yaml" | "toml"): string {
+function dataText(v: unknown, format: "yaml" | "toml" | "json5"): string {
   if (typeof v === "string") return v;
   if (v instanceof ArrayBuffer || ArrayBuffer.isView(v)) return new TextDecoder().decode(v);
   if (v instanceof Blob) return new (globalThis as unknown as { FileReaderSync: new () => { readAsText(b: Blob): string } }).FileReaderSync().readAsText(v);
-  if (format === "toml" && v == null) throw new TypeError("input must be a string, ArrayBuffer, ArrayBufferView or Blob");
+  if (format !== "yaml" && v == null) throw codeError(TypeError, "ERR_INVALID_ARG_TYPE", "input must be a string, ArrayBuffer, ArrayBufferView or Blob");
   return String(v);
+}
+
+/** `Bun.JSONC.parse`: like `JSON.parse`, anything but a string (a buffer too) is read as its `String()`, and "" throws. */
+function jsoncParse(input: unknown): unknown {
+  if (input == null) throw codeError(TypeError, "ERR_INVALID_ARG_TYPE", "input must be a string");
+  const text = String(input);
+  if (!text) throw new SyntaxError("JSONC Parse error: Unexpected end of input");
+  return parseData(text, "jsonc");
 }
 
 async function main() {
@@ -879,6 +887,9 @@ async function main() {
     Glob,
     YAML: { parse: (input: unknown) => parseData(dataText(input, "yaml"), "yaml"), stringify: yamlStringify },
     TOML: { parse: (input: unknown) => parseData(dataText(input, "toml"), "toml"), stringify: tomlStringify },
+    // Wrapped so the functions are named `parse`/`stringify`, as in Bun.
+    JSONC: { parse: (input: unknown) => jsoncParse(input) },
+    JSON5: { parse: (input: unknown) => parseData(dataText(input, "json5"), "json5"), stringify: (value: unknown, replacer?: unknown, space?: unknown) => json5Stringify(value, replacer, space) },
     password,
     Cookie,
     CookieMap,
