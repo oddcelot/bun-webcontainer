@@ -267,7 +267,7 @@ async function serveCommonJS(vfs: VFS, path: string, onError: (msg: string) => v
   });
   // The body is plain source: its `import("x")` calls still need their specifiers resolved.
   try {
-    return { status: 200, body: await transpileCached(rewriteMeta(code, path, target === "bun"), `${path}.js`, {}, resolver(vfs, dir)) };
+    return { status: 200, body: await transpileCached(rewriteMeta(code, path, target === "bun"), `${path}.js`, tsconfigFor(vfs, path), resolver(vfs, dir)) };
   } catch (e) {
     const msg = `${path}: ${e instanceof Error ? e.message : String(e)}`;
     onError(msg);

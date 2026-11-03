@@ -202,3 +202,11 @@ export function runtimeTranspile(op: RuntimeOp, source: string, loader: "js" | "
   // Bun names the source after the loader (`Loader::stdin_name`), which its messages show.
   return call(loadSync(), ENTRY[op], `input.${loader}`, source, LOADERS[loader], flags, jsxKey(tsconfig));
 }
+
+/**
+ * `transpile` without a resolver, synchronous (in the worker, loading the module on first use): for CommonJS the
+ * worker loads at run time, which Bun's runtime transpiles as `bun build --no-bundle` does (the JSX runtime imported).
+ */
+export function transpileSync(source: string, path: string, tsconfig: TsconfigFlags = {}): string {
+  return call(loadSync(), "transpile_flags_c", path, source, loaderOf(path), tsFlags(tsconfig), jsxKey(tsconfig));
+}
