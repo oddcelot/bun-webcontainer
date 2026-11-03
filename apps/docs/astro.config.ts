@@ -1,6 +1,7 @@
 // @ts-check
 import { defineConfig } from "astro/config";
 import { unified } from "@astrojs/markdown-remark";
+import solid from "@astrojs/solid-js";
 import starlight from "@astrojs/starlight";
 import runbun from "@runbun/astro";
 import remarkRunbun from "@runbun/astro/remark";
@@ -15,6 +16,8 @@ export default defineConfig({
   integrations: [
     // The playground's tokens and theme families (uno.config.ts); no reset, Starlight brings its own.
     UnoCSS({ injectReset: false }),
+    // Solid 2 islands (.tsx). @astrojs/solid-js is the vendored v8 in packages/astro-solid until it is on npm.
+    solid(),
     // Runnable fences and <Code> blocks, in every family's code theme (data-code-theme, components/ThemeProvider.astro);
     // embeds follow the page's scheme and family.
     runbun({

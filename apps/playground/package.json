@@ -14,7 +14,7 @@
     "swatches": "bun scripts/theme-swatches.ts"
   },
   "dependencies": {
-    "@kobalte/core": "2.0.0-alpha.4",
+    "@kobalte/core": "catalog:",
     "@napi-rs/wasm-runtime": "1.2.6",
     "@noble/hashes": "^2.4.0",
     "@pierre/diffs": "^1.6.2",
@@ -24,7 +24,7 @@
     "@rolldown/browser": "1.2.16",
     "@runbun/vfs": "workspace:*",
     "@solid-primitives/storage": "5.0.0-next.7",
-    "@solidjs/web": "2.0.0-rc.19",
+    "@solidjs/web": "catalog:",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-unicode-graphemes": "^0.4.0",
     "@xterm/addon-web-links": "^0.12.0",
@@ -35,7 +35,7 @@
     "fflate": "^0.8.3",
     "process": "^0.11.10",
     "readable-stream": "^4.8.0",
-    "solid-js": "2.0.0-rc.19",
+    "solid-js": "catalog:",
     "sql.js": "^1.15.2",
     "string_decoder": "^1.3.0"
   },
@@ -45,7 +45,7 @@
     "@iconify-json/lucide": "catalog:",
     "@resvg/resvg-js": "^2.6.2",
     "@runbun/ui": "workspace:*",
-    "@solidjs/vite-plugin": "3.0.0-next.55",
+    "@solidjs/vite-plugin": "catalog:",
     "@types/bun": "1.4.4",
     "@types/node": "26.6.6",
     "@types/readable-stream": "^4.0.25",

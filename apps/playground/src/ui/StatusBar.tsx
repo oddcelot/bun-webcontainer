@@ -8,7 +8,7 @@ import { pref } from "../prefs";
 import { AppContext } from "./context";
 import { Feedback } from "./Feedback";
 import { StatusPill } from "./Status";
-import { Tip } from "./Tip";
+import { Tip } from "@runbun/ui/solid/Tip";
 
 /** What Bun treats a file as, by extension (its loader), named as editors do. */
 const LANGUAGES: Record<string, string> = {

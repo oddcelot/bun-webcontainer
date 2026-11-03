@@ -1,9 +1,8 @@
 import { Show, createSignal, useContext } from "solid-js";
-import { Select } from "@kobalte/core/select";
 import { examples, repoExamples } from "../examples";
 import { AppContext } from "./context";
 import { PromptDialog } from "./PromptDialog";
-import { Tip } from "./Tip";
+import { Select } from "@runbun/ui/solid/Select";
 
 type Project = { label: string; value: string; icon?: string };
 
@@ -85,37 +84,18 @@ function Picker(props: { groups: Group[]; current: (list: Group[]) => Project | 
   return (
     <>
       <Select<Project, Group>
+        id="example"
+        label="Example project"
+        tip="Example project"
         options={props.groups}
         optionValue="value"
         optionTextValue="label"
-        optionGroupChildren="options"
+        groupChildren="options"
         value={props.current(props.groups)}
         onChange={pick}
         placement="bottom-start"
-        gutter={6}
-        itemComponent={(p) => (
-          <Select.Item item={p.item} class="select-option">
-            <Show when={p.item.rawValue.icon}>{(icon) => <i class={icon()} aria-hidden="true" />}</Show>
-            <Select.ItemLabel class="name">{p.item.rawValue.label}</Select.ItemLabel>
-            <Select.ItemIndicator class="check">
-              <i class="i-lucide-check" aria-hidden="true" />
-            </Select.ItemIndicator>
-          </Select.Item>
-        )}
-        sectionComponent={(p) => <Select.Section class="select-section">{p.section.rawValue.label}</Select.Section>}
-      >
-        <Tip as={Select.Trigger} id="example" class="select-trigger" tip="Example project" aria-label="Example project">
-          <Select.Value<Project> class="value">{(state) => <span class="name">{state.selectedOption().label}</span>}</Select.Value>
-          <Select.Icon class="chevron">
-            <i class="i-lucide-chevron-down" aria-hidden="true" />
-          </Select.Icon>
-        </Tip>
-        <Select.Portal>
-          <Select.Content class="select-menu">
-            <Select.Listbox class="select-list" />
-          </Select.Content>
-        </Select.Portal>
-      </Select>
+        leading={(o) => <Show when={o.icon}>{(icon) => <i class={icon()} aria-hidden="true" />}</Show>}
+      />
       <PromptDialog
         open={asking()}
         onOpenChange={setAsking}

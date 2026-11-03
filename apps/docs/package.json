@@ -12,12 +12,16 @@
   },
   "dependencies": {
     "@astrojs/markdown-remark": "^7.3.5",
+    "@astrojs/solid-js": "workspace:*",
+    "@kobalte/core": "catalog:",
+    "@solidjs/web": "catalog:",
     "@astrojs/starlight": "^0.42.8",
     "@pierre/theme": "2.0.0",
     "@runbun/astro": "workspace:*",
     "@runbun/ui": "workspace:*",
     "astro": "^7.4.5",
-    "sharp": "^0.35.5"
+    "sharp": "^0.35.5",
+    "solid-js": "catalog:"
   },
   "devDependencies": {
     "@astrojs/ts-content-mapper": "0.2.0",

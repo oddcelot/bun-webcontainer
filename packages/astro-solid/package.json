@@ -1,0 +1,35 @@
+{
+  "name": "@astrojs/solid-js",
+  "version": "8.0.0-beta.0",
+  "private": true,
+  "description": "Vendored @astrojs/solid-js v8 (Solid 2) from withastro/astro#17891 until it is on npm. See README.md.",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+    "./container-renderer": { "types": "./dist/container-renderer.d.ts", "default": "./dist/container-renderer.js" },
+    "./client.js": "./dist/client.js",
+    "./server.js": "./dist/server.js",
+    "./server-function-endpoint.js": "./dist/server-function-endpoint.js",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsrs",
+    "typecheck": "tsrs --noEmit"
+  },
+  "dependencies": {
+    "@solidjs/vite-plugin": "catalog:",
+    "vite": "^8.3.5",
+    "vitefu": "^1.1.3"
+  },
+  "peerDependencies": {
+    "@solidjs/web": "catalog:",
+    "solid-js": "catalog:"
+  },
+  "devDependencies": {
+    "@solidjs/web": "catalog:",
+    "astro": "^7.4.5",
+    "solid-js": "catalog:",
+    "tsrs": "0.20.1-ts7.1.0-beta"
+  }
+}

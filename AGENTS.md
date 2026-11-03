@@ -74,6 +74,7 @@ scripts/export-bun-patches.ts              # after committing in bun/ on wasm-ex
 scripts/bun-upgrade.ts --check             # newer Bun release? do patches/bun/ still apply? (changes nothing)
 scripts/bun-upgrade.ts [tag]               # rebase bun/ onto a release (default: latest); on conflict resolve, then --finish
 scripts/w64.ts <crate>...                  # wasm64 compile check of bun crates
+scripts/vendor-astro-solid.ts --check      # withastro/astro#17891 merged? @astrojs/solid-js v8 on npm? ([sha]: re-vendor)
 # The wrapper crates (crates/) are one Cargo workspace (root Cargo.toml, Cargo.lock, rust-toolchain.toml, target/;
 # not bun/ or crates/tsrs-ls-wasm). Build one crate per cargo run: built together, features unify (sys-host `imports` into transpile-wasm).
 W="-Zbuild-std=std,panic_abort --target wasm64-unknown-unknown --release"
@@ -90,7 +91,7 @@ bun install                                # root bun workspace (playground, doc
 (cd apps/docs && bun run check && bun run build)               # docs site; `bun run deploy` publishes docs.runbun.dev
 moon run playground:deploy-canary docs:deploy-canary      # canary.runbun.dev + docs-canary.runbun.dev (noindex)
 scripts/dev.ts                                           # playground (:5173) + docs (:4321) dev servers; docs embeds need both
-(cd apps/playground && bun run swatches)                       # after changing theme families: swatches, packages/ui/themes.json, code-themes/
+(cd apps/playground && bun run swatches)                       # after changing theme families: packages/ui/themes.json (also the swatches), code-themes/
 # Cross-links: DOCS_URL / PLAYGROUND_URL (both builds read them; default localhost in dev, runbun.dev in builds)
 ```
 
@@ -105,7 +106,7 @@ playground runs user code in the browser engine with JS shims for `Bun.*`, a VFS
 (`/__vfs/` modules, `/__preview/` Bun.serve), and Bun's wasm transpiler.
 
 Layout: `apps/` (playground, docs), `crates/` (the Rust wrapper crates, one Cargo workspace), `packages/`
-(`@runbun/astro` on npm; private `@runbun/ui` tokens and `@runbun/vfs`), `patches/` (`bun/`, `npm/`, `bun-codegen/`).
+(`@runbun/astro` on npm; private `@runbun/ui` (tokens, and Solid 2 components in `solid/`, each importing its CSS from `css/` in the `runbun-ui` layer; shipped as source; see its README) and `@runbun/vfs`; `astro-solid`: vendored `@astrojs/solid-js` v8 for Solid 2, see its README), `patches/` (`bun/`, `npm/`, `bun-codegen/`).
 
 ## Git Workflow
 
@@ -136,6 +137,11 @@ These rules override the conservative Beads profile for commits (not for pushes)
   support), update the matching page in `apps/docs/src/content/docs/` (`compatibility/bun.md`, `node.md`,
   `toolchain.md`, `browsers.md`, `frameworks.md`, `guides/features.md`) in the same commit, using
   the status labels from `compatibility/index.md`. Don't deploy the docs without asking.
+- Write CSS with native nesting: one block per root class, its states (`&:hover`, `&[data-selected]`), parts
+  (`.value`, `> span`) and variants (`&.primary`) inside it, one declaration per line. Don't repeat the root in flat
+  one-line rules (`.tabs .tab:hover { … }`). Every supported browser has nesting (Chrome 120, Firefox 117, Safari 17.2),
+  so it ships as written. Keep each selector's specificity when converting (nesting `.b` in `.a` is `.a .b`).
+  `packages/ui/css/` is all nested; in the apps' CSS, nest what you add or rework.
 
 ## Shell Tools
 

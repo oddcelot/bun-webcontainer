@@ -1,6 +1,8 @@
-import { omit } from "solid-js";
+import { createSignal, omit } from "solid-js";
 import type { JSX, ValidComponent } from "@solidjs/web";
 import { Tooltip } from "@kobalte/core/tooltip";
+import { topLayerOf } from "./layer";
+import "../css/tooltip.css";
 
 type TipProps = {
   /** What the tooltip says; none, no tooltip. */
@@ -20,13 +22,30 @@ type TipProps = {
  * trigger, pass it as `as` (`<Tip as={Select.Trigger} ...>`): the two triggers' props and handlers merge.
  */
 export function Tip(props: TipProps) {
-  const rest = omit(props, "tip", "keys", "as", "placement", "children");
+  const rest = omit(props, "tip", "keys", "as", "placement", "children", "ref");
+  // The tooltip portals into the top layer its trigger sits in, if any (layer.ts); looked up as it opens.
+  let trigger: HTMLElement | undefined;
+  const [layer, setLayer] = createSignal<HTMLElement | undefined>();
   return (
-    <Tooltip placement={props.placement ?? "bottom"} gutter={6} openDelay={400} closeDelay={0} disabled={!props.tip}>
-      <Tooltip.Trigger as={(props.as ?? "button") as "button"} {...(rest as JSX.HTMLAttributes<HTMLButtonElement>)}>
+    <Tooltip
+      placement={props.placement ?? "bottom"}
+      gutter={6}
+      openDelay={400}
+      closeDelay={0}
+      disabled={!props.tip}
+      onOpenChange={(open) => open && setLayer(topLayerOf(trigger))}
+    >
+      <Tooltip.Trigger
+        as={(props.as ?? "button") as "button"}
+        {...(rest as JSX.HTMLAttributes<HTMLButtonElement>)}
+        ref={(el: HTMLElement) => {
+          trigger = el;
+          (props.ref as ((el: HTMLElement) => void) | undefined)?.(el);
+        }}
+      >
         {props.children}
       </Tooltip.Trigger>
-      <Tooltip.Portal>
+      <Tooltip.Portal mount={layer()}>
         <Tooltip.Content class="tooltip">
           {props.tip}
           {props.keys?.map((k) => (

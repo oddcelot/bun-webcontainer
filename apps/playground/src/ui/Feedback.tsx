@@ -1,10 +1,12 @@
 import { For, Show, createSignal, createUniqueId, onSettled, useContext } from "solid-js";
-import { Dialog, useDialogContext } from "@kobalte/core/dialog";
+import { Dialog, DialogActions, DialogClose, DialogDescription, DialogTitle, DialogTrigger, useDialogContext } from "@runbun/ui/solid/Dialog";
+import { Button } from "@runbun/ui/solid/Button";
+import { Input } from "@runbun/ui/solid/Input";
 import { BASE, DOCS } from "../base";
 import { MAX_SHORT, shareLink, shortLink } from "../share";
 import { BUN_VERSION } from "../worker/bunVersion";
 import { AppContext } from "./context";
-import { Tip } from "./Tip";
+import { Tip } from "@runbun/ui/solid/Tip";
 
 /**
  * The status bar's Feedback button and its dialog: a message, an optional address to answer, and, if the sender
@@ -13,24 +15,19 @@ import { Tip } from "./Tip";
  */
 export function Feedback() {
   return (
-    <Dialog>
-      <Tip as={Dialog.Trigger} placement="top-end" tip="Tell us what works, what doesn't, what's missing">
-        Feedback
-      </Tip>
-      <Dialog.Portal>
-        <Dialog.Overlay class="dialog-overlay" />
-        <div class="dialog-positioner">
-          <Dialog.Content
-            class="dialog feedback"
-            onOpenAutoFocus={(e) => {
-              e.preventDefault();
-              (e.currentTarget as HTMLElement | null)?.querySelector("textarea")?.focus();
-            }}
-          >
-            <FeedbackForm />
-          </Dialog.Content>
-        </div>
-      </Dialog.Portal>
+    <Dialog
+      class="feedback"
+      trigger={
+        <Tip as={DialogTrigger} placement="top-end" tip="Tell us what works, what doesn't, what's missing">
+          Feedback
+        </Tip>
+      }
+      onOpenAutoFocus={(e) => {
+        e.preventDefault();
+        (e.currentTarget as HTMLElement | null)?.querySelector("textarea")?.focus();
+      }}
+    >
+      <FeedbackForm />
     </Dialog>
   );
 }
@@ -110,20 +107,21 @@ function FeedbackForm() {
   return (
     <Show when={!sent()} fallback={<Thanks />}>
       <form onSubmit={send}>
-        <Dialog.Title class="dialog-title">Send feedback</Dialog.Title>
-        <Dialog.Description class="dialog-description">
+        <DialogTitle>Send feedback</DialogTitle>
+        <DialogDescription>
           A bug, something that should run but doesn't, an idea. It goes to the people building this.{" "}
           <a href={`${DOCS}privacy/#feedback`} target="_blank" rel="noopener">
             What's kept
           </a>
-        </Dialog.Description>
+        </DialogDescription>
         <label class="dialog-label" for={`${id}-message`}>
           Message
         </label>
-        <textarea
+        <Input
+          multiline
           ref={message}
           id={`${id}-message`}
-          class="dialog-input feedback-message"
+          class="feedback-message"
           maxlength={4000}
           aria-describedby={`${id}-error`}
           aria-invalid={error() ? "true" : undefined}
@@ -135,7 +133,7 @@ function FeedbackForm() {
         <label class="dialog-label" for={`${id}-email`}>
           Email, if you'd like an answer (optional)
         </label>
-        <input ref={email} id={`${id}-email`} class="dialog-input" type="email" maxlength={200} autocomplete="email" spellcheck={false} />
+        <Input ref={email} id={`${id}-email`} type="email" maxlength={200} autocomplete="email" spellcheck={false} />
         <label class="feedback-check">
           <input ref={withEnv} type="checkbox" checked />
           <span>Include the Bun release and browser</span>
@@ -164,14 +162,12 @@ function FeedbackForm() {
         <p class="dialog-error" id={`${id}-error`} role="alert">
           <Show when={error()}>{error()}</Show>
         </p>
-        <div class="dialog-actions">
-          <Dialog.CloseButton class="dialog-button" type="button">
-            Cancel
-          </Dialog.CloseButton>
-          <button class="dialog-button primary" type="submit" disabled={sending()}>
+        <DialogActions>
+          <DialogClose>Cancel</DialogClose>
+          <Button primary type="submit" disabled={sending()}>
             {sending() ? "Sending…" : "Send"}
-          </button>
-        </div>
+          </Button>
+        </DialogActions>
       </form>
     </Show>
   );
@@ -182,9 +178,9 @@ function Thanks() {
   return (
     <div class="feedback-thanks">
       <NeonHeart />
-      <Dialog.Title class="dialog-title">Thank you!</Dialog.Title>
-      <Dialog.Description class="dialog-description">Your feedback is on its way.</Dialog.Description>
-      <Dialog.CloseButton class="dialog-button">Close</Dialog.CloseButton>
+      <DialogTitle>Thank you!</DialogTitle>
+      <DialogDescription>Your feedback is on its way.</DialogDescription>
+      <DialogClose>Close</DialogClose>
     </div>
   );
 }

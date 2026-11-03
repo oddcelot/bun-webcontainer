@@ -1,7 +1,9 @@
 import { For, Show, createSignal, createUniqueId, onSettled, untrack } from "solid-js";
-import { Dialog, useDialogContext } from "@kobalte/core/dialog";
+import { Dialog, DialogActions, DialogClose, DialogTitle, DialogTrigger, useDialogContext } from "@runbun/ui/solid/Dialog";
+import { Button } from "@runbun/ui/solid/Button";
+import { Input } from "@runbun/ui/solid/Input";
 import { COMMANDS, checkOverrides, chordKeys, chordOf, currentOverrides, keysFor, sameChord, setOverrides, type Command, type Overrides } from "../keymap";
-import { Tip } from "./Tip";
+import { Tip } from "@runbun/ui/solid/Tip";
 
 /**
  * The keyboard shortcuts in effect, each one re-recordable (or reset), and the JSON that changes them: command names
@@ -9,18 +11,15 @@ import { Tip } from "./Tip";
  */
 export function Shortcuts(props: { id?: string }) {
   return (
-    <Dialog>
-      <Tip as={Dialog.Trigger} id={props.id} tip="Keyboard shortcuts" aria-label="Keyboard shortcuts">
-        <i class="i-lucide-keyboard" aria-hidden="true" />
-      </Tip>
-      <Dialog.Portal>
-        <Dialog.Overlay class="dialog-overlay" />
-        <div class="dialog-positioner">
-          <Dialog.Content class="dialog shortcuts">
-            <ShortcutsForm />
-          </Dialog.Content>
-        </div>
-      </Dialog.Portal>
+    <Dialog
+      class="shortcuts"
+      trigger={
+        <Tip as={DialogTrigger} id={props.id} tip="Keyboard shortcuts" aria-label="Keyboard shortcuts">
+          <i class="i-lucide-keyboard" aria-hidden="true" />
+        </Tip>
+      }
+    >
+      <ShortcutsForm />
     </Dialog>
   );
 }
@@ -97,7 +96,7 @@ function ShortcutsForm() {
         else dialog.close();
       }}
     >
-      <Dialog.Title class="dialog-title">Keyboard shortcuts</Dialog.Title>
+      <DialogTitle>Keyboard shortcuts</DialogTitle>
       <div class="shortcuts-groups">
         <For each={groups}>
           {(g) => (
@@ -179,10 +178,11 @@ function ShortcutsForm() {
           <code>{'{ "run": "Mod+R", "stop": ["Mod+.", "Shift+F5"], "togglePreview": null }'}</code>. <code>Mod</code> is Cmd on macOS,
           Ctrl elsewhere.
         </label>
-        <textarea
+        <Input
+          multiline
           ref={input}
           id={id}
-          class="dialog-input shortcuts-json"
+          class="shortcuts-json"
           spellcheck={false}
           aria-invalid={error() ? "true" : undefined}
           aria-describedby={`${id}-error`}
@@ -202,14 +202,12 @@ function ShortcutsForm() {
           {error()}
         </p>
       </Show>
-      <div class="dialog-actions">
-        <Dialog.CloseButton class="dialog-button" type="button">
-          Cancel
-        </Dialog.CloseButton>
-        <button class="dialog-button primary" type="submit">
+      <DialogActions>
+        <DialogClose>Cancel</DialogClose>
+        <Button primary type="submit">
           Save
-        </button>
-      </div>
+        </Button>
+      </DialogActions>
     </form>
   );
 }

@@ -13,12 +13,16 @@
       "name": "bun-playground-docs",
       "dependencies": {
         "@astrojs/markdown-remark": "^7.3.5",
+        "@astrojs/solid-js": "workspace:*",
         "@astrojs/starlight": "^0.42.8",
+        "@kobalte/core": "catalog:",
         "@pierre/theme": "2.0.0",
         "@runbun/astro": "workspace:*",
         "@runbun/ui": "workspace:*",
+        "@solidjs/web": "catalog:",
         "astro": "^7.4.5",
         "sharp": "^0.35.5",
+        "solid-js": "catalog:",
       },
       "devDependencies": {
         "@astrojs/ts-content-mapper": "0.2.0",
@@ -33,7 +37,7 @@
     "apps/playground": {
       "name": "bun-playground",
       "dependencies": {
-        "@kobalte/core": "2.0.0-alpha.4",
+        "@kobalte/core": "catalog:",
         "@napi-rs/wasm-runtime": "1.2.6",
         "@noble/hashes": "^2.4.0",
         "@pierre/diffs": "^1.6.2",
@@ -43,7 +47,7 @@
         "@rolldown/browser": "1.2.16",
         "@runbun/vfs": "workspace:*",
         "@solid-primitives/storage": "5.0.0-next.7",
-        "@solidjs/web": "2.0.0-rc.19",
+        "@solidjs/web": "catalog:",
         "@xterm/addon-fit": "^0.11.0",
         "@xterm/addon-unicode-graphemes": "^0.4.0",
         "@xterm/addon-web-links": "^0.12.0",
@@ -54,7 +58,7 @@
         "fflate": "^0.8.3",
         "process": "^0.11.10",
         "readable-stream": "^4.8.0",
-        "solid-js": "2.0.0-rc.19",
+        "solid-js": "catalog:",
         "sql.js": "^1.15.2",
         "string_decoder": "^1.3.0",
       },
@@ -64,7 +68,7 @@
         "@iconify-json/lucide": "catalog:",
         "@resvg/resvg-js": "^2.6.2",
         "@runbun/ui": "workspace:*",
-        "@solidjs/vite-plugin": "3.0.0-next.55",
+        "@solidjs/vite-plugin": "catalog:",
         "@types/bun": "1.4.4",
         "@types/node": "26.6.6",
         "@types/readable-stream": "^4.0.25",
@@ -93,8 +97,32 @@
         "astro": "^7.0.0",
       },
     },
+    "packages/astro-solid": {
+      "name": "@astrojs/solid-js",
+      "version": "8.0.0-beta.0",
+      "dependencies": {
+        "@solidjs/vite-plugin": "catalog:",
+        "vite": "^8.3.5",
+        "vitefu": "^1.1.3",
+      },
+      "devDependencies": {
+        "@solidjs/web": "catalog:",
+        "astro": "^7.4.5",
+        "solid-js": "catalog:",
+        "tsrs": "0.20.1-ts7.1.0-beta",
+      },
+      "peerDependencies": {
+        "@solidjs/web": "catalog:",
+        "solid-js": "catalog:",
+      },
+    },
     "packages/ui": {
       "name": "@runbun/ui",
+      "peerDependencies": {
+        "@kobalte/core": "catalog:",
+        "@solidjs/web": "catalog:",
+        "solid-js": "catalog:",
+      },
     },
     "packages/vfs": {
       "name": "@runbun/vfs",
@@ -106,6 +134,10 @@
   },
   "catalog": {
     "@iconify-json/lucide": "^1.2.148",
+    "@kobalte/core": "2.0.0-alpha.4",
+    "@solidjs/vite-plugin": "3.0.0-next.55",
+    "@solidjs/web": "2.0.0-rc.19",
+    "solid-js": "2.0.0-rc.19",
     "unocss": "66.12.0",
   },
   "packages": {
@@ -150,6 +182,8 @@
     "@astrojs/prism": ["@astrojs/prism@4.1.2", "", { "dependencies": { "prismjs": "^1.30.0" } }, "sha512-jMrUEpFDarDO1KWPvVc9eSa8DSfwBlwEOHwX+8zvZQpiqXRGDxFnOXHsYqV6DP7w+0qIgTr98gS1GdQlm8ypWg=="],
 
     "@astrojs/sitemap": ["@astrojs/sitemap@3.7.4", "", { "dependencies": { "sitemap": "^9.0.0", "zod": "^4.3.6" } }, "sha512-LbKNC24bdUWcQf/pThB6qLlSqHojxGjZDURIzFocY8rlWnAn2t74nnhnK6S5x0NHriHoAduLEpVjRykmeGiVvA=="],
+
+    "@astrojs/solid-js": ["@astrojs/solid-js@workspace:packages/astro-solid"],
 
     "@astrojs/starlight": ["@astrojs/starlight@0.42.8", "", { "dependencies": { "@astrojs/markdown-satteri": "^0.4.0", "@astrojs/mdx": "^8.0.0", "@astrojs/sitemap": "^3.7.3", "@pagefind/default-ui": "^1.3.0", "@types/hast": "^3.0.5", "@types/js-yaml": "^4.0.9", "@types/mdast": "^4.0.4", "astro-expressive-code": "^0.44.0", "bcp-47": "^2.1.0", "hast-util-format": "^1.1.0", "hast-util-select": "^6.0.4", "hast-util-to-html": "^9.0.5", "hast-util-to-string": "^3.0.1", "hastscript": "^9.0.1", "i18next": "^26.0.7", "js-yaml": "^4.1.1", "klona": "^2.0.6", "magic-string": "^1.2.3", "mdast-util-directive": "^3.1.0", "mdast-util-to-markdown": "^2.1.2", "mdast-util-to-string": "^4.0.0", "pagefind": "^1.5.2", "remark-directive": "^4.0.0", "satteri": "^0.10.3", "ultrahtml": "^1.6.0", "unified": "^11.0.5", "unist-util-visit": "^5.1.0", "vfile": "^6.0.3" }, "peerDependencies": { "@astrojs/markdown-remark": "^7.3.0", "astro": "^7.2.10" }, "optionalPeers": ["@astrojs/markdown-remark"] }, "sha512-BGP8bmTbdky4OFCV9BNWZedLuzONyUtz754q+hie+li/2TQ5XJ6nvfO8fhRhIMcCpUEsA5Ynf4qTTFf/ft/3Pg=="],
 

@@ -1,6 +1,6 @@
 import { Show, onSettled, useContext } from "solid-js";
 import { AppContext } from "./context";
-import { Tip } from "./Tip";
+import { Tip } from "@runbun/ui/solid/Tip";
 
 /** The console pane: its header (line, error and warning counts, Clear) over the terminal. */
 export function Console() {
