@@ -1,4 +1,4 @@
-import { For, Show, createSignal, createUniqueId, useContext } from "solid-js";
+import { For, Show, createSignal, createUniqueId, onSettled, useContext } from "solid-js";
 import { Dialog, useDialogContext } from "@kobalte/core/dialog";
 import { BASE, DOCS } from "../base";
 import { MAX_SHORT, shareLink, shortLink } from "../share";
@@ -54,6 +54,9 @@ function FeedbackForm() {
   const env = environment(app.support.filter((c) => !c.ok).map((c) => c.name));
   const [error, setError] = createSignal("");
   const [sending, setSending] = createSignal(false);
+  const [sent, setSent] = createSignal(false);
+  let closing: ReturnType<typeof setTimeout> | undefined;
+  onSettled(() => () => clearTimeout(closing));
   let message!: HTMLTextAreaElement;
   let email!: HTMLInputElement;
   let withEnv!: HTMLInputElement;
@@ -93,7 +96,9 @@ function FeedbackForm() {
       const answer = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) throw new Error(answer.error ?? `the server answered ${res.status}`);
       app.log("sys", `[feedback] sent, thank you${attached.project ? ` (with the project: ${location.origin}${attached.project})` : ""}`);
-      dialog.close();
+      // The thanks (and its heart) for a moment, then the dialog closes by itself.
+      setSent(true);
+      closing = setTimeout(() => dialog.close(), 2600);
     } catch (err) {
       const why = err instanceof Error ? err.message : String(err);
       setError(/fetch|JSON|answered 404/.test(why) ? "Feedback can't be sent from here (it goes to runbun.dev)." : `Not sent: ${why}`);
@@ -103,69 +108,94 @@ function FeedbackForm() {
   }
 
   return (
-    <form onSubmit={send}>
-      <Dialog.Title class="dialog-title">Send feedback</Dialog.Title>
-      <Dialog.Description class="dialog-description">
-        A bug, something that should run but doesn't, an idea. It goes to the people building this.{" "}
-        <a href={`${DOCS}privacy/#feedback`} target="_blank" rel="noopener">
-          What's kept
-        </a>
-      </Dialog.Description>
-      <label class="dialog-label" for={`${id}-message`}>
-        Message
-      </label>
-      <textarea
-        ref={message}
-        id={`${id}-message`}
-        class="dialog-input feedback-message"
-        maxlength={4000}
-        aria-describedby={`${id}-error`}
-        aria-invalid={error() ? "true" : undefined}
-        onKeyDown={(e) => {
-          // ⌘/Ctrl+Enter sends, as in chat apps; plain Enter is a new line.
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) e.currentTarget.form?.requestSubmit();
-        }}
-      />
-      <label class="dialog-label" for={`${id}-email`}>
-        Email, if you'd like an answer (optional)
-      </label>
-      <input ref={email} id={`${id}-email`} class="dialog-input" type="email" maxlength={200} autocomplete="email" spellcheck={false} />
-      <label class="feedback-check">
-        <input ref={withEnv} type="checkbox" checked />
-        <span>Include the Bun release and browser</span>
-      </label>
-      {/* Outside the label, so opening the list doesn't tick the box. */}
-      <details class="feedback-env">
-        <summary>What's sent</summary>
-        <dl>
-          <For each={Object.entries(env)}>
-            {([k, v]) => (
-              <>
-                <dt>{k}</dt>
-                <dd>{v}</dd>
-              </>
-            )}
-          </For>
-        </dl>
-      </details>
-      <label class="feedback-check">
-        <input ref={withProject} type="checkbox" />
-        <span>
-          Attach this project
-          <span class="sub">Stores a copy on runbun.dev as a short link, as Share does (no .env or key files)</span>
-        </span>
-      </label>
-      <p class="dialog-error" id={`${id}-error`} role="alert">
-        <Show when={error()}>{error()}</Show>
-      </p>
-      <div class="dialog-actions">
-        <Dialog.CloseButton class="dialog-button" type="button">
-          Cancel
-        </Dialog.CloseButton>
-        <button class="dialog-button primary" type="submit" disabled={sending()}>
-          {sending() ? "Sending…" : "Send"}
-        </button>
-      </div>
-    </form>
+    <Show when={!sent()} fallback={<Thanks />}>
+      <form onSubmit={send}>
+        <Dialog.Title class="dialog-title">Send feedback</Dialog.Title>
+        <Dialog.Description class="dialog-description">
+          A bug, something that should run but doesn't, an idea. It goes to the people building this.{" "}
+          <a href={`${DOCS}privacy/#feedback`} target="_blank" rel="noopener">
+            What's kept
+          </a>
+        </Dialog.Description>
+        <label class="dialog-label" for={`${id}-message`}>
+          Message
+        </label>
+        <textarea
+          ref={message}
+          id={`${id}-message`}
+          class="dialog-input feedback-message"
+          maxlength={4000}
+          aria-describedby={`${id}-error`}
+          aria-invalid={error() ? "true" : undefined}
+          onKeyDown={(e) => {
+            // ⌘/Ctrl+Enter sends, as in chat apps; plain Enter is a new line.
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) e.currentTarget.form?.requestSubmit();
+          }}
+        />
+        <label class="dialog-label" for={`${id}-email`}>
+          Email, if you'd like an answer (optional)
+        </label>
+        <input ref={email} id={`${id}-email`} class="dialog-input" type="email" maxlength={200} autocomplete="email" spellcheck={false} />
+        <label class="feedback-check">
+          <input ref={withEnv} type="checkbox" checked />
+          <span>Include the Bun release and browser</span>
+        </label>
+        {/* Outside the label, so opening the list doesn't tick the box. */}
+        <details class="feedback-env">
+          <summary>What's sent</summary>
+          <dl>
+            <For each={Object.entries(env)}>
+              {([k, v]) => (
+                <>
+                  <dt>{k}</dt>
+                  <dd>{v}</dd>
+                </>
+              )}
+            </For>
+          </dl>
+        </details>
+        <label class="feedback-check">
+          <input ref={withProject} type="checkbox" />
+          <span>
+            Attach this project
+            <span class="sub">Stores a copy on runbun.dev as a short link, as Share does (no .env or key files)</span>
+          </span>
+        </label>
+        <p class="dialog-error" id={`${id}-error`} role="alert">
+          <Show when={error()}>{error()}</Show>
+        </p>
+        <div class="dialog-actions">
+          <Dialog.CloseButton class="dialog-button" type="button">
+            Cancel
+          </Dialog.CloseButton>
+          <button class="dialog-button primary" type="submit" disabled={sending()}>
+            {sending() ? "Sending…" : "Send"}
+          </button>
+        </div>
+      </form>
+    </Show>
+  );
+}
+
+/** After sending: a neon heart that draws itself (both halves from the tip up), then flickers on. */
+function Thanks() {
+  return (
+    <div class="feedback-thanks">
+      <NeonHeart />
+      <Dialog.Title class="dialog-title">Thank you!</Dialog.Title>
+      <Dialog.Description class="dialog-description">Your feedback is on its way.</Dialog.Description>
+      <Dialog.CloseButton class="dialog-button">Close</Dialog.CloseButton>
+    </div>
+  );
+}
+
+// Same drawing as the docs' (apps/docs/src/components/Footer.astro): two mirrored strokes, so pathLength="1"
+// lets one dash animation draw each half.
+function NeonHeart() {
+  return (
+    <svg class="neon-heart" viewBox="0 0 24 24" width="64" height="64" aria-hidden="true">
+      <path pathLength="1" d="M12 20.5C9 17.5 3 13.5 3 8.8 3 5.9 5.2 3.8 7.8 3.8c1.8 0 3.3 1 4.2 2.5" />
+      <path pathLength="1" d="M12 20.5c3-3 9-7 9-11.7 0-2.9-2.2-5-4.8-5-1.8 0-3.3 1-4.2 2.5" />
+    </svg>
   );
 }
