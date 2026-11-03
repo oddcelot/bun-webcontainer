@@ -118,8 +118,10 @@ console.log(greet(config.name));
 - ✅ Named imports from CommonJS, found by a static scan (`exports.x =`, `module.exports = { … }`, re-exports). Exports computed at runtime aren't visible as named imports.
 - ✅ `require(variable)`, and `createRequire(import.meta.url)` and `import.meta.require` with any specifier: project files and installed packages load synchronously when required (TypeScript and JSX transpiled with the nearest `tsconfig.json`'s JSX and decorator options, as imported files are; JSON, TOML and YAML parsed). They share one module instance with literal requires and imports, so a file loaded both ways runs once. A `require` that can't be resolved throws `MODULE_NOT_FOUND` when it runs, as in Bun.
 - ✅ `require.resolve`, `require.cache` (deleting an entry loads the file again), `require.main`
-- 🟡 `require()` of an ES module works for string literals; with a computed specifier it throws `ERR_REQUIRE_ESM` (the browser can't load ES modules synchronously). Use `import()` instead.
-- ❌ Native `.node` addons, and a bare `require` in an ES module (Bun defines one there; use `createRequire` or `import.meta.require`)
+- ✅ `require` in an ES module, as Bun defines it there (`import.meta.require`); a module that declares its own (`const require = createRequire(import.meta.url)`) keeps it. `__filename` and `__dirname` are the module's path and folder, as in Bun; `module` and `exports` are undefined, as in Bun's ES modules
+- 🟡 `require()` of an ES module returns its namespace, the same instance its imports get. With a string literal it always works: the module is imported up front, so it runs before the module that requires it rather than at the `require` call. With a computed specifier it works once the module has been imported (statically or by a finished `import()`); before that, or while it is still running (top-level `await`), it throws `ERR_REQUIRE_ESM`, as the browser can't load ES modules synchronously. Use `import()` instead.
+- 🟡 A `.ts` file without `import` or `export` runs as an ES module, not as CommonJS as in Bun: `require` works, `module` and `exports` don't
+- ❌ Native `.node` addons
 
 ```js playground group=cjs title="counter.cjs"
 let count = 0;

@@ -71,16 +71,50 @@ const __withHoisted = (r) => Object.assign((id) => (id in __hoisted ? ("__cjs" i
 ${code.replace(CREATE_REQUIRE, "__withHoisted($&)")}`;
 }
 
+/** What the transpiler starts a module that uses a free `require` with (`transpile`'s `metaRequire`), as Bun does. */
+const META_REQUIRE = "var {require}=import.meta;";
+
 /**
- * Bun has a synchronous `import.meta.require` (Vite uses it for `ws`). Literal specifiers that resolve become static
- * imports; Node built-ins and `bun:<spec>` fallbacks come from the registry; anything else throws when called.
+ * The transpiler declares `__dirname` and `__filename` at the top of a module that uses them, from the path it was
+ * given (the VFS path, without the leading `/`): Bun's values instead, `import.meta.dir` and `import.meta.path`.
  */
-function hoistMetaRequire(vfs: VFS, code: string, path: string, dir: string, url: (spec: string) => string): string {
+function esmDirname(code: string, path: string): string {
+  const at = code.startsWith(META_REQUIRE) ? META_REQUIRE.length : 0;
+  const q = JSON.stringify;
+  const dir = dirname(path);
+  const decls: [string, string][] = [
+    [`var __dirname = ${q(dir)}, __filename = ${q(path)};`, `var __dirname = ${q("/" + dir)}, __filename = ${q("/" + path)};`],
+    [`var __dirname = ${q(dir)};`, `var __dirname = ${q("/" + dir)};`],
+    [`var __filename = ${q(path)};`, `var __filename = ${q("/" + path)};`],
+  ];
+  for (const [decl, value] of decls) if (code.startsWith(decl, at)) return code.slice(0, at) + value + code.slice(at + decl.length);
+  return code;
+}
+
+/**
+ * Bun has a synchronous `import.meta.require` (Vite uses it for `ws`), which is also `require` in an ES module.
+ * Literal specifiers that resolve become static imports; Node built-ins and `bun:<spec>` fallbacks come from the
+ * registry; in the worker, anything else loads when called (see worker/node/module.ts).
+ *
+ * A free `require`'s literal specifiers are imported up front only if they are ES modules, which the worker can't load
+ * synchronously; CommonJS and data files load when required, as in Bun. (Calls on a `require` the module binds
+ * itself in some inner scope match too: such a module is then loaded with this one, not when that require runs.)
+ */
+function hoistMetaRequire(vfs: VFS, code: string, path: string, dir: string, url: (spec: string) => string, free: boolean): string {
   if (!code.includes("import.meta.require")) return code;
   const lits = [...new Set([...code.matchAll(/\bimport\.meta\.require\(\s*"([^"\n]+)"\s*\)/g)].map((m) => m[1]))];
-  const specs = lits.filter((s) => !(s.replace(/^node:/, "") in builtins) && resolveWith(vfs, s, dir, "require"));
+  if (free) {
+    const literal = literalRanges(code);
+    for (const m of code.matchAll(/(?<![\w$.])require\(\s*(["'])([^"'\n]+)\1\s*\)/g)) {
+      const t = inRanges(literal, m.index) ? null : resolveWith(vfs, m[2], dir, "require");
+      const src = t && !/\.(json|toml|ya?ml|css|node)$/.test(t) ? vfs.readText(t) : undefined;
+      if (src !== undefined && !isCommonJS(t!, src, packageType(vfs, t!))) lits.push(m[2]);
+    }
+  }
+  const specs = [...new Set(lits)].filter((s) => !(s.replace(/^node:/, "") in builtins) && resolveWith(vfs, s, dir, "require"));
   const imports = specs.map((s, i) => `import * as __mr${i} from ${JSON.stringify(url(s))};`).join("");
   const table = specs.map((s, i) => `${JSON.stringify(s)}: __mr${i}`).join(", ");
+  // On the module's first line, so the line numbers in its stack traces stay as they are.
   return `${imports}const __metaRequire = ((t, b) => (id) => {
   const n = String(id).replace(/^node:/, "");
   if (n in b) return b[n];
@@ -88,8 +122,7 @@ function hoistMetaRequire(vfs: VFS, code: string, path: string, dir: string, url
   if ("bun:" + id in b) return b["bun:" + id];
   if (globalThis.__cjsRequire) return globalThis.__cjsRequire(id, ${JSON.stringify("/" + path)});
   throw new Error("import.meta.require: cannot require " + JSON.stringify(id) + " (only literal specifiers of installed packages or built-ins are supported)");
-})({ ${table} }, globalThis.__nodeBuiltins);
-${code.replace(/\bimport\.meta\.require\b/g, "__metaRequire")}`;
+})({ ${table} }, globalThis.__nodeBuiltins);`.replace(/\n\s*/g, " ") + code.replace(/\bimport\.meta\.require\b/g, "__metaRequire");
 }
 
 /**
@@ -303,6 +336,7 @@ export async function serveModule(vfs: VFS, rawPath: string, onError: (msg: stri
   }
   try {
     let code: string;
+    let esm = false;
     if (path.endsWith(".html")) return { status: 200, body: `export default ${JSON.stringify({ __htmlImport: path })};` };
     if (path.endsWith(".css")) return { status: 200, body: src };
     // __cjsModule() as wrapped CommonJS has it: a require() can run before this module is evaluated.
@@ -311,7 +345,8 @@ export async function serveModule(vfs: VFS, rawPath: string, onError: (msg: stri
     if (path.endsWith(".json")) code = `var __m;\nexport function __cjsModule() {\n  const run = (m) => void (m.exports = ${src});\n  if (globalThis.__cjsLoad) return globalThis.__cjsLoad(${JSON.stringify("/" + path)}, run, () => {});\n  if (!__m) run((__m = {}));\n  return __m;\n}\nexport default __cjsModule().exports;`;
     else if (/\.(ts|tsx|jsx)$/.test(path)) {
       TARGET = target;
-      code = await transpileCached(src, path, tsconfigFor(vfs, path), resolver(vfs, dirname(path)));
+      code = await transpileCached(src, path, tsconfigFor(vfs, path), resolver(vfs, dirname(path)), target === "bun");
+      esm = true;
     }
     else if (isCommonJS(path, src, packageType(vfs, path))) {
       TARGET = target;
@@ -320,14 +355,23 @@ export async function serveModule(vfs: VFS, rawPath: string, onError: (msg: stri
     else {
       // Plain ES module: Bun's parser finds the specifiers, as `bun build --no-bundle` does (JSX per tsconfig too).
       TARGET = target;
-      code = await transpileCached(src, path, tsconfigFor(vfs, path), resolver(vfs, dirname(path)));
+      code = await transpileCached(src, path, tsconfigFor(vfs, path), resolver(vfs, dirname(path)), target === "bun");
+      esm = true;
     }
     TARGET = target;
     // The hoisted imports are final URLs already (the transpiler leaves those alone).
     const dir = dirname(path);
     const url = specifierUrl(vfs, dir);
     const final = (spec: string) => url(spec) ?? spec;
-    return { status: 200, body: rewriteMeta(hoistMetaRequire(vfs, hoistRequires(vfs, patchChokidar(code), dir, final), path, dir, final), path, target === "bun") };
+    // Bun's `require` in an ES module, `import.meta.require` (the transpiler declares it where the module uses a free one).
+    if (esm) code = esmDirname(code, path);
+    const free = code.startsWith(META_REQUIRE);
+    if (free) code = `var require = import.meta.require;${code.slice(META_REQUIRE.length)}`;
+    let body = rewriteMeta(hoistMetaRequire(vfs, hoistRequires(vfs, patchChokidar(code), dir, final), path, dir, final, free), path, target === "bun");
+    // In the worker, the module's namespace once it has run, for a require() of it (worker/node/module.ts): imported
+    // from its own URL, so it's this instance.
+    if (esm && target === "bun") body += `\nimport * as __bwcSelf from ${JSON.stringify(`${VFS_ROOT}${path}`)};\nglobalThis.__esmLoaded?.(${JSON.stringify("/" + path)}, __bwcSelf);`;
+    return { status: 200, body };
   } catch (e) {
     const msg = `${path}: ${e instanceof Error ? e.message : String(e)}`;
     onError(msg);

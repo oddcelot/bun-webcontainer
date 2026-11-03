@@ -132,10 +132,12 @@ const dec = new TextDecoder();
 /**
  * JS/TS to browser JS. With `resolve`, every import specifier Bun's parser found (static import, `export ... from`,
  * `import("literal")`; never `require()` or text in strings/comments) is replaced by its result before printing.
+ * With `metaRequire`, a file that uses a free `require` starts with `var {require}=import.meta;`, as Bun prints ES
+ * modules for its runtime.
  */
-export async function transpile(source: string, path: string, tsconfig: TsconfigFlags = {}, resolve?: Resolver): Promise<string> {
+export async function transpile(source: string, path: string, tsconfig: TsconfigFlags = {}, resolve?: Resolver, metaRequire = false): Promise<string> {
   const w = await (ready ??= load());
-  const flags = tsFlags(tsconfig);
+  const flags = tsFlags(tsconfig) | (metaRequire ? IMPORT_META_REQUIRE : 0);
   const loader = loaderOf(path);
   current = resolve;
   resolveError = undefined;
@@ -194,6 +196,7 @@ function call(w: Exports, fn: Entry, path: string, source: string, loader: numbe
 /** What `Bun.Transpiler` runs: its output (`transform`, as Bun's runtime transpiler prints it), `scan` or `scanImports` (JSON). */
 export type RuntimeOp = "transform" | "scan" | "scanImports";
 const RUNTIME_TRANSPILER = 8;
+const IMPORT_META_REQUIRE = 16;
 const ENTRY: Record<RuntimeOp, Entry> = { transform: "transpile_flags_c", scan: "scan_c", scanImports: "scan_imports_c" };
 
 /** For `Bun.Transpiler` in the worker: synchronous, loading the module on first use. `loader` is js, jsx, ts or tsx. */
