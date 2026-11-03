@@ -382,7 +382,10 @@ export class BunPlayground extends HTMLElement {
     let css = h;
     if (h === "auto") {
       const px = auto ?? (this.#frame && this.#isReady ? this.#box.offsetHeight : this.#posterHeight() || 200);
-      css = Math.min(640, Math.max(120, px)) + "px";
+      // A poster is as tall as its content, so a one-line block keeps its Run button on it; the live embed gets at
+      // least room for its bar and a line of output.
+      const min = this.#poster.hidden ? 120 : 0;
+      css = Math.min(640, Math.max(min, px)) + "px";
     }
     this.#box.style.height = css;
   }
