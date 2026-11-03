@@ -24,7 +24,7 @@ export const COMMANDS = {
 } satisfies Record<string, { label: string; keys: string[] }>;
 
 export type Command = keyof typeof COMMANDS;
-type Overrides = Partial<Record<Command, string | string[] | null>>;
+export type Overrides = Partial<Record<Command, string | string[] | null>>;
 
 const STORAGE_KEY = "keymap";
 const MODIFIERS = ["mod", "ctrl", "alt", "shift", "meta"];
@@ -85,9 +85,8 @@ function check(value: unknown): string | undefined {
   }
 }
 
-/** The chords bound to `command` now, as written (`Mod+S`). */
-export function keysFor(command: Command): string[] {
-  const o = overrides();
+/** The chords bound to `command` now (or with the overrides `o`), as written (`Mod+S`). */
+export function keysFor(command: Command, o: Overrides = overrides()): string[] {
   if (!(command in o)) return COMMANDS[command].keys;
   const v = o[command];
   return v == null ? [] : typeof v === "string" ? [v] : v;
@@ -98,17 +97,44 @@ export function matches(command: Command, e: KeyboardEvent): boolean {
   return chords(command).some((c) => c.key === key && c.ctrl === e.ctrlKey && c.alt === e.altKey && c.shift === e.shiftKey && c.meta === e.metaKey);
 }
 
-/** A chord for display: `⌘⇧↵` on macOS, `Ctrl+Shift+Enter` elsewhere. */
-export function formatChord(chord: string): string {
+/** The overrides in effect. */
+export const currentOverrides = () => overrides();
+
+/** Why `value` isn't a valid overrides object, or undefined if it is. */
+export const checkOverrides = check;
+
+/** Whether two chords are the same keys (`Mod+S` and `mod+s`; on macOS `Mod+S` and `Meta+S`). */
+export function sameChord(a: string, b: string): boolean {
+  const [x, y] = [parse(a), parse(b)];
+  if (typeof x === "string" || typeof y === "string") return a === b;
+  return x.key === y.key && x.ctrl === y.ctrl && x.alt === y.alt && x.shift === y.shift && x.meta === y.meta;
+}
+
+/** The key event as a chord (`Mod+Shift+K`), with Cmd on macOS and Ctrl elsewhere as `Mod`; undefined for a modifier alone. */
+export function chordOf(e: KeyboardEvent): string | undefined {
+  if (["Shift", "Control", "Alt", "Meta", "OS", "AltGraph", "CapsLock", "Dead"].includes(e.key)) return undefined;
+  const k = keyOf(e);
+  const key = k === "space" ? "Space" : k.length === 1 ? k.toUpperCase() : e.key.toLowerCase() === k ? e.key : k;
+  const mods = isMac
+    ? [e.metaKey && "Mod", e.ctrlKey && "Ctrl", e.altKey && "Alt", e.shiftKey && "Shift"]
+    : [e.ctrlKey && "Mod", e.altKey && "Alt", e.shiftKey && "Shift", e.metaKey && "Meta"];
+  return [...mods.filter(Boolean), key].join("+");
+}
+
+/** A chord's keys for display, one per key: `⌘ ⇧ ↵` on macOS, `Ctrl Shift Enter` elsewhere. */
+export function chordKeys(chord: string): string[] {
   const p = parse(chord);
-  if (typeof p === "string") return chord;
+  if (typeof p === "string") return [chord];
   const key = p.key.length === 1 ? p.key.toUpperCase() : p.key[0].toUpperCase() + p.key.slice(1);
   if (isMac) {
     const symbol: Record<string, string> = { Enter: "↵", Escape: "Esc", Delete: "⌦", Backspace: "⌫", Arrowup: "↑", Arrowdown: "↓", Arrowleft: "←", Arrowright: "→" };
-    return (p.ctrl ? "⌃" : "") + (p.alt ? "⌥" : "") + (p.shift ? "⇧" : "") + (p.meta ? "⌘" : "") + (symbol[key] ?? key);
+    return [p.ctrl && "⌃", p.alt && "⌥", p.shift && "⇧", p.meta && "⌘", symbol[key] ?? key].filter((k): k is string => !!k);
   }
-  return [p.ctrl && "Ctrl", p.alt && "Alt", p.shift && "Shift", p.meta && "Meta", key].filter(Boolean).join("+");
+  return [p.ctrl && "Ctrl", p.alt && "Alt", p.shift && "Shift", p.meta && "Meta", key].filter((k): k is string => !!k);
 }
+
+/** A chord for display: `⌘⇧↵` on macOS, `Ctrl+Shift+Enter` elsewhere. */
+export const formatChord = (chord: string) => chordKeys(chord).join(isMac ? "" : "+");
 
 /** The overrides as JSON for editing. */
 export const overridesText = () => JSON.stringify(overrides(), null, 2);
