@@ -1,0 +1,36 @@
+# Run Bun
+
+> runbun.dev runs Bun in the browser: a playground where `Bun.*`, `bun:*` and `node:*` code, `bun install`, `bun test` and `Bun.serve` run in the visitor's browser, with no server. A project can be shared as a link that carries its files in the URL.
+
+Code runs in the browser's JavaScript engine with shims for Bun's and Node's APIs, not in Bun itself, so coverage is uneven. Check the compatibility pages before assuming an API works. Running code needs WebAssembly Memory64: Chrome, Edge or Firefox; Safari opens projects but can't run them.
+
+## Share links (reproductions)
+
+A link carries a whole project, so a bug reproduction is one link:
+
+    https://runbun.dev/#code=<base64url(deflate-raw(JSON))>
+
+The JSON is `{ "v": 1, "files": { "<path>": "<text>" } }`, with paths relative to the project root (`index.ts`, `src/db.ts`, `package.json`). In Bun or Node:
+
+    import { deflateRawSync } from "node:zlib";
+    const files = { "index.ts": `console.log(Bun.version);\n` };
+    const hash = deflateRawSync(JSON.stringify({ v: 1, files })).toString("base64url");
+    console.log(`https://runbun.dev/#code=${hash}`);
+
+- Opening the link installs `package.json`'s dependencies from npm and runs the entry file; output goes to the console panel, and a `Bun.serve` app's response to the preview.
+- Entry file: `package.json`'s `module` or `main`, or the file its `dev`/`start` script runs with `bun`, else the first of `index.ts`, `index.tsx`, `index.js`, `src/index.ts`.
+- Text files only; leave out secrets and `bun.lock` (unless the bug depends on exact versions).
+- Keep it minimal: some chat apps cut links off past about 32 KB. A larger project can live in a public GitHub repo: `https://runbun.dev/?repo=<owner>/<repo>` (or `.../tree/<ref>/<dir>`).
+- To check a reproduction, open the link in Chrome, wait for the run to finish and read the console.
+
+## Docs
+
+- [Reproduce a bug with an agent](https://docs.runbun.dev/guides/agent-repro/): the workflow above, with a prompt to paste
+- [Features](https://docs.runbun.dev/guides/features/): the playground's editor, console, preview, installs and projects
+- [Compatibility](https://docs.runbun.dev/compatibility/): what works, per API (Works, Partial, Stub, Missing, Untested)
+- [Bun APIs](https://docs.runbun.dev/compatibility/bun/), [Node built-ins](https://docs.runbun.dev/compatibility/node/), [Toolchain](https://docs.runbun.dev/compatibility/toolchain/), [Browsers](https://docs.runbun.dev/compatibility/browsers/)
+- [Embedding](https://docs.runbun.dev/guides/embedding/): runnable examples in other pages
+
+## Optional
+
+- [Complete documentation](https://docs.runbun.dev/llms-full.txt): every docs page as plain text
