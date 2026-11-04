@@ -447,10 +447,39 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
     }
   }
   .body-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     padding: 6px 8px 2px;
     background: var(--bg);
     &[hidden] {
       display: none;
+    }
+    /* Format, at the bar's end: only for a JSON body; dimmed while it doesn't parse. */
+    .format-body {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      height: 24px;
+      margin-left: auto;
+      padding: 0 8px;
+      border: 1px solid transparent;
+      border-radius: var(--inner-radius);
+      background: none;
+      color: var(--muted);
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      &:hover:not([aria-disabled]),
+      &:focus-visible {
+        color: var(--fg);
+        background: var(--control);
+        outline: none;
+      }
+      &[aria-disabled] {
+        opacity: 0.5;
+        cursor: default;
+      }
     }
     .segmented {
       display: inline-flex;

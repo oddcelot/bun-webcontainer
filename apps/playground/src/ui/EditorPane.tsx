@@ -175,7 +175,8 @@ export function EditorPane() {
         editor?.showSignatureHelp();
         return;
       }
-      if (matches("format", e)) {
+      // The request body formats itself (Preview.tsx) and says so with preventDefault.
+      if (matches("format", e) && !e.defaultPrevented) {
         e.preventDefault();
         void formatOpenFile();
         return;

@@ -3,7 +3,7 @@ import { Select } from "@runbun/ui/solid/Select";
 import { Menu, MenuItem, MenuTrigger } from "@runbun/ui/solid/Menu";
 import { Segmented } from "@runbun/ui/solid/Segmented";
 import { TabItem, TabList } from "@runbun/ui/solid/Tabs";
-import { isMac, matches } from "../keymap";
+import { chordKeys, isMac, keysFor, matches } from "../keymap";
 import { createPierre, createViewer } from "../editors/pierre";
 import type { CodeEditor } from "../editors/types";
 import { PREFIX, normalize, responseReserve, type Card } from "../preview";
@@ -548,6 +548,19 @@ function RequestPanel(props: { tab: PreviewTab }) {
       setSaid(`Request read from Raw: ${t.method} ${t.path}, ${n} header${n === 1 ? "" : "s"}`);
     }, 800);
   };
+  /** The JSON body, if it parses, pretty-printed with two spaces; undefined if it doesn't. */
+  const formattedJson = () => {
+    try {
+      return JSON.stringify(JSON.parse(props.tab.body), null, 2);
+    } catch {
+      return undefined;
+    }
+  };
+  /** Format the JSON body as one undoable edit; a body that isn't JSON stays as it is. */
+  const formatBody = () => {
+    const text = formattedJson();
+    if (text !== undefined) editor?.replace(text);
+  };
   const [copied, setCopied] = createSignal("");
   const copy = (kind: "curl" | "fetch") => {
     const draft = { ...props.tab, path: normalize(props.tab.path.trim() || "/") };
@@ -667,6 +680,19 @@ function RequestPanel(props: { tab: PreviewTab }) {
             options={BODY_MODES.map((m) => [m.mode, m.label, undefined, `Sent as ${m.tip}`])}
             onChange={(m) => p.bodyMode(p.state.active, m as BodyMode)}
           />
+          <Show when={props.tab.bodyMode === "json"}>
+            {/* aria-disabled, not disabled: a disabled button gets no pointer events, so no tooltip saying why. */}
+            <Tip
+              type="button"
+              class="format-body"
+              aria-disabled={formattedJson() === undefined ? "true" : undefined}
+              tip={!props.tab.body.trim() ? "Nothing to format yet" : formattedJson() === undefined ? "Not valid JSON yet, so it can't be formatted" : "Indent the JSON body"}
+              keys={keysFor("format").map(chordKeys)}
+              onClick={formatBody}
+            >
+              <i class="i-lucide-wand-sparkles" aria-hidden="true" /> Format
+            </Tip>
+          </Show>
         </div>
         <div class="no-body" hidden={!shows("body") || withBody()}>
           <span>{props.tab.method} requests have no body.</span>
@@ -695,6 +721,12 @@ function RequestPanel(props: { tab: PreviewTab }) {
           id="req-body"
           ref={el}
           hidden={editorHidden()}
+          onKeyDown={(e) => {
+            // The format shortcut formats the JSON body here, not the open file (EditorPane.tsx skips it).
+            if (raw() || props.tab.bodyMode !== "json" || !matches("format", e)) return;
+            e.preventDefault();
+            formatBody();
+          }}
           data-empty={!raw() && !props.tab.body ? "" : undefined}
           data-placeholder={props.tab.bodyMode === "text" ? "Write the body as text" : "Write the body as JSON"}
         />
