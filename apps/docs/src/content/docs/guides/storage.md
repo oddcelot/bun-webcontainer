@@ -15,7 +15,7 @@ Each project is saved to the browser's [Origin Private File System](https://deve
 
 ## How long it stays
 
-The playground asks the browser to keep its storage (`navigator.storage.persist()`). In Chrome, projects sit in their own [storage bucket](https://developer.chrome.com/docs/web-platform/storage-buckets), kept apart from other site data. Browsers can still clear them, for example when the disk is nearly full or when you clear site data, and Safari clears a site's storage after seven days without a visit.
+The playground asks the browser to keep its storage (`navigator.storage.persist()`). In Chrome, projects sit in their own [storage bucket](https://developer.chrome.com/docs/web-platform/storage-buckets), kept apart from other site data. Other browsers keep projects and caches together, so there the playground keeps its caches small: once the site's storage passes half of what the browser allows it (at most 1 GiB), the least recently used cache entries are deleted, never your projects. Browsers can still clear them, for example when the disk is nearly full or when you clear site data, and Safari clears a site's storage after seven days without a visit.
 
 **Install the playground** to make its storage last longer: in Chrome or Edge, use the install button in the address bar; in Safari, File → Add to Dock (on iPhone and iPad, Share → Add to Home Screen). Safari doesn't apply the seven-day limit to web apps added this way.
 
