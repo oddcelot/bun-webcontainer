@@ -234,10 +234,10 @@ const jsonOrPlain = (text: string) => {
 
 /**
  * Preset requests and their written responses under a poster's code: a tab per request (`METHOD /path`, the method
- * only when it isn't GET, as the playground shows it), and per tab the request's body, if any, and the response, or
- * a note that running the code shows it. Plain HTML like codeTabs: radio tabs named `group` (unique on the page, the
- * same between builds), the stylesheet showing the checked one's panel, the first checked. It sits in the poster,
- * whose clicks don't start the embed (only its Run button does).
+ * only when it isn't GET, as the playground shows it), and per tab the request's body, if any, and the response (then
+ * labelled "Response"), or a note that running the code shows it. Plain HTML like codeTabs: radio tabs named `group`
+ * (unique on the page, the same between builds), the stylesheet showing the checked one's panel, the first checked. It
+ * sits in the poster, whose clicks don't start the embed (only its Run button does).
  */
 export function requestPanel(entries: PresetRequest[], group: string): string {
   const tabs = entries
@@ -250,7 +250,9 @@ export function requestPanel(entries: PresetRequest[], group: string): string {
     .map(({ body, response }) => {
       const sent = body ? `<div class="runbun-request-body"><div class="runbun-request-label">Request body</div>${jsonOrPlain(body)}</div>` : "";
       const got = response === undefined ? `<p class="runbun-response-pending">Run to see the response</p>` : jsonOrPlain(response);
-      return `<div class="runbun-request">${sent}<div class="runbun-response">${got}</div></div>`;
+      // Under a request body, "Response" tells the two apart; alone, the response needs no label.
+      const label = body ? `<div class="runbun-request-label">Response</div>` : "";
+      return `<div class="runbun-request">${sent}<div class="runbun-response">${label}${got}</div></div>`;
     })
     .join("");
   return `<div class="runbun-requests not-content"><div class="runbun-requests-tablist" aria-label="Requests">${tabs}</div>${panels}</div>`;

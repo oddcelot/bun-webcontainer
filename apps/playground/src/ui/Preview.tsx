@@ -6,7 +6,7 @@ import { TabItem, TabList } from "@runbun/ui/solid/Tabs";
 import { chordKeys, isMac, keysFor, matches, recordingKeys } from "../keymap";
 import { createPierre, createViewer } from "../editors/pierre";
 import type { CodeEditor } from "../editors/types";
-import { PREFIX, normalize, responseReserve, type Card } from "../preview";
+import { BODY_ROOM_LINES, PREFIX, normalize, responseReserve, type Card } from "../preview";
 import { AppContext } from "./context";
 import { draftKey, hasBody, type PreviewTab, type Rows, type Section } from "./previews";
 import { LOCAL_ORIGIN, fromAuth, paramRows, queryOf, sent, toCurl, toFetch, toHttp, type Auth, type BodyMode, type Field } from "../request";
@@ -478,7 +478,7 @@ function RequestPanel(props: { tab: PreviewTab }) {
   const [dragging, setDragging] = createSignal(false);
   const [height, setHeight] = createSignal(0);
   let lines: Element | null | undefined;
-  /** One line, and the fitted height: the lines, up to 7em. */
+  /** One line, the fitted height (the lines, up to 7em), and BODY_ROOM_LINES' height (up to the same). */
   const metrics = () => {
     const code = el.querySelector(".pierre-host")?.firstElementChild?.shadowRoot?.querySelector<HTMLElement>("pre > code");
     const next = code?.querySelector("[data-content]");
@@ -496,7 +496,8 @@ function RequestPanel(props: { tab: PreviewTab }) {
     const cap = parseFloat(getComputedStyle(el).fontSize) * (untrack(raw) ? 12 : 7);
     const line = Math.ceil(lh + chrome);
     const fitted = Math.ceil(Math.min(cap, count * lh + chrome));
-    return { line, fitted };
+    const room = Math.ceil(Math.min(cap, Math.max(count, BODY_ROOM_LINES) * lh + chrome));
+    return { line, fitted, room };
   };
   /** The tallest the body may be in the preview as it is: itself and the response area, less the response's reserve. */
   const most = () => {
@@ -518,6 +519,7 @@ function RequestPanel(props: { tab: PreviewTab }) {
     const m = metrics();
     if (!m) return;
     el.dataset.fit = String(m.fitted);
+    el.dataset.room = String(m.room);
     apply(dragged.get(untrack(() => p.state.active)) ?? m.fitted, m.line);
     if (announce) el.dispatchEvent(new Event("bodyfit", { bubbles: true }));
   };

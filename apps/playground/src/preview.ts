@@ -25,6 +25,14 @@ export function responseReserve(): number {
   return card ? parseFloat(getComputedStyle(card).getPropertyValue("--response-reserve")) || 0 : 0;
 }
 
+/**
+ * The body lines a stacked auto-height preview makes room for (embed/main.ts previewHeight): the body shows at its own
+ * height, and what a shorter one leaves goes to the response, room the reader can drag the body into without the
+ * embed changing size. Three, not four: four put the Elysia docs' preset-requests example (a 7-line server, a JSON
+ * body) over the 640px an auto-height embed may take, and past that the rows share the height and the response clips.
+ */
+export const BODY_ROOM_LINES = 3;
+
 /** A response as the preview shows it: status pill and request line, headers, then the body (red when it failed). */
 /** A response that isn't a page; `type` is its content-type. */
 export type Card = { ok: boolean; line: string; status: string; head: string; type: string; text: string };

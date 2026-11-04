@@ -548,6 +548,9 @@ describe("written responses (=>)", () => {
     expect(panels[2]).toContain('<div class="runbun-request-label">Request body</div><pre data-language="json"');
     expect(panels[2]!.match(/data-language="json"/g)).toHaveLength(2);
     expect(panels[0]).not.toContain("Request body");
+    // Under a body, "Response" labels the answer, so the two aren't mistaken for each other; alone it needs none.
+    expect(panels[2]).toContain('<div class="runbun-response"><div class="runbun-request-label">Response</div><pre data-language="json"');
+    expect(panels[0]).not.toContain(">Response<");
   });
 
   test("a request without a written response says that running the code shows it", () => {
