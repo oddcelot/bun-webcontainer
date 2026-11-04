@@ -290,20 +290,44 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
 }
 #request button { background: var(--control); color: inherit; border: 1px solid var(--control-border); border-radius: 6px; padding: 3px 10px; cursor: pointer; }
 #expand { display: grid; place-items: center; padding: 0 8px; }
-/* The request body's editor (ui/Preview.tsx): resizable like the textarea it replaced, a hint while it's empty. */
-#req-body { position: relative; height: 7em; min-height: 3em; overflow: hidden; resize: vertical; border-bottom: 1px solid var(--border); }
+/* The request body (ui/Preview.tsx): a panel with the editor's tab bar (one tab, Body, and the type it's sent as), its
+   editor as tall as its lines (set there, up to 7em; this until it's measured) with a hint while it's empty, and the
+   panes' resize handle under it. */
+#req-body-panel { display: flex; flex-direction: column; flex: 0 0 auto; border-bottom: 1px solid var(--border); }
+#req-body-panel .body-type { flex: 0 0 auto; margin: 0 var(--pad) 0 auto; color: var(--muted); font-size: 11px; }
+#req-body { position: relative; height: 7em; min-height: 1.5em; overflow: hidden; }
+/* Not the main layout's handle offset (#right, where it meets the column handle): this one spans its panel. */
+#preview-wrap #req-handle { flex: 0 0 auto; margin-left: 0; }
 #req-body .pierre-host { height: 100%; overflow: auto; background: var(--bg); }
 #req-body diffs-container { min-height: 100%; }
 #req-body[data-empty]::after { content: attr(data-placeholder); position: absolute; top: 8px; left: 41px; color: var(--muted); font: 12px/20px var(--font-mono); pointer-events: none; }
 #preview-views { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .preview-frame { flex: 1; width: 100%; border: 0; }
-.preview-frame[hidden], .preview-response[hidden], #req-body[hidden] { display: none; }
-.preview-response { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 8px; padding: 10px; font: 12px/1.5 var(--font-mono); }
+.preview-frame[hidden], .preview-response[hidden], #req-body-panel[hidden], #req-handle[hidden] { display: none; }
+/* The response card's metrics, and from them the least room it keeps under a request body (--response-reserve: its
+   padding, the status line's pill, the headers line and a body box of three lines; ui/Preview.tsx and embed/main.ts
+   read it through preview.ts responseReserve). Registered as a length, so it reads back in px. */
+@property --response-reserve { syntax: "<length>"; inherits: false; initial-value: 0px; }
+.preview-response {
+  --card-pad: 10px;
+  --card-gap: 8px;
+  --pill-pad: 1px;
+  --box-pad: 10px;
+  --box-border: 1px;
+  --response-reserve: calc(2 * var(--card-pad) + 1lh + 2 * var(--pill-pad) + var(--card-gap) + 1lh + var(--card-gap) + 3lh + 2 * var(--box-pad) + 2 * var(--box-border));
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--card-gap);
+  padding: var(--card-pad);
+  font: 12px/1.5 var(--font-mono);
+}
 .preview-response pre { margin: 0; font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
 .preview-response .status-line { display: flex; align-items: center; gap: 8px; }
-.preview-response .status { padding: 1px 8px; border-radius: 999px; font-weight: 600; color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, var(--panel)); }
+.preview-response .status { padding: var(--pill-pad) 8px; border-radius: 999px; font-weight: 600; color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, var(--panel)); }
 .preview-response .headers { color: var(--muted); }
-.preview-response .body { padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); }
+.preview-response .body { padding: var(--box-pad) 12px; border: var(--box-border) solid var(--border); border-radius: 6px; background: var(--panel); }
 /* A highlighted body (editors/pierre.ts createViewer): on the editor's background, which the viewer paints. */
 .preview-response .body.highlighted { padding: 6px 0; background: var(--bg); }
 .preview-response.error .status { color: var(--error); background: color-mix(in srgb, var(--error) 14%, var(--panel)); }

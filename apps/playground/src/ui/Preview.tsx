@@ -1,10 +1,10 @@
-import { For, Show, createEffect, onSettled, untrack, useContext } from "solid-js";
+import { For, Show, createEffect, createSignal, onSettled, untrack, useContext } from "solid-js";
 import { Select } from "@runbun/ui/solid/Select";
 import { TabItem, TabList } from "@runbun/ui/solid/Tabs";
 import { isMac, matches } from "../keymap";
 import { createPierre, createViewer } from "../editors/pierre";
 import type { CodeEditor } from "../editors/types";
-import { PREFIX, type Card } from "../preview";
+import { PREFIX, responseReserve, type Card } from "../preview";
 import { AppContext } from "./context";
 import type { PreviewTab } from "./previews";
 import { Tip } from "@runbun/ui/solid/Tip";
@@ -147,7 +147,7 @@ export function Preview() {
             <i class={s.expanded ? "i-lucide-minimize-2" : "i-lucide-maximize-2"} aria-hidden="true" />
           </Tip>
         </form>
-        <RequestBody hidden={active().method === "GET" || active().method === "HEAD"} empty={!active().body} />
+        <RequestBody hidden={active().method === "GET" || active().method === "HEAD"} empty={!active().body} body={active().body} />
         <div id="preview-views">
           <For each={byAge()}>
             {(tab) => {
@@ -192,21 +192,178 @@ export function Preview() {
 /**
  * The request body in the editor the files use, highlighted as JSON (what it's usually sent as). One editor: switching
  * preview tabs opens the active tab's body in it, and each edit goes back to that tab.
+ *
+ * A panel like the editor's: a tab bar with one tab, `Body` (the file tabs' TabList and TabItem), and the content type
+ * the request will carry (preview.ts sendRequest: JSON when it parses, else text). Its editor is as tall as its lines
+ * (at least one, at most 7em, then it scrolls), measured from the editor's lines as the embed measures the code
+ * (embed/main.ts), so a one-line body leaves the response its room. Under it, a handle like the panes' (the
+ * `.resize-handle` look, the embed's splitter's keys: arrows by 16px, Home, End; a double click fits again): a height
+ * dragged there is kept for that tab and no longer fitted.
+ *
+ * The body only ever takes room from the response, never from the page: it stays between one line and what leaves
+ * the response its reserve (preview.ts responseReserve), in the preview as it is, so a drag moves the line between
+ * them and the embed keeps its size. Only a change to the body's lines (typing, another tab's or a preset's body) is
+ * announced (`bodyfit`), for the embed's auto height to fit it (`data-fit`, the fitted height, not a dragged one);
+ * when the preview itself changes size, the body is held within it again.
  */
-function RequestBody(props: { hidden: boolean; empty: boolean }) {
+function RequestBody(props: { hidden: boolean; empty: boolean; body: string }) {
   const { previews: p } = useContext(AppContext);
   let el!: HTMLDivElement;
   let editor: CodeEditor | undefined;
+  /** Heights readers dragged, by tab. */
+  const dragged = new Map<number, number>();
+  const [dragging, setDragging] = createSignal(false);
+  const [height, setHeight] = createSignal(0);
+  let lines: Element | null | undefined;
+  /** One line, and the fitted height: the lines, up to 7em. */
+  const metrics = () => {
+    const code = el.querySelector(".pierre-host")?.firstElementChild?.shadowRoot?.querySelector<HTMLElement>("pre > code");
+    const next = code?.querySelector("[data-content]");
+    if (next !== lines) {
+      if (lines) linesObserver.unobserve(lines);
+      if ((lines = next)) linesObserver.observe(lines);
+    }
+    if (!code || !lines?.children.length) return;
+    const count = lines.children.length;
+    const box = getComputedStyle(code);
+    const lh = lines.getBoundingClientRect().height / count;
+    // The code's padding and horizontal scrollbar.
+    const chrome = parseFloat(box.paddingTop) + parseFloat(box.paddingBottom) + code.offsetHeight - code.clientHeight;
+    const cap = parseFloat(getComputedStyle(el).fontSize) * 7;
+    const line = Math.ceil(lh + chrome);
+    const fitted = Math.ceil(Math.min(cap, count * lh + chrome));
+    return { line, fitted };
+  };
+  /** The tallest the body may be in the preview as it is: itself and the response area, less the response's reserve. */
+  const most = () => {
+    const views = document.getElementById("preview-views");
+    if (!views) return Infinity;
+    return Math.floor(el.getBoundingClientRect().height + views.getBoundingClientRect().height - responseReserve());
+  };
+  /** The body at `target` px, held between one line and `most`; a no-op when that's its height already. */
+  const apply = (target: number, line: number) => {
+    const h = Math.round(Math.max(line, Math.min(target, most())));
+    if (el.style.height === `${h}px`) return h;
+    setHeight(h);
+    el.style.height = `${h}px`;
+    return h;
+  };
+  /** Its dragged height, else its fitted one; `announce`: its lines changed, so the embed's auto height may too. */
+  const fit = (announce = false) => {
+    if (props.hidden) return;
+    const m = metrics();
+    if (!m) return;
+    el.dataset.fit = String(m.fitted);
+    apply(dragged.get(untrack(() => p.state.active)) ?? m.fitted, m.line);
+    if (announce) el.dispatchEvent(new Event("bodyfit", { bubbles: true }));
+  };
+  // Lines added or removed (typing, a preset's body), and the editor's first layout: fit again, and say so.
+  const linesObserver = new ResizeObserver(() => fit(true));
+  // The preview resized (the embed's auto height, a pane dragged, a fixed height): hold the body within it again.
+  const wrapObserver = new ResizeObserver(() => fit());
+  /** The body at `h` px (a drag, a key), within its bounds, kept for the active tab. */
+  const drag = (h: number) => {
+    const m = metrics();
+    if (!m) return;
+    dragged.set(untrack(() => p.state.active), apply(h, m.line));
+  };
   createEffect(
     () => p.state.active,
     (id) => {
       editor ??= createPierre(el);
       const body = untrack(() => p.state.tabs.find((t) => t.id === id)?.body ?? "");
       editor.open(`request-body-${id}.json`, body, (text) => p.edit(id, "body", text));
+      // After the editor has laid the body out.
+      requestAnimationFrame(() => fit(true));
     },
   );
-  onSettled(() => () => editor?.destroy());
-  return <div id="req-body" ref={el} hidden={props.hidden} data-empty={props.empty ? "" : undefined} data-placeholder="Request body (JSON is sent as application/json)" />;
+  // Shown again (a method with a body): fit what it holds now.
+  createEffect(
+    () => props.hidden,
+    (hidden) => {
+      if (!hidden) requestAnimationFrame(() => fit(true));
+    },
+  );
+  onSettled(() => {
+    const wrap = document.getElementById("preview-wrap");
+    if (wrap) wrapObserver.observe(wrap);
+    return () => {
+      editor?.destroy();
+      linesObserver.disconnect();
+      wrapObserver.disconnect();
+    };
+  });
+  // What sendRequest sends it as.
+  const type = () => {
+    if (!props.body) return "";
+    try {
+      JSON.parse(props.body);
+      return "JSON";
+    } catch {
+      return "text";
+    }
+  };
+  let start: { y: number; h: number } | undefined;
+  return (
+    <>
+      <section id="req-body-panel" hidden={props.hidden} aria-label="Request body">
+        <div class="tabs-bar">
+          <TabList class="tabs tablist" label="Request" onSelect={() => el.querySelector<HTMLElement>(".pierre-host")?.focus()}>
+            <TabItem value="body" selected title="The request's body">
+              Body
+            </TabItem>
+          </TabList>
+          <Show when={type()}>
+            <span class="body-type" title={`Sent as ${type() === "JSON" ? "application/json" : "text/plain"}`}>
+              {type()}
+            </span>
+          </Show>
+        </div>
+        <div id="req-body" ref={el} data-empty={props.empty ? "" : undefined} data-placeholder="Request body (JSON is sent as application/json)" />
+      </section>
+      <div
+        id="req-handle"
+        class="resize-handle"
+        role="separator"
+        tabindex="0"
+        aria-label="Resize request body"
+        aria-orientation="horizontal"
+        aria-valuenow={height() || undefined}
+        data-orientation="vertical"
+        data-active={dragging() ? "" : undefined}
+        data-dragging={dragging() ? "" : undefined}
+        hidden={props.hidden}
+        onPointerDown={(e) => {
+          if (e.button !== 0) return;
+          e.preventDefault();
+          e.currentTarget.setPointerCapture(e.pointerId);
+          start = { y: e.clientY, h: el.getBoundingClientRect().height };
+          setDragging(true);
+        }}
+        onPointerMove={(e) => start && drag(start.h + e.clientY - start.y)}
+        onPointerUp={() => {
+          start = undefined;
+          setDragging(false);
+        }}
+        onPointerCancel={() => {
+          start = undefined;
+          setDragging(false);
+        }}
+        onKeyDown={(e) => {
+          const h = el.getBoundingClientRect().height;
+          const next = { ArrowUp: h - 16, ArrowDown: h + 16, Home: 0, End: Infinity }[e.key];
+          if (next === undefined) return;
+          e.preventDefault();
+          drag(next);
+        }}
+        onDblClick={() => {
+          // Fitted again, in the room there is: no announcement, so the embed keeps its size.
+          dragged.delete(untrack(() => p.state.active));
+          fit();
+        }}
+      />
+    </>
+  );
 }
 
 function PreviewTabItem(props: { tab: PreviewTab }) {

@@ -40,7 +40,8 @@
 #embed[data-stack] {
   --stack-default: minmax(0, 55fr) minmax(0, 45fr);
   &[data-fit] {
-    --stack-default: minmax(0, 1fr) 200px;
+    /* --stack-preview: the preview's own height (embed/main.ts previewHeight), at least 200px. */
+    --stack-default: minmax(0, 1fr) var(--stack-preview, 200px);
   }
   &[data-fit]:not([data-preview]) {
     --stack-default: minmax(0, 1fr) 120px;
