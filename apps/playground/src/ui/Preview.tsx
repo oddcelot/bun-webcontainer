@@ -70,6 +70,17 @@ export function Preview() {
   const onKey = (e: KeyboardEvent) => {
     if (s.expanded && matches("exitFullscreen", e)) p.setExpanded(false);
   };
+  /**
+   * Send, with focus anywhere in the preview (the request bar, the panel, the body's editor, a response). Caught on the
+   * way down, before the body's editor takes the keys (it would add a line) and before Run, which window (App.tsx) has
+   * on the same keys by default. A page in a frame keeps its keys (forwardKeys hands them to window: Run).
+   */
+  const onSendKey = (e: KeyboardEvent) => {
+    if (disabled || !matches("send", e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    p.request(s.active);
+  };
   onSettled(() => {
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
@@ -84,7 +95,7 @@ export function Preview() {
   return (
     <>
       <div id="preview-backdrop" hidden={!s.expanded} onClick={() => p.setExpanded(false)} />
-      <div id="preview-wrap" class={{ expanded: s.expanded }}>
+      <div id="preview-wrap" class={{ expanded: s.expanded }} ref={(el) => el.addEventListener("keydown", onSendKey, true)}>
         <div id="preview-tabs" class="tabs">
           <TabList class="tablist" label="Previews" onSelect={(id) => Number(id) !== s.active && p.activate(Number(id))}>
             <For each={s.tabs}>{(tab) => <PreviewTabItem tab={tab} />}</For>
@@ -136,9 +147,15 @@ export function Preview() {
               {(n) => <span class="count">{n()}</span>}
             </Show>
           </Tip>
-          <Tip type="submit" disabled={disabled} tip={disabled ? CANT_RUN : "Send the request"}>
+          <Tip
+            type="submit"
+            id="req-send"
+            disabled={disabled}
+            tip={disabled ? CANT_RUN : "Send the request"}
+            keys={disabled ? undefined : keysFor("send").map(chordKeys)}
+            aria-label="Send the request"
+          >
             <i class="i-lucide-send" aria-hidden="true" />
-            <span class="label">Send</span>
           </Tip>
           <Tip
             type="button"

@@ -335,16 +335,15 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
 .method-badge[data-method="PATCH"] { --method: #9b86f2; }
 .method-badge[data-method="DELETE"] { --method: #ec6490; }
 #req-path { flex: 1; min-width: 0; }
-/* A narrow preview column (an embed's, a phone's): Send shows its icon only (the label stays as the tooltip and accessible name), and the
-   new-tab and expand buttons go (Restore stays: an expanded preview is only this narrow on a phone, with no Esc). */
+/* A narrow preview column (an embed's, a phone's): the buttons get narrower, and the new-tab and expand buttons go
+   (Restore stays: an expanded preview is only this narrow on a phone, with no Esc). */
 #preview-wrap { container-type: inline-size; }
 @container (width < 420px) {
-  #request button .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   #request button { padding: 3px 8px; }
   #request #open-tab, #preview-wrap:not(.expanded) #request #expand { display: none; }
 }
 #request button { background: var(--control); color: inherit; border: 1px solid var(--control-border); border-radius: 6px; padding: 3px 10px; cursor: pointer; }
-#expand { display: grid; place-items: center; padding: 0 8px; }
+#expand, #req-send { display: grid; place-items: center; padding: 0 8px; }
 #req-panel-toggle {
   &[aria-pressed="true"] {
     background: var(--control-hover);

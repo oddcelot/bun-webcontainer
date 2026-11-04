@@ -2,7 +2,7 @@ import { For, Show, createSignal, createUniqueId, onSettled, untrack } from "sol
 import { Dialog, DialogActions, DialogClose, DialogTitle, DialogTrigger, useDialogContext } from "@runbun/ui/solid/Dialog";
 import { Button } from "@runbun/ui/solid/Button";
 import { Input } from "@runbun/ui/solid/Input";
-import { COMMANDS, checkOverrides, chordKeys, chordOf, currentOverrides, keysFor, sameChord, setOverrides, type Command, type Overrides } from "../keymap";
+import { COMMANDS, checkOverrides, chordKeys, chordOf, currentOverrides, keysFor, scopeOf, sameChord, setOverrides, type Command, type Overrides } from "../keymap";
 import { Key, Keys, Tip } from "@runbun/ui/solid/Tip";
 
 /**
@@ -63,11 +63,14 @@ function ShortcutsForm() {
     input.value = text(next);
     setError("");
   }
-  /** The other commands bound to one of `command`'s keys. */
+  /**
+   * The other commands bound to one of `command`'s keys, in the same scope: a scoped command's keys go first where it
+   * works (Send over Run in the preview), so it doesn't clash with a global one.
+   */
   const clashes = (command: Command) => {
     const o = draft();
     const mine = keysFor(command, o);
-    return all.filter((c) => c !== command && keysFor(c, o).some((k) => mine.some((m) => sameChord(k, m))));
+    return all.filter((c) => c !== command && scopeOf(c) === scopeOf(command) && keysFor(c, o).some((k) => mine.some((m) => sameChord(k, m))));
   };
 
   onSettled(() => {
