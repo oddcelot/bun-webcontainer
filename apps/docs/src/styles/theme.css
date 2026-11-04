@@ -127,6 +127,38 @@ bun-playground {
 .status-error > span { color: var(--error); }
 .status-muted > span { color: var(--muted); }
 
+/*
+ * Examples (guides/astro-examples.mdx, remark-examples.ts): the Markdown source beside what it renders, each column
+ * under a muted label. Side by side while both get 24rem, else (and with `wide`) one under the other. The page that
+ * has them drops its table of contents and widens its content to make that room.
+ */
+:root:has(.example) {
+  --sl-content-width: 72rem;
+}
+.example {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.5rem;
+  margin-top: 1.5rem;
+
+  & > * {
+    flex: 1 1 24rem;
+    min-width: 0;
+    margin-top: 0;
+  }
+  &.wide > * {
+    flex-basis: 100%;
+  }
+  & .example-label {
+    margin-bottom: 0.5rem;
+    color: var(--sl-color-gray-3);
+    font-size: var(--sl-text-xs);
+  }
+  & .example-result > :not(.example-label) + * {
+    margin-top: 1rem;
+  }
+}
+
 /* @runbun/astro's code blocks (fences marked `playground`, <Code>) in the site's borders, corners and code font. */
 :root {
   --runbun-code-border: var(--border);
