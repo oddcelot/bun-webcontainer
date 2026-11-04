@@ -1,4 +1,4 @@
-import { For, Show, createEffect, onSettled, untrack, useContext } from "solid-js";
+import { For, Show, createEffect, createSignal, onSettled, untrack, useContext } from "solid-js";
 import { Select } from "@runbun/ui/solid/Select";
 import { TabItem, TabList } from "@runbun/ui/solid/Tabs";
 import { isMac, matches } from "../keymap";
@@ -147,7 +147,7 @@ export function Preview() {
             <i class={s.expanded ? "i-lucide-minimize-2" : "i-lucide-maximize-2"} aria-hidden="true" />
           </Tip>
         </form>
-        <RequestBody hidden={active().method === "GET" || active().method === "HEAD"} empty={!active().body} />
+        <RequestBody hidden={active().method === "GET" || active().method === "HEAD"} empty={!active().body} body={active().body} />
         <div id="preview-views">
           <For each={byAge()}>
             {(tab) => {
@@ -193,49 +193,64 @@ export function Preview() {
  * The request body in the editor the files use, highlighted as JSON (what it's usually sent as). One editor: switching
  * preview tabs opens the active tab's body in it, and each edit goes back to that tab.
  *
- * It's as tall as its lines (at least one, at most 7em, then it scrolls), measured from the editor's lines as the
- * embed measures the code (embed/main.ts), so a one-line body leaves the response its room. A reader can still drag it
- * (`resize: vertical`): a height the browser wrote, not this, is theirs, kept for that tab and no longer fitted.
+ * A panel like the editor's: a tab bar with one tab, `Body` (the file tabs' TabList and TabItem), and the content type
+ * the request will carry (preview.ts sendRequest: JSON when it parses, else text). Its editor is as tall as its lines
+ * (at least one, at most 7em, then it scrolls), measured from the editor's lines as the embed measures the code
+ * (embed/main.ts), so a one-line body leaves the response its room. Under it, a handle like the panes' (the
+ * `.resize-handle` look, the embed's splitter's keys: arrows by 16px, Home, End; a double click fits again): a height
+ * dragged there is kept for that tab and no longer fitted, between one line and what leaves the response a few lines.
  */
-function RequestBody(props: { hidden: boolean; empty: boolean }) {
+function RequestBody(props: { hidden: boolean; empty: boolean; body: string }) {
   const { previews: p } = useContext(AppContext);
   let el!: HTMLDivElement;
   let editor: CodeEditor | undefined;
   /** Heights readers dragged, by tab. */
   const dragged = new Map<number, number>();
-  /** The height last written here, to tell a drag from it. */
-  let written = "";
+  const [dragging, setDragging] = createSignal(false);
+  const [height, setHeight] = createSignal(0);
   let lines: Element | null | undefined;
-  const fit = () => {
-    if (el.hidden) return;
-    const id = untrack(() => p.state.active);
+  /** One line, the fitted height (the lines, up to 7em), and the most a drag may give (the response keeps 72px). */
+  const metrics = () => {
     const code = el.querySelector(".pierre-host")?.firstElementChild?.shadowRoot?.querySelector<HTMLElement>("pre > code");
     const next = code?.querySelector("[data-content]");
     if (next !== lines) {
       if (lines) linesObserver.unobserve(lines);
       if ((lines = next)) linesObserver.observe(lines);
     }
-    const own = dragged.get(id);
-    let h = own;
-    if (h === undefined && code && lines?.children.length) {
-      const count = lines.children.length;
-      const box = getComputedStyle(code);
-      const lh = lines.getBoundingClientRect().height / count;
-      // Its lines, the code's padding and horizontal scrollbar, and the box's own border.
-      const content = count * lh + parseFloat(box.paddingTop) + parseFloat(box.paddingBottom) + code.offsetHeight - code.clientHeight;
-      const max = parseFloat(getComputedStyle(el).fontSize) * 7;
-      h = Math.ceil(Math.min(max, content) + el.offsetHeight - el.clientHeight);
-    }
-    if (h === undefined) return;
-    written = `${h}px`;
-    el.style.height = written;
+    if (!code || !lines?.children.length) return;
+    const count = lines.children.length;
+    const box = getComputedStyle(code);
+    const lh = lines.getBoundingClientRect().height / count;
+    // The code's padding and horizontal scrollbar.
+    const chrome = parseFloat(box.paddingTop) + parseFloat(box.paddingBottom) + code.offsetHeight - code.clientHeight;
+    const cap = parseFloat(getComputedStyle(el).fontSize) * 7;
+    const line = Math.ceil(lh + chrome);
+    const fitted = Math.ceil(Math.min(cap, count * lh + chrome));
+    const wrap = document.getElementById("preview-wrap")?.getBoundingClientRect();
+    const room = wrap ? wrap.bottom - el.getBoundingClientRect().top - 72 : cap;
+    return { line, fitted, max: Math.max(cap, line, Math.floor(room)) };
+  };
+  const apply = (h: number) => {
+    setHeight(h);
+    el.style.height = `${h}px`;
+  };
+  const fit = () => {
+    if (props.hidden) return;
+    const own = dragged.get(untrack(() => p.state.active));
+    const m = metrics();
+    if (own !== undefined) apply(own);
+    else if (m) apply(m.fitted);
   };
   // Lines added or removed (typing, a preset's body), and the editor's first layout: fit again.
   const linesObserver = new ResizeObserver(() => fit());
-  // The box resized with a height this didn't write: the reader's drag.
-  const boxObserver = new ResizeObserver(() => {
-    if (written && el.style.height && el.style.height !== written) dragged.set(untrack(() => p.state.active), parseFloat(el.style.height));
-  });
+  /** The body at `h` px, within one line and the max, kept for the active tab. */
+  const drag = (h: number) => {
+    const m = metrics();
+    if (!m) return;
+    const next = Math.round(Math.max(m.line, Math.min(h, m.max)));
+    dragged.set(untrack(() => p.state.active), next);
+    apply(next);
+  };
   createEffect(
     () => p.state.active,
     (id) => {
@@ -253,15 +268,80 @@ function RequestBody(props: { hidden: boolean; empty: boolean }) {
       if (!hidden) requestAnimationFrame(fit);
     },
   );
-  onSettled(() => {
-    boxObserver.observe(el);
-    return () => {
-      editor?.destroy();
-      linesObserver.disconnect();
-      boxObserver.disconnect();
-    };
+  onSettled(() => () => {
+    editor?.destroy();
+    linesObserver.disconnect();
   });
-  return <div id="req-body" ref={el} hidden={props.hidden} data-empty={props.empty ? "" : undefined} data-placeholder="Request body (JSON is sent as application/json)" />;
+  // What sendRequest sends it as.
+  const type = () => {
+    if (!props.body) return "";
+    try {
+      JSON.parse(props.body);
+      return "JSON";
+    } catch {
+      return "text";
+    }
+  };
+  let start: { y: number; h: number } | undefined;
+  return (
+    <>
+      <section id="req-body-panel" hidden={props.hidden} aria-label="Request body">
+        <div class="tabs-bar">
+          <TabList class="tabs tablist" label="Request" onSelect={() => el.querySelector<HTMLElement>(".pierre-host")?.focus()}>
+            <TabItem value="body" selected title="The request's body">
+              Body
+            </TabItem>
+          </TabList>
+          <Show when={type()}>
+            <span class="body-type" title={`Sent as ${type() === "JSON" ? "application/json" : "text/plain"}`}>
+              {type()}
+            </span>
+          </Show>
+        </div>
+        <div id="req-body" ref={el} data-empty={props.empty ? "" : undefined} data-placeholder="Request body (JSON is sent as application/json)" />
+      </section>
+      <div
+        id="req-handle"
+        class="resize-handle"
+        role="separator"
+        tabindex="0"
+        aria-label="Resize request body"
+        aria-orientation="horizontal"
+        aria-valuenow={height() || undefined}
+        data-orientation="vertical"
+        data-active={dragging() ? "" : undefined}
+        data-dragging={dragging() ? "" : undefined}
+        hidden={props.hidden}
+        onPointerDown={(e) => {
+          if (e.button !== 0) return;
+          e.preventDefault();
+          e.currentTarget.setPointerCapture(e.pointerId);
+          start = { y: e.clientY, h: el.getBoundingClientRect().height };
+          setDragging(true);
+        }}
+        onPointerMove={(e) => start && drag(start.h + e.clientY - start.y)}
+        onPointerUp={() => {
+          start = undefined;
+          setDragging(false);
+        }}
+        onPointerCancel={() => {
+          start = undefined;
+          setDragging(false);
+        }}
+        onKeyDown={(e) => {
+          const h = el.getBoundingClientRect().height;
+          const next = { ArrowUp: h - 16, ArrowDown: h + 16, Home: 0, End: Infinity }[e.key];
+          if (next === undefined) return;
+          e.preventDefault();
+          drag(next);
+        }}
+        onDblClick={() => {
+          dragged.delete(untrack(() => p.state.active));
+          fit();
+        }}
+      />
+    </>
+  );
 }
 
 function PreviewTabItem(props: { tab: PreviewTab }) {
