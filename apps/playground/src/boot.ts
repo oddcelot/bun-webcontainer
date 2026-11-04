@@ -36,7 +36,10 @@ export function createPlayground({ watch }: { watch?: () => boolean } = {}) {
     isFile: (path) => vfs.files.has(bare(path)),
     onLocation: (path, line, column) => workspace.openAt(bare(path), line, column),
   });
-  const [session, workspace, previews] = createRoot(() => [createSession(canRun), createWorkspace(), createPreviews()] as const);
+  const [session, workspace, previews] = createRoot(() => {
+    const session = createSession(canRun);
+    return [session, createWorkspace(), createPreviews(() => session.settled().state === "running")] as const;
+  });
   const vfs = new VFS();
   let runner: Runner | undefined;
   let semver: Semver | undefined;
