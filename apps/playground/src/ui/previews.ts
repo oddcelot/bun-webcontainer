@@ -1,10 +1,13 @@
 import { createStore, flush, reconcile } from "solid-js";
 import type { PresetRequest } from "../embed/requests";
 import { PREFIX, cardFromFrame, normalize, sendRequest, type Card } from "../preview";
-import { queryOf, sent, withQuery, type Field } from "../request";
+import { build, modeOf, noAuth, queryOf, sent, withQuery, type Auth, type BodyMode, type Field } from "../request";
 
 /** The request panel's sections (ui/Preview.tsx): the path's query, the headers, and the body of a method with one. */
-export type Section = "params" | "headers" | "body";
+export type Section = "params" | "headers" | "auth" | "body";
+
+/** The request panel's row lists, by name. */
+export type Rows = "headers" | "form" | "multipart";
 
 /** Whether a request with `method` carries a body (the panel's Body section). */
 export const hasBody = (method: string) => method !== "GET" && method !== "HEAD";
@@ -15,8 +18,13 @@ export type PreviewTab = {
   method: string;
   path: string;
   body: string;
+  /** How the body is sent; the editor's text is `body`, a form's rows `form` or `multipart`. */
+  bodyMode: BodyMode;
+  form: Field[];
+  multipart: Field[];
   /** Headers sent with the request (the ones turned on); the query lives in `path`. */
   headers: Field[];
+  auth: Auth;
   /** Whether the request panel shows, and which of its sections. */
   panel: boolean;
   section: Section;
@@ -33,13 +41,17 @@ export type PreviewTab = {
  * themselves in `frames` so requests can navigate them. `running` says whether the server is up, for preset tabs
  * opened after Run.
  */
-export function createPreviews(running: () => boolean = () => false) {
+export function createPreviews(running: () => boolean = () => false, read: (path: string) => Uint8Array | undefined = () => undefined) {
   const blank = (id: number, path: string, method = "GET", body = "", pending = false): PreviewTab => ({
     id,
     method,
     path,
     body,
+    bodyMode: modeOf(body),
+    form: [],
+    multipart: [],
     headers: [],
+    auth: noAuth(),
     panel: hasBody(method),
     section: hasBody(method) ? "body" : "params",
     view: "frame",
@@ -104,7 +116,7 @@ export function createPreviews(running: () => boolean = () => false) {
           t.section = "body";
         } else if (t.section === "body") {
           t.section = "params";
-          t.panel = queryOf(t.path).length > 0 || sent(t.headers).length > 0;
+          t.panel = queryOf(t.path).length > 0 || sent(t.headers).length > 0 || t.auth.type !== "none";
         }
       });
     },
@@ -131,16 +143,26 @@ export function createPreviews(running: () => boolean = () => false) {
         );
       });
     },
-    /** Header `i` changed (one past the last: a new one, turned on). */
-    header(id: number, i: number, change: Partial<Field>) {
+    /** Row `i` of a list changed (one past the last: a new one, turned on). */
+    row(id: number, list: Rows, i: number, change: Partial<Field>) {
       update(id, (t) => {
-        if (i >= t.headers.length) t.headers.push({ name: "", value: "", on: true, ...change });
-        else Object.assign(t.headers[i]!, change);
+        if (i >= t[list].length) t[list].push({ name: "", value: "", on: true, ...change });
+        else Object.assign(t[list][i]!, change);
       });
     },
-    removeHeader(id: number, i: number) {
+    removeRow(id: number, list: Rows, i: number) {
       update(id, (t) => {
-        t.headers.splice(i, 1);
+        t[list].splice(i, 1);
+      });
+    },
+    bodyMode(id: number, mode: BodyMode) {
+      update(id, (t) => {
+        t.bodyMode = mode;
+      });
+    },
+    auth(id: number, change: Partial<Auth>) {
+      update(id, (t) => {
+        Object.assign(t.auth, change);
       });
     },
     setExpanded(on: boolean) {
@@ -158,10 +180,12 @@ export function createPreviews(running: () => boolean = () => false) {
           t.pending = false;
         });
       const m = method ?? tab.method;
-      const path = normalize(tab.path.trim() || "/");
+      let path = normalize(tab.path.trim() || "/");
       let result: "page" | Card;
       try {
-        result = await sendRequest(m, path, tab.body, sent(tab.headers));
+        const req = build({ ...tab, method: m, path }, read);
+        path = req.path;
+        result = await sendRequest(m, req);
       } catch (err) {
         result = { ok: false, line: `${m} ${tab.path}`, status: "", head: "", type: "", text: String(err) };
       }

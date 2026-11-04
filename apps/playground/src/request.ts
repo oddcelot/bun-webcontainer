@@ -1,8 +1,11 @@
 // The parts of a preview request besides its method and body: the query of its path, as rows the request panel edits
 // (ui/Preview.tsx), and the headers readers add, carried to the running server through the service worker (sw.ts).
 
-/** A query parameter or header row. A header row can be turned off without removing it. */
-export type Field = { name: string; value: string; on: boolean };
+/**
+ * A query parameter, header or form row. A row other than a query parameter can be turned off without removing it; a
+ * multipart row with `file` sends the project file at the path in `value`.
+ */
+export type Field = { name: string; value: string; on: boolean; file?: boolean };
 
 /** `path` split at its query (`?`) and fragment (`#`), each kept with its mark. */
 function split(path: string): { pathname: string; query: string; hash: string } {
@@ -80,4 +83,101 @@ export function joinCookies(base: string | undefined, over: string | undefined):
     if (pair) pairs.set(pair.split("=", 1)[0]!.trim(), pair);
   }
   return [...pairs.values()].join("; ");
+}
+
+/** How the request panel's Body is sent: the editor's text as JSON or plain text, or rows as a form. */
+export type BodyMode = "json" | "text" | "form" | "multipart";
+
+/** The mode a body given as text (an embed preset's) is sent in: JSON when it parses (or is empty), else text. */
+export function modeOf(text: string): BodyMode {
+  if (!text.trim()) return "json";
+  try {
+    JSON.parse(text);
+    return "json";
+  } catch {
+    return "text";
+  }
+}
+
+/** The request panel's Auth: written into a header (or, for an API key, a header or a query parameter) when sent. */
+export type Auth = {
+  type: "none" | "bearer" | "basic" | "apikey";
+  token: string;
+  user: string;
+  pass: string;
+  key: string;
+  value: string;
+  in: "header" | "query";
+};
+
+export const noAuth = (): Auth => ({ type: "none", token: "", user: "", pass: "", key: "", value: "", in: "header" });
+
+/** `s` as UTF-8, base64-encoded (`btoa` takes Latin-1 only). */
+const base64 = (s: string) => btoa(String.fromCharCode(...new TextEncoder().encode(s)));
+
+/** What `auth` adds to a request: a header, a query parameter, or nothing while it's incomplete. */
+export function fromAuth(auth: Auth): { header?: [string, string]; param?: { name: string; value: string } } {
+  switch (auth.type) {
+    case "bearer":
+      return auth.token.trim() ? { header: ["Authorization", `Bearer ${auth.token.trim()}`] } : {};
+    case "basic":
+      return auth.user || auth.pass ? { header: ["Authorization", `Basic ${base64(`${auth.user}:${auth.pass}`)}`] } : {};
+    case "apikey": {
+      const name = auth.key.trim();
+      if (!name) return {};
+      return auth.in === "query" ? { param: { name, value: auth.value } } : { header: [name, auth.value] };
+    }
+    default:
+      return {};
+  }
+}
+
+/** The request panel's state for one request (ui/previews.ts PreviewTab has these). */
+export type Draft = {
+  method: string;
+  path: string;
+  body: string;
+  bodyMode: BodyMode;
+  form: readonly Field[];
+  multipart: readonly Field[];
+  headers: readonly Field[];
+  auth: Auth;
+};
+
+/** A draft as it goes out: the path with Auth's query parameter, the headers, and the body with its content type. */
+export type Built = { path: string; headers: [string, string][]; body?: BodyInit; type?: string };
+
+const TYPES: Record<Exclude<BodyMode, "multipart">, string> = {
+  json: "application/json",
+  text: "text/plain",
+  form: "application/x-www-form-urlencoded",
+};
+
+/**
+ * `draft` as it is sent. Auth comes first, so a header row of the same name wins over it. A body goes only with a
+ * method that takes one: the editor's text (when there is any), or the rows turned on with a name. A multipart body
+ * has no `type`: `fetch` writes it, with the boundary. `read` gives a project file's bytes for a file row; a file it
+ * doesn't have throws, naming it.
+ */
+export function build(draft: Draft, read: (path: string) => Uint8Array | undefined): Built {
+  const auth = fromAuth(draft.auth);
+  const path = auth.param ? withQuery(draft.path, [...queryOf(draft.path), auth.param]) : draft.path;
+  const headers = mergeHeaders(auth.header ? [auth.header] : [], sent(draft.headers));
+  if (draft.method === "GET" || draft.method === "HEAD") return { path, headers };
+  const mode = draft.bodyMode;
+  if (mode === "json" || mode === "text") return draft.body ? { path, headers, body: draft.body, type: TYPES[mode] } : { path, headers };
+  const rows = (mode === "form" ? draft.form : draft.multipart).filter((r) => r.on && r.name.trim());
+  if (mode === "form") return { path, headers, body: new URLSearchParams(rows.map((r) => [r.name.trim(), r.value])).toString(), type: TYPES.form };
+  const data = new FormData();
+  for (const r of rows) {
+    if (!r.file) {
+      data.append(r.name.trim(), r.value);
+      continue;
+    }
+    const file = r.value.trim().replace(/^\/+/, "");
+    const bytes = read(file);
+    if (!bytes) throw new Error(`No file ${JSON.stringify(file)} in the project for the form field ${JSON.stringify(r.name.trim())}`);
+    data.append(r.name.trim(), new File([bytes as Uint8Array<ArrayBuffer>], file.split("/").pop()!));
+  }
+  return { path, headers, body: data };
 }

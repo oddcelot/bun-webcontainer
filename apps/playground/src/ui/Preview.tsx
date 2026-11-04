@@ -6,8 +6,8 @@ import { createPierre, createViewer } from "../editors/pierre";
 import type { CodeEditor } from "../editors/types";
 import { PREFIX, responseReserve, type Card } from "../preview";
 import { AppContext } from "./context";
-import { hasBody, type PreviewTab, type Section } from "./previews";
-import { queryOf, sent, type Field } from "../request";
+import { hasBody, type PreviewTab, type Rows, type Section } from "./previews";
+import { fromAuth, queryOf, sent, type Auth, type BodyMode, type Field } from "../request";
 import { Tip } from "@runbun/ui/solid/Tip";
 
 const CANT_RUN = "This browser can't run code here";
@@ -130,7 +130,7 @@ export function Preview() {
             onClick={() => p.panel(s.active)}
           >
             <i class="i-lucide-sliders-horizontal" aria-hidden="true" />
-            <Show when={queryOf(active().path).length + sent(active().headers).length}>
+            <Show when={queryOf(active().path).length + sent(active().headers).length + (Object.keys(fromAuth(active().auth)).length ? 1 : 0)}>
               {(n) => <span class="count">{n()}</span>}
             </Show>
           </Tip>
@@ -208,23 +208,52 @@ export function Preview() {
 /** Header names offered as a header row's name is typed. */
 const HEADER_NAMES = ["Accept", "Accept-Language", "Authorization", "Cache-Control", "Content-Type", "Cookie", "If-None-Match", "Origin", "Referer", "User-Agent", "X-Requested-With"];
 
+/** The body modes, as the Body section's picker lists them, with the content type each is sent as. */
+const BODY_MODES: { mode: BodyMode; label: string; tip: string }[] = [
+  { mode: "json", label: "JSON", tip: "application/json" },
+  { mode: "text", label: "Text", tip: "text/plain" },
+  { mode: "form", label: "Form", tip: "application/x-www-form-urlencoded" },
+  { mode: "multipart", label: "Multipart", tip: "multipart/form-data, with files from the project" },
+];
+
+const AUTH_TYPES: { type: Auth["type"]; label: string }[] = [
+  { type: "none", label: "None" },
+  { type: "bearer", label: "Bearer token" },
+  { type: "basic", label: "Basic" },
+  { type: "apikey", label: "API key" },
+];
+
 /**
- * Name and value rows (the query's parameters, the headers), with one empty row after them to add one: typing in it
- * makes it a row (`onChange` with the index one past the last) and another empty one appears under it. Rows go by
- * index, so the field being typed in stays put. With `toggles`, each row has a checkbox to turn it off.
+ * Name and value rows (the query's parameters, headers, a form's fields), with one empty row after them to add one:
+ * typing in it makes it a row (`onChange` with the index one past the last) and another empty one appears under it.
+ * Rows go by index, so the field being typed in stays put. With `toggles`, each row has a checkbox to turn it off;
+ * with `files`, a button that makes its value a path to a project file (offered from the `files` datalist, read when
+ * its value is focused: `onFiles`). `derived` is a read-only row first, one Auth writes; clicking it opens Auth.
  */
 function Fields(props: {
   label: string;
-  rows: readonly { name: string; value: string; on?: boolean }[];
+  rows: readonly Field[];
   toggles?: boolean;
   names?: string;
+  files?: boolean;
+  onFiles?: () => void;
+  derived?: { name: string; value: string; open: () => void };
   hidden: boolean;
   onChange: (i: number, change: Partial<Field>) => void;
   onRemove: (i: number) => void;
 }) {
-  const all = () => [...props.rows, { name: "", value: "", on: true }];
+  const all = () => [...props.rows, { name: "", value: "", on: true } as Field];
   return (
     <div class="fields" role="group" aria-label={props.label} hidden={props.hidden}>
+      <Show when={props.derived}>
+        {(d) => (
+          <button type="button" class="field derived" title="Set in Auth" onClick={() => d().open()}>
+            <span class="name">{d().name}</span>
+            <span class="value">{d().value}</span>
+            <span class="from">Auth</span>
+          </button>
+        )}
+      </Show>
       <For each={all()} keyed={false}>
         {(row, i) => (
           <div class="field" data-new={i === props.rows.length ? "" : undefined}>
@@ -251,11 +280,28 @@ function Fields(props: {
               class="value"
               spellcheck={false}
               autocomplete="off"
-              placeholder="Value"
-              aria-label={`${props.label}: value ${i + 1}`}
+              placeholder={row().file ? "Path of a project file" : "Value"}
+              list={row().file ? "project-files" : undefined}
+              aria-label={`${props.label}: ${row().file ? "file" : "value"} ${i + 1}`}
               value={row().value}
+              onFocus={() => row().file && props.onFiles?.()}
               onInput={(e) => props.onChange(i, { value: e.currentTarget.value })}
             />
+            <Show when={props.files}>
+              <Tip
+                type="button"
+                class="kind"
+                tip={row().file ? "Send text instead" : "Send a project file"}
+                aria-label={`${row().file ? "Text" : "File"} for ${row().name || `row ${i + 1}`}`}
+                aria-pressed={row().file ? "true" : "false"}
+                onClick={() => {
+                  props.onChange(i, { file: !row().file });
+                  if (!row().file) props.onFiles?.();
+                }}
+              >
+                <i class="i-lucide-paperclip" aria-hidden="true" />
+              </Tip>
+            </Show>
             <Tip
               type="button"
               class="remove"
@@ -273,14 +319,71 @@ function Fields(props: {
   );
 }
 
+/** The Auth section: a type, and its fields (a token, a user and password, or an API key's name, value and place). */
+function AuthFields(props: { auth: Auth; hidden: boolean; onChange: (change: Partial<Auth>) => void }) {
+  const input = (key: "token" | "user" | "pass" | "key" | "value", label: string, type = "text") => (
+    <input
+      class={key === "token" || key === "value" ? "value" : "name"}
+      type={type}
+      spellcheck={false}
+      autocomplete="off"
+      placeholder={label}
+      aria-label={label}
+      value={props.auth[key]}
+      onInput={(e) => props.onChange({ [key]: e.currentTarget.value })}
+    />
+  );
+  return (
+    <div class="fields auth" role="group" aria-label="Auth" hidden={props.hidden}>
+      <div class="field">
+        <Select<(typeof AUTH_TYPES)[number]>
+          class="auth-type"
+          label="Auth type"
+          options={AUTH_TYPES}
+          optionValue="type"
+          optionTextValue="label"
+          value={AUTH_TYPES.find((a) => a.type === props.auth.type) ?? null}
+          onChange={(a) => a && props.onChange({ type: a.type })}
+          required
+          placement="bottom-start"
+        />
+        <Show when={props.auth.type === "bearer"}>{input("token", "Token")}</Show>
+        <Show when={props.auth.type === "basic"}>
+          {input("user", "Username")}
+          {input("pass", "Password", "password")}
+        </Show>
+        <Show when={props.auth.type === "apikey"}>
+          {input("key", "Name, e.g. X-API-Key")}
+          {input("value", "Key")}
+          <Select<"header" | "query">
+            class="auth-in"
+            label="Send the key in"
+            options={["header", "query"]}
+            value={props.auth.in}
+            onChange={(v) => v && props.onChange({ in: v })}
+            text={(v) => (v === "header" ? "Header" : "Query")}
+            required
+            placement="bottom-end"
+          />
+        </Show>
+        <Show when={props.auth.type === "none"}>
+          <span class="hint">Sent as a header (or a query parameter) when set</span>
+        </Show>
+      </div>
+    </div>
+  );
+}
+
 /**
  * The request panel under the request bar, shown with its toggle there (and when a method that takes a body is
  * picked): Params (the path's query as rows, written back to the path as they change, and read from it as it's
- * typed), Headers (sent through the service worker, so `Cookie` and the like reach the server too: request.ts) and,
- * for a method with one, Body. A section's tab shows how many rows it sends.
+ * typed), Headers (sent through the service worker, so `Cookie` and the like reach the server too: request.ts), Auth
+ * (a header, or an API key's query parameter, written when sent and shown read-only in Headers or Params) and, for a
+ * method with one, Body: the editor's text as JSON or text, or rows as a form (urlencoded, or multipart with project
+ * files). A section's tab shows how many rows it sends.
  *
- * Params and Headers are as tall as their rows, up to a few, then scroll. The tab bar is the file tabs' TabList and
- * TabItem, with the content type a body will carry at its end (preview.ts sendRequest: JSON when it parses, else text).
+ * Rows are as tall as they are, up to a few, then scroll. The tab bar is the file tabs' TabList and TabItem, with the
+ * body's mode picker at its end on Body.
  *
  * The body is in the editor the files use, highlighted as JSON (what it's usually sent as). One editor: switching
  * preview tabs opens the active tab's body in it, and each edit goes back to that tab. It is as tall as its lines (at
@@ -300,7 +403,17 @@ function RequestPanel(props: { tab: PreviewTab }) {
   const { previews: p } = useContext(AppContext);
   const section = () => (props.tab.section === "body" && !hasBody(props.tab.method) ? "params" : props.tab.section);
   const params = () => queryOf(props.tab.path);
-  const bodyHidden = () => !props.tab.panel || section() !== "body";
+  const rowsMode = () => props.tab.bodyMode === "form" || props.tab.bodyMode === "multipart";
+  const bodyHidden = () => !props.tab.panel || section() !== "body" || rowsMode();
+  const auth = () => fromAuth(props.tab.auth);
+  const app = useContext(AppContext);
+  /** The project's files, for a multipart file row (read when one is focused or made). */
+  const [files, setFiles] = createSignal<string[]>([]);
+  const readFiles = () => setFiles(app.vfs.list().filter((f) => !f.startsWith("node_modules/")));
+  const rows = (list: Rows) => ({
+    onChange: (i: number, c: Partial<Field>) => p.row(p.state.active, list, i, c),
+    onRemove: (i: number) => p.removeRow(p.state.active, list, i),
+  });
   let el!: HTMLDivElement;
   let editor: CodeEditor | undefined;
   /** Heights readers dragged, by tab. */
@@ -361,11 +474,11 @@ function RequestPanel(props: { tab: PreviewTab }) {
     dragged.set(untrack(() => p.state.active), apply(h, m.line));
   };
   createEffect(
-    () => p.state.active,
-    (id) => {
+    () => [p.state.active, props.tab.bodyMode === "text" ? "txt" : "json"] as const,
+    ([id, ext]) => {
       editor ??= createPierre(el);
       const body = untrack(() => p.state.tabs.find((t) => t.id === id)?.body ?? "");
-      editor.open(`request-body-${id}.json`, body, (text) => p.edit(id, "body", text));
+      editor.open(`request-body-${id}.${ext}`, body, (text) => p.edit(id, "body", text));
       // After the editor has laid the body out.
       requestAnimationFrame(() => fit(true));
     },
@@ -373,7 +486,18 @@ function RequestPanel(props: { tab: PreviewTab }) {
   // The body shown again: fit what it holds now. The panel shown, hidden, on another section or with rows added or
   // removed: say so, for the embed's auto height.
   createEffect(
-    () => [bodyHidden(), props.tab.panel, section(), params().length, props.tab.headers.length] as const,
+    () =>
+      [
+        bodyHidden(),
+        props.tab.panel,
+        section(),
+        props.tab.bodyMode,
+        props.tab.auth.type,
+        params().length,
+        props.tab.headers.length,
+        props.tab.form.length,
+        props.tab.multipart.length,
+      ] as const,
     ([hidden]) => {
       requestAnimationFrame(() => (hidden ? el.dispatchEvent(new Event("bodyfit", { bubbles: true })) : fit(true)));
     },
@@ -387,16 +511,6 @@ function RequestPanel(props: { tab: PreviewTab }) {
       wrapObserver.disconnect();
     };
   });
-  // What sendRequest sends it as.
-  const type = () => {
-    if (!props.tab.body) return "";
-    try {
-      JSON.parse(props.tab.body);
-      return "JSON";
-    } catch {
-      return "text";
-    }
-  };
   let start: { y: number; h: number } | undefined;
   return (
     <>
@@ -411,21 +525,37 @@ function RequestPanel(props: { tab: PreviewTab }) {
               Headers
               <Show when={sent(props.tab.headers).length}>{(n) => <span class="count">{n()}</span>}</Show>
             </TabItem>
+            <TabItem value="auth" selected={section() === "auth"} title="Authorization, written into a header when sent">
+              Auth
+              <Show when={props.tab.auth.type !== "none"}>
+                <span class="count">{AUTH_TYPES.find((a) => a.type === props.tab.auth.type)?.label.split(" ")[0]}</span>
+              </Show>
+            </TabItem>
             <Show when={hasBody(props.tab.method)}>
               <TabItem value="body" selected={section() === "body"} title="The request's body">
                 Body
               </TabItem>
             </Show>
           </TabList>
-          <Show when={section() === "body" && type()}>
-            <span class="body-type" title={`Sent as ${type() === "JSON" ? "application/json" : "text/plain"}`}>
-              {type()}
-            </span>
+          <Show when={section() === "body"}>
+            <Select<(typeof BODY_MODES)[number]>
+              class="body-mode"
+              label="Body sent as"
+              tip={`Sent as ${BODY_MODES.find((m) => m.mode === props.tab.bodyMode)?.tip}`}
+              options={BODY_MODES}
+              optionValue="mode"
+              optionTextValue="label"
+              value={BODY_MODES.find((m) => m.mode === props.tab.bodyMode) ?? null}
+              onChange={(m) => m && p.bodyMode(p.state.active, m.mode)}
+              required
+              placement="bottom-end"
+            />
           </Show>
         </div>
         <Fields
           label="Query parameters"
-          rows={params()}
+          rows={params().map((q) => ({ ...q, on: true }))}
+          derived={auth().param && { ...auth().param!, open: () => p.panel(p.state.active, "auth") }}
           hidden={section() !== "params"}
           onChange={(i, c) => p.param(p.state.active, i, c)}
           onRemove={(i) => p.removeParam(p.state.active, i)}
@@ -435,19 +565,33 @@ function RequestPanel(props: { tab: PreviewTab }) {
           rows={props.tab.headers}
           toggles
           names="header-names"
+          derived={auth().header && { name: auth().header![0], value: auth().header![1], open: () => p.panel(p.state.active, "auth") }}
           hidden={section() !== "headers"}
-          onChange={(i, c) => p.header(p.state.active, i, c)}
-          onRemove={(i) => p.removeHeader(p.state.active, i)}
+          {...rows("headers")}
+        />
+        <AuthFields auth={props.tab.auth} hidden={section() !== "auth"} onChange={(c) => p.auth(p.state.active, c)} />
+        <Fields label="Form fields" rows={props.tab.form} toggles hidden={section() !== "body" || props.tab.bodyMode !== "form"} {...rows("form")} />
+        <Fields
+          label="Multipart fields"
+          rows={props.tab.multipart}
+          toggles
+          files
+          onFiles={readFiles}
+          hidden={section() !== "body" || props.tab.bodyMode !== "multipart"}
+          {...rows("multipart")}
         />
         <datalist id="header-names">
           <For each={HEADER_NAMES}>{(name) => <option value={name} />}</For>
+        </datalist>
+        <datalist id="project-files">
+          <For each={files()}>{(path) => <option value={path} />}</For>
         </datalist>
         <div
           id="req-body"
           ref={el}
           hidden={bodyHidden()}
           data-empty={props.tab.body ? undefined : ""}
-          data-placeholder="Request body (JSON is sent as application/json)"
+          data-placeholder={props.tab.bodyMode === "text" ? "Request body, sent as text/plain" : "Request body, sent as application/json"}
         />
       </section>
       <div

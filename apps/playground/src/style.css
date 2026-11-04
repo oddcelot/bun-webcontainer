@@ -311,12 +311,6 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
   &[hidden] {
     display: none;
   }
-  .body-type {
-    flex: 0 0 auto;
-    margin: 0 var(--pad) 0 auto;
-    color: var(--muted);
-    font-size: 11px;
-  }
   .tab .count {
     margin-left: 5px;
     color: var(--muted);
@@ -336,7 +330,7 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
     align-items: center;
     gap: 6px;
     height: 28px;
-    input:not([type="checkbox"]) {
+    > input:not([type="checkbox"]) {
       min-width: 0;
       padding: 3px 6px;
       border: 1px solid var(--control-border);
@@ -345,20 +339,21 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
       color: var(--fg);
       font: 12px var(--font-mono);
     }
-    .name {
+    > .name {
       flex: 0 1 14em;
     }
-    .value {
+    > .value {
       flex: 1 1 auto;
     }
-    input[type="checkbox"] {
+    > input[type="checkbox"] {
       margin: 0;
       accent-color: var(--accent);
       &:disabled {
         visibility: hidden;
       }
     }
-    .remove {
+    > .remove,
+    > .kind {
       display: grid;
       place-items: center;
       flex: 0 0 auto;
@@ -375,14 +370,69 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
         color: var(--fg);
         background: var(--control);
       }
-      &[hidden] {
-        visibility: hidden;
-        display: grid;
-      }
     }
-    &[data-new] input:not([type="checkbox"]):not(:focus) {
+    > .remove[hidden] {
+      visibility: hidden;
+      display: grid;
+    }
+    > .kind[aria-pressed="true"] {
+      color: var(--accent);
+    }
+    > .select-trigger {
+      flex: 0 0 auto;
+      height: 24px;
+      font-size: 12px;
+    }
+    > .hint {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    &[data-new] > input:not([type="checkbox"]):not(:focus) {
       background: transparent;
       border-style: dashed;
+    }
+    /* A row Auth writes, read-only: a click opens Auth. The checkbox column stays empty, so it lines up. */
+    &.derived {
+      width: 100%;
+      padding: 0 28px 0 0;
+      border: 0;
+      background: none;
+      color: var(--muted);
+      font: 12px var(--font-mono);
+      text-align: left;
+      cursor: pointer;
+      > .name,
+      > .value {
+        overflow: hidden;
+        padding: 3px 7px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      > .from {
+        flex: 0 0 auto;
+        padding: 0 5px;
+        border-radius: 3px;
+        background: var(--control);
+        font: 10px/15px var(--font-ui);
+      }
+      &:hover > .from {
+        color: var(--fg);
+      }
+    }
+  }
+  .fields:has(input[type="checkbox"]) .field.derived {
+    padding-left: 19px;
+  }
+  .body-mode {
+    flex: 0 0 auto;
+    height: 22px;
+    margin: 0 var(--pad) 0 auto;
+    border-color: transparent;
+    background: none;
+    color: var(--muted);
+    font-size: 11px;
+    &:hover {
+      color: var(--fg);
     }
   }
 }
