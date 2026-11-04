@@ -4,6 +4,7 @@ import { pref } from "../prefs";
 import { EMBEDDED } from "../theme";
 
 const AUTOSAVE_KEY = "runbun:autosave";
+const WATCH_KEY = "runbun:watch";
 
 /**
  * Which files are open in tabs, which one is active, and which have edits not yet written to the VFS. Writes go
@@ -22,6 +23,10 @@ export function createWorkspace() {
   const [autosave, setAutosave] = EMBEDDED
     ? createSignal(true)
     : pref(AUTOSAVE_KEY, true, { serialize: (on) => (on ? "on" : "off"), deserialize: (s) => s !== "off" });
+  /** Restart the program when an edit is saved (boot.ts); the full playground's toggle (an embed has its `watch` feature). */
+  const [watch, setWatch] = EMBEDDED
+    ? createSignal(true)
+    : pref(WATCH_KEY, true, { serialize: (on) => (on ? "on" : "off"), deserialize: (s) => s !== "off" });
   const saved = new Set<() => void>();
   // What the editor reports for the status bar.
   const [cursor, setCursor] = createSignal<EditorCursor | null>(null);
@@ -29,6 +34,7 @@ export function createWorkspace() {
   // The editor's pending edits; it registers how to write them (see EditorPane).
   let saveAll = () => {};
   let reveal: (line: number, column: number) => void = () => {};
+  let openAt: (path: string, line: number, column: number) => void = () => {};
   let format = () => {};
   return {
     state,
@@ -41,6 +47,8 @@ export function createWorkspace() {
     },
     autosave,
     setAutosave,
+    watch,
+    setWatch,
     /** Calls `fn` after each save the reader made (as they type, or Ctrl/Cmd+S), not those before Run; returns the unsubscribe. */
     onSaved(fn: () => void) {
       saved.add(fn);
@@ -63,6 +71,11 @@ export function createWorkspace() {
     },
     /** Moves the editor's cursor to a 1-based line and column of the open file. */
     reveal: (line: number, column: number) => reveal(line, column),
+    onOpenAt(fn: typeof openAt) {
+      openAt = fn;
+    },
+    /** Opens `path` (or switches to its tab) with the cursor at a 1-based line and column. */
+    openAt: (path: string, line: number, column: number) => openAt(path, line, column),
     onFormat(fn: () => void) {
       format = fn;
     },

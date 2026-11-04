@@ -1,6 +1,7 @@
-import { createRoot } from "solid-js";
+import { createEffect, createRoot } from "solid-js";
 import { BASE } from "./base";
 import { createConsole } from "./console";
+import { CHECKED, diagnose } from "./diagnostics";
 import { bunInstall } from "./install";
 import { Runner } from "./runner";
 import { setVfsOwner } from "./moduleServer";
@@ -16,9 +17,12 @@ import { VFS } from "@runbun/vfs";
 /**
  * The engine both pages share (index.html's full playground and embed.html): the VFS, the console, the session the UI
  * reads, and Run, Install, Test and Stop. Loading a project is the page's job; `start` then brings up the service
- * worker and the runner.
+ * worker and the runner. `watch` says whether a save restarts the program (default: the workspace's Restart on save).
  */
-export function createPlayground() {
+/** A console path as the VFS keys it: `/index.ts` and `./index.ts` are `index.ts`. */
+const bare = (path: string) => path.replace(/^\.?\//, "");
+
+export function createPlayground({ watch }: { watch?: () => boolean } = {}) {
   const support = checkSupport();
   /** False when a requirement is missing: the interface still loads, but nothing that runs code starts. */
   const canRun = support.every((c) => c.ok);
@@ -29,6 +33,8 @@ export function createPlayground() {
     onCommand: (line) => exec(line),
     onInterrupt: () => stop(),
     onClear: () => clearConsole(),
+    isFile: (path) => vfs.files.has(bare(path)),
+    onLocation: (path, line, column) => workspace.openAt(bare(path), line, column),
   });
   const [session, workspace, previews] = createRoot(() => [createSession(canRun), createWorkspace(), createPreviews()] as const);
   const vfs = new VFS();
@@ -128,7 +134,9 @@ export function createPlayground() {
   /** The program ended itself (process.exit, an uncaught error): the console and status say with which code. */
   function exited(code: number): Status {
     log("sys", `[exited with code ${code}]`);
-    return code ? { state: "error", text: `Exited with code ${code}` } : { state: "idle", text: "Exited" };
+    if (!code) return { state: "idle", text: "Exited" };
+    // A crash doesn't end watching (see below): the status says a save is enough.
+    return { state: "error", text: watching && watchOn() ? `Exited with code ${code} · reruns on save` : `Exited with code ${code}` };
   }
 
   function stop() {
@@ -171,6 +179,64 @@ export function createPlayground() {
   vfs.onChange(({ path, removed }) => {
     if (removed) workspace.close(path);
   });
+
+  // --- Restart on save, like `bun --watch`
+  // A save the reader made while the program is watched starts it again. Only the editor's saves count (not the
+  // program's own writes, an install or Run's save first); a burst is one restart, and one that lands while a run,
+  // test or install is under way waits for it. Running arms it; a crash keeps it (the next save runs the program
+  // again), Stop and a clean exit end it. A save that leaves an open file unparsable (half-typed, as auto-save
+  // saves) keeps the program as it is and waits for one that parses. Each restart clears the console, as Bun does.
+  const watchOn = watch ?? (() => workspace.watch());
+  const WATCH_DELAY = 300;
+  let watchTimer: ReturnType<typeof setTimeout> | undefined;
+  let watching = false;
+  let waitingFor: string | undefined;
+  createRoot(() => {
+    createEffect(
+      () => session.settled().state,
+      (state) => {
+        if (state === "running") watching = true;
+        else if (state === "idle") watching = false;
+      },
+    );
+    // Any run that starts (Run, the API, a restart) saves first, so a restart still pending would only run it twice.
+    createEffect(
+      () => !!session.busy.run,
+      (busy) => {
+        if (busy) clearTimeout(watchTimer);
+      },
+    );
+  });
+  /** The first open file that doesn't parse, as `path:line:column`, and its first error. */
+  async function unparsable(): Promise<[at: string, message: string] | undefined> {
+    for (const path of workspace.state.open) {
+      const text = CHECKED.test(path) ? vfs.readText(path) : undefined;
+      if (text === undefined) continue;
+      const error = (await diagnose(vfs, path, text, false)).find((d) => d.severity === "error");
+      if (error) return [`${path}:${error.line}:${error.column}`, error.message];
+    }
+  }
+  async function restart() {
+    if (!watchOn() || !watching) return;
+    if (session.busy.run || session.busy.install) return void (watchTimer = setTimeout(restart, WATCH_DELAY));
+    const broken = await unparsable();
+    if (broken) {
+      const [at, message] = broken;
+      if (at !== waitingFor) log("sys", `[watch] waiting for a save that parses: ${at}: ${message}`);
+      waitingFor = at;
+      session.setStatus({ state: session.settled().state, text: `Syntax error in ${at} · waiting for a fix` });
+      return;
+    }
+    waitingFor = undefined;
+    clearConsole();
+    log("sys", "[watch] restarting");
+    void run(lastEntry);
+  }
+  workspace.onSaved(() => {
+    clearTimeout(watchTimer);
+    watchTimer = setTimeout(restart, WATCH_DELAY);
+  });
+
 
   /** Brings up the service worker, semver and the runner (when the browser can run code) and the console's shell. */
   async function start({ reset }: { reset(): Promise<void> }) {
