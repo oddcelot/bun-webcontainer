@@ -3,7 +3,7 @@ import { Select } from "@runbun/ui/solid/Select";
 import { Menu, MenuItem, MenuTrigger } from "@runbun/ui/solid/Menu";
 import { Segmented } from "@runbun/ui/solid/Segmented";
 import { TabItem, TabList } from "@runbun/ui/solid/Tabs";
-import { chordKeys, isMac, keysFor, matches } from "../keymap";
+import { chordKeys, isMac, keysFor, matches, recordingKeys } from "../keymap";
 import { createPierre, createViewer } from "../editors/pierre";
 import type { CodeEditor } from "../editors/types";
 import { PREFIX, normalize, responseReserve, type Card } from "../preview";
@@ -26,6 +26,9 @@ function MethodBadge(props: { method: string }) {
     </span>
   );
 }
+
+/** Whether a key event comes from inside the preview (the request bar, the panel, a response; not a page's frame). */
+export const inPreview = (e: Event) => e.target instanceof Node && !!document.getElementById("preview-wrap")?.contains(e.target);
 
 /**
  * Keys pressed in a page stay in its frame, so a frame hands its key presses to the playground's window as well, for
@@ -71,16 +74,25 @@ export function Preview() {
     if (s.expanded && matches("exitFullscreen", e)) p.setExpanded(false);
   };
   /**
-   * Send, with focus anywhere in the preview (the request bar, the panel, the body's editor, a response). Caught on the
-   * way down, before the body's editor takes the keys (it would add a line) and before Run, which window (App.tsx) has
-   * on the same keys by default. A page in a frame keeps its keys (forwardKeys hands them to window: Run).
+   * Send: its own keys anywhere (window, on the way down, so an editor doesn't take them first), and with focus in the
+   * preview (the request bar, the panel, the body's editor, a response) Run's keys too, by default (sendInPreview;
+   * App.tsx leaves them to it there). A page in a frame keeps its keys: forwardKeys hands them to window, outside.
    */
-  const onSendKey = (e: KeyboardEvent) => {
-    if (disabled || !matches("send", e)) return;
+  const send = (e: KeyboardEvent) => {
     e.preventDefault();
     e.stopPropagation();
     p.request(s.active);
   };
+  const onSendKey = (e: KeyboardEvent) => {
+    if (!disabled && !recordingKeys() && matches("sendInPreview", e)) send(e);
+  };
+  const onGlobalSendKey = (e: KeyboardEvent) => {
+    if (!disabled && !recordingKeys() && matches("send", e)) send(e);
+  };
+  onSettled(() => {
+    addEventListener("keydown", onGlobalSendKey, { capture: true });
+    return () => removeEventListener("keydown", onGlobalSendKey, { capture: true });
+  });
   onSettled(() => {
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
@@ -152,7 +164,7 @@ export function Preview() {
             id="req-send"
             disabled={disabled}
             tip={disabled ? CANT_RUN : "Send the request"}
-            keys={disabled ? undefined : keysFor("send").map(chordKeys)}
+            keys={disabled ? undefined : [...keysFor("sendInPreview"), ...keysFor("send")].map(chordKeys)}
             aria-label="Send the request"
           >
             <i class="i-lucide-send" aria-hidden="true" />

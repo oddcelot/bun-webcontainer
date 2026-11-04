@@ -2,7 +2,7 @@ import { For, Show, createSignal, createUniqueId, onSettled, untrack } from "sol
 import { Dialog, DialogActions, DialogClose, DialogTitle, DialogTrigger, useDialogContext } from "@runbun/ui/solid/Dialog";
 import { Button } from "@runbun/ui/solid/Button";
 import { Input } from "@runbun/ui/solid/Input";
-import { COMMANDS, checkOverrides, chordKeys, chordOf, currentOverrides, keysFor, scopeOf, sameChord, setOverrides, type Command, type Overrides } from "../keymap";
+import { COMMANDS, checkOverrides, chordKeys, chordOf, currentOverrides, keysFor, scopeOf, sameChord, setOverrides, setRecordingKeys, type Command, type Overrides } from "../keymap";
 import { Key, Keys, Tip } from "@runbun/ui/solid/Tip";
 
 /**
@@ -42,7 +42,12 @@ function ShortcutsForm() {
   const start = untrack(currentOverrides);
   const [draft, setDraft] = createSignal<Overrides>(start);
   // The command whose keys the next key press sets.
-  const [recording, setRecording] = createSignal<Command | null>(null);
+  const [recording, setRecordingSignal] = createSignal<Command | null>(null);
+  // The keymap knows too, so the shortcuts handled on the way down leave the keys to the dialog.
+  const setRecording = (c: Command | null) => {
+    setRecordingKeys(c !== null);
+    setRecordingSignal(c);
+  };
   let input!: HTMLTextAreaElement;
   const text = (o: Overrides) => JSON.stringify(o, null, 2);
   const initial = text(start);

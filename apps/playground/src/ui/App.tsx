@@ -1,13 +1,13 @@
 import { Show, createSignal, onSettled, untrack, useContext } from "solid-js";
 import { Resizable, type RootChildrenProps } from "@kobalte/core/resizable";
-import { matches } from "../keymap";
+import { matches, recordingKeys } from "../keymap";
+import { Preview, inPreview } from "./Preview";
 import { pref } from "../prefs";
 import { AppContext } from "./context";
 import { Console } from "./Console";
 import { EditorPane } from "./EditorPane";
 import { FileTree } from "./FileTree";
 import { Header } from "./Header";
-import { Preview } from "./Preview";
 import { StatusToast } from "./Status";
 import { StatusBar, statusDisplay } from "./StatusBar";
 import { Unsupported } from "./Unsupported";
@@ -74,8 +74,12 @@ export function App() {
     }
   };
   onSettled(() => {
+    // On the way down, and stopped there: the editor doesn't get a key that ran a command (its own keymap ignores
+    // preventDefault, and has Mod+Enter as "insert a blank line"). Not while the shortcuts dialog records keys, nor
+    // Send's keys with focus in the preview (Preview.tsx has them there).
     const onKey = (e: KeyboardEvent) => {
       const s = app.session;
+      if (recordingKeys() || (matches("sendInPreview", e) && inPreview(e))) return;
       if (matches("run", e)) s.canRun && !s.busy.run && s.ready() && app.run();
       else if (matches("stop", e)) app.stop();
       else if (matches("toggleExplorer", e)) toggleColumn(0);
@@ -83,9 +87,10 @@ export function App() {
       else if (matches("toggleConsole", e)) toggle(1);
       else return;
       e.preventDefault();
+      e.stopPropagation();
     };
-    addEventListener("keydown", onKey);
-    return () => removeEventListener("keydown", onKey);
+    addEventListener("keydown", onKey, { capture: true });
+    return () => removeEventListener("keydown", onKey, { capture: true });
   });
   return (
     <>

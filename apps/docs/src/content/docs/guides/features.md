@@ -26,7 +26,8 @@ Not yet: renaming or deleting files from the tree. Very large files are slow, be
 | Shortcut | Does |
 |---|---|
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Enter</kbd> | Run |
-| <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Enter</kbd>, with focus in the preview | Send the request (the request bar, the request panel, the body or a response; a page in the preview keeps it as Run) |
+| <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>Enter</kbd> | Send the preview's request, from anywhere |
+| <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Enter</kbd>, with focus in the preview | Send the request instead of Run (the request bar, the request panel, the body or a response; a page in the preview keeps it as Run) |
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>.</kbd> | Stop the server |
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>S</kbd> | Save the file |
 | <kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd> | Format the file with `bun fmt` (`format`) |

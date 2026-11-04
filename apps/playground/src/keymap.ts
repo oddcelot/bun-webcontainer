@@ -8,8 +8,9 @@ import { pref } from "./prefs";
 
 export const COMMANDS = {
   run: { label: "Run", keys: ["Mod+Enter"] },
+  send: { label: "Send the preview's request", keys: ["Mod+Shift+Enter"] },
   // Scoped: only with focus in the preview, where it goes before Run on the same keys (ui/Preview.tsx).
-  send: { label: "Send the request (focus in the preview)", keys: ["Mod+Enter"], scope: "preview" },
+  sendInPreview: { label: "Send the request (focus in the preview)", keys: ["Mod+Enter"], scope: "preview" },
   stop: { label: "Stop the server", keys: ["Mod+."] },
   save: { label: "Save the file", keys: ["Mod+S"] },
   format: { label: "Format the file (bun fmt)", keys: ["Shift+Alt+F"] },
@@ -24,6 +25,14 @@ export const COMMANDS = {
   togglePreview: { label: "Show or hide the preview", keys: ["Mod+K"] },
   exitFullscreen: { label: "Leave the expanded preview", keys: ["Escape"] },
 } satisfies Record<string, { label: string; keys: string[]; scope?: "preview" }>;
+
+/**
+ * Whether the shortcuts dialog is recording keys: the shortcuts handled on the way down (App.tsx, ui/Preview.tsx)
+ * leave the keys to it then. Its own listener comes later, on the same capture phase.
+ */
+let recording = false;
+export const recordingKeys = () => recording;
+export const setRecordingKeys = (on: boolean) => void (recording = on);
 
 /** Where a command's keys work, when not everywhere: there they go before the other commands' (no clash). */
 export const scopeOf = (command: Command): string | undefined => (COMMANDS[command] as { scope?: string }).scope;
