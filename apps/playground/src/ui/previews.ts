@@ -1,10 +1,10 @@
 import { createStore, flush, reconcile } from "solid-js";
 import type { PresetRequest } from "../embed/requests";
 import { PREFIX, cardFromFrame, normalize, sendRequest, type Card } from "../preview";
-import { build, modeOf, noAuth, queryOf, sent, withQuery, type Auth, type BodyMode, type Field } from "../request";
+import { build, fromHttp, modeOf, noAuth, queryOf, sent, withQuery, type Auth, type BodyMode, type Field } from "../request";
 
 /** The request panel's sections (ui/Preview.tsx): the path's query, the headers, and the body of a method with one. */
-export type Section = "params" | "headers" | "auth" | "body";
+export type Section = "params" | "headers" | "auth" | "body" | "raw";
 
 /** The request panel's row lists, by name. */
 export type Rows = "headers" | "form" | "multipart";
@@ -155,6 +155,20 @@ export function createPreviews(running: () => boolean = () => false, read: (path
         t[list].splice(i, 1);
       });
     },
+    /** The Raw view edited: the request as `.http` text (request.ts fromHttp) sets what it holds. */
+    raw(id: number, text: string) {
+      update(id, (t) => {
+        const r = fromHttp(text, t);
+        if (r.method) t.method = r.method;
+        if (r.path !== undefined) t.path = r.path;
+        // Into the rows there are, so a row that didn't change isn't replaced (reconcile leaves holes when the list
+        // shrinks).
+        r.headers.forEach((h, i) => (t.headers[i] ? Object.assign(t.headers[i]!, h) : t.headers.push(h)));
+        t.headers.splice(r.headers.length);
+        if (r.body !== undefined) t.body = r.body;
+        if (r.bodyMode) t.bodyMode = r.bodyMode;
+      });
+    },
     bodyMode(id: number, mode: BodyMode) {
       update(id, (t) => {
         t.bodyMode = mode;
@@ -236,7 +250,7 @@ export function createPreviews(running: () => boolean = () => false, read: (path
       if (!list.length) return;
       lastId = list.length;
       setState((s) => {
-        s.tabs = list.map((r, i) => blank(i + 1, normalize(r.path), r.method, r.body, true));
+        s.tabs = list.map((r, i) => ({ ...blank(i + 1, normalize(r.path), r.method, r.body, true), headers: (r.headers ?? []).map(([name, value]) => ({ name, value, on: true })) }));
         s.active = 1;
       });
     },

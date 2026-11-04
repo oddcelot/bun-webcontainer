@@ -181,3 +181,132 @@ export function build(draft: Draft, read: (path: string) => Uint8Array | undefin
   }
   return { path, headers, body: data };
 }
+
+const takesBody = (method: string) => method !== "GET" && method !== "HEAD";
+
+/**
+ * `draft` as `.http` text (the request panel's Raw view): the request line, a header per line (one turned off
+ * commented out with `#`), a blank line, and the editor's body. What Auth adds is noted in a comment above, and a
+ * form's rows stand as a comment where the body goes: both are edited in their own sections.
+ */
+export function toHttp(draft: Draft): string {
+  const lines: string[] = [];
+  const auth = fromAuth(draft.auth);
+  if (auth.header) lines.push(`# Auth adds the ${auth.header[0]} header (edit it under Auth)`);
+  if (auth.param) lines.push(`# Auth adds ?${auth.param.name}= to the path (edit it under Auth)`);
+  lines.push(`${draft.method} ${draft.path}`);
+  for (const h of draft.headers) if (h.name.trim() || h.value) lines.push(`${h.on ? "" : "# "}${h.name}: ${h.value}`);
+  if (takesBody(draft.method)) {
+    if (draft.bodyMode === "json" || draft.bodyMode === "text") {
+      if (draft.body) lines.push("", draft.body);
+    } else lines.push("", `# The body is the ${draft.bodyMode === "form" ? "Form" : "Multipart"} rows under Body`);
+  }
+  return lines.join("\n");
+}
+
+/** A path, or a URL's path, query and fragment (`http://localhost:3000/a?x` is `/a?x`), with its leading `/`. */
+function pathOf(s: string): string {
+  if (/^https?:\/\//i.test(s)) {
+    try {
+      const u = new URL(s);
+      return u.pathname + u.search + u.hash;
+    } catch {}
+  }
+  return s.startsWith("/") ? s : `/${s}`;
+}
+
+/**
+ * `.http` text read back (toHttp's form) into what it sets: the method and path (when the first line other than a
+ * comment is `METHOD path`, optionally ` HTTP/1.1`), the headers (all of them: a `# Name: value` line is one turned
+ * off; a line that isn't `Name: value` is skipped) and, after the first blank line, the body. A body while `draft`
+ * sends rows makes it JSON or text again (modeOf); one that is only comments leaves the rows be.
+ */
+export function fromHttp(text: string, draft: Pick<Draft, "bodyMode">): { method?: string; path?: string; headers: Field[]; body?: string; bodyMode?: BodyMode } {
+  const lines = text.split(/\r?\n/);
+  let i = 0;
+  while (i < lines.length && (!lines[i]!.trim() || lines[i]!.trimStart().startsWith("#"))) i++;
+  const out: ReturnType<typeof fromHttp> = { headers: [] };
+  const req = /^([A-Za-z]+)\s+(\S+)(?:\s+HTTP\/[\d.]+)?$/.exec(lines[i]?.trim() ?? "");
+  if (req) {
+    out.method = req[1]!.toUpperCase();
+    out.path = pathOf(req[2]!);
+    i++;
+  }
+  for (; i < lines.length && lines[i]!.trim(); i++) {
+    const off = /^\s*#\s*/.exec(lines[i]!);
+    const m = /^([^:\s]+):\s?(.*)$/.exec(off ? lines[i]!.slice(off[0].length) : lines[i]!.trim());
+    if (m) out.headers.push({ name: m[1]!, value: m[2]!, on: !off });
+  }
+  const rows = draft.bodyMode === "form" || draft.bodyMode === "multipart";
+  const body = lines.slice(i + 1).join("\n");
+  const onlyComments = body.split("\n").every((l) => !l.trim() || l.trimStart().startsWith("#"));
+  if (rows && (onlyComments || i >= lines.length)) return out;
+  out.body = i < lines.length ? body : "";
+  if (rows) out.bodyMode = modeOf(out.body);
+  return out;
+}
+
+/** Where a copied request goes: the app run locally with `bun`, on Bun.serve's default port. */
+export const LOCAL_ORIGIN = "http://localhost:3000";
+
+/** `s` single-quoted for a POSIX shell. */
+const sh = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
+
+/** The headers a copied request sends: Auth's, then the rows (which win), and a content type for the editor's body. */
+function copiedHeaders(draft: Draft): [string, string][] {
+  const auth = fromAuth(draft.auth);
+  const headers = mergeHeaders(auth.header ? [auth.header] : [], sent(draft.headers));
+  const type = draft.bodyMode === "json" || draft.bodyMode === "text" ? (draft.body ? TYPES[draft.bodyMode] : undefined) : draft.bodyMode === "form" ? TYPES.form : undefined;
+  if (takesBody(draft.method) && type && !headers.some(([k]) => k.toLowerCase() === "content-type")) headers.push(["Content-Type", type]);
+  return headers;
+}
+
+const copiedUrl = (draft: Draft, origin: string) => {
+  const param = fromAuth(draft.auth).param;
+  return origin + (param ? withQuery(draft.path, [...queryOf(draft.path), param]) : draft.path);
+};
+
+const formRows = (draft: Draft) => (draft.bodyMode === "form" ? draft.form : draft.multipart).filter((r) => r.on && r.name.trim());
+
+/** `draft` as a curl command against `origin`; a multipart file row reads the file from where curl runs (`-F name=@path`). */
+export function toCurl(draft: Draft, origin = LOCAL_ORIGIN): string {
+  const args = ["curl"];
+  if (draft.method !== "GET") args.push("-X", draft.method);
+  args.push(sh(copiedUrl(draft, origin)));
+  for (const [k, v] of copiedHeaders(draft)) args.push("-H", sh(`${k}: ${v}`));
+  if (takesBody(draft.method)) {
+    if (draft.bodyMode === "json" || draft.bodyMode === "text") {
+      if (draft.body) args.push("--data-raw", sh(draft.body));
+    } else
+      for (const r of formRows(draft)) {
+        const name = r.name.trim();
+        if (draft.bodyMode === "form") args.push("--data-urlencode", sh(`${name}=${r.value}`));
+        else if (r.file) args.push("-F", sh(`${name}=@${r.value.trim().replace(/^\/+/, "")}`));
+        else args.push("--form-string", sh(`${name}=${r.value}`));
+      }
+  }
+  return args.reduce((out, a, i) => (i === 0 ? a : /^-(H|F|-)/.test(a) ? `${out} \\\n  ${a}` : `${out} ${a}`), "");
+}
+
+/** `draft` as a `fetch` call against `origin`, for Bun: a multipart file row is `Bun.file(path)`. */
+export function toFetch(draft: Draft, origin = LOCAL_ORIGIN): string {
+  const s = (v: string) => JSON.stringify(v);
+  const init: string[] = [];
+  const before: string[] = [];
+  if (draft.method !== "GET") init.push(`method: ${s(draft.method)}`);
+  const headers = copiedHeaders(draft);
+  if (headers.length) init.push(`headers: {\n${headers.map(([k, v]) => `    ${s(k)}: ${s(v)},`).join("\n")}\n  }`);
+  if (takesBody(draft.method)) {
+    if (draft.bodyMode === "json" || draft.bodyMode === "text") {
+      if (draft.body) init.push(`body: ${draft.bodyMode === "json" && modeOf(draft.body) === "json" ? `JSON.stringify(${draft.body.trim()})` : s(draft.body)}`);
+    } else if (draft.bodyMode === "form") {
+      init.push(`body: new URLSearchParams([${formRows(draft).map((r) => `[${s(r.name.trim())}, ${s(r.value)}]`).join(", ")}])`);
+    } else {
+      before.push("const form = new FormData();");
+      for (const r of formRows(draft)) before.push(`form.append(${s(r.name.trim())}, ${r.file ? `Bun.file(${s(r.value.trim().replace(/^\/+/, ""))})` : s(r.value)});`);
+      init.push("body: form");
+    }
+  }
+  const call = init.length ? `await fetch(${s(copiedUrl(draft, origin))}, {\n${init.map((l) => `  ${l},`).join("\n")}\n});` : `await fetch(${s(copiedUrl(draft, origin))});`;
+  return [...before, `const res = ${call}`].join("\n");
+}

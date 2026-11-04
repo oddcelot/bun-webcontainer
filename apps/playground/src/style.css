@@ -423,10 +423,33 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
   .fields:has(input[type="checkbox"]) .field.derived {
     padding-left: 19px;
   }
+  .panel-tools {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 2px;
+    margin: 0 var(--pad) 0 auto;
+  }
+  .copy-request {
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: 0;
+    border-radius: 4px;
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+    &:hover,
+    &:focus-visible {
+      color: var(--fg);
+      background: var(--control);
+    }
+  }
   .body-mode {
     flex: 0 0 auto;
     height: 22px;
-    margin: 0 var(--pad) 0 auto;
     border-color: transparent;
     background: none;
     color: var(--muted);

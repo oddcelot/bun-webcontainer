@@ -1,7 +1,7 @@
 // The embed's `requests` parser (src/embed/requests.ts) on what authors write, malformed entries included.
 // Run with bun: `bun scripts/requests.ts`. Exits 1 on a mismatch.
 import { parseRequests } from "../src/embed/requests.ts";
-const r = (method: string, path: string, body = "") => ({ method, path, body });
+const r = (method: string, path: string, body = "", headers?: [string, string][]) => ({ method, path, body, ...(headers ? { headers } : {}) });
 const cases: [string, ReturnType<typeof parseRequests>, number?][] = [
   // [list, presets, warnings]
   ["GET /user/1; GET /user/617; POST /form {\"hello\":\"Elysia\"}", [r("GET", "/user/1"), r("GET", "/user/617"), r("POST", "/form", '{"hello":"Elysia"}')]],
@@ -19,6 +19,11 @@ const cases: [string, ReturnType<typeof parseRequests>, number?][] = [
   ["GET a; DELETE /b", [r("DELETE", "/b")], 1],
   ["/path", [], 1],
   ["GET /a;", [r("GET", "/a;")]],
+  // Headers: -H and a quoted `Name: value`, before the body.
+  ['GET /me -H "Authorization: Bearer t0k"', [r("GET", "/me", "", [["Authorization", "Bearer t0k"]])]],
+  [`POST /form -H 'X-A: 1' -H "Cookie: a=1; b=2" {"a":1}; GET /b`, [r("POST", "/form", '{"a":1}', [["X-A", "1"], ["Cookie", "a=1; b=2"]]), r("GET", "/b")]],
+  ['POST /x -H "nocolon" body', [r("POST", "/x", "body")], 1],
+  ['POST /x body -H "X: 1"', [r("POST", "/x", 'body -H "X: 1"')]], // after the body, it's the body
 ];
 let bad = 0;
 for (const [list, want, warns = 0] of cases) {

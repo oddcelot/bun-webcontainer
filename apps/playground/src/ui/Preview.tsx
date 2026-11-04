@@ -1,13 +1,14 @@
 import { For, Show, createEffect, createSignal, onSettled, untrack, useContext } from "solid-js";
 import { Select } from "@runbun/ui/solid/Select";
+import { Menu, MenuItem, MenuTrigger } from "@runbun/ui/solid/Menu";
 import { TabItem, TabList } from "@runbun/ui/solid/Tabs";
 import { isMac, matches } from "../keymap";
 import { createPierre, createViewer } from "../editors/pierre";
 import type { CodeEditor } from "../editors/types";
-import { PREFIX, responseReserve, type Card } from "../preview";
+import { PREFIX, normalize, responseReserve, type Card } from "../preview";
 import { AppContext } from "./context";
 import { hasBody, type PreviewTab, type Rows, type Section } from "./previews";
-import { fromAuth, queryOf, sent, type Auth, type BodyMode, type Field } from "../request";
+import { LOCAL_ORIGIN, fromAuth, queryOf, sent, toCurl, toFetch, toHttp, type Auth, type BodyMode, type Field } from "../request";
 import { Tip } from "@runbun/ui/solid/Tip";
 
 const CANT_RUN = "This browser can't run code here";
@@ -380,14 +381,17 @@ function AuthFields(props: { auth: Auth; hidden: boolean; onChange: (change: Par
  * typed), Headers (sent through the service worker, so `Cookie` and the like reach the server too: request.ts), Auth
  * (a header, or an API key's query parameter, written when sent and shown read-only in Headers or Params) and, for a
  * method with one, Body: the editor's text as JSON or text, or rows as a form (urlencoded, or multipart with project
- * files). A section's tab shows how many rows it sends.
+ * files), and Raw: the whole request as `.http` text (request.ts toHttp, fromHttp), read back as it's typed. A
+ * section's tab shows how many rows it sends.
  *
  * Rows are as tall as they are, up to a few, then scroll. The tab bar is the file tabs' TabList and TabItem, with the
- * body's mode picker at its end on Body.
+ * body's mode picker at its end on Body, and a menu that copies the request as curl or `fetch`, for the app run
+ * locally.
  *
- * The body is in the editor the files use, highlighted as JSON (what it's usually sent as). One editor: switching
- * preview tabs opens the active tab's body in it, and each edit goes back to that tab. It is as tall as its lines (at
- * least one, at most 7em, then it scrolls), measured from the editor's lines as the embed measures the code
+ * The body and the Raw view are in the editor the files use, the body highlighted as JSON (what it's usually sent as).
+ * One editor: switching preview tabs (or between Body and Raw) opens the active tab's text in it, and each edit goes
+ * back to that tab. It is as tall as its lines (at
+ * least one, at most 7em (12em for Raw), then it scrolls), measured from the editor's lines as the embed measures the code
  * (embed/main.ts), so a one-line body leaves the response its room. Under it, a handle like the panes' (the
  * `.resize-handle` look, the embed's splitter's keys: arrows by 16px, Home, End; a double click fits again): a height
  * dragged there is kept for that tab and no longer fitted.
@@ -404,7 +408,8 @@ function RequestPanel(props: { tab: PreviewTab }) {
   const section = () => (props.tab.section === "body" && !hasBody(props.tab.method) ? "params" : props.tab.section);
   const params = () => queryOf(props.tab.path);
   const rowsMode = () => props.tab.bodyMode === "form" || props.tab.bodyMode === "multipart";
-  const bodyHidden = () => !props.tab.panel || section() !== "body" || rowsMode();
+  /** The editor shows the body (as JSON or text) and the Raw view. */
+  const editorHidden = () => !props.tab.panel || !((section() === "body" && !rowsMode()) || section() === "raw");
   const auth = () => fromAuth(props.tab.auth);
   const app = useContext(AppContext);
   /** The project's files, for a multipart file row (read when one is focused or made). */
@@ -435,7 +440,8 @@ function RequestPanel(props: { tab: PreviewTab }) {
     const lh = lines.getBoundingClientRect().height / count;
     // The code's padding and horizontal scrollbar.
     const chrome = parseFloat(box.paddingTop) + parseFloat(box.paddingBottom) + code.offsetHeight - code.clientHeight;
-    const cap = parseFloat(getComputedStyle(el).fontSize) * 7;
+    // The Raw view holds the request line and headers too.
+    const cap = parseFloat(getComputedStyle(el).fontSize) * (untrack(section) === "raw" ? 12 : 7);
     const line = Math.ceil(lh + chrome);
     const fitted = Math.ceil(Math.min(cap, count * lh + chrome));
     return { line, fitted };
@@ -456,7 +462,7 @@ function RequestPanel(props: { tab: PreviewTab }) {
   };
   /** Its dragged height, else its fitted one; `announce`: its lines changed, so the embed's auto height may too. */
   const fit = (announce = false) => {
-    if (bodyHidden()) return;
+    if (editorHidden()) return;
     const m = metrics();
     if (!m) return;
     el.dataset.fit = String(m.fitted);
@@ -474,21 +480,42 @@ function RequestPanel(props: { tab: PreviewTab }) {
     dragged.set(untrack(() => p.state.active), apply(h, m.line));
   };
   createEffect(
-    () => [p.state.active, props.tab.bodyMode === "text" ? "txt" : "json"] as const,
+    () => [p.state.active, section() === "raw" ? "http" : props.tab.bodyMode === "text" ? "txt" : "json"] as const,
     ([id, ext]) => {
       editor ??= createPierre(el);
-      const body = untrack(() => p.state.tabs.find((t) => t.id === id)?.body ?? "");
-      editor.open(`request-body-${id}.${ext}`, body, (text) => p.edit(id, "body", text));
+      const text = untrack(() => {
+        const tab = p.state.tabs.find((t) => t.id === id);
+        return !tab ? "" : ext === "http" ? toHttp(tab) : tab.body;
+      });
+      if (ext === "http") editor.open(`request-${id}.http`, text, (text) => p.raw(id, text));
+      else editor.open(`request-body-${id}.${ext}`, text, (text) => p.edit(id, "body", text));
       // After the editor has laid the body out.
       requestAnimationFrame(() => fit(true));
     },
   );
+  // The Raw view follows changes made elsewhere (the request bar, another section) while it isn't being typed in;
+  // while it is, it is what the request is read from.
+  createEffect(
+    () => (section() === "raw" ? toHttp(props.tab) : null),
+    (text) => {
+      if (text === null || !editor || el.contains(document.activeElement) || editor.getText() === text) return;
+      editor.update(text);
+    },
+  );
+  const [copied, setCopied] = createSignal("");
+  const copy = (kind: "curl" | "fetch") => {
+    const draft = { ...props.tab, path: normalize(props.tab.path.trim() || "/") };
+    void navigator.clipboard.writeText(kind === "curl" ? toCurl(draft) : toFetch(draft)).then(() => {
+      setCopied(kind);
+      setTimeout(() => setCopied(""), 1500);
+    });
+  };
   // The body shown again: fit what it holds now. The panel shown, hidden, on another section or with rows added or
   // removed: say so, for the embed's auto height.
   createEffect(
     () =>
       [
-        bodyHidden(),
+        editorHidden(),
         props.tab.panel,
         section(),
         props.tab.bodyMode,
@@ -536,21 +563,37 @@ function RequestPanel(props: { tab: PreviewTab }) {
                 Body
               </TabItem>
             </Show>
+            <TabItem value="raw" selected={section() === "raw"} title="The whole request as text (.http): edit it here or in the other sections">
+              Raw
+            </TabItem>
           </TabList>
-          <Show when={section() === "body"}>
-            <Select<(typeof BODY_MODES)[number]>
-              class="body-mode"
-              label="Body sent as"
-              tip={`Sent as ${BODY_MODES.find((m) => m.mode === props.tab.bodyMode)?.tip}`}
-              options={BODY_MODES}
-              optionValue="mode"
-              optionTextValue="label"
-              value={BODY_MODES.find((m) => m.mode === props.tab.bodyMode) ?? null}
-              onChange={(m) => m && p.bodyMode(p.state.active, m.mode)}
-              required
+          <span class="panel-tools">
+            <Show when={section() === "body"}>
+              <Select<(typeof BODY_MODES)[number]>
+                class="body-mode"
+                label="Body sent as"
+                tip={`Sent as ${BODY_MODES.find((m) => m.mode === props.tab.bodyMode)?.tip}`}
+                options={BODY_MODES}
+                optionValue="mode"
+                optionTextValue="label"
+                value={BODY_MODES.find((m) => m.mode === props.tab.bodyMode) ?? null}
+                onChange={(m) => m && p.bodyMode(p.state.active, m.mode)}
+                required
+                placement="bottom-end"
+              />
+            </Show>
+            <Menu
               placement="bottom-end"
-            />
-          </Show>
+              trigger={
+                <Tip as={MenuTrigger} class="copy-request" tip={copied() ? "Copied" : `Copy the request, to send to the app run locally (${LOCAL_ORIGIN})`} aria-label="Copy the request">
+                  <i class={copied() ? "i-lucide-check" : "i-lucide-copy"} aria-hidden="true" />
+                </Tip>
+              }
+            >
+              <MenuItem icon="i-lucide-terminal" label="Copy as curl" onSelect={() => copy("curl")} />
+              <MenuItem icon="i-lucide-braces" label="Copy as fetch" onSelect={() => copy("fetch")} />
+            </Menu>
+          </span>
         </div>
         <Fields
           label="Query parameters"
@@ -589,8 +632,8 @@ function RequestPanel(props: { tab: PreviewTab }) {
         <div
           id="req-body"
           ref={el}
-          hidden={bodyHidden()}
-          data-empty={props.tab.body ? undefined : ""}
+          hidden={editorHidden()}
+          data-empty={section() === "body" && !props.tab.body ? "" : undefined}
           data-placeholder={props.tab.bodyMode === "text" ? "Request body, sent as text/plain" : "Request body, sent as application/json"}
         />
       </section>
@@ -605,7 +648,7 @@ function RequestPanel(props: { tab: PreviewTab }) {
         data-orientation="vertical"
         data-active={dragging() ? "" : undefined}
         data-dragging={dragging() ? "" : undefined}
-        hidden={bodyHidden()}
+        hidden={editorHidden()}
         onPointerDown={(e) => {
           if (e.button !== 0) return;
           e.preventDefault();
