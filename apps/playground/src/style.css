@@ -194,6 +194,14 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
 .tabs-bar .format:hover:not(:disabled), .tabs-bar .format:focus-visible { color: var(--fg); background: var(--control); outline: none; }
 .tabs-bar .format:disabled { opacity: 0.5; cursor: default; }
 .tabs-bar .format + .autosave { margin-left: 4px; }
+/* Auto-save, then Watch: one pair at the bar's end. */
+.tabs-bar .autosave:has(+ .autosave) {
+  margin-right: 0;
+
+  & + .autosave {
+    margin-left: 4px;
+  }
+}
 .tabs-bar .autosave[aria-pressed="false"] { color: var(--fg); border-color: var(--control-border); }
 .tabs .tab .unsaved { color: var(--accent); font-size: 10px; line-height: 1; }
 /* The folder hint gives way before the name does. */

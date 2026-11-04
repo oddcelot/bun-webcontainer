@@ -68,7 +68,7 @@ Inline files: child `<script type="text/plain" data-file="path">` elements, dede
 | `install` | Install button | `preview`, `full` | |
 | `terminal` | Interactive terminal | `console`, `full` | |
 | `open` | "Open in runbun.dev" | all | |
-| `watch` | Restart the running program when an edit is saved, like `bun --watch` | all | |
+| `watch` | Restart the running program when an edit is saved, like `bun --watch`; also after a crash, and not while an open file has a syntax error | all | |
 | `close` | Close buttons on the editor's tabs (also middle-click, Delete and Ctrl/Cmd+W). Off, a reader can't close the example's tabs | `full` | |
 | `autosave` | An Auto-save switch over the editor: off, edits save on Ctrl/Cmd+S and before Run (switching it back on, or turning the feature off, saves what's waiting). Without it, edits save as you type | none | |
 

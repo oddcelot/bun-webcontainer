@@ -67,6 +67,9 @@ function terminalTheme(theme: ThemeLike): ITheme {
 const format = (level: string, text: string) =>
   LEVEL_SGR[level] ? `\x1b[${LEVEL_SGR[level]}m${text}\x1b[0m\r\n` : `${text}\x1b[0m\r\n`;
 
+/** `index.ts:3:7`, `/src/app.tsx:12`: after a space, `(` or a line's start, so a URL's path isn't one. */
+const LOCATION = /(?<=^|[\s(])(\/?[\w.@\-/]*\.(?:[cm]?[jt]sx?|json|css|html|md)):(\d+)(?::(\d+))?/g;
+
 const PROMPT = "\x1b[32m❯\x1b[0m ";
 // One input unit: an escape sequence (arrows, Home/End, Delete) or a single character.
 const TOKENS = /\x1b\[[0-9;]*[A-Za-z~]|\x1bO[A-Z]|[\s\S]/gu;
@@ -74,10 +77,19 @@ const TOKENS = /\x1b\[[0-9;]*[A-Za-z~]|\x1bO[A-Z]|[\s\S]/gu;
 /**
  * A prompt with line editing (arrows, Home/End, history, Ctrl+A/E/U/C/L, paste). `onCommand` runs each
  * entered line; the prompt comes back when it settles. Output logged meanwhile prints above the prompt.
- * Ctrl+C on an empty line calls `onInterrupt` (stop the server, like a shell's SIGINT).
+ * Ctrl+C on an empty line calls `onInterrupt` (stop the server, like a shell's SIGINT). A `file.ts:3:7` location (in a
+ * stack trace, an error) is a link when `isFile` knows the file; clicking it calls `onLocation`.
  */
 export function createConsole(
-  { onCommand, onInterrupt, onClear }: { onCommand: (line: string) => Promise<void>; onInterrupt: () => void; onClear: () => void },
+  { onCommand, onInterrupt, onClear, isFile, onLocation }: {
+    onCommand: (line: string) => Promise<void>;
+    onInterrupt: () => void;
+    onClear: () => void;
+    /** Whether `path` is a project file (only those locations are links). */
+    isFile: (path: string) => boolean;
+    /** Opens `path` at a 1-based line and column. */
+    onLocation: (path: string, line: number, column: number) => void;
+  },
 ) {
   const lines: string[] = [];
   let term: Terminal | undefined;
@@ -201,6 +213,21 @@ export function createConsole(
     const fit = new FitAddon();
     for (const addon of [fit, new WebLinksAddon(), new UnicodeGraphemesAddon()]) next.loadAddon(addon);
     next.open(el);
+    next.registerLinkProvider({
+      provideLinks(y, done) {
+        const text = next.buffer.active.getLine(y - 1)?.translateToString(true) ?? "";
+        const links = [...text.matchAll(LOCATION)].flatMap((m) => {
+          const [all, path, line, column] = m;
+          if (!isFile(path)) return [];
+          return [{
+            range: { start: { x: m.index + 1, y }, end: { x: m.index + all.length, y } },
+            text: all,
+            activate: () => onLocation(path, Number(line), Number(column ?? 1)),
+          }];
+        });
+        done(links.length ? links : undefined);
+      },
+    });
     fit.fit();
     resize = new ResizeObserver(() => fit.fit());
     resize.observe(el);

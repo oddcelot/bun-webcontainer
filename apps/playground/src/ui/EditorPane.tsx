@@ -70,6 +70,11 @@ export function EditorPane() {
     revealOnOpen = to;
     ws.open(to.path);
   }
+  ws.onOpenAt((path, line, column) => {
+    if (path === current) return editor?.reveal(line, column);
+    revealOnOpen = { path, line, column };
+    ws.open(path);
+  });
   ws.onFormat(() => void formatOpenFile());
 
   async function formatOpenFile() {
@@ -221,6 +226,20 @@ export function EditorPane() {
               }}
             >
               <i class={ws.autosave() ? "i-lucide-save" : "i-lucide-save-off"} aria-hidden="true" /> Auto-save
+            </Tip>
+          </Show>
+          {/* The full playground's Restart on save; an embed has its `watch` feature instead. */}
+          <Show when={!app.features}>
+            <Tip
+              class="autosave"
+              type="button"
+              aria-pressed={ws.watch() ? "true" : "false"}
+              tip={ws.watch() ? "A save restarts the running program, like bun --watch. Click to restart with Run only." : "Only Run restarts the program. Click to restart it on every save, like bun --watch."}
+              onClick={() => {
+                ws.setWatch(!ws.watch());
+              }}
+            >
+              <i class={ws.watch() ? "i-lucide-refresh-cw" : "i-lucide-refresh-cw-off"} aria-hidden="true" /> Watch
             </Tip>
           </Show>
         </div>

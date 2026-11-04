@@ -17,7 +17,7 @@ import { isMessage, TAG, VERSION, type Event, type Feature, type Mode, type Opti
 // parameters (embed/config.ts) pick the mode, features and project; with `?init=1` the host sends the files first.
 
 const params = new URLSearchParams(location.search);
-const pg = createPlayground();
+const pg = createPlayground({ watch: () => embed.has("watch") });
 const { vfs, session, workspace, log } = pg;
 
 // --- Messages. Only the embedding window talks to us; once it has, replies and events go to its origin alone.
@@ -276,31 +276,6 @@ addEventListener("keydown", (e) => {
 vfs.onChange(({ path, removed }) => {
   if (!SKIP.test(path)) emit("change", { path, removed: !!removed });
 });
-// `watch`: a save the reader made while the program runs starts it again, like `bun --watch`. Only the editor's saves
-// count (not the program's own writes, an install or Run's save first); a burst is one restart, and one that lands
-// while a run, test or install is under way waits for it.
-const WATCH_DELAY = 300;
-let watchTimer: ReturnType<typeof setTimeout> | undefined;
-function restart() {
-  if (!embed.has("watch")) return;
-  if (session.busy.run || session.busy.install) return void (watchTimer = setTimeout(restart, WATCH_DELAY));
-  if (session.settled().state !== "running") return;
-  log("sys", "[watch] restarting");
-  void pg.run(pg.lastEntry);
-}
-workspace.onSaved(() => {
-  clearTimeout(watchTimer);
-  watchTimer = setTimeout(restart, WATCH_DELAY);
-});
-// Any run that starts (Run, the API, a restart) saves first, so a restart still pending would only run it twice.
-createRoot(() =>
-  createEffect(
-    () => !!session.busy.run,
-    (busy) => {
-      if (busy) clearTimeout(watchTimer);
-    },
-  ),
-);
 // The height the embed would like (`height="auto"` on <bun-playground>): the bar, the open file's lines (within
 // bounds) and the console when it sits under the editor.
 const LINE = 20;
