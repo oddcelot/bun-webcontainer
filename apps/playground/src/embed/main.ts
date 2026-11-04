@@ -234,10 +234,14 @@ if (!restored) await loadSource();
 if (persistId) stopSaving = await attach(persistId, vfs, log, !restored);
 await pg.start({ reset });
 
-// Inline files open in tabs, in their order; otherwise the entry file. `file` picks the one shown first.
-const first = options.file && vfs.files.has(options.file) ? options.file : pg.entryFile();
-for (const path of Object.keys(initFiles)) workspace.open(path.replace(/^\.?\//, ""));
-workspace.open(first);
+// Inline files open in tabs, in their order; otherwise the entry file. `file` picks the one shown first. Hidden ones
+// (generated, such as a package.json) stay in the project and the tree, out of the tabs.
+const bare = (path: string) => path.replace(/^\.?\//, "");
+const hidden = new Set((init?.hidden ?? []).map(bare));
+const file = options.file && vfs.files.has(options.file) && !hidden.has(options.file) ? options.file : pg.entryFile();
+const first = hidden.has(file) ? undefined : file;
+for (const path of Object.keys(initFiles).map(bare)) if (!hidden.has(path)) workspace.open(path);
+if (first) workspace.open(first);
 
 // `path` picks where the preview's first tab points (default "/"); the next Run loads it there.
 if (options.path) pg.previews.start(options.path);

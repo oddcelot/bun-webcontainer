@@ -67,7 +67,8 @@ export type Options = {
 export type Request =
   | {
       method: "init";
-      params: { files?: Record<string, string>; options?: Partial<Options>; vars?: Vars };
+      /** `hidden`: files of `files` not opened as tabs (`data-hidden`): generated ones, such as a package.json. */
+      params: { files?: Record<string, string>; hidden?: string[]; options?: Partial<Options>; vars?: Vars };
     }
   | { method: "run"; params?: { entry?: string } }
   | { method: "stop" }
