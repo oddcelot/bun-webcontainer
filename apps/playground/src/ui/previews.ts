@@ -1,6 +1,13 @@
 import { createStore, flush, reconcile } from "solid-js";
 import type { PresetRequest } from "../embed/requests";
 import { PREFIX, cardFromFrame, normalize, sendRequest, type Card } from "../preview";
+import { queryOf, sent, withQuery, type Field } from "../request";
+
+/** The request panel's sections (ui/Preview.tsx): the path's query, the headers, and the body of a method with one. */
+export type Section = "params" | "headers" | "body";
+
+/** Whether a request with `method` carries a body (the panel's Body section). */
+export const hasBody = (method: string) => method !== "GET" && method !== "HEAD";
 
 /** One preview tab: its own request, and the page (kept loaded while hidden) or response it shows. */
 export type PreviewTab = {
@@ -8,6 +15,11 @@ export type PreviewTab = {
   method: string;
   path: string;
   body: string;
+  /** Headers sent with the request (the ones turned on); the query lives in `path`. */
+  headers: Field[];
+  /** Whether the request panel shows, and which of its sections. */
+  panel: boolean;
+  section: Section;
   view: "frame" | "response";
   /** The page's <title>, once one loaded. */
   title: string;
@@ -27,6 +39,9 @@ export function createPreviews(running: () => boolean = () => false) {
     method,
     path,
     body,
+    headers: [],
+    panel: hasBody(method),
+    section: hasBody(method) ? "body" : "params",
     view: "frame",
     title: "",
     response: null,
@@ -75,10 +90,57 @@ export function createPreviews(running: () => boolean = () => false) {
       });
       sendIfPending(id);
     },
-    /** The request bar's fields write straight into the active tab. */
+    /**
+     * The request bar's fields write straight into the active tab. A method that takes a body opens the panel on it;
+     * one that doesn't moves off Body, and closes the panel when it has nothing else to show.
+     */
     edit(id: number, field: "method" | "path" | "body", value: string) {
       update(id, (t) => {
+        const had = hasBody(t.method);
         t[field] = value;
+        if (field !== "method" || had === hasBody(value)) return;
+        if (!had) {
+          t.panel = true;
+          t.section = "body";
+        } else if (t.section === "body") {
+          t.section = "params";
+          t.panel = queryOf(t.path).length > 0 || sent(t.headers).length > 0;
+        }
+      });
+    },
+    /** Shows the request panel, on `section`; with no section, shows or hides it. */
+    panel(id: number, section?: Section) {
+      update(id, (t) => {
+        if (section) t.section = section;
+        t.panel = section ? true : !t.panel;
+      });
+    },
+    /** Query parameter `i` changed (one past the last: a new one); the path's query is written again from them. */
+    param(id: number, i: number, change: Partial<{ name: string; value: string }>) {
+      update(id, (t) => {
+        const params = queryOf(t.path);
+        params[i] = { ...(params[i] ?? { name: "", value: "" }), ...change };
+        t.path = withQuery(t.path, params);
+      });
+    },
+    removeParam(id: number, i: number) {
+      update(id, (t) => {
+        t.path = withQuery(
+          t.path,
+          queryOf(t.path).filter((_, j) => j !== i),
+        );
+      });
+    },
+    /** Header `i` changed (one past the last: a new one, turned on). */
+    header(id: number, i: number, change: Partial<Field>) {
+      update(id, (t) => {
+        if (i >= t.headers.length) t.headers.push({ name: "", value: "", on: true, ...change });
+        else Object.assign(t.headers[i]!, change);
+      });
+    },
+    removeHeader(id: number, i: number) {
+      update(id, (t) => {
+        t.headers.splice(i, 1);
       });
     },
     setExpanded(on: boolean) {
@@ -99,7 +161,7 @@ export function createPreviews(running: () => boolean = () => false) {
       const path = normalize(tab.path.trim() || "/");
       let result: "page" | Card;
       try {
-        result = await sendRequest(m, path, tab.body);
+        result = await sendRequest(m, path, tab.body, sent(tab.headers));
       } catch (err) {
         result = { ok: false, line: `${m} ${tab.path}`, status: "", head: "", type: "", text: String(err) };
       }

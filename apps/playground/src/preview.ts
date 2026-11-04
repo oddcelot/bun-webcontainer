@@ -1,4 +1,5 @@
 import { BASE } from "./base";
+import { HEADERS_HEADER, packHeaders } from "./request";
 
 /**
  * Where the service worker serves the running Bun.serve app (see sw.ts): `/__preview/@<client id>` once the worker
@@ -30,10 +31,13 @@ export type Card = { ok: boolean; line: string; status: string; head: string; ty
 
 /**
  * Sends a request to the running server. An HTML GET returns "page": the caller loads it in an iframe (a second
- * GET is the price of real navigation, so pages, scripts and links work). Anything else returns its card.
+ * GET is the price of real navigation, so pages, scripts and links work; sw.ts hands that load the same headers).
+ * Anything else returns its card. `headers` (the request panel's) go packed in one header (request.ts packHeaders), so
+ * the ones a page can't set reach the server too; without a content-type among them, a body is sent as JSON when it
+ * parses, else as text.
  */
-export async function sendRequest(method: string, path: string, body: string): Promise<"page" | Card> {
-  const init: RequestInit = { method };
+export async function sendRequest(method: string, path: string, body: string, headers: [string, string][] = []): Promise<"page" | Card> {
+  const init: RequestInit & { headers: Record<string, string> } = { method, headers: {} };
   if (method !== "GET" && method !== "HEAD" && body) {
     init.body = body;
     let json = true;
@@ -42,8 +46,9 @@ export async function sendRequest(method: string, path: string, body: string): P
     } catch {
       json = false;
     }
-    init.headers = { "content-type": json ? "application/json" : "text/plain" };
+    init.headers["content-type"] = json ? "application/json" : "text/plain";
   }
+  if (headers.length) init.headers[HEADERS_HEADER] = packHeaders(headers);
   const res = await fetch(PREFIX + path, init);
   const type = res.headers.get("content-type") ?? "";
   if (method === "GET" && type.startsWith("text/html")) return "page";

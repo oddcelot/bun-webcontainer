@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 // Built to <base>sw.js as one classic script (vite.config.ts serviceWorker). Page-side code lives in swPage.ts.
 import { previewColorScheme, previewWebSocket } from "#sw-page";
+import { HEADERS_HEADER, PANEL_COOKIE, mergeHeaders, unpackHeaders } from "./request";
 
 declare const self: ServiceWorkerGlobalScope;
 
@@ -161,9 +162,25 @@ const NO_PLAYGROUND = `<!doctype html><meta name="color-scheme" content="light d
 const previewOwnerOf = (pathname: string): string | undefined => (pathname.startsWith(`${PREVIEW}/@`) ? pathname.slice(PREVIEW.length + 2).split("/")[0] : undefined);
 const previewBase = (id?: string) => (id ? `${PREVIEW}/@${id}` : PREVIEW);
 
+/**
+ * The request panel's headers (request.ts) for the page load that follows an HTML GET sent with them, by owner and
+ * path: the playground loads the page in its frame with a second GET, and a navigation can't carry headers. Taken by
+ * the first navigation to that path, if it comes within HANDOFF_MS; the page's own loads (scripts, fetches, links) go
+ * without them.
+ */
+const handoff = new Map<string, { headers: [string, string][]; at: number }>();
+const HANDOFF_MS = 10_000;
+
 async function servePreview(req: Request, url: URL, path?: string, ownerId = previewOwnerOf(url.pathname)): Promise<Response> {
   const base = previewBase(ownerId);
   path ??= (url.pathname.slice(base.length) || "/") + url.search;
+  const key = `${ownerId ?? ""} ${path}`;
+  let extra = unpackHeaders(req.headers.get(HEADERS_HEADER));
+  if (!extra.length && req.mode === "navigate") {
+    const left = handoff.get(key);
+    handoff.delete(key);
+    if (left && Date.now() - left.at < HANDOFF_MS) extra = left.headers;
+  }
   const hasBody = req.method !== "GET" && req.method !== "HEAD";
   const body = hasBody ? await req.arrayBuffer() : null;
   let asked: Awaited<ReturnType<typeof askStream>>;
@@ -173,7 +190,15 @@ async function servePreview(req: Request, url: URL, path?: string, ownerId = pre
     asked = await askStream({
       type: "preview",
       // A 304 would reach the page as an empty response (we answer from memory, nothing is cached), so never ask for one.
-      req: { path, method: req.method, headers: [...req.headers].filter(([k]) => k !== "if-none-match" && k !== "if-modified-since"), body },
+      req: {
+        path,
+        method: req.method,
+        headers: mergeHeaders(
+          [...req.headers].filter(([k]) => k !== "if-none-match" && k !== "if-modified-since" && k !== HEADERS_HEADER),
+          extra.map(([k, v]) => [k.toLowerCase() === "cookie" ? PANEL_COOKIE : k, v]),
+        ),
+        body,
+      },
     }, owner);
   } catch {
     // The server runs in the playground's tab: a preview opened in its own tab needs that one open.
@@ -182,6 +207,7 @@ async function servePreview(req: Request, url: URL, path?: string, ownerId = pre
   const { head, body: stream } = asked;
   const nullBody = [101, 204, 205, 304].includes(head.status);
   const headers = new Headers(head.headers);
+  if (extra.length && req.method === "GET" && req.mode !== "navigate" && headers.get("content-type")?.startsWith("text/html")) handoff.set(key, { headers: extra, at: Date.now() });
   // Redirects to an absolute path stay inside the preview (`redirect("/")` from a form post).
   const location = headers.get("location");
   if (location?.startsWith("/") && !location.startsWith("//") && !location.startsWith(PREVIEW)) headers.set("location", base + location);

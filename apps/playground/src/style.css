@@ -290,12 +290,111 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
 }
 #request button { background: var(--control); color: inherit; border: 1px solid var(--control-border); border-radius: 6px; padding: 3px 10px; cursor: pointer; }
 #expand { display: grid; place-items: center; padding: 0 8px; }
-/* The request body (ui/Preview.tsx): a panel with the editor's tab bar (one tab, Body, and the type it's sent as), its
-   editor as tall as its lines (set there, up to 7em; this until it's measured) with a hint while it's empty, and the
-   panes' resize handle under it. */
-#req-body-panel { display: flex; flex-direction: column; flex: 0 0 auto; border-bottom: 1px solid var(--border); }
-#req-body-panel .body-type { flex: 0 0 auto; margin: 0 var(--pad) 0 auto; color: var(--muted); font-size: 11px; }
-#req-body { position: relative; height: 7em; min-height: 1.5em; overflow: hidden; }
+#req-panel-toggle {
+  &[aria-pressed="true"] {
+    background: var(--control-hover);
+  }
+  .count {
+    color: var(--muted);
+    font-size: 11px;
+  }
+}
+/* The request panel (ui/Preview.tsx): the editor's tab bar (Params, Headers, Body, with their counts, and the type a
+   body is sent as), then the section shown: name and value rows as tall as they are up to a few, then scrolling, or
+   the body's editor as tall as its lines (set there, up to 7em; this until it's measured) with a hint while it's
+   empty, and the panes' resize handle under it. */
+#req-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  border-bottom: 1px solid var(--border);
+  &[hidden] {
+    display: none;
+  }
+  .body-type {
+    flex: 0 0 auto;
+    margin: 0 var(--pad) 0 auto;
+    color: var(--muted);
+    font-size: 11px;
+  }
+  .tab .count {
+    margin-left: 5px;
+    color: var(--muted);
+    font-size: 11px;
+  }
+  .fields {
+    max-height: calc(4 * 28px + 8px);
+    overflow: auto;
+    padding: 4px 8px;
+    background: var(--bg);
+    &[hidden] {
+      display: none;
+    }
+  }
+  .field {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    input:not([type="checkbox"]) {
+      min-width: 0;
+      padding: 3px 6px;
+      border: 1px solid var(--control-border);
+      border-radius: 6px;
+      background: var(--control);
+      color: var(--fg);
+      font: 12px var(--font-mono);
+    }
+    .name {
+      flex: 0 1 14em;
+    }
+    .value {
+      flex: 1 1 auto;
+    }
+    input[type="checkbox"] {
+      margin: 0;
+      accent-color: var(--accent);
+      &:disabled {
+        visibility: hidden;
+      }
+    }
+    .remove {
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      border: 0;
+      border-radius: 4px;
+      background: none;
+      color: var(--muted);
+      cursor: pointer;
+      &:hover,
+      &:focus-visible {
+        color: var(--fg);
+        background: var(--control);
+      }
+      &[hidden] {
+        visibility: hidden;
+        display: grid;
+      }
+    }
+    &[data-new] input:not([type="checkbox"]):not(:focus) {
+      background: transparent;
+      border-style: dashed;
+    }
+  }
+}
+#req-body {
+  position: relative;
+  height: 7em;
+  min-height: 1.5em;
+  overflow: hidden;
+  &[hidden] {
+    display: none;
+  }
+}
 /* Not the main layout's handle offset (#right, where it meets the column handle): this one spans its panel. */
 #preview-wrap #req-handle { flex: 0 0 auto; margin-left: 0; }
 #req-body .pierre-host { height: 100%; overflow: auto; background: var(--bg); }
@@ -303,7 +402,7 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
 #req-body[data-empty]::after { content: attr(data-placeholder); position: absolute; top: 8px; left: 41px; color: var(--muted); font: 12px/20px var(--font-mono); pointer-events: none; }
 #preview-views { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .preview-frame { flex: 1; width: 100%; border: 0; }
-.preview-frame[hidden], .preview-response[hidden], #req-body-panel[hidden], #req-handle[hidden] { display: none; }
+.preview-frame[hidden], .preview-response[hidden], #req-handle[hidden] { display: none; }
 /* The response card's metrics, and from them the least room it keeps under a request body (--response-reserve: its
    padding, the status line's pill, the headers line and a body box of three lines; ui/Preview.tsx and embed/main.ts
    read it through preview.ts responseReserve). Registered as a length, so it reads back in px. */

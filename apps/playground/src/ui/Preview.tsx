@@ -6,7 +6,8 @@ import { createPierre, createViewer } from "../editors/pierre";
 import type { CodeEditor } from "../editors/types";
 import { PREFIX, responseReserve, type Card } from "../preview";
 import { AppContext } from "./context";
-import type { PreviewTab } from "./previews";
+import { hasBody, type PreviewTab, type Section } from "./previews";
+import { queryOf, sent, type Field } from "../request";
 import { Tip } from "@runbun/ui/solid/Tip";
 
 const CANT_RUN = "This browser can't run code here";
@@ -118,6 +119,21 @@ export function Preview() {
             value={active().path}
             onInput={(e) => p.edit(s.active, "path", e.currentTarget.value)}
           />
+          <Tip
+            type="button"
+            id="req-panel-toggle"
+            tip={active().panel ? "Hide the request panel" : "Params, headers and body"}
+            aria-label="Request panel"
+            aria-controls="req-panel"
+            aria-pressed={active().panel ? "true" : "false"}
+            disabled={disabled}
+            onClick={() => p.panel(s.active)}
+          >
+            <i class="i-lucide-sliders-horizontal" aria-hidden="true" />
+            <Show when={queryOf(active().path).length + sent(active().headers).length}>
+              {(n) => <span class="count">{n()}</span>}
+            </Show>
+          </Tip>
           <Tip type="submit" disabled={disabled} tip={disabled ? CANT_RUN : "Send the request"}>
             <i class="i-lucide-send" aria-hidden="true" />
             <span class="label">Send</span>
@@ -147,7 +163,7 @@ export function Preview() {
             <i class={s.expanded ? "i-lucide-minimize-2" : "i-lucide-maximize-2"} aria-hidden="true" />
           </Tip>
         </form>
-        <RequestBody hidden={active().method === "GET" || active().method === "HEAD"} empty={!active().body} body={active().body} />
+        <RequestPanel tab={active()} />
         <div id="preview-views">
           <For each={byAge()}>
             {(tab) => {
@@ -189,25 +205,102 @@ export function Preview() {
   );
 }
 
+/** Header names offered as a header row's name is typed. */
+const HEADER_NAMES = ["Accept", "Accept-Language", "Authorization", "Cache-Control", "Content-Type", "Cookie", "If-None-Match", "Origin", "Referer", "User-Agent", "X-Requested-With"];
+
 /**
- * The request body in the editor the files use, highlighted as JSON (what it's usually sent as). One editor: switching
- * preview tabs opens the active tab's body in it, and each edit goes back to that tab.
+ * Name and value rows (the query's parameters, the headers), with one empty row after them to add one: typing in it
+ * makes it a row (`onChange` with the index one past the last) and another empty one appears under it. Rows go by
+ * index, so the field being typed in stays put. With `toggles`, each row has a checkbox to turn it off.
+ */
+function Fields(props: {
+  label: string;
+  rows: readonly { name: string; value: string; on?: boolean }[];
+  toggles?: boolean;
+  names?: string;
+  hidden: boolean;
+  onChange: (i: number, change: Partial<Field>) => void;
+  onRemove: (i: number) => void;
+}) {
+  const all = () => [...props.rows, { name: "", value: "", on: true }];
+  return (
+    <div class="fields" role="group" aria-label={props.label} hidden={props.hidden}>
+      <For each={all()} keyed={false}>
+        {(row, i) => (
+          <div class="field" data-new={i === props.rows.length ? "" : undefined}>
+            <Show when={props.toggles}>
+              <input
+                type="checkbox"
+                checked={row().on !== false}
+                disabled={i === props.rows.length}
+                aria-label={`Send ${row().name || `row ${i + 1}`}`}
+                onChange={(e) => props.onChange(i, { on: e.currentTarget.checked })}
+              />
+            </Show>
+            <input
+              class="name"
+              spellcheck={false}
+              autocomplete="off"
+              placeholder={i === props.rows.length ? "Add name" : "Name"}
+              list={props.names}
+              aria-label={`${props.label}: name ${i + 1}`}
+              value={row().name}
+              onInput={(e) => props.onChange(i, { name: e.currentTarget.value })}
+            />
+            <input
+              class="value"
+              spellcheck={false}
+              autocomplete="off"
+              placeholder="Value"
+              aria-label={`${props.label}: value ${i + 1}`}
+              value={row().value}
+              onInput={(e) => props.onChange(i, { value: e.currentTarget.value })}
+            />
+            <Tip
+              type="button"
+              class="remove"
+              tip="Remove"
+              aria-label={`Remove ${row().name || `row ${i + 1}`}`}
+              hidden={i === props.rows.length}
+              onClick={() => props.onRemove(i)}
+            >
+              <i class="i-lucide-x" aria-hidden="true" />
+            </Tip>
+          </div>
+        )}
+      </For>
+    </div>
+  );
+}
+
+/**
+ * The request panel under the request bar, shown with its toggle there (and when a method that takes a body is
+ * picked): Params (the path's query as rows, written back to the path as they change, and read from it as it's
+ * typed), Headers (sent through the service worker, so `Cookie` and the like reach the server too: request.ts) and,
+ * for a method with one, Body. A section's tab shows how many rows it sends.
  *
- * A panel like the editor's: a tab bar with one tab, `Body` (the file tabs' TabList and TabItem), and the content type
- * the request will carry (preview.ts sendRequest: JSON when it parses, else text). Its editor is as tall as its lines
- * (at least one, at most 7em, then it scrolls), measured from the editor's lines as the embed measures the code
+ * Params and Headers are as tall as their rows, up to a few, then scroll. The tab bar is the file tabs' TabList and
+ * TabItem, with the content type a body will carry at its end (preview.ts sendRequest: JSON when it parses, else text).
+ *
+ * The body is in the editor the files use, highlighted as JSON (what it's usually sent as). One editor: switching
+ * preview tabs opens the active tab's body in it, and each edit goes back to that tab. It is as tall as its lines (at
+ * least one, at most 7em, then it scrolls), measured from the editor's lines as the embed measures the code
  * (embed/main.ts), so a one-line body leaves the response its room. Under it, a handle like the panes' (the
  * `.resize-handle` look, the embed's splitter's keys: arrows by 16px, Home, End; a double click fits again): a height
  * dragged there is kept for that tab and no longer fitted.
  *
  * The body only ever takes room from the response, never from the page: it stays between one line and what leaves
  * the response its reserve (preview.ts responseReserve), in the preview as it is, so a drag moves the line between
- * them and the embed keeps its size. Only a change to the body's lines (typing, another tab's or a preset's body) is
- * announced (`bodyfit`), for the embed's auto height to fit it (`data-fit`, the fitted height, not a dragged one);
- * when the preview itself changes size, the body is held within it again.
+ * them and the embed keeps its size. A change to the body's lines (typing, another tab's or a preset's body), and the
+ * panel shown, hidden, on another section or with rows added or removed, is announced (`bodyfit`), for the embed's
+ * auto height to fit it (`data-fit`, the body's fitted height, not a dragged one); when the preview itself changes
+ * size, the body is held within it again.
  */
-function RequestBody(props: { hidden: boolean; empty: boolean; body: string }) {
+function RequestPanel(props: { tab: PreviewTab }) {
   const { previews: p } = useContext(AppContext);
+  const section = () => (props.tab.section === "body" && !hasBody(props.tab.method) ? "params" : props.tab.section);
+  const params = () => queryOf(props.tab.path);
+  const bodyHidden = () => !props.tab.panel || section() !== "body";
   let el!: HTMLDivElement;
   let editor: CodeEditor | undefined;
   /** Heights readers dragged, by tab. */
@@ -250,7 +343,7 @@ function RequestBody(props: { hidden: boolean; empty: boolean; body: string }) {
   };
   /** Its dragged height, else its fitted one; `announce`: its lines changed, so the embed's auto height may too. */
   const fit = (announce = false) => {
-    if (props.hidden) return;
+    if (bodyHidden()) return;
     const m = metrics();
     if (!m) return;
     el.dataset.fit = String(m.fitted);
@@ -277,11 +370,12 @@ function RequestBody(props: { hidden: boolean; empty: boolean; body: string }) {
       requestAnimationFrame(() => fit(true));
     },
   );
-  // Shown again (a method with a body): fit what it holds now.
+  // The body shown again: fit what it holds now. The panel shown, hidden, on another section or with rows added or
+  // removed: say so, for the embed's auto height.
   createEffect(
-    () => props.hidden,
-    (hidden) => {
-      if (!hidden) requestAnimationFrame(() => fit(true));
+    () => [bodyHidden(), props.tab.panel, section(), params().length, props.tab.headers.length] as const,
+    ([hidden]) => {
+      requestAnimationFrame(() => (hidden ? el.dispatchEvent(new Event("bodyfit", { bubbles: true })) : fit(true)));
     },
   );
   onSettled(() => {
@@ -295,9 +389,9 @@ function RequestBody(props: { hidden: boolean; empty: boolean; body: string }) {
   });
   // What sendRequest sends it as.
   const type = () => {
-    if (!props.body) return "";
+    if (!props.tab.body) return "";
     try {
-      JSON.parse(props.body);
+      JSON.parse(props.tab.body);
       return "JSON";
     } catch {
       return "text";
@@ -306,20 +400,55 @@ function RequestBody(props: { hidden: boolean; empty: boolean; body: string }) {
   let start: { y: number; h: number } | undefined;
   return (
     <>
-      <section id="req-body-panel" hidden={props.hidden} aria-label="Request body">
+      <section id="req-panel" hidden={!props.tab.panel} aria-label="Request">
         <div class="tabs-bar">
-          <TabList class="tabs tablist" label="Request" onSelect={() => el.querySelector<HTMLElement>(".pierre-host")?.focus()}>
-            <TabItem value="body" selected title="The request's body">
-              Body
+          <TabList class="tabs tablist" label="Request" onSelect={(v) => p.panel(p.state.active, v as Section)}>
+            <TabItem value="params" selected={section() === "params"} title="The path's query parameters">
+              Params
+              <Show when={params().length}>{(n) => <span class="count">{n()}</span>}</Show>
             </TabItem>
+            <TabItem value="headers" selected={section() === "headers"} title="Headers sent with the request">
+              Headers
+              <Show when={sent(props.tab.headers).length}>{(n) => <span class="count">{n()}</span>}</Show>
+            </TabItem>
+            <Show when={hasBody(props.tab.method)}>
+              <TabItem value="body" selected={section() === "body"} title="The request's body">
+                Body
+              </TabItem>
+            </Show>
           </TabList>
-          <Show when={type()}>
+          <Show when={section() === "body" && type()}>
             <span class="body-type" title={`Sent as ${type() === "JSON" ? "application/json" : "text/plain"}`}>
               {type()}
             </span>
           </Show>
         </div>
-        <div id="req-body" ref={el} data-empty={props.empty ? "" : undefined} data-placeholder="Request body (JSON is sent as application/json)" />
+        <Fields
+          label="Query parameters"
+          rows={params()}
+          hidden={section() !== "params"}
+          onChange={(i, c) => p.param(p.state.active, i, c)}
+          onRemove={(i) => p.removeParam(p.state.active, i)}
+        />
+        <Fields
+          label="Headers"
+          rows={props.tab.headers}
+          toggles
+          names="header-names"
+          hidden={section() !== "headers"}
+          onChange={(i, c) => p.header(p.state.active, i, c)}
+          onRemove={(i) => p.removeHeader(p.state.active, i)}
+        />
+        <datalist id="header-names">
+          <For each={HEADER_NAMES}>{(name) => <option value={name} />}</For>
+        </datalist>
+        <div
+          id="req-body"
+          ref={el}
+          hidden={bodyHidden()}
+          data-empty={props.tab.body ? undefined : ""}
+          data-placeholder="Request body (JSON is sent as application/json)"
+        />
       </section>
       <div
         id="req-handle"
@@ -332,7 +461,7 @@ function RequestBody(props: { hidden: boolean; empty: boolean; body: string }) {
         data-orientation="vertical"
         data-active={dragging() ? "" : undefined}
         data-dragging={dragging() ? "" : undefined}
-        hidden={props.hidden}
+        hidden={bodyHidden()}
         onPointerDown={(e) => {
           if (e.button !== 0) return;
           e.preventDefault();
