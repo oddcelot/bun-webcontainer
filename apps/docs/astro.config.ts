@@ -10,6 +10,11 @@ import { codeThemeOptions, codeThemes } from "./src/code-themes.ts";
 import remarkStatus from "./src/remark-status.ts";
 import { DOCS_URL, PLAYGROUND_URL } from "./site-urls.ts";
 
+// The source repository, linked from the header (GitHub icon) and each page's "Edit page". It is private for now, so
+// the links would 404 for readers: set REPO_PUBLIC to true once it is public.
+const REPO = "https://github.com/oddcelot/bun-webcontainer";
+const REPO_PUBLIC = false;
+
 export default defineConfig({
   site: DOCS_URL,
   markdown: { processor: unified({ remarkPlugins: [remarkRunbun, remarkStatus] }) },
@@ -50,10 +55,9 @@ export default defineConfig({
         Banner: "./src/components/Banner.astro",
         Footer: "./src/components/Footer.astro",
       },
-      social: [
-        { icon: "github", label: "GitHub", href: "https://github.com/oddcelot/bun-webcontainer" },
-      ],
-      editLink: { baseUrl: "https://github.com/oddcelot/bun-webcontainer/edit/main/apps/docs/" },
+      ...(REPO_PUBLIC
+        ? { social: [{ icon: "github", label: "GitHub", href: REPO }], editLink: { baseUrl: `${REPO}/edit/main/apps/docs/` } }
+        : {}),
       // Starlight sets the title, description, canonical, og:url and twitter:card per page; the share image is the
       // playground's card (apps/playground/public/og.png), so links to the docs preview like links to the playground.
       head: [
