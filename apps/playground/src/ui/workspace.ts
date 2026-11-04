@@ -6,7 +6,7 @@ import { EMBEDDED } from "../theme";
 const AUTOSAVE_KEY = "runbun:autosave";
 const WATCH_KEY = "runbun:watch";
 
-/** A look at a project's files without opening it: its name, its files, and the one to show (its entry). */
+/** A look at a project's files without opening it: its name, its files, and the one to show (its entry, else its first file). */
 export type Peek = { title: string; files: Map<string, string>; path: string };
 
 /**

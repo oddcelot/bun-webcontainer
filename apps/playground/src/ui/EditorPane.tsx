@@ -1,4 +1,4 @@
-import { For, Show, createEffect, onSettled, useContext } from "solid-js";
+import { Show, createEffect, onSettled, useContext } from "solid-js";
 import { CHECKED, mountDiagnostics } from "../diagnostics";
 import { createPierre } from "../editors/pierre";
 import { chordKeys, keysFor, matches } from "../keymap";
@@ -246,10 +246,10 @@ export function EditorPane() {
   );
 }
 
-/** An example's entry file, highlighted and read-only, with the rest of its files named above it. */
+/** An example's entry file, highlighted and read-only (the file tree shows the rest of its files). */
 function PeekView(props: { peek: Peek }) {
   let el!: HTMLDivElement;
-  const shown = () => (props.peek.files.has(props.peek.path) ? props.peek.path : [...props.peek.files.keys()][0]);
+  const shown = () => props.peek.path;
   onSettled(() => {
     const view = createPierre(el, { readOnly: () => true });
     view.open(shown(), props.peek.files.get(shown()) ?? "", () => {});
@@ -261,9 +261,7 @@ function PeekView(props: { peek: Peek }) {
         <span class="title">
           <i class="i-lucide-eye" aria-hidden="true" /> {props.peek.title}: pick it to load and run
         </span>
-        <ul class="files" aria-label="Files">
-          <For each={[...props.peek.files.keys()].sort()}>{(path) => <li data-shown={path === shown() ? "" : undefined}>{path}</li>}</For>
-        </ul>
+        <span class="path">{shown()}</span>
       </div>
       <div class="peek-code" ref={el} />
     </div>

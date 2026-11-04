@@ -190,6 +190,13 @@ main { position: relative; flex: 1; min-height: 0; padding: 0 4px 4px; }
 [data-kb-resizable-panel]:not(#right) { border: 4px solid transparent; border-radius: calc(var(--radius) + 4px); background: var(--bg) padding-box; }
 main [data-kb-resizable-root] { height: 100%; }
 #tree { position: relative; height: 100%; }
+/* A peeked example's files (FileTree.tsx), over the project's and its New file button. */
+.peek-tree {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  background: var(--bg);
+}
 /* New file: at the end of the tree's search row (FileTree.tsx leaves the room), the same size and corner as the box. */
 #newfile { position: absolute; top: calc(var(--pad) + 1px); right: var(--pad); display: grid; place-items: center; width: var(--control-height); height: var(--control-height); padding: 0; border: 1px solid var(--control-border); border-radius: var(--inner-radius); background: var(--control); color: inherit; cursor: pointer; }
 #newfile:hover { background: var(--control-hover); }
@@ -319,9 +326,8 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
 
   .peek-head {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
-    gap: 6px 12px;
+    gap: 12px;
     padding: 6px var(--pad);
     border-bottom: 1px solid var(--border);
     background: var(--panel);
@@ -335,27 +341,11 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
     color: var(--fg);
   }
 
-  .files {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    margin: 0;
-    padding: 0;
-    list-style: none;
+  .path {
+    margin-left: auto;
     color: var(--muted);
     font-family: var(--font-mono);
     font-size: 11px;
-
-    > li {
-      padding: 1px 6px;
-      border-radius: var(--inner-radius);
-      background: var(--control);
-
-      &[data-shown] {
-        color: var(--fg);
-        box-shadow: inset 0 0 0 1px var(--accent);
-      }
-    }
   }
 
   .peek-code {

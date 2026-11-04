@@ -84,7 +84,8 @@ function Picker(props: { groups: Group[]; current: (list: Group[]) => Project | 
     peekTimer = setTimeout(async () => {
       const files = await exampleFiles(name);
       if (ask !== peeking || !files) return;
-      app.workspace.setPeek({ title: p.label, files, path: entryOf((f) => files.has(f), (f) => files.get(f)) });
+      const entry = entryOf((f) => files.has(f), (f) => files.get(f));
+      app.workspace.setPeek({ title: p.label, files, path: files.has(entry) ? entry : [...files.keys()][0] });
     }, PEEK_DELAY);
   }
 
