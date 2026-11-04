@@ -265,34 +265,51 @@ export const BLOCK_CSS = `
   border-radius: var(--runbun-code-radius, 8px);
   color: var(--hls-foreground);
   background: var(--hls-background);
+  /* The tabs as the live preview's after Run (@runbun/ui css/tabs.css .tab, apps/playground style.css #preview-tabs):
+     a bar padded 6px with 4px between tabs, each tab a rounded box padded 4px 10px, muted until hovered, the open one
+     raised with a 2px line under it inset 7px, and a 1px ring when focused. --runbun-accent colors the line and the
+     ring (default: the text color). */
   & > .runbun-requests-tablist {
     grid-area: 1 / 1;
     display: flex;
+    gap: 4px;
+    padding: var(--runbun-tabs-pad, 6px);
     overflow-x: auto;
     overflow-y: hidden;
     box-shadow: inset 0 -1px var(--runbun-code-border, color-mix(in srgb, currentColor 15%, transparent));
-    font-family: var(--runbun-code-font, ui-monospace, monospace);
+    font-family: var(--runbun-ui-font, system-ui, sans-serif);
     font-size: var(--runbun-code-caption-size, 0.75rem);
     & label {
       position: relative;
       display: flex;
       align-items: center;
-      gap: 0.375rem;
-      padding: 0.5rem 1rem;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: var(--runbun-tab-radius, 6px);
       white-space: nowrap;
       cursor: pointer;
-      opacity: 0.65;
-      border-bottom: 2px solid transparent;
+      color: color-mix(in srgb, var(--hls-foreground) 65%, transparent);
       &:hover {
-        opacity: 0.9;
+        color: var(--hls-foreground);
+        background: color-mix(in srgb, var(--hls-foreground) 9%, transparent);
       }
       &:has(input:checked) {
-        opacity: 1;
-        border-bottom-color: currentColor;
+        color: var(--hls-foreground);
+        background: color-mix(in srgb, var(--hls-foreground) 16%, transparent);
+        &::after {
+          content: "";
+          position: absolute;
+          right: 7px;
+          bottom: 0;
+          left: 7px;
+          height: 2px;
+          border-radius: 1px 1px 0 0;
+          background: var(--runbun-accent, currentColor);
+        }
       }
       &:has(input:focus-visible) {
-        outline: 2px solid currentColor;
-        outline-offset: -2px;
+        outline: 1px solid var(--runbun-accent, currentColor);
+        outline-offset: -1px;
       }
     }
     & input {
@@ -301,17 +318,43 @@ export const BLOCK_CSS = `
       pointer-events: none;
     }
   }
-  & .runbun-method {
-    padding: 0.0625rem 0.3rem;
-    border-radius: 4px;
-    font-size: 0.85em;
-    font-weight: 600;
-    color: var(--runbun-method-fg, var(--hls-background));
-    background: var(--runbun-method-bg, var(--hls-keyword, currentColor));
+  & .runbun-path {
+    font-family: var(--runbun-code-font, ui-monospace, monospace);
   }
+  /* The method as the playground's badge (apps/playground style.css .method-badge): its color at 72% over the text on
+     15% of it. The colors are the playground's per method, each a --runbun-method-<get|post|put|patch|delete>;
+     --runbun-method-fg and --runbun-method-bg replace the mixes outright. */
+  & .runbun-method {
+    --runbun-method: color-mix(in srgb, var(--hls-foreground) 55%, transparent);
+    padding: 0 4px;
+    border-radius: 4px;
+    font: 500 10px/14px var(--runbun-ui-font, system-ui, sans-serif);
+    letter-spacing: 0.02em;
+    color: var(--runbun-method-fg, color-mix(in oklab, var(--runbun-method) 72%, var(--hls-foreground)));
+    background: var(--runbun-method-bg, color-mix(in oklab, var(--runbun-method) 15%, transparent));
+    &[data-method="GET"] {
+      --runbun-method: var(--runbun-method-get, #26c9a0);
+    }
+    &[data-method="POST"] {
+      --runbun-method: var(--runbun-method-post, #4ba3f2);
+    }
+    &[data-method="PUT"] {
+      --runbun-method: var(--runbun-method-put, #dc6ee0);
+    }
+    &[data-method="PATCH"] {
+      --runbun-method: var(--runbun-method-patch, #9b86f2);
+    }
+    &[data-method="DELETE"] {
+      --runbun-method: var(--runbun-method-delete, #ec6490);
+    }
+  }
+  /* Each panel keeps the poster's Run button clear of its text: the button sits over the poster's bottom-right corner
+     (packages/embed element.ts .play: 12px from the edge, 6px padding, a 1px border, a line of the page's font), so
+     the panel ends in that much room. --runbun-requests-run-room sets it (0 where there's no Run button). */
   & > .runbun-request {
     grid-area: 2 / 1;
     min-width: 0;
+    padding-bottom: var(--runbun-requests-run-room, calc(12px + 2 * 6px + 2 * 1px + 1.2em));
     visibility: hidden;
   }
   & pre {
