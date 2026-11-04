@@ -70,7 +70,7 @@ function ShortcutsForm() {
   }
   /**
    * The other commands bound to one of `command`'s keys, in the same scope: a scoped command's keys go first where it
-   * works (Send over Run in the preview), so it doesn't clash with a global one.
+   * works, so it doesn't clash with a global one (keymap.ts scopeOf).
    */
   const clashes = (command: Command) => {
     const o = draft();

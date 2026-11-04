@@ -27,7 +27,6 @@ Not yet: renaming or deleting files from the tree. Very large files are slow, be
 |---|---|
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Enter</kbd> | Run |
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>Enter</kbd> | Send the preview's request, from anywhere |
-| <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Enter</kbd>, with focus in the preview | Send the request instead of Run (the request bar, the request panel, the body or a response; a page in the preview keeps it as Run) |
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>.</kbd> | Stop the server |
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>S</kbd> | Save the file |
 | <kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd> | Format the file with `bun fmt` (`format`) |
@@ -41,7 +40,7 @@ Not yet: renaming or deleting files from the tree. Very large files are slow, be
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>K</kbd> | Show or hide the preview |
 | <kbd>Esc</kbd> | Leave the expanded preview |
 
-They work in the preview page too. To change them, open the keyboard button in the header, click the pencil next to a command and press the new keys (<kbd>Esc</kbd> cancels, **Remove** unbinds it). Changed commands are marked **custom** with a button to reset them, a key bound to two commands is flagged on both (Send isn't flagged against the others: in the preview it goes first), and **Save** keeps the changes. Keys the browser keeps for itself (<kbd>Cmd</kbd>+<kbd>W</kbd>, <kbd>Ctrl</kbd>+<kbd>T</kbd>) can't be recorded. Under **Edit as JSON** the same overrides can be written by hand: a command name to a chord, a list of chords, or `null` to turn it off, e.g. `{ "run": ["Mod+Enter", "Alt+R"], "togglePreview": null }`. `Mod` is <kbd>Cmd</kbd> on macOS and <kbd>Ctrl</kbd> elsewhere; the other modifiers are `Ctrl`, `Alt`, `Shift` and `Meta`, and the space bar is `Space`. Overrides are kept in this browser for every project, and open playground tabs pick up changes right away.
+They work in the preview page too. To change them, open the keyboard button in the header, click the pencil next to a command and press the new keys (<kbd>Esc</kbd> cancels, **Remove** unbinds it). Changed commands are marked **custom** with a button to reset them, a key bound to two commands is flagged on both, and **Save** keeps the changes. Keys the browser keeps for itself (<kbd>Cmd</kbd>+<kbd>W</kbd>, <kbd>Ctrl</kbd>+<kbd>T</kbd>) can't be recorded. Under **Edit as JSON** the same overrides can be written by hand: a command name to a chord, a list of chords, or `null` to turn it off, e.g. `{ "run": ["Mod+Enter", "Alt+R"], "togglePreview": null }`. `Mod` is <kbd>Cmd</kbd> on macOS and <kbd>Ctrl</kbd> elsewhere; the other modifiers are `Ctrl`, `Alt`, `Shift` and `Meta`, and the space bar is `Space`. Overrides are kept in this browser for every project, and open playground tabs pick up changes right away.
 
 ## Console
 

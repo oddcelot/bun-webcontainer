@@ -27,9 +27,6 @@ function MethodBadge(props: { method: string }) {
   );
 }
 
-/** Whether a key event comes from inside the preview (the request bar, the panel, a response; not a page's frame). */
-export const inPreview = (e: Event) => e.target instanceof Node && !!document.getElementById("preview-wrap")?.contains(e.target);
-
 /**
  * Keys pressed in a page stay in its frame, so a frame hands its key presses to the playground's window as well, for
  * the shortcuts there. A shortcut that's handled there doesn't also reach the page.
@@ -74,20 +71,14 @@ export function Preview() {
     if (s.expanded && matches("exitFullscreen", e)) p.setExpanded(false);
   };
   /**
-   * Send: its own keys anywhere (window, on the way down, so an editor doesn't take them first), and with focus in the
-   * preview (the request bar, the panel, the body's editor, a response) Run's keys too, by default (sendInPreview;
-   * App.tsx leaves them to it there). A page in a frame keeps its keys: forwardKeys hands them to window, outside.
+   * Send's keys, anywhere: on window, on the way down and stopped there, so an editor doesn't take them first (as
+   * App.tsx does with its shortcuts). Not while the shortcuts dialog records keys.
    */
-  const send = (e: KeyboardEvent) => {
+  const onGlobalSendKey = (e: KeyboardEvent) => {
+    if (disabled || recordingKeys() || !matches("send", e)) return;
     e.preventDefault();
     e.stopPropagation();
     p.request(s.active);
-  };
-  const onSendKey = (e: KeyboardEvent) => {
-    if (!disabled && !recordingKeys() && matches("sendInPreview", e)) send(e);
-  };
-  const onGlobalSendKey = (e: KeyboardEvent) => {
-    if (!disabled && !recordingKeys() && matches("send", e)) send(e);
   };
   onSettled(() => {
     addEventListener("keydown", onGlobalSendKey, { capture: true });
@@ -107,7 +98,7 @@ export function Preview() {
   return (
     <>
       <div id="preview-backdrop" hidden={!s.expanded} onClick={() => p.setExpanded(false)} />
-      <div id="preview-wrap" class={{ expanded: s.expanded }} ref={(el) => el.addEventListener("keydown", onSendKey, true)}>
+      <div id="preview-wrap" class={{ expanded: s.expanded }}>
         <div id="preview-tabs" class="tabs">
           <TabList class="tablist" label="Previews" onSelect={(id) => Number(id) !== s.active && p.activate(Number(id))}>
             <For each={s.tabs}>{(tab) => <PreviewTabItem tab={tab} />}</For>
@@ -164,7 +155,7 @@ export function Preview() {
             id="req-send"
             disabled={disabled}
             tip={disabled ? CANT_RUN : "Send the request"}
-            keys={disabled ? undefined : [...keysFor("sendInPreview"), ...keysFor("send")].map(chordKeys)}
+            keys={disabled ? undefined : keysFor("send").map(chordKeys)}
             aria-label="Send the request"
           >
             <i class="i-lucide-send" aria-hidden="true" />
