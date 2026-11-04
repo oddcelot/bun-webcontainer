@@ -223,6 +223,52 @@ main [data-kb-resizable-root] { height: 100%; }
 /* Frames under the pointer would swallow the drag's pointer events. */
 body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
 #editor-pane { height: 100%; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+/* The code, and Format over its top right corner: shown while the pointer is over the code, or it has focus. */
+.code-area {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+
+  > .format {
+    position: absolute;
+    top: 8px;
+    right: 16px;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border: 1px solid var(--control-border);
+    border-radius: var(--inner-radius);
+    background: var(--panel);
+    color: var(--muted);
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.12s;
+
+    &:hover,
+    &:focus-visible {
+      color: var(--fg);
+      background: var(--control);
+      outline: none;
+    }
+  }
+
+  &:hover > .format,
+  > .format:focus-visible {
+    opacity: 1;
+  }
+
+  @media (hover: none) {
+    > .format {
+      opacity: 1;
+    }
+  }
+}
 #editor { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 /* Over the editor surface, not above it: the surface stays put when a file opens. */
 #editor[data-empty]::before { content: "No file open"; position: absolute; inset: 0; z-index: 1; display: grid; place-items: center; background: var(--bg); color: var(--muted); }
@@ -231,10 +277,6 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
 .tabs-bar .tabs { flex: 1 1 auto; min-width: 0; border-bottom: 0; }
 .tabs-bar .autosave { display: flex; flex: 0 0 auto; align-items: center; gap: 4px; margin: 0 var(--pad) 0 auto; padding: 3px 8px; border: 1px solid transparent; border-radius: var(--inner-radius); background: none; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
 .tabs-bar .autosave:hover, .tabs-bar .autosave:focus-visible { color: var(--fg); background: var(--control); outline: none; }
-.tabs-bar .format { display: flex; flex: 0 0 auto; align-items: center; gap: 4px; margin: 0 0 0 auto; padding: 3px 8px; border: 1px solid transparent; border-radius: var(--inner-radius); background: none; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
-.tabs-bar .format:hover:not(:disabled), .tabs-bar .format:focus-visible { color: var(--fg); background: var(--control); outline: none; }
-.tabs-bar .format:disabled { opacity: 0.5; cursor: default; }
-.tabs-bar .format + .autosave { margin-left: 4px; }
 .tabs-bar .autosave[aria-pressed="false"] { color: var(--fg); border-color: var(--control-border); }
 .tabs .tab .unsaved { color: var(--accent); font-size: 10px; line-height: 1; }
 /* The folder hint gives way before the name does. */

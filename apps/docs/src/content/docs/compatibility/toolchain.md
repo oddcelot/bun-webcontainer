@@ -56,7 +56,7 @@ example's `node_modules`), later ones a few milliseconds.
 
 Bun's own formatter, compiled to WebAssembly. It formats like Prettier, and its output matches `bun fmt` byte for byte:
 each file goes through `bun fmt --stdin-filepath`, Bun's own code, with the project's files. It loads the first time you
-format (~2.3 MB compressed). Use **Format** in the tab bar or <kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd> for the open
+format (~2.3 MB compressed). Use **Format** (top right of the code, on hover) or <kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd> for the open
 file, or `bun fmt` in the console.
 
 - ✅ JavaScript, TypeScript, JSX, JSON, CSS, SCSS, Less, HTML, Markdown, MDX, YAML, TOML, GraphQL, Handlebars and Svelte

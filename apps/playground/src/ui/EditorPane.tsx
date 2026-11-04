@@ -204,16 +204,11 @@ export function EditorPane() {
 
   return (
     <>
-      {/* An embed shows the tabs bar only with its tabs or its Auto-save toggle (`autosave`); without tabs, Format is in the embed's menu. */}
+      {/* An embed shows the tabs bar only with its tabs or its Auto-save toggle (`autosave`). */}
       <Show when={has("tabs") || app.features?.has("autosave")}>
         <div class="tabs-bar">
           <Show when={has("tabs")}>
             <EditorTabs />
-          </Show>
-          <Show when={has("tabs") && has("format")}>
-            <Tip class="format" type="button" disabled={!ws.state.active} tip="Format the open file with bun fmt" keys={keysFor("format").map(chordKeys)} onClick={() => void formatOpenFile()}>
-              <i class="i-lucide-wand-sparkles" aria-hidden="true" /> Format
-            </Tip>
           </Show>
           {/* The full playground's Auto-save and Watch are in the header. */}
           <Show when={app.features?.has("autosave")}>
@@ -232,7 +227,15 @@ export function EditorPane() {
         </div>
       </Show>
       {/* "No file open" only once the project has loaded, not while its first file is on the way. */}
-      <div id="editor" ref={el} data-empty={app.session.ready() && !ws.state.active ? "" : undefined} />
+      <div class="code-area">
+        <div id="editor" ref={el} data-empty={app.session.ready() && !ws.state.active ? "" : undefined} />
+        {/* Over the code's top right corner, shown while the pointer is over the code (always on touch screens). */}
+        <Show when={has("format") && ws.state.active}>
+          <Tip class="format" type="button" tip="Format the open file with bun fmt" keys={keysFor("format").map(chordKeys)} onClick={() => void formatOpenFile()}>
+            <i class="i-lucide-wand-sparkles" aria-hidden="true" /> Format
+          </Tip>
+        </Show>
+      </div>
     </>
   );
 }
