@@ -736,7 +736,10 @@ body:has(#req-handle[data-dragging]) * {
 .preview-frame[hidden], .preview-response[hidden], #req-handle[hidden] { display: none; }
 /* The response card's metrics, and from them the least room it keeps under a request body (--response-reserve: its
    padding, the status line's pill, the headers line and a body box of three lines; ui/Preview.tsx and embed/main.ts
-   read it through preview.ts responseReserve). Registered as a length, so it reads back in px. */
+   read it through preview.ts responseReserve). Registered as a length, so it reads back in px. The body box is the
+   taller of a plain one (the card's lines) and a highlighted one: JSON is drawn by @pierre/diffs' viewer, whose lines
+   and code padding are its --diffs-line-height and --diffs-gap-block (defaults 20px and 8px, @pierre/diffs
+   dist/style.js), read here with the same defaults, so the two stay in step. */
 @property --response-reserve { syntax: "<length>"; inherits: false; initial-value: 0px; }
 .preview-response {
   --card-pad: 10px;
@@ -744,7 +747,11 @@ body:has(#req-handle[data-dragging]) * {
   --pill-pad: 1px;
   --box-pad: 10px;
   --box-border: 1px;
-  --response-reserve: calc(2 * var(--card-pad) + 1lh + 2 * var(--pill-pad) + var(--card-gap) + 1lh + var(--card-gap) + 3lh + 2 * var(--box-pad) + 2 * var(--box-border));
+  --json-pad: 6px;
+  --response-reserve: calc(
+    2 * var(--card-pad) + 1lh + 2 * var(--pill-pad) + var(--card-gap) + 1lh + var(--card-gap) + 2 * var(--box-border) +
+      max(3lh + 2 * var(--box-pad), 3 * var(--diffs-line-height, 20px) + 2 * var(--diffs-gap-block, 8px) + 2 * var(--json-pad))
+  );
   flex: 1;
   overflow: auto;
   display: flex;
@@ -770,7 +777,7 @@ body:has(#req-handle[data-dragging]) * {
 .preview-response .headers { color: var(--muted); }
 .preview-response .body { padding: var(--box-pad) 12px; border: var(--box-border) solid var(--border); border-radius: 6px; background: var(--panel); }
 /* A highlighted body (editors/pierre.ts createViewer): on the editor's background, which the viewer paints. */
-.preview-response .body.highlighted { padding: 6px 0; background: var(--bg); }
+.preview-response .body.highlighted { padding: var(--json-pad) 0; background: var(--bg); }
 .preview-response.error .status { color: var(--error); background: color-mix(in srgb, var(--error) 14%, var(--panel)); }
 .preview-response.error .body { color: var(--error); border-color: color-mix(in srgb, var(--error) 45%, var(--panel)); background: color-mix(in srgb, var(--error) 8%, var(--panel)); }
 #preview-tabs .method-badge { flex-shrink: 0; padding: 0 4px; font-size: 10px; line-height: 14px; }
