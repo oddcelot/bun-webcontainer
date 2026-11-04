@@ -8,6 +8,7 @@ import { pref } from "./prefs";
 
 export const COMMANDS = {
   run: { label: "Run", keys: ["Mod+Enter"] },
+  send: { label: "Send the preview's request", keys: ["Mod+Shift+Enter"] },
   stop: { label: "Stop the server", keys: ["Mod+."] },
   save: { label: "Save the file", keys: ["Mod+S"] },
   format: { label: "Format the file (bun fmt)", keys: ["Shift+Alt+F"] },
@@ -21,7 +22,24 @@ export const COMMANDS = {
   toggleConsole: { label: "Show or hide the console", keys: ["Mod+J"] },
   togglePreview: { label: "Show or hide the preview", keys: ["Mod+K"] },
   exitFullscreen: { label: "Leave the expanded preview", keys: ["Escape"] },
-} satisfies Record<string, { label: string; keys: string[] }>;
+} satisfies Record<string, { label: string; keys: string[]; scope?: Scope }>;
+
+/**
+ * Whether the shortcuts dialog is recording keys: the shortcuts handled on the way down (App.tsx, ui/Preview.tsx)
+ * leave the keys to it then. Its own listener comes later, on the same capture phase.
+ */
+let recording = false;
+export const recordingKeys = () => recording;
+export const setRecordingKeys = (on: boolean) => void (recording = on);
+
+/**
+ * Where a command's keys work, when not everywhere (`scope` in COMMANDS): there they go before the global commands'
+ * keys, so the shortcuts dialog doesn't flag them against those. None is scoped yet; "preview" would be focus in the
+ * preview (its request bar, panel and responses).
+ */
+export type Scope = "preview";
+/** A command's scope, or undefined for everywhere. */
+export const scopeOf = (command: Command): string | undefined => (COMMANDS[command] as { scope?: string }).scope;
 
 export type Command = keyof typeof COMMANDS;
 export type Overrides = Partial<Record<Command, string | string[] | null>>;

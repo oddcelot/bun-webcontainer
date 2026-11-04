@@ -303,7 +303,7 @@ function wantedHeight() {
   const path = workspace.state.active;
   if (stacked && embed.has("preview")) {
     const tab = pg.previews.state.tabs.find((t) => t.id === pg.previews.state.active);
-    void [tab?.view, tab?.response, tab?.method];
+    void [tab?.view, tab?.response, tab?.method, tab?.panel, tab?.section];
   }
   const below = embed.has("console") && !embed.has("preview") && embed.mode() === "code";
   const measured = measuredHeight(stacked, below);
@@ -378,7 +378,7 @@ function previewHeight(): number {
   const panel = document.getElementById("preview-panel");
   const views = document.getElementById("preview-views");
   const body = document.getElementById("req-body");
-  const shown = !!body && !document.getElementById("req-body-panel")?.hidden && !!body.dataset.fit;
+  const shown = !!body && !body.hidden && !document.getElementById("req-panel")?.hidden && !!body.dataset.fit;
   const response = views?.querySelector<HTMLElement>(".preview-response:not([hidden])");
   const kids = response ? [...response.children] : [];
   // A card's content changed: measure again (once per frame).

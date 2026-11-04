@@ -38,7 +38,7 @@ export function createPlayground({ watch }: { watch?: () => boolean } = {}) {
   });
   const [session, workspace, previews] = createRoot(() => {
     const session = createSession(canRun);
-    return [session, createWorkspace(), createPreviews(() => session.settled().state === "running")] as const;
+    return [session, createWorkspace(), createPreviews(() => session.settled().state === "running", (path) => vfs.readBytes(path))] as const;
   });
   const vfs = new VFS();
   let runner: Runner | undefined;

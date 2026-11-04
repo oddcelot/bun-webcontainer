@@ -1,6 +1,19 @@
 import { createStore, flush, reconcile } from "solid-js";
 import type { PresetRequest } from "../embed/requests";
 import { PREFIX, cardFromFrame, normalize, sendRequest, type Card } from "../preview";
+import { build, fromHttp, modeOf, noAuth, paramRows, queryOf, sent, splitParams, withQuery, type Auth, type BodyMode, type Field, type OffParam } from "../request";
+
+/** The request panel's sections (ui/Preview.tsx): the path's query, the headers, Auth and the body. */
+export type Section = "params" | "headers" | "auth" | "body";
+
+/** The request panel's row lists, by name. */
+export type Rows = "headers" | "form" | "multipart";
+
+/** What a tab would send, as a string: a response sent from another one is out of date (ui/Preview.tsx). */
+export const draftKey = (t: PreviewTab) => JSON.stringify([t.method, t.path, t.body, t.bodyMode, t.form, t.multipart, t.headers, t.auth]);
+
+/** Whether a request with `method` carries a body (the panel's Body section). */
+export const hasBody = (method: string) => method !== "GET" && method !== "HEAD";
 
 /** One preview tab: its own request, and the page (kept loaded while hidden) or response it shows. */
 export type PreviewTab = {
@@ -8,6 +21,21 @@ export type PreviewTab = {
   method: string;
   path: string;
   body: string;
+  /** How the body is sent; the editor's text is `body`, a form's rows `form` or `multipart`. */
+  bodyMode: BodyMode;
+  form: Field[];
+  multipart: Field[];
+  /** Query parameters turned off (the ones turned on live in `path`). */
+  offParams: OffParam[];
+  /** Headers sent with the request (the ones turned on); the query lives in `path`. */
+  headers: Field[];
+  auth: Auth;
+  /** Whether the request panel shows, which of its sections, and whether as Raw text (all of them, as `.http`). */
+  panel: boolean;
+  section: Section;
+  raw: boolean;
+  /** draftKey of the request `response` answers. */
+  sentKey: string;
   view: "frame" | "response";
   /** The page's <title>, once one loaded. */
   title: string;
@@ -21,12 +49,22 @@ export type PreviewTab = {
  * themselves in `frames` so requests can navigate them. `running` says whether the server is up, for preset tabs
  * opened after Run.
  */
-export function createPreviews(running: () => boolean = () => false) {
+export function createPreviews(running: () => boolean = () => false, read: (path: string) => Uint8Array | undefined = () => undefined) {
   const blank = (id: number, path: string, method = "GET", body = "", pending = false): PreviewTab => ({
     id,
     method,
     path,
     body,
+    bodyMode: modeOf(body),
+    form: [],
+    multipart: [],
+    offParams: [],
+    headers: [],
+    auth: noAuth(),
+    panel: hasBody(method),
+    section: hasBody(method) ? "body" : "params",
+    raw: false,
+    sentKey: "",
     view: "frame",
     title: "",
     response: null,
@@ -40,6 +78,13 @@ export function createPreviews(running: () => boolean = () => false) {
   let lastId = 1;
   const frames = new Map<number, HTMLIFrameElement>();
   const [state, setState] = createStore({ tabs: [blank(1, "/")], active: 1, expanded: false });
+  /** `rows` as the tab's path and its params turned off, the latter merged into the list there is (no fresh rows). */
+  const setParams = (t: PreviewTab, rows: Field[]) => {
+    const r = splitParams(t.path, rows);
+    t.path = r.path;
+    r.off.forEach((o, i) => (t.offParams[i] ? Object.assign(t.offParams[i]!, o) : t.offParams.push(o)));
+    t.offParams.splice(r.off.length);
+  };
   const update = (id: number, fn: (tab: PreviewTab) => void) =>
     setState((s) => {
       const tab = s.tabs.find((t) => t.id === id);
@@ -75,10 +120,94 @@ export function createPreviews(running: () => boolean = () => false) {
       });
       sendIfPending(id);
     },
-    /** The request bar's fields write straight into the active tab. */
+    /**
+     * The request bar's fields write straight into the active tab. A method that takes a body opens the panel on it;
+     * one that doesn't moves off Body, and closes the panel when it has nothing else to show.
+     */
     edit(id: number, field: "method" | "path" | "body", value: string) {
       update(id, (t) => {
+        const had = hasBody(t.method);
         t[field] = value;
+        if (field !== "method" || had === hasBody(value)) return;
+        if (!had) {
+          t.panel = true;
+          t.section = "body";
+        } else if (t.section === "body") {
+          t.section = "params";
+          t.panel = queryOf(t.path).length > 0 || sent(t.headers).length > 0 || t.auth.type !== "none";
+        }
+      });
+    },
+    /** Shows the request panel, on `section` (as fields, not Raw); with no section, shows or hides it. */
+    panel(id: number, section?: Section) {
+      update(id, (t) => {
+        if (section) {
+          t.section = section;
+          t.raw = false;
+        }
+        t.panel = section ? true : !t.panel;
+      });
+    },
+    /** Shows the request as Raw text, or back as the section's fields. */
+    toggleRaw(id: number) {
+      update(id, (t) => {
+        t.raw = !t.raw;
+        t.panel = true;
+      });
+    },
+    /**
+     * Params row `i` changed (one past the last: a new one, turned on); the path's query is written again from the
+     * rows turned on, and the ones turned off are kept aside (request.ts paramRows, splitParams).
+     */
+    param(id: number, i: number, change: Partial<Field>) {
+      update(id, (t) => {
+        const rows = paramRows(t.path, t.offParams);
+        rows[i] = { ...(rows[i] ?? { name: "", value: "", on: true }), ...change };
+        setParams(t, rows);
+      });
+    },
+    removeParam(id: number, i: number) {
+      update(id, (t) => {
+        setParams(
+          t,
+          paramRows(t.path, t.offParams).filter((_, j) => j !== i),
+        );
+      });
+    },
+    /** Row `i` of a list changed (one past the last: a new one, turned on). */
+    row(id: number, list: Rows, i: number, change: Partial<Field>) {
+      update(id, (t) => {
+        if (i >= t[list].length) t[list].push({ name: "", value: "", on: true, ...change });
+        else Object.assign(t[list][i]!, change);
+      });
+    },
+    removeRow(id: number, list: Rows, i: number) {
+      update(id, (t) => {
+        t[list].splice(i, 1);
+      });
+    },
+    /** The Raw view edited: the request as `.http` text (request.ts fromHttp) sets what it holds. */
+    raw(id: number, text: string) {
+      update(id, (t) => {
+        const r = fromHttp(text, t);
+        if (r.method) t.method = r.method;
+        if (r.path !== undefined) t.path = r.path;
+        // Into the rows there are, so a row that didn't change isn't replaced (reconcile leaves holes when the list
+        // shrinks).
+        r.headers.forEach((h, i) => (t.headers[i] ? Object.assign(t.headers[i]!, h) : t.headers.push(h)));
+        t.headers.splice(r.headers.length);
+        if (r.body !== undefined) t.body = r.body;
+        if (r.bodyMode) t.bodyMode = r.bodyMode;
+      });
+    },
+    bodyMode(id: number, mode: BodyMode) {
+      update(id, (t) => {
+        t.bodyMode = mode;
+      });
+    },
+    auth(id: number, change: Partial<Auth>) {
+      update(id, (t) => {
+        Object.assign(t.auth, change);
       });
     },
     setExpanded(on: boolean) {
@@ -96,10 +225,13 @@ export function createPreviews(running: () => boolean = () => false) {
           t.pending = false;
         });
       const m = method ?? tab.method;
-      const path = normalize(tab.path.trim() || "/");
+      const key = draftKey(tab);
+      let path = normalize(tab.path.trim() || "/");
       let result: "page" | Card;
       try {
-        result = await sendRequest(m, path, tab.body);
+        const req = build({ ...tab, method: m, path }, read);
+        path = req.path;
+        result = await sendRequest(m, req);
       } catch (err) {
         result = { ok: false, line: `${m} ${tab.path}`, status: "", head: "", type: "", text: String(err) };
       }
@@ -115,6 +247,7 @@ export function createPreviews(running: () => boolean = () => false) {
           if (t.response) reconcile(card)(t.response);
           else t.response = card;
           t.view = "response";
+          t.sentKey = key;
         });
       }
     },
@@ -134,6 +267,8 @@ export function createPreviews(running: () => boolean = () => false) {
         if (t.response) reconcile(card)(t.response);
         else t.response = card;
         t.view = "response";
+        // The page's own navigation answered it: what the tab holds now is what was sent.
+        t.sentKey = draftKey(t);
       });
     },
     /** Where the first tab requests before anything has been sent: the embed's `path` option. */
@@ -150,7 +285,7 @@ export function createPreviews(running: () => boolean = () => false) {
       if (!list.length) return;
       lastId = list.length;
       setState((s) => {
-        s.tabs = list.map((r, i) => blank(i + 1, normalize(r.path), r.method, r.body, true));
+        s.tabs = list.map((r, i) => ({ ...blank(i + 1, normalize(r.path), r.method, r.body, true), headers: (r.headers ?? []).map(([name, value]) => ({ name, value, on: true })) }));
         s.active = 1;
       });
     },

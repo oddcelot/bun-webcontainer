@@ -15,11 +15,32 @@ body { display: flex; flex-direction: column; }
 header { display: flex; gap: 8px; align-items: center; padding: 6px 10px 4px; }
 header button:not(.select-trigger), #docs, #clear, #request button { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 /* By id: the share menu is in the header too, and its items mustn't take this height. */
-#example, #run, #run-more, #docs, #share, #shortcuts, #theme { height: var(--control-height); }
+#example, #run, #run-more, #autosave, #watch, #docs, #share, #shortcuts, #theme { height: var(--control-height); }
 /* Run and its menu (bun install): one control split in two. */
 #run-group { display: inline-flex; }
 #run { border-radius: 6px 0 0 6px; }
 #run-more { display: grid; place-items: center; margin-left: -1px; padding: 0 6px; border-radius: 0 6px 6px 0; }
+/* Auto-save and Watch: two icon toggles joined like Run's pair; off reads muted. */
+#save-group {
+  display: inline-flex;
+
+  > button {
+    padding: 0 8px;
+
+    &[aria-pressed="false"] {
+      color: var(--muted);
+    }
+  }
+
+  > #autosave {
+    border-radius: 6px 0 0 6px;
+  }
+
+  > #watch {
+    margin-left: -1px;
+    border-radius: 0 6px 6px 0;
+  }
+}
 /* Select triggers (@runbun/ui) style themselves; these rules would override them, since the library's CSS is in a lower layer. */
 header button:not(.select-trigger), #docs, #clear { background: var(--control); color: inherit; border: 1px solid var(--control-border); border-radius: 6px; padding: 0 10px; cursor: pointer; }
 header button:not(.select-trigger):hover, #docs:hover { background: var(--control-hover); }
@@ -202,6 +223,52 @@ main [data-kb-resizable-root] { height: 100%; }
 /* Frames under the pointer would swallow the drag's pointer events. */
 body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
 #editor-pane { height: 100%; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+/* The code, and Format over its top right corner: shown while the pointer is over the code, or it has focus. */
+.code-area {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+
+  > .format {
+    position: absolute;
+    top: 8px;
+    right: 16px;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border: 1px solid var(--control-border);
+    border-radius: var(--inner-radius);
+    background: var(--panel);
+    color: var(--muted);
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.12s;
+
+    &:hover,
+    &:focus-visible {
+      color: var(--fg);
+      background: var(--control);
+      outline: none;
+    }
+  }
+
+  &:hover > .format,
+  > .format:focus-visible {
+    opacity: 1;
+  }
+
+  @media (hover: none) {
+    > .format {
+      opacity: 1;
+    }
+  }
+}
 #editor { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 /* Over the editor surface, not above it: the surface stays put when a file opens. */
 #editor[data-empty]::before { content: "No file open"; position: absolute; inset: 0; z-index: 1; display: grid; place-items: center; background: var(--bg); color: var(--muted); }
@@ -210,18 +277,6 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
 .tabs-bar .tabs { flex: 1 1 auto; min-width: 0; border-bottom: 0; }
 .tabs-bar .autosave { display: flex; flex: 0 0 auto; align-items: center; gap: 4px; margin: 0 var(--pad) 0 auto; padding: 3px 8px; border: 1px solid transparent; border-radius: var(--inner-radius); background: none; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
 .tabs-bar .autosave:hover, .tabs-bar .autosave:focus-visible { color: var(--fg); background: var(--control); outline: none; }
-.tabs-bar .format { display: flex; flex: 0 0 auto; align-items: center; gap: 4px; margin: 0 0 0 auto; padding: 3px 8px; border: 1px solid transparent; border-radius: var(--inner-radius); background: none; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
-.tabs-bar .format:hover:not(:disabled), .tabs-bar .format:focus-visible { color: var(--fg); background: var(--control); outline: none; }
-.tabs-bar .format:disabled { opacity: 0.5; cursor: default; }
-.tabs-bar .format + .autosave { margin-left: 4px; }
-/* Auto-save, then Watch: one pair at the bar's end. */
-.tabs-bar .autosave:has(+ .autosave) {
-  margin-right: 0;
-
-  & + .autosave {
-    margin-left: 4px;
-  }
-}
 .tabs-bar .autosave[aria-pressed="false"] { color: var(--fg); border-color: var(--control-border); }
 .tabs .tab .unsaved { color: var(--accent); font-size: 10px; line-height: 1; }
 /* The folder hint gives way before the name does. */
@@ -280,30 +335,349 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
 .method-badge[data-method="PATCH"] { --method: #9b86f2; }
 .method-badge[data-method="DELETE"] { --method: #ec6490; }
 #req-path { flex: 1; min-width: 0; }
-/* A narrow preview column: Send shows its icon only (the label stays as the tooltip and accessible name), and the
-   new-tab and expand buttons go (Restore stays: an expanded preview is only this narrow on a phone, with no Esc). */
+/* A narrow preview column (an embed's, a phone's): the buttons get narrower, and the new-tab and expand buttons go
+   (Restore stays: an expanded preview is only this narrow on a phone, with no Esc). */
 #preview-wrap { container-type: inline-size; }
-@container (width < 340px) {
-  #request button .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+@container (width < 420px) {
   #request button { padding: 3px 8px; }
   #request #open-tab, #preview-wrap:not(.expanded) #request #expand { display: none; }
 }
 #request button { background: var(--control); color: inherit; border: 1px solid var(--control-border); border-radius: 6px; padding: 3px 10px; cursor: pointer; }
-#expand { display: grid; place-items: center; padding: 0 8px; }
-/* The request body (ui/Preview.tsx): a panel with the editor's tab bar (one tab, Body, and the type it's sent as), its
-   editor as tall as its lines (set there, up to 7em; this until it's measured) with a hint while it's empty, and the
-   panes' resize handle under it. */
-#req-body-panel { display: flex; flex-direction: column; flex: 0 0 auto; border-bottom: 1px solid var(--border); }
-#req-body-panel .body-type { flex: 0 0 auto; margin: 0 var(--pad) 0 auto; color: var(--muted); font-size: 11px; }
-#req-body { position: relative; height: 7em; min-height: 1.5em; overflow: hidden; }
+#expand, #req-send { display: grid; place-items: center; padding: 0 8px; }
+#req-panel-toggle {
+  &[aria-pressed="true"] {
+    background: var(--control-hover);
+  }
+  .count {
+    color: var(--muted);
+    font-size: 11px;
+  }
+}
+/* The request panel (ui/Preview.tsx). Its section tabs are lighter than the preview tabs above them (an accent line, no
+   fill), so the two rows don't read as one. At the right of their bar, the actions on the whole request: Raw and Copy.
+   Every section lays out on one grid: a name column (14em; after a checkbox where rows can be turned off) and a value
+   column, with 24px buttons at the end. Rows are as tall as they are, up to four, then scroll; the body's editor is as
+   tall as its lines (set there; this until it's measured), with a hint while it's empty, and the panes' resize handle
+   under it. */
+#req-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  border-bottom: 1px solid var(--border);
+  &[hidden] {
+    display: none;
+  }
+  .tabs-bar .tabs {
+    padding-block: 2px;
+    .tab {
+      min-width: 0;
+      padding: 4px 8px;
+      &[data-selected] {
+        background: none;
+      }
+      &:hover {
+        background: none;
+      }
+    }
+  }
+  /* Raw shows every section at once: no section's mark. */
+  &[data-raw] .tabs-bar .tab[data-selected] {
+    color: var(--muted);
+    &::after {
+      background: transparent;
+    }
+  }
+  .tab .count {
+    min-width: 16px;
+    padding: 0 4px;
+    border-radius: 8px;
+    background: var(--control);
+    color: var(--fg);
+    font-size: 11px;
+    line-height: 16px;
+    text-align: center;
+  }
+  .tab .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  .panel-tools {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 2px;
+    margin: 0 var(--pad) 0 auto;
+  }
+  .raw-toggle,
+  .copy-request {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-width: 24px;
+    height: 24px;
+    padding: 0 5px;
+    border: 0;
+    border-radius: 4px;
+    background: none;
+    color: var(--muted);
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    &:hover,
+    &:focus-visible {
+      color: var(--fg);
+      background: var(--control);
+    }
+    &[aria-pressed="true"] {
+      color: var(--fg);
+      background: var(--control-hover);
+    }
+  }
+  .fields {
+    max-height: calc(4 * 30px + 8px);
+    overflow: auto;
+    padding: 4px 8px;
+    background: var(--bg);
+    &[hidden] {
+      display: none;
+    }
+  }
+  .body-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px 2px;
+    background: var(--bg);
+    &[hidden] {
+      display: none;
+    }
+    /* Format, at the bar's end: only for a JSON body; dimmed while it doesn't parse. */
+    .format-body {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      height: 24px;
+      margin-left: auto;
+      padding: 0 8px;
+      border: 1px solid transparent;
+      border-radius: var(--inner-radius);
+      background: none;
+      color: var(--muted);
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      &:hover:not([aria-disabled]),
+      &:focus-visible {
+        color: var(--fg);
+        background: var(--control);
+        outline: none;
+      }
+      &[aria-disabled] {
+        opacity: 0.5;
+        cursor: default;
+      }
+    }
+    .segmented {
+      display: inline-flex;
+      button {
+        height: 24px;
+        font-size: 12px;
+      }
+    }
+  }
+  .no-body {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--bg);
+    color: var(--muted);
+    font-size: 12px;
+    &[hidden] {
+      display: none;
+    }
+    button {
+      height: 24px;
+      padding: 0 8px;
+      border: 1px solid var(--control-border);
+      border-radius: 6px;
+      background: var(--control);
+      color: var(--fg);
+      font: inherit;
+      cursor: pointer;
+      &:hover {
+        background: var(--control-hover);
+      }
+    }
+  }
+  .field {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    > input:not([type="checkbox"]) {
+      min-width: 0;
+      height: 24px;
+      padding: 0 6px;
+      border: 1px solid var(--control-border);
+      border-radius: 6px;
+      background: var(--control);
+      color: var(--fg);
+      font: 12px var(--font-mono);
+      &[aria-invalid="true"] {
+        border-color: var(--error);
+        color: var(--error);
+      }
+      /* A file row's path: the accent edge pairs it with its pressed paperclip. */
+      &[data-file] {
+        border-left: 2px solid var(--accent);
+      }
+    }
+    > .name {
+      flex: 0 0 14em;
+    }
+    > .value {
+      flex: 1 1 auto;
+    }
+    > input[type="checkbox"] {
+      flex: 0 0 auto;
+      width: 14px;
+      height: 14px;
+      margin: 0;
+      accent-color: var(--accent);
+      /* The empty row's: there's nothing to turn off yet, but the column stays. */
+      &:disabled {
+        opacity: 0.35;
+        cursor: default;
+      }
+    }
+    > .remove,
+    > .kind {
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      width: 24px;
+      height: 24px;
+      padding: 0;
+      border: 0;
+      border-radius: 4px;
+      background: none;
+      color: var(--muted);
+      cursor: pointer;
+      &:hover,
+      &:focus-visible {
+        color: var(--fg);
+        background: var(--control);
+      }
+    }
+    > .remove[hidden] {
+      visibility: hidden;
+      display: grid;
+    }
+    > .kind[aria-pressed="true"] {
+      color: var(--accent);
+      background: color-mix(in oklab, var(--accent) 16%, transparent);
+    }
+    /* A picker (Kobalte wraps it in a div) is as tall as the row's inputs and buttons. Auth's type picker takes the
+       name column, so its fields line up with the rows' values. */
+    > div:has(> .select-trigger) {
+      display: flex;
+      flex: 0 0 auto;
+      /* The inputs' size, so its 14em is theirs. */
+      font-size: 12px;
+      /* The checkbox column (14px and the gap) and the name column. */
+      &:has(> .auth-type) {
+        flex-basis: calc(14em + 20px);
+      }
+    }
+    .select-trigger {
+      height: 24px;
+      font-size: 12px;
+      &.auth-type {
+        flex: 1 1 auto;
+      }
+    }
+    > .hint {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    &[data-new] > input:not([type="checkbox"]):not(:focus) {
+      background-color: transparent;
+      border-style: dashed;
+    }
+    /* A row Auth writes, read-only, with a lock: a click opens Auth. It starts where the rows' names do. */
+    &.derived {
+      width: 100%;
+      padding: 0 30px 0 0;
+      border: 0;
+      background: none;
+      color: var(--muted);
+      font: 12px var(--font-mono);
+      text-align: left;
+      cursor: pointer;
+      > i {
+        flex: 0 0 14px;
+        width: 14px;
+        height: 14px;
+      }
+      > .name {
+        flex: 0 0 calc(14em - 20px);
+      }
+      > .name,
+      > .value {
+        overflow: hidden;
+        padding: 0 7px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      > .from {
+        display: inline-flex;
+        flex: 0 0 auto;
+        align-items: center;
+        gap: 3px;
+        color: var(--accent);
+        font: 11px var(--font-ui);
+      }
+      &:hover > .from,
+      &:focus-visible > .from {
+        text-decoration: underline;
+      }
+    }
+  }
+}
+#req-body {
+  position: relative;
+  height: 7em;
+  min-height: 1.5em;
+  overflow: hidden;
+  &[hidden] {
+    display: none;
+  }
+}
 /* Not the main layout's handle offset (#right, where it meets the column handle): this one spans its panel. */
-#preview-wrap #req-handle { flex: 0 0 auto; margin-left: 0; }
+#preview-wrap #req-handle {
+  flex: 0 0 auto;
+  margin-left: 0;
+  /* Hand-built (ui/Preview.tsx), not Kobalte's Resizable: the cursor, the hover mark and the touch drag its handles get. */
+  cursor: row-resize;
+  touch-action: none;
+  &:hover::after {
+    background: var(--accent);
+  }
+}
+/* While it's dragged, the cursor stays even off its 6px (as Kobalte's global cursor style does for its handles). */
+body:has(#req-handle[data-dragging]) * {
+  cursor: row-resize !important;
+}
 #req-body .pierre-host { height: 100%; overflow: auto; background: var(--bg); }
 #req-body diffs-container { min-height: 100%; }
-#req-body[data-empty]::after { content: attr(data-placeholder); position: absolute; top: 8px; left: 41px; color: var(--muted); font: 12px/20px var(--font-mono); pointer-events: none; }
+#req-body[data-empty]::after { content: attr(data-placeholder); position: absolute; top: 8px; left: 41px; color: var(--muted); font: italic 12px/20px var(--font-ui); opacity: 0.8; pointer-events: none; }
 #preview-views { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .preview-frame { flex: 1; width: 100%; border: 0; }
-.preview-frame[hidden], .preview-response[hidden], #req-body-panel[hidden], #req-handle[hidden] { display: none; }
+.preview-frame[hidden], .preview-response[hidden], #req-handle[hidden] { display: none; }
 /* The response card's metrics, and from them the least room it keeps under a request body (--response-reserve: its
    padding, the status line's pill, the headers line and a body box of three lines; ui/Preview.tsx and embed/main.ts
    read it through preview.ts responseReserve). Registered as a length, so it reads back in px. */
@@ -325,6 +699,17 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
 }
 .preview-response pre { margin: 0; font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
 .preview-response .status-line { display: flex; align-items: center; gap: 8px; }
+/* Sent before the request last changed: dimmed, with a note in the status line. */
+.preview-response.stale {
+  > :not(.status-line) {
+    opacity: 0.55;
+  }
+  .stale-note {
+    margin-left: auto;
+    color: var(--muted);
+    font: 11px var(--font-ui);
+  }
+}
 .preview-response .status { padding: var(--pill-pad) 8px; border-radius: 999px; font-weight: 600; color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, var(--panel)); }
 .preview-response .headers { color: var(--muted); }
 .preview-response .body { padding: var(--box-pad) 12px; border: var(--box-border) solid var(--border); border-radius: 6px; background: var(--panel); }

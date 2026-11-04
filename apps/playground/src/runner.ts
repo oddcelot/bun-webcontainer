@@ -1,4 +1,5 @@
 import { CookieJar } from "./cookieJar";
+import { PANEL_COOKIE, joinCookies } from "./request";
 import { resetSyncEsm, serveModule, vfsRoot } from "./moduleServer";
 import type { VFS } from "@runbun/vfs";
 
@@ -57,10 +58,14 @@ export class Runner {
   /** The preview host's cookies; kept across Runs, as a browser keeps them across server restarts. */
   readonly cookies = new CookieJar();
 
-  /** Request headers with the jar's Cookie in place of any the request brought. */
+  /**
+   * Request headers with the jar's Cookie in place of any the request brought, joined with the one set in the request
+   * panel (request.ts PANEL_COOKIE), which wins for a cookie in both.
+   */
   private withCookies(path: string, headers: [string, string][]) {
-    const out = headers.filter(([k]) => k.toLowerCase() !== "cookie");
-    const cookie = this.cookies.header(path);
+    const panel = headers.find(([k]) => k.toLowerCase() === PANEL_COOKIE)?.[1];
+    const out = headers.filter(([k]) => k.toLowerCase() !== "cookie" && k.toLowerCase() !== PANEL_COOKIE);
+    const cookie = joinCookies(this.cookies.header(path), panel);
     if (cookie) out.push(["cookie", cookie]);
     return out;
   }

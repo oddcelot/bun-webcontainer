@@ -80,6 +80,8 @@ export function Tip(props: TipProps) {
       gutter={6}
       openDelay={400}
       closeDelay={0}
+      // Closes as the pointer leaves the trigger: the card takes no pointer (tooltip.css), so nothing to move onto.
+      ignoreSafeArea
       disabled={!props.tip}
       onOpenChange={(open) => open && setLayer(topLayerOf(trigger))}
     >
