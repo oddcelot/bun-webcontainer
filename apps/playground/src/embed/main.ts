@@ -285,7 +285,10 @@ vfs.onChange(({ path, removed }) => {
 const LINE = 20;
 /** Heights for the modes that don't fit their content (embed-element/index.ts HEIGHTS). */
 const MODE_HEIGHT: Partial<Record<Mode, number>> = { console: 360, preview: 420, full: 600, result: 420 };
-/** Stacked (`layout=stack`), the editor fits its lines and the rows under it get these (embed.css, `data-fit`). */
+/**
+ * Stacked (`layout=stack`), the editor fits its lines and the rows under it get these (embed.css, `data-fit`); the
+ * preview grows past its 200 to fit a response (previewHeight).
+ */
 const STACK_PREVIEW = 200;
 const STACK_CONSOLE = 120;
 let unmeasured = 0;
@@ -294,8 +297,13 @@ function wantedHeight() {
   const stacked = embed.stacked();
   const fixed = MODE_HEIGHT[embed.mode()];
   if (fixed && !stacked) return fixed;
-  // Read first, so that another file measures again.
+  // Read first, so that another file measures again, and (stacked) another preview tab, a response, or a switch
+  // between page and response.
   const path = workspace.state.active;
+  if (stacked && embed.has("preview")) {
+    const tab = pg.previews.state.tabs.find((t) => t.id === pg.previews.state.active);
+    void [tab?.view, tab?.response, tab?.method];
+  }
   const below = embed.has("console") && !embed.has("preview") && embed.mode() === "code";
   const measured = measuredHeight(stacked, below);
   if (measured) return (unmeasured = 0), (measuredOnce = true), measured;
@@ -340,7 +348,7 @@ function measuredHeight(stacked: boolean, below: boolean): number | undefined {
   // The console under the editor (code mode) keeps the height it has; a reader may have dragged it.
   const consoleWrap = below && document.getElementById("console-wrap");
   const consoleH = consoleWrap && height(consoleWrap);
-  const rows = (stacked ? [embed.has("preview") && STACK_PREVIEW, embed.has("console") && STACK_CONSOLE] : [consoleH]).filter((h): h is number => !!h);
+  const rows = (stacked ? [embed.has("preview") && previewHeight(), embed.has("console") && STACK_CONSOLE] : [consoleH]).filter((h): h is number => !!h);
   const grid = getComputedStyle(main);
   const gaps = (parseFloat(grid.rowGap) || 0) * rows.length + parseFloat(grid.paddingTop) + parseFloat(grid.paddingBottom);
   // What sits above the panes (the bar, a notice), measured as such: the frame minus the grid is off by whatever the
@@ -349,6 +357,46 @@ function measuredHeight(stacked: boolean, below: boolean): number | undefined {
   // The pane's tab bar, and a scrollbar of the host's own.
   const paneChrome = height(pane) - height(host) + host.offsetHeight - host.clientHeight;
   return Math.ceil(outside + gaps + paneChrome + codeHeight + rows.reduce((a, b) => a + b, 0));
+}
+/**
+ * The stacked preview row's height with `height="auto"`: as tall as it needs, at least STACK_PREVIEW. That's its
+ * chrome (tabs, request bar, a body's editor: the panel less its views) and a response card's content; a page in the
+ * frame has no height of its own, so it keeps STACK_PREVIEW. Set as `--stack-preview` for the fitted rows (embed.css);
+ * past the 640px the element allows, the frame isn't fitted and the rows share it as before, the response scrolling.
+ */
+let previewWatched: Element[] = [];
+const previewObserver = new ResizeObserver(() => queueResize());
+function previewHeight(): number {
+  const panel = document.getElementById("preview-panel");
+  const views = document.getElementById("preview-views");
+  const body = document.getElementById("req-body");
+  const response = views?.querySelector<HTMLElement>(".preview-response:not([hidden])");
+  const kids = response ? [...response.children] : [];
+  // A body resized or a card's content changed: measure again (once per frame).
+  const watch = [body, ...kids].filter((e): e is HTMLElement => !!e);
+  if (watch.length !== previewWatched.length || watch.some((e, i) => e !== previewWatched[i])) {
+    previewObserver.disconnect();
+    for (const e of (previewWatched = watch)) previewObserver.observe(e);
+  }
+  let h = STACK_PREVIEW;
+  if (panel && views && response && kids.length) {
+    const box = getComputedStyle(response);
+    const content = kids[kids.length - 1]!.getBoundingClientRect().bottom - kids[0]!.getBoundingClientRect().top;
+    const chrome = panel.getBoundingClientRect().height - views.getBoundingClientRect().height;
+    h = Math.max(STACK_PREVIEW, Math.ceil(chrome + content + parseFloat(box.paddingTop) + parseFloat(box.paddingBottom)));
+  }
+  document.getElementById("embed")?.style.setProperty("--stack-preview", `${h}px`);
+  return h;
+}
+/** A measurement on the next frame, however many asked for one in this: no jitter while a body is typed. */
+let resizeQueued = false;
+function queueResize() {
+  if (resizeQueued) return;
+  resizeQueued = true;
+  requestAnimationFrame(() => {
+    resizeQueued = false;
+    sendResize(untrack(wantedHeight));
+  });
 }
 let lastHeight = 0;
 const checkFit = () => embed.setFit(Math.abs(innerHeight - lastHeight) <= 1);
