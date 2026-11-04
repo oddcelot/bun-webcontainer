@@ -1,0 +1,245 @@
+---
+title: "Astro: examples"
+description: Every kind of code block @runbun/astro renders, each as its Markdown source beside the result.
+tableOfContents: false
+sidebar:
+  order: 6.5
+---
+
+Each example is the Markdown you write, on the left, and what it renders, on the right. The [Astro guide](/guides/astro/) explains every option; this page shows them. The results use `runbun({ fences: "all" })`, so plain fences render as runbun's static blocks, as they would on a site that turns it on (this site keeps Expressive Code for its own fences).
+
+## Static blocks
+
+Highlighted at build time. They don't run, and each has a Copy button.
+
+### A plain fence
+
+````md example
+```ts
+const file = Bun.file("package.json");
+console.log(await file.json());
+```
+````
+
+### Title
+
+````md example
+```ts title="read.ts"
+const text = await Bun.file("notes.txt").text();
+console.log(text.split("\n").length, "lines");
+```
+````
+
+### File-name comment
+
+Without a `title`, a comment naming a file in the first lines becomes the title and leaves the code.
+
+````md example
+```ts
+// hash.ts
+const hasher = new Bun.CryptoHasher("sha256");
+hasher.update("hello");
+console.log(hasher.digest("hex"));
+```
+````
+
+### No language
+
+````md example
+```
+$ bun --version
+1.3.0
+```
+````
+
+### Line marks
+
+`{2,4-5}` marks lines, the same as `mark={2,4-5}`.
+
+````md example
+```ts {2,4-5}
+const server = Bun.serve({
+  port: 3000,
+  fetch(req) {
+    const url = new URL(req.url);
+    return new Response(`Hello from ${url.pathname}`);
+  },
+});
+```
+````
+
+### Inserted and deleted lines
+
+````md example
+```ts ins={2} del={3}
+const data = await Bun.file("data.json").json();
+await Bun.write("out.json", JSON.stringify(data, null, 2));
+await Bun.write("out.json", JSON.stringify(data));
+```
+````
+
+### Numbered notes
+
+A comment that is only `(N)` at the end of a line, and an ordered list right after the fence with one item per marker.
+
+````md example
+```ts
+const server = Bun.serve({ // (1)
+  fetch: () => new Response("hi"), // (2)
+});
+```
+
+1. One call starts an HTTP server.
+2. Every request gets this handler's response.
+````
+
+### A group
+
+Consecutive fences with the same `group` become one block with a tab per fence.
+
+````md example
+```ts title="index.ts" group=greet
+import { greet } from "./greet";
+console.log(greet("Bun"));
+```
+
+```ts title="greet.ts" group=greet
+export const greet = (name: string) => `Hello, ${name}`;
+```
+````
+
+### Marks in a group
+
+Each fence keeps its own marks.
+
+````md example
+```ts title="index.ts" group=marks {2}
+import { sum } from "./sum";
+console.log(sum([1, 2, 3]));
+```
+
+```ts title="sum.ts" group=marks ins={2}
+export const sum = (xs: number[]) =>
+  xs.reduce((a, b) => a + b, 0);
+```
+````
+
+## Fallbacks
+
+A fence that a static block can't show as written stays with the site's own highlighter, here Expressive Code.
+
+### Opting out
+
+````md example
+```ts runbun=false
+console.log("Expressive Code draws this one");
+```
+````
+
+### A shell fence
+
+Shell languages keep Expressive Code's terminal frame.
+
+````md example
+```sh
+bun add elysia
+```
+````
+
+## Playgrounds
+
+A fence marked `playground` runs when a reader presses Run.
+
+### Basic
+
+````md example
+```ts playground
+const langs = ["ts", "tsx", "js"];
+for (const lang of langs) console.log(lang, Bun.version);
+```
+````
+
+### A server and its preview
+
+`mode=preview` shows what the server answers, `path` where it starts, and `deps` installs packages.
+
+````md example
+```ts playground mode=preview height=auto path="/user/123" deps="elysia@rc"
+import { Elysia } from "elysia";
+
+new Elysia()
+  .get("/user/:id", ({ params: { id } }) => `User ${id}`)
+  .listen(3000);
+```
+````
+
+### Preview under the code
+
+`layout=stack` puts the preview under the editor (this site's embeds sit beside it otherwise).
+
+````md example wide
+```ts playground mode=preview layout=stack height=auto
+Bun.serve({
+  fetch: () => new Response("<h1>Hello from Bun.serve</h1>", { headers: { "Content-Type": "text/html" } }),
+});
+```
+````
+
+### A group with a hidden package.json
+
+File-name comments name the files, and `hidden` keeps the package.json out of the tabs while it pins the packages.
+
+````md example
+```ts playground group=app mode=preview height=auto
+// index.ts
+import { Elysia } from "elysia";
+import { greet } from "./greet";
+
+new Elysia().get("/", () => greet("Bun")).listen(3000);
+```
+
+```ts playground group=app
+// greet.ts
+export const greet = (name: string) => `Hello, ${name}`;
+```
+
+```json playground group=app hidden
+//package.json
+{ "dependencies": { "elysia": "rc" } }
+```
+````
+
+### Preset requests
+
+`requests` gives the preview a tab per request; ` => ` adds the answer the reader sees before pressing Run.
+
+````md example wide
+```ts playground mode=preview height=auto deps="elysia@rc" requests='GET / => Hello Elysia; GET /user/617 => 617; POST /form {"hello":"Elysia"} => {"hello":"Elysia"}'
+import { Elysia } from "elysia";
+
+new Elysia()
+  .get("/", "Hello Elysia")
+  .get("/user/:id", ({ params: { id } }) => id)
+  .post("/form", ({ body }) => body)
+  .listen(3000);
+```
+````
+
+## Components
+
+In `.mdx` and `.astro` files, `<Code>` and `<Playground>` take the same options as props.
+
+````mdx example
+import { Code } from "@runbun/astro/components";
+
+<Code lang="ts" title="greet.ts" mark="1" code={`export const greet = (name: string) => "Hello, " + name;
+console.log(greet("Bun"));`} />
+````
+
+````mdx example wide
+import { Playground } from "@runbun/astro/components";
+
+<Playground mode="preview" height="320px" files={{ "index.ts": `Bun.serve({ fetch: () => new Response("Hello from <Playground>") });` }}>
+  <p style="padding: 1rem; margin: 0">A server that answers in the preview. Press Run to start it.</p>
+</Playground>
+````

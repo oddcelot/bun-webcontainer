@@ -8,6 +8,7 @@ import runbun from "@runbun/astro";
 import remarkRunbun from "@runbun/astro/remark";
 import UnoCSS from "unocss/astro";
 import { codeThemeOptions, codeThemes } from "./src/code-themes.ts";
+import remarkExamples from "./src/remark-examples.ts";
 import remarkStatus from "./src/remark-status.ts";
 import { DOCS_URL, PLAYGROUND_URL } from "./site-urls.ts";
 
@@ -18,7 +19,8 @@ const REPO_PUBLIC = false;
 
 export default defineConfig({
   site: DOCS_URL,
-  markdown: { processor: unified({ remarkPlugins: [remarkRunbun, remarkStatus] }) },
+  // remarkExamples first: it hands each ````md example's result to remarkRunbun itself (with fences: "all").
+  markdown: { processor: unified({ remarkPlugins: [remarkExamples, remarkRunbun, remarkStatus] }) },
   integrations: [
     // The playground's tokens and theme families (uno.config.ts); no reset, Starlight brings its own.
     UnoCSS({ injectReset: false }),
