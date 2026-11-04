@@ -487,6 +487,29 @@ describe("playground fences named by a file-name comment", () => {
   });
 });
 
+describe("preset requests", () => {
+  const REQUESTS = 'GET /; GET /user/617; POST /form {"hello":"Elysia"}';
+
+  test("requests= passes to the embed as an attribute, its JSON body's quotes escaped, so the element reads it back intact", () => {
+    for (const fences of ["playground", "all"] as const) {
+      const html = htmlOf(run([code("ts", `playground mode=preview requests='${REQUESTS}'`, "x")], { fences })[0])!;
+      const attr = html.match(/ requests="([^"]*)"/)?.[1];
+      expect(attr).toBe(REQUESTS.replace(/"/g, "&quot;"));
+      // What a browser's attribute parser gives back.
+      expect(attr!.replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&amp;/g, "&")).toBe(REQUESTS);
+      expect(html).toStartWith('<bun-playground class="not-content" load="click" expand="full" mode="preview" requests=');
+    }
+  });
+
+  test("requests= is a playground word: a static fence with it falls back to the site's highlighter", () => {
+    expect(run([code("ts", `requests='${REQUESTS}'`, "x")], { fences: "all" })).toEqual([code("ts", `requests='${REQUESTS}'`, "x")]);
+  });
+
+  test("an embed without requests= has no requests attribute, as before", () => {
+    expect(htmlOf(run([code("ts", "playground", "x")])[0])).not.toContain("requests=");
+  });
+});
+
 describe("where fences comes from", () => {
   test('the integration\'s fences: "all" reaches the plugin, so runbun({ fences: "all" }) is all a site sets', () => {
     setConfig({ fences: "all" });

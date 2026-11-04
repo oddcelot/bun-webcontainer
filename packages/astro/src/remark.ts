@@ -2,6 +2,7 @@
 // <Code> block is. Click-to-load: nothing downloads until a reader presses Run.
 //
 // Meta words: `playground` (required), `mode=…`, `features=…`, `group=<name>`, `load=…`, `height=…`, `path=…`,
+// `requests='GET /; POST /form {"a":1}'` (a preview tab per request; single quotes keep a body's double quotes),
 // `layout=stack` (the preview under the editor), `deps="elysia@rc,zod@^4"` (pinned in a package.json the poster doesn't
 // show; a package.json fence wins), `label="…"` (the embed's accessible name, its `title` attribute; default "Bun
 // playground"); `title="x.ts"` names the file, or else a file-name comment in its first lines (`// x.ts`, fileName).
@@ -31,8 +32,8 @@ import {
   withTabs,
 } from "./markup.js";
 
-const OWN_KEYS = new Set(["playground", "mode", "features", "group", "load", "height", "autorun", "readonly", "persist", "theme", "file", "path", "expand", "deps", "label", "layout"]);
-const ATTRS = ["mode", "features", "height", "autorun", "readonly", "persist", "theme", "file", "path", "layout"];
+const OWN_KEYS = new Set(["playground", "mode", "features", "group", "load", "height", "autorun", "readonly", "persist", "theme", "file", "path", "requests", "expand", "deps", "label", "layout"]);
+const ATTRS = ["mode", "features", "height", "autorun", "readonly", "persist", "theme", "file", "path", "requests", "layout"];
 
 /** Splits `a b=c title="d e"` into [key, value|null] tokens; `raw` is the token as written (`{1,4-6}`, `ins={2}`). */
 interface Token {

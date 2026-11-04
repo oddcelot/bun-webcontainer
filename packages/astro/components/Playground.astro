@@ -10,6 +10,11 @@ export interface Props {
   file?: string;
   /** What the preview requests first (default: `/`), e.g. `/user/123`. */
   path?: string;
+  /**
+   * Requests a reader can try, a preview tab each, the first active: `;`-separated `METHOD /path [body]`, e.g.
+   * `GET /; POST /form {"hello":"Elysia"}`. Wins over `path`.
+   */
+  requests?: string;
   /** "stack": the preview (or console) under the editor instead of beside it. */
   layout?: "side" | "stack";
   autorun?: boolean;
@@ -40,6 +45,7 @@ const bool = (v: unknown) => (v === undefined ? undefined : v ? "" : undefined);
   features={attrs.features}
   file={attrs.file}
   path={attrs.path}
+  requests={attrs.requests}
   layout={attrs.layout}
   autorun={attrs.autorun === undefined ? undefined : String(attrs.autorun)}
   theme={attrs.theme}
