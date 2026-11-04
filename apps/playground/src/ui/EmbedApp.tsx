@@ -1,4 +1,5 @@
 import { For, Show, createContext, createMemo, useContext } from "solid-js";
+import { Tip } from "@runbun/ui/solid/Tip";
 import { Menu, MenuCheckItem, MenuGroup, MenuItem, MenuSeparator, MenuTrigger } from "@runbun/ui/solid/Menu";
 import logo from "../bun-logo.svg";
 import { COST } from "../embed/config";
@@ -132,16 +133,17 @@ function EmbedBar() {
         <i class={running() ? "i-lucide-square" : "i-lucide-play"} aria-hidden="true" /> {running() ? "Stop" : "Run"}
       </button>
       <Show when={e.options.expand}>
-        <button
+        <Tip
           type="button"
           class="expand"
+          tip={e.expanded() ? "Close the large view" : "Open in a large view"}
+          keys={e.expanded() ? ["Esc"] : undefined}
           aria-label={e.expanded() ? "Close the large view" : "Open in a large view"}
-          title={e.expanded() ? "Close (Esc)" : "Open in a large view"}
           aria-pressed={e.expanded() ? "true" : "false"}
           onClick={() => e.requestExpand(!e.expanded())}
         >
           <i class={e.expanded() ? "i-lucide-minimize-2" : "i-lucide-maximize-2"} aria-hidden="true" />
-        </button>
+        </Tip>
       </Show>
       <EmbedMenu />
     </header>

@@ -20,6 +20,14 @@
     .chord {
       display: inline-flex;
       gap: 2px;
+
+      & + .chord::before {
+        content: "or";
+        align-self: center;
+        margin-right: 2px;
+        color: var(--muted);
+        font-size: 11px;
+      }
     }
 
     kbd {

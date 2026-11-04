@@ -8,7 +8,7 @@ import { complete, definition, hover, resolveCompletion, signatureHelp, TYPED } 
 import { AppContext } from "./context";
 import { guarded } from "./guarded";
 import { EditorTabs } from "./Tabs";
-import { Tip } from "@runbun/ui/solid/Tip";
+import { Keys, Tip } from "@runbun/ui/solid/Tip";
 
 /** How long auto-save waits after the last keystroke. */
 const SAVE_DELAY = 300;
@@ -215,7 +215,17 @@ export function EditorPane() {
               class="autosave"
               type="button"
               aria-pressed={ws.autosave() ? "true" : "false"}
-              tip={ws.autosave() ? "Edits save shortly after you stop typing. Click to save with Ctrl/Cmd+S instead." : "Edits save with Ctrl/Cmd+S (and before Run). Click to save as you type."}
+              tip={
+                ws.autosave() ? (
+                  <span>
+                    Edits save shortly after you stop typing. Click to save with <Keys keys={keysFor("save").map(chordKeys)} /> instead.
+                  </span>
+                ) : (
+                  <span>
+                    Edits save with <Keys keys={keysFor("save").map(chordKeys)} /> (and before Run). Click to save as you type.
+                  </span>
+                )
+              }
               onClick={() => {
                 ws.setAutosave(!ws.autosave());
               }}

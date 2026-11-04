@@ -1,4 +1,4 @@
-import { createSignal, omit } from "solid-js";
+import { Show, createSignal, omit } from "solid-js";
 import type { JSX, ValidComponent } from "@solidjs/web";
 import { Tooltip } from "@kobalte/core/tooltip";
 import { topLayerOf } from "./layer";
@@ -15,6 +15,21 @@ type TipProps = {
   children?: JSX.Element;
   [attribute: string]: unknown;
 };
+
+/** Shortcuts as key caps, one `<kbd>` per key: each a chord, as its keys (`["⌥", "⇧", "F"]`) or one key; "or" between chords. */
+export function Keys(props: { keys: (string | string[])[] }) {
+  return (
+    <>
+      {props.keys.map((chord) => (
+        <span class="chord">
+          {(typeof chord === "string" ? [chord] : chord).map((k) => (
+            <kbd>{k}</kbd>
+          ))}
+        </span>
+      ))}
+    </>
+  );
+}
 
 /**
  * A control with a tooltip that shows on hover and keyboard focus (instead of the browser's `title`), after a short
@@ -48,13 +63,7 @@ export function Tip(props: TipProps) {
       <Tooltip.Portal mount={layer()}>
         <Tooltip.Content class="tooltip">
           {props.tip}
-          {props.keys?.map((chord) => (
-            <span class="chord">
-              {(typeof chord === "string" ? [chord] : chord).map((k) => (
-                <kbd>{k}</kbd>
-              ))}
-            </span>
-          ))}
+          <Show when={props.keys}>{(keys) => <Keys keys={keys()} />}</Show>
         </Tooltip.Content>
       </Tooltip.Portal>
     </Tooltip>
