@@ -22,6 +22,10 @@ const SIDE_PREVIEW: Split = { size: "side", a: "editor-pane", b: "preview-panel"
 const SIDE_CONSOLE: Split = { size: "side", a: "editor-pane", b: "console-wrap", label: "Resize editor and console" };
 const ROWS: Split = { size: "rows", a: "preview-panel", b: "console-wrap", label: "Resize preview and console" };
 const BELOW: Split = { size: "console", a: "editor-pane", b: "console-wrap", label: "Resize editor and console" };
+// layout=stack: the editor over the side column, and the preview over the console.
+const STACK_PREVIEW: Split = { size: "stack", a: "editor-pane", b: "preview-panel", label: "Resize editor and preview" };
+const STACK_CONSOLE: Split = { size: "stack", a: "editor-pane", b: "console-wrap", label: "Resize editor and console" };
+const STACK_ROWS: Split = { size: "console", a: "preview-panel", b: "console-wrap", label: "Resize preview and console" };
 
 /** True from the first time `on()` is: a pane mounts once it's first shown and is only hidden after that (xterm and preview frames don't survive a remount). */
 function sticky(on: () => boolean) {
@@ -38,9 +42,9 @@ export function EmbedApp() {
   const e = useContext(EmbedContext);
   const has = (f: Feature) => e.has(f);
   const editor = () => e.mode() !== "result";
-  const tree = () => editor() && has("files");
-  // A column beside the editor: the preview, or the console in console mode.
-  const side = () => editor() && (has("preview") || (e.mode() === "console" && has("console")));
+  // Stacked, the tree stays out, as in a narrow frame.
+  const tree = () => editor() && has("files") && !e.stacked();
+  const side = e.side;
   const showTree = sticky(tree);
   const showPreview = sticky(() => has("preview"));
   const showConsole = sticky(() => has("console"));
@@ -49,8 +53,10 @@ export function EmbedApp() {
   const splits = () =>
     [
       tree() && TREE,
-      side() && (has("preview") ? SIDE_PREVIEW : SIDE_CONSOLE),
-      (side() || !editor()) && has("preview") && has("console") && ROWS,
+      side() && !e.stacked() && (has("preview") ? SIDE_PREVIEW : SIDE_CONSOLE),
+      e.stacked() && (has("preview") ? STACK_PREVIEW : STACK_CONSOLE),
+      e.stacked() && has("preview") && has("console") && STACK_ROWS,
+      ((side() && !e.stacked()) || !editor()) && has("preview") && has("console") && ROWS,
       editor() && !side() && has("console") && BELOW,
     ].filter((s): s is Split => !!s);
   return (
@@ -60,6 +66,8 @@ export function EmbedApp() {
       data-tree={tree() ? "" : undefined}
       data-editor={editor() ? "" : undefined}
       data-side={side() ? "" : undefined}
+      data-stack={e.stacked() ? "" : undefined}
+      data-fit={e.stacked() && e.fit() ? "" : undefined}
       data-preview={has("preview") ? "" : undefined}
       data-console={has("console") ? "" : undefined}
     >

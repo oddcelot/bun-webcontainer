@@ -84,6 +84,12 @@ const embed = createRoot(() => {
   let modeBefore: Mode | undefined;
   const [changes, setChanges] = createStore<Partial<Record<Feature, boolean>>>({});
   const features = createMemo(() => resolveFeatures(mode(), options.features, changes));
+  const has = (f: Feature) => features().includes(f);
+  // A column beside the editor: the preview, or the console in console mode. `layout=stack` puts it under the editor.
+  const side = () => mode() !== "result" && (has("preview") || (mode() === "console" && has("console")));
+  const stacked = () => side() && options.layout === "stack";
+  // The frame is as tall as the embed asked (`resize`): a host with height="auto". Stacked rows then fit the code.
+  const [fit, setFit] = createSignal(false);
   createEffect(
     () => ({ mode: mode(), features: features() }),
     (d) => {
@@ -102,7 +108,11 @@ const embed = createRoot(() => {
     sizesKey,
     mode,
     features,
-    has: (f: Feature) => features().includes(f),
+    has,
+    side,
+    stacked,
+    fit,
+    setFit,
     setMode,
     expanded,
     /** Asks the host for its modal (or to close it); it answers with `setExpanded`. */
@@ -274,23 +284,79 @@ createRoot(() =>
 const LINE = 20;
 /** Heights for the modes that don't fit their content (embed-element/index.ts HEIGHTS). */
 const MODE_HEIGHT: Partial<Record<Mode, number>> = { console: 360, preview: 420, full: 600, result: 420 };
+/** Stacked (`layout=stack`), the editor fits its lines and the rows under it get these (embed.css, `data-fit`). */
+const STACK_PREVIEW = 200;
+const STACK_CONSOLE = 120;
 function wantedHeight() {
+  const stacked = embed.stacked();
   const fixed = MODE_HEIGHT[embed.mode()];
-  if (fixed) return fixed;
+  if (fixed && !stacked) return fixed;
+  // Read first, so that another file measures again.
   const path = workspace.state.active;
-  const lines = Math.min(Math.max((path ? (vfs.readText(path) ?? "") : "").split("\n").length, 3), 30);
   const below = embed.has("console") && !embed.has("preview") && embed.mode() === "code";
-  return 40 + (embed.has("tabs") || embed.has("autosave") ? 38 : 0) + lines * LINE + 24 + (below ? 160 : 0) + (pg.canRun ? 0 : 44);
+  const measured = measuredHeight(stacked, below);
+  if (measured) return measured;
+  // Before the editor is laid out, an estimate. Each stacked row adds its height and the 4px grid gap.
+  const lines = Math.min(Math.max((path ? (vfs.readText(path) ?? "") : "").split("\n").length, 3), 30);
+  const rows = stacked ? (embed.has("preview") ? STACK_PREVIEW + 4 : 0) + (embed.has("console") ? STACK_CONSOLE + 4 : 0) : 0;
+  return 40 + (embed.has("tabs") || embed.has("autosave") ? 38 : 0) + lines * LINE + 24 + (below ? 160 : 0) + rows + (pg.canRun ? 0 : 44);
+}
+
+/**
+ * The height as laid out, measured: constants missed what fonts and classic scrollbars add (the code's horizontal
+ * scrollbar is 11px), and the editor overflowed. It's what sits outside the panes (the bar, a notice), the grid's
+ * padding and gaps, the editor pane's chrome (tab bar), the code (its lines, held to 3 to 30, its padding and
+ * scrollbar) and the rows under it at their fitted sizes. Undefined until the editor (Pierre's, in a shadow root) is
+ * there.
+ */
+let observed: Element | undefined;
+const contentObserver = new ResizeObserver(() => sendResize(untrack(wantedHeight)));
+function measuredHeight(stacked: boolean, below: boolean): number | undefined {
+  const main = document.getElementById("embed-main");
+  const pane = document.getElementById("editor-pane");
+  const host = pane?.querySelector<HTMLElement>(".pierre-host");
+  const code = host?.firstElementChild?.shadowRoot?.querySelector<HTMLElement>("pre > code");
+  // The lines' grid is as tall as the lines; the code and the container around it stretch to fill the pane.
+  const lines = code?.querySelector<HTMLElement>("[data-content]");
+  if (!main || !pane || !host || !code || !lines?.children.length || !host.clientHeight) return;
+  if (lines !== observed) {
+    if (observed) contentObserver.unobserve(observed);
+    contentObserver.observe((observed = lines));
+  }
+  // Boxes, not offsetHeight: a tab bar 38.5px tall at 2x read as 38 left the code half a pixel short, and the host
+  // showed a scrollbar for it.
+  const height = (e: Element) => e.getBoundingClientRect().height;
+  const count = lines.children.length;
+  const lh = height(lines) / count;
+  const box = getComputedStyle(code);
+  const codeHeight = (Math.min(Math.max(count, 3), 30) * lh) + parseFloat(box.paddingTop) + parseFloat(box.paddingBottom) + code.offsetHeight - code.clientHeight;
+  // The console under the editor (code mode) keeps the height it has; a reader may have dragged it.
+  const consoleWrap = below && document.getElementById("console-wrap");
+  const consoleH = consoleWrap && height(consoleWrap);
+  const rows = (stacked ? [embed.has("preview") && STACK_PREVIEW, embed.has("console") && STACK_CONSOLE] : [consoleH]).filter((h): h is number => !!h);
+  const grid = getComputedStyle(main);
+  const gaps = (parseFloat(grid.rowGap) || 0) * rows.length + parseFloat(grid.paddingTop) + parseFloat(grid.paddingBottom);
+  // What sits above the panes (the bar, a notice), measured as such: the frame minus the grid is off by whatever the
+  // page overflows.
+  const outside = [...(main.parentElement?.children ?? [])].reduce((sum, e) => sum + (e === main ? 0 : height(e)), 0);
+  // The pane's tab bar, and a scrollbar of the host's own.
+  const paneChrome = height(pane) - height(host) + host.offsetHeight - host.clientHeight;
+  return Math.ceil(outside + gaps + paneChrome + codeHeight + rows.reduce((a, b) => a + b, 0));
 }
 let lastHeight = 0;
+const checkFit = () => embed.setFit(Math.abs(innerHeight - lastHeight) <= 1);
+addEventListener("resize", checkFit);
 function sendResize(height: number) {
   if (height === lastHeight) return;
   lastHeight = height;
   emit("resize", { height });
+  checkFit();
 }
 createRoot(() =>
   createEffect(wantedHeight, (height) => {
     sendResize(height);
+    // Once the change (another file, a feature) is laid out, measure again.
+    requestAnimationFrame(() => sendResize(untrack(wantedHeight)));
   }),
 );
 vfs.onChange(({ path }) => {

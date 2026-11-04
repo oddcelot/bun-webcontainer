@@ -1,12 +1,12 @@
 import { For, createEffect, createMemo, createSignal, onSettled } from "solid-js";
 
-/** What a reader can resize: the tree's width, the editor's share beside the side column, the preview's over the console, the console's height under the editor. */
-export type Size = "tree" | "side" | "rows" | "console";
+/** What a reader can resize: the tree's width, the editor's share beside the side column (or over it, stacked), the preview's over the console, the console's height under the editor. */
+export type Size = "tree" | "side" | "rows" | "console" | "stack";
 type Sizes = Partial<Record<Size, number>>;
 /** A border to drag between pane `a` and pane `b` (left of it, or over it), by element id. */
 export type Split = { size: Size; a: string; b: string; label: string };
 
-const ACROSS: Record<Size, boolean> = { tree: true, side: true, rows: false, console: false };
+const ACROSS: Record<Size, boolean> = { tree: true, side: true, rows: false, console: false, stack: false };
 const MIN_TREE = 110;
 const MIN_WIDE = 120;
 const MIN_TALL = 60;
@@ -23,6 +23,7 @@ function toVars(s: Sizes) {
     "--side-cols": s.side === undefined ? undefined : ratio(s.side),
     "--rows": s.rows === undefined ? undefined : ratio(s.rows),
     "--console-h": s.console === undefined ? undefined : `${s.console}px`,
+    "--stack-rows": s.stack === undefined ? undefined : ratio(s.stack),
   };
 }
 

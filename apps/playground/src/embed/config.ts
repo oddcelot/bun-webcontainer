@@ -64,5 +64,6 @@ export function optionsFromUrl(params: URLSearchParams): Options {
     persist: params.get("persist") ?? "",
     expand: expandOption(params),
     status: params.get("status") === "bar" ? "bar" : "toast",
+    layout: params.get("layout") === "stack" ? "stack" : "side",
   };
 }

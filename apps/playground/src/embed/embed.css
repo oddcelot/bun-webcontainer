@@ -35,6 +35,29 @@
 #embed[data-tree][data-side][data-preview] #embed-main { grid-template-areas: "tree editor preview"; }
 #embed[data-tree][data-side]:not([data-preview]) #embed-main { grid-template-areas: "tree editor console"; }
 #embed[data-tree][data-side][data-preview][data-console] #embed-main { grid-template-areas: "tree editor preview" "tree editor console"; }
+/* layout=stack: the side column under the editor (the tree stays out). Rows fit the content when the frame is as tall
+   as the embed asked (data-fit: a host with height="auto"), else they share the height; --stack-rows is a dragged share. */
+#embed[data-stack] {
+  --stack-default: minmax(0, 55fr) minmax(0, 45fr);
+  &[data-fit] {
+    --stack-default: minmax(0, 1fr) 200px;
+  }
+  &[data-fit]:not([data-preview]) {
+    --stack-default: minmax(0, 1fr) 120px;
+  }
+  &[data-side] #embed-main {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: var(--stack-rows, var(--stack-default));
+    grid-template-areas: "editor" "preview";
+  }
+  &[data-side]:not([data-preview]) #embed-main {
+    grid-template-areas: "editor" "console";
+  }
+  &[data-side][data-preview][data-console] #embed-main {
+    grid-template-rows: var(--stack-rows, var(--stack-default)) var(--console-h, 120px);
+    grid-template-areas: "editor" "preview" "console";
+  }
+}
 /* Result mode: the preview (and the console under it), no editor. */
 #embed:not([data-editor]) #embed-main { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: "preview"; }
 #embed:not([data-editor]):not([data-preview]) #embed-main { grid-template-areas: "console"; }
@@ -57,4 +80,8 @@
   #embed #tree { display: none; }
   /* The stacked templates ignore the sizes: only the console under the editor keeps its handle. */
   #embed-main > .resize-handle:not([data-size="console"]) { display: none; }
+  /* Stacked by the option too: the narrow template has fixed rows, so no handle moves anything. */
+  #embed[data-stack] #embed-main > .resize-handle {
+    display: none;
+  }
 }

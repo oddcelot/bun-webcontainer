@@ -26,6 +26,7 @@ The element's attributes and the iframe's URL parameters share names.
 | `persist` | key | none | Keeps edits in the reader's browser under this key. Without it every load starts from the source. |
 | `expand` | empty, a mode, `false` | none | A button that opens the embed in a modal over the page. With a mode (`expand="full"`) it switches to that mode while open. Escape or the button closes it. |
 | `status` | `toast`, `bar` | `toast` | Where the run status shows: a toast over the panes' bottom-right corner that fades a few seconds after it settles (errors stay), or a pill in the bar. |
+| `layout` | `side`, `stack` | `side` | Where the preview (or the console, in `console` mode) goes: beside the editor, or under it, e.g. `<bun-playground mode="preview" layout="stack" height="auto">`. Stacked, there's no file tree. With `height="auto"` the editor fits its code (3 to 30 lines), the preview gets 200px and the console 120px, up to the 640px cap; otherwise they share the height. Frames narrower than 560px stack either way. Set at load: changing it reloads the embed. |
 | `example` | name | none | A bundled example. |
 | `repo` | `owner/repo[@ref]` | none | A public GitHub repo. |
 | `share` | `#code=…` | none | A share link's hash. In an iframe URL put it after `#`. |
@@ -46,7 +47,7 @@ Inline files: child `<script type="text/plain" data-file="path">` elements, dede
 <bun-playground-defaults family="github-light" status="bar" load="click" fonts="https://fonts.googleapis.com/css2?family=Inter&display=swap"></bun-playground-defaults>
 ```
 
-- Keys: `mode`, `features`, `autorun`, `theme`, `family`, `fonts`, `readonly`, `expand`, `status`, `vars`, `load`, `height`, `src`. The others (`file`, `path`, `example`, `repo`, `share`, `title`, `persist`) are per embed; a shared `persist` key would make embeds overwrite each other's edits.
+- Keys: `mode`, `features`, `autorun`, `theme`, `family`, `fonts`, `readonly`, `expand`, `status`, `layout`, `vars`, `load`, `height`, `src`. The others (`file`, `path`, `example`, `repo`, `share`, `title`, `persist`) are per embed; a shared `persist` key would make embeds overwrite each other's edits.
 - Precedence: built-in default, then the page default, then the element's attribute, then what the reader picks in the embed's menu. An element opts out of a boolean default with `false`, e.g. `readonly="false"`. Removing an element's attribute falls back to the page default.
 - `vars` merges per scheme: the element's `base`, `light` and `dark` go over the page default's. Every other key replaces the default, `features` too. Malformed `vars` JSON in either place is skipped.
 - Changing `theme`, `family`, `vars`, `mode` or `height` on the defaults element updates running embeds without reloading them. The other keys only reach embeds that haven't started yet.
@@ -150,7 +151,7 @@ window.addEventListener("message", (e) => {
 });
 ```
 
-`files` maps paths to text. `options` takes `mode`, `features`, `file`, `path`, `autorun`, `theme`, `family`, `fonts`, `readonly`, `persist`, `expand` and `status`. `vars` takes the object described under [Theming](#theming). Without `?init=1`, the page loads from its URL and `init` isn't needed; `setFamily` and `setVars` change both afterwards.
+`files` maps paths to text. `options` takes `mode`, `features`, `file`, `path`, `autorun`, `theme`, `family`, `fonts`, `readonly`, `persist`, `expand`, `status` and `layout`. `vars` takes the object described under [Theming](#theming). Without `?init=1`, the page loads from its URL and `init` isn't needed; `setFamily` and `setVars` change both afterwards.
 
 ## Theming
 

@@ -9,6 +9,10 @@ export const VERSION = 1;
 export const MODES = ["code", "preview", "console", "full", "result"] as const;
 export type Mode = (typeof MODES)[number];
 
+/** Where the preview (or console) column goes: beside the editor, or under it. */
+export const LAYOUTS = ["side", "stack"] as const;
+export type Layout = (typeof LAYOUTS)[number];
+
 export const FEATURES = ["files", "tabs", "console", "preview", "types", "format", "install", "terminal", "open", "watch", "autosave"] as const;
 export type Feature = (typeof FEATURES)[number];
 
@@ -50,6 +54,11 @@ export type Options = {
    * or a mode to switch to while expanded (`expand=full`: a snippet opens as the whole playground).
    */
   expand: "" | "on" | Mode;
+  /**
+   * "side" (default): the preview (or console) beside the editor; "stack": under it, as in a narrow frame, which
+   * stacks either way. Set at load only.
+   */
+  layout: Layout;
   /** Where the run status shows: "toast", one that fades once it settles (default), or "bar", a pill in the bar. */
   status: "bar" | "toast";
 };
