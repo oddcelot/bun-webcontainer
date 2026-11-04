@@ -1,8 +1,9 @@
-import { For, Show, createContext, createMemo, useContext } from "solid-js";
+import { For, Show, createContext, createMemo, onSettled, useContext } from "solid-js";
 import { Tip } from "@runbun/ui/solid/Tip";
 import { Menu, MenuCheckItem, MenuGroup, MenuItem, MenuSeparator, MenuTrigger } from "@runbun/ui/solid/Menu";
 import logo from "../bun-logo.svg";
 import { COST } from "../embed/config";
+import { matches, type Command } from "../keymap";
 import type { Embed } from "../embed/main";
 import type { Feature } from "@runbun/embed/protocol";
 import { AppContext } from "./context";
@@ -50,6 +51,28 @@ export function EmbedApp() {
   const showPreview = sticky(() => has("preview"));
   const showConsole = sticky(() => has("console"));
   const sizes = createSizes(e.sizesKey);
+  // The app's shortcuts (App.tsx has them in the playground), on the way down and stopped there, so the editor doesn't
+  // get a key that ran a command (its keymap has Mod+Enter as "insert a blank line"). The show and hide ones work the
+  // menu's switches, so a pane the author locked stays as it is.
+  onSettled(() => {
+    const panes: [Command, Feature][] = [
+      ["toggleExplorer", "files"],
+      ["toggleConsole", "console"],
+      ["togglePreview", "preview"],
+    ];
+    const onKey = (ev: KeyboardEvent) => {
+      const s = app.session;
+      const pane = panes.find(([c, f]) => matches(c, ev) && !e.locked.has(f))?.[1];
+      if (matches("run", ev)) s.canRun && !s.busy.run && s.ready() && e.run();
+      else if (matches("stop", ev)) e.stop();
+      else if (pane) e.setFeatures({ [pane]: !e.has(pane) }, true);
+      else return;
+      ev.preventDefault();
+      ev.stopPropagation();
+    };
+    addEventListener("keydown", onKey, { capture: true });
+    return () => removeEventListener("keydown", onKey, { capture: true });
+  });
   // A handle on each border between two shown panes, as the grid places them.
   const splits = () =>
     [
