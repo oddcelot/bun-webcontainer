@@ -3,6 +3,7 @@ import "./embed.css";
 import { createEffect, createMemo, createRoot, createSignal, createStore, untrack } from "solid-js";
 import { BASE } from "../base";
 import { createPlayground } from "../boot";
+import { CHECKED, diagnose } from "../diagnostics";
 import { examples, loadExample } from "../examples";
 import { loadRepo, parseRepo, repoQuery } from "../github";
 import { attach, discard, restore, SKIP } from "../persist";
@@ -276,15 +277,44 @@ addEventListener("keydown", (e) => {
 vfs.onChange(({ path, removed }) => {
   if (!SKIP.test(path)) emit("change", { path, removed: !!removed });
 });
-// `watch`: a save the reader made while the program runs starts it again, like `bun --watch`. Only the editor's saves
-// count (not the program's own writes, an install or Run's save first); a burst is one restart, and one that lands
-// while a run, test or install is under way waits for it.
+// `watch`: a save the reader made while the program is watched starts it again, like `bun --watch`. Only the editor's
+// saves count (not the program's own writes, an install or Run's save first); a burst is one restart, and one that
+// lands while a run, test or install is under way waits for it. A crash doesn't end watching (the next save runs it
+// again); Stop and a clean exit do. A save that leaves an open file unparsable (half-typed, as auto-save saves) keeps
+// the program as it is and waits for one that parses.
 const WATCH_DELAY = 300;
 let watchTimer: ReturnType<typeof setTimeout> | undefined;
-function restart() {
+let watching = false;
+createRoot(() =>
+  createEffect(
+    () => session.settled().state,
+    (state) => {
+      if (state === "running") watching = true;
+      else if (state === "idle") watching = false;
+    },
+  ),
+);
+/** The first open file that doesn't parse, with its first error. */
+async function unparsable(): Promise<string | undefined> {
+  for (const path of workspace.state.open) {
+    const text = CHECKED.test(path) ? vfs.readText(path) : undefined;
+    if (text === undefined) continue;
+    const error = (await diagnose(vfs, path, text, false)).find((d) => d.severity === "error");
+    if (error) return `${path}:${error.line}:${error.column}: ${error.message}`;
+  }
+}
+let waitingFor: string | undefined;
+async function restart() {
   if (!embed.has("watch")) return;
   if (session.busy.run || session.busy.install) return void (watchTimer = setTimeout(restart, WATCH_DELAY));
-  if (session.settled().state !== "running") return;
+  if (!watching) return;
+  const broken = await unparsable();
+  if (broken) {
+    if (broken !== waitingFor) log("sys", `[watch] waiting for a save that parses (${broken})`);
+    waitingFor = broken;
+    return;
+  }
+  waitingFor = undefined;
   log("sys", "[watch] restarting");
   void pg.run(pg.lastEntry);
 }

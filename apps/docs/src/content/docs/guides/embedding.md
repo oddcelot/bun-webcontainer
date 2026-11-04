@@ -86,7 +86,7 @@ A share link's `#code=…` hash works too: `https://runbun.dev/embed?mode=code#c
 | `full` | The whole playground: file tree, tabs, preview over console, Format, Install. Waits for Run. | same, plus the formatter (7 MB) once used | 600px |
 | `result` | Only the preview, with an Edit button that switches to `preview`. | same | 420px |
 
-Every mode except `full` runs the code once it has loaded; `autorun="false"` waits for Run. While the program runs, saving an edit restarts it, like `bun --watch` (`features="-watch"` turns that off).
+Every mode except `full` runs the code once it has loaded; `autorun="false"` waits for Run. While the program runs, saving an edit restarts it, like `bun --watch` (`features="-watch"` turns that off). A crash doesn't stop the watching: the next save runs it again. A save that leaves an open file with a syntax error (half-typed, as auto-save saves it) keeps the program running as it was until a save parses.
 
 Set `height` to any CSS length, or `auto` to fit the code.
 
