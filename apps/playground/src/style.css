@@ -659,7 +659,20 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
   }
 }
 /* Not the main layout's handle offset (#right, where it meets the column handle): this one spans its panel. */
-#preview-wrap #req-handle { flex: 0 0 auto; margin-left: 0; }
+#preview-wrap #req-handle {
+  flex: 0 0 auto;
+  margin-left: 0;
+  /* Hand-built (ui/Preview.tsx), not Kobalte's Resizable: the cursor, the hover mark and the touch drag its handles get. */
+  cursor: row-resize;
+  touch-action: none;
+  &:hover::after {
+    background: var(--accent);
+  }
+}
+/* While it's dragged, the cursor stays even off its 6px (as Kobalte's global cursor style does for its handles). */
+body:has(#req-handle[data-dragging]) * {
+  cursor: row-resize !important;
+}
 #req-body .pierre-host { height: 100%; overflow: auto; background: var(--bg); }
 #req-body diffs-container { min-height: 100%; }
 #req-body[data-empty]::after { content: attr(data-placeholder); position: absolute; top: 8px; left: 41px; color: var(--muted); font: italic 12px/20px var(--font-ui); opacity: 0.8; pointer-events: none; }
