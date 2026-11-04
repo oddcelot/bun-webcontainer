@@ -1,7 +1,7 @@
 import { Show, createEffect, onSettled, useContext } from "solid-js";
 import { CHECKED, mountDiagnostics } from "../diagnostics";
 import { createPierre } from "../editors/pierre";
-import { formatChord, keysFor, matches } from "../keymap";
+import { chordKeys, keysFor, matches } from "../keymap";
 import type { CodeEditor, EditorLocation } from "../editors/types";
 import { asConsoleEntry, errorLocation, fmt } from "../fmt";
 import { complete, definition, hover, resolveCompletion, signatureHelp, TYPED } from "../typecheck";
@@ -206,7 +206,7 @@ export function EditorPane() {
             <EditorTabs />
           </Show>
           <Show when={has("tabs") && has("format")}>
-            <Tip class="format" type="button" disabled={!ws.state.active} tip="Format the open file with bun fmt" keys={keysFor("format").map(formatChord)} onClick={() => void formatOpenFile()}>
+            <Tip class="format" type="button" disabled={!ws.state.active} tip="Format the open file with bun fmt" keys={keysFor("format").map(chordKeys)} onClick={() => void formatOpenFile()}>
               <i class="i-lucide-wand-sparkles" aria-hidden="true" /> Format
             </Tip>
           </Show>

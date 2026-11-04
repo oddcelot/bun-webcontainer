@@ -7,8 +7,8 @@ import "../css/tooltip.css";
 type TipProps = {
   /** What the tooltip says; none, no tooltip. */
   tip?: JSX.Element;
-  /** Shortcuts for the action, shown after the text as keys. */
-  keys?: string[];
+  /** Shortcuts for the action, shown after the text: each a chord, as its keys (`["⌥", "⇧", "F"]`) or one key. */
+  keys?: (string | string[])[];
   /** The trigger element (a button unless given). */
   as?: ValidComponent;
   placement?: "top" | "bottom" | "left" | "right" | "top-start" | "top-end" | "bottom-start" | "bottom-end";
@@ -48,8 +48,12 @@ export function Tip(props: TipProps) {
       <Tooltip.Portal mount={layer()}>
         <Tooltip.Content class="tooltip">
           {props.tip}
-          {props.keys?.map((k) => (
-            <kbd>{k}</kbd>
+          {props.keys?.map((chord) => (
+            <span class="chord">
+              {(typeof chord === "string" ? [chord] : chord).map((k) => (
+                <kbd>{k}</kbd>
+              ))}
+            </span>
           ))}
         </Tooltip.Content>
       </Tooltip.Portal>

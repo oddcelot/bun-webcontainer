@@ -16,12 +16,20 @@
     line-height: 1.4;
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
 
+    /* A shortcut: one key cap per key. */
+    .chord {
+      display: inline-flex;
+      gap: 2px;
+    }
+
     kbd {
+      min-width: 1.5em;
       padding: 0 4px;
       border: 1px solid var(--control-border);
       border-radius: 4px;
       color: var(--muted);
       font: 11px/16px var(--font-mono);
+      text-align: center;
     }
   }
 

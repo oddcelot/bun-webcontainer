@@ -133,9 +133,6 @@ export function chordKeys(chord: string): string[] {
   return [p.ctrl && "Ctrl", p.alt && "Alt", p.shift && "Shift", p.meta && "Meta", key].filter((k): k is string => !!k);
 }
 
-/** A chord for display: `⌘⇧↵` on macOS, `Ctrl+Shift+Enter` elsewhere. */
-export const formatChord = (chord: string) => chordKeys(chord).join(isMac ? "" : "+");
-
 /** The overrides as JSON for editing. */
 export const overridesText = () => JSON.stringify(overrides(), null, 2);
 
