@@ -1,13 +1,14 @@
 import { For, Show, createEffect, createSignal, onSettled, untrack, useContext } from "solid-js";
 import { Select } from "@runbun/ui/solid/Select";
 import { Menu, MenuItem, MenuTrigger } from "@runbun/ui/solid/Menu";
+import { Segmented } from "@runbun/ui/solid/Segmented";
 import { TabItem, TabList } from "@runbun/ui/solid/Tabs";
 import { isMac, matches } from "../keymap";
 import { createPierre, createViewer } from "../editors/pierre";
 import type { CodeEditor } from "../editors/types";
 import { PREFIX, normalize, responseReserve, type Card } from "../preview";
 import { AppContext } from "./context";
-import { hasBody, type PreviewTab, type Rows, type Section } from "./previews";
+import { draftKey, hasBody, type PreviewTab, type Rows, type Section } from "./previews";
 import { LOCAL_ORIGIN, fromAuth, queryOf, sent, toCurl, toFetch, toHttp, type Auth, type BodyMode, type Field } from "../request";
 import { Tip } from "@runbun/ui/solid/Tip";
 
@@ -123,7 +124,7 @@ export function Preview() {
           <Tip
             type="button"
             id="req-panel-toggle"
-            tip={active().panel ? "Hide the request panel" : "Params, headers and body"}
+            tip={`${active().panel ? "Hide" : "Show"} the request panel${panelSummary(active()) ? ` (${panelSummary(active())})` : ""}`}
             aria-label="Request panel"
             aria-controls="req-panel"
             aria-pressed={active().panel ? "true" : "false"}
@@ -195,7 +196,7 @@ export function Preview() {
                       win?.addEventListener("auxclick", openInTab);
                     }}
                   />
-                  <Response card={tab.response} hidden={id !== s.active || tab.view !== "response"} />
+                  <Response card={tab.response} hidden={id !== s.active || tab.view !== "response"} stale={!!tab.response && tab.sentKey !== draftKey(tab)} />
                 </>
               );
             }}
@@ -204,6 +205,12 @@ export function Preview() {
       </div>
     </>
   );
+}
+
+/** What the toggle's count adds up: "2 params, 1 header, auth". */
+function panelSummary(tab: PreviewTab): string {
+  const n = (count: number, one: string) => (count ? `${count} ${one}${count === 1 ? "" : "s"}` : "");
+  return [n(queryOf(tab.path).length, "param"), n(sent(tab.headers).length, "header"), Object.keys(fromAuth(tab.auth)).length ? "auth" : ""].filter(Boolean).join(", ");
 }
 
 /** Header names offered as a header row's name is typed. */
@@ -238,6 +245,8 @@ function Fields(props: {
   names?: string;
   files?: boolean;
   onFiles?: () => void;
+  /** Whether a file row's path is a project file: one that isn't is marked. */
+  fileExists?: (path: string) => boolean;
   derived?: { name: string; value: string; open: () => void };
   hidden: boolean;
   onChange: (i: number, change: Partial<Field>) => void;
@@ -248,10 +257,13 @@ function Fields(props: {
     <div class="fields" role="group" aria-label={props.label} hidden={props.hidden}>
       <Show when={props.derived}>
         {(d) => (
-          <button type="button" class="field derived" title="Set in Auth" onClick={() => d().open()}>
+          <button type="button" class="field derived" title="Set in Auth: click to edit it there" onClick={() => d().open()}>
+            <i class="i-lucide-lock" aria-hidden="true" />
             <span class="name">{d().name}</span>
             <span class="value">{d().value}</span>
-            <span class="from">Auth</span>
+            <span class="from">
+              Edit in Auth <i class="i-lucide-arrow-right" aria-hidden="true" />
+            </span>
           </button>
         )}
       </Show>
@@ -283,6 +295,9 @@ function Fields(props: {
               autocomplete="off"
               placeholder={row().file ? "Path of a project file" : "Value"}
               list={row().file ? "project-files" : undefined}
+              data-file={row().file ? "" : undefined}
+              aria-invalid={row().file && row().value.trim() && props.fileExists && !props.fileExists(row().value) ? "true" : undefined}
+              title={row().file && row().value.trim() && props.fileExists && !props.fileExists(row().value) ? "No such file in the project" : undefined}
               aria-label={`${props.label}: ${row().file ? "file" : "value"} ${i + 1}`}
               value={row().value}
               onFocus={() => row().file && props.onFiles?.()}
@@ -320,11 +335,20 @@ function Fields(props: {
   );
 }
 
+/** What Auth sends, for its tab's tooltip. */
+function authSummary(auth: Auth): string {
+  const set = fromAuth(auth);
+  const type = AUTH_TYPES.find((a) => a.type === auth.type)?.label ?? "";
+  if (auth.type === "none") return "Authorization: none";
+  if (!set.header && !set.param) return `${type}: not filled in yet, nothing is sent`;
+  return set.header ? `${type}, sent as the ${set.header[0]} header` : `${type}, sent as ?${set.param!.name}=`;
+}
+
 /** The Auth section: a type, and its fields (a token, a user and password, or an API key's name, value and place). */
 function AuthFields(props: { auth: Auth; hidden: boolean; onChange: (change: Partial<Auth>) => void }) {
   const input = (key: "token" | "user" | "pass" | "key" | "value", label: string, type = "text") => (
     <input
-      class={key === "token" || key === "value" ? "value" : "name"}
+      class={key === "key" ? "name" : "value"}
       type={type}
       spellcheck={false}
       autocomplete="off"
@@ -379,14 +403,16 @@ function AuthFields(props: { auth: Auth; hidden: boolean; onChange: (change: Par
  * The request panel under the request bar, shown with its toggle there (and when a method that takes a body is
  * picked): Params (the path's query as rows, written back to the path as they change, and read from it as it's
  * typed), Headers (sent through the service worker, so `Cookie` and the like reach the server too: request.ts), Auth
- * (a header, or an API key's query parameter, written when sent and shown read-only in Headers or Params) and, for a
- * method with one, Body: the editor's text as JSON or text, or rows as a form (urlencoded, or multipart with project
- * files), and Raw: the whole request as `.http` text (request.ts toHttp, fromHttp), read back as it's typed. A
- * section's tab shows how many rows it sends.
+ * (a header, or an API key's query parameter, written when sent and shown read-only in Headers or Params) and Body:
+ * the editor's text as JSON or text, or rows as a form (urlencoded, or multipart with project files), picked above it;
+ * for a method without one, a note and a way to switch to POST. The four tabs stay put for every method. A tab shows
+ * how many rows it sends (Params, Headers) or a dot once it sends anything (Auth, Body). Raw, a toggle at the right of
+ * the tab bar, shows the whole request as `.http` text (request.ts toHttp, fromHttp) in place of the section, read
+ * back as it's typed (and said to screen readers once typing pauses).
  *
- * Rows are as tall as they are, up to a few, then scroll. The tab bar is the file tabs' TabList and TabItem, with the
- * body's mode picker at its end on Body, and a menu that copies the request as curl or `fetch`, for the app run
- * locally.
+ * Rows are as tall as they are, up to a few, then scroll. The tab bar is the file tabs' TabList and TabItem (drawn
+ * lighter here: style.css), with Raw and a menu that copies the request as curl or `fetch`, for the app run locally,
+ * at its end.
  *
  * The body and the Raw view are in the editor the files use, the body highlighted as JSON (what it's usually sent as).
  * One editor: switching preview tabs (or between Body and Raw) opens the active tab's text in it, and each edit goes
@@ -405,11 +431,15 @@ function AuthFields(props: { auth: Auth; hidden: boolean; onChange: (change: Par
  */
 function RequestPanel(props: { tab: PreviewTab }) {
   const { previews: p } = useContext(AppContext);
-  const section = () => (props.tab.section === "body" && !hasBody(props.tab.method) ? "params" : props.tab.section);
+  const section = () => props.tab.section;
+  const raw = () => props.tab.raw;
+  const withBody = () => hasBody(props.tab.method);
   const params = () => queryOf(props.tab.path);
   const rowsMode = () => props.tab.bodyMode === "form" || props.tab.bodyMode === "multipart";
   /** The editor shows the body (as JSON or text) and the Raw view. */
-  const editorHidden = () => !props.tab.panel || !((section() === "body" && !rowsMode()) || section() === "raw");
+  const editorHidden = () => !props.tab.panel || !(raw() || (section() === "body" && withBody() && !rowsMode()));
+  /** The rows sections show (not while Raw shows them all as text). */
+  const shows = (s: Section) => !raw() && section() === s;
   const auth = () => fromAuth(props.tab.auth);
   const app = useContext(AppContext);
   /** The project's files, for a multipart file row (read when one is focused or made). */
@@ -441,7 +471,7 @@ function RequestPanel(props: { tab: PreviewTab }) {
     // The code's padding and horizontal scrollbar.
     const chrome = parseFloat(box.paddingTop) + parseFloat(box.paddingBottom) + code.offsetHeight - code.clientHeight;
     // The Raw view holds the request line and headers too.
-    const cap = parseFloat(getComputedStyle(el).fontSize) * (untrack(section) === "raw" ? 12 : 7);
+    const cap = parseFloat(getComputedStyle(el).fontSize) * (untrack(raw) ? 12 : 7);
     const line = Math.ceil(lh + chrome);
     const fitted = Math.ceil(Math.min(cap, count * lh + chrome));
     return { line, fitted };
@@ -480,14 +510,18 @@ function RequestPanel(props: { tab: PreviewTab }) {
     dragged.set(untrack(() => p.state.active), apply(h, m.line));
   };
   createEffect(
-    () => [p.state.active, section() === "raw" ? "http" : props.tab.bodyMode === "text" ? "txt" : "json"] as const,
+    () => [p.state.active, raw() ? "http" : props.tab.bodyMode === "text" ? "txt" : "json"] as const,
     ([id, ext]) => {
       editor ??= createPierre(el);
       const text = untrack(() => {
         const tab = p.state.tabs.find((t) => t.id === id);
         return !tab ? "" : ext === "http" ? toHttp(tab) : tab.body;
       });
-      if (ext === "http") editor.open(`request-${id}.http`, text, (text) => p.raw(id, text));
+      if (ext === "http")
+        editor.open(`request-${id}.http`, text, (text) => {
+          p.raw(id, text);
+          announceRaw();
+        });
       else editor.open(`request-body-${id}.${ext}`, text, (text) => p.edit(id, "body", text));
       // After the editor has laid the body out.
       requestAnimationFrame(() => fit(true));
@@ -496,12 +530,23 @@ function RequestPanel(props: { tab: PreviewTab }) {
   // The Raw view follows changes made elsewhere (the request bar, another section) while it isn't being typed in;
   // while it is, it is what the request is read from.
   createEffect(
-    () => (section() === "raw" ? toHttp(props.tab) : null),
+    () => (raw() ? toHttp(props.tab) : null),
     (text) => {
       if (text === null || !editor || el.contains(document.activeElement) || editor.getText() === text) return;
       editor.update(text);
     },
   );
+  // What Raw set, said once typing pauses: the sections it changes aren't on screen.
+  const [said, setSaid] = createSignal("");
+  let sayTimer: ReturnType<typeof setTimeout> | undefined;
+  const announceRaw = () => {
+    clearTimeout(sayTimer);
+    sayTimer = setTimeout(() => {
+      const t = untrack(() => props.tab);
+      const n = sent(t.headers).length;
+      setSaid(`Request read from Raw: ${t.method} ${t.path}, ${n} header${n === 1 ? "" : "s"}`);
+    }, 800);
+  };
   const [copied, setCopied] = createSignal("");
   const copy = (kind: "curl" | "fetch") => {
     const draft = { ...props.tab, path: normalize(props.tab.path.trim() || "/") };
@@ -518,6 +563,8 @@ function RequestPanel(props: { tab: PreviewTab }) {
         editorHidden(),
         props.tab.panel,
         section(),
+        raw(),
+        withBody(),
         props.tab.bodyMode,
         props.tab.auth.type,
         params().length,
@@ -541,7 +588,7 @@ function RequestPanel(props: { tab: PreviewTab }) {
   let start: { y: number; h: number } | undefined;
   return (
     <>
-      <section id="req-panel" hidden={!props.tab.panel} aria-label="Request">
+      <section id="req-panel" hidden={!props.tab.panel} aria-label="Request" data-raw={raw() ? "" : undefined}>
         <div class="tabs-bar">
           <TabList class="tabs tablist" label="Request" onSelect={(v) => p.panel(p.state.active, v as Section)}>
             <TabItem value="params" selected={section() === "params"} title="The path's query parameters">
@@ -552,36 +599,30 @@ function RequestPanel(props: { tab: PreviewTab }) {
               Headers
               <Show when={sent(props.tab.headers).length}>{(n) => <span class="count">{n()}</span>}</Show>
             </TabItem>
-            <TabItem value="auth" selected={section() === "auth"} title="Authorization, written into a header when sent">
+            <TabItem value="auth" selected={section() === "auth"} title={authSummary(props.tab.auth)}>
               Auth
-              <Show when={props.tab.auth.type !== "none"}>
-                <span class="count">{AUTH_TYPES.find((a) => a.type === props.tab.auth.type)?.label.split(" ")[0]}</span>
+              <Show when={Object.keys(auth()).length}>
+                <span class="dot" aria-label="set" />
               </Show>
             </TabItem>
-            <Show when={hasBody(props.tab.method)}>
-              <TabItem value="body" selected={section() === "body"} title="The request's body">
-                Body
-              </TabItem>
-            </Show>
-            <TabItem value="raw" selected={section() === "raw"} title="The whole request as text (.http): edit it here or in the other sections">
-              Raw
+            <TabItem value="body" selected={section() === "body"} title={withBody() ? "The request's body" : `${props.tab.method} requests have no body`}>
+              Body
+              <Show when={withBody() && (rowsMode() ? (props.tab.bodyMode === "form" ? sent(props.tab.form) : sent(props.tab.multipart)).length > 0 : !!props.tab.body)}>
+                <span class="dot" aria-label="set" />
+              </Show>
             </TabItem>
           </TabList>
           <span class="panel-tools">
-            <Show when={section() === "body"}>
-              <Select<(typeof BODY_MODES)[number]>
-                class="body-mode"
-                label="Body sent as"
-                tip={`Sent as ${BODY_MODES.find((m) => m.mode === props.tab.bodyMode)?.tip}`}
-                options={BODY_MODES}
-                optionValue="mode"
-                optionTextValue="label"
-                value={BODY_MODES.find((m) => m.mode === props.tab.bodyMode) ?? null}
-                onChange={(m) => m && p.bodyMode(p.state.active, m.mode)}
-                required
-                placement="bottom-end"
-              />
-            </Show>
+            <Tip
+              type="button"
+              class="raw-toggle"
+              tip={raw() ? "Back to the fields" : "The whole request as text (.http), to read or edit at once"}
+              aria-pressed={raw() ? "true" : "false"}
+              onClick={() => p.toggleRaw(p.state.active)}
+            >
+              <i class="i-lucide-file-code-2" aria-hidden="true" />
+              <span class="label">Raw</span>
+            </Tip>
             <Menu
               placement="bottom-end"
               trigger={
@@ -595,11 +636,14 @@ function RequestPanel(props: { tab: PreviewTab }) {
             </Menu>
           </span>
         </div>
+        <span class="sr-only" aria-live="polite">
+          {said()}
+        </span>
         <Fields
           label="Query parameters"
           rows={params().map((q) => ({ ...q, on: true }))}
           derived={auth().param && { ...auth().param!, open: () => p.panel(p.state.active, "auth") }}
-          hidden={section() !== "params"}
+          hidden={!shows("params")}
           onChange={(i, c) => p.param(p.state.active, i, c)}
           onRemove={(i) => p.removeParam(p.state.active, i)}
         />
@@ -609,18 +653,33 @@ function RequestPanel(props: { tab: PreviewTab }) {
           toggles
           names="header-names"
           derived={auth().header && { name: auth().header![0], value: auth().header![1], open: () => p.panel(p.state.active, "auth") }}
-          hidden={section() !== "headers"}
+          hidden={!shows("headers")}
           {...rows("headers")}
         />
-        <AuthFields auth={props.tab.auth} hidden={section() !== "auth"} onChange={(c) => p.auth(p.state.active, c)} />
-        <Fields label="Form fields" rows={props.tab.form} toggles hidden={section() !== "body" || props.tab.bodyMode !== "form"} {...rows("form")} />
+        <AuthFields auth={props.tab.auth} hidden={!shows("auth")} onChange={(c) => p.auth(p.state.active, c)} />
+        <div class="body-bar" hidden={!shows("body") || !withBody()}>
+          <Segmented
+            label="Body sent as"
+            value={props.tab.bodyMode}
+            options={BODY_MODES.map((m) => [m.mode, m.label, undefined, `Sent as ${m.tip}`])}
+            onChange={(m) => p.bodyMode(p.state.active, m as BodyMode)}
+          />
+        </div>
+        <div class="no-body" hidden={!shows("body") || withBody()}>
+          <span>{props.tab.method} requests have no body.</span>
+          <button type="button" onClick={() => p.edit(p.state.active, "method", "POST")}>
+            Switch to POST
+          </button>
+        </div>
+        <Fields label="Form fields" rows={props.tab.form} toggles hidden={!shows("body") || !withBody() || props.tab.bodyMode !== "form"} {...rows("form")} />
         <Fields
           label="Multipart fields"
           rows={props.tab.multipart}
           toggles
           files
           onFiles={readFiles}
-          hidden={section() !== "body" || props.tab.bodyMode !== "multipart"}
+          fileExists={(path) => app.vfs.read(path.trim().replace(/^\/+/, "")) !== undefined}
+          hidden={!shows("body") || !withBody() || props.tab.bodyMode !== "multipart"}
           {...rows("multipart")}
         />
         <datalist id="header-names">
@@ -633,8 +692,8 @@ function RequestPanel(props: { tab: PreviewTab }) {
           id="req-body"
           ref={el}
           hidden={editorHidden()}
-          data-empty={section() === "body" && !props.tab.body ? "" : undefined}
-          data-placeholder={props.tab.bodyMode === "text" ? "Request body, sent as text/plain" : "Request body, sent as application/json"}
+          data-empty={!raw() && !props.tab.body ? "" : undefined}
+          data-placeholder={props.tab.bodyMode === "text" ? "Write the body as text" : "Write the body as JSON"}
         />
       </section>
       <div
@@ -734,10 +793,13 @@ function ResponseBody(props: { name: string; text: string }) {
   return <div class="body highlighted" ref={el} />;
 }
 
-/** The response card: status pill and request line, headers, then the body in a box (red when it failed). */
-function Response(props: { card: Card | null; hidden: boolean }) {
+/**
+ * The response card: status pill and request line, headers, then the body in a box (red when it failed). `stale`: the
+ * request has changed since this was sent, so it's dimmed, with a note.
+ */
+function Response(props: { card: Card | null; hidden: boolean; stale: boolean }) {
   return (
-    <div class={["preview-response", { error: props.card ? !props.card.ok : false }]} hidden={props.hidden}>
+    <div class={["preview-response", { error: props.card ? !props.card.ok : false, stale: props.stale }]} hidden={props.hidden}>
       <Show when={props.card}>
         {(card) => (
           <>
@@ -746,6 +808,9 @@ function Response(props: { card: Card | null; hidden: boolean }) {
                 <span class="status">{card().status}</span>
               </Show>
               <span class="line">{card().line}</span>
+              <Show when={props.stale}>
+                <span class="stale-note">The request changed since, Send to update</span>
+              </Show>
             </div>
             <Show when={card().head}>
               <pre class="headers">{card().head}</pre>

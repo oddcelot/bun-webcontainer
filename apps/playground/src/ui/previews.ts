@@ -3,11 +3,14 @@ import type { PresetRequest } from "../embed/requests";
 import { PREFIX, cardFromFrame, normalize, sendRequest, type Card } from "../preview";
 import { build, fromHttp, modeOf, noAuth, queryOf, sent, withQuery, type Auth, type BodyMode, type Field } from "../request";
 
-/** The request panel's sections (ui/Preview.tsx): the path's query, the headers, and the body of a method with one. */
-export type Section = "params" | "headers" | "auth" | "body" | "raw";
+/** The request panel's sections (ui/Preview.tsx): the path's query, the headers, Auth and the body. */
+export type Section = "params" | "headers" | "auth" | "body";
 
 /** The request panel's row lists, by name. */
 export type Rows = "headers" | "form" | "multipart";
+
+/** What a tab would send, as a string: a response sent from another one is out of date (ui/Preview.tsx). */
+export const draftKey = (t: PreviewTab) => JSON.stringify([t.method, t.path, t.body, t.bodyMode, t.form, t.multipart, t.headers, t.auth]);
 
 /** Whether a request with `method` carries a body (the panel's Body section). */
 export const hasBody = (method: string) => method !== "GET" && method !== "HEAD";
@@ -25,9 +28,12 @@ export type PreviewTab = {
   /** Headers sent with the request (the ones turned on); the query lives in `path`. */
   headers: Field[];
   auth: Auth;
-  /** Whether the request panel shows, and which of its sections. */
+  /** Whether the request panel shows, which of its sections, and whether as Raw text (all of them, as `.http`). */
   panel: boolean;
   section: Section;
+  raw: boolean;
+  /** draftKey of the request `response` answers. */
+  sentKey: string;
   view: "frame" | "response";
   /** The page's <title>, once one loaded. */
   title: string;
@@ -54,6 +60,8 @@ export function createPreviews(running: () => boolean = () => false, read: (path
     auth: noAuth(),
     panel: hasBody(method),
     section: hasBody(method) ? "body" : "params",
+    raw: false,
+    sentKey: "",
     view: "frame",
     title: "",
     response: null,
@@ -120,11 +128,21 @@ export function createPreviews(running: () => boolean = () => false, read: (path
         }
       });
     },
-    /** Shows the request panel, on `section`; with no section, shows or hides it. */
+    /** Shows the request panel, on `section` (as fields, not Raw); with no section, shows or hides it. */
     panel(id: number, section?: Section) {
       update(id, (t) => {
-        if (section) t.section = section;
+        if (section) {
+          t.section = section;
+          t.raw = false;
+        }
         t.panel = section ? true : !t.panel;
+      });
+    },
+    /** Shows the request as Raw text, or back as the section's fields. */
+    toggleRaw(id: number) {
+      update(id, (t) => {
+        t.raw = !t.raw;
+        t.panel = true;
       });
     },
     /** Query parameter `i` changed (one past the last: a new one); the path's query is written again from them. */
@@ -194,6 +212,7 @@ export function createPreviews(running: () => boolean = () => false, read: (path
           t.pending = false;
         });
       const m = method ?? tab.method;
+      const key = draftKey(tab);
       let path = normalize(tab.path.trim() || "/");
       let result: "page" | Card;
       try {
@@ -215,6 +234,7 @@ export function createPreviews(running: () => boolean = () => false, read: (path
           if (t.response) reconcile(card)(t.response);
           else t.response = card;
           t.view = "response";
+          t.sentKey = key;
         });
       }
     },
@@ -234,6 +254,8 @@ export function createPreviews(running: () => boolean = () => false, read: (path
         if (t.response) reconcile(card)(t.response);
         else t.response = card;
         t.view = "response";
+        // The page's own navigation answered it: what the tab holds now is what was sent.
+        t.sentKey = draftKey(t);
       });
     },
     /** Where the first tab requests before anything has been sent: the embed's `path` option. */

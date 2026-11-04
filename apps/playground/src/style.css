@@ -280,10 +280,10 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
 .method-badge[data-method="PATCH"] { --method: #9b86f2; }
 .method-badge[data-method="DELETE"] { --method: #ec6490; }
 #req-path { flex: 1; min-width: 0; }
-/* A narrow preview column: Send shows its icon only (the label stays as the tooltip and accessible name), and the
+/* A narrow preview column (an embed's, a phone's): Send shows its icon only (the label stays as the tooltip and accessible name), and the
    new-tab and expand buttons go (Restore stays: an expanded preview is only this narrow on a phone, with no Esc). */
 #preview-wrap { container-type: inline-size; }
-@container (width < 340px) {
+@container (width < 420px) {
   #request button .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   #request button { padding: 3px 8px; }
   #request #open-tab, #preview-wrap:not(.expanded) #request #expand { display: none; }
@@ -299,10 +299,12 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
     font-size: 11px;
   }
 }
-/* The request panel (ui/Preview.tsx): the editor's tab bar (Params, Headers, Body, with their counts, and the type a
-   body is sent as), then the section shown: name and value rows as tall as they are up to a few, then scrolling, or
-   the body's editor as tall as its lines (set there, up to 7em; this until it's measured) with a hint while it's
-   empty, and the panes' resize handle under it. */
+/* The request panel (ui/Preview.tsx). Its section tabs are lighter than the preview tabs above them (an accent line, no
+   fill), so the two rows don't read as one. At the right of their bar, the actions on the whole request: Raw and Copy.
+   Every section lays out on one grid: a name column (14em; after a checkbox where rows can be turned off) and a value
+   column, with 24px buttons at the end. Rows are as tall as they are, up to four, then scroll; the body's editor is as
+   tall as its lines (set there; this until it's measured), with a hint while it's empty, and the panes' resize handle
+   under it. */
 #req-panel {
   display: flex;
   flex-direction: column;
@@ -311,13 +313,77 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
   &[hidden] {
     display: none;
   }
-  .tab .count {
-    margin-left: 5px;
+  .tabs-bar .tabs {
+    padding-block: 2px;
+    .tab {
+      min-width: 0;
+      padding: 4px 8px;
+      &[data-selected] {
+        background: none;
+      }
+      &:hover {
+        background: none;
+      }
+    }
+  }
+  /* Raw shows every section at once: no section's mark. */
+  &[data-raw] .tabs-bar .tab[data-selected] {
     color: var(--muted);
+    &::after {
+      background: transparent;
+    }
+  }
+  .tab .count {
+    min-width: 16px;
+    padding: 0 4px;
+    border-radius: 8px;
+    background: var(--control);
+    color: var(--fg);
     font-size: 11px;
+    line-height: 16px;
+    text-align: center;
+  }
+  .tab .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  .panel-tools {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 2px;
+    margin: 0 var(--pad) 0 auto;
+  }
+  .raw-toggle,
+  .copy-request {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-width: 24px;
+    height: 24px;
+    padding: 0 5px;
+    border: 0;
+    border-radius: 4px;
+    background: none;
+    color: var(--muted);
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    &:hover,
+    &:focus-visible {
+      color: var(--fg);
+      background: var(--control);
+    }
+    &[aria-pressed="true"] {
+      color: var(--fg);
+      background: var(--control-hover);
+    }
   }
   .fields {
-    max-height: calc(4 * 28px + 8px);
+    max-height: calc(4 * 30px + 8px);
     overflow: auto;
     padding: 4px 8px;
     background: var(--bg);
@@ -325,27 +391,78 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
       display: none;
     }
   }
+  .body-bar {
+    padding: 6px 8px 2px;
+    background: var(--bg);
+    &[hidden] {
+      display: none;
+    }
+    .segmented {
+      display: inline-flex;
+      button {
+        height: 24px;
+        font-size: 12px;
+      }
+    }
+  }
+  .no-body {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--bg);
+    color: var(--muted);
+    font-size: 12px;
+    &[hidden] {
+      display: none;
+    }
+    button {
+      height: 24px;
+      padding: 0 8px;
+      border: 1px solid var(--control-border);
+      border-radius: 6px;
+      background: var(--control);
+      color: var(--fg);
+      font: inherit;
+      cursor: pointer;
+      &:hover {
+        background: var(--control-hover);
+      }
+    }
+  }
   .field {
     display: flex;
     align-items: center;
     gap: 6px;
-    height: 28px;
+    height: 30px;
     > input:not([type="checkbox"]) {
       min-width: 0;
-      padding: 3px 6px;
+      height: 24px;
+      padding: 0 6px;
       border: 1px solid var(--control-border);
       border-radius: 6px;
       background: var(--control);
       color: var(--fg);
       font: 12px var(--font-mono);
+      &[aria-invalid="true"] {
+        border-color: var(--error);
+        color: var(--error);
+      }
+      /* A file row's path: the accent edge pairs it with its pressed paperclip. */
+      &[data-file] {
+        border-left: 2px solid var(--accent);
+      }
     }
     > .name {
-      flex: 0 1 14em;
+      flex: 0 0 14em;
     }
     > .value {
       flex: 1 1 auto;
     }
     > input[type="checkbox"] {
+      flex: 0 0 auto;
+      width: 14px;
+      height: 14px;
       margin: 0;
       accent-color: var(--accent);
       &:disabled {
@@ -357,8 +474,8 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
       display: grid;
       place-items: center;
       flex: 0 0 auto;
-      width: 22px;
-      height: 22px;
+      width: 24px;
+      height: 24px;
       padding: 0;
       border: 0;
       border-radius: 4px;
@@ -377,85 +494,62 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
     }
     > .kind[aria-pressed="true"] {
       color: var(--accent);
+      background: color-mix(in oklab, var(--accent) 16%, transparent);
     }
+    /* Auth's type picker takes the name column, so its fields line up with the rows' values. */
     > .select-trigger {
       flex: 0 0 auto;
       height: 24px;
       font-size: 12px;
+      &.auth-type {
+        flex-basis: 14em;
+      }
     }
     > .hint {
       color: var(--muted);
       font-size: 12px;
     }
     &[data-new] > input:not([type="checkbox"]):not(:focus) {
-      background: transparent;
+      background-color: transparent;
       border-style: dashed;
     }
-    /* A row Auth writes, read-only: a click opens Auth. The checkbox column stays empty, so it lines up. */
+    /* A row Auth writes, read-only, with a lock: a click opens Auth. It starts where the rows' names do. */
     &.derived {
       width: 100%;
-      padding: 0 28px 0 0;
+      padding: 0 30px 0 0;
       border: 0;
       background: none;
       color: var(--muted);
       font: 12px var(--font-mono);
       text-align: left;
       cursor: pointer;
+      > i {
+        flex: 0 0 14px;
+        width: 14px;
+        height: 14px;
+      }
+      > .name {
+        flex: 0 0 calc(14em - 20px);
+      }
       > .name,
       > .value {
         overflow: hidden;
-        padding: 3px 7px;
+        padding: 0 7px;
         text-overflow: ellipsis;
         white-space: nowrap;
       }
       > .from {
+        display: inline-flex;
         flex: 0 0 auto;
-        padding: 0 5px;
-        border-radius: 3px;
-        background: var(--control);
-        font: 10px/15px var(--font-ui);
+        align-items: center;
+        gap: 3px;
+        color: var(--accent);
+        font: 11px var(--font-ui);
       }
-      &:hover > .from {
-        color: var(--fg);
+      &:hover > .from,
+      &:focus-visible > .from {
+        text-decoration: underline;
       }
-    }
-  }
-  .fields:has(input[type="checkbox"]) .field.derived {
-    padding-left: 19px;
-  }
-  .panel-tools {
-    display: flex;
-    flex: 0 0 auto;
-    align-items: center;
-    gap: 2px;
-    margin: 0 var(--pad) 0 auto;
-  }
-  .copy-request {
-    display: grid;
-    place-items: center;
-    width: 22px;
-    height: 22px;
-    padding: 0;
-    border: 0;
-    border-radius: 4px;
-    background: none;
-    color: var(--muted);
-    cursor: pointer;
-    &:hover,
-    &:focus-visible {
-      color: var(--fg);
-      background: var(--control);
-    }
-  }
-  .body-mode {
-    flex: 0 0 auto;
-    height: 22px;
-    border-color: transparent;
-    background: none;
-    color: var(--muted);
-    font-size: 11px;
-    &:hover {
-      color: var(--fg);
     }
   }
 }
@@ -472,7 +566,7 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
 #preview-wrap #req-handle { flex: 0 0 auto; margin-left: 0; }
 #req-body .pierre-host { height: 100%; overflow: auto; background: var(--bg); }
 #req-body diffs-container { min-height: 100%; }
-#req-body[data-empty]::after { content: attr(data-placeholder); position: absolute; top: 8px; left: 41px; color: var(--muted); font: 12px/20px var(--font-mono); pointer-events: none; }
+#req-body[data-empty]::after { content: attr(data-placeholder); position: absolute; top: 8px; left: 41px; color: var(--muted); font: italic 12px/20px var(--font-ui); opacity: 0.8; pointer-events: none; }
 #preview-views { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .preview-frame { flex: 1; width: 100%; border: 0; }
 .preview-frame[hidden], .preview-response[hidden], #req-handle[hidden] { display: none; }
@@ -497,6 +591,17 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
 }
 .preview-response pre { margin: 0; font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
 .preview-response .status-line { display: flex; align-items: center; gap: 8px; }
+/* Sent before the request last changed: dimmed, with a note in the status line. */
+.preview-response.stale {
+  > :not(.status-line) {
+    opacity: 0.55;
+  }
+  .stale-note {
+    margin-left: auto;
+    color: var(--muted);
+    font: 11px var(--font-ui);
+  }
+}
 .preview-response .status { padding: var(--pill-pad) 8px; border-radius: 999px; font-weight: 600; color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, var(--panel)); }
 .preview-response .headers { color: var(--muted); }
 .preview-response .body { padding: var(--box-pad) 12px; border: var(--box-border) solid var(--border); border-radius: 6px; background: var(--panel); }
