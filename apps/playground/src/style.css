@@ -498,13 +498,23 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
       color: var(--accent);
       background: color-mix(in oklab, var(--accent) 16%, transparent);
     }
-    /* Auth's type picker takes the name column, so its fields line up with the rows' values. */
-    > .select-trigger {
+    /* A picker (Kobalte wraps it in a div) is as tall as the row's inputs and buttons. Auth's type picker takes the
+       name column, so its fields line up with the rows' values. */
+    > div:has(> .select-trigger) {
+      display: flex;
       flex: 0 0 auto;
+      /* The inputs' size, so its 14em is theirs. */
+      font-size: 12px;
+      /* The checkbox column (14px and the gap) and the name column. */
+      &:has(> .auth-type) {
+        flex-basis: calc(14em + 20px);
+      }
+    }
+    .select-trigger {
       height: 24px;
       font-size: 12px;
       &.auth-type {
-        flex-basis: 14em;
+        flex: 1 1 auto;
       }
     }
     > .hint {
