@@ -1,7 +1,7 @@
 import { createStore, flush, reconcile } from "solid-js";
 import type { PresetRequest } from "../embed/requests";
 import { PREFIX, cardFromFrame, normalize, sendRequest, type Card } from "../preview";
-import { build, fromHttp, modeOf, noAuth, queryOf, sent, withQuery, type Auth, type BodyMode, type Field } from "../request";
+import { build, fromHttp, modeOf, noAuth, paramRows, queryOf, sent, splitParams, withQuery, type Auth, type BodyMode, type Field, type OffParam } from "../request";
 
 /** The request panel's sections (ui/Preview.tsx): the path's query, the headers, Auth and the body. */
 export type Section = "params" | "headers" | "auth" | "body";
@@ -25,6 +25,8 @@ export type PreviewTab = {
   bodyMode: BodyMode;
   form: Field[];
   multipart: Field[];
+  /** Query parameters turned off (the ones turned on live in `path`). */
+  offParams: OffParam[];
   /** Headers sent with the request (the ones turned on); the query lives in `path`. */
   headers: Field[];
   auth: Auth;
@@ -56,6 +58,7 @@ export function createPreviews(running: () => boolean = () => false, read: (path
     bodyMode: modeOf(body),
     form: [],
     multipart: [],
+    offParams: [],
     headers: [],
     auth: noAuth(),
     panel: hasBody(method),
@@ -75,6 +78,13 @@ export function createPreviews(running: () => boolean = () => false, read: (path
   let lastId = 1;
   const frames = new Map<number, HTMLIFrameElement>();
   const [state, setState] = createStore({ tabs: [blank(1, "/")], active: 1, expanded: false });
+  /** `rows` as the tab's path and its params turned off, the latter merged into the list there is (no fresh rows). */
+  const setParams = (t: PreviewTab, rows: Field[]) => {
+    const r = splitParams(t.path, rows);
+    t.path = r.path;
+    r.off.forEach((o, i) => (t.offParams[i] ? Object.assign(t.offParams[i]!, o) : t.offParams.push(o)));
+    t.offParams.splice(r.off.length);
+  };
   const update = (id: number, fn: (tab: PreviewTab) => void) =>
     setState((s) => {
       const tab = s.tabs.find((t) => t.id === id);
@@ -145,19 +155,22 @@ export function createPreviews(running: () => boolean = () => false, read: (path
         t.panel = true;
       });
     },
-    /** Query parameter `i` changed (one past the last: a new one); the path's query is written again from them. */
-    param(id: number, i: number, change: Partial<{ name: string; value: string }>) {
+    /**
+     * Params row `i` changed (one past the last: a new one, turned on); the path's query is written again from the
+     * rows turned on, and the ones turned off are kept aside (request.ts paramRows, splitParams).
+     */
+    param(id: number, i: number, change: Partial<Field>) {
       update(id, (t) => {
-        const params = queryOf(t.path);
-        params[i] = { ...(params[i] ?? { name: "", value: "" }), ...change };
-        t.path = withQuery(t.path, params);
+        const rows = paramRows(t.path, t.offParams);
+        rows[i] = { ...(rows[i] ?? { name: "", value: "", on: true }), ...change };
+        setParams(t, rows);
       });
     },
     removeParam(id: number, i: number) {
       update(id, (t) => {
-        t.path = withQuery(
-          t.path,
-          queryOf(t.path).filter((_, j) => j !== i),
+        setParams(
+          t,
+          paramRows(t.path, t.offParams).filter((_, j) => j !== i),
         );
       });
     },

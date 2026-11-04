@@ -37,6 +37,25 @@ export function withQuery(path: string, params: { name: string; value: string }[
   return pathname + (query ? `?${query}` : "") + hash;
 }
 
+/** A query parameter turned off: kept out of the path, at its row's place among the rest (`at`). */
+export type OffParam = { name: string; value: string; at: number };
+
+/** The Params rows: the path's query, turned on, with the ones turned off back in their places. */
+export function paramRows(path: string, off: readonly OffParam[]): Field[] {
+  const rows: Field[] = queryOf(path).map((q) => ({ ...q, on: true }));
+  for (const o of [...off].sort((a, b) => a.at - b.at)) rows.splice(Math.min(o.at, rows.length), 0, { name: o.name, value: o.value, on: false });
+  return rows;
+}
+
+/** Params rows split again: the path with the ones turned on as its query, and the ones turned off (paramRows). */
+export function splitParams(path: string, rows: readonly Field[]): { path: string; off: OffParam[] } {
+  const off: OffParam[] = [];
+  rows.forEach((r, at) => {
+    if (!r.on && (r.name || r.value)) off.push({ name: r.name, value: r.value, at });
+  });
+  return { path: withQuery(path, rows.filter((r) => r.on)), off };
+}
+
 /**
  * The request header that carries the reader's headers to the service worker: `fetch` drops the ones a page may not
  * set (`Cookie`, `Host`, `Origin`, `Referer`, `Sec-*`…), so they all go in this one, which sw.ts takes out again and

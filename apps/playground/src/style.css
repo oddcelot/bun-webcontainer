@@ -465,8 +465,10 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
       height: 14px;
       margin: 0;
       accent-color: var(--accent);
+      /* The empty row's: there's nothing to turn off yet, but the column stays. */
       &:disabled {
-        visibility: hidden;
+        opacity: 0.35;
+        cursor: default;
       }
     }
     > .remove,

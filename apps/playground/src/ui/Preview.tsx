@@ -9,7 +9,7 @@ import type { CodeEditor } from "../editors/types";
 import { PREFIX, normalize, responseReserve, type Card } from "../preview";
 import { AppContext } from "./context";
 import { draftKey, hasBody, type PreviewTab, type Rows, type Section } from "./previews";
-import { LOCAL_ORIGIN, fromAuth, queryOf, sent, toCurl, toFetch, toHttp, type Auth, type BodyMode, type Field } from "../request";
+import { LOCAL_ORIGIN, fromAuth, paramRows, queryOf, sent, toCurl, toFetch, toHttp, type Auth, type BodyMode, type Field } from "../request";
 import { Tip } from "@runbun/ui/solid/Tip";
 
 const CANT_RUN = "This browser can't run code here";
@@ -234,7 +234,8 @@ const AUTH_TYPES: { type: Auth["type"]; label: string }[] = [
 /**
  * Name and value rows (the query's parameters, headers, a form's fields), with one empty row after them to add one:
  * typing in it makes it a row (`onChange` with the index one past the last) and another empty one appears under it.
- * Rows go by index, so the field being typed in stays put. With `toggles`, each row has a checkbox to turn it off;
+ * Rows go by index, so the field being typed in stays put. With `toggles`, each row has a checkbox to turn it off
+ * (the empty row's is dimmed, so the column reads as one);
  * with `files`, a button that makes its value a path to a project file (offered from the `files` datalist, read when
  * its value is focused: `onFiles`). `derived` is a read-only row first, one Auth writes; clicking it opens Auth.
  */
@@ -273,7 +274,7 @@ function Fields(props: {
             <Show when={props.toggles}>
               <input
                 type="checkbox"
-                checked={row().on !== false}
+                checked={row().on !== false && i < props.rows.length}
                 disabled={i === props.rows.length}
                 aria-label={`Send ${row().name || `row ${i + 1}`}`}
                 onChange={(e) => props.onChange(i, { on: e.currentTarget.checked })}
@@ -568,6 +569,7 @@ function RequestPanel(props: { tab: PreviewTab }) {
         props.tab.bodyMode,
         props.tab.auth.type,
         params().length,
+        props.tab.offParams.length,
         props.tab.headers.length,
         props.tab.form.length,
         props.tab.multipart.length,
@@ -641,7 +643,8 @@ function RequestPanel(props: { tab: PreviewTab }) {
         </span>
         <Fields
           label="Query parameters"
-          rows={params().map((q) => ({ ...q, on: true }))}
+          rows={paramRows(props.tab.path, props.tab.offParams)}
+          toggles
           derived={auth().param && { ...auth().param!, open: () => p.panel(p.state.active, "auth") }}
           hidden={!shows("params")}
           onChange={(i, c) => p.param(p.state.active, i, c)}

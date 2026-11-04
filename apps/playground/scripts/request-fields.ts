@@ -1,6 +1,6 @@
 // The request panel's helpers (src/request.ts): the path's query as rows and back, and the headers packed for the
 // service worker. Run with bun: `bun scripts/request-fields.ts`. Exits 1 on a mismatch.
-import { build, fromAuth, fromHttp, toCurl, toFetch, toHttp, joinCookies, mergeHeaders, modeOf, noAuth, packHeaders, queryOf, sent, unpackHeaders, withQuery, type Draft } from "../src/request.ts";
+import { build, fromAuth, paramRows, splitParams, fromHttp, toCurl, toFetch, toHttp, joinCookies, mergeHeaders, modeOf, noAuth, packHeaders, queryOf, sent, unpackHeaders, withQuery, type Draft } from "../src/request.ts";
 
 let bad = 0;
 const eq = (what: string, got: unknown, want: unknown) => {
@@ -138,6 +138,14 @@ eq(
   toFetch(draft({ bodyMode: "multipart", multipart: [row("f", "n.txt", true, true)] })),
   'const form = new FormData();\nform.append("f", Bun.file("n.txt"));\nconst res = await fetch("http://localhost:3000/a", {\n  method: "POST",\n  body: form,\n});',
 );
+
+// Params turned off: out of the path, back in their places.
+const off = [{ name: "debug", value: "1", at: 1 }];
+eq("param rows", paramRows("/a?x=1&y=2", off), [row("x", "1"), row("debug", "1", false), row("y", "2")]);
+eq("param rows: past the end", paramRows("/a", [{ name: "z", value: "", at: 5 }]), [row("z", "", false)]);
+eq("params split", splitParams("/a?old#f", [row("x", "1"), row("debug", "1", false), row("y", "2")]), { path: "/a?x=1&y=2#f", off });
+eq("params split: an empty row turned off is dropped", splitParams("/a", [row("", "", false)]).off, []);
+eq("round trip", paramRows(splitParams("/a", paramRows("/a?x=1&y=2", off)).path, off), paramRows("/a?x=1&y=2", off));
 
 if (bad) process.exit(1);
 console.log("request fields: ok");
