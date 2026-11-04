@@ -1,10 +1,14 @@
 import { createSignal, createStore } from "solid-js";
 import type { EditorCursor, EditorDiagnostic } from "../editors/types";
+import type { ProjectPeek } from "../examples";
 import { pref } from "../prefs";
 import { EMBEDDED } from "../theme";
 
 const AUTOSAVE_KEY = "runbun:autosave";
 const WATCH_KEY = "runbun:watch";
+
+/** A look at a project without opening it (see `peekProject`), with the picker's name for it. */
+export type Peek = ProjectPeek & { title: string };
 
 /**
  * Which files are open in tabs, which one is active, and which have edits not yet written to the VFS. Writes go
@@ -31,6 +35,8 @@ export function createWorkspace() {
   // What the editor reports for the status bar.
   const [cursor, setCursor] = createSignal<EditorCursor | null>(null);
   const [problems, setProblems] = createSignal<EditorDiagnostic[]>([]);
+  // An example the project picker points at: shown read-only over the editor, never loaded or run.
+  const [peek, setPeek] = createSignal<Peek | null>(null);
   // The editor's pending edits; it registers how to write them (see EditorPane).
   let saveAll = () => {};
   let reveal: (line: number, column: number) => void = () => {};
@@ -66,6 +72,9 @@ export function createWorkspace() {
     /** The open file's error and warning markers. */
     problems,
     setProblems,
+    /** The example the project picker's highlighted entry would open, for a look before picking it. */
+    peek,
+    setPeek,
     onReveal(fn: typeof reveal) {
       reveal = fn;
     },

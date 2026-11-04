@@ -1,5 +1,5 @@
 import { Show, createSignal, useContext } from "solid-js";
-import { examples, repoExamples } from "../examples";
+import { examples, peekProject, repoExamples } from "../examples";
 import { AppContext } from "./context";
 import { PromptDialog } from "./PromptDialog";
 import { Select } from "@runbun/ui/solid/Select";
@@ -68,6 +68,30 @@ function Picker(props: { groups: Group[]; current: (list: Group[]) => Project | 
 
   const [asking, setAsking] = createSignal(false);
 
+  // How long the highlight rests on an entry before the editor and file tree show it: the pointer passing over others
+  // doesn't flash them, or spend GitHub API calls on them.
+  const PEEK_DELAY = 120;
+  const PEEK_DELAY_REPO = 300;
+  let peekTimer: ReturnType<typeof setTimeout> | undefined;
+  let peeking = 0;
+  /** Shows the highlighted example's entry file over the editor and its files over the tree (read-only, not loaded or run). */
+  function highlight(p: Project | null) {
+    clearTimeout(peekTimer);
+    const ask = ++peeking;
+    const value = p && fromPicker(p.value);
+    // The project already open and the Open entries show nothing.
+    const known = value !== null && (value === "" || value in examples || (value.startsWith("repo:") && value.slice(5) in repoExamples));
+    if (!p || !known || value === s.project().selected) return app.workspace.setPeek(null);
+    peekTimer = setTimeout(
+      async () => {
+        const peek = await peekProject(value);
+        if (ask !== peeking) return;
+        app.workspace.setPeek(peek && { ...peek, title: p.label });
+      },
+      value.startsWith("repo:") ? PEEK_DELAY_REPO : PEEK_DELAY,
+    );
+  }
+
   function pick(p: Project | null) {
     // The select stays on the current project (value is controlled) unless the page navigates away.
     if (!p) return;
@@ -93,6 +117,7 @@ function Picker(props: { groups: Group[]; current: (list: Group[]) => Project | 
         groupChildren="options"
         value={props.current(props.groups)}
         onChange={pick}
+        onHighlight={highlight}
         placement="bottom-start"
         leading={(o) => <Show when={o.icon}>{(icon) => <i class={icon()} aria-hidden="true" />}</Show>}
       />

@@ -31,6 +31,8 @@ type SelectProps<T, G> = {
   text?: (choice: T) => JSX.Element;
   /** Something before a choice's text, in the menu and in the trigger: a swatch, an icon. */
   leading?: (choice: T) => JSX.Element;
+  /** The choice the pointer or the arrow keys are on while the menu is open; null once it closes. */
+  onHighlight?: (choice: T | null) => void;
 };
 
 /**
@@ -38,6 +40,20 @@ type SelectProps<T, G> = {
  * logs STRICT_READ_UNTRACKED from inside Kobalte, so remount it (`<Show keyed>`) instead.
  */
 export function Select<T, G extends { label: string } = { label: string; options: T[] }>(props: SelectProps<T, G>) {
+  // Kobalte has no highlight event: watch its `data-highlighted` on the items, mapped back to their choices by `data-key`.
+  const items = new Map<string, T>();
+  let watching: MutationObserver | undefined;
+  const highlighted = (menu: HTMLElement) => {
+    const el = menu.querySelector("[data-highlighted]");
+    props.onHighlight?.(items.get(el?.getAttribute("data-key") ?? "") ?? null);
+  };
+  const watch = (menu: HTMLElement) => {
+    if (!props.onHighlight) return;
+    watching?.disconnect();
+    watching = new MutationObserver(() => highlighted(menu));
+    watching.observe(menu, { subtree: true, attributeFilter: ["data-highlighted"] });
+    queueMicrotask(() => highlighted(menu));
+  };
   const text = (choice: T) => (props.text ? props.text(choice) : String((choice as Record<string, unknown>)[props.optionTextValue ?? ""] ?? choice));
   return (
     <Kobalte<T, G>
@@ -51,7 +67,14 @@ export function Select<T, G extends { label: string } = { label: string; options
       disallowEmptySelection={props.required}
       placement={props.placement}
       gutter={props.gutter ?? 6}
+      onOpenChange={(open) => {
+        if (open) return;
+        watching?.disconnect();
+        watching = undefined;
+        props.onHighlight?.(null);
+      }}
       itemComponent={(p) => (
+        void items.set(p.item.key, p.item.rawValue),
         <Kobalte.Item item={p.item} class="select-option">
           {props.leading?.(p.item.rawValue)}
           <Kobalte.ItemLabel class="name">{text(p.item.rawValue)}</Kobalte.ItemLabel>
@@ -76,7 +99,7 @@ export function Select<T, G extends { label: string } = { label: string; options
         </Kobalte.Icon>
       </Tip>
       <Kobalte.Portal>
-        <Kobalte.Content class={["select-menu", props.menuClass]}>
+        <Kobalte.Content class={["select-menu", props.menuClass]} ref={watch}>
           <Kobalte.Listbox class="select-list" />
         </Kobalte.Content>
       </Kobalte.Portal>

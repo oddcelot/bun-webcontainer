@@ -27,6 +27,16 @@ type Pkg = { scripts?: Record<string, string>; dependencies?: Record<string, str
 export const scriptEntry = (s?: string) =>
   s?.match(/^bun\s+(?:(?:run\s+)?--?[\w-]+(?:=\S+)?\s+)*(?:run\s+)?(\S+\.[cm]?[jt]sx?)\b/)?.[1]?.replace(/^\.\//, "");
 
+/** The file Run starts: package.json's module/main or a `bun <file>` dev/start script, else a usual index file. */
+export function entryOf(has: (path: string) => boolean, read: (path: string) => string | undefined): string {
+  try {
+    const pkg = JSON.parse(read("package.json") ?? "{}") as { module?: string; main?: string; scripts?: Record<string, string> };
+    for (const e of [pkg.module, pkg.main, scriptEntry(pkg.scripts?.dev), scriptEntry(pkg.scripts?.start)])
+      if (e && has(e.replace(/^\.\//, ""))) return e.replace(/^\.\//, "");
+  } catch {}
+  return ["index.ts", "index.tsx", "index.js", "src/index.ts"].find(has) ?? "index.ts";
+}
+
 /** Files `bun test` picks up: `*.test.*`, `*_test.*`, `*.spec.*`, `*_spec.*`, outside node_modules. */
 export const isTestFile = (path: string) => /(^|\/)[^/]+[._](test|spec)\.[cm]?[jt]sx?$/.test(path) && !/(^|\/)node_modules\//.test(path);
 

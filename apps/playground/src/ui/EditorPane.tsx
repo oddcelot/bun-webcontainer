@@ -7,6 +7,7 @@ import { asConsoleEntry, errorLocation, fmt } from "../fmt";
 import { complete, definition, hover, resolveCompletion, signatureHelp, TYPED } from "../typecheck";
 import { AppContext } from "./context";
 import { guarded } from "./guarded";
+import type { Peek } from "./workspace";
 import { EditorTabs } from "./Tabs";
 import { Keys, Tip } from "@runbun/ui/solid/Tip";
 
@@ -236,8 +237,33 @@ export function EditorPane() {
             <i class="i-lucide-wand-sparkles" aria-hidden="true" /> Format
           </Tip>
         </Show>
+        {/* The example the project picker is on, over the open file until the menu closes. */}
+        <Show when={ws.peek()} keyed>
+          {(peek) => <PeekView peek={peek} />}
+        </Show>
       </div>
     </>
+  );
+}
+
+/** An example's entry file, highlighted and read-only (the file tree shows the rest of its files). */
+function PeekView(props: { peek: Peek }) {
+  let el!: HTMLDivElement;
+  onSettled(() => {
+    const view = createPierre(el, { readOnly: () => true });
+    view.open(props.peek.path, props.peek.text, () => {});
+    return () => view.destroy();
+  });
+  return (
+    <div class="peek" aria-live="polite">
+      <div class="peek-head">
+        <span class="title">
+          <i class="i-lucide-eye" aria-hidden="true" /> {props.peek.title}: pick it to load and run
+        </span>
+        <span class="path">{props.peek.path}</span>
+      </div>
+      <div class="peek-code" ref={el} />
+    </div>
   );
 }
 

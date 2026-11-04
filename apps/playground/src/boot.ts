@@ -7,7 +7,7 @@ import { Runner } from "./runner";
 import { setVfsOwner } from "./moduleServer";
 import { setPreviewOwner } from "./preview";
 import { loadSemver, type Semver } from "./semver";
-import { createShell, scriptEntry } from "./shell";
+import { createShell, entryOf } from "./shell";
 import { checkSupport } from "./support";
 import { createPreviews } from "./ui/previews";
 import { createSession, type Status } from "./ui/session";
@@ -74,14 +74,9 @@ export function createPlayground({ watch }: { watch?: () => boolean } = {}) {
     }
   }
 
-  /** The file Run starts: package.json's module/main or a `bun <file>` dev/start script, else a usual index file. */
+  /** The file Run starts (see `entryOf`). */
   function entryFile(): string {
-    try {
-      const pkg = JSON.parse(vfs.readText("package.json") ?? "{}") as { module?: string; main?: string; scripts?: Record<string, string> };
-      for (const e of [pkg.module, pkg.main, scriptEntry(pkg.scripts?.dev), scriptEntry(pkg.scripts?.start)])
-        if (e && vfs.files.has(e.replace(/^\.\//, ""))) return e.replace(/^\.\//, "");
-    } catch {}
-    return ["index.ts", "index.tsx", "index.js", "src/index.ts"].find((f) => vfs.files.has(f)) ?? "index.ts";
+    return entryOf((path) => vfs.files.has(path), (path) => vfs.readText(path));
   }
 
   /** What the last Run started, to start it again after `bun test` (which replaces the server). */

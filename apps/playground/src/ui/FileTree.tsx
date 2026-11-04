@@ -1,4 +1,4 @@
-import { createEffect, createSignal, onSettled, useContext } from "solid-js";
+import { Show, createEffect, createSignal, onSettled, useContext } from "solid-js";
 import {
   FileTree as PierreTree,
   themeToTreeStyles,
@@ -10,9 +10,51 @@ import { onTheme } from "../theme";
 import { AppContext } from "./context";
 import { guarded } from "./guarded";
 import { PromptDialog } from "./PromptDialog";
+import type { Peek } from "./workspace";
 import { Tip } from "@runbun/ui/solid/Tip";
 
 const TREE_VARS_KEY = "tree-vars";
+
+/** How every tree here looks (the project's and a peeked example's). */
+const TREE_LOOK = {
+  icons: "standard",
+  density: "compact",
+  // @pierre/trees 1.0.0-beta.6 shows the truncation marker when the measure cell is `height > 1lh`;
+  // at non-100% page zoom a single line measures a hair over 1lh, so every label gets "…".
+  // A truncated label wraps to 2+ lines, so 1.5lh keeps real truncation working.
+  // The open-file dot: small and quiet.
+  // style.css's thin scrollbars: scrollbar-width doesn't inherit into the shadow root (the color does).
+  // The search box sits in the pane like the tabs in the others: style.css's --pad in, a concentric corner. Its
+  // right end leaves room for the New file button.
+  unsafeCSS: `@container measure (height <= 1.5lh) { [data-truncate-marker] { opacity: 0; } }
+      [data-item-section="decoration"] { font-size: 5px; color: var(--muted); opacity: 0.8; }
+      * { scrollbar-width: thin; }
+      [data-file-tree-search-container] { padding: var(--pad) calc(2 * var(--pad) + var(--control-height)) 4px var(--pad); }
+      [data-file-tree-search-input] { flex: 1; min-width: 0; border-radius: var(--inner-radius); }`,
+} as const;
+
+/** Renders `tree` into `host` in the theme's colors (the last theme's until this one resolves); returns the cleanup. */
+function mountTree(tree: PierreTree, host: HTMLElement) {
+  tree.render({ containerWrapper: host });
+  const el = tree.getFileTreeContainer();
+  if (el) el.style.height = "100%";
+  const applyStyles = (styles: Record<string, string>) => {
+    for (const [k, v] of Object.entries(styles)) el?.style.setProperty(k, v);
+  };
+  // The last theme's tree colors until this one resolves, so the tree doesn't flash its dark default.
+  try {
+    applyStyles(JSON.parse(localStorage.getItem(TREE_VARS_KEY) ?? "{}"));
+  } catch {}
+  const untheme = onTheme((_, theme) => {
+    const styles = themeToTreeStyles(theme) as Record<string, string>;
+    applyStyles(styles);
+    localStorage.setItem(TREE_VARS_KEY, JSON.stringify(styles));
+  });
+  return () => {
+    untheme();
+    tree.cleanUp();
+  };
+}
 
 const isDirectory = (item: FileTreeItemHandle | null): item is FileTreeDirectoryHandle => item?.isDirectory() === true;
 
@@ -31,20 +73,7 @@ export function FileTree() {
     paths: [...vfs.files.keys()],
     initialExpansion: "closed",
     search: true,
-    icons: "standard",
-    density: "compact",
-    // @pierre/trees 1.0.0-beta.6 shows the truncation marker when the measure cell is `height > 1lh`;
-    // at non-100% page zoom a single line measures a hair over 1lh, so every label gets "…".
-    // A truncated label wraps to 2+ lines, so 1.5lh keeps real truncation working.
-    // The open-file dot: small and quiet.
-    // style.css's thin scrollbars: scrollbar-width doesn't inherit into the shadow root (the color does).
-    // The search box sits in the pane like the tabs in the others: style.css's --pad in, a concentric corner. Its
-    // right end leaves room for the New file button.
-    unsafeCSS: `@container measure (height <= 1.5lh) { [data-truncate-marker] { opacity: 0; } }
-      [data-item-section="decoration"] { font-size: 5px; color: var(--muted); opacity: 0.8; }
-      * { scrollbar-width: thin; }
-      [data-file-tree-search-container] { padding: var(--pad) calc(2 * var(--pad) + var(--control-height)) 4px var(--pad); }
-      [data-file-tree-search-input] { flex: 1; min-width: 0; border-radius: var(--inner-radius); }`,
+    ...TREE_LOOK,
     onSelectionChange(paths) {
       const [path] = paths;
       if (paths.length === 1 && vfs.files.has(path) && path !== active) ws.open(path);
@@ -71,21 +100,7 @@ export function FileTree() {
   }
 
   onSettled(() => {
-    tree.render({ containerWrapper: host });
-    const el = tree.getFileTreeContainer();
-    if (el) el.style.height = "100%";
-    const applyStyles = (styles: Record<string, string>) => {
-      for (const [k, v] of Object.entries(styles)) el?.style.setProperty(k, v);
-    };
-    // The last theme's tree colors until this one resolves, so the tree doesn't flash its dark default.
-    try {
-      applyStyles(JSON.parse(localStorage.getItem(TREE_VARS_KEY) ?? "{}"));
-    } catch {}
-    const untheme = onTheme((_, theme) => {
-      const styles = themeToTreeStyles(theme) as Record<string, string>;
-      applyStyles(styles);
-      localStorage.setItem(TREE_VARS_KEY, JSON.stringify(styles));
-    });
+    const unmount = mountTree(tree, host);
 
     // An install writes thousands of files; apply them in one batch per frame.
     const pending = new Map<string, FileTreeBatchOperation & { type: "add" | "remove" }>();
@@ -105,8 +120,7 @@ export function FileTree() {
     tree.resetPaths([...vfs.files.keys()]);
     return () => {
       unsubscribe();
-      untheme();
-      tree.cleanUp();
+      unmount();
     };
   });
 
@@ -140,6 +154,10 @@ export function FileTree() {
   return (
     <>
       <div ref={host} style={{ height: "100%" }} />
+      {/* The example the project picker is on, over the project's files until the menu closes. */}
+      <Show when={ws.peek()} keyed>
+        {(peek) => <PeekTree peek={peek} />}
+      </Show>
       <Tip ref={(el: HTMLButtonElement) => (button = el)} id="newfile" type="button" tip="New file" aria-label="New file" onClick={() => setAsking(true)}>
         <i class="i-lucide-file-plus" aria-hidden="true" />
       </Tip>
@@ -155,4 +173,14 @@ export function FileTree() {
       />
     </>
   );
+}
+
+/** A peeked example's files, every folder open and the file the editor shows selected; nothing in it opens. */
+function PeekTree(props: { peek: Peek }) {
+  let host!: HTMLDivElement;
+  onSettled(() => {
+    const tree = new PierreTree({ paths: props.peek.paths, initialExpansion: "open", initialSelectedPaths: [props.peek.path], ...TREE_LOOK });
+    return mountTree(tree, host);
+  });
+  return <div class="peek-tree" ref={host} aria-label={`Files of ${props.peek.title}`} />;
 }

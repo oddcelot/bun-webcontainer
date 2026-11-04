@@ -190,6 +190,13 @@ main { position: relative; flex: 1; min-height: 0; padding: 0 4px 4px; }
 [data-kb-resizable-panel]:not(#right) { border: 4px solid transparent; border-radius: calc(var(--radius) + 4px); background: var(--bg) padding-box; }
 main [data-kb-resizable-root] { height: 100%; }
 #tree { position: relative; height: 100%; }
+/* A peeked example's files (FileTree.tsx), over the project's and its New file button. */
+.peek-tree {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  background: var(--bg);
+}
 /* New file: at the end of the tree's search row (FileTree.tsx leaves the room), the same size and corner as the box. */
 #newfile { position: absolute; top: calc(var(--pad) + 1px); right: var(--pad); display: grid; place-items: center; width: var(--control-height); height: var(--control-height); padding: 0; border: 1px solid var(--control-border); border-radius: var(--inner-radius); background: var(--control); color: inherit; cursor: pointer; }
 #newfile:hover { background: var(--control-hover); }
@@ -308,6 +315,55 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
 .overlay::after { content: ""; position: absolute; inset: 0; padding: 1px; background: var(--overlay-ring, none); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude; }
 #editor .pierre-host { height: 100%; overflow: auto; background: var(--bg); }
 #editor diffs-container { min-height: 100%; }
+/* An example the project picker is on (ProjectPicker.tsx), over the open file: not loaded, not run. */
+.peek {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+
+  .peek-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 6px var(--pad);
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    font-size: 12px;
+  }
+
+  .title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--fg);
+  }
+
+  .path {
+    margin-left: auto;
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+
+  .peek-code {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+
+    .pierre-host {
+      height: 100%;
+      overflow: auto;
+      background: var(--bg);
+    }
+
+    diffs-container {
+      min-height: 100%;
+    }
+  }
+}
 #preview-panel { display: flex; flex-direction: column; }
 #preview-wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 /* Expanded: almost the whole window, over the playground; the frame stays where it is, so it doesn't reload. */
