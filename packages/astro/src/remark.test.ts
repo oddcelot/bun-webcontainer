@@ -419,6 +419,74 @@ describe("static groups", () => {
   });
 });
 
+describe("playground fences named by a file-name comment", () => {
+  /** The embed's files: name, whether hidden, and content, as `<script type="text/plain">` carries them. */
+  const files = (html: string) =>
+    [...html.matchAll(/<script type="text\/plain" data-file="([^"]+)"( data-hidden)?>\n([\s\S]*?)\n<\/script>/g)].map((m) => ({
+      name: m[1],
+      hidden: !!m[2],
+      text: m[3],
+    }));
+  // The user's example, and the same group written with title=.
+  const SERVER = "import { Elysia } from 'elysia'\nimport { greet } from './greet'\n\nnew Elysia()\n    .get('/', () => greet('Elysia'))\n    .listen(3000)";
+  const GREET = "export const greet = (name: string) => `Hello ${name}`";
+  const PKG = '{ "dependencies": { "elysia": "rc" } }';
+  const commented = () => [
+    code("ts", 'playground group=app mode=preview height=auto label="Elysia playground"', "// index.ts\n" + SERVER),
+    code("ts", "playground group=app", "// greet.ts\n" + GREET),
+    code("json", "playground group=app hidden", "//package.json\n" + PKG),
+  ];
+  const titled = () => [
+    code("ts", 'playground group=app mode=preview height=auto label="Elysia playground" title="index.ts"', SERVER),
+    code("ts", 'playground group=app title="greet.ts"', GREET),
+    code("json", 'playground group=app hidden title="package.json"', PKG),
+  ];
+
+  test("the user's three fences embed exactly as their title= version: names, tabs, hidden flags, code", () => {
+    for (const fences of ["playground", "all"] as const) {
+      const html = htmlOf(run(commented(), { fences })[0])!;
+      // Same page path and place, so even the tabs' radio name agrees: nothing differs.
+      expect(html).toBe(htmlOf(run(titled(), { fences })[0])!);
+      expect(files(html)).toEqual([
+        { name: "index.ts", hidden: false, text: SERVER },
+        { name: "greet.ts", hidden: false, text: GREET },
+        { name: "package.json", hidden: true, text: PKG },
+      ]);
+      expect(html).not.toContain("// index.ts");
+      expect(JSON.parse(files(html)[2]!.text!)).toEqual({ dependencies: { elysia: "rc" } });
+    }
+  });
+
+  test("a lone fence named by a comment gets a caption, as a titled one does, and loses the comment line", () => {
+    const html = htmlOf(run([code("ts", "playground", "// server.ts\n\nBun.serve({})")])[0])!;
+    expect(html).toContain("<figcaption>server.ts</figcaption>");
+    expect(files(html)).toEqual([
+      { name: "server.ts", hidden: false, text: "Bun.serve({})" },
+      { name: "package.json", hidden: true, text: JSON.stringify({ main: "server.ts" }, null, 2) + "\n" },
+    ]);
+  });
+
+  test("an explicit title wins, and the comment stays code", () => {
+    const html = htmlOf(run([code("ts", 'playground title="a.ts"', "// b.ts\nx")])[0])!;
+    expect(files(html)[0]).toEqual({ name: "a.ts", hidden: false, text: "// b.ts\nx" });
+  });
+
+  test("a comment that isn't a file name stays code and the file keeps its default name", () => {
+    const html = htmlOf(run([code("ts", "playground", "// note\nx")])[0])!;
+    expect(files(html)).toEqual([{ name: "index.ts", hidden: false, text: "// note\nx" }]);
+    expect(html).not.toContain("<figcaption>");
+  });
+
+  test("deps= doesn't add a second package.json when a hidden fence is named package.json by its comment", () => {
+    const html = htmlOf(
+      run([code("ts", 'playground group=d deps="zod"', "// index.ts\nx"), code("json", "playground group=d hidden", "//package.json\n" + PKG)])[0],
+    )!;
+    const pkgs = files(html).filter((f) => f.name === "package.json");
+    expect(pkgs).toHaveLength(1);
+    expect(JSON.parse(pkgs[0]!.text!)).toEqual({ dependencies: { elysia: "rc" } });
+  });
+});
+
 describe("where fences comes from", () => {
   test('the integration\'s fences: "all" reaches the plugin, so runbun({ fences: "all" }) is all a site sets', () => {
     setConfig({ fences: "all" });

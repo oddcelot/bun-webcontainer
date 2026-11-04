@@ -177,6 +177,30 @@ new Elysia().get("/", () => "hi").listen(3000);
 ```
 ````
 
+Instead of `title`, a file-name comment in a fence's first lines can name its file, as in Expressive Code: `// index.ts`, `# config.yml`, `<!-- index.html -->`, or `//package.json` in a JSON fence. The comment leaves the file, with an empty line right after it, and the name counts everywhere a `title` does: the tabs, `file`, the file Run starts, `hidden`, a group's `package.json`, and the caption of a lone fence. A `title` wins over a comment, which then stays code. A comment that isn't a file name, such as `// note`, stays code too (the full rule is under [Every fence](#every-fence)):
+
+````md
+```ts playground group=app mode=preview height=auto label="Elysia playground"
+// index.ts
+import { Elysia } from 'elysia'
+import { greet } from './greet'
+
+new Elysia()
+    .get('/', () => greet('Elysia'))
+    .listen(3000)
+```
+
+```ts playground group=app
+// greet.ts
+export const greet = (name: string) => `Hello ${name}`
+```
+
+```json playground group=app hidden
+//package.json
+{ "dependencies": { "elysia": "rc" } }
+```
+````
+
 ### Every fence
 
 `fences: "all"` makes the plugin render the other fences too, as static blocks like a `<Code>` without `playground`, so a page's code looks the same throughout:
@@ -191,7 +215,7 @@ A fence becomes a block only when it can be shown as written. These stay for the
 - shell languages (`bash`, `sh`, `zsh`, `powershell`, `console`, … the ones Expressive Code draws as a terminal)
 - a fence marked `runbun=false`
 
-A fence without a language is plain text. Without a `title`, a file-name comment in the first four lines names the block, as in Expressive Code: the line goes, and an empty line right after it. A path (`// src/index.ts`) or a name with an extension of the fence's kind (`# config.yml` in a YAML fence) counts; `// note` or a URL stays code.
+A fence without a language is plain text. Without a `title`, a file-name comment in the first four lines names the block, as it names a playground fence's file and as in Expressive Code: the line goes, and an empty line right after it. A path (`// src/index.ts`) or a name with an extension of the fence's kind (`# config.yml` in a YAML fence) counts; `// note` or a URL stays code.
 
 ````md
 ```ts

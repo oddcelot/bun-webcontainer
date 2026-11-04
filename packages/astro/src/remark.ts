@@ -4,7 +4,7 @@
 // Meta words: `playground` (required), `mode=…`, `features=…`, `group=<name>`, `load=…`, `height=…`, `path=…`,
 // `layout=stack` (the preview under the editor), `deps="elysia@rc,zod@^4"` (pinned in a package.json the poster doesn't
 // show; a package.json fence wins), `label="…"` (the embed's accessible name, its `title` attribute; default "Bun
-// playground"); `title="x.ts"` names the file.
+// playground"); `title="x.ts"` names the file, or else a file-name comment in its first lines (`// x.ts`, fileName).
 // Consecutive fences with the same `group` share one embed (the first fence's options apply). In a group, `hidden`
 // keeps a fence out of the poster and the tabs (`data-hidden`) while it stays a file of the embed: a package.json the
 // author pins, say. It's never the file Run starts or the one opened; a group must show something, so `hidden` on its
@@ -79,6 +79,8 @@ interface Entry {
   opts: Record<string, string>;
   title: string | null | undefined;
   node: Code;
+  /** The fence's code, less a file-name comment that named it. */
+  code: string;
   /** `hidden`: a file of the embed, but not of the poster or the tabs. */
   hidden: boolean;
 }
@@ -89,7 +91,10 @@ function parse(node: Code): Entry | null {
   const opts: Record<string, string> = {};
   for (const t of toks) if (t.key && OWN_KEYS.has(t.key)) opts[t.key] = t.value ?? "";
   const title = toks.find((t) => t.key === "title")?.value;
-  return { opts, title, node, hidden: toks.some((t) => t.key === "hidden" && t.value === null) };
+  // No `title`: a file-name comment (`// index.ts`) names the file and leaves its code, as in a static block and in
+  // Expressive Code; the name then counts everywhere a title does (tabs, `file`, the entry, `hidden`, package.json).
+  const named = title == null ? fileName(node.value, node.lang || "plain") : { code: node.value, title };
+  return { opts, title: named.title, node, code: named.code, hidden: toks.some((t) => t.key === "hidden" && t.value === null) };
 }
 
 // Expressive Code's language groups, as @expressive-code/plugin-frames 0.44 has them (`LanguageGroups`, src/utils.ts):
@@ -230,15 +235,15 @@ function embed(entries: [Entry, ...Entry[]], page: Page): RootContent {
   let lead: string | null | undefined;
   // Something has to show: with every fence hidden, the first one isn't.
   const allHidden = entries.every((e) => e.hidden);
-  for (const [i, { title, node, hidden: hide }] of entries.entries()) {
+  for (const [i, { title, node, code, hidden: hide }] of entries.entries()) {
     const ext = EXT[node.lang ?? ""] ?? node.lang ?? "txt";
     let name = title || `index.${ext}`;
     for (let n = 2; name in sources; n++) name = `index${n}.${ext}`;
-    sources[name] = node.value;
+    sources[name] = code;
     if (hide && !(allHidden && i === 0)) hidden.add(name);
     else {
       if (!shown.length) lead = title;
-      shown.push({ name, code: node.value, lang: node.lang ?? "plain" });
+      shown.push({ name, code, lang: node.lang ?? "plain" });
     }
   }
   // Several files show as tabs, before Run and after.
