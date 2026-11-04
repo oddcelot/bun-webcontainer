@@ -16,12 +16,46 @@
     line-height: 1.4;
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
 
+    /* A shortcut: one key cap per key. */
+    .chord {
+      display: inline-flex;
+      gap: 2px;
+
+      & + .chord::before {
+        content: "or";
+        align-self: center;
+        margin-right: 2px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+    }
+
     kbd {
+      min-width: 1.5em;
       padding: 0 4px;
       border: 1px solid var(--control-border);
       border-radius: 4px;
       color: var(--muted);
       font: 11px/16px var(--font-mono);
+      text-align: center;
+    }
+  }
+
+  /* A key cap with a Lucide icon (Key, in Tip.tsx): the icon about a letter's size, the cap as tall as a lettered one. */
+  kbd.icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    vertical-align: bottom;
+
+    > i {
+      width: 1.1em;
+      height: 1.1em;
+      margin-block: calc((1lh - 1.1em) / 2);
+
+      &.mirrored {
+        transform: scaleX(-1);
+      }
     }
   }
 

@@ -1,5 +1,5 @@
 import { For, Show, createEffect, createMemo, flush, useContext } from "solid-js";
-import { formatChord, keysFor, matches } from "../keymap";
+import { chordKeys, keysFor, matches } from "../keymap";
 import { AppContext } from "./context";
 import { TabItem, TabList } from "@runbun/ui/solid/Tabs";
 import { Tip } from "@runbun/ui/solid/Tip";
@@ -62,7 +62,7 @@ export function EditorTabs() {
               <span class="name">{name(path)}</span>
               {clashes().get(name(path))! > 1 && path.includes("/") && <span class="dir">{path.slice(0, path.lastIndexOf("/"))}</span>}
               <Show when={ws.state.dirty.includes(path)}>
-                <Tip as="span" class="unsaved" tip="Unsaved changes" keys={keysFor("save").map(formatChord)} aria-label="unsaved">
+                <Tip as="span" class="unsaved" tip="Unsaved changes" keys={keysFor("save").map(chordKeys)} aria-label="unsaved">
                   ●
                 </Tip>
               </Show>

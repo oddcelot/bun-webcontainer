@@ -1,6 +1,6 @@
 import { useContext } from "solid-js";
 import { DOCS } from "../base";
-import { formatChord, keysFor } from "../keymap";
+import { chordKeys, keysFor } from "../keymap";
 import logo from "../bun-logo.svg";
 import { AppContext } from "./context";
 import { ProjectPicker } from "./ProjectPicker";
@@ -32,7 +32,7 @@ export function Header() {
         <Tip
           id="run"
           tip={s.canRun ? "Run the project" : CANT_RUN}
-          keys={s.canRun ? keysFor("run").map(formatChord) : undefined}
+          keys={s.canRun ? keysFor("run").map(chordKeys) : undefined}
           disabled={!s.canRun || !!s.busy.run}
           onClick={() => s.ready() && app.run()}
         >

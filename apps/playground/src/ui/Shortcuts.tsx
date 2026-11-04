@@ -3,7 +3,7 @@ import { Dialog, DialogActions, DialogClose, DialogTitle, DialogTrigger, useDial
 import { Button } from "@runbun/ui/solid/Button";
 import { Input } from "@runbun/ui/solid/Input";
 import { COMMANDS, checkOverrides, chordKeys, chordOf, currentOverrides, keysFor, sameChord, setOverrides, type Command, type Overrides } from "../keymap";
-import { Tip } from "@runbun/ui/solid/Tip";
+import { Key, Keys, Tip } from "@runbun/ui/solid/Tip";
 
 /**
  * The keyboard shortcuts in effect, each one re-recordable (or reset), and the JSON that changes them: command names
@@ -131,7 +131,7 @@ function ShortcutsForm() {
                               <For each={keysFor(c, draft())} fallback={<span class="unbound">none</span>}>
                                 {(chord) => (
                                   <span class="chord">
-                                    <For each={chordKeys(chord)}>{(k) => <kbd>{k}</kbd>}</For>
+                                    <For each={chordKeys(chord)}>{(k) => <Key name={k} />}</For>
                                   </span>
                                 )}
                               </For>
@@ -147,7 +147,7 @@ function ShortcutsForm() {
                           }
                         >
                           <span class="shortcut-recording" role="status">
-                            Press keys… <span class="unbound">Esc cancels</span>
+                            Press keys… <span class="unbound"><kbd>Esc</kbd> cancels</span>
                           </span>
                           <button
                             type="button"
@@ -169,7 +169,9 @@ function ShortcutsForm() {
           )}
         </For>
       </div>
-      <p class="shortcuts-note">Some keys (like ⌘W or Ctrl+T) belong to the browser and never reach the page.</p>
+      <p class="shortcuts-note">
+        Some keys (like <Keys keys={[["⌘", "W"]]} /> or <Keys keys={[["Ctrl", "T"]]} />) belong to the browser and never reach the page.
+      </p>
       {/* Open from the start when there are overrides to see. */}
       <details class="shortcuts-custom" open={initial.trim() !== "{}"}>
         <summary>Edit as JSON</summary>
