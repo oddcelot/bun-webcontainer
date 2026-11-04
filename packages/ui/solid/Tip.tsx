@@ -16,6 +16,39 @@ type TipProps = {
   [attribute: string]: unknown;
 };
 
+/**
+ * macOS's key symbols as Lucide icons, with the key's name for screen readers. Only macOS chords use these symbols
+ * (elsewhere a chord reads `Ctrl Shift F`), so the other systems keep their words.
+ */
+const KEY_ICONS: Record<string, [icon: string, name: string]> = {
+  "⌘": ["i-lucide-command", "Command"],
+  "⌥": ["i-lucide-option", "Option"],
+  "⇧": ["i-lucide-arrow-big-up", "Shift"],
+  "⌃": ["i-lucide-chevron-up", "Control"],
+  "↵": ["i-lucide-corner-down-left", "Return"],
+  "⌫": ["i-lucide-delete", "Delete"],
+  // Lucide has no forward delete: Delete's icon, mirrored (tooltip.css).
+  "⌦": ["i-lucide-delete mirrored", "Forward Delete"],
+  "↑": ["i-lucide-arrow-up", "Up Arrow"],
+  "↓": ["i-lucide-arrow-down", "Down Arrow"],
+  "←": ["i-lucide-arrow-left", "Left Arrow"],
+  "→": ["i-lucide-arrow-right", "Right Arrow"],
+};
+
+/** One key cap: an icon for a macOS symbol, else the key as written. */
+export function Key(props: { name: string }) {
+  const icon = () => KEY_ICONS[props.name];
+  return (
+    <Show when={icon()} fallback={<kbd>{props.name}</kbd>}>
+      {(i) => (
+        <kbd class="icon" aria-label={i()[1]} title={i()[1]}>
+          <i class={i()[0]} aria-hidden="true" />
+        </kbd>
+      )}
+    </Show>
+  );
+}
+
 /** Shortcuts as key caps, one `<kbd>` per key: each a chord, as its keys (`["⌥", "⇧", "F"]`) or one key; "or" between chords. */
 export function Keys(props: { keys: (string | string[])[] }) {
   return (
@@ -23,7 +56,7 @@ export function Keys(props: { keys: (string | string[])[] }) {
       {props.keys.map((chord) => (
         <span class="chord">
           {(typeof chord === "string" ? [chord] : chord).map((k) => (
-            <kbd>{k}</kbd>
+            <Key name={k} />
           ))}
         </span>
       ))}

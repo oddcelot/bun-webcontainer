@@ -41,6 +41,24 @@
     }
   }
 
+  /* A key cap with a Lucide icon (Key, in Tip.tsx): the icon about a letter's size, the cap as tall as a lettered one. */
+  kbd.icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    vertical-align: bottom;
+
+    > i {
+      width: 1.1em;
+      height: 1.1em;
+      margin-block: calc((1lh - 1.1em) / 2);
+
+      &.mirrored {
+        transform: scaleX(-1);
+      }
+    }
+  }
+
   .tooltip-note {
     flex-basis: 100%;
     color: var(--muted);

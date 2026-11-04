@@ -3,7 +3,7 @@ import { Dialog, DialogActions, DialogClose, DialogTitle, DialogTrigger, useDial
 import { Button } from "@runbun/ui/solid/Button";
 import { Input } from "@runbun/ui/solid/Input";
 import { COMMANDS, checkOverrides, chordKeys, chordOf, currentOverrides, keysFor, sameChord, setOverrides, type Command, type Overrides } from "../keymap";
-import { Keys, Tip } from "@runbun/ui/solid/Tip";
+import { Key, Keys, Tip } from "@runbun/ui/solid/Tip";
 
 /**
  * The keyboard shortcuts in effect, each one re-recordable (or reset), and the JSON that changes them: command names
@@ -131,7 +131,7 @@ function ShortcutsForm() {
                               <For each={keysFor(c, draft())} fallback={<span class="unbound">none</span>}>
                                 {(chord) => (
                                   <span class="chord">
-                                    <For each={chordKeys(chord)}>{(k) => <kbd>{k}</kbd>}</For>
+                                    <For each={chordKeys(chord)}>{(k) => <Key name={k} />}</For>
                                   </span>
                                 )}
                               </For>
