@@ -143,6 +143,11 @@ export class Runner {
   }
 
   async start(entry: string, tests?: string[]): Promise<void> {
+    // A restart (Run while running, a save under watch) is a moment without a server while the old one flushes:
+    // preview requests in that moment wait for the new one instead of getting "No server running". Not for a test
+    // run, which has no server and takes as long as it takes.
+    let handOver: (() => void) | undefined;
+    if (!tests) this.ready = new Promise<void>((r) => (handOver = r));
     // Before the new worker copies the VFS, so it sees the old one's last database writes. Again if another start
     // got its worker going meanwhile (Run pressed twice), so none is left running unseen.
     do await this.stop();
@@ -197,6 +202,7 @@ export class Runner {
       };
     });
     worker.postMessage({ type: "start", entry, tests, files: this.vfs.files, dirs: this.vfs.dirs, vfsRoot: vfsRoot() });
+    void this.ready.then(handOver);
     return this.ready;
   }
 }
