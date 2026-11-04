@@ -3,6 +3,7 @@ import { defineConfig } from "astro/config";
 import { unified } from "@astrojs/markdown-remark";
 import solid from "@astrojs/solid-js";
 import starlight from "@astrojs/starlight";
+import starlightLlmsTxt from "starlight-llms-txt";
 import runbun from "@runbun/astro";
 import remarkRunbun from "@runbun/astro/remark";
 import UnoCSS from "unocss/astro";
@@ -35,6 +36,19 @@ export default defineConfig({
       title: "Run Bun",
       description: "Bun in the browser: what runs, where, and how.",
       logo: { src: "./src/favicon.svg" },
+      // /llms.txt, /llms-full.txt and /llms-small.txt: the docs as plain text for coding agents. The playground's own
+      // llms.txt (apps/playground/public/llms.txt) points here for the details.
+      plugins: [
+        starlightLlmsTxt({
+          projectName: "Run Bun",
+          description:
+            "Run Bun (runbun.dev) runs Bun in the browser: a playground and embeddable examples where `Bun.*`, `bun:*` and `node:*` code, `bun install` and `Bun.serve` run in the visitor's browser, with no server.",
+          details: `- The playground is at ${PLAYGROUND_URL}. A project can be shared as a link that carries its files in the URL's hash; the guide "Reproduce a bug with an agent" shows how to build one.
+- The compatibility pages say what works: each API or feature is marked Works, Partial, Stub, Missing or Untested.
+- Code runs in the browser engine, not in Bun's JavaScriptCore, so some APIs behave differently or are missing; check the compatibility pages before assuming a Bun API works.`,
+          promote: ["index*", "guides/**"],
+        }),
+      ],
       favicon: "/favicon.svg",
       // Starlight's colors mapped onto the playground's tokens (which UnoCSS adds).
       customCss: ["./src/styles/theme.css"],

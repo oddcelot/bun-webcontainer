@@ -75,7 +75,8 @@ Nothing here tags, pushes or deploys; that stays with the person.
 ## `/changelog release astro-v0.2.0`, `embed-v0.2.0` (the npm packages)
 
 The same, with `moon run <name>:changelog -- --tag <name>-v0.2.0` (a flat list, no part headings),
-`packages/<name>/CHANGELOG.md`, and `version` in `packages/<name>/package.json`. The commit is
+`packages/<name>/CHANGELOG.md`, and `version` in `packages/<name>/package.json`, then `bun install` so `bun.lock`
+records the new version (it lists each workspace package's version; stage it with the release). The commit is
 `release: @runbun/<name> 0.2.0`; the `<name>-v0.2.0` tag publishes to npm and creates the GitHub Release
 (`.github/workflows/publish-<name>.yml`). Before tagging, a dry run (Actions → Publish @runbun/<name> → Run workflow)
 checks the pack.

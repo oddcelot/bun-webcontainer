@@ -34,8 +34,9 @@ tasks:
     outputs:
       - 'dist/**/*'
   links:
-    # Internal links of the built site (offline: external URLs are skipped). Needs lychee (Brewfile).
-    script: 'lychee --offline --no-progress --root-dir "$PWD/dist" dist'
+    # Internal links of the built site's pages (offline: external URLs are skipped). Needs lychee (Brewfile). Only the
+    # HTML: the llms*.txt files are the same pages as plain text, where prose like `file:///…` reads as a link.
+    script: 'lychee --offline --no-progress --extensions html --root-dir "$PWD/dist" dist'
     deps: ['~:build']
     inputs:
       - 'dist/**/*'
