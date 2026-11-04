@@ -363,7 +363,9 @@ function measuredHeight(stacked: boolean, below: boolean): number | undefined {
  * The stacked preview row's height with `height="auto"`: as tall as it needs, at least STACK_PREVIEW. That's its
  * chrome (tabs, request bar, a body's panel at its fitted height: the panel less its views, with the body's dragged
  * height swapped for its fitted one) and the response: a card's content, and with a body at least the card's reserve
- * (preview.ts responseReserve), so a tab that hasn't sent yet keeps the room its answer will take. A page in the frame
+ * (preview.ts responseReserve), so a tab that hasn't sent yet keeps the room its answer will take. With a body, the
+ * response also gets what the body lacks of BODY_ROOM_LINES lines (`data-room` less `data-fit`): room to drag the
+ * body down into, since a drag never resizes the embed. A page in the frame
  * with no body has no height of its own, so it keeps STACK_PREVIEW. Set as `--stack-preview` for the fitted rows
  * (embed.css); past the 640px the element allows, the frame isn't fitted and the rows share it, the response scrolling.
  *
@@ -392,7 +394,8 @@ function previewHeight(): number {
     const content = kids.length && box ? kids[kids.length - 1]!.getBoundingClientRect().bottom - kids[0]!.getBoundingClientRect().top + parseFloat(box.paddingTop) + parseFloat(box.paddingBottom) : 0;
     const dragged = shown ? body!.getBoundingClientRect().height - Number(body!.dataset.fit) : 0;
     const chrome = panel.getBoundingClientRect().height - views.getBoundingClientRect().height - dragged;
-    h = Math.max(STACK_PREVIEW, Math.ceil(chrome + (shown ? Math.max(content, responseReserve()) : content)));
+    const slack = shown ? Math.max(0, Number(body!.dataset.room ?? 0) - Number(body!.dataset.fit)) : 0;
+    h = Math.max(STACK_PREVIEW, Math.ceil(chrome + (shown ? slack + Math.max(content, responseReserve()) : content)));
   }
   document.getElementById("embed")?.style.setProperty("--stack-preview", `${h}px`);
   return h;

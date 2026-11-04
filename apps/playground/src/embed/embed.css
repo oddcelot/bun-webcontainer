@@ -71,11 +71,12 @@
 #embed-main > .resize-handle[data-orientation="vertical"] { cursor: row-resize; }
 #embed-main > .resize-handle:hover::after { background: var(--accent); }
 
-/* Narrow frames stack the side column under the editor, and drop the tree. */
+/* Narrow frames stack the side column under the editor, and drop the tree. Not a stacked embed's (layout=stack): it
+   is in rows already, and its own rows (a fitted preview, a dragged share) hold at any width. */
 @media (max-width: 560px) {
-  #embed[data-side] #embed-main { grid-template-columns: minmax(0, 1fr) !important; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) !important; grid-template-areas: "editor" "preview" !important; }
-  #embed[data-side]:not([data-preview]) #embed-main { grid-template-areas: "editor" "console" !important; }
-  #embed[data-side][data-preview][data-console] #embed-main { grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) 120px !important; grid-template-areas: "editor" "preview" "console" !important; }
+  #embed[data-side]:not([data-stack]) #embed-main { grid-template-columns: minmax(0, 1fr) !important; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) !important; grid-template-areas: "editor" "preview" !important; }
+  #embed[data-side]:not([data-stack]):not([data-preview]) #embed-main { grid-template-areas: "editor" "console" !important; }
+  #embed[data-side]:not([data-stack])[data-preview][data-console] #embed-main { grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) 120px !important; grid-template-areas: "editor" "preview" "console" !important; }
   #embed[data-tree]:not([data-side]) #embed-main { grid-template-columns: minmax(0, 1fr); grid-template-areas: "editor" "console"; }
   #embed[data-tree]:not([data-side]):not([data-console]) #embed-main { grid-template-areas: "editor"; }
   #embed #tree { display: none; }
