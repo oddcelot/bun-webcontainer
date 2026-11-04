@@ -17,6 +17,7 @@ The element's attributes and the iframe's URL parameters share names.
 | `features` | comma list | none | Added to the mode's features. `-name` turns one off and locks it. |
 | `file` | path | the entry file | The file opened first. |
 | `path` | URL path | `/` | What the preview requests first, e.g. `/user/123`. |
+| `requests` | `;`-separated `METHOD /path [body]` | none | Requests a reader can try, each in its own preview tab, in order, the first active, e.g. `requests='GET /user/1; GET /user/617; POST /form {"hello":"Elysia"}'` (single quotes keep a JSON body's double quotes). An entry is an uppercase method, a path from `/` to the next space, and optionally a body, sent as the request bar sends one (`application/json` when it parses as JSON, else `text/plain`). A `;` ends an entry only where an uppercase method and ` /` follow, so a body may hold `;`. The first request goes when the server starts, as `path`'s does; each other one the first time its tab opens while the server runs (a tab showing when the server comes up goes then). After that the tabs work as usual, and a tab isn't sent again by opening it. Malformed entries are skipped. Wins over `path`. The attribute takes requests only: the `=> response` form is the [Astro integration's](/guides/astro/), which shows written responses before Run and passes the requests alone to the embed. |
 | `autorun` | `true`, `false` | `true`, except in `full` | Run once loaded, after installing any missing packages. |
 | `theme` | `auto`, `light`, `dark`, or a theme family's light variant | `auto` | The color mode. e.g. `dark`. |
 | `family` | a theme family's light variant | none | e.g. `github-light`. Picks both halves of the family without changing the color mode, so `theme` can follow your page. |
@@ -47,7 +48,7 @@ Inline files: child `<script type="text/plain" data-file="path">` elements, dede
 <bun-playground-defaults family="github-light" status="bar" load="click" fonts="https://fonts.googleapis.com/css2?family=Inter&display=swap"></bun-playground-defaults>
 ```
 
-- Keys: `mode`, `features`, `autorun`, `theme`, `family`, `fonts`, `readonly`, `expand`, `status`, `layout`, `vars`, `load`, `height`, `src`. The others (`file`, `path`, `example`, `repo`, `share`, `title`, `persist`) are per embed; a shared `persist` key would make embeds overwrite each other's edits.
+- Keys: `mode`, `features`, `autorun`, `theme`, `family`, `fonts`, `readonly`, `expand`, `status`, `layout`, `vars`, `load`, `height`, `src`. The others (`file`, `path`, `requests`, `example`, `repo`, `share`, `title`, `persist`) are per embed; a shared `persist` key would make embeds overwrite each other's edits.
 - Precedence: built-in default, then the page default, then the element's attribute, then what the reader picks in the embed's menu. An element opts out of a boolean default with `false`, e.g. `readonly="false"`. Removing an element's attribute falls back to the page default.
 - `vars` merges per scheme: the element's `base`, `light` and `dark` go over the page default's. Every other key replaces the default, `features` too. Malformed `vars` JSON in either place is skipped.
 - Changing `theme`, `family`, `vars`, `mode` or `height` on the defaults element updates running embeds without reloading them. The other keys only reach embeds that haven't started yet.
@@ -152,7 +153,7 @@ window.addEventListener("message", (e) => {
 });
 ```
 
-`files` maps paths to text; `hidden` lists those not to open as tabs (`data-hidden`). `options` takes `mode`, `features`, `file`, `path`, `autorun`, `theme`, `family`, `fonts`, `readonly`, `persist`, `expand`, `status` and `layout`. `vars` takes the object described under [Theming](#theming). Without `?init=1`, the page loads from its URL and `init` isn't needed; `setFamily` and `setVars` change both afterwards.
+`files` maps paths to text; `hidden` lists those not to open as tabs (`data-hidden`). `options` takes `mode`, `features`, `file`, `path`, `requests`, `autorun`, `theme`, `family`, `fonts`, `readonly`, `persist`, `expand`, `status` and `layout`. `vars` takes the object described under [Theming](#theming). Without `?init=1`, the page loads from its URL and `init` isn't needed; `setFamily` and `setVars` change both afterwards.
 
 ## Theming
 

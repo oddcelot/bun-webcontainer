@@ -31,8 +31,8 @@ tasks:
   test:
     # Console/inspect formatting against native bun on a corpus of values (scripts/inspect-corpus/diff.ts), and the
     # data APIs that need no wasm (scripts/data-apis: Bun.JSONL, Bun.XML.stringify; Bun.markdown and Bun.XML.parse are
-    # in transpile-wasm:test).
-    script: 'bun scripts/inspect-corpus/diff.ts && bun scripts/data-apis/jsonl.ts && bun scripts/data-apis/xml-stringify.ts'
+    # in transpile-wasm:test), and the embed's `requests` parser (scripts/requests.ts).
+    script: 'bun scripts/inspect-corpus/diff.ts && bun scripts/data-apis/jsonl.ts && bun scripts/data-apis/xml-stringify.ts && bun scripts/requests.ts'
     toolchains: ['bun']
     inputs:
       - 'scripts/inspect-corpus/**/*'
@@ -44,6 +44,8 @@ tasks:
       - 'src/worker/node/inspect.ts'
       - 'src/worker/node/types.ts'
       - 'src/worker/node/util.ts'
+      - 'scripts/requests.ts'
+      - 'src/embed/requests.ts'
   fmt-fixtures:
     # The bundled examples, fixtures/demo included, as `bun fmt` leaves them (`-- --write` formats them).
     command: 'bun scripts/fmt-fixtures.ts'

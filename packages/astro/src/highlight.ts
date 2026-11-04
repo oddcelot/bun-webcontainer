@@ -116,6 +116,21 @@ export function themeCss(options: ThemeOption[], selector?: ThemeSelector): stri
 /**
  * The look of a block, around the theme's colors; `--runbun-code-*` properties adjust it. A tabbed block's files share
  * one grid cell, only the checked tab's visible, so the block keeps its longest file's height as tabs switch.
+ *
+ * A block with marked lines (`.runbun-lines`, see markup.ts byLine) has each line as an inline block at least as wide
+ * as the code, which is as wide as its longest line, so a mark's background spans the block as it scrolls; the shadows
+ * carry it through the `<pre>`'s padding. The `\n`s between lines stay text, so the code copies as written. The
+ * `+`/`−` gutter is generated content, out of the copied text, with alt text for screen readers (`"+" / "inserted"`;
+ * a browser without that keeps the bare sign from the line before).
+ *
+ * A poster's preset requests (`.runbun-requests`, markup.ts requestPanel) switch like tabbed blocks: radios, and the
+ * checked one's panel (the tablist is the first child, so panel n is child n + 1) visible in the shared grid cell.
+ * `--runbun-requests-gap` spaces it from the code, `--runbun-method-bg`/`--runbun-method-fg` color the method badge.
+ *
+ * A note's marker is a numbered pill (`.runbun-note`, the number generated content). Its list (`.runbun-notes`) is
+ * popovers, so where the browser has them the list takes no room and an open item is a bubble in the top layer, outside
+ * the block, styled on its own; with anchor positioning it sits above its marker (the invoker is its implicit
+ * anchor), else where the UA puts a popover, centered. A browser without popovers shows the list as a list.
  */
 export const BLOCK_CSS = `
 :where(.runbun-code){margin:0}
@@ -147,4 +162,180 @@ export const BLOCK_CSS = `
 .runbun-tabs:has(>.runbun-tablist>label:nth-of-type(10)>input:checked)>.runbun-code:nth-of-type(10){visibility:visible}
 .runbun-tabs:has(>.runbun-tablist>label:nth-of-type(11)>input:checked)>.runbun-code:nth-of-type(11){visibility:visible}
 .runbun-tabs:has(>.runbun-tablist>label:nth-of-type(12)>input:checked)>.runbun-code:nth-of-type(12){visibility:visible}
+.runbun-lines {
+  display: block;
+  min-width: max-content;
+  & > .line {
+    --runbun-line-bg: transparent;
+    position: relative;
+    display: inline-block;
+    min-width: 100%;
+    min-height: 1lh;
+    vertical-align: top;
+    background: var(--runbun-line-bg);
+    box-shadow: -1rem 0 var(--runbun-line-bg), 1rem 0 var(--runbun-line-bg);
+    &[data-mark] {
+      --runbun-line-bg: var(--runbun-mark-bg, color-mix(in srgb, var(--hls-foreground) 12%, transparent));
+    }
+    &[data-ins] {
+      --runbun-line-bg: var(--runbun-ins-bg, color-mix(in srgb, var(--hls-diff-plus, #3fb950) 18%, transparent));
+    }
+    &[data-del] {
+      --runbun-line-bg: var(--runbun-del-bg, color-mix(in srgb, var(--hls-diff-minus, #f85149) 18%, transparent));
+    }
+    &[data-ins]::before,
+    &[data-del]::before {
+      position: absolute;
+      left: -1rem;
+      width: 1rem;
+      text-align: center;
+    }
+    &[data-ins]::before {
+      content: "+";
+      content: "+" / "inserted";
+      color: var(--hls-diff-plus, currentColor);
+    }
+    &[data-del]::before {
+      content: "\\2212";
+      content: "\\2212" / "deleted";
+      color: var(--hls-diff-minus, currentColor);
+    }
+  }
+}
+.runbun-note {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.5em;
+  height: 1.5em;
+  margin-inline-start: 0.5em;
+  padding: 0 0.35em;
+  vertical-align: 0.1em;
+  border: 0;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 0.75em;
+  line-height: 1;
+  color: var(--hls-background);
+  background: var(--hls-foreground);
+  cursor: pointer;
+  &::before {
+    content: attr(data-n);
+  }
+  &:focus-visible {
+    outline: 2px solid var(--hls-foreground);
+    outline-offset: 2px;
+  }
+}
+@supports selector(:popover-open) {
+  .runbun-notes {
+    margin: 0;
+    list-style: none;
+    & > li[popover] {
+      box-sizing: border-box;
+      max-width: min(32rem, calc(100vw - 2rem));
+      padding: 0.5rem 0.75rem;
+      border: 1px solid var(--runbun-code-border, color-mix(in srgb, currentColor 15%, transparent));
+      border-radius: var(--runbun-code-radius, 8px);
+      font-size: var(--runbun-note-size, 0.875rem);
+      color: var(--hls-foreground);
+      background: var(--hls-background);
+      box-shadow: 0 0.25rem 1rem rgb(0 0 0 / 0.2);
+      & > :first-child {
+        margin-top: 0;
+      }
+      & > :last-child {
+        margin-bottom: 0;
+      }
+    }
+  }
+}
+@supports (position-area: top) {
+  .runbun-notes > li[popover] {
+    inset: auto;
+    margin: 0 0 0.375rem;
+    position-area: top;
+    position-try-fallbacks: flip-block;
+  }
+}
+.runbun-requests {
+  display: grid;
+  margin-top: var(--runbun-requests-gap, 0.75rem);
+  overflow: hidden;
+  border: 1px solid var(--runbun-code-border, color-mix(in srgb, currentColor 15%, transparent));
+  border-radius: var(--runbun-code-radius, 8px);
+  color: var(--hls-foreground);
+  background: var(--hls-background);
+  & > .runbun-requests-tablist {
+    grid-area: 1 / 1;
+    display: flex;
+    overflow-x: auto;
+    overflow-y: hidden;
+    box-shadow: inset 0 -1px var(--runbun-code-border, color-mix(in srgb, currentColor 15%, transparent));
+    font-family: var(--runbun-code-font, ui-monospace, monospace);
+    font-size: var(--runbun-code-caption-size, 0.75rem);
+    & label {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 0.375rem;
+      padding: 0.5rem 1rem;
+      white-space: nowrap;
+      cursor: pointer;
+      opacity: 0.65;
+      border-bottom: 2px solid transparent;
+      &:hover {
+        opacity: 0.9;
+      }
+      &:has(input:checked) {
+        opacity: 1;
+        border-bottom-color: currentColor;
+      }
+      &:has(input:focus-visible) {
+        outline: 2px solid currentColor;
+        outline-offset: -2px;
+      }
+    }
+    & input {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+    }
+  }
+  & .runbun-method {
+    padding: 0.0625rem 0.3rem;
+    border-radius: 4px;
+    font-size: 0.85em;
+    font-weight: 600;
+    color: var(--runbun-method-fg, var(--hls-background));
+    background: var(--runbun-method-bg, var(--hls-keyword, currentColor));
+  }
+  & > .runbun-request {
+    grid-area: 2 / 1;
+    min-width: 0;
+    visibility: hidden;
+  }
+  & pre {
+    margin: 0;
+    padding: 0.75rem 1rem;
+    overflow-x: auto;
+    font-family: var(--runbun-code-font, ui-monospace, monospace);
+    font-size: var(--runbun-code-size, 0.875rem);
+    line-height: var(--runbun-code-line-height, 1.6);
+  }
+  & .runbun-request-body {
+    border-bottom: 1px solid var(--runbun-code-border, color-mix(in srgb, currentColor 15%, transparent));
+  }
+  & .runbun-request-label,
+  & .runbun-response-pending {
+    margin: 0;
+    padding: 0.5rem 1rem 0;
+    font-family: var(--runbun-code-font, ui-monospace, monospace);
+    font-size: var(--runbun-code-caption-size, 0.75rem);
+    opacity: 0.65;
+  }
+  & .runbun-response-pending {
+    padding-bottom: 0.5rem;
+  }
+${Array.from({ length: 12 }, (_, i) => `  &:has(> .runbun-requests-tablist > label:nth-of-type(${i + 1}) > input:checked) > .runbun-request:nth-child(${i + 2}) {\n    visibility: visible;\n  }`).join("\n")}
+}
 `.trim();

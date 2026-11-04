@@ -67,6 +67,28 @@ for (const lang of langs) console.log(lang, Bun.version);`}
 
 Since `title` is the file's name, `label` sets the embed's accessible name, the title of its frame (default "Bun playground"): `<Code playground label="Greeting example" … />`. `layout="stack"` puts the preview under the editor instead of beside it: `<Code playground mode="preview" layout="stack" height="auto" … />`.
 
+`mark`, `ins` and `del` mark lines of the block's `code` (not the tabs `files` adds), as `"1,4-6"`, the way [a fence's line marks](#line-marks) do. A `playground` block ignores them:
+
+```mdx
+<Code lang="ts" title="server.ts" mark="1" ins="2" del="3" code={`import { Elysia } from "elysia";
+new Elysia().get("/", () => "hi").listen(3000);
+Bun.serve({ fetch: () => new Response("hi") });`} />
+```
+
+<Code lang="ts" title="server.ts" mark="1" ins="2" del="3" code={`import { Elysia } from "elysia";
+new Elysia().get("/", () => "hi").listen(3000);
+Bun.serve({ fetch: () => new Response("hi") });`} />
+
+`notes` does the same for `<Code>`, with the notes as plain text, the Nth for the `// (N)` comment in `code` (as [a fence's notes](#notes)):
+
+```mdx
+<Code lang="ts" notes={["One app holds every route.", "A handler's return value is the response."]} code={`const app = new Elysia() // (1)
+  .get("/", () => "hi"); // (2)`} />
+```
+
+<Code lang="ts" notes={["One app holds every route.", "A handler's return value is the response."]} code={`const app = new Elysia() // (1)
+  .get("/", () => "hi"); // (2)`} />
+
 `files` adds more files. The block gets a tab per file, and the embed opens with the same tabs:
 
 ```mdx
@@ -140,7 +162,39 @@ console.log(greet("Bun"));
 export const greet = (name: string) => "Hello, " + name;
 ```
 
-The meta also takes `mode`, `features`, `load`, `height`, `autorun`, `readonly`, `persist`, `theme`, `file`, `path`, `layout` (`layout=stack` puts the preview under the editor, e.g. `playground mode=preview layout=stack height=auto`), `expand` (`expand=false` leaves the modal button out) and `label`, the embed's accessible name (`label="Elysia playground"`; `title` is taken by the file name). Fences without `playground` stay as they were.
+The meta also takes `mode`, `features`, `load`, `height`, `autorun`, `readonly`, `persist`, `theme`, `file`, `path`, `requests`, `layout` (`layout=stack` puts the preview under the editor, e.g. `playground mode=preview layout=stack height=auto`), `expand` (`expand=false` leaves the modal button out) and `label`, the embed's accessible name (`label="Elysia playground"`; `title` is taken by the file name). Fences without `playground` stay as they were.
+
+`requests` lists requests a reader can try, each in its own preview tab, the first one open: `;`-separated `METHOD /path`, each with an optional body after it. Put it in single quotes, so a JSON body keeps its double quotes. The first request goes when the server starts; each other one the first time its tab opens, and opening it again doesn't resend it. It takes the place of a list of an app's routes and their responses, and wins over `path` (the full rules are in the [embed reference](/reference/embed-api/#attributes-and-url-parameters)):
+
+````md
+```ts playground mode=preview height=auto deps="elysia@rc" requests='GET /; GET /user/617; POST /form {"hello":"Elysia"}'
+import { Elysia, t } from 'elysia'
+
+new Elysia()
+    .get('/', 'Hello Elysia')
+    .get('/user/:id', ({ params: { id } }) => id)
+    .post('/form', ({ body }) => body)
+    .listen(3000)
+```
+````
+
+`<Playground>` and `<Code playground>` take the same as a `requests` prop: `<Code playground mode="preview" requests='GET /; POST /form {"hello":"Elysia"}' … />`.
+
+Readers can see answers without running anything when you write each request's response after ` => `. Before Run, the block shows the code and, under it, a tab per request with its body and your response (highlighted as JSON when it parses as JSON). A request without ` => ` says that running the code shows its response. Run then opens the live embed with the same request tabs, which gets the requests only, never your responses:
+
+````md
+```ts playground mode=preview height=auto deps="elysia@rc" requests='GET / => Hello Elysia; GET /user/617 => 617; POST /form {"hello":"Elysia"} => {"hello":"Elysia"}'
+import { Elysia, t } from 'elysia'
+
+new Elysia()
+    .get('/', 'Hello Elysia')
+    .get('/user/:id', ({ params: { id } }) => id)
+    .post('/form', ({ body }) => body)
+    .listen(3000)
+```
+````
+
+The responses are your text: nothing checks them against what the code returns. The first ` => ` after the path starts the response, so a body can't contain ` => ` with spaces around it (`x=>y` is fine), and a response can contain `;` unless an uppercase method and ` /` follow it. The panel is `.runbun-requests`, its tabs `.runbun-requests-tablist`, each panel `.runbun-request` (with `.runbun-request-body`, `.runbun-response`, `.runbun-response-pending`) and the method badge `.runbun-method`; `--runbun-requests-gap`, `--runbun-method-bg` and `--runbun-method-fg` adjust it. Clicking a tab doesn't start the embed; only Run does.
 
 `deps` pins the packages a fence installs, in a generated `package.json` that doesn't open as a tab: `deps="elysia@rc,@elysia/openapi@rc,zod@^4"` (a name without a version gets `latest`). In a group the first fence's `deps` applies, and a `package.json` fence of the group's own wins over it. A `package.json` you write, as a fence or in `files`, opens like any other file, unless you mark its fence `hidden`: in a group, a `hidden` fence is a file of the embed but stays out of the block and the tabs (it's never the file Run starts or the one opened, and a group shows at least its first fence). A hidden `package.json` is still the group's, so `deps` and the generated `main` give way to it:
 
@@ -154,6 +208,102 @@ new Elysia().get("/", () => "hi").listen(3000);
 { "dependencies": { "elysia": "rc" } }
 ```
 ````
+
+Instead of `title`, a file-name comment in a fence's first lines can name its file, as in Expressive Code: `// index.ts`, `# config.yml`, `<!-- index.html -->`, or `//package.json` in a JSON fence. The comment leaves the file, with an empty line right after it, and the name counts everywhere a `title` does: the tabs, `file`, the file Run starts, `hidden`, a group's `package.json`, and the caption of a lone fence. A `title` wins over a comment, which then stays code. A comment that isn't a file name, such as `// note`, stays code too (the full rule is under [Every fence](#every-fence)):
+
+````md
+```ts playground group=app mode=preview height=auto label="Elysia playground"
+// index.ts
+import { Elysia } from 'elysia'
+import { greet } from './greet'
+
+new Elysia()
+    .get('/', () => greet('Elysia'))
+    .listen(3000)
+```
+
+```ts playground group=app
+// greet.ts
+export const greet = (name: string) => `Hello ${name}`
+```
+
+```json playground group=app hidden
+//package.json
+{ "dependencies": { "elysia": "rc" } }
+```
+````
+
+### Every fence
+
+`fences: "all"` makes the plugin render the other fences too, as static blocks like a `<Code>` without `playground`, so a page's code looks the same throughout:
+
+```js
+integrations: [runbun({ fences: "all" })],
+```
+
+A fence becomes a block only when it can be shown as written. These stay for the site's own highlighter (Expressive Code in Starlight, Shiki in plain Astro):
+
+- meta other than `title`, `group` and line marks: `frame=`, `collapse=`, `showLineNumbers`, `wrap`, text or regex marks (`ins="x"`, `mark=/re/`), a range with a space (`{1, 4-6}`) or any other word
+- shell languages (`bash`, `sh`, `zsh`, `powershell`, `console`, … the ones Expressive Code draws as a terminal)
+- a fence marked `runbun=false`
+
+A fence without a language is plain text. Without a `title`, a file-name comment in the first four lines names the block, as it names a playground fence's file and as in Expressive Code: the line goes, and an empty line right after it. A path (`// src/index.ts`) or a name with an extension of the fence's kind (`# config.yml` in a YAML fence) counts; `// note` or a URL stays code.
+
+````md
+```ts
+// server.ts
+Bun.serve({ fetch: () => new Response("hi") });
+```
+````
+
+#### Line marks
+
+`{1,4-6}` (or `mark={1,4-6}`) highlights lines, `ins={…}` marks them as added and `del={…}` as removed, with a `+` or `−` in the gutter. Lines count from 1 and ranges include both ends, as in Expressive Code; lines past the end are skipped. They count the fence as written, a file-name comment included, so the marks stay on their lines when the comment becomes the title:
+
+````md
+```ts ins={3} del={4}
+// server.ts
+import { Elysia } from "elysia";
+new Elysia().get("/", () => "hi").listen(3000);
+Bun.serve({ fetch: () => new Response("hi") });
+```
+````
+
+The gutter signs are CSS, so Copy gets the code as written, removed lines included. Screen readers hear "inserted" or "deleted" where the browser supports alt text for generated content. Set the colors with `--runbun-mark-bg`, `--runbun-ins-bg` and `--runbun-del-bg`; by default they come from the code theme.
+
+#### Notes
+
+A comment that is only `(N)` at the end of a line, `// (1)` (or `# (1)`, `<!-- (1) -->`, `/* (1) */`, as the language comments), marks a note when an ordered list follows the fence with one item per marker. Each marker becomes a numbered button at the end of its line, and its item opens next to it as a popover:
+
+````md
+```ts
+const app = new Elysia() // (1)
+  .get("/", () => "hi") // (2)
+```
+
+1. One app holds every route.
+2. A handler's return value is the response.
+````
+
+The comment leaves the code, so Copy gets `const app = new Elysia()` with no marker and no trailing space; the line stays, so line marks keep their numbers. A comment with more in it (`// setup (1)`), or `(1)` inside a string or template literal, isn't a marker. When the markers and the list don't pair up (no list, or one with fewer or more items), both stay as they are and the build prints a warning naming the file. In a browser without popovers the list shows as a list; exported or plain-text views of the page (for Markdown, say) lose the marker numbers but keep the list.
+
+#### Group fences into tabs
+
+Consecutive fences with the same `group=<name>` become one block with a tab per fence, as a [playground group](#fences) does without the Run button:
+
+````md
+```ts title="server.ts" group=e2e
+export const app = new Elysia().get("/", () => "hi");
+```
+
+```ts title="client.ts" group=e2e
+const res = await fetch("http://localhost:3000/");
+```
+````
+
+A tab is named by its fence's `title`, else its file-name comment, else `index.ts` (`index2.ts`, … for more), and the first one is open. Each fence keeps its own line marks. Anything between the fences, a fence that falls back to the site's highlighter, a playground fence or another group name ends the group. Notes don't work in a group, since their list would have to come between the fences: a grouped fence's `// (1)` stays a comment, and the build warns.
+
+Astro's content cache doesn't track integration options, so after switching `fences` delete `.astro/` (or your build cache) for the pages to render again.
 
 ## Playground
 
@@ -187,6 +337,7 @@ import { Playground } from "@runbun/astro/components";
 | `themes` | `["pierre-light", "pierre-dark"]` | The code themes: names of highlights' bundled themes, or Zed or VS Code theme objects. |
 | `themeSelector` | | The CSS selector each theme goes under, for a site with its own theme switch, e.g. ``({ name }) => `:root[data-code-theme='${name}']` ``. Without it the first light theme applies, and the first dark one under `prefers-color-scheme: dark`. |
 | `sync` | | `{ scheme, family }`: the `<html>` attributes that hold the page's scheme (`light` or `dark`) and theme family, for the embeds to follow. Without it embeds follow the OS. |
+| `fences` | `"playground"` | Which fences the remark plugin renders: `"all"` adds every other fence, as a static block ([Every fence](#every-fence)). |
 
 The blocks' look comes from CSS properties you can set: `--runbun-code-border`, `--runbun-code-radius`, `--runbun-code-font`, `--runbun-code-size`, `--runbun-code-caption-size` and `--runbun-code-line-height`.
 

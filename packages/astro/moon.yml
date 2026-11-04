@@ -23,6 +23,11 @@ tasks:
     command: 'bun run typecheck'
     inputs:
       - '@group(sources)'
+  test:
+    # The fence plugin on mdast trees (src/remark.test.ts); bun runs the TypeScript, so it needs no build.
+    command: 'bun run test'
+    inputs:
+      - '@group(sources)'
   pack:
     # What npm would publish.
     command: 'npm pack --dry-run'

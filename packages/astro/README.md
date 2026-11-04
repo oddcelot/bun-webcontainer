@@ -26,7 +26,8 @@ import { Code } from "@runbun/astro/components";
 <Code playground mode="code" title="index.ts" code={`console.log(Bun.version);`} />
 ```
 
-In Markdown, a ` ```ts playground ` fence does the same. Options, themes and fences:
+In Markdown, a ` ```ts playground ` fence does the same, and `runbun({ fences: "all" })` renders every other fence as a
+static block. Options, themes and fences:
 [docs.runbun.dev/guides/astro](https://docs.runbun.dev/guides/astro/).
 
 The package is MIT-licensed (see LICENSE). The playground it embeds is a hosted service at runbun.dev with its own terms.

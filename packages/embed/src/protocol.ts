@@ -34,6 +34,12 @@ export type Options = {
   file: string;
   /** What the preview requests first (default: `/`), e.g. `/user/123`. */
   path: string;
+  /**
+   * Requests a reader can try, each in its own preview tab, the first active: `;`-separated `METHOD /path [body]`, e.g.
+   * `GET /user/1; POST /form {"hello":"Elysia"}`. The first is sent once the server runs, the others the first time
+   * their tab opens. Wins over `path`.
+   */
+  requests: string;
   /** Run once loaded (default: on, except in full mode). */
   autorun: boolean;
   /** auto, light, dark, or a theme family by its light variant (e.g. "github-light"). */

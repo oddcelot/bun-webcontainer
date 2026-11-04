@@ -12,5 +12,5 @@
     "outDir": "dist"
   },
   "include": ["src", "virtual.d.ts"],
-  "exclude": ["dist", "node_modules"]
+  "exclude": ["dist", "node_modules", "src/**/*.test.ts"]
 }

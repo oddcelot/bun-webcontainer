@@ -4,9 +4,10 @@
 // every embed option passes through. `title` names the file, as in a fence; `label` is the embed's title. With `files`
 // the block has a tab per file, and so does the embed. A static block is HTML and CSS, and one small script for its
 // Copy button (once per page); no request beyond the page's own stylesheet, which Astro bundles the blocks' CSS into
-// (once per page, in <head>).
+// (once per page, in <head>). `mark`, `ins` and `del` mark lines of the static block's own file (`code`), and `notes`
+// pairs with `// (N)` comments in it.
 import "virtual:@runbun/astro/blocks.css";
-import { codeBlock, codeTabs, copyScript, EXT, langOf, withEntry, withTabs } from "../dist/markup.js";
+import { codeBlock, codeTabs, copyScript, EXT, langOf, noteButton, noteMarkers, notesList, notesMatch, propLines, withEntry, withTabs } from "../dist/markup.js";
 import Playground, { type Props as PlaygroundProps } from "./Playground.astro";
 
 export type Props = Omit<PlaygroundProps, "title"> & {
@@ -16,19 +17,53 @@ export type Props = Omit<PlaygroundProps, "title"> & {
   /** The embed's accessible name (Playground's `title`, default "Bun playground"); only with `playground`. */
   label?: string;
   playground?: boolean;
+  /** Lines of `code` to highlight, as `"1,4-6"` (1-based, inclusive). Not on `files`' tabs; ignored with `playground`. */
+  mark?: string;
+  /** Lines of `code` shown as added, with a `+` in the gutter; as `mark`. */
+  ins?: string;
+  /** Lines of `code` shown as removed, with a `−` in the gutter (they still copy); as `mark`. */
+  del?: string;
+  /**
+   * Notes on lines of `code`, as plain text: the Nth opens from a `// (N)` comment at the end of a line (`# (N)`,
+   * `<!-- (N) -->`, `/* (N) *\/` as the language comments), which becomes a numbered button. Every note needs its marker
+   * and every marker its note; otherwise the comments stay. Ignored with `playground`.
+   */
+  notes?: string[];
 };
-const { code, lang = "ts", title, label, playground, files = {}, expand = "full", features, ...options } = Astro.props;
+const { code, lang = "ts", title, label, playground, files = {}, expand = "full", features, mark, ins, del, notes, ...options } = Astro.props;
+// A poster shows the code the embed opens, unmarked.
+let lines = playground ? undefined : propLines({ mark, ins, del });
 const file = title || `index.${EXT[lang] ?? lang}`;
 const extra = Object.entries(files).map(([name, text]) => ({ name, code: text, lang: langOf(name) }));
 // The package.json withEntry may add (`main`) runs but stays out of the tabs.
 const sources = { [file]: code, ...files };
 const all = withEntry(sources, file);
 // The Copy buttons' script, with the page's first block only (the script would ignore a second run anyway).
-const locals = Astro.locals as Record<symbol, boolean>;
+const locals = Astro.locals as Record<symbol, unknown>;
 const COPY = Symbol.for("runbun.copy");
 const copy = locals[COPY] ? "" : copyScript();
 locals[COPY] = true;
-const block = extra.length ? codeTabs([{ name: file, code, lang }, ...extra], options.file ?? file) : codeBlock(code, lang, title);
+// Notes: the markers become buttons, the notes popovers after the block. Ids count the page's annotated blocks
+// (Astro.locals is per render), prefixed apart from the fence plugin's `runbun-note-`.
+let shown = code;
+let list = "";
+if (lines && notes?.length) {
+  const found = noteMarkers(code, lang);
+  if (notesMatch(found.notes, notes.length)) {
+    const NOTES = Symbol.for("runbun.notes");
+    const k = (locals[NOTES] = ((locals[NOTES] as number | undefined) ?? 0) + 1);
+    const id = (n: number) => `runbun-code-note-${k}-${n}`;
+    shown = found.code;
+    lines = { ...lines, end: Object.fromEntries([...found.notes].map(([line, n]) => [line, noteButton(id(n), n)])) };
+    list = notesList(notes.map((_, i) => id(i + 1)), notes);
+  } else {
+    console.warn(`[@runbun/astro] ${Astro.url.pathname}: <Code notes> has ${notes.length} notes but ${found.notes.size} matching // (N) markers in code; they stay comments.`);
+  }
+}
+// Tabs' radio name: the page's tabbed blocks counted (Astro.locals is per render), apart from the fence plugin's names.
+const TABS = Symbol.for("runbun.tabs");
+const tabs = extra.length ? `runbun-code-tabs-${(locals[TABS] = ((locals[TABS] as number | undefined) ?? 0) + 1)}` : "";
+const block = extra.length ? codeTabs([{ name: file, code: shown, lang, lines }, ...extra], tabs, options.file ?? file) : codeBlock(shown, lang, title, lines);
 ---
 
 {
@@ -48,4 +83,5 @@ const block = extra.length ? codeTabs([{ name: file, code, lang }, ...extra], op
     <Fragment set:html={block} />
   )
 }
+<Fragment set:html={list} />
 <Fragment set:html={copy} />

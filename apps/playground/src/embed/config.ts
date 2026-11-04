@@ -56,6 +56,7 @@ export function optionsFromUrl(params: URLSearchParams): Options {
     features: params.get("features") ?? "",
     file: params.get("file") ?? "",
     path: params.get("path") ?? "",
+    requests: params.get("requests") ?? "",
     autorun: bool(params.get("autorun"), m !== "full"),
     theme: params.get("theme") ?? "auto",
     family: params.get("family") ?? "",

@@ -11,6 +11,7 @@ import { isFamily, pickFamily, setColorMode, setThemeVars } from "../theme";
 import { BUN_VERSION } from "../worker/bunVersion";
 import { isFeature, isMode, lockedFeatures, optionsFromUrl, resolveFeatures } from "./config";
 import { mountEmbed } from "./mount";
+import { parseRequests } from "./requests";
 import { isMessage, TAG, VERSION, type Event, type Feature, type Mode, type Options, type Request } from "@runbun/embed/protocol";
 
 // runbun.dev/embed: the playground inside another page (an iframe, or <bun-playground>, which builds one). The URL's
@@ -261,8 +262,11 @@ const first = hidden.has(file) ? undefined : file;
 for (const path of Object.keys(initFiles).map(bare)) if (!hidden.has(path)) workspace.open(path);
 if (first) workspace.open(first);
 
-// `path` picks where the preview's first tab points (default "/"); the next Run loads it there.
-if (options.path) pg.previews.start(options.path);
+// `path` picks where the preview's first tab points (default "/"); the next Run loads it there. `requests` wins over it:
+// a tab per preset, the first sent by that Run, the others when first opened (previews.ts presets).
+const presets = parseRequests(options.requests);
+if (presets.length) pg.previews.presets(presets);
+else if (options.path) pg.previews.start(options.path);
 
 // --- Events
 

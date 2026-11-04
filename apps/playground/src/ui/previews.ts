@@ -1,4 +1,5 @@
 import { createStore, flush, reconcile } from "solid-js";
+import type { PresetRequest } from "../embed/requests";
 import { PREFIX, cardFromFrame, normalize, sendRequest, type Card } from "../preview";
 
 /** One preview tab: its own request, and the page (kept loaded while hidden) or response it shows. */
@@ -11,14 +12,30 @@ export type PreviewTab = {
   /** The page's <title>, once one loaded. */
   title: string;
   response: Card | null;
+  /** A preset request (the embed's `requests`) not sent yet: it goes the first time the tab shows while the server runs. */
+  pending: boolean;
 };
 
 /**
  * Previews of the running server, as tabs; the request bar edits the active one. The iframes register
- * themselves in `frames` so requests can navigate them.
+ * themselves in `frames` so requests can navigate them. `running` says whether the server is up, for preset tabs
+ * opened after Run.
  */
-export function createPreviews() {
-  const blank = (id: number, path: string): PreviewTab => ({ id, method: "GET", path, body: "", view: "frame", title: "", response: null });
+export function createPreviews(running: () => boolean = () => false) {
+  const blank = (id: number, path: string, method = "GET", body = "", pending = false): PreviewTab => ({
+    id,
+    method,
+    path,
+    body,
+    view: "frame",
+    title: "",
+    response: null,
+    pending,
+  });
+  /** A preset tab that shows while the server runs sends its request (once: request() clears `pending`). */
+  const sendIfPending = (id: number) => {
+    if (running() && state.tabs.find((t) => t.id === id)?.pending) void previews.request(id);
+  };
   // One tab to start with (created here: writing to the store from inside the caller's root isn't allowed).
   let lastId = 1;
   const frames = new Map<number, HTMLIFrameElement>();
@@ -50,11 +67,13 @@ export function createPreviews() {
         if (s.active === id) s.active = (s.tabs[i] ?? s.tabs[i - 1]).id;
       });
       frames.delete(id);
+      sendIfPending(state.active);
     },
     activate(id: number) {
       setState((s) => {
         s.active = id;
       });
+      sendIfPending(id);
     },
     /** The request bar's fields write straight into the active tab. */
     edit(id: number, field: "method" | "path" | "body", value: string) {
@@ -72,6 +91,10 @@ export function createPreviews() {
       flush(); // a tab opened just now isn't readable before
       const tab = state.tabs.find((t) => t.id === id);
       if (!tab) return;
+      if (tab.pending)
+        update(id, (t) => {
+          t.pending = false;
+        });
       const m = method ?? tab.method;
       const path = normalize(tab.path.trim() || "/");
       let result: "page" | Card;
@@ -119,9 +142,28 @@ export function createPreviews() {
         t.path = normalize(path.trim() || "/");
       });
     },
-    /** After Run: tabs showing a page or a GET response load again; a POST and the like isn't replayed. */
+    /**
+     * The embed's `requests`: one tab per preset, in order, the first active. Each is pending: the first goes when
+     * the server starts (reload), the others when their tab first shows.
+     */
+    presets(list: PresetRequest[]) {
+      if (!list.length) return;
+      lastId = list.length;
+      setState((s) => {
+        s.tabs = list.map((r, i) => blank(i + 1, normalize(r.path), r.method, r.body, true));
+        s.active = 1;
+      });
+    },
+    /**
+     * After Run: tabs showing a page or a GET response load again; a POST and the like isn't replayed. A preset tab
+     * not sent yet goes with its own request if it's the one showing, else waits to be opened.
+     */
     reload() {
-      for (const tab of state.tabs) if (tab.view === "frame" || tab.method === "GET") void previews.request(tab.id, "GET");
+      for (const tab of state.tabs) {
+        if (tab.pending) {
+          if (tab.id === state.active) void previews.request(tab.id);
+        } else if (tab.view === "frame" || tab.method === "GET") void previews.request(tab.id, "GET");
+      }
     },
   };
   return previews;
