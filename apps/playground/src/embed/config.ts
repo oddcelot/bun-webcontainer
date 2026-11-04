@@ -5,7 +5,7 @@ export const PRESETS: Record<Mode, readonly Feature[]> = {
   code: ["console", "open", "watch"],
   console: ["console", "terminal", "open", "watch"],
   preview: ["tabs", "preview", "install", "open", "watch"],
-  full: ["files", "tabs", "console", "preview", "format", "install", "terminal", "open", "watch"],
+  full: ["files", "tabs", "console", "preview", "format", "install", "terminal", "open", "watch", "close"],
   result: ["preview", "open", "watch"],
 };
 

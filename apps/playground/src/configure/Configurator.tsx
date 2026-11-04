@@ -60,6 +60,7 @@ const FEATURE_INFO: Record<Feature, string> = {
   open: "Open in runbun.dev",
   watch: "Restart the program when an edit is saved",
   autosave: "An Auto-save switch over the editor",
+  close: "Close buttons on the tabs (on in full mode)",
 };
 
 type Option = { value: string; label: string; swatch?: string };

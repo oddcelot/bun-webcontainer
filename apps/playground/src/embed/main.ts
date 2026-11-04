@@ -80,14 +80,19 @@ const sizesKey = `embed-sizes:${location.search}#${hash(JSON.stringify([initFile
 const embed = createRoot(() => {
   const [mode, setMode] = createSignal<Mode>(options.mode);
   const [expanded, setOpen] = createSignal(false);
-  // The mode to go back to when the modal closes (`expand=<mode>` switched it).
+  // The mode, and the features the reader changed, to go back to when the modal closes (`expand=<mode>` switched it).
   let modeBefore: Mode | undefined;
+  let changesBefore: Partial<Record<Feature, boolean>> = {};
+  // The tabs inline, put back on the way out: the modal's tabs close and its tree opens files, which inline has
+  // neither of (with `close` off, a file opened in the modal couldn't be closed inline).
+  let tabsBefore: { open: string[]; active: string | null } = { open: [], active: null };
   const [changes, setChanges] = createStore<Partial<Record<Feature, boolean>>>({});
   const features = createMemo(() => resolveFeatures(mode(), options.features, changes));
   const has = (f: Feature) => features().includes(f);
-  // A column beside the editor: the preview, or the console in console mode. `layout=stack` puts it under the editor.
+  // A column beside the editor: the preview, or the console in console mode. `layout=stack` puts it under the editor,
+  // inline only: the modal has room for the usual layout, file tree included.
   const side = () => mode() !== "result" && (has("preview") || (mode() === "console" && has("console")));
-  const stacked = () => side() && options.layout === "stack";
+  const stacked = () => side() && options.layout === "stack" && !expanded();
   // The frame is as tall as the embed asked (`resize`): a host with height="auto". Stacked rows then fit the code.
   const [fit, setFit] = createSignal(false);
   createEffect(
@@ -122,12 +127,25 @@ const embed = createRoot(() => {
     /** The host opened or closed its modal: an `expand=<mode>` embed switches to that mode meanwhile. */
     setExpanded(open: boolean) {
       setOpen(open);
+      if (open) tabsBefore = { open: [...workspace.state.open], active: workspace.state.active };
+      else {
+        workspace.saveAll();
+        workspace.closeAll();
+        for (const path of tabsBefore.open) if (vfs.files.has(path)) workspace.open(path);
+        if (tabsBefore.active && vfs.files.has(tabsBefore.active)) workspace.activate(tabsBefore.active);
+      }
       const to = options.expand;
       if (to === "" || to === "on") return;
       if (open) {
         modeBefore = mode();
+        changesBefore = { ...changes };
         setMode(to);
       } else if (modeBefore) {
+        // Back inline as it was: features turned on or off in the modal's menu were for the modal's mode.
+        setChanges((c) => {
+          for (const f of Object.keys(c) as Feature[]) delete c[f];
+          Object.assign(c, changesBefore);
+        });
         setMode(modeBefore);
         modeBefore = undefined;
       }
@@ -291,6 +309,8 @@ const MODE_HEIGHT: Partial<Record<Mode, number>> = { console: 360, preview: 420,
 /** Stacked (`layout=stack`), the editor fits its lines and the rows under it get these (embed.css, `data-fit`). */
 const STACK_PREVIEW = 200;
 const STACK_CONSOLE = 120;
+let unmeasured = 0;
+let measuredOnce = false;
 function wantedHeight() {
   const stacked = embed.stacked();
   const fixed = MODE_HEIGHT[embed.mode()];
@@ -299,7 +319,11 @@ function wantedHeight() {
   const path = workspace.state.active;
   const below = embed.has("console") && !embed.has("preview") && embed.mode() === "code";
   const measured = measuredHeight(stacked, below);
-  if (measured) return measured;
+  if (measured) return (unmeasured = 0), (measuredOnce = true), measured;
+  // The editor isn't laid out yet (it remounts when tabs come back from the modal): try again for a few frames, and
+  // keep the height there is meanwhile rather than jump to the estimate.
+  if (unmeasured++ < 30) requestAnimationFrame(() => sendResize(untrack(wantedHeight)));
+  if (measuredOnce && lastHeight) return lastHeight;
   // Before the editor is laid out, an estimate. Each stacked row adds its height and the 4px grid gap.
   const lines = Math.min(Math.max((path ? (vfs.readText(path) ?? "") : "").split("\n").length, 3), 30);
   const rows = stacked ? (embed.has("preview") ? STACK_PREVIEW + 4 : 0) + (embed.has("console") ? STACK_CONSOLE + 4 : 0) : 0;
@@ -349,9 +373,15 @@ function measuredHeight(stacked: boolean, below: boolean): number | undefined {
 }
 let lastHeight = 0;
 const checkFit = () => embed.setFit(Math.abs(innerHeight - lastHeight) <= 1);
-addEventListener("resize", checkFit);
+// The frame changing size: fitted or not, and a measurement that waited for the frame (0 tall for a moment as the
+// modal closes) can be taken now. The height asked for doesn't depend on the frame's, so this doesn't loop.
+addEventListener("resize", () => {
+  checkFit();
+  sendResize(untrack(wantedHeight));
+});
 function sendResize(height: number) {
-  if (height === lastHeight) return;
+  // The modal sizes the frame itself; the inline height waits for the embed to come back (measured as it was).
+  if (height === lastHeight || untrack(embed.expanded)) return;
   lastHeight = height;
   emit("resize", { height });
   checkFit();

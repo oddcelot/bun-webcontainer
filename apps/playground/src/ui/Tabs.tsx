@@ -8,9 +8,13 @@ export { TabItem, TabList };
 
 const name = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 
-/** Open files as tabs above the editor. Middle-click, the ×, Delete or Ctrl/Cmd+W closes a tab; arrows move between them. */
+/**
+ * Open files as tabs above the editor. Middle-click, the ×, Delete or Ctrl/Cmd+W closes a tab (unless an embed turned
+ * `close` off); arrows move between them.
+ */
 export function EditorTabs() {
-  const { workspace: ws } = useContext(AppContext);
+  const { workspace: ws, features } = useContext(AppContext);
+  const closable = () => features?.has("close") ?? true;
   // Same file name in two folders: those tabs show the folder too.
   const clashes = createMemo(() => {
     const counts = new Map<string, number>();
@@ -43,10 +47,10 @@ export function EditorTabs() {
               value={path}
               selected={ws.state.active === path}
               title={path}
-              onClose={() => ws.close(path)}
+              onClose={closable() ? () => ws.close(path) : undefined}
               closeLabel={`Close ${name(path)}`}
               onKeyDown={(e) => {
-                if (matches("closeTab", e)) {
+                if (closable() && matches("closeTab", e)) {
                   e.preventDefault();
                   ws.close(path);
                   // The focused tab is gone; keep keyboard focus in the bar, on the tab now selected.

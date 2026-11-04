@@ -39,7 +39,7 @@ const HEIGHTS: Record<string, string> = { code: "auto", console: "360px", previe
 const CSS = `:host{display:block;position:relative}
 dialog{position:static;display:block;margin:0;padding:0;border:0;width:auto;height:auto;max-width:none;max-height:none;background:none;color:inherit;overflow:visible}
 dialog:not([open]){display:none}
-dialog:modal{position:fixed;inset:0;margin:auto;width:min(1280px,calc(100vw - 48px));height:calc(100vh - 48px);border-radius:10px;overflow:hidden;box-shadow:0 24px 80px rgb(0 0 0/.5)}
+dialog:modal{position:fixed;inset:0;margin:auto;width:min(1280px,calc(100vw - 48px));height:calc(100vh - 48px);border-radius:10px;overflow:hidden;box-shadow:0 24px 80px rgb(0 0 0/.5);overscroll-behavior:contain}
 dialog:modal .box{height:100%!important}
 dialog::backdrop{background:rgb(0 0 0/.55)}
 .box{position:relative;overflow:hidden}
@@ -119,6 +119,8 @@ export class BunPlayground extends HTMLElement {
   #booted = false;
   #listening = false;
   #startTimer: ReturnType<typeof setTimeout> | undefined;
+  /** The page's own `overflow` on <html> while the modal locks its scrolling; null when it doesn't. */
+  #pageOverflow: string | null = null;
 
   constructor() {
     super();
@@ -171,6 +173,7 @@ export class BunPlayground extends HTMLElement {
   }
 
   disconnectedCallback() {
+    this.#lockPage(false);
     this.#io?.disconnect();
     this.#io = null;
     removeEventListener("message", this.#onMessage);
@@ -277,8 +280,11 @@ export class BunPlayground extends HTMLElement {
     if (open === this.expanded) return;
     await this.activate();
     this.#dialog.close();
+    // showModal() puts the dialog in the top layer and makes the rest of the document inert (this element's light DOM,
+    // the poster, included; the dialog lives in its shadow root); the page's scrolling stops too.
     if (open) this.#dialog.showModal();
     else this.#dialog.show();
+    this.#lockPage(open);
     this.dispatchEvent(new CustomEvent("bun-playground:expand", { detail: { open }, bubbles: true, composed: true }));
     await this.#request("setExpanded", { open });
   }
@@ -286,6 +292,18 @@ export class BunPlayground extends HTMLElement {
   /** Returns a runbun.dev URL that reopens the current project. */
   getShareUrl(): Promise<string> {
     return this.#call("getShareUrl");
+  }
+
+  /** Stops the page scrolling under the modal (overflow on <html>), and puts back what it had. */
+  #lockPage(on: boolean) {
+    const root = document.documentElement;
+    if (on && this.#pageOverflow === null) {
+      this.#pageOverflow = root.style.overflow;
+      root.style.overflow = "hidden";
+    } else if (!on && this.#pageOverflow !== null) {
+      root.style.overflow = this.#pageOverflow;
+      this.#pageOverflow = null;
+    }
   }
 
   #newReady() {

@@ -24,9 +24,9 @@ The element's attributes and the iframe's URL parameters share names.
 | `vars` | JSON object | none | Chrome CSS variables to set on top of the theme's. Element only; see [Theming](#theming). |
 | `readonly` | boolean | `false` | The editor takes no edits. Run still works. |
 | `persist` | key | none | Keeps edits in the reader's browser under this key. Without it every load starts from the source. |
-| `expand` | empty, a mode, `false` | none | A button that opens the embed in a modal over the page. With a mode (`expand="full"`) it switches to that mode while open. Escape or the button closes it. |
+| `expand` | empty, a mode, `false` | none | A button that opens the embed in a modal over the page. With a mode (`expand="full"`) it switches to that mode while open, with that mode's features plus your `features` (so `types` stays on, `-name` stays locked). While it's open the page behind is inert (no clicks, no focus) and doesn't scroll, and scrolling inside the embed doesn't carry over to it. Escape or the button closes it, and the embed is back inline as it was: its mode, features, layout and open tabs. |
 | `status` | `toast`, `bar` | `toast` | Where the run status shows: a toast over the panes' bottom-right corner that fades a few seconds after it settles (errors stay), or a pill in the bar. |
-| `layout` | `side`, `stack` | `side` | Where the preview (or the console, in `console` mode) goes: beside the editor, or under it, e.g. `<bun-playground mode="preview" layout="stack" height="auto">`. Stacked, there's no file tree. With `height="auto"` the editor fits its code (3 to 30 lines), the preview gets 200px and the console 120px, up to the 640px cap; otherwise they share the height. Frames narrower than 560px stack either way. Set at load: changing it reloads the embed. |
+| `layout` | `side`, `stack` | `side` | Where the preview (or the console, in `console` mode) goes: beside the editor, or under it, e.g. `<bun-playground mode="preview" layout="stack" height="auto">`. Stacked, there's no file tree. With `height="auto"` the editor fits its code (3 to 30 lines), the preview gets 200px and the console 120px, up to the 640px cap; otherwise they share the height. Frames narrower than 560px stack either way. Inline only: expanded (`expand`), the embed has its usual layout, file tree included. Set at load: changing it reloads the embed. |
 | `example` | name | none | A bundled example. |
 | `repo` | `owner/repo[@ref]` | none | A public GitHub repo. |
 | `share` | `#code=…` | none | A share link's hash. In an iframe URL put it after `#`. |
@@ -69,6 +69,7 @@ Inline files: child `<script type="text/plain" data-file="path">` elements, dede
 | `terminal` | Interactive terminal | `console`, `full` | |
 | `open` | "Open in runbun.dev" | all | |
 | `watch` | Restart the running program when an edit is saved, like `bun --watch` | all | |
+| `close` | Close buttons on the editor's tabs (also middle-click, Delete and Ctrl/Cmd+W). Off, a reader can't close the example's tabs | `full` | |
 | `autosave` | An Auto-save switch over the editor: off, edits save on Ctrl/Cmd+S and before Run (switching it back on, or turning the feature off, saves what's waiting). Without it, edits save as you type | none | |
 
 Readers can switch features on or off from the **⋯** menu, except those you locked with `-name`.
