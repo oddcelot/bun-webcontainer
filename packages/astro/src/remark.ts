@@ -9,11 +9,27 @@
 // keeps a fence out of the poster and the tabs (`data-hidden`) while it stays a file of the embed: a package.json the
 // author pins, say. It's never the file Run starts or the one opened; a group must show something, so `hidden` on its
 // first fence is ignored when every fence has it (or the fence is alone).
-// With `fences: "all"`, every other fence becomes a static block, as a static <Code> is (see parseStatic).
+// With `fences: "all"`, every other fence becomes a static block, as a static <Code> is (see parseStatic), and `// (1)`
+// comments in it with an ordered list right after it become notes (see annotate).
 // Options default to the runbun() integration's (playgroundUrl, base, sync, fences).
 import type { Code, Root, RootContent } from "mdast";
 import { CONFIG, type ResolvedConfig } from "./config.js";
-import { type BlockLines, codeBlock, codeTabs, copyScript, cssLink, embedScripts, EXT, fileScript, lineNumbers, withEntry, withTabs } from "./markup.js";
+import {
+  type BlockLines,
+  codeBlock,
+  codeTabs,
+  copyScript,
+  cssLink,
+  embedScripts,
+  EXT,
+  fileScript,
+  lineNumbers,
+  noteButton,
+  noteMarkers,
+  notesMatch,
+  withEntry,
+  withTabs,
+} from "./markup.js";
 
 const OWN_KEYS = new Set(["playground", "mode", "features", "group", "load", "height", "autorun", "readonly", "persist", "theme", "file", "path", "expand", "deps", "label", "layout"]);
 const ATTRS = ["mode", "features", "height", "autorun", "readonly", "persist", "theme", "file", "path", "layout"];
@@ -141,7 +157,7 @@ function fileName(code: string, lang: string): { code: string; title?: string; k
   return { code: lines.join("\n"), title, kept };
 }
 
-type MarkKind = keyof BlockLines;
+type MarkKind = "mark" | "ins" | "del";
 const MARK_KINDS: readonly string[] = ["mark", "ins", "del"];
 /**
  * A line-mark token, `{1,4-6}` (a `mark`), `mark={…}`, `ins={…}` or `del={…}`, as its kind and 1-based lines; null
@@ -254,29 +270,72 @@ function embed(entries: [Entry, ...Entry[]]): RootContent {
   );
 }
 
-/** What a page turned out to have: embeds need embed.js; blocks, static or a poster, need the CSS and Copy script. */
-interface Found {
+/**
+ * A page as transform() goes through it: `all` (fences: "all"), its path and the path's hash (notes' ids), how many
+ * static blocks it has had, and what it turned out to have: embeds need embed.js; blocks, static or a poster, need
+ * the CSS and Copy script.
+ */
+interface Page {
+  all: boolean;
+  path: string;
+  hash: string;
+  statics: number;
   embeds: boolean;
   blocks: boolean;
 }
 
-function transform(children: RootContent[], all: boolean, found: Found): void {
+/** FNV-1a of `s`, base 36: a short, stable stand-in for a page's path in ids. */
+function hash(s: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193);
+  return (h >>> 0).toString(36);
+}
+
+/**
+ * A static block's note markers (`// (1)`, noteMarkers) paired with the ordered list right after its fence: each
+ * marker becomes a button that opens its item, and the list stays in the page with its items as popovers
+ * (`data.hProperties`, which mdast-util-to-hast keeps in Markdown and MDX). Ids hash the page's path with the block's
+ * place and the note's number: the content store caches a rendered page across builds while a counter would start
+ * over, so a counter's ids could collide. A fence whose markers and list don't pair up (no list, a short or long one)
+ * keeps its markers as comments and the list as it is, with a warning.
+ */
+function annotate(block: NonNullable<ReturnType<typeof parseStatic>>, next: RootContent | undefined, page: Page): void {
+  const { code, notes } = noteMarkers(block.code, block.lang);
+  if (!notes.size) return;
+  const list = next?.type === "list" && next.ordered && (next.start ?? 1) === 1 ? next : undefined;
+  if (!list || !notesMatch(notes, list.children.length)) {
+    console.warn(
+      `[@runbun/astro] ${page.path || "a page"}: a code block has note markers (${[...notes.values()].map((n) => `(${n})`).join(", ")}) ` +
+        "but no ordered list right after it with one item per marker; they stay comments.",
+    );
+    return;
+  }
+  const id = (n: number) => `runbun-note-${page.hash}-${page.statics}-${n}`;
+  Object.assign((list.data ??= {}), { hProperties: { className: ["runbun-notes"] } });
+  for (const [k, item] of list.children.entries()) Object.assign((item.data ??= {}), { hProperties: { id: id(k + 1), popover: "auto" } });
+  block.code = code;
+  block.lines.end = Object.fromEntries([...notes].map(([line, n]) => [line, noteButton(id(n), n)]));
+}
+
+function transform(children: RootContent[], page: Page): void {
   const out: RootContent[] = [];
   for (let i = 0; i < children.length; i++) {
     const node = children[i]!;
     const first = node.type === "code" ? parse(node) : null;
-    const block = !first && all && node.type === "code" ? parseStatic(node) : null;
+    const block = !first && page.all && node.type === "code" ? parseStatic(node) : null;
     if (block) {
-      found.blocks = true;
+      page.blocks = true;
+      annotate(block, children[i + 1], page);
+      page.statics++;
       out.push(html(codeBlock(block.code, block.lang, block.title, block.lines)));
       continue;
     }
     if (!first) {
-      if ("children" in node) transform(node.children, all, found);
+      if ("children" in node) transform(node.children, page);
       out.push(node);
       continue;
     }
-    found.embeds = true;
+    page.embeds = true;
     const entries: [Entry, ...Entry[]] = [first];
     const group = first.opts.group;
     while (group && children[i + 1]?.type === "code") {
@@ -301,13 +360,14 @@ export default function remarkRunbun(
     mdx = /\.mdx$/.test(file?.path ?? "");
     // Read before transforming, which needs `fences`; the config is the same whenever it's read.
     const { playgroundUrl, base, sync, fences } = { ...CONFIG(), ...options };
-    const found: Found = { embeds: false, blocks: false };
-    transform(tree.children, fences === "all", found);
-    if (!found.embeds && !found.blocks) return;
+    const path = file?.path ?? "";
+    const page: Page = { all: fences === "all", path, hash: hash(path), statics: 0, embeds: false, blocks: false };
+    transform(tree.children, page);
+    if (!page.embeds && !page.blocks) return;
     // In MDX the blocks' CSS is an import, which Astro bundles into the page's stylesheet as it does for <Code> (one
     // copy for both); Markdown can't import, so it links the integration's route.
     if (mdx) tree.children.unshift(cssImport());
     // embed.js (and the sync script) only for a page with an embed: static blocks are HTML and CSS.
-    tree.children.push(html((mdx ? "" : cssLink(base) + "\n") + (found.embeds ? embedScripts(playgroundUrl, sync) : "") + copyScript()));
+    tree.children.push(html((mdx ? "" : cssLink(base) + "\n") + (page.embeds ? embedScripts(playgroundUrl, sync) : "") + copyScript()));
   };
 }

@@ -1,8 +1,8 @@
 // The fence plugin on hand-built mdast trees (the shape remark-parse gives a fence: `lang` is its first word, `meta` the
 // rest). remark.test.json is what the plugin produced before `fences` existed (main at 7afcb68), for the default mode
 // to be checked against byte for byte.
-import { afterEach, describe, expect, test } from "bun:test";
-import type { Code, Root, RootContent } from "mdast";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import type { Code, List, Root, RootContent } from "mdast";
 import { setConfig } from "./config.js";
 import { highlight } from "./highlight.js";
 import { codeBlock, propLines } from "./markup.js";
@@ -221,6 +221,103 @@ describe("line marks", () => {
     expect(propLines({ mark: "1, 4-6", del: "2" })).toEqual({ mark: [0, 3, 4, 5], del: [1] });
     expect(propLines({})).toEqual({});
     expect(() => propLines({ ins: "x" })).toThrow('<Code ins="x">');
+  });
+});
+
+describe("notes", () => {
+  const all = { fences: "all" } as const;
+  const list = (...items: string[]): List => ({
+    type: "list",
+    ordered: true,
+    start: 1,
+    spread: false,
+    children: items.map((value) => ({ type: "listItem", spread: false, children: [{ type: "paragraph", children: [{ type: "text", value }] }] })),
+  });
+  const props = (node: { data?: unknown } | undefined) => (node?.data as { hProperties?: Record<string, unknown> } | undefined)?.hProperties;
+  const targets = (html: string) => [...html.matchAll(/popovertarget="([^"]+)"/g)].map((m) => m[1]);
+  /** Runs a fence and the list after it; warnings are caught, so a test can say whether there was one. */
+  const annotate = (fence: Code, after: RootContent | undefined, path = "page.md") => {
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    const out = run(after ? [fence, after] : [fence], all, path);
+    const warned = warn.mock.calls.map((c) => String(c[0]));
+    warn.mockRestore();
+    return { html: htmlOf(out[0])!, list: out[1], warned };
+  };
+
+  test("a // (N) marker becomes an empty numbered button at its line's end, and its comment leaves the code", () => {
+    const { html, list: notes, warned } = annotate(code("ts", null, "const a = 1; // (1)\nconst b = 2;   // (2)"), list("one", "two"));
+    expect(warned).toEqual([]);
+    expect(html).toMatch(/<span class="line">.*;<\/span><button type="button" class="runbun-note" popovertarget="runbun-note-[\w]+-0-1" aria-label="Note 1" data-n="1"><\/button><\/span>/);
+    expect(html).toContain('aria-label="Note 2" data-n="2"></button>');
+    // What Copy reads: no marker, no number, no trailing spaces.
+    expect(text(html)).toBe("const a = 1;\nconst b = 2;");
+    // The list stays in the page, its items the popovers the buttons open.
+    expect(notes?.type).toBe("list");
+    expect(props(notes)).toEqual({ className: ["runbun-notes"] });
+    const items = (notes as List).children.map(props);
+    expect(items.map((p) => p?.popover)).toEqual(["auto", "auto"]);
+    expect(targets(html)).toEqual(items.map((p) => p?.id as string));
+  });
+
+  test("markers follow each language's comments: # in YAML, <!-- --> in HTML, /* */ in CSS", () => {
+    for (const [lang, src, rest] of [
+      ["yaml", "a: 1 # (1)", "a: 1"],
+      ["html", "<p>hi</p> <!-- (1) -->", "<p>hi</p>"],
+      ["css", ".a { color: red } /* (1) */", ".a { color: red }"],
+    ] as const) {
+      const { html, warned } = annotate(code(lang, null, src), list("n"));
+      expect(warned).toEqual([]);
+      expect(text(html)).toBe(rest);
+      expect(targets(html)).toHaveLength(1);
+    }
+  });
+
+  test("comments that only look like markers stay code: prose before (N), a template literal, # in TypeScript", () => {
+    for (const src of ["setup(); // setup (1)", "const t = `\n// (1)\n`;", "class A { #p = 1 } # (1)", 'const s = "// (1)";']) {
+      const { html, list: notes, warned } = annotate(code("ts", null, src), list("n"));
+      expect(text(html)).toBe(src);
+      expect(html).not.toContain("runbun-note");
+      expect(props(notes)).toBeUndefined();
+      expect(warned).toEqual([]);
+    }
+  });
+
+  test("markers without a matching list stay comments, the list stays a list, and the build says which file", () => {
+    for (const after of [undefined, list("only one"), list("a", "b", "c"), { type: "list", ordered: false, spread: false, children: list("a", "b").children } as List]) {
+      const src = "a(); // (1)\nb(); // (2)";
+      const { html, list: notes, warned } = annotate(code("ts", null, src), after, "/site/src/content/docs/x.md");
+      expect(text(html)).toBe(src);
+      expect(html).not.toContain("runbun-note");
+      if (after) expect(props(notes)).toBeUndefined();
+      expect(warned).toHaveLength(1);
+      expect(warned[0]).toContain("/site/src/content/docs/x.md");
+    }
+  });
+
+  test("ids come from the page's path and the block's place, so a cached page's ids are the same build after build", () => {
+    const ids = (path: string) => {
+      const out = run([code("ts", null, "x"), code("ts", null, "a(); // (1)"), list("n")], all, path);
+      return targets(htmlOf(out[1])!);
+    };
+    expect(ids("/a.md")).toEqual(ids("/a.md"));
+    expect(ids("/a.md")[0]).toMatch(/^runbun-note-\w+-1-1$/);
+    expect(ids("/a.md")).not.toEqual(ids("/b.md"));
+  });
+
+  test("notes and line marks work together, under a file-name comment, and marks keep the fence's numbering", () => {
+    const { html, warned } = annotate(code("ts", "{2} ins={3}", "// src/a.ts\nconst a = 1; // (1)\nconst b = 2;"), list("n"));
+    expect(warned).toEqual([]);
+    expect(html).toContain("<figcaption>src/a.ts</figcaption>");
+    expect(marksOf(html)).toEqual(["mark", "ins"]);
+    expect(html).toMatch(/<span class="line" data-mark>.*<button[^>]*data-n="1"><\/button><\/span>\n<span class="line" data-ins>/);
+    expect(text(html)).toBe("const a = 1;\nconst b = 2;");
+  });
+
+  test("in MDX the block goes through <Fragment set:html> and the list gets the same popover properties", () => {
+    const out = run([code("ts", null, "a(); // (1)"), list("n")], all, "page.mdx");
+    expect(out[1]).toMatchObject({ type: "mdxJsxFlowElement", name: "Fragment" });
+    expect(props(out[2])).toEqual({ className: ["runbun-notes"] });
+    expect(targets(htmlOf(out[1])!)).toEqual([props((out[2] as List).children[0])?.id as string]);
   });
 });
 

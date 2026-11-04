@@ -27,9 +27,12 @@ export interface BlockLines {
   mark?: number[];
   ins?: number[];
   del?: number[];
+  /** HTML at the end of a line, inside it: a note's button (noteButton). */
+  end?: Record<number, string>;
 }
 const KINDS = ["mark", "ins", "del"] as const;
-const hasLines = (lines?: BlockLines): lines is BlockLines => !!lines && KINDS.some((k) => lines[k]?.length);
+const hasLines = (lines?: BlockLines): lines is BlockLines =>
+  !!lines && (KINDS.some((k) => lines[k]?.length) || Object.keys(lines.end ?? {}).length > 0);
 
 /**
  * `"1,4-6"` (a fence's `{1,4-6}` without the braces) as 1-based line numbers; a reversed range counts too, as in
@@ -63,24 +66,92 @@ export function propLines(props: { mark?: string | undefined; ins?: string | und
  * between the lines, so the code's text is the source as it was.
  */
 function byLine(pre: string, lines: BlockLines): string {
-  const start = pre.indexOf("<code>") + "<code>".length;
-  const stop = pre.lastIndexOf("</code>");
-  const line = (i: number) => `<span class="line"${KINDS.filter((k) => lines[k]?.includes(i)).map((k) => ` data-${k}`).join("")}>`;
-  let i = 0;
-  let open = "";
-  let out = line(0);
-  for (const part of pre.slice(start, stop).split(/(<span[^>]*>|<\/span>|\n)/)) {
-    if (part === "\n") out += (open && "</span>") + `</span>\n${line(++i)}${open}`;
-    else if (part === "</span>") (out += part), (open = "");
-    else if (part.startsWith("<span")) {
-      if (open) throw new Error("@runbun/astro: the highlighter nested its spans; lines can't be split");
-      out += open = part;
-    } else out += part;
-  }
-  // A token cut at a line's end leaves an empty copy on the next line (`// x\n\n` is one span).
-  out = (out + "</span>").replace(/<span style="[^"]*"><\/span>/g, "");
+  const { start, stop, html } = htmlLines(pre);
+  const attrs = (i: number) => KINDS.filter((k) => lines[k]?.includes(i)).map((k) => ` data-${k}`).join("");
+  const out = html.map((line, i) => `<span class="line"${attrs(i)}>${line}${lines.end?.[i] ?? ""}</span>`).join("\n");
   return `${pre.slice(0, start - 1)} class="runbun-lines">${out}${pre.slice(stop)}`;
 }
+
+/** highlight()'s `<pre>` cut into each line's HTML, and where its `<code>`'s content starts and stops. */
+function htmlLines(pre: string): { start: number; stop: number; html: string[] } {
+  const start = pre.indexOf("<code>") + "<code>".length;
+  const stop = pre.lastIndexOf("</code>");
+  const html = [""];
+  let open = "";
+  for (const part of pre.slice(start, stop).split(/(<span[^>]*>|<\/span>|\n)/)) {
+    if (part === "\n") (html[html.length - 1] += open && "</span>"), html.push(open);
+    else {
+      if (part === "</span>") open = "";
+      else if (part.startsWith("<span")) {
+        if (open) throw new Error("@runbun/astro: the highlighter nested its spans; lines can't be split");
+        open = part;
+      }
+      html[html.length - 1] += part;
+    }
+  }
+  // A token cut at a line's end leaves an empty copy on the next line (`// x\n\n` is one span).
+  return { start, stop, html: html.map((line) => line.replace(/<span style="[^"]*"><\/span>/g, "")) };
+}
+
+/** Comment syntaxes a note marker can be written in, by language: `#` only where it starts a comment (not in TS's `#private`). */
+const SLASH = ["//", "/*"];
+const NOTE_COMMENTS: Record<string, string[]> = {};
+for (const [syntaxes, langs] of [
+  [SLASH, "ts tsx js jsx mjs cjs mts cts typescript javascript jsonc json5 c cpp cs csharp java kotlin go rust rs swift dart scala zig groovy php scss less sass"],
+  [["/*"], "css"],
+  [["#"], "py python rb ruby yaml yml toml sh bash zsh shell dockerfile docker graphql gql r perl makefile make env ini nix elixir ex exs"],
+  [["<!--"], "html xml svg md markdown mdx"],
+  [[...SLASH, "<!--"], "astro vue svelte"],
+] as [string[], string][]) {
+  for (const lang of langs.split(" ")) NOTE_COMMENTS[lang] = syntaxes;
+}
+const NOTE_SYNTAX: Record<string, string> = {
+  "//": String.raw`//\s*\((\d+)\)`,
+  "/*": String.raw`/\*\s*\((\d+)\)\s*\*/`,
+  "#": String.raw`#\s*\((\d+)\)`,
+  "<!--": String.raw`<!--\s*\((\d+)\)\s*-->`,
+};
+/** A line's last token when it is a comment (any `--hls-comment*` color), and its text. */
+const LAST_COMMENT = /<span style="color:var\(--hls-comment[\w-]*\)">([^<]*)<\/span>$/;
+const unesc = (s: string) => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&");
+
+/**
+ * Note markers: a line's trailing comment that is exactly `(N)` (`// (1)`, `/* (1) *\/`, `# (1)`, `<!-- (1) -->`, in the
+ * syntaxes the language has), which highlights also colors as a comment, so one in a string or a template literal isn't.
+ * `code` comes back without them (or the whitespace before them, so a copy has no trailing spaces), with each marked
+ * line's index and N; the lines stay where they were.
+ */
+export function noteMarkers(code: string, lang: string): { code: string; notes: Map<number, number> } {
+  const notes = new Map<number, number>();
+  const syntaxes = NOTE_COMMENTS[lang];
+  if (!syntaxes) return { code, notes };
+  const re = new RegExp(`[ \\t]*(?:${syntaxes.map((s) => NOTE_SYNTAX[s]).join("|")})\\s*$`);
+  const lines = code.split("\n");
+  let html: string[] | undefined;
+  for (const [i, line] of lines.entries()) {
+    const m = re.exec(line);
+    if (!m) continue;
+    // Highlighted as codeBlock() does, so the line indexes agree.
+    html ??= htmlLines(highlight(code.replace(/\n$/, ""), lang)).html;
+    const last = LAST_COMMENT.exec(html[i] ?? "");
+    if (!last || !unesc(last[1]!).trimEnd().endsWith(m[0].trim())) continue;
+    notes.set(i, Number(m.slice(1).find(Boolean)));
+    lines[i] = line.slice(0, m.index);
+  }
+  return { code: lines.join("\n"), notes };
+}
+
+/** Whether `notes` (noteMarkers') are exactly 1..count, each with an item to show, and no item without a marker. */
+export const notesMatch = (notes: Map<number, number>, count: number) =>
+  notes.size > 0 && [...notes.values()].every((n) => n >= 1 && n <= count) && new Set(notes.values()).size === count;
+
+/** A note's marker, at the end of its line: empty, its number from CSS (`::before`), so a copy doesn't get it. */
+export const noteButton = (id: string, n: number) =>
+  `<button type="button" class="runbun-note" popovertarget="${esc(id)}" aria-label="Note ${n}" data-n="${n}"></button>`;
+
+/** <Code notes>' list: plain-text items, each a popover its marker opens (the stylesheet shows them as bubbles). */
+export const notesList = (ids: string[], notes: string[]) =>
+  `<ol class="runbun-notes">${notes.map((note, i) => `<li id="${esc(ids[i]!)}" popover="auto">${esc(note)}</li>`).join("")}</ol>`;
 
 /**
  * The Copy buttons' behaviour: one click listener on the document, for every block (later ones included, after a

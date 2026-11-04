@@ -79,6 +79,16 @@ Bun.serve({ fetch: () => new Response("hi") });`} />
 new Elysia().get("/", () => "hi").listen(3000);
 Bun.serve({ fetch: () => new Response("hi") });`} />
 
+`notes` does the same for `<Code>`, with the notes as plain text, the Nth for the `// (N)` comment in `code` (as [a fence's notes](#notes)):
+
+```mdx
+<Code lang="ts" notes={["One app holds every route.", "A handler's return value is the response."]} code={`const app = new Elysia() // (1)
+  .get("/", () => "hi"); // (2)`} />
+```
+
+<Code lang="ts" notes={["One app holds every route.", "A handler's return value is the response."]} code={`const app = new Elysia() // (1)
+  .get("/", () => "hi"); // (2)`} />
+
 `files` adds more files. The block gets a tab per file, and the embed opens with the same tabs:
 
 ```mdx
@@ -204,6 +214,22 @@ Bun.serve({ fetch: () => new Response("hi") });
 ````
 
 The gutter signs are CSS, so Copy gets the code as written, removed lines included. Screen readers hear "inserted" or "deleted" where the browser supports alt text for generated content. Set the colors with `--runbun-mark-bg`, `--runbun-ins-bg` and `--runbun-del-bg`; by default they come from the code theme.
+
+#### Notes
+
+A comment that is only `(N)` at the end of a line, `// (1)` (or `# (1)`, `<!-- (1) -->`, `/* (1) */`, as the language comments), marks a note when an ordered list follows the fence with one item per marker. Each marker becomes a numbered button at the end of its line, and its item opens next to it as a popover:
+
+````md
+```ts
+const app = new Elysia() // (1)
+  .get("/", () => "hi") // (2)
+```
+
+1. One app holds every route.
+2. A handler's return value is the response.
+````
+
+The comment leaves the code, so Copy gets `const app = new Elysia()` with no marker and no trailing space; the line stays, so line marks keep their numbers. A comment with more in it (`// setup (1)`), or `(1)` inside a string or template literal, isn't a marker. When the markers and the list don't pair up (no list, or one with fewer or more items), both stay as they are and the build prints a warning naming the file. In a browser without popovers the list shows as a list; exported or plain-text views of the page (for Markdown, say) lose the marker numbers but keep the list.
 
 Astro's content cache doesn't track integration options, so after switching `fences` delete `.astro/` (or your build cache) for the pages to render again.
 

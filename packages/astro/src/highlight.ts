@@ -122,6 +122,11 @@ export function themeCss(options: ThemeOption[], selector?: ThemeSelector): stri
  * carry it through the `<pre>`'s padding. The `\n`s between lines stay text, so the code copies as written. The
  * `+`/`−` gutter is generated content, out of the copied text, with alt text for screen readers (`"+" / "inserted"`;
  * a browser without that keeps the bare sign from the line before).
+ *
+ * A note's marker is a numbered pill (`.runbun-note`, the number generated content). Its list (`.runbun-notes`) is
+ * popovers, so where the browser has them the list takes no room and an open item is a bubble in the top layer, outside
+ * the block, styled on its own; with anchor positioning it sits above its marker (the invoker is its implicit
+ * anchor), else where the UA puts a popover, centered. A browser without popovers shows the list as a list.
  */
 export const BLOCK_CSS = `
 :where(.runbun-code){margin:0}
@@ -191,6 +196,61 @@ export const BLOCK_CSS = `
       content: "\\2212" / "deleted";
       color: var(--hls-diff-minus, currentColor);
     }
+  }
+}
+.runbun-note {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.5em;
+  height: 1.5em;
+  margin-inline-start: 0.5em;
+  padding: 0 0.35em;
+  vertical-align: 0.1em;
+  border: 0;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 0.75em;
+  line-height: 1;
+  color: var(--hls-background);
+  background: var(--hls-foreground);
+  cursor: pointer;
+  &::before {
+    content: attr(data-n);
+  }
+  &:focus-visible {
+    outline: 2px solid var(--hls-foreground);
+    outline-offset: 2px;
+  }
+}
+@supports selector(:popover-open) {
+  .runbun-notes {
+    margin: 0;
+    list-style: none;
+    & > li[popover] {
+      box-sizing: border-box;
+      max-width: min(32rem, calc(100vw - 2rem));
+      padding: 0.5rem 0.75rem;
+      border: 1px solid var(--runbun-code-border, color-mix(in srgb, currentColor 15%, transparent));
+      border-radius: var(--runbun-code-radius, 8px);
+      font-size: var(--runbun-note-size, 0.875rem);
+      color: var(--hls-foreground);
+      background: var(--hls-background);
+      box-shadow: 0 0.25rem 1rem rgb(0 0 0 / 0.2);
+      & > :first-child {
+        margin-top: 0;
+      }
+      & > :last-child {
+        margin-bottom: 0;
+      }
+    }
+  }
+}
+@supports (position-area: top) {
+  .runbun-notes > li[popover] {
+    inset: auto;
+    margin: 0 0 0.375rem;
+    position-area: top;
+    position-try-fallbacks: flip-block;
   }
 }
 `.trim();
