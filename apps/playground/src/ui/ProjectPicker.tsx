@@ -1,5 +1,6 @@
 import { Show, createSignal, useContext } from "solid-js";
-import { examples, repoExamples } from "../examples";
+import { exampleFiles, examples, repoExamples } from "../examples";
+import { entryOf } from "../shell";
 import { AppContext } from "./context";
 import { PromptDialog } from "./PromptDialog";
 import { Select } from "@runbun/ui/solid/Select";
@@ -68,6 +69,25 @@ function Picker(props: { groups: Group[]; current: (list: Group[]) => Project | 
 
   const [asking, setAsking] = createSignal(false);
 
+  // How long the highlight rests on an example before the editor shows it: the pointer passing over others doesn't flash them.
+  const PEEK_DELAY = 120;
+  let peekTimer: ReturnType<typeof setTimeout> | undefined;
+  let peeking = 0;
+  /** Shows the highlighted bundled example's entry file over the editor (read-only, not loaded or run). */
+  function highlight(p: Project | null) {
+    clearTimeout(peekTimer);
+    const ask = ++peeking;
+    const value = p && fromPicker(p.value);
+    // The project already open, GitHub repos (a fetch per hover) and the Open entries show nothing.
+    const name = value === "" ? "demo" : value && value in examples ? value : null;
+    if (!p || name === null || value === s.project().selected) return app.workspace.setPeek(null);
+    peekTimer = setTimeout(async () => {
+      const files = await exampleFiles(name);
+      if (ask !== peeking || !files) return;
+      app.workspace.setPeek({ title: p.label, files, path: entryOf((f) => files.has(f), (f) => files.get(f)) });
+    }, PEEK_DELAY);
+  }
+
   function pick(p: Project | null) {
     // The select stays on the current project (value is controlled) unless the page navigates away.
     if (!p) return;
@@ -93,6 +113,7 @@ function Picker(props: { groups: Group[]; current: (list: Group[]) => Project | 
         groupChildren="options"
         value={props.current(props.groups)}
         onChange={pick}
+        onHighlight={highlight}
         placement="bottom-start"
         leading={(o) => <Show when={o.icon}>{(icon) => <i class={icon()} aria-hidden="true" />}</Show>}
       />

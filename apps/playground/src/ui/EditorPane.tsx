@@ -1,4 +1,4 @@
-import { Show, createEffect, onSettled, useContext } from "solid-js";
+import { For, Show, createEffect, onSettled, useContext } from "solid-js";
 import { CHECKED, mountDiagnostics } from "../diagnostics";
 import { createPierre } from "../editors/pierre";
 import { chordKeys, keysFor, matches } from "../keymap";
@@ -7,6 +7,7 @@ import { asConsoleEntry, errorLocation, fmt } from "../fmt";
 import { complete, definition, hover, resolveCompletion, signatureHelp, TYPED } from "../typecheck";
 import { AppContext } from "./context";
 import { guarded } from "./guarded";
+import type { Peek } from "./workspace";
 import { EditorTabs } from "./Tabs";
 import { Keys, Tip } from "@runbun/ui/solid/Tip";
 
@@ -236,8 +237,36 @@ export function EditorPane() {
             <i class="i-lucide-wand-sparkles" aria-hidden="true" /> Format
           </Tip>
         </Show>
+        {/* The example the project picker is on, over the open file until the menu closes. */}
+        <Show when={ws.peek()} keyed>
+          {(peek) => <PeekView peek={peek} />}
+        </Show>
       </div>
     </>
+  );
+}
+
+/** An example's entry file, highlighted and read-only, with the rest of its files named above it. */
+function PeekView(props: { peek: Peek }) {
+  let el!: HTMLDivElement;
+  const shown = () => (props.peek.files.has(props.peek.path) ? props.peek.path : [...props.peek.files.keys()][0]);
+  onSettled(() => {
+    const view = createPierre(el, { readOnly: () => true });
+    view.open(shown(), props.peek.files.get(shown()) ?? "", () => {});
+    return () => view.destroy();
+  });
+  return (
+    <div class="peek" aria-live="polite">
+      <div class="peek-head">
+        <span class="title">
+          <i class="i-lucide-eye" aria-hidden="true" /> {props.peek.title}: pick it to load and run
+        </span>
+        <ul class="files" aria-label="Files">
+          <For each={[...props.peek.files.keys()].sort()}>{(path) => <li data-shown={path === shown() ? "" : undefined}>{path}</li>}</For>
+        </ul>
+      </div>
+      <div class="peek-code" ref={el} />
+    </div>
   );
 }
 

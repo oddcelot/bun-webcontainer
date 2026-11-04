@@ -6,6 +6,9 @@ import { EMBEDDED } from "../theme";
 const AUTOSAVE_KEY = "runbun:autosave";
 const WATCH_KEY = "runbun:watch";
 
+/** A look at a project's files without opening it: its name, its files, and the one to show (its entry). */
+export type Peek = { title: string; files: Map<string, string>; path: string };
+
 /**
  * Which files are open in tabs, which one is active, and which have edits not yet written to the VFS. Writes go
  * through the functions below; the UI reads `state`. Closing the active tab activates a neighbor.
@@ -31,6 +34,8 @@ export function createWorkspace() {
   // What the editor reports for the status bar.
   const [cursor, setCursor] = createSignal<EditorCursor | null>(null);
   const [problems, setProblems] = createSignal<EditorDiagnostic[]>([]);
+  // An example the project picker points at: shown read-only over the editor, never loaded or run.
+  const [peek, setPeek] = createSignal<Peek | null>(null);
   // The editor's pending edits; it registers how to write them (see EditorPane).
   let saveAll = () => {};
   let reveal: (line: number, column: number) => void = () => {};
@@ -66,6 +71,9 @@ export function createWorkspace() {
     /** The open file's error and warning markers. */
     problems,
     setProblems,
+    /** The example the project picker's highlighted entry would open, for a look before picking it. */
+    peek,
+    setPeek,
     onReveal(fn: typeof reveal) {
       reveal = fn;
     },
