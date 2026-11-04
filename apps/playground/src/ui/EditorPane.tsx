@@ -204,8 +204,8 @@ export function EditorPane() {
 
   return (
     <>
-      {/* An embed shows the tabs bar only with its tabs or the Auto-save toggle (`autosave`); without tabs, Format is in the embed's menu. */}
-      <Show when={has("tabs") || has("autosave")}>
+      {/* An embed shows the tabs bar only with its tabs or its Auto-save toggle (`autosave`); without tabs, Format is in the embed's menu. */}
+      <Show when={has("tabs") || app.features?.has("autosave")}>
         <div class="tabs-bar">
           <Show when={has("tabs")}>
             <EditorTabs />
@@ -215,22 +215,13 @@ export function EditorPane() {
               <i class="i-lucide-wand-sparkles" aria-hidden="true" /> Format
             </Tip>
           </Show>
-          <Show when={has("autosave")}>
+          {/* The full playground's Auto-save and Watch are in the header. */}
+          <Show when={app.features?.has("autosave")}>
             <Tip
               class="autosave"
               type="button"
               aria-pressed={ws.autosave() ? "true" : "false"}
-              tip={
-                ws.autosave() ? (
-                  <span>
-                    Edits save shortly after you stop typing. Click to save with <Keys keys={keysFor("save").map(chordKeys)} /> instead.
-                  </span>
-                ) : (
-                  <span>
-                    Edits save with <Keys keys={keysFor("save").map(chordKeys)} /> (and before Run). Click to save as you type.
-                  </span>
-                )
-              }
+              tip={<AutosaveTip on={ws.autosave()} />}
               onClick={() => {
                 ws.setAutosave(!ws.autosave());
               }}
@@ -238,24 +229,20 @@ export function EditorPane() {
               <i class={ws.autosave() ? "i-lucide-save" : "i-lucide-save-off"} aria-hidden="true" /> Auto-save
             </Tip>
           </Show>
-          {/* The full playground's Restart on save; an embed has its `watch` feature instead. */}
-          <Show when={!app.features}>
-            <Tip
-              class="autosave"
-              type="button"
-              aria-pressed={ws.watch() ? "true" : "false"}
-              tip={ws.watch() ? "A save restarts the running program, like bun --watch. Click to restart with Run only." : "Only Run restarts the program. Click to restart it on every save, like bun --watch."}
-              onClick={() => {
-                ws.setWatch(!ws.watch());
-              }}
-            >
-              <i class={ws.watch() ? "i-lucide-refresh-cw" : "i-lucide-refresh-cw-off"} aria-hidden="true" /> Watch
-            </Tip>
-          </Show>
         </div>
       </Show>
       {/* "No file open" only once the project has loaded, not while its first file is on the way. */}
       <div id="editor" ref={el} data-empty={app.session.ready() && !ws.state.active ? "" : undefined} />
     </>
+  );
+}
+
+/** What Auto-save does, on or off, for its toggle's tooltip (here in an embed, in the header otherwise). */
+export function AutosaveTip(props: { on: boolean }) {
+  const save = () => <Keys keys={keysFor("save").map(chordKeys)} />;
+  return props.on ? (
+    <span>Edits save shortly after you stop typing. Click to save with {save()} instead.</span>
+  ) : (
+    <span>Edits save with {save()} (and before Run). Click to save as you type.</span>
   );
 }

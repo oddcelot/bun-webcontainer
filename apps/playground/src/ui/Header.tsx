@@ -3,6 +3,7 @@ import { DOCS } from "../base";
 import { chordKeys, keysFor } from "../keymap";
 import logo from "../bun-logo.svg";
 import { AppContext } from "./context";
+import { AutosaveTip } from "./EditorPane";
 import { ProjectPicker } from "./ProjectPicker";
 import { ShareMenu } from "./ShareMenu";
 import { Shortcuts } from "./Shortcuts";
@@ -16,6 +17,7 @@ const CANT_RUN = "This browser can't run code here";
 export function Header() {
   const app = useContext(AppContext);
   const s = app.session;
+  const ws = app.workspace;
 
   return (
     <>
@@ -48,6 +50,27 @@ export function Header() {
         >
           <MenuItem icon="i-lucide-download" label="bun install" disabled={!!s.busy.install} onSelect={() => s.ready() && app.install()} />
         </Menu>
+      </span>
+      {/* What a save does: when edits save, and whether a save restarts the program. Icons only; the tooltips say which. */}
+      <span id="save-group">
+        <Tip
+          id="autosave"
+          aria-label="Auto-save"
+          aria-pressed={ws.autosave() ? "true" : "false"}
+          tip={<AutosaveTip on={ws.autosave()} />}
+          onClick={() => ws.setAutosave(!ws.autosave())}
+        >
+          <i class={ws.autosave() ? "i-lucide-save" : "i-lucide-save-off"} aria-hidden="true" />
+        </Tip>
+        <Tip
+          id="watch"
+          aria-label="Restart on save"
+          aria-pressed={ws.watch() ? "true" : "false"}
+          tip={ws.watch() ? "A save restarts the running program, like bun --watch. Click to restart with Run only." : "Only Run restarts the program. Click to restart it on every save, like bun --watch."}
+          onClick={() => ws.setWatch(!ws.watch())}
+        >
+          <i class={ws.watch() ? "i-lucide-refresh-cw" : "i-lucide-refresh-cw-off"} aria-hidden="true" />
+        </Tip>
       </span>
       <Tip as="a" id="docs" href={DOCS} target="_blank" rel="noopener" tip="Documentation: what works, and how (opens in a new tab)">
         <i class="i-lucide-book-open" aria-hidden="true" /> Docs

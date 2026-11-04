@@ -15,11 +15,32 @@ body { display: flex; flex-direction: column; }
 header { display: flex; gap: 8px; align-items: center; padding: 6px 10px 4px; }
 header button:not(.select-trigger), #docs, #clear, #request button { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 /* By id: the share menu is in the header too, and its items mustn't take this height. */
-#example, #run, #run-more, #docs, #share, #shortcuts, #theme { height: var(--control-height); }
+#example, #run, #run-more, #autosave, #watch, #docs, #share, #shortcuts, #theme { height: var(--control-height); }
 /* Run and its menu (bun install): one control split in two. */
 #run-group { display: inline-flex; }
 #run { border-radius: 6px 0 0 6px; }
 #run-more { display: grid; place-items: center; margin-left: -1px; padding: 0 6px; border-radius: 0 6px 6px 0; }
+/* Auto-save and Watch: two icon toggles joined like Run's pair; off reads muted. */
+#save-group {
+  display: inline-flex;
+
+  > button {
+    padding: 0 8px;
+
+    &[aria-pressed="false"] {
+      color: var(--muted);
+    }
+  }
+
+  > #autosave {
+    border-radius: 6px 0 0 6px;
+  }
+
+  > #watch {
+    margin-left: -1px;
+    border-radius: 0 6px 6px 0;
+  }
+}
 /* Select triggers (@runbun/ui) style themselves; these rules would override them, since the library's CSS is in a lower layer. */
 header button:not(.select-trigger), #docs, #clear { background: var(--control); color: inherit; border: 1px solid var(--control-border); border-radius: 6px; padding: 0 10px; cursor: pointer; }
 header button:not(.select-trigger):hover, #docs:hover { background: var(--control-hover); }
@@ -214,14 +235,6 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
 .tabs-bar .format:hover:not(:disabled), .tabs-bar .format:focus-visible { color: var(--fg); background: var(--control); outline: none; }
 .tabs-bar .format:disabled { opacity: 0.5; cursor: default; }
 .tabs-bar .format + .autosave { margin-left: 4px; }
-/* Auto-save, then Watch: one pair at the bar's end. */
-.tabs-bar .autosave:has(+ .autosave) {
-  margin-right: 0;
-
-  & + .autosave {
-    margin-left: 4px;
-  }
-}
 .tabs-bar .autosave[aria-pressed="false"] { color: var(--fg); border-color: var(--control-border); }
 .tabs .tab .unsaved { color: var(--accent); font-size: 10px; line-height: 1; }
 /* The folder hint gives way before the name does. */
