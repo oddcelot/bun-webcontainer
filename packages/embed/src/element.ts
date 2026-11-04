@@ -16,6 +16,7 @@ const PARAMS = [
   "features",
   "file",
   "path",
+  "requests",
   "autorun",
   "theme",
   "family",
@@ -28,8 +29,8 @@ const PARAMS = [
   "status",
   "layout",
 ];
-/** Keys a page-wide `<bun-playground-defaults>` may set. Not `file path example repo share title persist`: those are per
- * embed (a shared `persist` key would make embeds overwrite each other's edits). */
+/** Keys a page-wide `<bun-playground-defaults>` may set. Not `file path requests example repo share title persist`:
+ * those are per embed (a shared `persist` key would make embeds overwrite each other's edits). */
 const DEFAULTABLE = new Set(["mode", "features", "autorun", "theme", "family", "fonts", "readonly", "expand", "status", "layout", "vars", "load", "height", "src"]);
 /** Defaults a running embed takes without reloading; the others only reach embeds that haven't started yet. */
 const LIVE = new Set(["theme", "family", "vars", "mode", "height"]);
