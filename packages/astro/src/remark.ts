@@ -9,10 +9,11 @@
 // keeps a fence out of the poster and the tabs (`data-hidden`) while it stays a file of the embed: a package.json the
 // author pins, say. It's never the file Run starts or the one opened; a group must show something, so `hidden` on its
 // first fence is ignored when every fence has it (or the fence is alone).
-// Options default to the runbun() integration's (playgroundUrl, base, sync).
+// With `fences: "all"`, every other fence becomes a static block, as a static <Code> is (see parseStatic).
+// Options default to the runbun() integration's (playgroundUrl, base, sync, fences).
 import type { Code, Root, RootContent } from "mdast";
-import { CONFIG } from "./config.js";
-import { codeTabs, copyScript, cssLink, embedScripts, EXT, fileScript, withEntry, withTabs } from "./markup.js";
+import { CONFIG, type ResolvedConfig } from "./config.js";
+import { codeBlock, codeTabs, copyScript, cssLink, embedScripts, EXT, fileScript, withEntry, withTabs } from "./markup.js";
 
 const OWN_KEYS = new Set(["playground", "mode", "features", "group", "load", "height", "autorun", "readonly", "persist", "theme", "file", "path", "expand", "deps", "label", "layout"]);
 const ATTRS = ["mode", "features", "height", "autorun", "readonly", "persist", "theme", "file", "path", "layout"];
@@ -72,6 +73,90 @@ function parse(node: Code): Entry | null {
   for (const t of toks) if (t.key && OWN_KEYS.has(t.key)) opts[t.key] = t.value ?? "";
   const title = toks.find((t) => t.key === "title")?.value;
   return { opts, title, node, hidden: toks.some((t) => t.key === "hidden" && t.value === null) };
+}
+
+// Expressive Code's language groups, as @expressive-code/plugin-frames 0.44 has them (`LanguageGroups`, src/utils.ts):
+// `terminal` is the list it draws a terminal window for, and the file-name rule below reads every group.
+const LANGUAGE_GROUPS = {
+  code: ["astro", "cjs", "htm", "html", "js", "jsx", "mjs", "svelte", "ts", "tsx", "typescript", "vb", "vue", "vue-html"],
+  terminal: ["ansi", "bash", "bat", "batch", "cmd", "console", "fish", "nu", "nushell", "powershell", "ps", "ps1", "psd1", "psm1", "sh", "shell", "shellscript", "shellsession", "zsh"],
+  data: ["csv", "env", "ini", "json", "toml", "xml", "yaml", "yml"],
+  styles: ["css", "less", "sass", "scss", "styl", "stylus", "xsl"],
+  textContent: ["markdown", "md", "mdx"],
+};
+const TERMINAL = new Set(LANGUAGE_GROUPS.terminal);
+/** Languages whose file-name comment can sit in frontmatter (plugin-frames' `LanguagesWithFencedFrontmatter`). */
+const FRONTMATTER = ["astro", "markdown", "md", "mdx", "toml", "yaml", "yml"];
+/**
+ * plugin-frames' file-name comment (`getFileNameCommentRegExpString`): a whole line that is `//`, `#` (not `#!`), `<!--`
+ * or `/*`, an optional `Prefix:` (not a drive letter's `C:` or a URL's `https:`), then the name (path characters and an
+ * optional known extension), and an optional `-->` or `*\/`.
+ */
+const FILE_NAME_COMMENT = new RegExp(
+  String.raw`^\s*(?://|#(?!!)|<!--|/\*)\s*(?:((?![a-z]:).*?)(?:：|:(?!//)))?\s*((?:[a-z]:)?[\w./~%[\]+\\-]*` +
+    String.raw`(?:\.(?:${Object.values(LANGUAGE_GROUPS).flat().sort().join("|")}))?)\s*(?:-->|\*/)?\s*$`,
+  "i",
+);
+
+/**
+ * The file name a comment line gives, by plugin-frames' `getFileNameFromComment`: not after `@filename`, not only dots
+ * and separators, not `..x`. A name that looks like a path (`/x`, `./x`, `~x`, `C:x`, `.env`, `src/app/x`) counts when
+ * nothing precedes it (or the language is a shell's); anything else needs an extension, from the language's own group
+ * when it has one (`// config.json` names a JSON block, not a TypeScript one).
+ */
+function nameFromComment(line: string, lang: string): string | undefined {
+  const [, before = "", name] = FILE_NAME_COMMENT.exec(line) ?? [];
+  if (!name || before.trim().toLowerCase() === "@filename") return;
+  if (!/[^.:/\\~]/.test(name) || /^\.{2,}(?!\/|\\)/.test(name)) return;
+  const group = Object.values(LANGUAGE_GROUPS).find((g) => g.includes(lang));
+  const base = name.replace(/^.*[/\\]/, "");
+  const ext = base.match(/\.([^.]+)$/)?.[1];
+  const separated = /[/\\]/.test(name) && /[^/\\0-9.]/.test(name) && !/\s/.test(name) && name === name.toLowerCase();
+  const pathLike = /^(\/|\\|\.[/\\]|~|[a-z]:).+/i.test(name) || base.startsWith(".") || separated;
+  if (pathLike && (!before.length || group === LANGUAGE_GROUPS.terminal)) return name;
+  if (!ext || (group && !group.includes(ext))) return;
+  return name;
+}
+
+/**
+ * `code`'s title from a file-name comment, as plugin-frames' `extractFileNameFromCodeBlock` finds it: the first of
+ * the first four lines that is one. That line goes, and so does an empty line right after it; in a language with
+ * frontmatter, a `---`/`+++` pair left empty by it goes too.
+ */
+function fileName(code: string, lang: string): { code: string; title?: string } {
+  const lines = code.split(/\r?\n/);
+  const names = lines.slice(0, 4).map((line) => nameFromComment(line, lang));
+  let i = names.findIndex(Boolean);
+  const title = names[i];
+  if (!title) return { code };
+  lines.splice(i, 1);
+  if (FRONTMATTER.includes(lang)) {
+    const open = i > 0 ? lines[i - 1]?.trim() : undefined;
+    if (open === lines[i]?.trim() && (open === "---" || open === "+++")) lines.splice(--i, 2);
+  }
+  if (lines[i]?.trim() === "") lines.splice(i, 1);
+  return { code: lines.join("\n"), title };
+}
+
+/**
+ * A fence that isn't a playground's as a static block (`fences: "all"`), or null to leave it to the site's highlighter.
+ * Apart from parse() on purpose: transform()'s group loop relies on parse() being null for every other fence, so a
+ * static fence never joins a playground group.
+ */
+function parseStatic(node: Code): { code: string; lang: string; title?: string | undefined } | null {
+  const toks = tokens(node.meta ?? "");
+  // `runbun=false` is the documented opt-out. The next check would keep the fence too (it isn't `title`), but the
+  // promise doesn't rest on that.
+  if (toks.some((t) => t.key === "runbun" && t.value === "false")) return null;
+  // `title=…` only: any other word (`ins=`, `{5-8}`, `mark=`, `frame=`, `showLineNumbers`, `wrap`, …) asks for a
+  // feature of the site's highlighter that a static block hasn't.
+  if (!toks.every((t) => t.key === "title" && t.value !== null)) return null;
+  const lang = node.lang || "plain";
+  // Expressive Code draws these as a terminal window, which a static block isn't.
+  if (TERMINAL.has(lang)) return null;
+  const title = toks.find((t) => t.key === "title")?.value;
+  // No `title`: a file-name comment names the block, as in Expressive Code.
+  return title == null ? { lang, ...fileName(node.value, lang) } : { code: node.value, lang, title };
 }
 
 /** `elysia@rc, @elysia/openapi@rc, zod` → { elysia: "rc", "@elysia/openapi": "rc", zod: "latest" }; malformed entries are skipped. */
@@ -136,18 +221,29 @@ function embed(entries: [Entry, ...Entry[]]): RootContent {
   );
 }
 
-function transform(children: RootContent[]): boolean {
+/** What a page turned out to have: embeds need embed.js; blocks, static or a poster, need the CSS and Copy script. */
+interface Found {
+  embeds: boolean;
+  blocks: boolean;
+}
+
+function transform(children: RootContent[], all: boolean, found: Found): void {
   const out: RootContent[] = [];
-  let found = false;
   for (let i = 0; i < children.length; i++) {
     const node = children[i]!;
     const first = node.type === "code" ? parse(node) : null;
+    const block = !first && all && node.type === "code" ? parseStatic(node) : null;
+    if (block) {
+      found.blocks = true;
+      out.push(html(codeBlock(block.code, block.lang, block.title)));
+      continue;
+    }
     if (!first) {
-      if ("children" in node) found = transform(node.children) || found;
+      if ("children" in node) transform(node.children, all, found);
       out.push(node);
       continue;
     }
-    found = true;
+    found.embeds = true;
     const entries: [Entry, ...Entry[]] = [first];
     const group = first.opts.group;
     while (group && children[i + 1]?.type === "code") {
@@ -159,20 +255,26 @@ function transform(children: RootContent[]): boolean {
     out.push(embed(entries));
   }
   children.splice(0, children.length, ...out);
-  return found;
 }
 
-/** ```ts playground fences as embeds. Options default to the runbun() integration's. */
+/**
+ * ```ts playground fences as embeds, and with `fences: "all"` the others as static blocks. Options default to the
+ * runbun() integration's.
+ */
 export default function remarkRunbun(
-  options: { playgroundUrl?: string; base?: string; sync?: { scheme?: string; family?: string } } = {},
+  options: { playgroundUrl?: string; base?: string; sync?: { scheme?: string; family?: string }; fences?: ResolvedConfig["fences"] } = {},
 ): (tree: Root, file?: { path?: string }) => void {
   return (tree, file) => {
     mdx = /\.mdx$/.test(file?.path ?? "");
-    if (!transform(tree.children)) return;
-    const { playgroundUrl, base, sync } = { ...CONFIG(), ...options };
+    // Read before transforming, which needs `fences`; the config is the same whenever it's read.
+    const { playgroundUrl, base, sync, fences } = { ...CONFIG(), ...options };
+    const found: Found = { embeds: false, blocks: false };
+    transform(tree.children, fences === "all", found);
+    if (!found.embeds && !found.blocks) return;
     // In MDX the blocks' CSS is an import, which Astro bundles into the page's stylesheet as it does for <Code> (one
     // copy for both); Markdown can't import, so it links the integration's route.
     if (mdx) tree.children.unshift(cssImport());
-    tree.children.push(html((mdx ? "" : cssLink(base) + "\n") + embedScripts(playgroundUrl, sync) + copyScript()));
+    // embed.js (and the sync script) only for a page with an embed: static blocks are HTML and CSS.
+    tree.children.push(html((mdx ? "" : cssLink(base) + "\n") + (found.embeds ? embedScripts(playgroundUrl, sync) : "") + copyScript()));
   };
 }

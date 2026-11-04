@@ -5,9 +5,11 @@ export interface ResolvedConfig {
   playgroundUrl: string;
   base: string;
   sync?: { scheme?: string; family?: string } | undefined;
+  /** Which fences the plugin renders: `playground` ones only, or `all` (the others as static blocks). */
+  fences: "playground" | "all";
 }
 
-const DEFAULTS: ResolvedConfig = { playgroundUrl: "https://runbun.dev/", base: "/", sync: undefined };
+const DEFAULTS: ResolvedConfig = { playgroundUrl: "https://runbun.dev/", base: "/", sync: undefined, fences: "playground" };
 const store = globalThis as unknown as Record<symbol, ResolvedConfig | undefined>;
 
 export const CONFIG = (): ResolvedConfig => store[KEY] ?? DEFAULTS;

@@ -155,6 +155,31 @@ new Elysia().get("/", () => "hi").listen(3000);
 ```
 ````
 
+### Every fence
+
+`fences: "all"` makes the plugin render the other fences too, as static blocks like a `<Code>` without `playground`, so a page's code looks the same throughout:
+
+```js
+integrations: [runbun({ fences: "all" })],
+```
+
+A fence becomes a block only when it can be shown as written. These stay for the site's own highlighter (Expressive Code in Starlight, Shiki in plain Astro):
+
+- meta other than `title`: `ins=`, `del=`, `{5-8}`, `mark=`, `frame=`, `collapse=`, `showLineNumbers`, `wrap` or any other word
+- shell languages (`bash`, `sh`, `zsh`, `powershell`, `console`, … the ones Expressive Code draws as a terminal)
+- a fence marked `runbun=false`
+
+A fence without a language is plain text. Without a `title`, a file-name comment in the first four lines names the block, as in Expressive Code: the line goes, and an empty line right after it. A path (`// src/index.ts`) or a name with an extension of the fence's kind (`# config.yml` in a YAML fence) counts; `// note` or a URL stays code.
+
+````md
+```ts
+// server.ts
+Bun.serve({ fetch: () => new Response("hi") });
+```
+````
+
+Astro's content cache doesn't track integration options, so after switching `fences` delete `.astro/` (or your build cache) for the pages to render again.
+
 ## Playground
 
 `<Playground>` is the embed on its own: `files` are its sources, and its children are the poster shown until it starts. Without children it shows the first file's code. Here `title` is the embed's accessible name (default "Bun playground"), as on `<bun-playground>`. Its other props are the element's options too, e.g. `layout="stack"` for the preview under the editor.
@@ -187,6 +212,7 @@ import { Playground } from "@runbun/astro/components";
 | `themes` | `["pierre-light", "pierre-dark"]` | The code themes: names of highlights' bundled themes, or Zed or VS Code theme objects. |
 | `themeSelector` | | The CSS selector each theme goes under, for a site with its own theme switch, e.g. ``({ name }) => `:root[data-code-theme='${name}']` ``. Without it the first light theme applies, and the first dark one under `prefers-color-scheme: dark`. |
 | `sync` | | `{ scheme, family }`: the `<html>` attributes that hold the page's scheme (`light` or `dark`) and theme family, for the embeds to follow. Without it embeds follow the OS. |
+| `fences` | `"playground"` | Which fences the remark plugin renders: `"all"` adds every other fence, as a static block ([Every fence](#every-fence)). |
 
 The blocks' look comes from CSS properties you can set: `--runbun-code-border`, `--runbun-code-radius`, `--runbun-code-font`, `--runbun-code-size`, `--runbun-code-caption-size` and `--runbun-code-line-height`.
 

@@ -18,6 +18,7 @@
   "scripts": {
     "build": "rm -rf dist && tsrs",
     "typecheck": "tsrs --noEmit",
+    "test": "bun test",
     "prepack": "bun run build"
   },
   "peerDependencies": { "astro": "^7.0.0" },

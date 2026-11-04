@@ -7,3 +7,4 @@ extend-exclude = ["patches/bun/", "apps/playground/scripts/data-apis/"]
 WRONLY = "WRONLY"  # O_WRONLY
 Flate = "Flate"    # fflate's FlateStreamHandler
 lits = "lits"      # literals
+styl = "styl"      # Stylus, a language in Expressive Code's groups (packages/astro/src/remark.ts)

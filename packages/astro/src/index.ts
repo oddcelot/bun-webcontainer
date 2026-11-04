@@ -23,6 +23,12 @@ export interface RunbunOptions {
    * or `dark`). Without it embeds follow the OS.
    */
   sync?: { scheme?: string; family?: string };
+  /**
+   * Which fences the remark plugin renders. `"playground"` (default): only those marked `playground`, as embeds.
+   * `"all"`: every other fence too, as a static block like `<Code>`'s, unless its meta has words other than `title`,
+   * it is a shell language, or it says `runbun=false`; those stay for the site's own highlighter.
+   */
+  fences?: "playground" | "all";
 }
 
 const VIRTUAL = "virtual:@runbun/astro/config";
@@ -32,14 +38,15 @@ const VIRTUAL_CSS = "virtual:@runbun/astro/blocks.css";
 const RESOLVED_CSS = "/@runbun/astro/blocks.css";
 
 export default function runbun(options: RunbunOptions = {}): AstroIntegration {
-  const { playgroundUrl = "https://runbun.dev/", themes = ["pierre-light", "pierre-dark"], themeSelector, sync } = options;
+  const { playgroundUrl = "https://runbun.dev/", themes = ["pierre-light", "pierre-dark"], themeSelector, sync, fences = "playground" } = options;
   return {
     name: "@runbun/astro",
     hooks: {
       "astro:config:setup": ({ config, injectRoute, updateConfig }) => {
         const base = config.base ?? "/";
         const resolved = { playgroundUrl, base, sync };
-        setConfig(resolved);
+        // `fences` is the fence plugin's alone: the virtual module (virtual.d.ts) keeps its shape.
+        setConfig({ ...resolved, fences });
         const css = BLOCK_CSS + "\n" + themeCss(themes, themeSelector);
         const source = `export const config = ${JSON.stringify(resolved)};\nexport const css = ${JSON.stringify(css)};\n`;
         updateConfig({
