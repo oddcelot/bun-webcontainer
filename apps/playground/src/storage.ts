@@ -57,9 +57,13 @@ const budget = (quota: number) => Math.min(quota / 2, 2 ** 30);
 const TARGET = 0.8;
 
 /** A response for a cache entry, stamped with the time of use and the size of `body` (about its bytes). */
-export function cacheEntry(body: string, headers: Record<string, string>): Response {
-  return new Response(body, { headers: { ...headers, [USED]: String(Date.now()), [SIZE]: String(body.length) } });
+export function cacheEntry(body: string | Uint8Array, headers: Record<string, string> = {}): Response {
+  const size = typeof body === "string" ? body.length : body.byteLength;
+  return new Response(body as BodyInit, { headers: { ...headers, [USED]: String(Date.now()), [SIZE]: String(size) } });
 }
+
+/** About how many bytes a cache entry made by `cacheEntry` holds. */
+export const cachedSize = (r: Response | undefined) => Number(r?.headers.get(SIZE) ?? 0);
 
 /** Whether a hit should be put again to record its use (only without an own bucket, where the budget applies). */
 export function needsRestamp(b: Bucket, hit: Response): boolean {
@@ -91,7 +95,7 @@ async function prune(cache: Cache) {
   const entries = await Promise.all(
     (await cache.keys()).map(async (req) => {
       const r = await cache.match(req);
-      return { req, used: Number(r?.headers.get(USED) ?? 0), size: Number(r?.headers.get(SIZE) ?? 0) };
+      return { req, used: Number(r?.headers.get(USED) ?? 0), size: cachedSize(r) };
     }),
   );
   entries.sort((a, b) => a.used - b.used);

@@ -53,6 +53,7 @@ A terminal with colors, clickable links, history (<kbd>↑</kbd>/<kbd>↓</kbd>)
 | `bun install` (`i`) | Install dependencies |
 | `bun add <pkg[@range]> [-d]` (`a`) | Add a dependency |
 | `bun remove <pkg>` (`rm`) | Remove a dependency |
+| `bun pm cache [rm]` | Show or clear the package cache |
 | `bun fmt [-c] [path…]` | Format files like Prettier, or only check them (`-c`) |
 | `ls [dir]`, `cat <file>` | List a folder, print a file |
 | `cookies [clear]` | List or clear the preview's cookies |

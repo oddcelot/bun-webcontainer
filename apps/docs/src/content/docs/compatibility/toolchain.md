@@ -147,6 +147,7 @@ Runs in the console (`bun install`, `bun add`, `bun remove`) and automatically w
 - ✅ `dependencies`, `devDependencies`, `optionalDependencies` and required peer dependencies
 - ✅ `bun.lock` (text format): exact versions, nested `node_modules`, integrity checks. A stale lockfile logs a warning.
 - ✅ Optional packages limited to other platforms (native bindings) are skipped
+- ✅ A package cache shared by all projects, kept across reloads: a downloaded tarball isn't downloaded again, and package metadata is reused for 5 minutes, as in Bun. `bun pm cache` shows its size, `bun pm cache rm` clears it.
 - 🟡 Without a lockfile, the install is flat: the first version seen wins
 - ❌ No `bun.lock` is written. `bun add` refuses to run when a `bun.lock` exists.
 - ❌ No lifecycle scripts (`postinstall`, …)

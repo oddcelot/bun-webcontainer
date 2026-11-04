@@ -1,5 +1,6 @@
 import type { Semver } from "./semver";
-import { installFromBunLock, platformRestricted, untar } from "./lockfile";
+import { gunzip, installFromBunLock, platformRestricted, untar } from "./lockfile";
+import { fetchPackument, fetchTarball } from "./pkgCache";
 import type { VFS } from "@runbun/vfs";
 
 type Log = (level: "log" | "error", text: string) => void;
@@ -12,11 +13,6 @@ type Packument = {
     peerDependenciesMeta?: Record<string, { optional?: boolean }>;
     os?: unknown; cpu?: unknown; libc?: unknown; dist: { tarball: string } }>;
 };
-
-async function gunzip(res: Response): Promise<Uint8Array> {
-  const stream = res.body!.pipeThrough(new DecompressionStream("gzip"));
-  return new Uint8Array(await new Response(stream).arrayBuffer());
-}
 
 function pickVersion(doc: Packument, range: string, semver: Semver): string {
   const tags = doc["dist-tags"] ?? {};
@@ -49,16 +45,11 @@ export async function bunInstall(vfs: VFS, semver: Semver, log: Log): Promise<nu
     seen.add(name);
     if (vfs.files.has(`node_modules/${name}/package.json`)) return;
     try {
-      const res = await fetch(`https://registry.npmjs.org/${name.replace("/", "%2f")}`, {
-        headers: { accept: "application/vnd.npm.install-v1+json" },
-      });
-      if (!res.ok) throw new Error(`registry ${res.status}`);
-      const doc = (await res.json()) as Packument;
+      const doc = (await fetchPackument(name)) as Packument;
       const version = pickVersion(doc, range, semver);
       const meta = doc.versions[version];
       if (optional && platformRestricted(meta)) return void log("log", `- ${name}@${version} (optional, unsupported platform)`);
-      const tar = await fetch(meta.dist.tarball);
-      if (!tar.ok) throw new Error(`tarball ${tar.status}`);
+      const tar = await fetchTarball(meta.dist.tarball);
       const dec = new TextDecoder("utf-8", { fatal: true });
       for (const { name: entry, data } of untar(await gunzip(tar))) {
         const rel = entry.split("/").slice(1).join("/");
