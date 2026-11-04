@@ -1,8 +1,9 @@
 ---
 // A runnable embed. The default slot is the poster (shown until the embed is ready); `files` become inline sources.
 // In Markdown, ```ts playground fences do the same (../dist/remark.js).
+import "virtual:@runbun/astro/blocks.css";
 import { config } from "virtual:@runbun/astro/config";
-import { embedScripts, fileScript } from "../dist/markup.js";
+import { codeBlock, copyScript, embedScripts, fileScript, langOf, presetRequests, requestPanel } from "../dist/markup.js";
 
 export interface Props {
   mode?: "code" | "preview" | "console" | "full" | "result";
@@ -12,7 +13,8 @@ export interface Props {
   path?: string;
   /**
    * Requests a reader can try, a preview tab each, the first active: `;`-separated `METHOD /path [body]`, e.g.
-   * `GET /; POST /form {"hello":"Elysia"}`. Wins over `path`.
+   * `GET /; POST /form {"hello":"Elysia"}`. Wins over `path`. `GET / => Hello` adds the response the author expects:
+   * the poster shows it under the code before Run, and the embed gets the requests alone.
    */
   requests?: string;
   /** "stack": the preview (or console) under the editor instead of beside it. */
@@ -35,6 +37,26 @@ export interface Props {
 }
 const { files = {}, hidden = [], load = "click", ...attrs } = Astro.props;
 const bool = (v: unknown) => (v === undefined ? undefined : v ? "" : undefined);
+// Written responses (`=>`): a request panel under the poster's code, and the requests alone for the embed. Its radio
+// name counts the page's panels (Astro.locals is per render), apart from the fence plugin's. Without a poster of its
+// own, the poster is the first shown file's block, with the Copy script (once per page). The blocks' stylesheet is
+// imported above, so Astro bundles it into the page's CSS as for <Code> (one copy for both).
+const presets = attrs.requests === undefined ? undefined : presetRequests(attrs.requests);
+const locals = Astro.locals as Record<symbol, unknown>;
+let panel = "";
+let code = "";
+if (presets?.responses) {
+  const PANELS = Symbol.for("runbun.requests");
+  const k = (locals[PANELS] = ((locals[PANELS] as number | undefined) ?? 0) + 1);
+  panel = requestPanel(presets.entries, `runbun-code-requests-${k}`);
+  if (!Astro.slots.has("default")) {
+    const [name, text] = Object.entries(files).find(([path]) => !hidden.includes(path)) ?? ["", ""];
+    code = codeBlock(text, langOf(name));
+  }
+  const COPY = Symbol.for("runbun.copy");
+  panel += locals[COPY] ? "" : copyScript();
+  locals[COPY] = true;
+}
 ---
 
 <!-- not-content: Starlight's spacing between content elements would push the poster down below the file scripts. -->
@@ -45,7 +67,7 @@ const bool = (v: unknown) => (v === undefined ? undefined : v ? "" : undefined);
   features={attrs.features}
   file={attrs.file}
   path={attrs.path}
-  requests={attrs.requests}
+  requests={presets?.responses ? presets.attr : attrs.requests}
   layout={attrs.layout}
   autorun={attrs.autorun === undefined ? undefined : String(attrs.autorun)}
   theme={attrs.theme}
@@ -60,6 +82,19 @@ const bool = (v: unknown) => (v === undefined ? undefined : v ? "" : undefined);
 >
   <Fragment set:html={Object.entries(files).map(([path, text]) => fileScript(path, text, hidden.includes(path))).join("\n")} />
   {/* Without a poster of its own, the element shows the first file's code. */}
-  {Astro.slots.has("default") && <div slot="poster"><slot /></div>}
+  {
+    panel ? (
+      <div slot="poster">
+        {Astro.slots.has("default") ? <slot /> : <Fragment set:html={code} />}
+        <Fragment set:html={panel} />
+      </div>
+    ) : (
+      Astro.slots.has("default") && (
+        <div slot="poster">
+          <slot />
+        </div>
+      )
+    )
+  }
 </bun-playground>
 <Fragment set:html={embedScripts(config.playgroundUrl, config.sync)} />

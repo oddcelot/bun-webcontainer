@@ -2,7 +2,8 @@
 // <Code> block is. Click-to-load: nothing downloads until a reader presses Run.
 //
 // Meta words: `playground` (required), `mode=…`, `features=…`, `group=<name>`, `load=…`, `height=…`, `path=…`,
-// `requests='GET /; POST /form {"a":1}'` (a preview tab per request; single quotes keep a body's double quotes),
+// `requests='GET /; POST /form {"a":1}'` (a preview tab per request; single quotes keep a body's double quotes;
+// `GET / => Hi` writes a response the poster shows before Run),
 // `layout=stack` (the preview under the editor), `deps="elysia@rc,zod@^4"` (pinned in a package.json the poster doesn't
 // show; a package.json fence wins), `label="…"` (the embed's accessible name, its `title` attribute; default "Bun
 // playground"); `title="x.ts"` names the file, or else a file-name comment in its first lines (`// x.ts`, fileName).
@@ -28,6 +29,8 @@ import {
   noteButton,
   noteMarkers,
   notesMatch,
+  presetRequests,
+  requestPanel,
   withEntry,
   withTabs,
 } from "./markup.js";
@@ -264,6 +267,10 @@ function embed(entries: [Entry, ...Entry[]], page: Page): RootContent {
   // The package.json made here (`main`, `deps`) runs but stays out of the tabs, as do `hidden` fences; another fence
   // is a tab.
   const files = Object.entries(all).map(([name, text]) => fileScript(name, text, !(name in sources) || hidden.has(name)));
+  // Responses the author wrote (`requests='GET / => Hello'`) show under the poster's code; the live embed gets the
+  // requests alone. Without one, `requests` passes as written.
+  const presets = opts.requests === undefined ? undefined : presetRequests(opts.requests);
+  if (presets?.responses) opts.requests = presets.attr;
   // `title` names a fence's file, so the embed's own title (its accessible name) comes from `label`.
   const attrs = ATTRS.filter((k) => k in opts).map((k) => ` ${k}="${esc(opts[k])}"`).join("") + ("label" in opts ? ` title="${esc(opts.label)}"` : "");
   // A docs snippet opens as the whole playground in a modal unless the fence says otherwise (`expand=false`, `expand=on`).
@@ -272,7 +279,8 @@ function embed(entries: [Entry, ...Entry[]], page: Page): RootContent {
   const opened = opts.file && opts.file in sources ? opts.file : entry;
   // A name only for real tabs: one file is a plain block.
   const group = shown.length > 1 ? tabsName(page) : "";
-  const poster = shown.length > 1 || lead ? codeTabs(shown, group, opened) : codeTabs([{ ...shown[0]!, name: "" }], group);
+  const code = shown.length > 1 || lead ? codeTabs(shown, group, opened) : codeTabs([{ ...shown[0]!, name: "" }], group);
+  const poster = presets?.responses ? code + requestPanel(presets.entries, `runbun-requests-${page.hash}-${page.tabs++}`) : code;
   return html(
     `<bun-playground class="not-content" load="${esc(opts.load || "click")}"${expand}${attrs}>\n${files.join("\n")}\n` +
       `<div slot="poster">${poster}</div>\n</bun-playground>`,

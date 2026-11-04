@@ -187,6 +187,75 @@ export function codeTabs(files: { name: string; code: string; lang?: string; lin
   return `<div class="runbun-tabs not-content"><div class="runbun-tablist" aria-label="Files">${tabs}</div>${panels}</div>`;
 }
 
+/** A preset request (`requests`), with the response its author wrote after ` => ` (undefined without one). */
+export interface PresetRequest {
+  method: string;
+  path: string;
+  body: string;
+  response: string | undefined;
+}
+
+/**
+ * `requests` (`GET / => Hello; POST /form {"a":1} => {"a":1}`) as the embed's attribute and the poster's entries. The
+ * entries split as the playground splits them (apps/playground/src/embed/requests.ts, copied: the app isn't a
+ * dependency): at a `;` followed by (optional whitespace,) an uppercase method, whitespace and `/`. In an entry, the
+ * first ` => ` after the path (`=>` with whitespace or the entry's end around it) starts the author's response; a
+ * response can't hold a `;` that a request would start after, since the split comes first, and a body can't hold
+ * ` => ` (`x=>y` is fine). `attr` is the requests without their responses, joined with `; `, for the live embed, which
+ * never sees a response; it is `list` as written when no entry has one. Entries the playground would skip (not
+ * `METHOD /path`) stay in `attr` and out of `entries`.
+ */
+export function presetRequests(list: string): { attr: string; entries: PresetRequest[]; responses: boolean } {
+  const parts = list.split(/;(?=\s*[A-Z]+\s+\/)/).map((p) => p.trim()).filter(Boolean);
+  const entries: PresetRequest[] = [];
+  const requests: string[] = [];
+  for (const part of parts) {
+    const m = /^([A-Z]+)\s+(\/\S*)(?:\s+([\s\S]*))?$/.exec(part);
+    const rest = m?.[3] ?? "";
+    const arrow = /(?:^|\s)=>(?:\s|$)/.exec(rest);
+    const body = (arrow ? rest.slice(0, arrow.index) : rest).trim();
+    const response = arrow ? rest.slice(arrow.index + arrow[0].length).trim() : undefined;
+    requests.push(m && arrow ? `${m[1]} ${m[2]}${body ? " " + body : ""}` : part);
+    if (m) entries.push({ method: m[1]!, path: m[2]!, body, response });
+  }
+  const responses = entries.some((e) => e.response !== undefined);
+  return { attr: responses ? requests.join("; ") : list, entries, responses };
+}
+
+/** `text` highlighted as JSON when it parses as JSON, else as plain text. */
+const jsonOrPlain = (text: string) => {
+  let lang = "plain";
+  try {
+    JSON.parse(text);
+    lang = "json";
+  } catch {}
+  return highlight(text, lang).replace(/^<pre /, `<pre data-language="${lang}" `);
+};
+
+/**
+ * Preset requests and their written responses under a poster's code: a tab per request (`METHOD /path`, the method
+ * only when it isn't GET, as the playground shows it), and per tab the request's body, if any, and the response, or
+ * a note that running the code shows it. Plain HTML like codeTabs: radio tabs named `group` (unique on the page, the
+ * same between builds), the stylesheet showing the checked one's panel, the first checked. It sits in the poster,
+ * whose clicks don't start the embed (only its Run button does).
+ */
+export function requestPanel(entries: PresetRequest[], group: string): string {
+  const tabs = entries
+    .map(({ method, path }, i) => {
+      const badge = method === "GET" ? "" : `<span class="runbun-method" data-method="${esc(method)}">${esc(method)}</span>`;
+      return `<label><input type="radio" name="${esc(group)}"${i === 0 ? " checked" : ""}>${badge}<span class="runbun-path">${esc(path)}</span></label>`;
+    })
+    .join("");
+  const panels = entries
+    .map(({ body, response }) => {
+      const sent = body ? `<div class="runbun-request-body"><div class="runbun-request-label">Request body</div>${jsonOrPlain(body)}</div>` : "";
+      const got = response === undefined ? `<p class="runbun-response-pending">Run to see the response</p>` : jsonOrPlain(response);
+      return `<div class="runbun-request">${sent}<div class="runbun-response">${got}</div></div>`;
+    })
+    .join("");
+  return `<div class="runbun-requests not-content"><div class="runbun-requests-tablist" aria-label="Requests">${tabs}</div>${panels}</div>`;
+}
+
 /** A highlights language for a file name: its extension. */
 export const langOf = (name: string) => name.slice(name.lastIndexOf(".") + 1) || "plain";
 

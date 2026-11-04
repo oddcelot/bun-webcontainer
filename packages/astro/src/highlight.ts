@@ -123,6 +123,10 @@ export function themeCss(options: ThemeOption[], selector?: ThemeSelector): stri
  * `+`/`−` gutter is generated content, out of the copied text, with alt text for screen readers (`"+" / "inserted"`;
  * a browser without that keeps the bare sign from the line before).
  *
+ * A poster's preset requests (`.runbun-requests`, markup.ts requestPanel) switch like tabbed blocks: radios, and the
+ * checked one's panel (the tablist is the first child, so panel n is child n + 1) visible in the shared grid cell.
+ * `--runbun-requests-gap` spaces it from the code, `--runbun-method-bg`/`--runbun-method-fg` color the method badge.
+ *
  * A note's marker is a numbered pill (`.runbun-note`, the number generated content). Its list (`.runbun-notes`) is
  * popovers, so where the browser has them the list takes no room and an open item is a bubble in the top layer, outside
  * the block, styled on its own; with anchor positioning it sits above its marker (the invoker is its implicit
@@ -252,5 +256,86 @@ export const BLOCK_CSS = `
     position-area: top;
     position-try-fallbacks: flip-block;
   }
+}
+.runbun-requests {
+  display: grid;
+  margin-top: var(--runbun-requests-gap, 0.75rem);
+  overflow: hidden;
+  border: 1px solid var(--runbun-code-border, color-mix(in srgb, currentColor 15%, transparent));
+  border-radius: var(--runbun-code-radius, 8px);
+  color: var(--hls-foreground);
+  background: var(--hls-background);
+  & > .runbun-requests-tablist {
+    grid-area: 1 / 1;
+    display: flex;
+    overflow-x: auto;
+    overflow-y: hidden;
+    box-shadow: inset 0 -1px var(--runbun-code-border, color-mix(in srgb, currentColor 15%, transparent));
+    font-family: var(--runbun-code-font, ui-monospace, monospace);
+    font-size: var(--runbun-code-caption-size, 0.75rem);
+    & label {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 0.375rem;
+      padding: 0.5rem 1rem;
+      white-space: nowrap;
+      cursor: pointer;
+      opacity: 0.65;
+      border-bottom: 2px solid transparent;
+      &:hover {
+        opacity: 0.9;
+      }
+      &:has(input:checked) {
+        opacity: 1;
+        border-bottom-color: currentColor;
+      }
+      &:has(input:focus-visible) {
+        outline: 2px solid currentColor;
+        outline-offset: -2px;
+      }
+    }
+    & input {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+    }
+  }
+  & .runbun-method {
+    padding: 0.0625rem 0.3rem;
+    border-radius: 4px;
+    font-size: 0.85em;
+    font-weight: 600;
+    color: var(--runbun-method-fg, var(--hls-background));
+    background: var(--runbun-method-bg, var(--hls-keyword, currentColor));
+  }
+  & > .runbun-request {
+    grid-area: 2 / 1;
+    min-width: 0;
+    visibility: hidden;
+  }
+  & pre {
+    margin: 0;
+    padding: 0.75rem 1rem;
+    overflow-x: auto;
+    font-family: var(--runbun-code-font, ui-monospace, monospace);
+    font-size: var(--runbun-code-size, 0.875rem);
+    line-height: var(--runbun-code-line-height, 1.6);
+  }
+  & .runbun-request-body {
+    border-bottom: 1px solid var(--runbun-code-border, color-mix(in srgb, currentColor 15%, transparent));
+  }
+  & .runbun-request-label,
+  & .runbun-response-pending {
+    margin: 0;
+    padding: 0.5rem 1rem 0;
+    font-family: var(--runbun-code-font, ui-monospace, monospace);
+    font-size: var(--runbun-code-caption-size, 0.75rem);
+    opacity: 0.65;
+  }
+  & .runbun-response-pending {
+    padding-bottom: 0.5rem;
+  }
+${Array.from({ length: 12 }, (_, i) => `  &:has(> .runbun-requests-tablist > label:nth-of-type(${i + 1}) > input:checked) > .runbun-request:nth-child(${i + 2}) {\n    visibility: visible;\n  }`).join("\n")}
 }
 `.trim();

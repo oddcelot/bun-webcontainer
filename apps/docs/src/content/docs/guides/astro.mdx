@@ -180,6 +180,22 @@ new Elysia()
 
 `<Playground>` and `<Code playground>` take the same as a `requests` prop: `<Code playground mode="preview" requests='GET /; POST /form {"hello":"Elysia"}' … />`.
 
+Readers can see answers without running anything when you write each request's response after ` => `. Before Run, the block shows the code and, under it, a tab per request with its body and your response (highlighted as JSON when it parses as JSON). A request without ` => ` says that running the code shows its response. Run then opens the live embed with the same request tabs, which gets the requests only, never your responses:
+
+````md
+```ts playground mode=preview height=auto deps="elysia@rc" requests='GET / => Hello Elysia; GET /user/617 => 617; POST /form {"hello":"Elysia"} => {"hello":"Elysia"}'
+import { Elysia, t } from 'elysia'
+
+new Elysia()
+    .get('/', 'Hello Elysia')
+    .get('/user/:id', ({ params: { id } }) => id)
+    .post('/form', ({ body }) => body)
+    .listen(3000)
+```
+````
+
+The responses are your text: nothing checks them against what the code returns. The first ` => ` after the path starts the response, so a body can't contain ` => ` with spaces around it (`x=>y` is fine), and a response can contain `;` unless an uppercase method and ` /` follow it. The panel is `.runbun-requests`, its tabs `.runbun-requests-tablist`, each panel `.runbun-request` (with `.runbun-request-body`, `.runbun-response`, `.runbun-response-pending`) and the method badge `.runbun-method`; `--runbun-requests-gap`, `--runbun-method-bg` and `--runbun-method-fg` adjust it. Clicking a tab doesn't start the embed; only Run does.
+
 `deps` pins the packages a fence installs, in a generated `package.json` that doesn't open as a tab: `deps="elysia@rc,@elysia/openapi@rc,zod@^4"` (a name without a version gets `latest`). In a group the first fence's `deps` applies, and a `package.json` fence of the group's own wins over it. A `package.json` you write, as a fence or in `files`, opens like any other file, unless you mark its fence `hidden`: in a group, a `hidden` fence is a file of the embed but stays out of the block and the tabs (it's never the file Run starts or the one opened, and a group shows at least its first fence). A hidden `package.json` is still the group's, so `deps` and the generated `main` give way to it:
 
 ````md

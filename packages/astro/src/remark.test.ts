@@ -6,7 +6,7 @@ import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import type { Code, List, Root, RootContent } from "mdast";
 import { setConfig } from "./config.js";
 import { highlight } from "./highlight.js";
-import { codeBlock, codeTabs, propLines } from "./markup.js";
+import { codeBlock, codeTabs, presetRequests, propLines, requestPanel } from "./markup.js";
 import remarkRunbun from "./remark.js";
 import before from "./remark.test.json";
 
@@ -507,6 +507,82 @@ describe("preset requests", () => {
 
   test("an embed without requests= has no requests attribute, as before", () => {
     expect(htmlOf(run([code("ts", "playground", "x")])[0])).not.toContain("requests=");
+  });
+});
+
+describe("written responses (=>)", () => {
+  const RESPONSES = 'GET / => Hello Elysia; GET /user/617 => 617; POST /form {"hello":"Elysia"} => {"hello":"Elysia"}';
+  const fence = (requests: string) => code("ts", `playground mode=preview requests='${requests}'`, "x");
+  const attrOf = (html: string) => html.match(/ requests="([^"]*)"/)?.[1]?.replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&amp;/g, "&");
+  const poster = (html: string) => html.slice(html.indexOf('<div slot="poster">'));
+  const labels = (html: string) => [...html.matchAll(/<label><input[^>]*>(.*?)<\/label>/g)].map((m) => m[1]!.replace(/<[^>]+>/g, " ").trim());
+
+  test("the first => after the path starts the response; the split before it is the playground's, so ; in a response stays", () => {
+    const r = (method: string, path: string, body: string, response?: string) => ({ method, path, body, response });
+    expect(presetRequests(RESPONSES).entries).toEqual([r("GET", "/", "", "Hello Elysia"), r("GET", "/user/617", "", "617"), r("POST", "/form", '{"hello":"Elysia"}', '{"hello":"Elysia"}')]);
+    expect(presetRequests("GET /a => one; two; GET /b").entries).toEqual([r("GET", "/a", "", "one; two"), r("GET", "/b", "")]);
+    // `=>` without spaces in a body is the body's; with spaces it would end the body (the documented limit).
+    expect(presetRequests('POST /f {"a":"x=>y"} => ok').entries).toEqual([r("POST", "/f", '{"a":"x=>y"}', "ok")]);
+    expect(presetRequests('POST /f {"a":"x => y"}').entries).toEqual([r("POST", "/f", '{"a":"x', 'y"}')]);
+    expect(presetRequests("GET /; POST /f {}")).toEqual({ attr: "GET /; POST /f {}", entries: [r("GET", "/", ""), r("POST", "/f", "{}")], responses: false });
+  });
+
+  test("the live embed gets the requests without their responses, so it never shows the author's text as an answer", () => {
+    const html = htmlOf(run([fence(RESPONSES)])[0])!;
+    expect(attrOf(html)).toBe('GET /; GET /user/617; POST /form {"hello":"Elysia"}');
+    expect(html.match(/<bun-playground[^>]*>/)![0]).not.toContain("=&gt;");
+    expect(presetRequests("get /x => a; GET /y => b").attr).toBe("get /x => a; GET /y");
+  });
+
+  test("the poster shows a tab per request under the code, the first checked, with bodies and responses highlighted", () => {
+    const html = poster(htmlOf(run([fence(RESPONSES)])[0])!);
+    expect(html.indexOf('<figure class="runbun-code')).toBeLessThan(html.indexOf('<div class="runbun-requests not-content">'));
+    expect(labels(html)).toEqual(["/", "/user/617", "POST  /form"]);
+    expect(html).toContain('<span class="runbun-method" data-method="POST">POST</span><span class="runbun-path">/form</span>');
+    expect(html.match(/<input type="radio"[^>]*>/g)!.map((t) => t.includes("checked"))).toEqual([true, false, false]);
+    const panels = html.split('<div class="runbun-request">').slice(1);
+    expect(panels).toHaveLength(3);
+    expect(panels[0]).toContain('<pre data-language="plain"');
+    expect(panels[0]).toContain("Hello Elysia");
+    expect(panels[1]).toContain('<pre data-language="json"'); // 617 parses as JSON
+    expect(panels[2]).toContain('<div class="runbun-request-label">Request body</div><pre data-language="json"');
+    expect(panels[2]!.match(/data-language="json"/g)).toHaveLength(2);
+    expect(panels[0]).not.toContain("Request body");
+  });
+
+  test("a request without a written response says that running the code shows it", () => {
+    const html = poster(htmlOf(run([fence("GET / => Hi; POST /form x")])[0])!);
+    const panels = html.split('<div class="runbun-request">').slice(1);
+    expect(panels[1]).toContain('<div class="runbun-request-body"><div class="runbun-request-label">Request body</div><pre data-language="plain"');
+    expect(panels[1]).toContain('<p class="runbun-response-pending">Run to see the response</p>');
+  });
+
+  test("the panel's radio name is the same build after build and differs from the page's other tabbed blocks", () => {
+    const names = (path: string) =>
+      run([fence(RESPONSES), code("ts", "playground group=g", "1"), code("ts", "playground group=g", "2"), fence("GET / => a")], {}, path).flatMap((n) => [
+        ...new Set([...(htmlOf(n) ?? "").matchAll(/<input type="radio" name="([^"]+)"/g)].map((m) => m[1])),
+      ]);
+    const first = names("/docs/a.md");
+    expect(first).toHaveLength(3);
+    expect(new Set(first).size).toBe(3);
+    expect(first[0]).toMatch(/^runbun-requests-\w+-0$/);
+    expect(names("/docs/a.md")).toEqual(first);
+    expect(names("/docs/b.md")).not.toEqual(first);
+  });
+
+  test("requests without => keep today's embed exactly: the attribute as written and no panel", () => {
+    const list = 'GET /; GET /user/617;  POST /form {"hello":"Elysia"}';
+    const html = htmlOf(run([fence(list)])[0])!;
+    expect(attrOf(html)).toBe(list);
+    expect(html).not.toContain("runbun-requests");
+    expect(poster(html)).toBe(poster(htmlOf(run([code("ts", "playground mode=preview", "x")])[0])!));
+  });
+
+  test("the panel is the same for <Playground> and <Code playground>, which call requestPanel with their own names", () => {
+    expect(requestPanel(presetRequests("GET / => a").entries, "n")).toBe(
+      '<div class="runbun-requests not-content"><div class="runbun-requests-tablist" aria-label="Requests"><label><input type="radio" name="n" checked><span class="runbun-path">/</span></label></div>' +
+        `<div class="runbun-request"><div class="runbun-response">${highlight("a", "plain").replace(/^<pre /, '<pre data-language="plain" ')}</div></div></div>`,
+    );
   });
 });
 
