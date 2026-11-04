@@ -179,7 +179,7 @@ export function FileTree() {
 function PeekTree(props: { peek: Peek }) {
   let host!: HTMLDivElement;
   onSettled(() => {
-    const tree = new PierreTree({ paths: [...props.peek.files.keys()], initialExpansion: "open", initialSelectedPaths: [props.peek.path], ...TREE_LOOK });
+    const tree = new PierreTree({ paths: props.peek.paths, initialExpansion: "open", initialSelectedPaths: [props.peek.path], ...TREE_LOOK });
     return mountTree(tree, host);
   });
   return <div class="peek-tree" ref={host} aria-label={`Files of ${props.peek.title}`} />;

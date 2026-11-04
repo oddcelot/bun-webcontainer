@@ -249,10 +249,9 @@ export function EditorPane() {
 /** An example's entry file, highlighted and read-only (the file tree shows the rest of its files). */
 function PeekView(props: { peek: Peek }) {
   let el!: HTMLDivElement;
-  const shown = () => props.peek.path;
   onSettled(() => {
     const view = createPierre(el, { readOnly: () => true });
-    view.open(shown(), props.peek.files.get(shown()) ?? "", () => {});
+    view.open(props.peek.path, props.peek.text, () => {});
     return () => view.destroy();
   });
   return (
@@ -261,7 +260,7 @@ function PeekView(props: { peek: Peek }) {
         <span class="title">
           <i class="i-lucide-eye" aria-hidden="true" /> {props.peek.title}: pick it to load and run
         </span>
-        <span class="path">{shown()}</span>
+        <span class="path">{props.peek.path}</span>
       </div>
       <div class="peek-code" ref={el} />
     </div>

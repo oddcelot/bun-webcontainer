@@ -1,13 +1,14 @@
 import { createSignal, createStore } from "solid-js";
 import type { EditorCursor, EditorDiagnostic } from "../editors/types";
+import type { ProjectPeek } from "../examples";
 import { pref } from "../prefs";
 import { EMBEDDED } from "../theme";
 
 const AUTOSAVE_KEY = "runbun:autosave";
 const WATCH_KEY = "runbun:watch";
 
-/** A look at a project's files without opening it: its name, its files, and the one to show (its entry, else its first file). */
-export type Peek = { title: string; files: Map<string, string>; path: string };
+/** A look at a project without opening it (see `peekProject`), with the picker's name for it. */
+export type Peek = ProjectPeek & { title: string };
 
 /**
  * Which files are open in tabs, which one is active, and which have edits not yet written to the VFS. Writes go

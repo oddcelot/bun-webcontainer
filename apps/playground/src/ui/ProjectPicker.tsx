@@ -1,6 +1,5 @@
 import { Show, createSignal, useContext } from "solid-js";
-import { exampleFiles, examples, repoExamples } from "../examples";
-import { entryOf } from "../shell";
+import { examples, peekProject, repoExamples } from "../examples";
 import { AppContext } from "./context";
 import { PromptDialog } from "./PromptDialog";
 import { Select } from "@runbun/ui/solid/Select";
@@ -69,24 +68,28 @@ function Picker(props: { groups: Group[]; current: (list: Group[]) => Project | 
 
   const [asking, setAsking] = createSignal(false);
 
-  // How long the highlight rests on an example before the editor shows it: the pointer passing over others doesn't flash them.
+  // How long the highlight rests on an entry before the editor and file tree show it: the pointer passing over others
+  // doesn't flash them, or spend GitHub API calls on them.
   const PEEK_DELAY = 120;
+  const PEEK_DELAY_REPO = 300;
   let peekTimer: ReturnType<typeof setTimeout> | undefined;
   let peeking = 0;
-  /** Shows the highlighted bundled example's entry file over the editor (read-only, not loaded or run). */
+  /** Shows the highlighted example's entry file over the editor and its files over the tree (read-only, not loaded or run). */
   function highlight(p: Project | null) {
     clearTimeout(peekTimer);
     const ask = ++peeking;
     const value = p && fromPicker(p.value);
-    // The project already open, GitHub repos (a fetch per hover) and the Open entries show nothing.
-    const name = value === "" ? "demo" : value && value in examples ? value : null;
-    if (!p || name === null || value === s.project().selected) return app.workspace.setPeek(null);
-    peekTimer = setTimeout(async () => {
-      const files = await exampleFiles(name);
-      if (ask !== peeking || !files) return;
-      const entry = entryOf((f) => files.has(f), (f) => files.get(f));
-      app.workspace.setPeek({ title: p.label, files, path: files.has(entry) ? entry : [...files.keys()][0] });
-    }, PEEK_DELAY);
+    // The project already open and the Open entries show nothing.
+    const known = value !== null && (value === "" || value in examples || (value.startsWith("repo:") && value.slice(5) in repoExamples));
+    if (!p || !known || value === s.project().selected) return app.workspace.setPeek(null);
+    peekTimer = setTimeout(
+      async () => {
+        const peek = await peekProject(value);
+        if (ask !== peeking) return;
+        app.workspace.setPeek(peek && { ...peek, title: p.label });
+      },
+      value.startsWith("repo:") ? PEEK_DELAY_REPO : PEEK_DELAY,
+    );
   }
 
   function pick(p: Project | null) {
