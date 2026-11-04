@@ -290,8 +290,9 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
 }
 #request button { background: var(--control); color: inherit; border: 1px solid var(--control-border); border-radius: 6px; padding: 3px 10px; cursor: pointer; }
 #expand { display: grid; place-items: center; padding: 0 8px; }
-/* The request body's editor (ui/Preview.tsx): resizable like the textarea it replaced, a hint while it's empty. */
-#req-body { position: relative; height: 7em; min-height: 3em; overflow: hidden; resize: vertical; border-bottom: 1px solid var(--border); }
+/* The request body's editor (ui/Preview.tsx): as tall as its lines (set there, up to 7em; this until it's measured),
+   resizable like the textarea it replaced, a hint while it's empty. */
+#req-body { position: relative; height: 7em; min-height: 1.5em; overflow: hidden; resize: vertical; border-bottom: 1px solid var(--border); }
 #req-body .pierre-host { height: 100%; overflow: auto; background: var(--bg); }
 #req-body diffs-container { min-height: 100%; }
 #req-body[data-empty]::after { content: attr(data-placeholder); position: absolute; top: 8px; left: 41px; color: var(--muted); font: 12px/20px var(--font-mono); pointer-events: none; }

@@ -192,20 +192,75 @@ export function Preview() {
 /**
  * The request body in the editor the files use, highlighted as JSON (what it's usually sent as). One editor: switching
  * preview tabs opens the active tab's body in it, and each edit goes back to that tab.
+ *
+ * It's as tall as its lines (at least one, at most 7em, then it scrolls), measured from the editor's lines as the
+ * embed measures the code (embed/main.ts), so a one-line body leaves the response its room. A reader can still drag it
+ * (`resize: vertical`): a height the browser wrote, not this, is theirs, kept for that tab and no longer fitted.
  */
 function RequestBody(props: { hidden: boolean; empty: boolean }) {
   const { previews: p } = useContext(AppContext);
   let el!: HTMLDivElement;
   let editor: CodeEditor | undefined;
+  /** Heights readers dragged, by tab. */
+  const dragged = new Map<number, number>();
+  /** The height last written here, to tell a drag from it. */
+  let written = "";
+  let lines: Element | null | undefined;
+  const fit = () => {
+    if (el.hidden) return;
+    const id = untrack(() => p.state.active);
+    const code = el.querySelector(".pierre-host")?.firstElementChild?.shadowRoot?.querySelector<HTMLElement>("pre > code");
+    const next = code?.querySelector("[data-content]");
+    if (next !== lines) {
+      if (lines) linesObserver.unobserve(lines);
+      if ((lines = next)) linesObserver.observe(lines);
+    }
+    const own = dragged.get(id);
+    let h = own;
+    if (h === undefined && code && lines?.children.length) {
+      const count = lines.children.length;
+      const box = getComputedStyle(code);
+      const lh = lines.getBoundingClientRect().height / count;
+      // Its lines, the code's padding and horizontal scrollbar, and the box's own border.
+      const content = count * lh + parseFloat(box.paddingTop) + parseFloat(box.paddingBottom) + code.offsetHeight - code.clientHeight;
+      const max = parseFloat(getComputedStyle(el).fontSize) * 7;
+      h = Math.ceil(Math.min(max, content) + el.offsetHeight - el.clientHeight);
+    }
+    if (h === undefined) return;
+    written = `${h}px`;
+    el.style.height = written;
+  };
+  // Lines added or removed (typing, a preset's body), and the editor's first layout: fit again.
+  const linesObserver = new ResizeObserver(() => fit());
+  // The box resized with a height this didn't write: the reader's drag.
+  const boxObserver = new ResizeObserver(() => {
+    if (written && el.style.height && el.style.height !== written) dragged.set(untrack(() => p.state.active), parseFloat(el.style.height));
+  });
   createEffect(
     () => p.state.active,
     (id) => {
       editor ??= createPierre(el);
       const body = untrack(() => p.state.tabs.find((t) => t.id === id)?.body ?? "");
       editor.open(`request-body-${id}.json`, body, (text) => p.edit(id, "body", text));
+      // After the editor has laid the body out.
+      requestAnimationFrame(fit);
     },
   );
-  onSettled(() => () => editor?.destroy());
+  // Shown again (a method with a body): fit what it holds now.
+  createEffect(
+    () => props.hidden,
+    (hidden) => {
+      if (!hidden) requestAnimationFrame(fit);
+    },
+  );
+  onSettled(() => {
+    boxObserver.observe(el);
+    return () => {
+      editor?.destroy();
+      linesObserver.disconnect();
+      boxObserver.disconnect();
+    };
+  });
   return <div id="req-body" ref={el} hidden={props.hidden} data-empty={props.empty ? "" : undefined} data-placeholder="Request body (JSON is sent as application/json)" />;
 }
 
