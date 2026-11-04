@@ -13,22 +13,23 @@
 // Options default to the runbun() integration's (playgroundUrl, base, sync, fences).
 import type { Code, Root, RootContent } from "mdast";
 import { CONFIG, type ResolvedConfig } from "./config.js";
-import { codeBlock, codeTabs, copyScript, cssLink, embedScripts, EXT, fileScript, withEntry, withTabs } from "./markup.js";
+import { type BlockLines, codeBlock, codeTabs, copyScript, cssLink, embedScripts, EXT, fileScript, lineNumbers, withEntry, withTabs } from "./markup.js";
 
 const OWN_KEYS = new Set(["playground", "mode", "features", "group", "load", "height", "autorun", "readonly", "persist", "theme", "file", "path", "expand", "deps", "label", "layout"]);
 const ATTRS = ["mode", "features", "height", "autorun", "readonly", "persist", "theme", "file", "path", "layout"];
 
-/** Splits `a b=c title="d e"` into [key, value|null] tokens. */
+/** Splits `a b=c title="d e"` into [key, value|null] tokens; `raw` is the token as written (`{1,4-6}`, `ins={2}`). */
 interface Token {
   key: string | undefined;
   value: string | null;
+  raw: string;
 }
 
 function tokens(meta: string): Token[] {
   const out: Token[] = [];
   const re = /(?:([\w-]+)(?:=(?:"([^"]*)"|'([^']*)'|(\S*)))?)|(\S+)/g;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(meta))) out.push({ key: m[1], value: m[2] ?? m[3] ?? m[4] ?? null });
+  while ((m = re.exec(meta))) out.push({ key: m[1], value: m[2] ?? m[3] ?? m[4] ?? null, raw: m[0] });
   return out;
 }
 
@@ -121,21 +122,38 @@ function nameFromComment(line: string, lang: string): string | undefined {
 /**
  * `code`'s title from a file-name comment, as plugin-frames' `extractFileNameFromCodeBlock` finds it: the first of
  * the first four lines that is one. That line goes, and so does an empty line right after it; in a language with
- * frontmatter, a `---`/`+++` pair left empty by it goes too.
+ * frontmatter, a `---`/`+++` pair left empty by it goes too. `kept` names each remaining line's index in `code`.
  */
-function fileName(code: string, lang: string): { code: string; title?: string } {
+function fileName(code: string, lang: string): { code: string; title?: string; kept?: number[] } {
   const lines = code.split(/\r?\n/);
+  const kept = lines.map((_, i) => i);
+  const drop = (at: number, n: number) => (lines.splice(at, n), kept.splice(at, n));
   const names = lines.slice(0, 4).map((line) => nameFromComment(line, lang));
   let i = names.findIndex(Boolean);
   const title = names[i];
   if (!title) return { code };
-  lines.splice(i, 1);
+  drop(i, 1);
   if (FRONTMATTER.includes(lang)) {
     const open = i > 0 ? lines[i - 1]?.trim() : undefined;
-    if (open === lines[i]?.trim() && (open === "---" || open === "+++")) lines.splice(--i, 2);
+    if (open === lines[i]?.trim() && (open === "---" || open === "+++")) drop(--i, 2);
   }
-  if (lines[i]?.trim() === "") lines.splice(i, 1);
-  return { code: lines.join("\n"), title };
+  if (lines[i]?.trim() === "") drop(i, 1);
+  return { code: lines.join("\n"), title, kept };
+}
+
+type MarkKind = keyof BlockLines;
+const MARK_KINDS: readonly string[] = ["mark", "ins", "del"];
+/**
+ * A line-mark token, `{1,4-6}` (a `mark`), `mark={…}`, `ins={…}` or `del={…}`, as its kind and 1-based lines; null
+ * for anything else. Ranges only: Expressive Code's text and regex marks (`ins="x"`, `mark=/re/`), and a range with a
+ * space in it (`{1, 4-6}`, two tokens), stay with it.
+ */
+function lineMark(t: Token): [MarkKind, number[]] | null {
+  const kind = t.key ?? "mark";
+  if (!MARK_KINDS.includes(kind)) return null;
+  const list = (t.key === undefined ? t.raw : t.raw.slice(kind.length + 1)).match(/^\{(.*)\}$/)?.[1];
+  const lines = list === undefined ? null : lineNumbers(list);
+  return lines && [kind as MarkKind, lines];
 }
 
 /**
@@ -143,20 +161,35 @@ function fileName(code: string, lang: string): { code: string; title?: string } 
  * Apart from parse() on purpose: transform()'s group loop relies on parse() being null for every other fence, so a
  * static fence never joins a playground group.
  */
-function parseStatic(node: Code): { code: string; lang: string; title?: string | undefined } | null {
+function parseStatic(node: Code): { code: string; lang: string; title?: string | undefined; lines: BlockLines } | null {
   const toks = tokens(node.meta ?? "");
   // `runbun=false` is the documented opt-out. The next check would keep the fence too (it isn't `title`), but the
   // promise doesn't rest on that.
   if (toks.some((t) => t.key === "runbun" && t.value === "false")) return null;
-  // `title=…` only: any other word (`ins=`, `{5-8}`, `mark=`, `frame=`, `showLineNumbers`, `wrap`, …) asks for a
-  // feature of the site's highlighter that a static block hasn't.
-  if (!toks.every((t) => t.key === "title" && t.value !== null)) return null;
+  // `title=…` and line marks only: any other word (`frame=`, `collapse=`, `showLineNumbers`, `wrap`, `ins="text"`, …)
+  // asks for a feature of the site's highlighter that a static block hasn't.
+  const marks: Partial<Record<MarkKind, number[]>> = {};
+  for (const t of toks) {
+    if (t.key === "title" && t.value !== null) continue;
+    const mark = lineMark(t);
+    if (!mark) return null;
+    (marks[mark[0]] ??= []).push(...mark[1]);
+  }
   const lang = node.lang || "plain";
   // Expressive Code draws these as a terminal window, which a static block isn't.
   if (TERMINAL.has(lang)) return null;
   const title = toks.find((t) => t.key === "title")?.value;
   // No `title`: a file-name comment names the block, as in Expressive Code.
-  return title == null ? { lang, ...fileName(node.value, lang) } : { code: node.value, lang, title };
+  const { code, title: named, kept } = title == null ? fileName(node.value, lang) : { code: node.value, title };
+  // Marks count the fence's lines as written, the file-name comment's included (Expressive Code places them before
+  // plugin-frames removes it), so they move with their lines, and one on a removed line goes. Lines past the end don't
+  // exist to mark.
+  const at = kept && new Map(kept.map((old, i) => [old, i]));
+  const lines: BlockLines = {};
+  for (const [kind, ns] of Object.entries(marks) as [MarkKind, number[]][]) {
+    lines[kind] = ns.map((n) => (at ? at.get(n - 1) : n - 1)).filter((i): i is number => i !== undefined && i >= 0);
+  }
+  return { code, lang, title: named, lines };
 }
 
 /** `elysia@rc, @elysia/openapi@rc, zod` → { elysia: "rc", "@elysia/openapi": "rc", zod: "latest" }; malformed entries are skipped. */
@@ -235,7 +268,7 @@ function transform(children: RootContent[], all: boolean, found: Found): void {
     const block = !first && all && node.type === "code" ? parseStatic(node) : null;
     if (block) {
       found.blocks = true;
-      out.push(html(codeBlock(block.code, block.lang, block.title)));
+      out.push(html(codeBlock(block.code, block.lang, block.title, block.lines)));
       continue;
     }
     if (!first) {

@@ -116,6 +116,12 @@ export function themeCss(options: ThemeOption[], selector?: ThemeSelector): stri
 /**
  * The look of a block, around the theme's colors; `--runbun-code-*` properties adjust it. A tabbed block's files share
  * one grid cell, only the checked tab's visible, so the block keeps its longest file's height as tabs switch.
+ *
+ * A block with marked lines (`.runbun-lines`, see markup.ts byLine) has each line as an inline block at least as wide
+ * as the code, which is as wide as its longest line, so a mark's background spans the block as it scrolls; the shadows
+ * carry it through the `<pre>`'s padding. The `\n`s between lines stay text, so the code copies as written. The
+ * `+`/`−` gutter is generated content, out of the copied text, with alt text for screen readers (`"+" / "inserted"`;
+ * a browser without that keeps the bare sign from the line before).
  */
 export const BLOCK_CSS = `
 :where(.runbun-code){margin:0}
@@ -147,4 +153,44 @@ export const BLOCK_CSS = `
 .runbun-tabs:has(>.runbun-tablist>label:nth-of-type(10)>input:checked)>.runbun-code:nth-of-type(10){visibility:visible}
 .runbun-tabs:has(>.runbun-tablist>label:nth-of-type(11)>input:checked)>.runbun-code:nth-of-type(11){visibility:visible}
 .runbun-tabs:has(>.runbun-tablist>label:nth-of-type(12)>input:checked)>.runbun-code:nth-of-type(12){visibility:visible}
+.runbun-lines {
+  display: block;
+  min-width: max-content;
+  & > .line {
+    --runbun-line-bg: transparent;
+    position: relative;
+    display: inline-block;
+    min-width: 100%;
+    min-height: 1lh;
+    vertical-align: top;
+    background: var(--runbun-line-bg);
+    box-shadow: -1rem 0 var(--runbun-line-bg), 1rem 0 var(--runbun-line-bg);
+    &[data-mark] {
+      --runbun-line-bg: var(--runbun-mark-bg, color-mix(in srgb, var(--hls-foreground) 12%, transparent));
+    }
+    &[data-ins] {
+      --runbun-line-bg: var(--runbun-ins-bg, color-mix(in srgb, var(--hls-diff-plus, #3fb950) 18%, transparent));
+    }
+    &[data-del] {
+      --runbun-line-bg: var(--runbun-del-bg, color-mix(in srgb, var(--hls-diff-minus, #f85149) 18%, transparent));
+    }
+    &[data-ins]::before,
+    &[data-del]::before {
+      position: absolute;
+      left: -1rem;
+      width: 1rem;
+      text-align: center;
+    }
+    &[data-ins]::before {
+      content: "+";
+      content: "+" / "inserted";
+      color: var(--hls-diff-plus, currentColor);
+    }
+    &[data-del]::before {
+      content: "\\2212";
+      content: "\\2212" / "deleted";
+      color: var(--hls-diff-minus, currentColor);
+    }
+  }
+}
 `.trim();

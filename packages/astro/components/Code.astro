@@ -4,9 +4,9 @@
 // every embed option passes through. `title` names the file, as in a fence; `label` is the embed's title. With `files`
 // the block has a tab per file, and so does the embed. A static block is HTML and CSS, and one small script for its
 // Copy button (once per page); no request beyond the page's own stylesheet, which Astro bundles the blocks' CSS into
-// (once per page, in <head>).
+// (once per page, in <head>). `mark`, `ins` and `del` mark lines of the static block's own file (`code`).
 import "virtual:@runbun/astro/blocks.css";
-import { codeBlock, codeTabs, copyScript, EXT, langOf, withEntry, withTabs } from "../dist/markup.js";
+import { codeBlock, codeTabs, copyScript, EXT, langOf, propLines, withEntry, withTabs } from "../dist/markup.js";
 import Playground, { type Props as PlaygroundProps } from "./Playground.astro";
 
 export type Props = Omit<PlaygroundProps, "title"> & {
@@ -16,8 +16,16 @@ export type Props = Omit<PlaygroundProps, "title"> & {
   /** The embed's accessible name (Playground's `title`, default "Bun playground"); only with `playground`. */
   label?: string;
   playground?: boolean;
+  /** Lines of `code` to highlight, as `"1,4-6"` (1-based, inclusive). Not on `files`' tabs; ignored with `playground`. */
+  mark?: string;
+  /** Lines of `code` shown as added, with a `+` in the gutter; as `mark`. */
+  ins?: string;
+  /** Lines of `code` shown as removed, with a `−` in the gutter (they still copy); as `mark`. */
+  del?: string;
 };
-const { code, lang = "ts", title, label, playground, files = {}, expand = "full", features, ...options } = Astro.props;
+const { code, lang = "ts", title, label, playground, files = {}, expand = "full", features, mark, ins, del, ...options } = Astro.props;
+// A poster shows the code the embed opens, unmarked.
+const lines = playground ? undefined : propLines({ mark, ins, del });
 const file = title || `index.${EXT[lang] ?? lang}`;
 const extra = Object.entries(files).map(([name, text]) => ({ name, code: text, lang: langOf(name) }));
 // The package.json withEntry may add (`main`) runs but stays out of the tabs.
@@ -28,7 +36,7 @@ const locals = Astro.locals as Record<symbol, boolean>;
 const COPY = Symbol.for("runbun.copy");
 const copy = locals[COPY] ? "" : copyScript();
 locals[COPY] = true;
-const block = extra.length ? codeTabs([{ name: file, code, lang }, ...extra], options.file ?? file) : codeBlock(code, lang, title);
+const block = extra.length ? codeTabs([{ name: file, code, lang, lines }, ...extra], options.file ?? file) : codeBlock(code, lang, title, lines);
 ---
 
 {

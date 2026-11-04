@@ -67,6 +67,18 @@ for (const lang of langs) console.log(lang, Bun.version);`}
 
 Since `title` is the file's name, `label` sets the embed's accessible name, the title of its frame (default "Bun playground"): `<Code playground label="Greeting example" … />`. `layout="stack"` puts the preview under the editor instead of beside it: `<Code playground mode="preview" layout="stack" height="auto" … />`.
 
+`mark`, `ins` and `del` mark lines of the block's `code` (not the tabs `files` adds), as `"1,4-6"`, the way [a fence's line marks](#line-marks) do. A `playground` block ignores them:
+
+```mdx
+<Code lang="ts" title="server.ts" mark="1" ins="2" del="3" code={`import { Elysia } from "elysia";
+new Elysia().get("/", () => "hi").listen(3000);
+Bun.serve({ fetch: () => new Response("hi") });`} />
+```
+
+<Code lang="ts" title="server.ts" mark="1" ins="2" del="3" code={`import { Elysia } from "elysia";
+new Elysia().get("/", () => "hi").listen(3000);
+Bun.serve({ fetch: () => new Response("hi") });`} />
+
 `files` adds more files. The block gets a tab per file, and the embed opens with the same tabs:
 
 ```mdx
@@ -165,7 +177,7 @@ integrations: [runbun({ fences: "all" })],
 
 A fence becomes a block only when it can be shown as written. These stay for the site's own highlighter (Expressive Code in Starlight, Shiki in plain Astro):
 
-- meta other than `title`: `ins=`, `del=`, `{5-8}`, `mark=`, `frame=`, `collapse=`, `showLineNumbers`, `wrap` or any other word
+- meta other than `title` and line marks: `frame=`, `collapse=`, `showLineNumbers`, `wrap`, text or regex marks (`ins="x"`, `mark=/re/`), a range with a space (`{1, 4-6}`) or any other word
 - shell languages (`bash`, `sh`, `zsh`, `powershell`, `console`, … the ones Expressive Code draws as a terminal)
 - a fence marked `runbun=false`
 
@@ -177,6 +189,21 @@ A fence without a language is plain text. Without a `title`, a file-name comment
 Bun.serve({ fetch: () => new Response("hi") });
 ```
 ````
+
+#### Line marks
+
+`{1,4-6}` (or `mark={1,4-6}`) highlights lines, `ins={…}` marks them as added and `del={…}` as removed, with a `+` or `−` in the gutter. Lines count from 1 and ranges include both ends, as in Expressive Code; lines past the end are skipped. They count the fence as written, a file-name comment included, so the marks stay on their lines when the comment becomes the title:
+
+````md
+```ts ins={3} del={4}
+// server.ts
+import { Elysia } from "elysia";
+new Elysia().get("/", () => "hi").listen(3000);
+Bun.serve({ fetch: () => new Response("hi") });
+```
+````
+
+The gutter signs are CSS, so Copy gets the code as written, removed lines included. Screen readers hear "inserted" or "deleted" where the browser supports alt text for generated content. Set the colors with `--runbun-mark-bg`, `--runbun-ins-bg` and `--runbun-del-bg`; by default they come from the code theme.
 
 Astro's content cache doesn't track integration options, so after switching `fences` delete `.astro/` (or your build cache) for the pages to render again.
 

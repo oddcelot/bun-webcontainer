@@ -14,11 +14,72 @@ export const cssLink = (base: string) => `<link rel="stylesheet" href="${esc(sla
  * Code's does (`data-language`), for tools that turn the page back into Markdown. The Copy button works with
  * copyScript() on the page.
  */
-export function codeBlock(code: string, lang: string, title?: string) {
+export function codeBlock(code: string, lang: string, title?: string, lines?: BlockLines) {
   const caption = title ? `<figcaption>${esc(title)}</figcaption>` : "";
-  const pre = highlight(code.replace(/\n$/, ""), lang).replace(/^<pre /, `<pre data-language="${esc(lang)}" `);
+  const html = highlight(code.replace(/\n$/, ""), lang);
+  const pre = (hasLines(lines) ? byLine(html, lines) : html).replace(/^<pre /, `<pre data-language="${esc(lang)}" `);
   const copy = `<button type="button" class="runbun-copy" data-runbun-copy aria-label="Copy code" aria-live="polite">Copy</button>`;
   return `<figure class="runbun-code not-content">${caption}${pre}${copy}</figure>`;
+}
+
+/** A block's line marks, by 0-based line of the code it shows. */
+export interface BlockLines {
+  mark?: number[];
+  ins?: number[];
+  del?: number[];
+}
+const KINDS = ["mark", "ins", "del"] as const;
+const hasLines = (lines?: BlockLines): lines is BlockLines => !!lines && KINDS.some((k) => lines[k]?.length);
+
+/**
+ * `"1,4-6"` (a fence's `{1,4-6}` without the braces) as 1-based line numbers; a reversed range counts too, as in
+ * Expressive Code. Null when it isn't a list of numbers and ranges.
+ */
+export function lineNumbers(list: string): number[] | null {
+  if (!/^\d+(-\d+)?(,\d+(-\d+)?)*$/.test(list)) return null;
+  return list.split(",").flatMap((part) => {
+    const [a, b = a] = part.split("-").map(Number) as [number, number?];
+    return Array.from({ length: Math.abs(b - a) + 1 }, (_, i) => Math.min(a, b) + i);
+  });
+}
+
+/** <Code>'s `mark`, `ins` and `del` (`"1, 4-6"`, 1-based) as a block's lines; anything but numbers and ranges throws. */
+export function propLines(props: { mark?: string | undefined; ins?: string | undefined; del?: string | undefined }): BlockLines {
+  const out: BlockLines = {};
+  for (const kind of KINDS) {
+    const list = props[kind];
+    if (list === undefined) continue;
+    const ns = lineNumbers(list.replace(/\s+/g, ""));
+    if (!ns) throw new Error(`@runbun/astro: <Code ${kind}="${list}"> takes line numbers and ranges, like "1,4-6"`);
+    out[kind] = ns.map((n) => n - 1).filter((i) => i >= 0);
+  }
+  return out;
+}
+
+/**
+ * highlight()'s `<pre>` with each line in a `<span class="line">` (`data-mark`, `data-ins`, `data-del`), for marks
+ * whose background spans the line. One highlighter path: the token spans are cut where a line ends (closed, then
+ * reopened on the next line), which needs them flat, as highlights' are (a test guards it). The `\n` text stays
+ * between the lines, so the code's text is the source as it was.
+ */
+function byLine(pre: string, lines: BlockLines): string {
+  const start = pre.indexOf("<code>") + "<code>".length;
+  const stop = pre.lastIndexOf("</code>");
+  const line = (i: number) => `<span class="line"${KINDS.filter((k) => lines[k]?.includes(i)).map((k) => ` data-${k}`).join("")}>`;
+  let i = 0;
+  let open = "";
+  let out = line(0);
+  for (const part of pre.slice(start, stop).split(/(<span[^>]*>|<\/span>|\n)/)) {
+    if (part === "\n") out += (open && "</span>") + `</span>\n${line(++i)}${open}`;
+    else if (part === "</span>") (out += part), (open = "");
+    else if (part.startsWith("<span")) {
+      if (open) throw new Error("@runbun/astro: the highlighter nested its spans; lines can't be split");
+      out += open = part;
+    } else out += part;
+  }
+  // A token cut at a line's end leaves an empty copy on the next line (`// x\n\n` is one span).
+  out = (out + "</span>").replace(/<span style="[^"]*"><\/span>/g, "");
+  return `${pre.slice(0, start - 1)} class="runbun-lines">${out}${pre.slice(stop)}`;
 }
 
 /**
@@ -44,16 +105,16 @@ const counter = ((globalThis as { [k: symbol]: { n: number } })[Symbol.for("runb
 /**
  * Several files as one block with a tab per file. Plain HTML: the tabs are radio buttons, and the stylesheet shows the
  * file whose tab is checked, so switching needs no script. `selected` names the tab checked first (default: the
- * first). One file is a plain block.
+ * first). One file is a plain block. A file's `lines` marks its lines (codeBlock).
  */
-export function codeTabs(files: { name: string; code: string; lang?: string }[], selected?: string): string {
-  if (files.length === 1) return codeBlock(files[0]!.code, files[0]!.lang ?? langOf(files[0]!.name), files[0]!.name);
+export function codeTabs(files: { name: string; code: string; lang?: string; lines?: BlockLines }[], selected?: string): string {
+  if (files.length === 1) return codeBlock(files[0]!.code, files[0]!.lang ?? langOf(files[0]!.name), files[0]!.name, files[0]!.lines);
   const group = `runbun-tabs-${++counter.n}`;
   const checked = Math.max(0, files.findIndex((f) => f.name === selected));
   const tabs = files
     .map((f, i) => `<label><input type="radio" name="${group}"${i === checked ? " checked" : ""}>${esc(f.name)}</label>`)
     .join("");
-  const panels = files.map((f) => codeBlock(f.code, f.lang ?? langOf(f.name))).join("");
+  const panels = files.map((f) => codeBlock(f.code, f.lang ?? langOf(f.name), undefined, f.lines)).join("");
   return `<div class="runbun-tabs not-content"><div class="runbun-tablist" aria-label="Files">${tabs}</div>${panels}</div>`;
 }
 
