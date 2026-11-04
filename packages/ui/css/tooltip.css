@@ -1,5 +1,9 @@
 /* Tip: a Kobalte tooltip, a small card with the text, then the shortcut keys. Over the uno preset's tokens. */
 @layer runbun-ui {
+  /* Kobalte's positioner around a tooltip: as much in the way as the tooltip (not at all). */
+  div:has(> .tooltip) {
+    pointer-events: none !important;
+  }
   .tooltip {
     z-index: 40;
     display: flex;
@@ -15,8 +19,12 @@
     font-size: 12px;
     line-height: 1.4;
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
-    /* Never in the way: clicks and hovers go through to what's under it. */
-    pointer-events: none;
+    /*
+     * Never in the way: clicks and hovers go through to what's under it. Important, because Kobalte sets
+     * `pointer-events: auto` inline on the content, which would beat this layer: a tooltip under a button then took the
+     * click meant for what it covered, and stayed open while the pointer was on it.
+     */
+    pointer-events: none !important;
 
     /* A shortcut: one key cap per key. */
     .chord {
