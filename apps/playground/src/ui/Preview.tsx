@@ -174,7 +174,8 @@ export function Preview() {
             type="button"
             id="expand"
             tip={s.expanded ? "Restore preview" : "Expand preview"}
-            keys={["Esc"]}
+            // Only restoring has keys (the keymap's, Esc unless rebound): nothing expands it but the button.
+            keys={s.expanded ? keysFor("exitFullscreen").map(chordKeys) : undefined}
             aria-label={s.expanded ? "Restore preview" : "Expand preview"}
             aria-pressed={s.expanded ? "true" : "false"}
             onClick={() => p.setExpanded(!s.expanded)}
