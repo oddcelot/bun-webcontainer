@@ -187,7 +187,7 @@ integrations: [runbun({ fences: "all" })],
 
 A fence becomes a block only when it can be shown as written. These stay for the site's own highlighter (Expressive Code in Starlight, Shiki in plain Astro):
 
-- meta other than `title` and line marks: `frame=`, `collapse=`, `showLineNumbers`, `wrap`, text or regex marks (`ins="x"`, `mark=/re/`), a range with a space (`{1, 4-6}`) or any other word
+- meta other than `title`, `group` and line marks: `frame=`, `collapse=`, `showLineNumbers`, `wrap`, text or regex marks (`ins="x"`, `mark=/re/`), a range with a space (`{1, 4-6}`) or any other word
 - shell languages (`bash`, `sh`, `zsh`, `powershell`, `console`, … the ones Expressive Code draws as a terminal)
 - a fence marked `runbun=false`
 
@@ -230,6 +230,22 @@ const app = new Elysia() // (1)
 ````
 
 The comment leaves the code, so Copy gets `const app = new Elysia()` with no marker and no trailing space; the line stays, so line marks keep their numbers. A comment with more in it (`// setup (1)`), or `(1)` inside a string or template literal, isn't a marker. When the markers and the list don't pair up (no list, or one with fewer or more items), both stay as they are and the build prints a warning naming the file. In a browser without popovers the list shows as a list; exported or plain-text views of the page (for Markdown, say) lose the marker numbers but keep the list.
+
+#### Group fences into tabs
+
+Consecutive fences with the same `group=<name>` become one block with a tab per fence, as a [playground group](#fences) does without the Run button:
+
+````md
+```ts title="server.ts" group=e2e
+export const app = new Elysia().get("/", () => "hi");
+```
+
+```ts title="client.ts" group=e2e
+const res = await fetch("http://localhost:3000/");
+```
+````
+
+A tab is named by its fence's `title`, else its file-name comment, else `index.ts` (`index2.ts`, … for more), and the first one is open. Each fence keeps its own line marks. Anything between the fences, a fence that falls back to the site's highlighter, a playground fence or another group name ends the group. Notes don't work in a group, since their list would have to come between the fences: a grouped fence's `// (1)` stays a comment, and the build warns.
 
 Astro's content cache doesn't track integration options, so after switching `fences` delete `.astro/` (or your build cache) for the pages to render again.
 

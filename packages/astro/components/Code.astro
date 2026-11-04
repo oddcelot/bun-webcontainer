@@ -60,7 +60,10 @@ if (lines && notes?.length) {
     console.warn(`[@runbun/astro] ${Astro.url.pathname}: <Code notes> has ${notes.length} notes but ${found.notes.size} matching // (N) markers in code; they stay comments.`);
   }
 }
-const block = extra.length ? codeTabs([{ name: file, code: shown, lang, lines }, ...extra], options.file ?? file) : codeBlock(shown, lang, title, lines);
+// Tabs' radio name: the page's tabbed blocks counted (Astro.locals is per render), apart from the fence plugin's names.
+const TABS = Symbol.for("runbun.tabs");
+const tabs = extra.length ? `runbun-code-tabs-${(locals[TABS] = ((locals[TABS] as number | undefined) ?? 0) + 1)}` : "";
+const block = extra.length ? codeTabs([{ name: file, code: shown, lang, lines }, ...extra], tabs, options.file ?? file) : codeBlock(shown, lang, title, lines);
 ---
 
 {

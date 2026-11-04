@@ -169,18 +169,16 @@ export const copyScript = () =>
   `set(b,"Copied","Copied");b.toggleAttribute("data-copied",true);clearTimeout(b.runbunCopy);` +
   `b.runbunCopy=setTimeout(()=>{set(b,"Copy","Copy code");b.removeAttribute("data-copied")},1500)})}</script>`;
 
-// Tab groups' radio names must be unique per page. The remark plugin and the components load separate copies of this
-// module (Astro bundles them apart), so the counter lives on globalThis, shared by every copy.
-const counter = ((globalThis as { [k: symbol]: { n: number } })[Symbol.for("runbun.tabGroups")] ??= { n: 0 });
-
 /**
  * Several files as one block with a tab per file. Plain HTML: the tabs are radio buttons, and the stylesheet shows the
- * file whose tab is checked, so switching needs no script. `selected` names the tab checked first (default: the
- * first). One file is a plain block. A file's `lines` marks its lines (codeBlock).
+ * file whose tab is checked, so switching needs no script. `group` is the radios' name, unique on the page: the caller
+ * makes it, from what stays the same between builds (the fence plugin: the page's path and the block's place; <Code>:
+ * a count in Astro.locals), since Astro's content store keeps a rendered page across builds while a module counter
+ * starts over, and two groups sharing a name would uncheck each other's tabs. `selected` names the tab checked first
+ * (default: the first). One file is a plain block. A file's `lines` marks its lines (codeBlock).
  */
-export function codeTabs(files: { name: string; code: string; lang?: string; lines?: BlockLines }[], selected?: string): string {
+export function codeTabs(files: { name: string; code: string; lang?: string; lines?: BlockLines }[], group: string, selected?: string): string {
   if (files.length === 1) return codeBlock(files[0]!.code, files[0]!.lang ?? langOf(files[0]!.name), files[0]!.name, files[0]!.lines);
-  const group = `runbun-tabs-${++counter.n}`;
   const checked = Math.max(0, files.findIndex((f) => f.name === selected));
   const tabs = files
     .map((f, i) => `<label><input type="radio" name="${group}"${i === checked ? " checked" : ""}>${esc(f.name)}</label>`)

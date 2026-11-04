@@ -177,16 +177,16 @@ function lineMark(t: Token): [MarkKind, number[]] | null {
  * Apart from parse() on purpose: transform()'s group loop relies on parse() being null for every other fence, so a
  * static fence never joins a playground group.
  */
-function parseStatic(node: Code): { code: string; lang: string; title?: string | undefined; lines: BlockLines } | null {
+function parseStatic(node: Code): { code: string; lang: string; title?: string | undefined; lines: BlockLines; group?: string | undefined } | null {
   const toks = tokens(node.meta ?? "");
   // `runbun=false` is the documented opt-out. The next check would keep the fence too (it isn't `title`), but the
   // promise doesn't rest on that.
   if (toks.some((t) => t.key === "runbun" && t.value === "false")) return null;
-  // `title=…` and line marks only: any other word (`frame=`, `collapse=`, `showLineNumbers`, `wrap`, `ins="text"`, …)
-  // asks for a feature of the site's highlighter that a static block hasn't.
+  // `title=…`, `group=…` and line marks only: any other word (`frame=`, `collapse=`, `showLineNumbers`, `wrap`,
+  // `ins="text"`, …) asks for a feature of the site's highlighter that a static block hasn't.
   const marks: Partial<Record<MarkKind, number[]>> = {};
   for (const t of toks) {
-    if (t.key === "title" && t.value !== null) continue;
+    if ((t.key === "title" || t.key === "group") && t.value !== null) continue;
     const mark = lineMark(t);
     if (!mark) return null;
     (marks[mark[0]] ??= []).push(...mark[1]);
@@ -205,8 +205,9 @@ function parseStatic(node: Code): { code: string; lang: string; title?: string |
   for (const [kind, ns] of Object.entries(marks) as [MarkKind, number[]][]) {
     lines[kind] = ns.map((n) => (at ? at.get(n - 1) : n - 1)).filter((i): i is number => i !== undefined && i >= 0);
   }
-  return { code, lang, title: named, lines };
+  return { code, lang, title: named, lines, group: toks.find((t) => t.key === "group")?.value || undefined };
 }
+type Static = NonNullable<ReturnType<typeof parseStatic>>;
 
 /** `elysia@rc, @elysia/openapi@rc, zod` → { elysia: "rc", "@elysia/openapi": "rc", zod: "latest" }; malformed entries are skipped. */
 function parseDeps(list: string): Record<string, string> {
@@ -220,7 +221,7 @@ function parseDeps(list: string): Record<string, string> {
   return out;
 }
 
-function embed(entries: [Entry, ...Entry[]]): RootContent {
+function embed(entries: [Entry, ...Entry[]], page: Page): RootContent {
   const { opts } = entries[0];
   const sources: Record<string, string> = {};
   const shown: { name: string; code: string; lang: string }[] = [];
@@ -263,7 +264,9 @@ function embed(entries: [Entry, ...Entry[]]): RootContent {
   const expand = opts.expand === "false" ? "" : ` expand="${esc(opts.expand || "full")}"`;
   // The tab checked first is the file the embed opens with: `file`, else the one Run starts.
   const opened = opts.file && opts.file in sources ? opts.file : entry;
-  const poster = shown.length > 1 || lead ? codeTabs(shown, opened) : codeTabs([{ ...shown[0]!, name: "" }]);
+  // A name only for real tabs: one file is a plain block.
+  const group = shown.length > 1 ? tabsName(page) : "";
+  const poster = shown.length > 1 || lead ? codeTabs(shown, group, opened) : codeTabs([{ ...shown[0]!, name: "" }], group);
   return html(
     `<bun-playground class="not-content" load="${esc(opts.load || "click")}"${expand}${attrs}>\n${files.join("\n")}\n` +
       `<div slot="poster">${poster}</div>\n</bun-playground>`,
@@ -280,8 +283,37 @@ interface Page {
   path: string;
   hash: string;
   statics: number;
+  /** codeTabs() calls so far, for each tabbed block's radio name. */
+  tabs: number;
+  /** Whether the page has warned about notes in a group (once is enough). */
+  warned: boolean;
   embeds: boolean;
   blocks: boolean;
+}
+
+/** A tabbed block's radio name: the page's path hash and the block's place, the same build after build (codeTabs). */
+const tabsName = (page: Page) => `runbun-tabs-${page.hash}-${page.tabs++}`;
+
+/**
+ * Consecutive static fences with one `group` as one block with a tab per fence, the static counterpart of a playground
+ * group. A tab is named by its fence's title, else its file-name comment, else `index.<ext>`, deduped as embed() does,
+ * and keeps its fence's marks; the first is checked. A group of one is the block it would be ungrouped. Notes don't
+ * group (their list after a fence would end the run), so grouped fences' markers stay comments, with one warning.
+ */
+function staticTabs(members: [Static, ...Static[]], page: Page): RootContent {
+  if (!page.warned && members.some((m) => noteMarkers(m.code, m.lang).notes.size)) {
+    page.warned = true;
+    console.warn(`[@runbun/astro] ${page.path || "a page"}: note markers (// (1)) in a group=… fence stay comments; notes don't work in groups.`);
+  }
+  if (members.length === 1) return html(codeBlock(members[0].code, members[0].lang, members[0].title, members[0].lines));
+  const files: { name: string; code: string; lang: string; lines: BlockLines }[] = [];
+  for (const { title, code, lang, lines } of members) {
+    const ext = EXT[lang] ?? (lang === "plain" ? "txt" : lang);
+    let name = title || `index.${ext}`;
+    for (let n = 2; files.some((f) => f.name === name); n++) name = `index${n}.${ext}`;
+    files.push({ name, code, lang, lines });
+  }
+  return html(codeTabs(files, tabsName(page)));
 }
 
 /** FNV-1a of `s`, base 36: a short, stable stand-in for a page's path in ids. */
@@ -299,7 +331,7 @@ function hash(s: string): string {
  * over, so a counter's ids could collide. A fence whose markers and list don't pair up (no list, a short or long one)
  * keeps its markers as comments and the list as it is, with a warning.
  */
-function annotate(block: NonNullable<ReturnType<typeof parseStatic>>, next: RootContent | undefined, page: Page): void {
+function annotate(block: Static, next: RootContent | undefined, page: Page): void {
   const { code, notes } = noteMarkers(block.code, block.lang);
   if (!notes.size) return;
   const list = next?.type === "list" && next.ordered && (next.start ?? 1) === 1 ? next : undefined;
@@ -325,9 +357,23 @@ function transform(children: RootContent[], page: Page): void {
     const block = !first && page.all && node.type === "code" ? parseStatic(node) : null;
     if (block) {
       page.blocks = true;
-      annotate(block, children[i + 1], page);
+      if (block.group) {
+        const members: [Static, ...Static[]] = [block];
+        // The run ends at anything but a static fence of the same group: a playground fence (never a tab here, as a
+        // static fence never joins a playground group), one that falls back, another node.
+        while (children[i + 1]?.type === "code") {
+          const next = children[i + 1] as Code;
+          const member = parse(next) ? null : parseStatic(next);
+          if (!member || member.group !== block.group) break;
+          members.push(member);
+          i++;
+        }
+        out.push(staticTabs(members, page));
+      } else {
+        annotate(block, children[i + 1], page);
+        out.push(html(codeBlock(block.code, block.lang, block.title, block.lines)));
+      }
       page.statics++;
-      out.push(html(codeBlock(block.code, block.lang, block.title, block.lines)));
       continue;
     }
     if (!first) {
@@ -344,7 +390,7 @@ function transform(children: RootContent[], page: Page): void {
       entries.push(next);
       i++;
     }
-    out.push(embed(entries));
+    out.push(embed(entries, page));
   }
   children.splice(0, children.length, ...out);
 }
@@ -361,7 +407,7 @@ export default function remarkRunbun(
     // Read before transforming, which needs `fences`; the config is the same whenever it's read.
     const { playgroundUrl, base, sync, fences } = { ...CONFIG(), ...options };
     const path = file?.path ?? "";
-    const page: Page = { all: fences === "all", path, hash: hash(path), statics: 0, embeds: false, blocks: false };
+    const page: Page = { all: fences === "all", path, hash: hash(path), statics: 0, tabs: 0, warned: false, embeds: false, blocks: false };
     transform(tree.children, page);
     if (!page.embeds && !page.blocks) return;
     // In MDX the blocks' CSS is an import, which Astro bundles into the page's stylesheet as it does for <Code> (one

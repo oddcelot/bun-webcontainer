@@ -1,19 +1,19 @@
 // The fence plugin on hand-built mdast trees (the shape remark-parse gives a fence: `lang` is its first word, `meta` the
 // rest). remark.test.json is what the plugin produced before `fences` existed (main at 7afcb68), for the default mode
-// to be checked against byte for byte.
+// to be checked against byte for byte; since then only a tabbed poster's radio name has changed (a stable id, not a
+// counter's).
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import type { Code, List, Root, RootContent } from "mdast";
 import { setConfig } from "./config.js";
 import { highlight } from "./highlight.js";
-import { codeBlock, propLines } from "./markup.js";
+import { codeBlock, codeTabs, propLines } from "./markup.js";
 import remarkRunbun from "./remark.js";
 import before from "./remark.test.json";
 
 const code = (lang: string | null, meta: string | null, value: string): Code => ({ type: "code", lang, meta, value });
 
-/** Runs the plugin on `children` as a page at `path`; the tab-group counter restarts so radio names are stable. */
+/** Runs the plugin on `children` as a page at `path`. */
 function run(children: RootContent[], options: Parameters<typeof remarkRunbun>[0] = {}, path = "page.md"): RootContent[] {
-  (globalThis as { [k: symbol]: { n: number } })[Symbol.for("runbun.tabGroups")] = { n: 0 };
   const tree: Root = { type: "root", children };
   remarkRunbun(options)(tree, { path });
   return tree.children;
@@ -318,6 +318,104 @@ describe("notes", () => {
     expect(out[1]).toMatchObject({ type: "mdxJsxFlowElement", name: "Fragment" });
     expect(props(out[2])).toEqual({ className: ["runbun-notes"] });
     expect(targets(htmlOf(out[1])!)).toEqual([props((out[2] as List).children[0])?.id as string]);
+  });
+});
+
+describe("static groups", () => {
+  const all = { fences: "all" } as const;
+  const radios = (html: string | undefined) => [...(html ?? "").matchAll(/<input type="radio" name="([^"]+)"/g)].map((m) => m[1]);
+  const labels = (html: string | undefined) => [...(html ?? "").matchAll(/<input[^>]*>([^<]+)<\/label>/g)].map((m) => m[1]);
+
+  test("consecutive fences with one group= are one tabbed block, a tab per fence, the first checked", () => {
+    const out = run([code("ts", 'title="server.ts" group=e2e', "a"), code("ts", 'title="client.ts" group=e2e', "b")], all);
+    expect(out).toHaveLength(2); // the block, then the page's assets
+    const html = htmlOf(out[0])!;
+    const [name] = radios(html);
+    expect(html).toBe(codeTabs([{ name: "server.ts", code: "a", lang: "ts", lines: {} }, { name: "client.ts", code: "b", lang: "ts", lines: {} }], name!));
+    expect(labels(html)).toEqual(["server.ts", "client.ts"]);
+    expect(html).toContain('name="' + name + '" checked>server.ts');
+  });
+
+  test("a tab is named by its title, else its file-name comment, else index.<ext>, deduped as a playground group's", () => {
+    const html = htmlOf(
+      run([code("ts", "group=g", "// src/a.ts\nx"), code("ts", "group=g", "y"), code("ts", "group=g", "z"), code(null, "group=g", "t"), code("ts", 'group=g title="src/a.ts"', "w")], all)[0],
+    );
+    expect(labels(html)).toEqual(["src/a.ts", "index.ts", "index2.ts", "index.txt", "index3.ts"]);
+    // The file-name comment named the tab and left its code.
+    expect(html).not.toContain("src/a.ts</span>");
+  });
+
+  test("a group of one is the block it would be ungrouped: a caption only with a title", () => {
+    expect(htmlOf(run([code("ts", "group=g", "x")], all)[0])).toBe(codeBlock("x", "ts"));
+    expect(htmlOf(run([code("ts", 'group=g title="a.ts"', "x")], all)[0])).toBe(codeBlock("x", "ts", "a.ts"));
+  });
+
+  test("each tab keeps its own fence's marks, counted on that fence as written", () => {
+    const html = htmlOf(run([code("ts", "group=g ins={2}", "// a.ts\nx\ny"), code("ts", "group=g {2} del={1}", "p\nq")], all)[0]!);
+    const panels = html.split('<figure class="runbun-code').slice(1);
+    expect(marksOf(panels[0]!)).toEqual(["ins", ""]);
+    expect(marksOf(panels[1]!)).toEqual(["del", "mark"]);
+    expect(text(panels[0]!)).toBe("x\ny");
+  });
+
+  test("a fallback fence, another node or another group ends the run, and the fences before it stay one block", () => {
+    const out = run(
+      [
+        code("ts", "group=g", "1"),
+        code("ts", "group=g", "2"),
+        code("ts", "group=g wrap", "3"), // falls back to the site's highlighter
+        code("ts", "group=g", "4"),
+        { type: "paragraph", children: [{ type: "text", value: "between" }] },
+        code("ts", "group=g", "5"),
+        code("ts", "group=h", "6"),
+      ],
+      all,
+    );
+    expect(labels(htmlOf(out[0]))).toEqual(["index.ts", "index2.ts"]);
+    expect(out[1]).toEqual(code("ts", "group=g wrap", "3"));
+    expect(htmlOf(out[2])).toBe(codeBlock("4", "ts"));
+    expect(out[3]?.type).toBe("paragraph");
+    expect(htmlOf(out[4])).toBe(codeBlock("5", "ts"));
+    expect(htmlOf(out[5])).toBe(codeBlock("6", "ts"));
+  });
+
+  test("a static group never takes in a playground fence of the same group, nor a playground group a static fence", () => {
+    const a = run([code("ts", "group=g", "s"), code("ts", "playground group=g", "p")], all);
+    expect(htmlOf(a[0])).toBe(codeBlock("s", "ts"));
+    expect(htmlOf(a[1])).toStartWith("<bun-playground");
+    const b = run([code("ts", "playground group=g", "p"), code("ts", "group=g", "s")], all);
+    expect(htmlOf(b[0])!.match(/data-file=/g)).toHaveLength(1);
+    expect(htmlOf(b[1])).toBe(codeBlock("s", "ts"));
+  });
+
+  test("note markers in a group stay comments, the list stays a list, and the page warns once", () => {
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    const out = run([code("ts", "group=g", "a(); // (1)"), code("ts", "group=g", "b(); // (1)"), { type: "list", ordered: true, spread: false, children: [] }], all, "/x/notes.md");
+    const calls = warn.mock.calls.map((c) => String(c[0]));
+    warn.mockRestore();
+    expect(text(htmlOf(out[0])!.split("</figure>")[0]! + "</figure>")).toBe("a(); // (1)");
+    expect(htmlOf(out[0])).not.toContain("runbun-note");
+    expect(out[1]).toEqual({ type: "list", ordered: true, spread: false, children: [] });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toContain("/x/notes.md");
+  });
+
+  test("radio names are the same build after build and differ between a page's groups, so tabs don't uncheck each other", () => {
+    const page = () => [
+      code("ts", "group=a", "1"),
+      code("ts", "group=a", "2"),
+      { type: "paragraph", children: [{ type: "text", value: "-" }] } as RootContent,
+      code("ts", "group=b", "3"),
+      code("ts", "group=b", "4"),
+      code("ts", "playground group=p", "5"),
+      code("ts", "playground group=p", "6"),
+    ];
+    const names = (path: string) => run(page(), all, path).flatMap((n) => [...new Set(radios(htmlOf(n)))]);
+    const first = names("/docs/a.md");
+    expect(first).toHaveLength(3);
+    expect(new Set(first).size).toBe(3);
+    expect(names("/docs/a.md")).toEqual(first);
+    expect(names("/docs/b.md")).not.toEqual(first);
   });
 });
 
