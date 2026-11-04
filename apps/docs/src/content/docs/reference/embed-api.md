@@ -196,6 +196,20 @@ The poster (shown until the embed is ready) is styled by CSS custom properties s
 
 If the embed isn't ready after 60 seconds, the spinner turns back into the button, as "Try again".
 
+Beyond these, style the button as `::part(play)` (also as "Try again") and the spinner as `::part(spinner)`, e.g. `bun-playground::part(play):hover { background: linear-gradient(90deg, #f472b6, #a78bfa); }`.
+
+To animate the swap from the poster to the running embed, style `::part(poster)`, `::part(frame)` (the iframe) and `::part(box)` (the box around both; its height is set inline, so it can transition). Once the embed is ready, the element is in the `live` state (`bun-playground:state(live)`): the poster, which sits above the frame, stops taking clicks, and the element hides it when its transitions have finished (at once without any). A blur and scale crossfade:
+
+```css
+bun-playground::part(poster),
+bun-playground::part(frame) { transition: opacity .45s, filter .45s, scale .45s; }
+bun-playground:state(live)::part(poster) { opacity: 0; filter: blur(8px); scale: 1.03; }
+bun-playground:not(:state(live))::part(frame) { opacity: 0; filter: blur(8px); scale: .98; }
+bun-playground::part(box) { transition: height .45s; }
+```
+
+Wrap it in `@media (prefers-reduced-motion: no-preference)` to keep the swap instant for readers who ask for less motion.
+
 ## Versioning
 
 This is version 1. Changes only add: new methods, events, options, features and fields. Nothing is renamed or removed within a version. Ignore message keys and events you don't know; the embed does the same. So an `@runbun/embed` element from npm keeps working as runbun.dev updates.
