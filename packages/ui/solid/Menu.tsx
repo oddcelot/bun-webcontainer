@@ -35,7 +35,10 @@ type ItemProps = {
   label: JSX.Element;
   disabled?: boolean;
   onSelect?: () => void;
-  /** Keep the menu open after selecting (toggles). */
+  /**
+   * Close the menu after selecting; false keeps it open (toggles). Passed as `true` when unset: Solid 2's `merge`
+   * takes an `undefined` over Kobalte's default, which would keep every menu open.
+   */
   closeOnSelect?: boolean;
   /** Trailing content, after the label. */
   children?: JSX.Element;
@@ -44,7 +47,7 @@ type ItemProps = {
 /** An action row: optional icon, the label, then any trailing content. */
 export function MenuItem(props: ItemProps) {
   return (
-    <DropdownMenu.Item class="select-option" disabled={props.disabled} closeOnSelect={props.closeOnSelect} onSelect={props.onSelect}>
+    <DropdownMenu.Item class="select-option" disabled={props.disabled} closeOnSelect={props.closeOnSelect ?? true} onSelect={props.onSelect}>
       <Show when={typeof props.icon === "string" ? (props.icon as string) : undefined} fallback={props.icon}>
         {(icon) => <i class={icon()} aria-hidden="true" />}
       </Show>
