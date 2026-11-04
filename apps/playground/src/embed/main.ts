@@ -12,6 +12,7 @@ import { BUN_VERSION } from "../worker/bunVersion";
 import { isFeature, isMode, lockedFeatures, optionsFromUrl, resolveFeatures } from "./config";
 import { mountEmbed } from "./mount";
 import { parseRequests } from "./requests";
+import { responseReserve } from "../preview";
 import { isMessage, TAG, VERSION, type Event, type Feature, type Mode, type Options, type Request } from "@runbun/embed/protocol";
 
 // runbun.dev/embed: the playground inside another page (an iframe, or <bun-playground>, which builds one). The URL's
@@ -360,30 +361,38 @@ function measuredHeight(stacked: boolean, below: boolean): number | undefined {
 }
 /**
  * The stacked preview row's height with `height="auto"`: as tall as it needs, at least STACK_PREVIEW. That's its
- * chrome (tabs, request bar, a body's editor: the panel less its views) and a response card's content; a page in the
- * frame has no height of its own, so it keeps STACK_PREVIEW. Set as `--stack-preview` for the fitted rows (embed.css);
- * past the 640px the element allows, the frame isn't fitted and the rows share it as before, the response scrolling.
+ * chrome (tabs, request bar, a body's panel at its fitted height: the panel less its views, with the body's dragged
+ * height swapped for its fitted one) and the response: a card's content, and with a body at least the card's reserve
+ * (preview.ts responseReserve), so a tab that hasn't sent yet keeps the room its answer will take. A page in the frame
+ * with no body has no height of its own, so it keeps STACK_PREVIEW. Set as `--stack-preview` for the fitted rows
+ * (embed.css); past the 640px the element allows, the frame isn't fitted and the rows share it, the response scrolling.
+ *
+ * Measured again on another tab, view or response (wantedHeight reads them), a card's content resizing, and the body's
+ * lines changing (`bodyfit`, ui/Preview.tsx). Not on a drag of the body's handle: that only moves room between body and
+ * response, and the body's box isn't watched.
  */
 let previewWatched: Element[] = [];
 const previewObserver = new ResizeObserver(() => queueResize());
+addEventListener("bodyfit", () => queueResize());
 function previewHeight(): number {
   const panel = document.getElementById("preview-panel");
   const views = document.getElementById("preview-views");
   const body = document.getElementById("req-body");
+  const shown = !!body && !document.getElementById("req-body-panel")?.hidden && !!body.dataset.fit;
   const response = views?.querySelector<HTMLElement>(".preview-response:not([hidden])");
   const kids = response ? [...response.children] : [];
-  // A body resized or a card's content changed: measure again (once per frame).
-  const watch = [body, ...kids].filter((e): e is HTMLElement => !!e);
-  if (watch.length !== previewWatched.length || watch.some((e, i) => e !== previewWatched[i])) {
+  // A card's content changed: measure again (once per frame).
+  if (kids.length !== previewWatched.length || kids.some((e, i) => e !== previewWatched[i])) {
     previewObserver.disconnect();
-    for (const e of (previewWatched = watch)) previewObserver.observe(e);
+    for (const e of (previewWatched = kids)) previewObserver.observe(e);
   }
   let h = STACK_PREVIEW;
-  if (panel && views && response && kids.length) {
-    const box = getComputedStyle(response);
-    const content = kids[kids.length - 1]!.getBoundingClientRect().bottom - kids[0]!.getBoundingClientRect().top;
-    const chrome = panel.getBoundingClientRect().height - views.getBoundingClientRect().height;
-    h = Math.max(STACK_PREVIEW, Math.ceil(chrome + content + parseFloat(box.paddingTop) + parseFloat(box.paddingBottom)));
+  if (panel && views && (shown || (response && kids.length))) {
+    const box = response && getComputedStyle(response);
+    const content = kids.length && box ? kids[kids.length - 1]!.getBoundingClientRect().bottom - kids[0]!.getBoundingClientRect().top + parseFloat(box.paddingTop) + parseFloat(box.paddingBottom) : 0;
+    const dragged = shown ? body!.getBoundingClientRect().height - Number(body!.dataset.fit) : 0;
+    const chrome = panel.getBoundingClientRect().height - views.getBoundingClientRect().height - dragged;
+    h = Math.max(STACK_PREVIEW, Math.ceil(chrome + (shown ? Math.max(content, responseReserve()) : content)));
   }
   document.getElementById("embed")?.style.setProperty("--stack-preview", `${h}px`);
   return h;

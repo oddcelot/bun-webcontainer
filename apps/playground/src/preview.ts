@@ -14,6 +14,16 @@ const SW_HEADERS = new Set(["cross-origin-embedder-policy", "cross-origin-resour
 
 export const normalize = (p: string) => (p.startsWith("/") ? p : `/${p}`);
 
+/**
+ * The least room a response keeps under a request body, in px: the card's `--response-reserve` (style.css: its
+ * padding, status line, headers line and three lines of body, from the card's own metrics). Any card has it, shown or
+ * not; 0 before there is one.
+ */
+export function responseReserve(): number {
+  const card = document.querySelector(".preview-response");
+  return card ? parseFloat(getComputedStyle(card).getPropertyValue("--response-reserve")) || 0 : 0;
+}
+
 /** A response as the preview shows it: status pill and request line, headers, then the body (red when it failed). */
 /** A response that isn't a page; `type` is its content-type. */
 export type Card = { ok: boolean; line: string; status: string; head: string; type: string; text: string };

@@ -4,7 +4,7 @@ import { TabItem, TabList } from "@runbun/ui/solid/Tabs";
 import { isMac, matches } from "../keymap";
 import { createPierre, createViewer } from "../editors/pierre";
 import type { CodeEditor } from "../editors/types";
-import { PREFIX, type Card } from "../preview";
+import { PREFIX, responseReserve, type Card } from "../preview";
 import { AppContext } from "./context";
 import type { PreviewTab } from "./previews";
 import { Tip } from "@runbun/ui/solid/Tip";
@@ -198,7 +198,13 @@ export function Preview() {
  * (at least one, at most 7em, then it scrolls), measured from the editor's lines as the embed measures the code
  * (embed/main.ts), so a one-line body leaves the response its room. Under it, a handle like the panes' (the
  * `.resize-handle` look, the embed's splitter's keys: arrows by 16px, Home, End; a double click fits again): a height
- * dragged there is kept for that tab and no longer fitted, between one line and what leaves the response a few lines.
+ * dragged there is kept for that tab and no longer fitted.
+ *
+ * The body only ever takes room from the response, never from the page: it stays between one line and what leaves
+ * the response its reserve (preview.ts responseReserve), in the preview as it is, so a drag moves the line between
+ * them and the embed keeps its size. Only a change to the body's lines (typing, another tab's or a preset's body) is
+ * announced (`bodyfit`), for the embed's auto height to fit it (`data-fit`, the fitted height, not a dragged one);
+ * when the preview itself changes size, the body is held within it again.
  */
 function RequestBody(props: { hidden: boolean; empty: boolean; body: string }) {
   const { previews: p } = useContext(AppContext);
@@ -209,7 +215,7 @@ function RequestBody(props: { hidden: boolean; empty: boolean; body: string }) {
   const [dragging, setDragging] = createSignal(false);
   const [height, setHeight] = createSignal(0);
   let lines: Element | null | undefined;
-  /** One line, the fitted height (the lines, up to 7em), and the most a drag may give (the response keeps 72px). */
+  /** One line, and the fitted height: the lines, up to 7em. */
   const metrics = () => {
     const code = el.querySelector(".pierre-host")?.firstElementChild?.shadowRoot?.querySelector<HTMLElement>("pre > code");
     const next = code?.querySelector("[data-content]");
@@ -226,30 +232,40 @@ function RequestBody(props: { hidden: boolean; empty: boolean; body: string }) {
     const cap = parseFloat(getComputedStyle(el).fontSize) * 7;
     const line = Math.ceil(lh + chrome);
     const fitted = Math.ceil(Math.min(cap, count * lh + chrome));
-    const wrap = document.getElementById("preview-wrap")?.getBoundingClientRect();
-    const room = wrap ? wrap.bottom - el.getBoundingClientRect().top - 72 : cap;
-    return { line, fitted, max: Math.max(cap, line, Math.floor(room)) };
+    return { line, fitted };
   };
-  const apply = (h: number) => {
+  /** The tallest the body may be in the preview as it is: itself and the response area, less the response's reserve. */
+  const most = () => {
+    const views = document.getElementById("preview-views");
+    if (!views) return Infinity;
+    return Math.floor(el.getBoundingClientRect().height + views.getBoundingClientRect().height - responseReserve());
+  };
+  /** The body at `target` px, held between one line and `most`; a no-op when that's its height already. */
+  const apply = (target: number, line: number) => {
+    const h = Math.round(Math.max(line, Math.min(target, most())));
+    if (el.style.height === `${h}px`) return h;
     setHeight(h);
     el.style.height = `${h}px`;
+    return h;
   };
-  const fit = () => {
+  /** Its dragged height, else its fitted one; `announce`: its lines changed, so the embed's auto height may too. */
+  const fit = (announce = false) => {
     if (props.hidden) return;
-    const own = dragged.get(untrack(() => p.state.active));
     const m = metrics();
-    if (own !== undefined) apply(own);
-    else if (m) apply(m.fitted);
+    if (!m) return;
+    el.dataset.fit = String(m.fitted);
+    apply(dragged.get(untrack(() => p.state.active)) ?? m.fitted, m.line);
+    if (announce) el.dispatchEvent(new Event("bodyfit", { bubbles: true }));
   };
-  // Lines added or removed (typing, a preset's body), and the editor's first layout: fit again.
-  const linesObserver = new ResizeObserver(() => fit());
-  /** The body at `h` px, within one line and the max, kept for the active tab. */
+  // Lines added or removed (typing, a preset's body), and the editor's first layout: fit again, and say so.
+  const linesObserver = new ResizeObserver(() => fit(true));
+  // The preview resized (the embed's auto height, a pane dragged, a fixed height): hold the body within it again.
+  const wrapObserver = new ResizeObserver(() => fit());
+  /** The body at `h` px (a drag, a key), within its bounds, kept for the active tab. */
   const drag = (h: number) => {
     const m = metrics();
     if (!m) return;
-    const next = Math.round(Math.max(m.line, Math.min(h, m.max)));
-    dragged.set(untrack(() => p.state.active), next);
-    apply(next);
+    dragged.set(untrack(() => p.state.active), apply(h, m.line));
   };
   createEffect(
     () => p.state.active,
@@ -258,19 +274,24 @@ function RequestBody(props: { hidden: boolean; empty: boolean; body: string }) {
       const body = untrack(() => p.state.tabs.find((t) => t.id === id)?.body ?? "");
       editor.open(`request-body-${id}.json`, body, (text) => p.edit(id, "body", text));
       // After the editor has laid the body out.
-      requestAnimationFrame(fit);
+      requestAnimationFrame(() => fit(true));
     },
   );
   // Shown again (a method with a body): fit what it holds now.
   createEffect(
     () => props.hidden,
     (hidden) => {
-      if (!hidden) requestAnimationFrame(fit);
+      if (!hidden) requestAnimationFrame(() => fit(true));
     },
   );
-  onSettled(() => () => {
-    editor?.destroy();
-    linesObserver.disconnect();
+  onSettled(() => {
+    const wrap = document.getElementById("preview-wrap");
+    if (wrap) wrapObserver.observe(wrap);
+    return () => {
+      editor?.destroy();
+      linesObserver.disconnect();
+      wrapObserver.disconnect();
+    };
   });
   // What sendRequest sends it as.
   const type = () => {
@@ -336,6 +357,7 @@ function RequestBody(props: { hidden: boolean; empty: boolean; body: string }) {
           drag(next);
         }}
         onDblClick={() => {
+          // Fitted again, in the room there is: no announcement, so the embed keeps its size.
           dragged.delete(untrack(() => p.state.active));
           fit();
         }}
