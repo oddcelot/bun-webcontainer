@@ -8,6 +8,10 @@ export interface Props {
   mode?: "code" | "preview" | "console" | "full" | "result";
   features?: string;
   file?: string;
+  /** What the preview requests first (default: `/`), e.g. `/user/123`. */
+  path?: string;
+  /** "stack": the preview (or console) under the editor instead of beside it. */
+  layout?: "side" | "stack";
   autorun?: boolean;
   theme?: string;
   readonly?: boolean;
@@ -21,8 +25,10 @@ export interface Props {
   /** A button that opens the embed in a modal: true, or a mode to switch to while open ("full"). */
   expand?: boolean | "code" | "preview" | "console" | "full" | "result";
   files?: Record<string, string>;
+  /** Names in `files` that run but don't open as tabs (`data-hidden`), e.g. a generated package.json. */
+  hidden?: string[];
 }
-const { files = {}, load = "click", ...attrs } = Astro.props;
+const { files = {}, hidden = [], load = "click", ...attrs } = Astro.props;
 const bool = (v: unknown) => (v === undefined ? undefined : v ? "" : undefined);
 ---
 
@@ -33,6 +39,8 @@ const bool = (v: unknown) => (v === undefined ? undefined : v ? "" : undefined);
   mode={attrs.mode}
   features={attrs.features}
   file={attrs.file}
+  path={attrs.path}
+  layout={attrs.layout}
   autorun={attrs.autorun === undefined ? undefined : String(attrs.autorun)}
   theme={attrs.theme}
   readonly={bool(attrs.readonly)}
@@ -44,7 +52,7 @@ const bool = (v: unknown) => (v === undefined ? undefined : v ? "" : undefined);
   title={attrs.title}
   expand={attrs.expand === undefined || attrs.expand === false ? undefined : attrs.expand === true ? "" : attrs.expand}
 >
-  <Fragment set:html={Object.entries(files).map(([path, text]) => fileScript(path, text)).join("\n")} />
+  <Fragment set:html={Object.entries(files).map(([path, text]) => fileScript(path, text, hidden.includes(path))).join("\n")} />
   {/* Without a poster of its own, the element shows the first file's code. */}
   {Astro.slots.has("default") && <div slot="poster"><slot /></div>}
 </bun-playground>

@@ -33,7 +33,7 @@ export default defineConfig({
 
 ## Code blocks
 
-In `.mdx` or `.astro` files, `<Code>` renders a block. On its own it stays static: highlighted HTML and CSS, with no script and no request of its own. Its styles go into the page's own stylesheet, once however many blocks the page has.
+In `.mdx` or `.astro` files, `<Code>` renders a block. On its own it stays static: highlighted HTML and CSS, with no request of its own and one small script, for its Copy button. Its styles go into the page's own stylesheet, once however many blocks the page has.
 
 ```mdx
 import { Code } from "@runbun/astro/components";
@@ -43,7 +43,7 @@ import { Code } from "@runbun/astro/components";
 
 <Code lang="ts" title="greet.ts" code={`export const greet = (name: string) => "Hello, " + name;`} />
 
-`playground` adds the Run button. The block takes every embed option (`mode`, `features`, `files`, `readonly`, `persist`, `expand`, …), and `title` names the file:
+`playground` adds the Run button. The block takes every embed option (`mode`, `features`, `files`, `path`, `layout`, `readonly`, `persist`, `expand`, …), and `title` names the file:
 
 ```mdx
 <Code
@@ -64,6 +64,8 @@ for (const lang of langs) console.log(lang, Bun.version);`}
   code={`const langs = ["ts", "tsx", "js"];
 for (const lang of langs) console.log(lang, Bun.version);`}
 />
+
+Since `title` is the file's name, `label` sets the embed's accessible name, the title of its frame (default "Bun playground"): `<Code playground label="Greeting example" … />`. `layout="stack"` puts the preview under the editor instead of beside it: `<Code playground mode="preview" layout="stack" height="auto" … />`.
 
 `files` adds more files. The block gets a tab per file, and the embed opens with the same tabs:
 
@@ -89,7 +91,7 @@ console.log(greet("Astro"));`}
 console.log(greet("Astro"));`}
 />
 
-To show a file you keep in the repo, import it as a string with Vite's `?raw` suffix and pass it as `code`. The block stays in step with the file, and the file can be linted, formatted and type-checked like any other. Run starts the block's file; when it isn't an index file, the embed gets a `package.json` whose `main` points at it:
+To show a file you keep in the repo, import it as a string with Vite's `?raw` suffix and pass it as `code`. The block stays in step with the file, and the file can be linted, formatted and type-checked like any other. Run starts the block's file; when it isn't an index file, the embed gets a `package.json` whose `main` points at it (it runs but doesn't open as a tab):
 
 ```mdx
 import { Code } from "@runbun/astro/components";
@@ -138,11 +140,24 @@ console.log(greet("Bun"));
 export const greet = (name: string) => "Hello, " + name;
 ```
 
-The meta also takes `mode`, `features`, `load`, `height`, `autorun`, `readonly`, `persist`, `theme`, `file` and `expand` (`expand=false` leaves the modal button out). Fences without `playground` stay as they were.
+The meta also takes `mode`, `features`, `load`, `height`, `autorun`, `readonly`, `persist`, `theme`, `file`, `path`, `layout` (`layout=stack` puts the preview under the editor, e.g. `playground mode=preview layout=stack height=auto`), `expand` (`expand=false` leaves the modal button out) and `label`, the embed's accessible name (`label="Elysia playground"`; `title` is taken by the file name). Fences without `playground` stay as they were.
+
+`deps` pins the packages a fence installs, in a generated `package.json` that doesn't open as a tab: `deps="elysia@rc,@elysia/openapi@rc,zod@^4"` (a name without a version gets `latest`). In a group the first fence's `deps` applies, and a `package.json` fence of the group's own wins over it. A `package.json` you write, as a fence or in `files`, opens like any other file, unless you mark its fence `hidden`: in a group, a `hidden` fence is a file of the embed but stays out of the block and the tabs (it's never the file Run starts or the one opened, and a group shows at least its first fence). A hidden `package.json` is still the group's, so `deps` and the generated `main` give way to it:
+
+````md
+```ts playground group=demo title="index.ts"
+import { Elysia } from "elysia";
+new Elysia().get("/", () => "hi").listen(3000);
+```
+
+```json playground group=demo title="package.json" hidden
+{ "dependencies": { "elysia": "rc" } }
+```
+````
 
 ## Playground
 
-`<Playground>` is the embed on its own: `files` are its sources, and its children are the poster shown until it starts. Without children it shows the first file's code.
+`<Playground>` is the embed on its own: `files` are its sources, and its children are the poster shown until it starts. Without children it shows the first file's code. Here `title` is the embed's accessible name (default "Bun playground"), as on `<bun-playground>`. Its other props are the element's options too, e.g. `layout="stack"` for the preview under the editor.
 
 ```mdx
 import { Playground } from "@runbun/astro/components";
@@ -173,4 +188,15 @@ import { Playground } from "@runbun/astro/components";
 | `themeSelector` | | The CSS selector each theme goes under, for a site with its own theme switch, e.g. ``({ name }) => `:root[data-code-theme='${name}']` ``. Without it the first light theme applies, and the first dark one under `prefers-color-scheme: dark`. |
 | `sync` | | `{ scheme, family }`: the `<html>` attributes that hold the page's scheme (`light` or `dark`) and theme family, for the embeds to follow. Without it embeds follow the OS. |
 
-The blocks' look comes from CSS properties you can set: `--runbun-code-border`, `--runbun-code-radius`, `--runbun-code-font`, `--runbun-code-size`, `--runbun-code-caption-size` and `--runbun-code-line-height`. Blocks carry Starlight's `not-content` class, so they work in Starlight pages as they are.
+The blocks' look comes from CSS properties you can set: `--runbun-code-border`, `--runbun-code-radius`, `--runbun-code-font`, `--runbun-code-size`, `--runbun-code-caption-size` and `--runbun-code-line-height`.
+
+Every block, a fence's too before you press Run, has a Copy button in its top-right corner (`.runbun-copy`, `[data-copied]` for a moment after a copy). It shows on hover and focus, and always on touch screens. Style it with `--runbun-copy-bg`, `--runbun-copy-fg`, `--runbun-copy-border`, `--runbun-copy-radius` and `--runbun-copy-inset`, or the class:
+
+```css
+.runbun-copy {
+  --runbun-copy-bg: var(--sl-color-gray-6);
+  --runbun-copy-radius: 4px;
+}
+```
+
+Blocks carry Starlight's `not-content` class, so they work in Starlight pages as they are.

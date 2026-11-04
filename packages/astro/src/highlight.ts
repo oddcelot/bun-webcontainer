@@ -119,6 +119,11 @@ export function themeCss(options: ThemeOption[], selector?: ThemeSelector): stri
  */
 export const BLOCK_CSS = `
 :where(.runbun-code){margin:0}
+.runbun-code{position:relative}
+.runbun-copy{position:absolute;top:var(--runbun-copy-inset,.3125rem);right:var(--runbun-copy-inset,.3125rem);z-index:1;padding:.125rem .5rem;font-family:var(--runbun-code-font,ui-monospace,monospace);font-size:var(--runbun-code-caption-size,.75rem);line-height:1.2;color:var(--runbun-copy-fg,var(--hls-foreground));background:var(--runbun-copy-bg,var(--hls-background));border:1px solid var(--runbun-copy-border,color-mix(in srgb,currentColor 25%,transparent));border-radius:var(--runbun-copy-radius,6px);cursor:pointer;opacity:0;transition:opacity .15s}
+.runbun-code:hover>.runbun-copy,.runbun-code:focus-within>.runbun-copy,.runbun-copy[data-copied]{opacity:1}
+@media (hover:none){.runbun-copy{opacity:1}}
+@media (prefers-reduced-motion:reduce){.runbun-copy{transition:none}}
 .runbun-code{border:1px solid var(--runbun-code-border,color-mix(in srgb,currentColor 15%,transparent));border-radius:var(--runbun-code-radius,8px);overflow:hidden;background:var(--hls-background);color:var(--hls-foreground)}
 .runbun-code figcaption{padding:.5rem 1rem;border-bottom:1px solid var(--runbun-code-border,color-mix(in srgb,currentColor 15%,transparent));font-family:var(--runbun-code-font,ui-monospace,monospace);font-size:var(--runbun-code-caption-size,.75rem);opacity:.8}
 .runbun-code pre{margin:0;padding:1rem;overflow-x:auto;font-family:var(--runbun-code-font,ui-monospace,monospace);font-size:var(--runbun-code-size,.875rem);line-height:var(--runbun-code-line-height,1.6)}

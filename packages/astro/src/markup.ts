@@ -9,11 +9,33 @@ const slash = (url: string) => (url.endsWith("/") ? url : url + "/");
 /** The stylesheet with the blocks' look and theme colors (a route of the integration's). */
 export const cssLink = (base: string) => `<link rel="stylesheet" href="${esc(slash(base) + CSS_PATH)}">`;
 
-/** A highlighted block; `not-content` keeps Starlight's prose styles off it. */
+/**
+ * A highlighted block; `not-content` keeps Starlight's prose styles off it. Its `<pre>` says the language as Expressive
+ * Code's does (`data-language`), for tools that turn the page back into Markdown. The Copy button works with
+ * copyScript() on the page.
+ */
 export function codeBlock(code: string, lang: string, title?: string) {
   const caption = title ? `<figcaption>${esc(title)}</figcaption>` : "";
-  return `<figure class="runbun-code not-content">${caption}${highlight(code.replace(/\n$/, ""), lang)}</figure>`;
+  const pre = highlight(code.replace(/\n$/, ""), lang).replace(/^<pre /, `<pre data-language="${esc(lang)}" `);
+  const copy = `<button type="button" class="runbun-copy" data-runbun-copy aria-label="Copy code" aria-live="polite">Copy</button>`;
+  return `<figure class="runbun-code not-content">${caption}${pre}${copy}</figure>`;
 }
+
+/**
+ * The Copy buttons' behaviour: one click listener on the document, for every block (later ones included, after a
+ * client-side navigation), registered once however often the script runs. It copies the code element's text, which is
+ * the block's source exactly (the highlighter only wraps it in spans), and says "Copied" for a moment; where the
+ * clipboard isn't available it selects the code instead. A click on Copy in a poster doesn't start the embed: only its
+ * Run button does.
+ */
+export const copyScript = () =>
+  `<script type="module" data-runbun-copy-script>if(!window.__runbunCopy){window.__runbunCopy=1;` +
+  `const set=(b,t,l)=>{b.textContent=t;b.setAttribute("aria-label",l)};` +
+  `document.addEventListener("click",async(e)=>{const b=e.target instanceof Element&&e.target.closest("[data-runbun-copy]");` +
+  `const c=b&&b.closest(".runbun-code")?.querySelector("pre code");if(!c)return;` +
+  `try{await navigator.clipboard.writeText(c.textContent)}catch{getSelection()?.selectAllChildren(c);return}` +
+  `set(b,"Copied","Copied");b.toggleAttribute("data-copied",true);clearTimeout(b.runbunCopy);` +
+  `b.runbunCopy=setTimeout(()=>{set(b,"Copy","Copy code");b.removeAttribute("data-copied")},1500)})}</script>`;
 
 // Tab groups' radio names must be unique per page. The remark plugin and the components load separate copies of this
 // module (Astro bundles them apart), so the counter lives on globalThis, shared by every copy.
@@ -41,10 +63,13 @@ export const langOf = (name: string) => name.slice(name.lastIndexOf(".") + 1) ||
 /** `features` with the embed's tab bar on, unless the author's list already says either way. */
 export const withTabs = (features?: string): string => (/(^|,)\s*-?tabs\s*(,|$)/.test(features ?? "") ? (features as string) : [features, "tabs"].filter(Boolean).join(","));
 
-/** A file as an inline source of a <bun-playground>: `<\/script` and `<\!--` are how it is written inside a script. */
-export function fileScript(path: string, text: string) {
+/**
+ * A file as an inline source of a <bun-playground>: `<\/script` and `<\!--` are how it is written inside a script.
+ * `hidden` (a file the package generated) keeps it out of the embed's tabs.
+ */
+export function fileScript(path: string, text: string, hidden = false) {
   const body = text.replace(/<\/(script)/gi, "<\\/$1").replace(/<!--/g, "<\\!--");
-  return `<script type="text/plain" data-file="${esc(path)}">\n${body}\n</script>`;
+  return `<script type="text/plain" data-file="${esc(path)}"${hidden ? " data-hidden" : ""}>\n${body}\n</script>`;
 }
 
 /**
