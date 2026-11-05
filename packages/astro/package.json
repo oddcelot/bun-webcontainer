@@ -1,6 +1,6 @@
 {
   "name": "@runbun/astro",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Code blocks highlighted with @pierre/highlights that turn into a runnable Bun playground (runbun.dev) on click.",
   "type": "module",
   "license": "MIT",

@@ -94,7 +94,7 @@
     },
     "packages/astro": {
       "name": "@runbun/astro",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "dependencies": {
         "@pierre/highlights": "0.3.0",
       },
@@ -128,7 +128,7 @@
     },
     "packages/embed": {
       "name": "@runbun/embed",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "devDependencies": {
         "tsrs": "0.20.1-ts7.1.0-beta",
       },
