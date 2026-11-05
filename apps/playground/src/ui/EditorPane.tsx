@@ -117,8 +117,7 @@ export function EditorPane() {
         check(null, null);
         return;
       }
-      const data = vfs.read(path);
-      const text = pending.get(path) ?? (typeof data === "string" ? data : null);
+      const text = pending.get(path) ?? vfs.textOf(path) ?? null;
       editor.open(path, text, (next) => {
         if (current !== path) return;
         pending.set(path, next);
@@ -148,7 +147,7 @@ export function EditorPane() {
       // A tsconfig.json/jsconfig.json (or a config one extends) changes how the open file transpiles and type-checks.
       if (current && editor && path !== current && CONFIG.test(path)) return check?.(current, editor.getText());
       if (created || removed || path !== current || pending.has(path)) return;
-      const d = vfs.read(path);
+      const d = vfs.textOf(path);
       if (typeof d === "string") {
         editor?.update(d);
         check?.(path, d);

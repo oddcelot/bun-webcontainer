@@ -50,15 +50,10 @@ export async function bunInstall(vfs: VFS, semver: Semver, log: Log): Promise<nu
       const meta = doc.versions[version];
       if (optional && platformRestricted(meta)) return void log("log", `- ${name}@${version} (optional, unsupported platform)`);
       const tar = await fetchTarball(meta.dist.tarball);
-      const dec = new TextDecoder("utf-8", { fatal: true });
+      // Kept as bytes, text included (see INSTALLED_AS_BYTES in lockfile.ts).
       for (const { name: entry, data } of untar(await gunzip(tar))) {
         const rel = entry.split("/").slice(1).join("/");
-        if (!rel) continue;
-        let content: string | Uint8Array = data;
-        try {
-          content = dec.decode(data);
-        } catch {}
-        vfs.write(`node_modules/${name}/${rel}`, content);
+        if (rel) vfs.write(`node_modules/${name}/${rel}`, data);
       }
       installed++;
       log("log", `+ ${name}@${version}`);

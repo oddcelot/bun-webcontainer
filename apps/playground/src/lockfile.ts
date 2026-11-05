@@ -78,6 +78,11 @@ export function* untar(buf: Uint8Array): Generator<{ name: string; data: Uint8Ar
   }
 }
 
+/**
+ * INSTALLED_AS_BYTES: installed files go into the VFS as the tarball's bytes, not decoded to strings. V8 stores a
+ * string with any character above U+00FF at 2 bytes per character, which made 249 MB of Next.js + MUI cost 390 MB in
+ * the page and again in the run worker. Readers decode on demand (`readText`, `textOf`); bun_sys reads bytes anyway.
+ */
 export async function gunzip(bytes: Uint8Array): Promise<Uint8Array> {
   const stream = new Blob([bytes as BlobPart]).stream().pipeThrough(new DecompressionStream("gzip"));
   return new Uint8Array(await new Response(stream).arrayBuffer());
@@ -108,7 +113,6 @@ export async function installFromBunLock(vfs: VFS, lockText: string, log: Log): 
   for (const w of Object.values(lock.workspaces ?? {})) addOpt((w as { optionalDependencies?: Record<string, string> }).optionalDependencies);
   for (const e of Object.values(lock.packages)) addOpt((e[2] as { optionalDependencies?: Record<string, string> } | undefined)?.optionalDependencies);
 
-  const dec = new TextDecoder("utf-8", { fatal: true });
   let installed = 0;
   await Promise.all(
     Object.entries(lock.packages).map(async ([key, entry]) => {
@@ -127,14 +131,10 @@ export async function installFromBunLock(vfs: VFS, lockText: string, log: Log): 
         const base = (registry || NPM).replace(/\/$/, "");
         const url = registry.endsWith(".tgz") ? registry : `${base}/${id.name}/-/${id.name.split("/").pop()}-${id.version}.tgz`;
         const tgz = await fetchTarball(url, (bytes) => checkIntegrity(bytes, integrity));
+        // Kept as bytes, text included (see INSTALLED_AS_BYTES).
         for (const { name, data } of untar(await gunzip(tgz))) {
           const rel = name.split("/").slice(1).join("/");
-          if (!rel) continue;
-          let content: string | Uint8Array = data;
-          try {
-            content = dec.decode(data);
-          } catch {}
-          vfs.write(`${dest}/${rel}`, content);
+          if (rel) vfs.write(`${dest}/${rel}`, data);
         }
         installed++;
         log("log", `+ ${key}@${id.version}`);

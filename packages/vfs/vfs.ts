@@ -15,6 +15,7 @@ export const dirname = (p: string) => p.split("/").slice(0, -1).join("/");
 
 const dec = new TextDecoder();
 const enc = new TextEncoder();
+const strict = new TextDecoder("utf-8", { fatal: true });
 
 export class VFS {
   readonly files = new Map<string, FileData>();
@@ -48,6 +49,20 @@ export class VFS {
   readText(path: string): string | undefined {
     const d = this.read(path);
     return d === undefined ? undefined : typeof d === "string" ? d : dec.decode(d);
+  }
+
+  /**
+   * The file as text where it is text: a string, or bytes that are valid UTF-8 (installed packages are kept as
+   * bytes); null for a binary file, undefined for a missing one.
+   */
+  textOf(path: string): string | null | undefined {
+    const d = this.read(path);
+    if (d === undefined || typeof d === "string") return d;
+    try {
+      return strict.decode(d);
+    } catch {
+      return null;
+    }
   }
 
   readBytes(path: string): Uint8Array | undefined {
