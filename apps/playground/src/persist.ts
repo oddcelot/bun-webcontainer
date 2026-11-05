@@ -1,5 +1,5 @@
 import { bucket } from "./storage";
-import type { VFS } from "@runbun/vfs";
+import type { FileData, VFS } from "@runbun/vfs";
 
 type Log = (level: string, text: string) => void;
 type Dir = FileSystemDirectoryHandle;
@@ -82,22 +82,27 @@ async function walk(dir: Dir, prefix: string, out: [string, File][]) {
   }
 }
 
-/** Every file below `dir` but node_modules and .git, as text where it decodes as UTF-8, else bytes. */
-export async function readDir(dir: Dir): Promise<[string, string | Uint8Array][]> {
-  const found: [string, File][] = [];
-  await walk(dir, "", found);
-  const dec = new TextDecoder("utf-8", { fatal: true });
-  return Promise.all(
-    found.map(async ([path, file]): Promise<[string, string | Uint8Array]> => {
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      try {
-        return [path, dec.decode(bytes)];
-      } catch {
-        return [path, bytes];
-      }
-    }),
-  );
+const utf8 = new TextDecoder("utf-8", { fatal: true });
+/** A file's contents as text where it decodes as UTF-8, else bytes. */
+async function contents(file: File): Promise<FileData> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  try {
+    return utf8.decode(bytes);
+  } catch {
+    return bytes;
+  }
 }
+
+/** Every file below `dir` but node_modules and .git, as text where it decodes as UTF-8, else bytes. */
+export async function readDir(dir: Dir, prefix = ""): Promise<[string, FileData][]> {
+  const found: [string, File][] = [];
+  await walk(dir, prefix, found);
+  return Promise.all(found.map(async ([path, file]): Promise<[string, FileData]> => [path, await contents(file)]));
+}
+
+const same = (a: FileData | null | undefined, b: FileData | null | undefined) =>
+  a === b ||
+  (a instanceof Uint8Array && b instanceof Uint8Array && a.length === b.length && a.every((x, i) => x === b[i]));
 
 /** Loads the saved files of a project into the VFS; returns how many (0 when nothing is saved or OPFS fails). */
 export async function restore(id: string, vfs: VFS, log: Log): Promise<number> {
@@ -169,16 +174,29 @@ type MirrorOptions = {
   /** Log prefix. */
   tag: string;
   onFirstFlush?: () => void;
+  /** Also bring changes made to `dir` from outside (another editor) into the VFS, where FileSystemObserver exists. */
+  watch?: boolean;
 };
+
+/** FileSystemObserver (Chromium 129+), not in TypeScript's DOM types yet. */
+type ChangeRecord = {
+  relativePathComponents: string[];
+  relativePathMovedFrom?: string[] | null;
+  type: "appeared" | "disappeared" | "modified" | "moved" | "unknown" | "errored";
+};
+type Observer = { observe(dir: Dir, options: { recursive: boolean }): Promise<void>; disconnect(): void };
+type ObserverClass = new (callback: (records: ChangeRecord[]) => void) => Observer;
 
 /**
  * Writes VFS changes into `dir` (OPFS or a folder on disk), write-behind: changes are collected and flushed after a
  * short pause, and on pagehide. node_modules and .git are left alone. Returns a function that stops writing and
  * settles once a flush in progress is done.
  */
-export function mirror(dir: Dir, vfs: VFS, log: Log, { all, stash: stashAt, tag, onFirstFlush }: MirrorOptions): () => Promise<void> {
+export function mirror(dir: Dir, vfs: VFS, log: Log, { all, stash: stashAt, tag, onFirstFlush, watch }: MirrorOptions): () => Promise<void> {
   let stopped = false;
   const dirty = new Set<string>();
+  /** What `dir` is known to hold per path (null: nothing), from our writes and from outside changes read back. */
+  const onDisk = new Map<string, FileData | null>();
   /** Taken out of `dirty` by the flush in progress, not yet written. */
   const writing = new Set<string>();
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -195,6 +213,7 @@ export function mirror(dir: Dir, vfs: VFS, log: Log, { all, stash: stashAt, tag,
       try {
         for (const p of parts) dirs.push(await dirs[dirs.length - 1].getDirectoryHandle(p));
         await dirs[dirs.length - 1].removeEntry(name);
+        onDisk.set(path, null);
       } catch (e) {
         if (e instanceof DOMException && e.name === "NotFoundError") return;
         throw e;
@@ -218,6 +237,7 @@ export function mirror(dir: Dir, vfs: VFS, log: Log, { all, stash: stashAt, tag,
     } finally {
       await w.close();
     }
+    onDisk.set(path, data);
   };
 
   // Flushes run one after another, never overlapping.
@@ -273,6 +293,9 @@ export function mirror(dir: Dir, vfs: VFS, log: Log, { all, stash: stashAt, tag,
 
   const unsub = vfs.onChange(({ path }) => {
     if (stopped || SKIP.test(path)) return;
+    // Already what the folder holds: an outside change just read in, or an edit undone.
+    const known = onDisk.get(path);
+    if (known !== undefined && same(known, vfs.files.get(path) ?? null)) return;
     dirty.add(path);
     schedule();
   });
@@ -299,8 +322,85 @@ export function mirror(dir: Dir, vfs: VFS, log: Log, { all, stash: stashAt, tag,
     for (const p of vfs.files.keys()) if (!SKIP.test(p)) dirty.add(p);
     schedule();
   }
+  const unwatch = watch ? observe() : undefined;
+
+  /**
+   * Outside changes to `dir`, into the VFS. A path with a local change not yet written is left alone (the local
+   * change wins and overwrites it); one that holds what we wrote, or what the VFS has, is no change.
+   */
+  function observe(): (() => void) | undefined {
+    const FSO = (globalThis as { FileSystemObserver?: ObserverClass }).FileSystemObserver;
+    if (!FSO) return;
+    /** Chrome's temporary files for a write in progress (`createWritable`, ours included). */
+    const TEMP = /\.crswap$/;
+    let queue = Promise.resolve();
+    const local = (path: string) => dirty.has(path) || writing.has(path);
+    const take = (path: string, data: FileData | null) => {
+      if (SKIP.test(path) || TEMP.test(path) || local(path)) return;
+      const known = onDisk.get(path);
+      if (same(data, vfs.files.get(path) ?? null) || (known !== undefined && same(data, known))) return;
+      onDisk.set(path, data);
+      if (data === null) vfs.remove(path);
+      else vfs.write(path, data);
+    };
+    /** Everything at `path` (a file, a folder, or nothing) as it is on disk now. */
+    const sync = async (parts: string[]) => {
+      const path = parts.join("/");
+      if (SKIP.test(path) || TEMP.test(path)) return;
+      let handle: FileSystemHandle | null = dir;
+      try {
+        for (const [i, p] of parts.entries()) {
+          const d = handle as Dir;
+          handle = i < parts.length - 1 ? await d.getDirectoryHandle(p) : await d.getFileHandle(p).catch(() => d.getDirectoryHandle(p));
+        }
+      } catch (e) {
+        if (!(e instanceof DOMException && (e.name === "NotFoundError" || e.name === "TypeMismatchError"))) throw e;
+        handle = null;
+      }
+      if (handle?.kind === "file") return take(path, await contents(await (handle as FileSystemFileHandle).getFile()));
+      // A folder (or nothing): bring in what it holds, drop the VFS files below it that are gone.
+      const found = handle ? await readDir(handle as Dir, path ? path + "/" : "") : [];
+      const seen = new Set(found.map(([p]) => p));
+      for (const [p, data] of found) take(p, data);
+      const below = path ? path + "/" : "";
+      for (const p of [...vfs.files.keys()]) if ((p === path || p.startsWith(below)) && !seen.has(p)) take(p, null);
+    };
+    let failed = false;
+    const fail = (e: unknown) => {
+      if (failed) return;
+      failed = true;
+      log("warn", `${tag} can't pick up changes made outside the playground: ${e}`);
+    };
+    // A save is often several records (created empty, then written; a temporary file renamed over the file), so the
+    // paths are collected for a moment and each is then read as it ends up.
+    const changed = new Map<string, string[]>();
+    let settle: ReturnType<typeof setTimeout> | undefined;
+    const o = new FSO((records) => {
+      for (const r of records) {
+        if (r.type === "errored") return fail("the folder can't be watched any more");
+        // "unknown": changes were missed, so look at everything.
+        const paths = r.type === "unknown" ? [[]] : [r.relativePathComponents, ...(r.type === "moved" && r.relativePathMovedFrom ? [r.relativePathMovedFrom] : [])];
+        for (const parts of paths) changed.set(parts.join("/"), parts);
+      }
+      clearTimeout(settle);
+      settle = setTimeout(() => {
+        const batch = changed.has("") ? [[]] : [...changed.values()];
+        changed.clear();
+        queue = queue.then(async () => {
+          for (const parts of batch) if (!stopped) await sync(parts).catch(fail);
+        });
+      }, 100);
+    });
+    o.observe(dir, { recursive: true }).catch((e) => log("warn", `${tag} can't watch the folder for outside changes: ${e}`));
+    return () => {
+      o.disconnect();
+      clearTimeout(settle);
+    };
+  }
+
   return () => {
     stopped = true;
+    unwatch?.();
     unsub();
     clearTimeout(timer);
     document.removeEventListener("visibilitychange", onHide);

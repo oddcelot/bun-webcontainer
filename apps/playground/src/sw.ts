@@ -44,7 +44,86 @@ const PREVIEW = `${BASE}__preview`;
 const FRAMED = new RegExp(`^${BASE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(embed|configure)(\\.html)?$`);
 
 self.addEventListener("install", () => self.skipWaiting());
-self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
+self.addEventListener("activate", (e) => e.waitUntil(Promise.all([self.clients.claim(), pruneShell()])));
+
+/**
+ * The app's own files, cached so a repeat visit downloads nothing it has (the wasm is ~40 MB) and the playground opens
+ * offline. A build puts the manifest in front of this script (vite.config.ts serviceWorker): every file it ships, path
+ * (below BASE) → content hash. Entries are keyed by that hash, so a deploy refetches only the files that changed.
+ * Files are cached as they're used; pages (`/`, `/embed`) come from the network first, the cache when offline. Dev
+ * has no manifest and goes to the network.
+ */
+declare const __SHELL__: Record<string, string> | undefined;
+const SHELL = typeof __SHELL__ === "object" ? __SHELL__ : undefined;
+const SHELL_CACHE = "app-shell";
+const shellKey = (path: string, hash: string) => new URL(`${BASE}${path}?v=${hash}`, self.location.href).href;
+
+/** The manifest path a request is for: pages by their pretty URLs (`/`, `/embed`) and with any query. */
+function shellPath(url: URL, page = false): string | undefined {
+  if (!SHELL || !url.pathname.startsWith(BASE) || (url.search && !page)) return;
+  const rel = url.pathname.slice(BASE.length);
+  for (const p of rel === "" ? ["index.html"] : [rel, `${rel}.html`]) if (p in SHELL) return p;
+}
+
+async function sha256(body: ArrayBuffer): Promise<string> {
+  const d = new Uint8Array(await crypto.subtle.digest("SHA-256", body));
+  return [...d.slice(0, 8)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Stores `res` as `path` if it holds what the manifest says (a deploy in flight can serve another build's file). */
+async function keep(path: string, res: Response): Promise<void> {
+  if (!res.ok || res.type !== "basic" || res.status !== 200) return;
+  const hash = SHELL![path];
+  if ((await sha256(await res.clone().arrayBuffer())) !== hash) return;
+  await (await caches.open(SHELL_CACHE)).put(shellKey(path, hash), res);
+}
+
+async function fromShell(e: FetchEvent, path: string): Promise<Response> {
+  const key = shellKey(path, SHELL![path]);
+  if (e.request.mode === "navigate") {
+    try {
+      const res = await fetch(e.request);
+      e.waitUntil(keep(path, res.clone()).catch(() => {}));
+      return res;
+    } catch (err) {
+      const hit = await caches.match(key, { cacheName: SHELL_CACHE });
+      if (hit) return hit;
+      throw err;
+    }
+  }
+  const hit = await caches.match(key, { cacheName: SHELL_CACHE });
+  if (hit) return hit;
+  const res = await fetch(e.request);
+  e.waitUntil(keep(path, res.clone()).catch(() => {}));
+  return res;
+}
+
+/** Drops the entries the current manifest doesn't list (files changed or gone in a deploy). */
+async function pruneShell(): Promise<void> {
+  if (!SHELL) return void (await caches.delete(SHELL_CACHE));
+  const cache = await caches.open(SHELL_CACHE);
+  const want = new Set(Object.entries(SHELL).map(([p, h]) => shellKey(p, h)));
+  await Promise.all((await cache.keys()).filter((r) => !want.has(r.url)).map((r) => cache.delete(r)));
+}
+
+/**
+ * What a page loaded before this worker controlled it (a first visit), `urls` (its own first): fetched again, which
+ * the browser's HTTP cache answers (at most a revalidation), and kept. Only files the page used, so nothing it didn't
+ * need is downloaded.
+ */
+async function adoptShell(urls: string[]): Promise<void> {
+  if (!SHELL) return;
+  const cache = await caches.open(SHELL_CACHE);
+  const have = new Set((await cache.keys()).map((r) => r.url));
+  for (const [i, u] of urls.entries()) {
+    const url = new URL(u, self.location.href);
+    if (url.origin !== self.location.origin) continue;
+    const path = shellPath(url, i === 0);
+    if (!path || have.has(shellKey(path, SHELL[path]))) continue;
+    have.add(shellKey(path, SHELL[path]));
+    await keep(path, await fetch(url)).catch(() => {});
+  }
+}
 
 // Cross-origin isolation: every response we synthesize needs COEP (documents/workers) and CORP (subresources).
 function isolated(init: ResponseInit): ResponseInit {
@@ -237,6 +316,11 @@ function withPreviewScripts(html: string, base: string): string {
   return doctype ? doctype[0] + script + html.slice(doctype[0].length) : script + html;
 }
 
+// A page that has finished starting (boot.ts): keep what it loaded.
+self.addEventListener("message", (e) => {
+  if (e.data?.type === "adopt-shell" && Array.isArray(e.data.urls)) e.waitUntil(adoptShell(e.data.urls));
+});
+
 // A page asks which client it is (boot.ts), to put in its module URLs.
 self.addEventListener("message", (e) => {
   if (e.data?.type === "whoami") e.ports[0]?.postMessage((e.source as Client | null)?.id);
@@ -261,6 +345,10 @@ self.addEventListener("fetch", (e) => {
     e.respondWith(leavePreview(e.request, url));
   else if (url.pathname === PREVIEW || url.pathname.startsWith(`${PREVIEW}/`)) e.respondWith(servePreview(e.request, url));
   else if (e.clientId) e.respondWith(fromPreviewOrNetwork(e));
+  else if (e.request.mode === "navigate" && e.request.method === "GET") {
+    const path = shellPath(url, true);
+    if (path) e.respondWith(fromShell(e, path));
+  }
 });
 
 /** A preview frame navigating outside `/__preview` (a link to `/entries/2`): its own server, found from where it came from. */
@@ -284,5 +372,6 @@ async function fromPreviewOrNetwork(e: FetchEvent): Promise<Response> {
     }
     return servePreview(e.request, url, url.pathname + url.search, ownerId);
   }
-  return fetch(e.request);
+  const path = e.request.method === "GET" && !e.request.headers.has("range") ? shellPath(new URL(e.request.url)) : undefined;
+  return path ? fromShell(e, path) : fetch(e.request);
 }

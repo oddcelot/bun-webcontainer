@@ -1,4 +1,5 @@
 import type { VFS } from "@runbun/vfs";
+import { fetchTarball } from "./pkgCache";
 
 type Log = (level: "log" | "error", text: string) => void;
 
@@ -77,7 +78,7 @@ export function* untar(buf: Uint8Array): Generator<{ name: string; data: Uint8Ar
   }
 }
 
-async function gunzip(bytes: Uint8Array): Promise<Uint8Array> {
+export async function gunzip(bytes: Uint8Array): Promise<Uint8Array> {
   const stream = new Blob([bytes as BlobPart]).stream().pipeThrough(new DecompressionStream("gzip"));
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
@@ -125,10 +126,7 @@ export async function installFromBunLock(vfs: VFS, lockText: string, log: Log): 
       try {
         const base = (registry || NPM).replace(/\/$/, "");
         const url = registry.endsWith(".tgz") ? registry : `${base}/${id.name}/-/${id.name.split("/").pop()}-${id.version}.tgz`;
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`tarball ${res.status}`);
-        const tgz = new Uint8Array(await res.arrayBuffer());
-        if (!(await checkIntegrity(tgz, integrity))) throw new Error("integrity check failed");
+        const tgz = await fetchTarball(url, (bytes) => checkIntegrity(bytes, integrity));
         for (const { name, data } of untar(await gunzip(tgz))) {
           const rel = name.split("/").slice(1).join("/");
           if (!rel) continue;

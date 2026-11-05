@@ -72,6 +72,9 @@ export function createPlayground({ watch }: { watch?: () => boolean } = {}) {
       setVfsOwner(id);
       setPreviewOwner(id);
     }
+    // What loaded before the worker took over (a first visit) goes into its cache too, for the next visit and offline.
+    const urls = [location.href, ...performance.getEntriesByType("resource").map((e) => e.name)];
+    navigator.serviceWorker.controller.postMessage({ type: "adopt-shell", urls });
   }
 
   /** The file Run starts (see `entryOf`). */

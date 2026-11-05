@@ -1,4 +1,7 @@
+import { createHash } from "node:crypto";
+import { readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import solid from "@solidjs/vite-plugin";
 import UnoCSS from "unocss/vite";
@@ -85,8 +88,12 @@ function embedRoutes(): Plugin {
  * apart from the app's graph: `vite build` emits it into the output dir (dist/sw.js), and the dev server answers
  * `/sw.js` with a fresh bundle per request (the browser re-checks the worker script on every page load). It finds
  * its base from its own URL, so any `--base` works.
+ *
+ * Builds put the shell manifest in front of it: every file the build ships (public/ included), path → SHA-256, which
+ * sw.ts caches by. Each deploy changes sw.js, so browsers install the new worker; dev has no manifest.
  */
 function serviceWorker(): Plugin {
+  let publicDir = "";
   const entry = fileURLToPath(new URL("src/sw.ts", import.meta.url));
   const page = fileURLToPath(new URL("src/swPage.ts", import.meta.url));
   async function bundle(): Promise<string> {
@@ -98,10 +105,29 @@ function serviceWorker(): Plugin {
       await build.close();
     }
   }
+  const hash = (data: string | Uint8Array) => createHash("sha256").update(data).digest("hex").slice(0, 16);
+  // Not part of the app: Cloudflare's header rules, and source maps.
+  const skip = (path: string) => path === "_headers" || path.endsWith(".map");
   return {
     name: "service-worker",
-    async generateBundle() {
-      this.emitFile({ type: "asset", fileName: "sw.js", source: await bundle() });
+    configResolved(config) {
+      publicDir = config.publicDir;
+    },
+    generateBundle: {
+      // After the HTML and every other output is in the bundle.
+      order: "post",
+      async handler(_, out) {
+        const shell: Record<string, string> = {};
+        if (publicDir)
+          for (const e of readdirSync(publicDir, { recursive: true, withFileTypes: true })) {
+            if (!e.isFile()) continue;
+            const path = relative(publicDir, join(e.parentPath, e.name)).split("\\").join("/");
+            if (!skip(path)) shell[path] = hash(readFileSync(join(e.parentPath, e.name)));
+          }
+        for (const [path, f] of Object.entries(out)) if (!skip(path)) shell[path] = hash(f.type === "chunk" ? f.code : f.source);
+        const manifest = `var __SHELL__ = ${JSON.stringify(shell)};\n`;
+        this.emitFile({ type: "asset", fileName: "sw.js", source: manifest + (await bundle()) });
+      },
     },
     configureServer(server) {
       const url = `${server.config.base}sw.js`;

@@ -23,7 +23,7 @@ Without these, the playground opens in edit-only mode, with a banner naming what
 |---|---|---|---|---|
 | WebAssembly Memory64 | Bun's crates are compiled to wasm64. | ✅ | ✅ | ❌ |
 | Secure context (HTTPS) | Required by service workers. | ✅ | ✅ | ✅ |
-| Service workers | Serve your modules (`/__vfs/`) and the preview (`/__preview/`). Private windows may disable them. | ✅ | ✅ | ✅ |
+| Service workers | Serve your modules (`/__vfs/`) and the preview (`/__preview/`), and keep the playground's own files (the wasm too) so a repeat visit downloads only what changed and the playground opens offline. Private windows may disable them. | ✅ | ✅ | ✅ |
 | Module workers | Your code runs in a module Web Worker. | ✅ | ✅ | ✅ |
 
 ## Optional features
@@ -34,7 +34,8 @@ The playground uses these when the browser has them and works without them.
 |---|---|---|---|---|---|
 | Origin Private File System | Saves your projects. | Nothing is kept across reloads. | ✅ | ✅ | ✅ |
 | File System Access (`showDirectoryPicker`) | Saves edits back to a folder opened from disk. | Opening a folder loads a copy. | ✅ | ❌ | ❌ |
-| Storage Buckets | Keeps saved projects in their own bucket, which the browser evicts and persists apart from other site data. | Projects share the site's default storage. | ✅ | ❌ | ❌ |
+| `FileSystemObserver` | Edits made to an opened folder in another editor show up in the playground. | Reopen the folder to see them. | ✅ | ❌ | ❌ |
+| Storage Buckets | Keeps saved projects in their own bucket, which the browser evicts and persists apart from other site data. | Projects share the site's default storage, and the playground trims its caches to keep them small. | ✅ | ❌ | ❌ |
 | `navigator.storage.persist()` | Asks the browser not to evict saved projects. | Saved projects can be cleared when disk space runs low. | ✅ | ✅ | ✅ |
 | Web Locks | Only one tab saves a project at a time. | Two tabs with the same project overwrite each other's saves. | ✅ | ✅ | ✅ |
 | Cross-origin isolation (`COEP: credentialless`) | The site sends `COOP: same-origin` and `COEP: credentialless`. | Safari ignores `credentialless` and isn't isolated; the playground still runs. | ✅ | ✅ | ❌ |

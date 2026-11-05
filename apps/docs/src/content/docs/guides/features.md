@@ -16,7 +16,7 @@ sidebar:
 - Resizable panes
 - **Run status** as a pill in the status bar (default) or a toast over the panes that fades a few seconds after the program settles; errors stay until the next change. Pick one under **Appearance**.
 - **Status bar** along the bottom: buttons to show or hide the file tree, the preview and the console (with both of those hidden, the editor takes their room), what the program is doing, and for the open file its error and warning counts (click to go to the next one), the cursor's line and column, and its language (for TypeScript, with the version the type checker follows). The Bun version links to [Bun compatibility](/compatibility/bun/). **Feedback** opens a form that sends a message to us, optionally with an email address to answer, the Bun release and browser, and the open project as a short link (see [Privacy](/privacy/#feedback)).
-- **Open folder** or **Open zip file** loads a project from your computer (skips `node_modules` and `.git`). A zip whose files all sit in one folder, like GitHub's downloads, opens that folder.
+- **Open folder** or **Open zip file** loads a project from your computer (skips `node_modules` and `.git`). A zip whose files all sit in one folder, like GitHub's downloads, opens that folder. In Chrome, edits to an opened folder are saved back to it, and changes made to it in another editor show up in the playground.
 - In Chrome and Edge, an opened folder stays linked: edits, new files and deletions are saved to it on disk. `node_modules` stays in the browser and the folder's own `node_modules` and `.git` aren't touched. A reload opens it again if the browser still allows access; otherwise pick **Reopen <folder>** in the project picker, which asks once more. Other browsers open a copy.
 
 Not yet: renaming or deleting files from the tree. Very large files are slow, because every line is rendered.
@@ -53,6 +53,7 @@ A terminal with colors, clickable links, history (<kbd>↑</kbd>/<kbd>↓</kbd>)
 | `bun install` (`i`) | Install dependencies |
 | `bun add <pkg[@range]> [-d]` (`a`) | Add a dependency |
 | `bun remove <pkg>` (`rm`) | Remove a dependency |
+| `bun pm cache [rm]` | Show or clear the package cache |
 | `bun fmt [-c] [path…]` | Format files like Prettier, or only check them (`-c`) |
 | `ls [dir]`, `cat <file>` | List a folder, print a file |
 | `cookies [clear]` | List or clear the preview's cookies |

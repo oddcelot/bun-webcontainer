@@ -153,7 +153,7 @@ async function openDirectory(dir?: FileSystemDirectoryHandle) {
   await pg.clearProject();
   for (const [path, data] of files) vfs.write(path, data);
   // After the load: the files just read are on disk already.
-  stopSaving = mirror(dir, vfs, log, { all: false, tag: "[folder]" });
+  stopSaving = mirror(dir, vfs, log, { all: false, tag: "[folder]", watch: true });
   workspace.reloadTree();
   log("sys", `[open] ${dir.name}: ${files.length} files; changes are saved to the folder (node_modules stays in the browser)`);
   openFile(entryFile());

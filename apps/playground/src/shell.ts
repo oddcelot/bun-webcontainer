@@ -1,5 +1,6 @@
 import type { CookieJar } from "./cookieJar";
 import { asConsoleEntry, fmt as formatFile, walks } from "./fmt";
+import { clearPkgCache, pkgCacheInfo } from "./pkgCache";
 import type { VFS } from "@runbun/vfs";
 
 type Log = (level: string, text: string) => void;
@@ -46,6 +47,7 @@ bun test [filter...]   run *.test.ts, *.spec.ts… (stops the server meanwhile)
 bun install, bun i     install dependencies
 bun add <pkg> [-d]     add (dev) dependencies
 bun remove <pkg>       remove dependencies
+bun pm cache [rm]      show (or clear) the package cache, shared by all projects
 bun fmt [-c] [path...]  format (or --check) files like Prettier, with the project's configs
 ls [dir]  cat <file>  clear  help
 reset                  discard saved files, reload from source
@@ -127,6 +129,14 @@ export function createShell(host: ShellHost) {
       log("log", `installed ${name}@${version}`);
     }
     writePkg(after);
+  }
+
+  async function pm([sub, action]: string[]) {
+    if (sub !== "cache") return fail(`bun pm ${sub ?? ""}: only "bun pm cache [rm]" is available here`);
+    if (action === "rm") return await clearPkgCache(), log("sys", "[bun pm cache] cleared");
+    if (action) return fail(`bun pm cache: unknown option ${action}`);
+    const { tarballs, packuments, bytes } = await pkgCacheInfo();
+    log("log", `${tarballs} tarballs, ${packuments} manifests, ${(bytes / 2 ** 20).toFixed(1)} MB in browser storage`);
   }
 
   function remove(names: string[]) {
@@ -233,6 +243,7 @@ export function createShell(host: ShellHost) {
       if (sub === "add" || sub === "a") return await add(rest);
       if (sub === "remove" || sub === "rm") return remove(rest);
       if (sub === "fmt") return await fmt(rest);
+      if (sub === "pm") return await pm(rest);
       if (vfs.files.has(sub.replace(/^\.\//, ""))) return await runTarget(sub);
       fail(`bun ${sub}: not available here (try "help")`);
     } catch (e) {
