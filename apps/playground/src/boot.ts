@@ -249,7 +249,7 @@ export function createPlayground({ watch }: { watch?: () => boolean } = {}) {
       runner = new Runner(vfs, log);
       runner.onExit = (code) => session.setStatus(exited(code));
     }
-    exec = createShell({ vfs, log, run, install, test, stop, clear: clearConsole, reset, cookies: runner?.cookies });
+    exec = createShell({ vfs, log, run, install, test, stop, clear: clearConsole, reset, cookies: runner && { list: () => runner!.listCookies(), clear: () => runner!.clearCookies() } });
     session.markReady();
   }
 

@@ -87,7 +87,7 @@ When your code starts a server (`Bun.serve`, `node:http`, or `export default { f
 - **Requests stay inside:** `fetch("/api/x")`, links, forms and redirects from the preview page reach your server.
 - **WebSockets:** the preview page's `WebSocket` connects to your server (`Bun.serve` `upgrade`, `node:http` `upgrade`, the `ws` package). `localhost:<port>` URLs pick the server on that port.
 - **Streaming:** streamed responses and Server-Sent Events arrive as they're sent.
-- **Cookies:** kept across restarts; see them with `cookies`.
+- **Cookies:** kept in the browser across restarts, where the preview's scripts read and set them with `document.cookie` and DevTools lists them (HttpOnly ones stay hidden from scripts and DevTools); see them with `cookies`.
 - **HTML imports:** `import page from "./index.html"` in `Bun.serve` routes is bundled with Bun's bundler.
 - The preview follows the playground's light/dark mode.
 

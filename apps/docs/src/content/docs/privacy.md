@@ -3,7 +3,7 @@ title: Privacy
 description: What runbun.dev and docs.runbun.dev store, send and keep.
 ---
 
-The playground (runbun.dev) and these docs (docs.runbun.dev) set **no cookies** and run **no analytics or tracking**.
+The playground (runbun.dev) and these docs (docs.runbun.dev) set **no cookies** of their own and run **no analytics or tracking**. Cookies that an app you run in the playground sets are the app's: they stay in your browser, under runbun.dev's `/__preview/` path (see [below](#in-your-browser)).
 
 ## In your browser
 
@@ -15,6 +15,7 @@ Your projects stay in your browser. The playground keeps them there and sends no
 - **Folders you open from disk**: the handle, so the playground can reopen the folder; the browser asks for permission again.
 - **Transpiled modules** in a cache, so the next run starts faster.
 - **npm packages** you installed, in a cache shared by your projects, so they aren't downloaded again, and their large files unpacked (`bun pm cache rm` clears both).
+- **Your apps' cookies**: cookies a program you run sets (with `Set-Cookie`, or a page's `document.cookie`) are stored by your browser for runbun.dev under `/__preview/`, as a real host would store them; HttpOnly ones are kept in the page's memory instead. `cookies clear` in the console deletes them. Nothing reads them but your app.
 - **A service worker** that serves your project's files and its `Bun.serve` preview to the page, and keeps a copy of the playground's own files in your browser so it opens again without downloading them.
 
 Clearing the site's data in your browser removes all of it.
