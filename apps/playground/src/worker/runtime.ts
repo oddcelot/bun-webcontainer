@@ -461,7 +461,7 @@ function bundleHtml(imp: HtmlImport): Promise<HtmlBundle> {
   let p = htmlBundles.get(imp.__htmlImport);
   if (p) return p;
   p = (async (): Promise<HtmlBundle> => {
-    const res = await bundle(vfs, { cwd: "/", entryPoints: ["/" + norm(imp.__htmlImport)], target: "browser", format: "esm", outdir: "/__bundle", publicPath: ASSET_PREFIX, sourcemap: "none", minify: false });
+    const res = await bundle(vfs, { cwd: "/", entryPoints: ["/" + norm(imp.__htmlImport)], target: "browser", format: "esm", outdir: "/__bundle", publicPath: ASSET_PREFIX, sourcemap: "inline", minify: false });
     for (const l of res.logs) if (l.level === "error" || l.level === "warning") console[l.level === "error" ? "error" : "warn"](`[bundler] ${formatLog(l)}`);
     const page = res.outputs.find((o) => o.loader.toLowerCase() === "html");
     if (!res.success || !page) return null;
@@ -871,7 +871,8 @@ const formatLog = (l: BundleLog) => `${l.level}: ${l.message}${l.file ? `\n    a
  * AggregateError of the logs, as in Bun, unless `throw: false`.
  */
 async function build(opts: BuildOptions) {
-  if (opts.plugins?.length) console.warn("Bun.build: plugins are not supported and are ignored");
+  // Plugins run JS inside the bundler; the wasm build has none of that (its stand-ins panic), so fail up front.
+  if (opts.plugins?.length) throw new TypeError("Bun.build: plugins are not supported in the browser");
   const entryPoints = (opts.entrypoints ?? []).map((e) => "/" + norm(nodePath.resolve(e.startsWith("file:") ? new URL(e).pathname : e)));
   const sm = opts.sourcemap;
   const config: BundleConfig = {

@@ -14,7 +14,7 @@ Reported version: `Bun.version` is `1.4.4-browser`. Labels are explained on the 
 | `Bun.serve` | 🟡 Partial | `fetch`, `routes`, WebSockets, streaming. See [below](#bunserve). |
 | `Bun.file` | 🟡 Partial | A `Blob`: `size`, `type`, `slice`, `stream`, `text`, `json`, `bytes`, `arrayBuffer`, plus `exists`, `name`, `lastModified`, `write`, `writer`, `delete`. Reads are live, but `new Response(file)` sends the file as it was when `Bun.file()` was called. No file descriptors. |
 | `Bun.write` | 🟡 Partial | Destination is a path, `file:` URL, `BunFile`, `Bun.stdout` or `Bun.stderr` (file descriptors aren't). Accepts strings, `BunFile`, `Blob`, `Response`, `ArrayBuffer`, typed arrays. Creates parent folders. |
-| `Bun.build` | 🟡 Partial | Bun's real bundler, as wasm (~7.5 MB, loaded on first use). Supports `entrypoints`, `outdir`, `target`, `format`, `minify`, `splitting`, `sourcemap`, `naming`, `publicPath`, `external`, `define`, `conditions`, `banner`, `footer`, `throw`. `plugins` are ignored with a warning; `loader`, `env`, `packages`, `drop`, `compile`, `root` aren't supported. |
+| `Bun.build` | 🟡 Partial | Bun's real bundler, as wasm (~7.5 MB, loaded on first use). Supports `entrypoints`, `outdir`, `target`, `format`, `minify`, `splitting`, `sourcemap`, `naming`, `publicPath`, `external`, `define`, `conditions`, `banner`, `footer`, `throw`. `plugins` throw (they can't run in the wasm bundler); `loader`, `env`, `packages`, `drop`, `compile`, `root` aren't supported. |
 | `Bun.env` | ✅ Works | Same object as `process.env`; starts as `{ NODE_ENV: "development" }`. `.env` files aren't loaded. |
 | `Bun.version`, `Bun.revision` | ✅ Works | `Bun.revision` is the Bun commit the wasm crates are built from. |
 | `Bun.semver` | ✅ Works | `order` and `satisfies`, from Bun's own semver code. |
@@ -70,7 +70,7 @@ Servers answer requests from the [preview](/guides/features/#preview), not from 
 |---|---|---|
 | `fetch(req, server)` | ✅ Works | |
 | `routes` | ✅ Works | Exact paths, `:param` (in `req.params`), trailing `*`, per-method handlers, static `Response`s. Globs in the middle of a path (`/a/*/b`) don't match. |
-| HTML imports in `routes` | ✅ Works | `import page from "./index.html"` is bundled with Bun's bundler. Assets are served under `/_bun/`. Rebuilt after any file change. No HMR. |
+| HTML imports in `routes` | ✅ Works | `import page from "./index.html"` is bundled with Bun's bundler. Assets are served under `/_bun/`, with inline source maps, so DevTools shows the original source. Rebuilt after any file change. No HMR. |
 | WebSockets | ✅ Works | `server.upgrade(req, { data, headers })` (of `headers`, only Set-Cookie has an effect: the page's socket never sees the others), `open`/`message`/`close`/`drain`, `send`, `publish`, `subscribe`, `cork`, `close`. `ping`/`pong` do nothing. Only the preview page can connect. |
 | `server.publish`, `subscriberCount`, `pendingWebSockets` | ✅ Works | |
 | `server.reload`, `server.stop` | ✅ Works | |
