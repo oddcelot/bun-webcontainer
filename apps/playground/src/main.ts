@@ -5,7 +5,10 @@ import { loadRepo, parseRepo, repoQuery } from "./github";
 import { isShareLink, loadShareLink, rememberSource } from "./share";
 import { createPlayground } from "./boot";
 import { mountUI } from "./ui/mount";
-import { attach, discard, mirror, readDir, restore, shareProjectId } from "./persist";
+import { attach, discard, heldProjects, listProjects, mirror, readDir, restore, shareProjectId } from "./persist";
+import { clearPkgCache } from "./pkgCache";
+import { clearStore } from "./pkgStore";
+import { clearTranspileCache } from "./transpileCache";
 import { importZip } from "./archive";
 import { canWrite, lastFolder, rememberFolder } from "./folders";
 import { setThemeVars, urlVars } from "./theme";
@@ -13,9 +16,13 @@ import { showCanaryBadge } from "./canary";
 
 showCanaryBadge();
 
+// This page's saved project id (null: not saved), once its saving is set up.
+let savedAs!: (id: string | null) => void;
+const saving = new Promise<string | null>((r) => (savedAs = r));
+
 const pg = createPlayground();
 const { support, session, workspace, previews, terminal, vfs, log, run, stop, install, clearConsole, newFile, entryFile } = pg;
-mountUI({ session, support, workspace, previews, terminal, clearConsole, vfs, log, run: () => run(), stop, install, openProject, newFile, openFolder, openDirectory, reopenFolder, openZip, repoParam: new URLSearchParams(location.search).get("repo") ?? "" });
+mountUI({ session, support, workspace, previews, terminal, clearConsole, vfs, log, run: () => run(), stop, install, openProject, newFile, openFolder, openDirectory, reopenFolder, openZip, storage: { current: () => saving, remove: removeProject, clearAll }, repoParam: new URLSearchParams(location.search).get("repo") ?? "" });
 const params = new URLSearchParams(location.search);
 // ?vars= sets the overlay for this visit (theme.ts allows only that); not saved, and Share links drop it.
 if (params.has("vars")) setThemeVars(urlVars(params.get("vars")));
@@ -79,6 +86,7 @@ if (!shared && !restored) {
   }
 }
 if (projectId && (restored || loaded)) stopSaving = await attach(projectId, vfs, log, !restored);
+savedAs(projectId);
 
 /** Reloads with `?example=` or `?repo=` (picker values for repos are `repo:<owner/repo>`). */
 function openProject(value: string) {
@@ -104,6 +112,22 @@ async function reset() {
 }
 
 await pg.start({ reset });
+
+/** Deletes a saved project; this page's own reloads from its source, like `reset`. */
+async function removeProject(id: string) {
+  if (id === (await saving)) return reset();
+  await discard(id);
+}
+
+/** Deletes every saved project but those open in other tabs, and the package and transpile caches; then reloads. */
+async function clearAll() {
+  const current = await saving;
+  await stopSaving();
+  const held = await heldProjects();
+  const gone = (await listProjects()).filter((p) => p.id === current || !held.has(p.id));
+  await Promise.all([...gone.map((p) => discard(p.id)), clearPkgCache(), clearStore(), clearTranspileCache()]);
+  location.reload();
+}
 
 async function openFolder(files: File[]) {
   await session.started;

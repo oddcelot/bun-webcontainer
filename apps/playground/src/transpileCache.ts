@@ -1,4 +1,4 @@
-import { bucket, cacheEntry, needsRestamp, trimCache, type Bucket } from "./storage";
+import { bucket, cachedSize, cacheEntry, needsRestamp, trimCache, type Bucket } from "./storage";
 import { jsxKey, transpile, transpilerId, type Resolver, type TsconfigFlags } from "./transpiler";
 
 /** Below this, transpiling (~15 ms/MB) is about as fast as hashing and a cache lookup. */
@@ -56,4 +56,22 @@ export async function transpileCached(source: string, path: string, tsconfig: Ts
     const spec = specs[+i];
     return JSON.stringify(resolve(spec, "stmt") ?? spec).slice(1, -1);
   });
+}
+
+/** What the cache holds: entries and about how many bytes. */
+export async function transpileCacheInfo(): Promise<{ entries: number; bytes: number }> {
+  const s = await openStore();
+  const info = { entries: 0, bytes: 0 };
+  for (const req of (await s?.cache.keys()) ?? []) {
+    info.entries++;
+    info.bytes += cachedSize(await s!.cache.match(req));
+  }
+  return info;
+}
+
+export async function clearTranspileCache(): Promise<void> {
+  const s = await openStore();
+  await s?.b.caches.delete("transpile");
+  memory.clear();
+  store = undefined;
 }

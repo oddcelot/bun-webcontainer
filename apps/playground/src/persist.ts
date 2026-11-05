@@ -129,6 +129,48 @@ export async function discard(id: string): Promise<void> {
   } catch {}
 }
 
+export type SavedProject = { id: string; files: number; bytes: number; modified: number };
+
+async function measure(dir: Dir, p: SavedProject) {
+  for await (const [, h] of dir as unknown as AsyncIterable<[string, FileSystemHandle]>) {
+    if (h.kind === "directory") await measure(h as Dir, p);
+    else {
+      const f = await (h as FileSystemFileHandle).getFile();
+      p.files++;
+      p.bytes += f.size;
+      p.modified = Math.max(p.modified, f.lastModified);
+    }
+  }
+}
+
+/** Every saved project with its size and when a file in it last changed, newest first. */
+export async function listProjects(): Promise<SavedProject[]> {
+  await moveOldProjects();
+  const root = await (await projects()).getDirectory();
+  const dir = await root.getDirectoryHandle("projects").catch(() => null);
+  const out: SavedProject[] = [];
+  for await (const [name, h] of (dir ?? []) as unknown as AsyncIterable<[string, FileSystemHandle]>) {
+    if (h.kind !== "directory") continue;
+    const p = { id: decodeURIComponent(name), files: 0, bytes: 0, modified: 0 };
+    await measure(h as Dir, p);
+    out.push(p);
+  }
+  return out.sort((a, b) => b.modified - a.modified);
+}
+
+const LOCK = "bwc-project:";
+/** Ids of the projects a tab saves into (it holds their lock until it closes), this tab's included. */
+export async function heldProjects(): Promise<Set<string>> {
+  const q = await navigator.locks?.query().catch(() => undefined);
+  return new Set((q?.held ?? []).flatMap((l) => (l.name?.startsWith(LOCK) ? [l.name.slice(LOCK.length)] : [])));
+}
+
+/** Whether the browser keeps saved projects when space runs low; `ask`: request that first. */
+export async function projectsKept(ask = false): Promise<boolean> {
+  const b = await projects();
+  return (ask && (await b.persist().catch(() => false))) || (await b.persisted().catch(() => false));
+}
+
 /**
  * Mirrors the VFS into OPFS (`projects/<id>/`), write-behind (see `mirror`). `all` saves every file now (a project
  * just loaded from its source). Only the tab holding the project's lock writes. Never throws; returns a function that
@@ -141,7 +183,7 @@ export async function attach(id: string, vfs: VFS, log: Log, all: boolean): Prom
     if (navigator.locks) {
       const got = await new Promise<boolean>((resolve) => {
         // Held until the page goes away.
-        void navigator.locks.request("bwc-project:" + id, { ifAvailable: true }, (lock) => {
+        void navigator.locks.request(LOCK + id, { ifAvailable: true }, (lock) => {
           resolve(!!lock);
           return lock ? new Promise<void>(() => {}) : undefined;
         });
