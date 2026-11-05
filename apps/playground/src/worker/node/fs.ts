@@ -33,10 +33,7 @@ const keyOf = (p: string) => norm(path.resolve(p));
 const isFile = (k: string) => vfs.files.has(k);
 const isDir = (k: string) => vfs.isDir(k);
 const exists = (k: string) => isFile(k) || isDir(k);
-const bytesOf = (k: string): Uint8Array => {
-  const d = vfs.files.get(k)!;
-  return typeof d === "string" ? enc.encode(d) : d;
-};
+const bytesOf = (k: string): Uint8Array => vfs.readBytes(k)!;
 
 function copyBytes(v: ArrayBufferView): Uint8Array {
   const out = new Uint8Array(v.byteLength);
@@ -265,7 +262,7 @@ function readFileSync(p: unknown, opts?: ReadOpts): string | Buffer {
     const d = vfs.files.get(k);
     if (d === undefined) throw isDir(k) ? fsError("EISDIR", "read") : fsError("ENOENT", "open", pth);
     if (typeof d === "string") str = d;
-    data = typeof d === "string" ? enc.encode(d) : d;
+    data = typeof d === "string" ? enc.encode(d) : vfs.readBytes(k)!;
   }
   if (o.encoding && o.encoding !== "buffer") return str !== undefined && /^utf-?8$/i.test(o.encoding) ? str : decode(data, o.encoding);
   return Buffer.from(copyBytes(data));

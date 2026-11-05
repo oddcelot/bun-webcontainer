@@ -1,6 +1,7 @@
 // tsrs's language service runs here and not on the page: the checker recurses deeply, and a request blocks until it
 // is answered. The instance keeps the project's files between requests and is replaced once its memory (which never
 // shrinks) passes MEMORY_LIMIT.
+import { unshared } from "@runbun/vfs";
 import { TsrsLs, type LspCompletionItem, type LspCompletionList, type LspDefinition, type LspDiagnostic, type LspHover, type LspSignatureHelp } from "./tsrsLs";
 
 type Files = Record<string, string | Uint8Array>;
@@ -44,7 +45,7 @@ async function instance(): Promise<{ ls: TsrsLs; fresh: boolean }> {
 
 async function sync({ changed, removed }: Sync) {
   const { bunTypes } = await import("./bunTypes");
-  for (const [p, data] of Object.entries(changed)) project.set(p, typeof data === "string" ? data : dec.decode(data));
+  for (const [p, data] of Object.entries(changed)) project.set(p, typeof data === "string" ? data : dec.decode(unshared(data)));
   for (const p of removed) project.delete(p);
   const own = new Set<string>();
   for (const p of project.keys()) {

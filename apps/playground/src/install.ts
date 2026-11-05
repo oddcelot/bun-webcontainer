@@ -1,5 +1,5 @@
 import type { Semver } from "./semver";
-import { gunzip, installFromBunLock, platformRestricted, untar } from "./lockfile";
+import { gunzip, installFromBunLock, packageFiles, platformRestricted } from "./lockfile";
 import { fetchPackument, fetchTarball } from "./pkgCache";
 import type { VFS } from "@runbun/vfs";
 
@@ -51,10 +51,7 @@ export async function bunInstall(vfs: VFS, semver: Semver, log: Log): Promise<nu
       if (optional && platformRestricted(meta)) return void log("log", `- ${name}@${version} (optional, unsupported platform)`);
       const tar = await fetchTarball(meta.dist.tarball);
       // Kept as bytes, text included (see INSTALLED_AS_BYTES in lockfile.ts).
-      for (const { name: entry, data } of untar(await gunzip(tar))) {
-        const rel = entry.split("/").slice(1).join("/");
-        if (rel) vfs.write(`node_modules/${name}/${rel}`, data);
-      }
+      for (const { name: entry, data } of packageFiles(await gunzip(tar))) vfs.write(`node_modules/${name}/${entry}`, data);
       installed++;
       log("log", `+ ${name}@${version}`);
       await Promise.all(Object.entries(meta.dependencies ?? {}).filter(([n]) => !meta.optionalDependencies?.[n]).map(([n, r]) => add(n, r)));
