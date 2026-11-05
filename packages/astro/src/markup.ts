@@ -193,12 +193,16 @@ export interface PresetRequest {
   path: string;
   body: string;
   response: string | undefined;
+  /** The headers given with `-H "Name: value"` before the body, when there are any. */
+  headers?: [string, string][];
 }
 
 /**
  * `requests` (`GET / => Hello; POST /form {"a":1} => {"a":1}`) as the embed's attribute and the poster's entries. The
  * entries split as the playground splits them (apps/playground/src/embed/requests.ts, copied: the app isn't a
- * dependency): at a `;` followed by (optional whitespace,) an uppercase method, whitespace and `/`. In an entry, the
+ * dependency): at a `;` followed by (optional whitespace,) an uppercase method, whitespace and `/`; headers, each `-H`
+ * and a quoted `Name: value`, come before the body and stay in `attr` (one without a `:` is dropped from the poster,
+ * as the playground skips it). In an entry, the
  * first ` => ` after the path (`=>` with whitespace or the entry's end around it) starts the author's response; a
  * response can't hold a `;` that a request would start after, since the split comes first, and a body can't hold
  * ` => ` (`x=>y` is fine). `attr` is the requests without their responses, joined with `; `, for the live embed, which
@@ -213,10 +217,17 @@ export function presetRequests(list: string): { attr: string; entries: PresetReq
     const m = /^([A-Z]+)\s+(\/\S*)(?:\s+([\s\S]*))?$/.exec(part);
     const rest = m?.[3] ?? "";
     const arrow = /(?:^|\s)=>(?:\s|$)/.exec(rest);
-    const body = (arrow ? rest.slice(0, arrow.index) : rest).trim();
+    const request = (arrow ? rest.slice(0, arrow.index) : rest).trim();
     const response = arrow ? rest.slice(arrow.index + arrow[0].length).trim() : undefined;
-    requests.push(m && arrow ? `${m[1]} ${m[2]}${body ? " " + body : ""}` : part);
-    if (m) entries.push({ method: m[1]!, path: m[2]!, body, response });
+    requests.push(m && arrow ? `${m[1]} ${m[2]}${request ? " " + request : ""}` : part);
+    let body = request;
+    const headers: [string, string][] = [];
+    for (let h; (h = /^-H\s+(?:"([^"]*)"|'([^']*)')\s*/.exec(body)); body = body.slice(h[0].length)) {
+      const line = h[1] ?? h[2]!;
+      const colon = line.indexOf(":");
+      if (colon > 0) headers.push([line.slice(0, colon).trim(), line.slice(colon + 1).trim()]);
+    }
+    if (m) entries.push({ method: m[1]!, path: m[2]!, body, response, ...(headers.length ? { headers } : {}) });
   }
   const responses = entries.some((e) => e.response !== undefined);
   return { attr: responses ? requests.join("; ") : list, entries, responses };
@@ -234,7 +245,7 @@ const jsonOrPlain = (text: string) => {
 
 /**
  * Preset requests and their written responses under a poster's code: a tab per request (`METHOD /path`, the method
- * only when it isn't GET, as the playground shows it), and per tab the request's body, if any, and the response (then
+ * only when it isn't GET, as the playground shows it), and per tab the request's headers and body, if any, and the response (then
  * labelled "Response"), or a note that running the code shows it. Plain HTML like codeTabs: radio tabs named `group`
  * (unique on the page, the same between builds), the stylesheet showing the checked one's panel, the first checked. It
  * sits in the poster, whose clicks don't start the embed (only its Run button does).
@@ -247,11 +258,14 @@ export function requestPanel(entries: PresetRequest[], group: string): string {
     })
     .join("");
   const panels = entries
-    .map(({ body, response }) => {
-      const sent = body ? `<div class="runbun-request-body"><div class="runbun-request-label">Request body</div>${jsonOrPlain(body)}</div>` : "";
+    .map(({ body, response, headers }) => {
+      const head = headers
+        ? `<div class="runbun-request-headers"><div class="runbun-request-label">Request headers</div>${highlight(headers.map(([k, v]) => `${k}: ${v}`).join("\n"), "plain")}</div>`
+        : "";
+      const sent = head + (body ? `<div class="runbun-request-body"><div class="runbun-request-label">Request body</div>${jsonOrPlain(body)}</div>` : "");
       const got = response === undefined ? `<p class="runbun-response-pending">Run to see the response</p>` : jsonOrPlain(response);
-      // Under a request body, "Response" tells the two apart; alone, the response needs no label.
-      const label = body ? `<div class="runbun-request-label">Response</div>` : "";
+      // Under a request body or headers, "Response" tells them apart; alone, the response needs no label.
+      const label = sent ? `<div class="runbun-request-label">Response</div>` : "";
       return `<div class="runbun-request">${sent}<div class="runbun-response">${label}${got}</div></div>`;
     })
     .join("");
