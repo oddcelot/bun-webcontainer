@@ -1,5 +1,6 @@
 //! Defines the `bun_sys_host_*` symbols that bun's wasm `sys` backend declares (ABI documented in
-//! bun/src/sys/wasm_impl.rs). Depend on this crate and write `use bun_sys_host as _;`.
+//! bun/src/sys/wasm_impl.rs), and `random`/`clock`, which bun_core declares for its PRNG seed and timers
+//! (bun/src/bun_core/util.rs, `wasm_host`). Depend on this crate and write `use bun_sys_host as _;`.
 //!
 //! * default: every call returns `-ENOSYS`, so the wasm has no imports;
 //! * feature `imports`: every call is a wasm import `bun_sys.<name>`, provided by
@@ -47,4 +48,6 @@ host_fns! {
     bun_sys_host_rename => rename(from_dir: i32, from: *const u8, flen: usize, to_dir: i32, to: *const u8, tlen: usize);
     bun_sys_host_getdents => getdents(fd: i32, buf: *mut u8, len: usize);
     bun_sys_host_getcwd => getcwd(buf: *mut u8, len: usize);
+    bun_sys_host_random => random(buf: *mut u8, len: usize);
+    bun_sys_host_clock => clock(id: i32);
 }

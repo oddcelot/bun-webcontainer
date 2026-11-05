@@ -143,3 +143,21 @@ pub unsafe extern "C" fn sys_mkdir_rename_unlink(dir: *const u8, dlen: usize, fr
 /// C stand-in that bun_core references (see semver-wasm/src/native.rs).
 #[unsafe(no_mangle)]
 extern "C" fn bun_restore_stdio() {}
+
+/// `bun.fastRandom()`: its PRNG is seeded from the host's `bun_sys.random` (crypto.getRandomValues).
+#[unsafe(no_mangle)]
+pub extern "C" fn sys_fast_random() -> u64 {
+    bun_core::fast_random()
+}
+
+/// Wall-clock nanoseconds since the Unix epoch, from the host's `bun_sys.clock` (0 without it).
+#[unsafe(no_mangle)]
+pub extern "C" fn sys_nano_timestamp() -> i64 {
+    bun_core::time::nano_timestamp() as i64
+}
+
+/// Monotonic nanoseconds (`Timespec::now`, what Bun's timers measure with).
+#[unsafe(no_mangle)]
+pub extern "C" fn sys_monotonic_ns() -> u64 {
+    bun_core::Timespec::now(bun_core::TimespecMockMode::ForceRealTime).ns()
+}

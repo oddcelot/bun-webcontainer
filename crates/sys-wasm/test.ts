@@ -88,4 +88,17 @@ assert.equal(vfs.exists("new.txt"), false);
 assert.equal(vfs.exists("a/b/c/moved.txt"), false); // unlinked at the end
 assert.equal(withStr("a/b/c", (d, dl) => withStr("gone.txt", (f, fl) => withStr("a/x.txt", (t, tl) => w.sys_mkdir_rename_unlink(d, dl, f, fl, t, tl)))), ENOENT);
 
+// bun_core's entropy and clocks come from the host (bun_sys.random, bun_sys.clock)
+const r1 = w.sys_fast_random(), r2 = w.sys_fast_random();
+assert.notEqual(r1, r2);
+const second = new WebAssembly.Instance(mod, createSysImports(new VFS(), () => (second as unknown as Wasm).memory)).exports as Wasm;
+assert.notEqual(second.sys_fast_random(), r1, "a second instance (a second run) is seeded differently");
+const wall = Number(w.sys_nano_timestamp()) / 1e6;
+assert.ok(Math.abs(wall - Date.now()) < 1000, `wall clock ${wall} vs Date.now() ${Date.now()}`);
+const m1 = w.sys_monotonic_ns();
+const until = performance.now() + 5;
+while (performance.now() < until);
+const m2 = w.sys_monotonic_ns();
+assert.ok(m1 > 0n && m2 - m1 >= 4_000_000n, `monotonic ${m1} -> ${m2}`);
+
 console.log("sys-wasm: all assertions passed");

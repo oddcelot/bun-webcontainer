@@ -1,0 +1,89 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Stefan Kopco <hey@oddcelot.dev>
+Date: Thu, 5 Nov 2026 11:41:01 +0100
+Subject: [PATCH] bun_core: entropy and clocks from the host on wasm
+
+Seeds fast_random from bun_sys_host_random and reads CLOCK_REALTIME and
+CLOCK_MONOTONIC from bun_sys_host_clock, which the final wasm crate
+defines (host imports, or -ENOSYS stubs that keep the old fixed seed and
+zero clock). wasm-only; native builds are unchanged.
+---
+ src/bun_core/util.rs | 40 +++++++++++++++++++++++++++++++++-------
+ 1 file changed, 33 insertions(+), 7 deletions(-)
+
+diff --git a/src/bun_core/util.rs b/src/bun_core/util.rs
+index 298f817d..3b01040c 100644
+--- a/src/bun_core/util.rs
++++ b/src/bun_core/util.rs
+@@ -2612,6 +2612,24 @@ pub fn is_writable(fd: Fd) -> Pollable {
+     }
+ }
+ 
++// wasm-experiment: entropy and clocks come from the host, through two more of the `bun_sys_host_*`
++// symbols the final wasm crate defines (crates/sys-host: wasm imports `bun_sys.random`/`bun_sys.clock`,
++// or -ENOSYS stubs). `random` fills `len` bytes at `buf` and returns 0; `clock` returns nanoseconds
++// of a Linux clock id (0 = CLOCK_REALTIME, 1 = CLOCK_MONOTONIC). Both return -errno without a host.
++#[cfg(target_family = "wasm")]
++mod wasm_host {
++    unsafe extern "C" {
++        pub(super) fn bun_sys_host_random(buf: *mut u8, len: usize) -> i64;
++        fn bun_sys_host_clock(id: i32) -> i64;
++    }
++    /// Nanoseconds of clock `id` from the host, or None without one.
++    pub(super) fn clock_ns(id: i32) -> Option<i64> {
++        // SAFETY: no pointer arguments.
++        let ns = unsafe { bun_sys_host_clock(id) };
++        (ns >= 0).then_some(ns)
++    }
++}
++
+ // ── os_entropy ────────────────────────────────────────────────────────────
+ // Raw OS entropy source: getrandom(2) on Linux, getentropy on Darwin/BSD,
+ // RtlGenRandom on Windows. bun_core sits below boringssl_sys in the crate
+@@ -2620,10 +2638,14 @@ pub fn is_writable(fd: Fd) -> Pollable {
+ // must use `bun_boringssl_sys::rand_bytes` (userspace DRBG, no syscall per
+ // call).
+ fn os_entropy(bytes: &mut [u8]) {
+-    // wasm-experiment: wasm64-unknown-unknown has no entropy source; seed from a fixed value.
++    // wasm-experiment: wasm64-unknown-unknown has no entropy source of its own; the host's
++    // (crypto.getRandomValues), else a fixed seed.
+     #[cfg(target_family = "wasm")]
+-    for (i, b) in bytes.iter_mut().enumerate() {
+-        *b = (i as u8).wrapping_mul(0x9d) ^ 0x5a;
++    // SAFETY: writes exactly `bytes.len()` bytes into the slice.
++    if unsafe { wasm_host::bun_sys_host_random(bytes.as_mut_ptr(), bytes.len()) } < 0 {
++        for (i, b) in bytes.iter_mut().enumerate() {
++            *b = (i as u8).wrapping_mul(0x9d) ^ 0x5a;
++        }
+     }
+     #[cfg(any(target_os = "linux", target_os = "android"))]
+     {
+@@ -2826,10 +2848,10 @@ pub mod time {
+             super::clock_gettime(libc::CLOCK_REALTIME, &mut ts);
+             (ts.tv_sec as i128) * NS_PER_S as i128 + (ts.tv_nsec as i128)
+         }
+-        // wasm-experiment: no clock on wasm (std's SystemTime::now panics there); like `clock_gettime`, reads 0.
++        // wasm-experiment: std's SystemTime::now panics on wasm; the host's clock, else 0.
+         #[cfg(target_family = "wasm")]
+         {
+-            0
++            super::wasm_host::clock_ns(0).unwrap_or(0) as i128
+         }
+         #[cfg(all(not(unix), not(target_family = "wasm")))]
+         {
+@@ -4893,9 +4915,13 @@ impl Timespec {
+                 nsec: ts.tv_nsec,
+             }
+         }
+-        #[cfg(target_family = "wasm")] // wasm-experiment: no clock
++        #[cfg(target_family = "wasm")] // wasm-experiment: the host's monotonic clock, else 0
+         {
+-            Timespec { sec: 0, nsec: 0 }
++            let ns = wasm_host::clock_ns(1).unwrap_or(0);
++            Timespec {
++                sec: ns / 1_000_000_000,
++                nsec: ns % 1_000_000_000,
++            }
+         }
+         #[cfg(windows)]
+         {
