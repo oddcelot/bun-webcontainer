@@ -80,6 +80,25 @@ html[data-booting] body > header > * { visibility: hidden; animation: boot-fallb
 #share-menu button:disabled:hover { background: none; }
 #status-display { margin-top: var(--pad); }
 .title { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: inherit; white-space: nowrap; }
+/* The logo: a dumpling from dumplings.png (8 × 8 faces of 32px), rolling through all 64 while the title is hovered and
+ * keeping the face it stopped on. x steps through a row, y moves down a row each time x wraps. */
+.logo {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  background: url("./dumplings.png") 0 0 / 800% 800%;
+  animation:
+    logo-x 0.8s steps(8, jump-none) infinite,
+    logo-y 6.4s steps(8, jump-none) infinite;
+  animation-play-state: paused;
+
+  .title:hover & {
+    animation-play-state: running;
+  }
+}
+@keyframes logo-x { to { background-position-x: 100%; } }
+@keyframes logo-y { to { background-position-y: 100%; } }
+@media (prefers-reduced-motion: reduce) { .logo { animation: none; } }
 /* Read by screen readers and crawlers, not shown: the h1's stable name next to the random visible one. */
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 #example { min-width: 6rem; flex: 0 1 14rem; }
