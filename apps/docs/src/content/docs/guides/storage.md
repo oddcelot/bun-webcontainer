@@ -13,6 +13,15 @@ Each project is saved to the browser's [Origin Private File System](https://deve
 - Only one tab saves a project. A second tab with the same project warns that its changes won't be kept.
 - If the browser has no Origin Private File System, the playground warns that nothing will be kept across reloads.
 
+## Seeing and clearing what's stored
+
+The drive button in the header opens **Storage**. It shows how much space the playground uses, every saved project with its size and date, and the package and transpile caches.
+
+- The trash button on a project deletes its saved files (click again to confirm). Deleting the open project reloads it from its source, like `reset`. A project open in another tab can't be deleted from here.
+- **Clear** empties one cache. Both refill as needed: packages are downloaded again on the next install.
+- **Clear all…** deletes every saved project (except those open in other tabs) and both caches, then reloads. Download anything you want to keep as a zip first. Settings like the theme and shortcuts stay.
+- If the browser hasn't agreed to keep the playground's storage, **Ask to keep them** asks again.
+
 After one visit the playground also opens offline: the service worker keeps its files, and a new version downloads only the files that changed.
 
 ## How long it stays

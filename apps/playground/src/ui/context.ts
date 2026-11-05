@@ -34,6 +34,15 @@ export type App = {
   reopenFolder(): void;
   /** Opens a zip's files like a folder. */
   openZip(file: File): void;
+  /** Saved projects and caches, for the Storage dialog (the full playground only). */
+  storage?: {
+    /** This page's saved project id (null: not saved), once known. */
+    current(): Promise<string | null>;
+    /** Deletes a saved project; this page's own reloads from its source. */
+    remove(id: string): Promise<void>;
+    /** Deletes every saved project but those open in other tabs, and the caches; then reloads. */
+    clearAll(): Promise<void>;
+  };
   /** The `?repo=` the page was opened with, as the repo prompt's default. */
   repoParam: string;
   /** What an embed has turned on (embed/config.ts); absent on the full playground, which has everything. */

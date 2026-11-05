@@ -1,4 +1,4 @@
-import { useContext } from "solid-js";
+import { Show, useContext } from "solid-js";
 import { DOCS } from "../base";
 import { chordKeys, keysFor } from "../keymap";
 import logo from "../bun-logo.svg";
@@ -7,6 +7,7 @@ import { AutosaveTip } from "./EditorPane";
 import { ProjectPicker } from "./ProjectPicker";
 import { ShareMenu } from "./ShareMenu";
 import { Shortcuts } from "./Shortcuts";
+import { Storage } from "./Storage";
 import { ThemePicker } from "./ThemePicker";
 import { Title } from "./Title";
 import { Menu, MenuItem, MenuTrigger } from "@runbun/ui/solid/Menu";
@@ -79,6 +80,9 @@ export function Header() {
         <i class="i-lucide-share-2" aria-hidden="true" /> Share
       </Tip>
       <ShareMenu />
+      <Show when={app.storage}>
+        <Storage id="storage" />
+      </Show>
       <Shortcuts id="shortcuts" />
       <ThemePicker />
     </>
