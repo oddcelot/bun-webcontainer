@@ -265,6 +265,25 @@ export function createSysImports(vfs: VFS, getMemory: () => WebAssembly.Memory, 
         u8(buf, 1n)[0] = 0x2f;
         return 1;
       }),
+    /**
+     * Fills `len` bytes with crypto.getRandomValues (seeds bun_core's PRNG). Through a copy: it takes at most 64 KiB
+     * per call, and no view of a shared memory.
+     */
+    random: (buf: bigint, len: bigint) =>
+      guard(() => {
+        const out = new Uint8Array(Number(len));
+        for (let i = 0; i < out.length; i += 65536) crypto.getRandomValues(out.subarray(i, i + 65536));
+        u8(buf, len).set(out);
+        return 0;
+      }),
+    /** Nanoseconds of a Linux clock id: 0 CLOCK_REALTIME (since the epoch), 1 CLOCK_MONOTONIC (since the page started). */
+    clock: (id: number) =>
+      guard(() => {
+        const now = performance.now();
+        if (id === 0) return BigInt(Math.round((performance.timeOrigin + now) * 1e6));
+        if (id === 1) return BigInt(Math.round(now * 1e6));
+        throw new Errno(E.EINVAL);
+      }),
   };
   return { bun_sys };
 }
