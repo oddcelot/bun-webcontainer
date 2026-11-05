@@ -4,6 +4,14 @@ Notable changes per release of `@runbun/embed`. Each release is tagged `embed-v<
 with its section. The element talks to the playground deployed at runbun.dev over the embed protocol (version 1),
 which only grows, so any release works with the live playground.
 
+## 0.3.0 — 2026-11-05
+
+Embeds take preset requests to try against their server. runbun.dev's `embed.js` has it already. Nothing needs action to
+upgrade.
+
+- **Added** — **List requests for an embed's preview.** `requests="GET /; POST /form {…}"` on `<bun-playground>` opens a
+  preview tab per request, the first sent when the server starts and the others when opened.
+
 ## 0.2.0 — 2026-11-04
 
 More control over how an embed looks and loads: a stacked layout, parts and a state to style and animate the poster's
