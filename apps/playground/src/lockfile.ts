@@ -1,4 +1,4 @@
-import type { VFS } from "@runbun/vfs";
+import { shareFiles, type VFS } from "@runbun/vfs";
 import { fetchTarball } from "./pkgCache";
 
 type Log = (level: "log" | "error", text: string) => void;
@@ -73,9 +73,22 @@ export function* untar(buf: Uint8Array): Generator<{ name: string; data: Uint8Ar
     const size = parseInt(str(124, 136).trim() || "0", 8);
     const type = h[156] ? String.fromCharCode(h[156]) : "0";
     off += 512;
-    if (type === "0") yield { name, data: buf.slice(off, off + size) };
+    if (type === "0") yield { name, data: buf.subarray(off, off + size) };
     off += Math.ceil(size / 512) * 512;
   }
+}
+
+/**
+ * A package tarball's files (gunzipped), paths without the leading `package/`, as bytes in one block of shared memory
+ * where there is one (`shareFiles`): the page and its workers then hold one copy of node_modules between them.
+ */
+export function packageFiles(tar: Uint8Array): { name: string; data: Uint8Array }[] {
+  const files: { name: string; data: Uint8Array }[] = [];
+  for (const { name, data } of untar(tar)) {
+    const rel = name.split("/").slice(1).join("/");
+    if (rel) files.push({ name: rel, data });
+  }
+  return shareFiles(files);
 }
 
 /**
@@ -132,10 +145,7 @@ export async function installFromBunLock(vfs: VFS, lockText: string, log: Log): 
         const url = registry.endsWith(".tgz") ? registry : `${base}/${id.name}/-/${id.name.split("/").pop()}-${id.version}.tgz`;
         const tgz = await fetchTarball(url, (bytes) => checkIntegrity(bytes, integrity));
         // Kept as bytes, text included (see INSTALLED_AS_BYTES).
-        for (const { name, data } of untar(await gunzip(tgz))) {
-          const rel = name.split("/").slice(1).join("/");
-          if (rel) vfs.write(`${dest}/${rel}`, data);
-        }
+        for (const { name, data } of packageFiles(await gunzip(tgz))) vfs.write(`${dest}/${name}`, data);
         installed++;
         log("log", `+ ${key}@${id.version}`);
       } catch (e) {

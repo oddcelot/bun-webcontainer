@@ -17,6 +17,32 @@ const dec = new TextDecoder();
 const enc = new TextEncoder();
 const strict = new TextDecoder("utf-8", { fatal: true });
 
+const SAB = typeof SharedArrayBuffer === "function" ? SharedArrayBuffer : undefined;
+/**
+ * Installed packages can sit in shared memory (see `shareFiles`), handed to workers without a copy. Many Web APIs
+ * refuse views of it (TextDecoder, Blob, Response, crypto.subtle, messages to the service worker), so readers get a
+ * copy: `readText`, `textOf` and `readBytes` never return shared memory; `read` and `files` can.
+ */
+export const unshared = (u: Uint8Array): Uint8Array => (SAB && u.buffer instanceof SAB ? u.slice() : u);
+
+/**
+ * Copies the files of one package (views of its unpacked tarball) into one SharedArrayBuffer where the page is
+ * cross-origin isolated: posting them to a worker shares them instead of copying. Elsewhere each gets a buffer of its
+ * own, so a message carrying one file doesn't carry the whole tarball.
+ */
+export function shareFiles<T extends { data: Uint8Array }>(files: T[]): T[] {
+  if (!SAB || !(globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated) return files.map((f) => ({ ...f, data: f.data.slice() }));
+  let size = 0;
+  for (const f of files) size += f.data.byteLength;
+  const mem = new Uint8Array(new SAB(size));
+  let at = 0;
+  return files.map((f) => {
+    mem.set(f.data, at);
+    const data = mem.subarray(at, (at += f.data.byteLength));
+    return { ...f, data };
+  });
+}
+
 export class VFS {
   readonly files = new Map<string, FileData>();
   readonly dirs = new Set<string>();
@@ -48,7 +74,7 @@ export class VFS {
 
   readText(path: string): string | undefined {
     const d = this.read(path);
-    return d === undefined ? undefined : typeof d === "string" ? d : dec.decode(d);
+    return d === undefined ? undefined : typeof d === "string" ? d : dec.decode(unshared(d));
   }
 
   /**
@@ -59,7 +85,7 @@ export class VFS {
     const d = this.read(path);
     if (d === undefined || typeof d === "string") return d;
     try {
-      return strict.decode(d);
+      return strict.decode(unshared(d));
     } catch {
       return null;
     }
@@ -67,7 +93,7 @@ export class VFS {
 
   readBytes(path: string): Uint8Array | undefined {
     const d = this.read(path);
-    return d === undefined ? undefined : typeof d === "string" ? enc.encode(d) : d;
+    return d === undefined ? undefined : typeof d === "string" ? enc.encode(d) : unshared(d);
   }
 
   write(path: string, data: FileData) {
