@@ -18,7 +18,8 @@ export type EditorCursor = { line: number; column: number; selected: number };
 export type EditorHover = { code: string; docs: string };
 
 /** A place in a file: its VFS path, 1-based line and UTF-16 column. */
-export type EditorLocation = { path: string; line: number; column: number };
+/** `readOnly`: a declaration file outside the project (typecheck `readTypes`), with a path no VFS file has. */
+export type EditorLocation = { path: string; line: number; column: number; readOnly?: boolean };
 
 /** What a completion is, for its icon. */
 export type CompletionKind =

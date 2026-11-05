@@ -67,6 +67,7 @@ type Exports = {
   ls_output_len(): number;
   ls_set_files(): void;
   ls_remove_files(): void;
+  ls_read_lib(): void;
   ls_hover(): void;
   ls_completion(): void;
   ls_completion_resolve(): void;
@@ -99,7 +100,7 @@ export class TsrsLs {
    * (as installs keep them, shared with the page): copied as they are, so a push of every declaration file makes no
    * joined or encoded copy of the whole request first. The module reads each field as UTF-8, lossily.
    */
-  private call(fn: "ls_set_files" | "ls_remove_files" | "ls_hover" | "ls_completion" | "ls_completion_resolve" | "ls_signature_help" | "ls_definition" | "ls_diagnostics", fields: (string | Uint8Array)[]): string {
+  private call(fn: "ls_set_files" | "ls_remove_files" | "ls_hover" | "ls_completion" | "ls_completion_resolve" | "ls_signature_help" | "ls_definition" | "ls_diagnostics" | "ls_read_lib", fields: (string | Uint8Array)[]): string {
     const enc = new TextEncoder();
     const parts = fields.map((f) => (typeof f === "string" ? enc.encode(f) : f));
     const len = parts.reduce((t, p) => t + p.byteLength, 0) + Math.max(0, parts.length - 1);
@@ -149,6 +150,11 @@ export class TsrsLs {
   /** Where the name at `line`/`character` (0-based, UTF-16) is declared, or null. */
   definition(config: string, path: string, line: number, character: number): LspDefinition {
     return JSON.parse(this.call("ls_definition", [config, path, String(line), String(character)]));
+  }
+
+  /** The text of a bundled TypeScript lib (`bundled:///libs/lib.dom.d.ts`, as a definition names it); "" for any other path. */
+  readLib(path: string): string {
+    return this.call("ls_read_lib", [path]);
   }
 
   diagnostics(config: string, path: string): LspDiagnostic[] {

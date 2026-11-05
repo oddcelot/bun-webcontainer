@@ -5,7 +5,7 @@ import { createPierre } from "../editors/pierre";
 import { chordKeys, keysFor, matches } from "../keymap";
 import type { CodeEditor, EditorLocation } from "../editors/types";
 import { asConsoleEntry, errorLocation, fmt } from "../fmt";
-import { complete, definition, hover, resolveCompletion, signatureHelp, TYPED } from "../typecheck";
+import { complete, definition, hover, readTypes, resolveCompletion, signatureHelp, TYPED } from "../typecheck";
 import { AppContext } from "./context";
 import { guarded } from "./guarded";
 import type { Peek } from "./workspace";
@@ -36,6 +36,8 @@ export function EditorPane() {
   // Edited text not in the VFS yet, per file. Switching tabs keeps it.
   const pending = new Map<string, string>();
   let timer: ReturnType<typeof setTimeout> | undefined;
+  /** A project file the type checker answers for (a read-only declaration tab isn't one: it's not in the project). */
+  const typed = (file: string) => TYPED.test(file) && has("types") && ws.readOnlyText(file) === undefined;
 
   /** Writes `path`'s edits to the VFS; false when there were none. */
   function save(path: string) {
@@ -66,12 +68,16 @@ export function EditorPane() {
 
   /** Moves to where the name at `line`/`column` of `file` is declared, opening that file's tab if it's another. */
   async function goToDefinition(file: string, line: number, column: number) {
-    if (!TYPED.test(file) || !editor || !has("types")) return;
+    if (!typed(file) || !editor) return;
     const [to] = await definition(vfs, file, editor.getText(), line, column);
     if (!to || file !== current) return;
     if (to.path === current) return editor.reveal(to.line, to.column);
     revealOnOpen = to;
-    ws.open(to.path);
+    if (!to.readOnly) return ws.open(to.path);
+    // TypeScript's lib files and Bun's bundled types aren't project files: they open read-only.
+    const text = ws.readOnlyText(to.path) ?? (await readTypes(to.path));
+    if (text === null) return void (revealOnOpen = undefined);
+    if (file === current) ws.openReadOnly(to.path, text);
   }
   ws.onOpenAt((path, line, column) => {
     if (path === current) return editor?.reveal(line, column);
@@ -82,7 +88,7 @@ export function EditorPane() {
 
   async function formatOpenFile() {
     const path = current;
-    if (!path || !editor || !has("format")) return;
+    if (!path || !editor || !has("format") || ws.readOnlyText(path) !== undefined) return;
     try {
       const r = await fmt(vfs, path, editor.getText());
       if (path !== current) return;
@@ -113,15 +119,15 @@ export function EditorPane() {
     () => ws.state.active,
     guarded("editor", (path) => {
       editor ??= createPierre(el, {
-        readOnly: () => !has("edit"),
+        readOnly: () => !has("edit") || (current !== null && ws.readOnlyText(current) !== undefined),
         onCursor: ws.setCursor,
         onDiagnostics: ws.setProblems,
         // Types for TypeScript files, with the editor's text (unsaved edits included).
-        hover: async (file, line, column) => (TYPED.test(file) && editor && has("types") ? hover(vfs, file, editor.getText(), line, column) : null),
-        complete: async (file, line, column, trigger) => (TYPED.test(file) && editor && has("types") ? complete(vfs, file, editor.getText(), line, column, trigger) : null),
+        hover: async (file, line, column) => (typed(file) && editor ? hover(vfs, file, editor.getText(), line, column) : null),
+        complete: async (file, line, column, trigger) => (typed(file) && editor ? complete(vfs, file, editor.getText(), line, column, trigger) : null),
         resolveCompletion: async (file, item) => (editor ? resolveCompletion(vfs, file, editor.getText(), item) : null),
         signatureHelp: async (file, line, column, trigger, retrigger) =>
-          TYPED.test(file) && editor ? signatureHelp(vfs, file, editor.getText(), line, column, trigger, retrigger) : null,
+          typed(file) && editor ? signatureHelp(vfs, file, editor.getText(), line, column, trigger, retrigger) : null,
         goToDefinition: (file, line, column) => void goToDefinition(file, line, column),
       });
       check ??= mountDiagnostics(vfs, editor, () => has("types"));
@@ -129,6 +135,15 @@ export function EditorPane() {
       if (!path) {
         editor.clear();
         check(null, null);
+        return;
+      }
+      const declarations = ws.readOnlyText(path);
+      if (declarations !== undefined) {
+        editor.open(path, declarations, () => {});
+        check(null, null);
+        ws.setCursor(null);
+        if (revealOnOpen?.path === path) editor.reveal(revealOnOpen.line, revealOnOpen.column);
+        revealOnOpen = undefined;
         return;
       }
       // A large installed file kept out of memory opens empty and fills in once loaded.
@@ -253,7 +268,7 @@ export function EditorPane() {
           <ChangesView shown={ws.state.changesShown} />
         </Show>
         {/* Over the code's top right corner, shown while the pointer is over the code (always on touch screens). */}
-        <Show when={has("format") && ws.state.active && !ws.state.changesShown}>
+        <Show when={has("format") && ws.state.active && !ws.state.changesShown && ws.readOnlyText(ws.state.active!) === undefined}>
           <Tip class="format" type="button" tip="Format the open file with bun fmt" keys={keysFor("format").map(chordKeys)} onClick={() => void formatOpenFile()}>
             <i class="i-lucide-wand-sparkles" aria-hidden="true" /> Format
           </Tip>

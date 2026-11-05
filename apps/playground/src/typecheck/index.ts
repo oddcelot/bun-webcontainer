@@ -2,7 +2,7 @@ import type { CompletionKind, EditorCompletion, EditorCompletionDetails, EditorC
 import type { FileContents, VFS } from "@runbun/vfs";
 import { nearestTsconfig } from "../tsconfig";
 import type { LspCompletionItem } from "./tsrsLs";
-import type { LsOp, LsReply, LsRequest } from "./worker";
+import type { LsOp, LsRead, LsReply, LsRequest } from "./worker";
 
 // Type errors, hovers, completions, signature help and definitions from tsrs's language service (see ./worker.ts). The project's files go to it as absolute
 // paths ("/" + VFS path); from node_modules only declarations and JSON (package.json, configs a tsconfig `extends`,
@@ -40,8 +40,7 @@ const waiting = new Map<number, (r: LsReply) => void>();
 // What the worker holds, so each request sends only the files that changed (VFS writes replace the data).
 const sent = new Map<string, FileContents>();
 
-/** Sends `op` for `path` (contents `text`, unsaved edits included) with what changed in the project since the last request. */
-async function request(vfs: VFS, path: string, text: string, op: LsOp): Promise<LsReply> {
+function lsWorker(): Worker {
   if (!worker) {
     worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
     worker.onmessage = (e: MessageEvent<LsReply>) => {
@@ -49,6 +48,12 @@ async function request(vfs: VFS, path: string, text: string, op: LsOp): Promise<
       waiting.delete(e.data.id);
     };
   }
+  return worker;
+}
+
+/** Sends `op` for `path` (contents `text`, unsaved edits included) with what changed in the project since the last request. */
+async function request(vfs: VFS, path: string, text: string, op: LsOp): Promise<LsReply> {
+  lsWorker();
   const wanted = [...vfs.files.keys()].filter((p) => (p.startsWith("node_modules/") || p.includes("/node_modules/") ? DECLARATIONS.test(p) : PROJECT.test(p)));
   // Installs keep declarations in memory; this only matters if one was left in the package store.
   await vfs.ensure(wanted);
@@ -126,8 +131,10 @@ export async function hover(vfs: VFS, path: string, text: string, line: number, 
 }
 
 /**
- * Where the name at `line`/`column` (1-based, UTF-16) of `path` is declared: VFS paths and 1-based positions of the
- * declarations' names. Declarations outside the VFS (TypeScript's libs, Bun's bundled types) are left out.
+ * Where the name at `line`/`column` (1-based, UTF-16) of `path` is declared: 1-based positions of the declarations'
+ * names, in VFS paths, or `readOnly` in a declaration file the project doesn't have: one of TypeScript's libs
+ * (`bundled:///libs/lib.es5.d.ts`) or Bun's types bundled with the playground (`/node_modules/@types/bun/…`), whose
+ * text `readTypes` gives.
  */
 export async function definition(vfs: VFS, path: string, text: string, line: number, column: number): Promise<EditorLocation[]> {
   const r = await request(vfs, path, text, { kind: "definition", line: line - 1, character: column - 1 });
@@ -137,11 +144,23 @@ export async function definition(vfs: VFS, path: string, text: string, line: num
   const out: EditorLocation[] = [];
   for (const l of all) {
     const [uri, { start }] = "targetUri" in l ? [l.targetUri, l.targetSelectionRange] : [l.uri, l.range];
+    const at = { line: start.line + 1, column: start.character + 1 };
+    if (uri.startsWith("bundled:///")) out.push({ path: uri, ...at, readOnly: true });
     if (!uri.startsWith("file:///")) continue;
     const file = decodeURIComponent(uri.slice("file:///".length));
-    if (vfs.files.has(file)) out.push({ path: file, line: start.line + 1, column: start.character + 1 });
+    if (vfs.files.has(file)) out.push({ path: file, ...at });
+    else if (file.startsWith("node_modules/")) out.push({ path: "/" + file, ...at, readOnly: true });
   }
   return out;
+}
+
+/** The text of a read-only declaration file a definition pointed into (see `definition`), or null. */
+export function readTypes(path: string): Promise<string | null> {
+  const id = ++nextId;
+  return new Promise((resolve) => {
+    waiting.set(id, (r) => resolve(r.text ?? null));
+    lsWorker().postMessage({ id, kind: "read", path } satisfies LsRead);
+  });
 }
 
 /** LSP's CompletionItemKind, by number. */

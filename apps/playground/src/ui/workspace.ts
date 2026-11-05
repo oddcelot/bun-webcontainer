@@ -35,6 +35,9 @@ export function createWorkspace() {
     ? createSignal(true)
     : pref(WATCH_KEY, true, { serialize: (on) => (on ? "on" : "off"), deserialize: (s) => s !== "off" });
   const saved = new Set<() => void>();
+  // Read-only declaration files a definition opened (TypeScript's libs, Bun's bundled types), by their checker path:
+  // not the VFS's, which has no leading "/" or scheme. Kept out of the store: lib.dom.d.ts is megabytes.
+  const readOnly = new Map<string, string>();
   // What the editor reports for the status bar.
   const [cursor, setCursor] = createSignal<EditorCursor | null>(null);
   const [problems, setProblems] = createSignal<EditorDiagnostic[]>([]);
@@ -95,6 +98,13 @@ export function createWorkspace() {
     format: () => format(),
     /** Writes every pending edit to the VFS now (before running, installing or sharing). */
     saveAll: () => saveAll(),
+    /** Opens a read-only declaration file (see `readOnly`) in a tab, or switches to its tab. */
+    openReadOnly(path: string, text: string) {
+      readOnly.set(path, text);
+      this.open(path);
+    },
+    /** The text of a read-only tab's file, or undefined for a project file. */
+    readOnlyText: (path: string) => readOnly.get(path),
     /** Opens `path` in a tab (after the active one) or switches to its tab. */
     open(path: string) {
       setState((s) => {
@@ -129,12 +139,14 @@ export function createWorkspace() {
         s.open.splice(i, 1);
         if (s.active === path) s.active = s.open[i] ?? s.open[i - 1] ?? null;
       });
+      readOnly.delete(path);
     },
     closeAll() {
       setState((s) => {
         s.open = [];
         s.active = null;
       });
+      readOnly.clear();
     },
     /** The file tree re-reads every path from the VFS (after it was cleared and refilled). */
     reloadTree() {

@@ -770,6 +770,23 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
       if (editor && host.contains(document.activeElement)) void requestSuggest();
     },
     reveal(line, column) {
+      // Read-only (no editor): scroll the line into view and select it, once the view has rendered it.
+      if (!editor) {
+        const shown = view;
+        const go = (frames: number) => {
+          if (view !== shown || !shown) return;
+          const row = [...host.querySelectorAll("*")].map((el) => el.shadowRoot?.querySelector(`[data-line="${line}"]`)).find(Boolean);
+          if (!row) return void (frames && requestAnimationFrame(() => go(frames - 1)));
+          shown.setSelectedLines({ start: line, end: line });
+          // Only vertically: scrollIntoView would also scroll a long line sideways, hiding its start.
+          for (let el: Element | null = row; el; el = el.parentElement ?? ((el.getRootNode() as ShadowRoot).host ?? null)) {
+            if (el.scrollHeight <= el.clientHeight || !/auto|scroll/.test(getComputedStyle(el).overflowY)) continue;
+            el.scrollTop += row.getBoundingClientRect().top - el.getBoundingClientRect().top - el.clientHeight / 2;
+            break;
+          }
+        };
+        return go(30);
+      }
       // A just-opened editor sets up its text document a few frames later (see applyMarkers).
       const current = editor;
       const go = (frames: number) => {
