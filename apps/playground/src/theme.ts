@@ -175,12 +175,17 @@ export function onTheme(fn: (name: string, theme: ThemeLike) => void) {
 
 const families = Object.values(FAMILIES).flat();
 
-// Every family's themes into the controller's cache once the page is idle: a cached theme applies in the same call,
-// so picking or previewing one in the theme picker shows at once instead of waiting for its module to load.
-// An embed has no theme picker.
-if (!EMBEDDED) (window.requestIdleCallback ?? ((fn: () => void) => setTimeout(fn, 1000)))(() => {
+let preloaded = false;
+/**
+ * Loads every family's themes into the controller's cache (50 modules), once: a cached theme applies in the same call,
+ * so previewing one in the theme picker shows at once instead of waiting for its module. The picker calls it when the
+ * pointer or focus reaches its button, not at startup.
+ */
+export function preloadThemes() {
+  if (preloaded) return;
+  preloaded = true;
   controller.resolver.resolveThemes(families.flatMap(([, light, dark]) => [light, dark])).catch(() => {});
-});
+}
 
 /** True for a theme family's light variant (what `pickFamily` takes). */
 export const isFamily = (light: string) => families.some((f) => f[1] === light);
