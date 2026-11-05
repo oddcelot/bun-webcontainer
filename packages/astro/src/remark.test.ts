@@ -553,6 +553,24 @@ describe("written responses (=>)", () => {
     expect(panels[0]).not.toContain(">Response<");
   });
 
+  test("-H headers go to the live embed as written, and the poster lists them apart from the body", () => {
+    const list = `POST /form -H "Authorization: Bearer x" -H 'X-Mode: fast' {"a":1} => ok; GET /h -H "nocolon" => hi`;
+    const { attr, entries } = presetRequests(list);
+    expect(attr).toBe(`POST /form -H "Authorization: Bearer x" -H 'X-Mode: fast' {"a":1}; GET /h -H "nocolon"`);
+    expect(entries).toEqual([
+      { method: "POST", path: "/form", body: '{"a":1}', response: "ok", headers: [["Authorization", "Bearer x"], ["X-Mode", "fast"]] },
+      { method: "GET", path: "/h", body: "", response: "hi" },
+    ]);
+    const panels = poster(htmlOf(run([fence(list.replace("'X-Mode: fast'", '"X-Mode: fast"'))])[0])!).split('<div class="runbun-request">').slice(1);
+    expect(panels[0]).toContain('<div class="runbun-request-headers"><div class="runbun-request-label">Request headers</div>');
+    expect(panels[0]).toContain("Authorization: Bearer x");
+    expect(panels[0]).toContain('<div class="runbun-request-label">Request body</div><pre data-language="json"');
+    expect(panels[0]!.indexOf("Request headers")).toBeLessThan(panels[0]!.indexOf("Request body"));
+    expect(panels[0]).not.toContain("-H");
+    expect(panels[1]).not.toContain("Request");
+    expect(panels[1]).not.toContain(">Response<");
+  });
+
   test("a request without a written response says that running the code shows it", () => {
     const html = poster(htmlOf(run([fence("GET / => Hi; POST /form x")])[0])!);
     const panels = html.split('<div class="runbun-request">').slice(1);

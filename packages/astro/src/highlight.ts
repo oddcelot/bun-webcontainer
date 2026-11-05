@@ -365,6 +365,7 @@ export const BLOCK_CSS = `
     font-size: var(--runbun-code-size, 0.875rem);
     line-height: var(--runbun-code-line-height, 1.6);
   }
+  & .runbun-request-headers,
   & .runbun-request-body {
     border-bottom: 1px solid var(--runbun-code-border, color-mix(in srgb, currentColor 15%, transparent));
   }
