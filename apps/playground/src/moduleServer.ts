@@ -352,6 +352,7 @@ async function serveCommonJS(vfs: VFS, path: string, onError: (msg: string) => v
       body = requireRuntimeImports(body);
       inner = mappings;
     } catch (e) {
+      if (e instanceof LazyMiss) throw e; // loaded and served again (withLoaded)
       const msg = `${path}: ${e instanceof Error ? e.message : String(e)}`;
       onError(msg);
       return { status: 500, body: msg };
@@ -377,6 +378,7 @@ async function serveCommonJS(vfs: VFS, path: string, onError: (msg: string) => v
     if (mappings === undefined) return { status: 200, body: js };
     return { status: 200, body: js + inlineSourceMap(path, mappings, { x_bwcLineOffset: wrappedBodyLine(code) - stripped, x_bwcInner: inner }) };
   } catch (e) {
+    if (e instanceof LazyMiss) throw e; // loaded and served again (withLoaded)
     const msg = `${path}: ${e instanceof Error ? e.message : String(e)}`;
     onError(msg);
     return { status: 500, body: msg };
@@ -505,6 +507,7 @@ async function serveModuleOnce(vfs: VFS, rawPath: string, onError: (msg: string)
     }
     return { status: 200, body };
   } catch (e) {
+    if (e instanceof LazyMiss) throw e; // loaded and served again (withLoaded)
     const msg = `${path}: ${e instanceof Error ? e.message : String(e)}`;
     onError(msg);
     return { status: 500, body: msg };

@@ -4,7 +4,7 @@
 // has `Bun.Glob`'s matcher and walker (bun_glob), Bun's YAML, TOML, JSONC and JSON5 parsers and `Bun.password`'s argon2 and bcrypt,
 // which the worker uses.
 import { BASE } from "./base";
-import { dirname, type VFS } from "@runbun/vfs";
+import { dirname, LazyMiss, type VFS } from "@runbun/vfs";
 import { createSysImports } from "@runbun/vfs/sysHost";
 import { fromDataTree } from "./dataTree";
 
@@ -101,6 +101,12 @@ function guard<T>(what: string, f: () => T): T {
   try {
     return f();
   } catch (e) {
+    // A large installed file it read isn't loaded (the page can't block): a fresh instance, and the caller loads it
+    // and asks again (withLoaded). Not a panic.
+    if (e instanceof LazyMiss) {
+      instantiate(bound!);
+      throw e;
+    }
     const m = w!.panic_message_c();
     const [, mp, ml] = new BigUint64Array(w!.memory.buffer, Number(m), 3);
     const msg = dec.decode(new Uint8Array(w!.memory.buffer, Number(mp), Number(ml)));
