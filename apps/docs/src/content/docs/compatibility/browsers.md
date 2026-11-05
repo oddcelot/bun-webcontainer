@@ -23,7 +23,7 @@ Without these, the playground opens in edit-only mode, with a banner naming what
 |---|---|---|---|---|
 | WebAssembly Memory64 | Bun's crates are compiled to wasm64. | ✅ | ✅ | ❌ |
 | Secure context (HTTPS) | Required by service workers. | ✅ | ✅ | ✅ |
-| Service workers | Serve your modules (`/__vfs/`) and the preview (`/__preview/`). Private windows may disable them. | ✅ | ✅ | ✅ |
+| Service workers | Serve your modules (`/__vfs/`) and the preview (`/__preview/`), and keep the playground's own files (the wasm too) so a repeat visit downloads only what changed and the playground opens offline. Private windows may disable them. | ✅ | ✅ | ✅ |
 | Module workers | Your code runs in a module Web Worker. | ✅ | ✅ | ✅ |
 
 ## Optional features

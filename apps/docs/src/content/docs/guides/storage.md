@@ -13,6 +13,8 @@ Each project is saved to the browser's [Origin Private File System](https://deve
 - Only one tab saves a project. A second tab with the same project warns that its changes won't be kept.
 - If the browser has no Origin Private File System, the playground warns that nothing will be kept across reloads.
 
+After one visit the playground also opens offline: the service worker keeps its files, and a new version downloads only the files that changed.
+
 ## How long it stays
 
 The playground asks the browser to keep its storage (`navigator.storage.persist()`). In Chrome, projects sit in their own [storage bucket](https://developer.chrome.com/docs/web-platform/storage-buckets), kept apart from other site data. Other browsers keep projects and caches together, so there the playground keeps its caches small: once the site's storage passes half of what the browser allows it (at most 1 GiB), the least recently used cache entries are deleted, never your projects. Browsers can still clear them, for example when the disk is nearly full or when you clear site data, and Safari clears a site's storage after seven days without a visit.
