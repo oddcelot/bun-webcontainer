@@ -94,17 +94,30 @@ export class TsrsLs {
     return this.ex.memory.buffer.byteLength;
   }
 
-  private call(fn: "ls_set_files" | "ls_remove_files" | "ls_hover" | "ls_completion" | "ls_completion_resolve" | "ls_signature_help" | "ls_definition" | "ls_diagnostics", fields: string[]): string {
-    const bytes = new TextEncoder().encode(fields.join("\0"));
+  /**
+   * One request: `fields` NUL-separated, written straight into the module's input buffer. File contents can be bytes
+   * (as installs keep them, shared with the page): copied as they are, so a push of every declaration file makes no
+   * joined or encoded copy of the whole request first. The module reads each field as UTF-8, lossily.
+   */
+  private call(fn: "ls_set_files" | "ls_remove_files" | "ls_hover" | "ls_completion" | "ls_completion_resolve" | "ls_signature_help" | "ls_definition" | "ls_diagnostics", fields: (string | Uint8Array)[]): string {
+    const enc = new TextEncoder();
+    const parts = fields.map((f) => (typeof f === "string" ? enc.encode(f) : f));
+    const len = parts.reduce((t, p) => t + p.byteLength, 0) + Math.max(0, parts.length - 1);
     // ls_input may grow memory, which detaches the old buffer: take the pointer first.
-    const ptr = this.ex.ls_input(bytes.length);
-    new Uint8Array(this.ex.memory.buffer, ptr, bytes.length).set(bytes);
+    const ptr = this.ex.ls_input(len);
+    const input = new Uint8Array(this.ex.memory.buffer, ptr, len);
+    let at = 0;
+    for (const [i, p] of parts.entries()) {
+      if (i) input[at++] = 0;
+      input.set(p, at);
+      at += p.byteLength;
+    }
     this.ex[fn]();
     return new TextDecoder().decode(new Uint8Array(this.ex.memory.buffer, this.ex.ls_output(), this.ex.ls_output_len()));
   }
 
-  setFiles(files: Iterable<[string, string]>) {
-    const fields: string[] = [];
+  setFiles(files: Iterable<[string, string | Uint8Array]>) {
+    const fields: (string | Uint8Array)[] = [];
     for (const [path, text] of files) fields.push(path, text);
     if (fields.length) this.call("ls_set_files", fields);
   }
