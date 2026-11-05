@@ -81,7 +81,7 @@
   <body>
     <!-- src/ui/App.tsx renders the page; this header is what crawlers and no-JS visitors see. -->
     <header>
-      <h1 class="title"><img src="/src/bun-logo.svg" alt="" width="23" height="20" /><span class="sr-only">runbun.dev: Bun in your browser</span><span id="title" aria-hidden="true">Bun playground</span></h1>
+      <h1 class="title"><span class="logo" aria-hidden="true"></span><span class="sr-only">runbun.dev: Bun in your browser</span><span id="title" aria-hidden="true">Bun playground</span></h1>
       <script>
         try {
           document.getElementById("title").textContent = sessionStorage.getItem("title") || "Bun playground";

@@ -22,7 +22,7 @@ export function Header() {
   return (
     <>
       <h1 class="title">
-        <img src={logo} alt="" width="23" height="20" />
+        <span class="logo" aria-hidden="true" />
         <span class="sr-only">runbun.dev: Bun in your browser</span>
         <span id="title" aria-hidden="true">
           <Title />
