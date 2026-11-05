@@ -1,4 +1,4 @@
-import { CookieJar } from "./cookieJar";
+import { CookieJar, parseSetCookie, type Cookie } from "./cookieJar";
 import { PANEL_COOKIE, joinCookies } from "./request";
 import { resetSyncEsm, serveModule, vfsRoot } from "./moduleServer";
 import type { VFS } from "@runbun/vfs";
@@ -56,19 +56,87 @@ export class Runner {
    * A stopped worker never finishes them, so stop() does.
    */
   private pending = new Map<MessagePort, boolean>();
-  /** The preview host's cookies; kept across Runs, as a browser keeps them across server restarts. */
+  /**
+   * The preview host's cookies the browser doesn't hold for us: the HttpOnly ones (the preview's scripts mustn't see
+   * them, and scripts can't create them) and those with a narrower Path than the preview's root (the cookie page can't
+   * read those back). Kept across Runs, as a browser keeps them across server restarts.
+   */
   readonly cookies = new CookieJar();
+  /** The path the preview's cookies live under in the browser (`/__preview/@<id>`), from sw.ts with each request. */
+  private base: string | undefined;
+  /** A hidden frame at `<base>/__runbun_cookies__`, a blank page whose document.cookie is the browser's preview cookies. */
+  private cookiePage: Promise<Document | undefined> | undefined;
+
+  /** The browser's cookies for the preview's root (`a=1; b=2`), read through the cookie page. */
+  private async browserCookies(): Promise<string> {
+    const base = this.base;
+    if (!base) return "";
+    this.cookiePage ??= new Promise((resolve) => {
+      const frame = document.createElement("iframe");
+      frame.hidden = true;
+      frame.setAttribute("aria-hidden", "true");
+      frame.onload = () => resolve(frame.contentDocument ?? undefined);
+      frame.onerror = () => resolve(undefined);
+      frame.src = base + COOKIE_PAGE;
+      document.body.append(frame);
+    });
+    return (await this.cookiePage)?.cookie ?? "";
+  }
 
   /**
-   * Request headers with the jar's Cookie in place of any the request brought, joined with the one set in the request
-   * panel (request.ts PANEL_COOKIE), which wins for a cookie in both.
+   * Request headers with the preview's cookies (the browser's, which the preview's scripts can change, and the jar's)
+   * in place of any the request brought, joined with the one set in the request panel (request.ts PANEL_COOKIE), which
+   * wins for a cookie in all.
    */
-  private withCookies(path: string, headers: [string, string][]) {
+  private async withCookies(path: string, headers: [string, string][], base: string | undefined) {
+    if (base) this.base = base;
     const panel = headers.find(([k]) => k.toLowerCase() === PANEL_COOKIE)?.[1];
     const out = headers.filter(([k]) => k.toLowerCase() !== "cookie" && k.toLowerCase() !== PANEL_COOKIE);
-    const cookie = joinCookies(this.cookies.header(path), panel);
+    const cookie = joinCookies(joinCookies(await this.browserCookies(), this.cookies.header(path)), panel);
     if (cookie) out.push(["cookie", cookie]);
     return out;
+  }
+
+  /**
+   * A response's Set-Cookie headers, for a request to `path`. Each goes into the browser under the preview's path, so
+   * the preview's scripts see it in document.cookie and DevTools lists it, except HttpOnly ones (into the jar, and out
+   * of the browser). One for the preview's root (`Path=/`) is the browser's alone, read back through the cookie page;
+   * one for a narrower path stays in the jar too, which sends it where it applies.
+   */
+  private storeCookies(path: string, setCookies: string[]) {
+    const base = this.base;
+    for (const line of setCookies) {
+      const c = parseSetCookie(path, line);
+      if (!c) continue;
+      if (!base) {
+        this.cookies.put(c);
+        continue;
+      }
+      document.cookie = browserCookie(base, c.httpOnly ? { ...c, expires: 0 } : c);
+      if (c.httpOnly || c.path !== "/") this.cookies.put(c);
+      else this.cookies.drop(c.name, c.path);
+    }
+  }
+
+  /** The preview's cookies, from both places (the `cookies` console command); paths as the server sees them. */
+  async listCookies(): Promise<Readonly<Cookie>[]> {
+    const browser = (await this.browserCookies())
+      .split("; ")
+      .filter(Boolean)
+      .map((pair) => {
+        const eq = pair.indexOf("=");
+        return { name: eq < 0 ? "" : pair.slice(0, eq), value: eq < 0 ? pair : pair.slice(eq + 1), path: "/", expires: Infinity };
+      });
+    return [...browser, ...this.cookies.list()];
+  }
+
+  /** Deletes the preview's cookies in both places. */
+  async clearCookies() {
+    const base = this.base;
+    if (base) {
+      for (const c of await this.listCookies()) document.cookie = browserCookie(base, { ...c, expires: 0 });
+    }
+    this.cookies.clear();
   }
 
   private async onSw(e: MessageEvent) {
@@ -82,6 +150,8 @@ export class Runner {
       }
     } else if (m.type === "preview") {
       await this.ready;
+      const { base, ...req } = m.req;
+      const headers = await this.withCookies(req.path, req.headers, base);
       if (!this.worker) return sendText(port, 503, "No server running. Press Run.");
       // Relayed instead of handing the worker `port`, so an unfinished response can still be ended.
       const { port1, port2 } = new MessageChannel();
@@ -90,7 +160,7 @@ export class Runner {
         if (!this.pending.has(port)) return;
         if (data.type === "head") {
           const headers = data.headers as [string, string][];
-          this.cookies.store(m.req.path, headers.filter(([k]) => k.toLowerCase() === "set-cookie").map(([, v]) => v));
+          this.storeCookies(m.req.path, headers.filter(([k]) => k.toLowerCase() === "set-cookie").map(([, v]) => v));
           data = { ...data, headers: headers.filter(([k]) => k.toLowerCase() !== "set-cookie") };
         }
         port.postMessage(data, data.type === "chunk" ? [data.data] : []);
@@ -102,11 +172,13 @@ export class Runner {
       };
       // A cancel from the service worker (the page went away) goes on to the worker.
       port.onmessage = ({ data }) => port1.postMessage(data);
-      this.worker.postMessage({ type: "request", req: { ...m.req, headers: this.withCookies(m.req.path, m.req.headers) } }, [port2]);
+      this.worker.postMessage({ type: "request", req: { ...req, headers } }, [port2]);
     } else if (m.type === "ws") {
       await this.ready;
+      const { base, ...ws } = m;
+      const headers = await this.withCookies(m.path, m.headers, base);
       if (!this.worker) return port.postMessage({ type: "close", code: 1011, reason: "No server running" });
-      this.worker.postMessage({ ...m, headers: this.withCookies(m.path, m.headers) }, [port]);
+      this.worker.postMessage({ ...ws, headers }, [port]);
     }
   }
 
@@ -173,7 +245,7 @@ export class Runner {
         const m = e.data;
         if (m.type === "console") this.log(m.level, m.text);
         // A WebSocket upgrade's Set-Cookie headers (an HTTP response's are read off its head in onSw).
-        else if (m.type === "cookies") this.cookies.store(m.path, m.setCookies);
+        else if (m.type === "cookies") this.storeCookies(m.path, m.setCookies);
         else if (m.type === "ready") {
           clearTimeout(timer);
           this.failed = m.failed ?? 0;
@@ -213,4 +285,17 @@ export class Runner {
     void this.ready.then(handOver);
     return this.ready;
   }
+}
+
+/** The blank page under a preview's base whose document.cookie is the browser's preview cookies (sw.ts serves it). */
+const COOKIE_PAGE = "/__runbun_cookies__";
+
+/**
+ * A document.cookie assignment that sets (or, expired, deletes) `c` under the preview's base path. The server's `/`
+ * is the base without a trailing slash: the default path of a cookie a script on the preview's root page sets, so the
+ * two name the same cookie, as they would on a real host.
+ */
+function browserCookie(base: string, c: Cookie): string {
+  const expires = c.expires === Infinity ? "" : `; expires=${new Date(c.expires).toUTCString()}`;
+  return `${c.name}=${c.value}; path=${c.path === "/" ? base : base + c.path}${expires}; SameSite=Lax`;
 }

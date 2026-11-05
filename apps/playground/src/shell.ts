@@ -1,4 +1,4 @@
-import type { CookieJar } from "./cookieJar";
+import type { Cookie } from "./cookieJar";
 import { asConsoleEntry, fmt as formatFile, walks } from "./fmt";
 import { clearPkgCache, pkgCacheInfo } from "./pkgCache";
 import { clearStore, storeInfo } from "./pkgStore";
@@ -20,7 +20,7 @@ export interface ShellHost {
   /** Forget this project's saved files and reload it from its source. */
   reset(): Promise<void>;
   /** The preview servers' cookies (absent when this browser can't run code). */
-  cookies?: CookieJar;
+  cookies?: { list(): Promise<Readonly<Cookie>[]>; clear(): Promise<void> };
 }
 
 type Pkg = { scripts?: Record<string, string>; dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
@@ -61,16 +61,16 @@ export function createShell(host: ShellHost) {
   const { vfs, log } = host;
   const fail = (text: string) => log("error", text);
 
-  function cookies(sub?: string) {
+  async function cookies(sub?: string) {
     const jar = host.cookies;
     if (!jar) return fail("cookies: this browser can't run code");
-    if (sub === "clear") return jar.clear(), log("sys", "[cookies] cleared");
+    if (sub === "clear") return await jar.clear(), log("sys", "[cookies] cleared");
     if (sub) return fail(`cookies: unknown option ${sub}`);
-    const all = jar.list();
+    const all = await jar.list();
     if (!all.length) return log("log", "(no cookies)");
     for (const c of all) {
       const expires = c.expires === Infinity ? "session" : `expires ${new Date(c.expires).toISOString()}`;
-      log("log", `${c.name}=${c.value}  path=${c.path}  ${expires}`);
+      log("log", `${c.name}=${c.value}  path=${c.path}  ${expires}${c.httpOnly ? "  HttpOnly" : ""}`);
     }
   }
 
@@ -235,7 +235,7 @@ export function createShell(host: ShellHost) {
     try {
       if (cmd === "help") return log("log", HELP);
       if (cmd === "reset") return await host.reset();
-      if (cmd === "cookies") return cookies(args[0]);
+      if (cmd === "cookies") return await cookies(args[0]);
       if (cmd === "clear") return host.clear();
       if (cmd === "ls") return ls(args[0]);
       if (cmd === "cat") return await cat(args[0]);

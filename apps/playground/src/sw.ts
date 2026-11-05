@@ -25,6 +25,8 @@ interface PreviewRequest {
   method: string;
   headers: HeaderList;
   body: ArrayBuffer | null;
+  /** The preview's base path (`/__preview/@<id>`): its cookies live under it in the browser (runner.ts). */
+  base: string;
 }
 /** Sent to a page. */
 type Ask = { type: "module"; path: string; target: "browser" | "bun" } | { type: "preview"; req: PreviewRequest };
@@ -34,12 +36,15 @@ interface WsRequest {
   path: string;
   headers: HeaderList;
   port: number | undefined;
+  base?: string;
 }
 
 // The app's base path: the worker is served at <base>sw.js.
 const BASE = new URL("./", self.location.href).pathname;
 const VFS = `${BASE}__vfs/`;
 const PREVIEW = `${BASE}__preview`;
+/** A blank page under each preview's base, whose document.cookie the playground reads (runner.ts COOKIE_PAGE). */
+const COOKIE_PAGE = "/__runbun_cookies__";
 /** Pages other sites frame (embed.html, configure.html): an iframe navigating to one isn't a preview leaving `/__preview`. */
 const FRAMED = new RegExp(`^${BASE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(embed|configure)(\\.html)?$`);
 
@@ -253,6 +258,8 @@ const HANDOFF_MS = 10_000;
 async function servePreview(req: Request, url: URL, path?: string, ownerId = previewOwnerOf(url.pathname)): Promise<Response> {
   const base = previewBase(ownerId);
   path ??= (url.pathname.slice(base.length) || "/") + url.search;
+  // The page's window onto the preview's cookies (runner.ts reads its document.cookie); never the server's.
+  if (path === COOKIE_PAGE) return new Response("<!doctype html>", isolated({ headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } }));
   const key = `${ownerId ?? ""} ${path}`;
   let extra = unpackHeaders(req.headers.get(HEADERS_HEADER));
   if (!extra.length && req.mode === "navigate") {
@@ -277,6 +284,7 @@ async function servePreview(req: Request, url: URL, path?: string, ownerId = pre
           extra.map(([k, v]) => [k.toLowerCase() === "cookie" ? PANEL_COOKIE : k, v]),
         ),
         body,
+        base,
       },
     }, owner);
   } catch {
@@ -332,6 +340,7 @@ self.addEventListener("message", (e) => {
   const data: WsRequest = e.data;
   const url = (e.source as Client | null)?.url;
   const ownerId = url && previewOwnerOf(new URL(url).pathname);
+  data.base = previewBase(ownerId || undefined);
   e.waitUntil((ownerId ? windowClient(ownerId) : host()).then((c) => (c ? c.postMessage(data,[e.ports[0]]) : e.ports[0].postMessage({ type: "close", code: 1011, reason: "playground page not found" }))));
 });
 
