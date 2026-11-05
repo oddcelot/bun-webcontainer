@@ -32,8 +32,8 @@ tasks:
     # Console/inspect formatting against native bun on a corpus of values (scripts/inspect-corpus/diff.ts), and the
     # data APIs that need no wasm (scripts/data-apis: Bun.JSONL, Bun.XML.stringify; Bun.markdown and Bun.XML.parse are
     # in transpile-wasm:test), the embed's `requests` parser (scripts/requests.ts) and the request panel's helpers
-    # (scripts/request-fields.ts).
-    script: 'bun scripts/inspect-corpus/diff.ts && bun scripts/data-apis/jsonl.ts && bun scripts/data-apis/xml-stringify.ts && bun scripts/requests.ts && bun scripts/request-fields.ts'
+    # (scripts/request-fields.ts), and the worker's VFS mirror (scripts/vfs-mirror.ts).
+    script: 'bun scripts/inspect-corpus/diff.ts && bun scripts/data-apis/jsonl.ts && bun scripts/data-apis/xml-stringify.ts && bun scripts/requests.ts && bun scripts/request-fields.ts && bun scripts/vfs-mirror.ts'
     toolchains: ['bun']
     inputs:
       - 'scripts/inspect-corpus/**/*'

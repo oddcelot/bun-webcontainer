@@ -236,13 +236,18 @@ export class VFS {
     const a = norm(from);
     const b = norm(to);
     const pre = a + "/";
+    // The directories to move, taken before moving files creates the target's (a -> a/b makes a/b).
+    const dirs = [...this.dirs].filter((d) => d === a || d.startsWith(pre));
     for (const k of [...this.files.keys()]) {
       if (k !== a && !k.startsWith(pre)) continue;
       const data = this.files.get(k)!;
       this.remove(k);
       this.write(b + k.slice(a.length), data);
     }
-    for (const d of [...this.dirs]) if (d === a || d.startsWith(pre)) {
+    for (const d of dirs) {
+      // Moving a directory into its own subtree (a -> a/b) keeps it as the target's parent. Removing it would be
+      // recursive for listeners (the worker's mirror), taking the files just moved below it.
+      if (b.startsWith(d + "/")) continue;
       this.dirs.delete(d);
       for (const fn of this.dirListeners) fn(d, true);
       this.mkdir(b + d.slice(a.length));
