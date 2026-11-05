@@ -401,6 +401,49 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
   }
 }
 #editor { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+/* The Changes tab (Changes.tsx): a summary line over one scrolling list of diffs, in the editor's place. */
+.changes {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+
+  &[hidden] {
+    display: none;
+  }
+
+  > .changes-head {
+    padding: 6px var(--pad);
+    border-bottom: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  .changes-kinds > span::before {
+    content: " · ";
+  }
+
+  > .changes-list {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+  }
+
+  .changes-open {
+    padding: 1px 8px;
+    border: 1px solid var(--control-border);
+    border-radius: var(--inner-radius);
+    background: var(--control);
+    color: inherit;
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--control-hover);
+    }
+  }
+}
 /* Over the editor surface, not above it: the surface stays put when a file opens. */
 #editor[data-empty]::before { content: "No file open"; position: absolute; inset: 0; z-index: 1; display: grid; place-items: center; background: var(--bg); color: var(--muted); }
 /* Tabs size to their name up to 26rem (about 42 characters) (then "…"; the tooltip has the full path) and don't shrink: a full bar scrolls. */

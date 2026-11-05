@@ -7,6 +7,8 @@ import { Tip } from "@runbun/ui/solid/Tip";
 export { TabItem, TabList };
 
 const name = (path: string) => path.slice(path.lastIndexOf("/") + 1);
+/** The Changes tab's value: no file path starts with NUL. */
+const CHANGES = "\0changes";
 
 /**
  * Open files as tabs above the editor. Middle-click, the ×, Delete or Ctrl/Cmd+W closes a tab (unless an embed turned
@@ -22,16 +24,16 @@ export function EditorTabs() {
     return counts;
   });
   createEffect(
-    () => ws.state.active,
+    () => [ws.state.active, ws.state.changesShown],
     () => {
       document.querySelector<HTMLElement>('#tabs [aria-selected="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
     },
   );
 
   return (
-    <TabList id="tabs" class="tabs tablist" label="Open files" onSelect={(path) => path !== ws.state.active && ws.activate(path)}>
+    <TabList id="tabs" class="tabs tablist" label="Open files" onSelect={(path) => (path === CHANGES ? ws.showChanges() : (path !== ws.state.active || ws.state.changesShown) && ws.activate(path))}>
         {/* With no file open, an invisible tab holds the bar's height so the editor doesn't jump. */}
-        <Show when={!ws.state.open.length}>
+        <Show when={!ws.state.open.length && !ws.state.changes}>
           <div class="tab" aria-hidden="true" style={{ visibility: "hidden" }}>
             <span class="tab-trigger">
               <span class="name">&nbsp;</span>
@@ -45,7 +47,7 @@ export function EditorTabs() {
           {(path) => (
             <TabItem
               value={path}
-              selected={ws.state.active === path}
+              selected={!ws.state.changesShown && ws.state.active === path}
               title={path}
               onClose={closable() ? () => ws.close(path) : undefined}
               closeLabel={`Close ${name(path)}`}
@@ -69,6 +71,26 @@ export function EditorTabs() {
             </TabItem>
           )}
         </For>
+        <Show when={ws.state.changes}>
+          <TabItem
+            value={CHANGES}
+            selected={ws.state.changesShown}
+            title="What differs from the project's source"
+            onClose={() => ws.closeChanges()}
+            closeLabel="Close Changes"
+            onKeyDown={(e) => {
+              if (matches("closeTab", e)) {
+                e.preventDefault();
+                ws.closeChanges();
+                flush();
+                document.querySelector<HTMLElement>('#tabs [aria-selected="true"]')?.focus();
+              }
+            }}
+          >
+            <i class="i-lucide-git-compare" aria-hidden="true" />
+            <span class="name">Changes</span>
+          </TabItem>
+        </Show>
     </TabList>
   );
 }

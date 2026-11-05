@@ -21,6 +21,9 @@ export function createWorkspace() {
     treeVersion: 0,
     /** Files whose editor text isn't in the VFS yet (auto-save pending, or auto-save off). */
     dirty: [] as string[],
+    /** The Changes tab is open (after the file tabs), and shown instead of the active file. */
+    changes: false,
+    changesShown: false,
   });
   /** Save edits shortly after typing stops; off, they wait for Ctrl/Cmd+S, Run, Install or Share. Shared by all tabs. */
   // An embed keeps it in memory: it shares runbun.dev's storage (see theme.ts).
@@ -97,11 +100,26 @@ export function createWorkspace() {
       setState((s) => {
         if (!s.open.includes(path)) s.open.splice(s.active ? s.open.indexOf(s.active) + 1 : s.open.length, 0, path);
         s.active = path;
+        s.changesShown = false;
       });
     },
     activate(path: string) {
       setState((s) => {
         s.active = path;
+        s.changesShown = false;
+      });
+    },
+    /** Opens the Changes tab (what differs from the project's source) or switches to it. */
+    showChanges() {
+      setState((s) => {
+        s.changes = true;
+        s.changesShown = true;
+      });
+    },
+    closeChanges() {
+      setState((s) => {
+        s.changes = false;
+        s.changesShown = false;
       });
     },
     close(path: string) {
