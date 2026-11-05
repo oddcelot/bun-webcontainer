@@ -2,7 +2,7 @@
 // which documents the ABI) served from a VFS. Synchronous on purpose: the VFS lives in this worker.
 // Plain erasable TypeScript, so node can run it directly (crates/*/test.ts need Memory64, which bun lacks).
 // Linux numbering throughout (errno, O_* flags, AT_*, S_IF*, DT_*), because wasm_libc.rs does too.
-import { type FileData, type VFS, dirname, norm } from "./vfs.ts";
+import { type FileContents, type VFS, dirname, norm } from "./vfs.ts";
 
 const E = { ENOENT: 2, EBADF: 9, EEXIST: 17, ENOTDIR: 20, EISDIR: 21, EINVAL: 22, ENOTEMPTY: 39, ENOSYS: 38 };
 const AT_FDCWD = -100;
@@ -23,7 +23,7 @@ class Errno extends Error {
   }
 }
 
-const bytesOf = (d: FileData): Uint8Array => (typeof d === "string" ? new TextEncoder().encode(d) : d);
+const bytesOf = (d: FileContents): Uint8Array => (typeof d === "string" ? new TextEncoder().encode(d) : d);
 
 /**
  * Builds the `bun_sys` import object. Each VFS gets its own fd table (fds start at 3). With `stdin`, fd 0 reads what it
@@ -75,7 +75,7 @@ export function createSysImports(vfs: VFS, getMemory: () => WebAssembly.Memory, 
 
   function fileBytes(f: OpenFile): Uint8Array {
     if (f.data) return f.data();
-    const d = vfs.files.get(f.key);
+    const d = vfs.data(f.key);
     return d === undefined ? new Uint8Array(0) : bytesOf(d);
   }
 
@@ -104,7 +104,7 @@ export function createSysImports(vfs: VFS, getMemory: () => WebAssembly.Memory, 
   function writeStat(out: bigint, key: string, mode: "file" | "dir") {
     const dv = new DataView(getMemory().buffer, Number(out), STAT_SIZE);
     const dir = mode === "dir";
-    const size = dir ? 4096 : bytesOf(vfs.files.get(key)!).length;
+    const size = dir ? 4096 : vfs.size(key)!;
     const mtime = dir ? START : (vfs.mtimes.get(key) ?? START);
     let h = 5381;
     for (let i = 0; i < key.length; i++) h = ((h << 5) + h + key.charCodeAt(i)) >>> 0;

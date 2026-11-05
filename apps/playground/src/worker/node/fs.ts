@@ -1,6 +1,6 @@
 import { Buffer } from "buffer";
 import EventEmitter from "events";
-import { dirname, norm, VFS, type FileData } from "@runbun/vfs";
+import { dirname, isLazy, norm, VFS, type FileContents, type FileData } from "@runbun/vfs";
 import { codeError, fsError } from "./errors";
 import path from "./path";
 import { Readable, Writable } from "./stream";
@@ -41,7 +41,7 @@ function copyBytes(v: ArrayBufferView): Uint8Array {
   return out;
 }
 
-function toData(data: unknown, encoding?: string): FileData {
+function toData(data: unknown, encoding?: string): FileContents {
   if (typeof data === "string") return encoding && !/^utf-?8$/i.test(encoding) ? copyBytes(Buffer.from(data, encoding as BufferEncoding)) : data;
   if (ArrayBuffer.isView(data)) return copyBytes(data);
   throw codeError(TypeError, "ERR_INVALID_ARG_TYPE", `The "data" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received ${data === null ? "null" : typeof data}`);
@@ -117,7 +117,7 @@ class Stats {
 
 function statOf(k: string): Stats | undefined {
   const d = vfs.files.get(k);
-  if (d !== undefined) return new Stats(false, typeof d === "string" ? Buffer.byteLength(d) : d.byteLength, vfs.mtimes.get(k) ?? START, k);
+  if (d !== undefined) return new Stats(false, vfs.size(k)!, vfs.mtimes.get(k) ?? START, k);
   if (isDir(k)) return new Stats(true, 4096, START, k);
 }
 
@@ -286,7 +286,7 @@ function writeFileSync(p: unknown, data: unknown, opts?: WriteOpts, defaultFlag 
   if (cur === undefined) checkParent(k, pth, "open");
   if (flag.startsWith("a") && cur !== undefined) {
     if (typeof cur === "string" && typeof out === "string") return put(k, cur + out);
-    const a = typeof cur === "string" ? enc.encode(cur) : cur;
+    const a = typeof cur === "string" ? enc.encode(cur) : vfs.readBytes(k)!;
     const b = typeof out === "string" ? enc.encode(out) : out;
     const joined = new Uint8Array(a.length + b.length);
     joined.set(a);
@@ -416,7 +416,8 @@ function copyFileSync(a: unknown, b: unknown, mode = 0) {
   if (mode & 1 && exists(kb)) throw fsError("EEXIST", "copyfile", from, to);
   if (isDir(kb)) throw fsError("EISDIR", "copyfile", from, to);
   checkParent(kb, from, "copyfile", to);
-  put(kb, typeof d === "string" ? d : copyBytes(d));
+  // A lazy file copies as its reference: the store entry it points into never changes.
+  put(kb, typeof d === "string" || isLazy(d) ? d : copyBytes(d));
 }
 
 function cpSync(a: unknown, b: unknown, opts?: { recursive?: boolean; force?: boolean; errorOnExist?: boolean }) {

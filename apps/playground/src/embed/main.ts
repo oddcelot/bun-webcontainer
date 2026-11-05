@@ -466,6 +466,7 @@ async function handle(req: Request): Promise<unknown> {
     }
     case "readFile": {
       workspace.saveAll();
+      await vfs.ensure([req.params.path]);
       const text = vfs.textOf(req.params.path);
       if (text === undefined) throw new Error(`no such file: ${req.params.path}`);
       return text ?? new Uint8Array(vfs.readBytes(req.params.path)!);

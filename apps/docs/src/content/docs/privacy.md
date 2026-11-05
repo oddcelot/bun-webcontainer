@@ -14,7 +14,7 @@ Your projects stay in your browser. The playground keeps them there and sends no
 - **The current tab's session** in session storage.
 - **Folders you open from disk**: the handle, so the playground can reopen the folder; the browser asks for permission again.
 - **Transpiled modules** in a cache, so the next run starts faster.
-- **npm packages** you installed, in a cache shared by your projects, so they aren't downloaded again (`bun pm cache rm` clears it).
+- **npm packages** you installed, in a cache shared by your projects, so they aren't downloaded again, and their large files unpacked (`bun pm cache rm` clears both).
 - **A service worker** that serves your project's files and its `Bun.serve` preview to the page, and keeps a copy of the playground's own files in your browser so it opens again without downloading them.
 
 Clearing the site's data in your browser removes all of it.

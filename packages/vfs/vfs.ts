@@ -1,4 +1,38 @@
-export type FileData = string | Uint8Array;
+/**
+ * A large installed file kept out of memory: `size` bytes at `at` in package-store entry `lazy` (the playground's
+ * pkgStore.ts). A plain object, so it travels to workers in messages. Read it with `data`, `readText`, `readBytes`
+ * or `textOf` (which load it), or load it ahead with `ensure` where blocking isn't possible (the page).
+ */
+export type LazyData = { lazy: string; at: number; size: number };
+export type FileData = string | Uint8Array | LazyData;
+/** Loaded contents. */
+export type FileContents = string | Uint8Array;
+
+export const isLazy = (d: FileData | undefined): d is LazyData => typeof d === "object" && d !== null && "lazy" in d;
+
+/** A synchronous read of a lazy file where loading can't block (the page): `ensure` it, then try again. */
+export class LazyMiss extends Error {
+  readonly paths: string[];
+  constructor(...paths: string[]) {
+    super(`${paths.join(", ")} isn't loaded yet`);
+    this.paths = paths;
+  }
+}
+
+/**
+ * Runs `fn`, loading each lazy file it reads synchronously and running it again, until it gets through. For page code
+ * that reads files it can't know up front (the module server following requires). `fn` must be safe to repeat.
+ */
+export async function withLoaded<T>(vfs: VFS, fn: () => Promise<T> | T): Promise<T> {
+  for (;;) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (!(e instanceof LazyMiss)) throw e;
+      await vfs.ensure(e.paths);
+    }
+  }
+}
 export type VfsEvent = { path: string; created: boolean; removed?: boolean };
 
 export function norm(p: string): string {
@@ -48,6 +82,10 @@ export class VFS {
   readonly dirs = new Set<string>();
   /** Last write time (ms) per file; files without one count as written at startup. */
   readonly mtimes = new Map<string, number>();
+  /** Loads a lazy file synchronously: a worker, blocking until the page has read it. Unset on the page. */
+  loadSync?: (path: string, ref: LazyData) => Uint8Array;
+  /** Loads a lazy file asynchronously (the page, from the package store). */
+  loadAsync?: (path: string, ref: LazyData) => Promise<Uint8Array>;
   private listeners = new Set<(e: VfsEvent) => void>();
   private dirListeners = new Set<(path: string, removed: boolean) => void>();
   private clearListeners = new Set<() => void>();
@@ -68,12 +106,49 @@ export class VFS {
     this.clearListeners.add(fn);
   }
 
+  /** The entry as stored: a lazy file stays a reference (see `data`). */
   read(path: string): FileData | undefined {
     return this.files.get(norm(path));
   }
 
-  readText(path: string): string | undefined {
+  /** The file's contents, loading a lazy file; throws for one where loading can't block (the page: `ensure` first). */
+  data(path: string): FileContents | undefined {
+    const p = norm(path);
+    const d = this.files.get(p);
+    if (!isLazy(d)) return d;
+    if (!this.loadSync) throw new LazyMiss(p);
+    return this.adopt(p, d, this.loadSync(p, d));
+  }
+
+  /** Keeps loaded bytes for a lazy file, if it's still that file. No change event: the contents didn't change. */
+  adopt(path: string, ref: LazyData, bytes: Uint8Array): Uint8Array {
+    const p = norm(path);
+    const d = this.files.get(p);
+    if (isLazy(d) && d.lazy === ref.lazy && d.at === ref.at) this.files.set(p, bytes);
+    return bytes;
+  }
+
+  /** Loads the lazy files among `paths`, so synchronous reads of them work where they can't block. */
+  async ensure(paths: Iterable<string>): Promise<void> {
+    const work: Promise<unknown>[] = [];
+    for (const path of paths) {
+      const p = norm(path);
+      const d = this.files.get(p);
+      if (!isLazy(d)) continue;
+      if (this.loadAsync) work.push(this.loadAsync(p, d).then((b) => this.adopt(p, d, b)));
+      else this.data(p);
+    }
+    await Promise.all(work);
+  }
+
+  /** A file's size in bytes (a lazy one without loading it); undefined when missing. */
+  size(path: string): number | undefined {
     const d = this.read(path);
+    return d === undefined ? undefined : typeof d === "string" ? enc.encode(d).length : isLazy(d) ? d.size : d.byteLength;
+  }
+
+  readText(path: string): string | undefined {
+    const d = this.data(path);
     return d === undefined ? undefined : typeof d === "string" ? d : dec.decode(unshared(d));
   }
 
@@ -82,7 +157,7 @@ export class VFS {
    * bytes); null for a binary file, undefined for a missing one.
    */
   textOf(path: string): string | null | undefined {
-    const d = this.read(path);
+    const d = this.data(path);
     if (d === undefined || typeof d === "string") return d;
     try {
       return strict.decode(unshared(d));
@@ -92,7 +167,7 @@ export class VFS {
   }
 
   readBytes(path: string): Uint8Array | undefined {
-    const d = this.read(path);
+    const d = this.data(path);
     return d === undefined ? undefined : typeof d === "string" ? enc.encode(d) : unshared(d);
   }
 

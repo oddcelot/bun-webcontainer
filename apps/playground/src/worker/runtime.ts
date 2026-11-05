@@ -51,6 +51,20 @@ const post = (msg: unknown, transfer: Transferable[] = []) => (self as unknown a
 // The worker's copy of the page VFS (sent with "start"); node:fs and Bun.file read it synchronously, and
 // writes are mirrored to the page.
 const vfs = new VFS();
+/**
+ * Large installed files stay out of memory (the page's pkgStore.ts): reading one asks the page for it and blocks
+ * until its bytes are in a buffer shared with the page, which keeps it too. Only where the page is cross-origin
+ * isolated, the only place installs leave files out.
+ */
+if (typeof SharedArrayBuffer === "function" && crossOriginIsolated)
+  vfs.loadSync = (path, ref) => {
+    const sab = new SharedArrayBuffer(8 + ref.size);
+    const state = new Int32Array(sab, 0, 1);
+    post({ type: "lazy-read", path, ref, sab });
+    Atomics.wait(state, 0, 0, 60_000);
+    if (Atomics.load(state, 0) !== 1) throw fsError("EIO", "read", "/" + path);
+    return new Uint8Array(sab, 8, ref.size);
+  };
 setHostVfs(vfs);
 setFs(vfs, (op, ...args) => post({ type: "vfs", op, args }));
 setStdio((level, text) => post({ type: "console", level, text }));

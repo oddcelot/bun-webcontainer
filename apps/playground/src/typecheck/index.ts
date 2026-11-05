@@ -1,5 +1,5 @@
 import type { CompletionKind, EditorCompletion, EditorCompletionDetails, EditorCompletions, EditorDiagnostic, EditorHover, EditorLocation, EditorSignatureHelp } from "../editors/types";
-import type { FileData, VFS } from "@runbun/vfs";
+import type { FileContents, VFS } from "@runbun/vfs";
 import { nearestTsconfig } from "../tsconfig";
 import type { LspCompletionItem } from "./tsrsLs";
 import type { LsOp, LsReply, LsRequest } from "./worker";
@@ -38,10 +38,10 @@ let worker: Worker | undefined;
 let nextId = 0;
 const waiting = new Map<number, (r: LsReply) => void>();
 // What the worker holds, so each request sends only the files that changed (VFS writes replace the data).
-const sent = new Map<string, FileData>();
+const sent = new Map<string, FileContents>();
 
 /** Sends `op` for `path` (contents `text`, unsaved edits included) with what changed in the project since the last request. */
-function request(vfs: VFS, path: string, text: string, op: LsOp): Promise<LsReply> {
+async function request(vfs: VFS, path: string, text: string, op: LsOp): Promise<LsReply> {
   if (!worker) {
     worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
     worker.onmessage = (e: MessageEvent<LsReply>) => {
@@ -49,9 +49,13 @@ function request(vfs: VFS, path: string, text: string, op: LsOp): Promise<LsRepl
       waiting.delete(e.data.id);
     };
   }
-  const files = new Map<string, FileData>();
-  for (const [p, data] of vfs.files) {
-    if (p.startsWith("node_modules/") || p.includes("/node_modules/") ? DECLARATIONS.test(p) : PROJECT.test(p)) files.set("/" + p, data);
+  const wanted = [...vfs.files.keys()].filter((p) => (p.startsWith("node_modules/") || p.includes("/node_modules/") ? DECLARATIONS.test(p) : PROJECT.test(p)));
+  // Installs keep declarations in memory; this only matters if one was left in the package store.
+  await vfs.ensure(wanted);
+  const files = new Map<string, FileContents>();
+  for (const p of wanted) {
+    const data = vfs.data(p);
+    if (data !== undefined) files.set("/" + p, data);
   }
   files.set("/" + path, text);
   // The config the transpiler reads too (moduleServer.ts); tsrs parses it itself, `extends` and jsconfig.json's
