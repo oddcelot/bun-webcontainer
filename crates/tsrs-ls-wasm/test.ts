@@ -61,6 +61,19 @@ if (isMainThread) {
   const def = call("ls_definition", ["/tsconfig.json", "/index.ts", "1", String(index.split("\n")[1].indexOf("greet(") + 1)]);
   log("definition greet", def);
   if (!def.out.includes("util.ts")) throw new Error(`definition of greet isn't in util.ts: ${def.out}`);
+  // A definition in TypeScript's own libs: the target names a bundled lib, whose text ls_read_lib returns.
+  call("ls_set_files", ["/lib-probe.ts", "Math.max(1, 2);\n"]);
+  const libDef = call("ls_definition", ["/tsconfig.json", "/lib-probe.ts", "0", "1"]);
+  const libTargets: string[] = (JSON.parse(libDef.out) ?? []).map((l: { targetUri?: string; uri?: string }) => l.targetUri ?? l.uri);
+  parentPort!.postMessage(`definition Math: ${libDef.ms}ms -> ${libTargets.join(", ")}`);
+  const libUri = libTargets.find((u) => /lib\.es5\.d\.ts$/.test(u));
+  if (!libUri) throw new Error(`definition of Math isn't in lib.es5.d.ts: ${libDef.out}`);
+  const libPath = libUri.startsWith("file:///") ? decodeURIComponent(libUri.slice("file://".length)) : libUri;
+  const lib = call("ls_read_lib", [libPath]);
+  if (!lib.out.includes("interface Math")) throw new Error(`ls_read_lib(${libPath}) didn't return lib.es5.d.ts: ${lib.out.slice(0, 80)}`);
+  parentPort!.postMessage(`ls_read_lib ${libPath}: ${lib.out.length} chars`);
+  if (call("ls_read_lib", ["/index.ts"]).out !== "") throw new Error("ls_read_lib returned a project file");
+  call("ls_remove_files", ["/lib-probe.ts"]);
   log("hover greet", call("ls_hover", ["/tsconfig.json", "/index.ts", "1", "80"]));
   // After `server.` on line 2: Server's members; then the first one with its type and docs.
   const done = call("ls_completion", ["/tsconfig.json", "/index.ts", "2", "25", "."]);

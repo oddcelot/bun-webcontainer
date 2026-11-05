@@ -14,6 +14,8 @@ export type LsOp =
   | { kind: "definition"; line: number; character: number }
   | { kind: "signature"; line: number; character: number; trigger: string; retrigger: boolean };
 export type LsRequest = Sync & LsOp;
+/** A declaration file the project doesn't have (a bundled lib, Bun's bundled types), for a read-only tab. */
+export type LsRead = { id: number; kind: "read"; path: string };
 export type LsReply = {
   id: number;
   diagnostics?: LspDiagnostic[];
@@ -22,6 +24,8 @@ export type LsReply = {
   item?: LspCompletionItem | null;
   signature?: LspSignatureHelp | null;
   definition?: LspDefinition;
+  /** A `read`'s text, null when there's no such file. */
+  text?: string | null;
   error?: string;
 };
 
@@ -67,8 +71,14 @@ async function sync({ changed, removed }: Sync) {
   return ls;
 }
 
-self.onmessage = async (e: MessageEvent<LsRequest>) => {
+self.onmessage = async (e: MessageEvent<LsRequest | LsRead>) => {
   const req = e.data;
+  if (req.kind === "read") {
+    const { bunTypes } = await import("./bunTypes");
+    let text: string | null = bunTypes[req.path] ?? null;
+    if (text === null && req.path.startsWith("bundled:")) text = (await instance()).ls.readLib(req.path) || null;
+    return postMessage({ id: req.id, text } satisfies LsReply);
+  }
   let reply: LsReply;
   try {
     const service = await sync(req);

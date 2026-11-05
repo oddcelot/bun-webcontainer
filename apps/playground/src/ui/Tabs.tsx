@@ -48,7 +48,7 @@ export function EditorTabs() {
             <TabItem
               value={path}
               selected={!ws.state.changesShown && ws.state.active === path}
-              title={path}
+              title={ws.readOnlyText(path) === undefined ? path : `${path} (read-only: not a project file)`}
               onClose={closable() ? () => ws.close(path) : undefined}
               closeLabel={`Close ${name(path)}`}
               onKeyDown={(e) => {
@@ -61,6 +61,9 @@ export function EditorTabs() {
                 }
               }}
             >
+              <Show when={ws.readOnlyText(path) !== undefined}>
+                <i class="i-lucide-lock" aria-label="read-only" />
+              </Show>
               <span class="name">{name(path)}</span>
               {clashes().get(name(path))! > 1 && path.includes("/") && <span class="dir">{path.slice(0, path.lastIndexOf("/"))}</span>}
               <Show when={ws.state.dirty.includes(path)}>
