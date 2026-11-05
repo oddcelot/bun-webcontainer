@@ -1,3 +1,4 @@
+import { isLazy } from "@runbun/vfs";
 import { Show, createEffect, onSettled, useContext } from "solid-js";
 import { CHECKED, mountDiagnostics } from "../diagnostics";
 import { createPierre } from "../editors/pierre";
@@ -95,6 +96,18 @@ export function EditorPane() {
   }
 
 
+  /** Loads a lazy file, then shows it if it's still the open file and unedited. */
+  function showWhenLoaded(path: string) {
+    void vfs.ensure([path]).then(() => {
+      if (current !== path || pending.has(path)) return;
+      const t = vfs.textOf(path);
+      if (typeof t === "string") {
+        editor?.update(t);
+        check?.(path, t);
+      }
+    });
+  }
+
   createEffect(
     () => ws.state.active,
     guarded("editor", (path) => {
@@ -117,7 +130,10 @@ export function EditorPane() {
         check(null, null);
         return;
       }
-      const text = pending.get(path) ?? vfs.textOf(path) ?? null;
+      // A large installed file kept out of memory opens empty and fills in once loaded.
+      const lazy = !pending.has(path) && isLazy(vfs.read(path));
+      const text = pending.get(path) ?? (lazy ? "" : vfs.textOf(path)) ?? null;
+      if (lazy) showWhenLoaded(path);
       editor.open(path, text, (next) => {
         if (current !== path) return;
         pending.set(path, next);
@@ -147,6 +163,7 @@ export function EditorPane() {
       // A tsconfig.json/jsconfig.json (or a config one extends) changes how the open file transpiles and type-checks.
       if (current && editor && path !== current && CONFIG.test(path)) return check?.(current, editor.getText());
       if (created || removed || path !== current || pending.has(path)) return;
+      if (isLazy(vfs.read(path))) return showWhenLoaded(path);
       const d = vfs.textOf(path);
       if (typeof d === "string") {
         editor?.update(d);

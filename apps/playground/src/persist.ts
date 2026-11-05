@@ -1,5 +1,5 @@
 import { bucket } from "./storage";
-import type { FileData, VFS } from "@runbun/vfs";
+import type { FileContents as FileData, VFS } from "@runbun/vfs";
 
 type Log = (level: string, text: string) => void;
 type Dir = FileSystemDirectoryHandle;
@@ -206,7 +206,7 @@ export function mirror(dir: Dir, vfs: VFS, log: Log, { all, stash: stashAt, tag,
   const writeOne = async (path: string) => {
     const parts = path.split("/");
     const name = parts.pop()!;
-    const data = vfs.files.get(path);
+    const data = vfs.data(path);
     if (data === undefined) {
       // Gone from the VFS: delete the entry, then prune parents left empty.
       const dirs: Dir[] = [dir];
@@ -295,7 +295,7 @@ export function mirror(dir: Dir, vfs: VFS, log: Log, { all, stash: stashAt, tag,
     if (stopped || SKIP.test(path)) return;
     // Already what the folder holds: an outside change just read in, or an edit undone.
     const known = onDisk.get(path);
-    if (known !== undefined && same(known, vfs.files.get(path) ?? null)) return;
+    if (known !== undefined && same(known, vfs.data(path) ?? null)) return;
     dirty.add(path);
     schedule();
   });
@@ -304,7 +304,7 @@ export function mirror(dir: Dir, vfs: VFS, log: Log, { all, stash: stashAt, tag,
     if (stashAt) {
       const stash: Record<string, string | null> = {};
       for (const path of [...writing, ...dirty]) {
-        const data = vfs.files.get(path);
+        const data = vfs.data(path);
         if (data === undefined) stash[path] = null;
         else if (typeof data === "string") stash[path] = data;
       }
@@ -338,7 +338,7 @@ export function mirror(dir: Dir, vfs: VFS, log: Log, { all, stash: stashAt, tag,
     const take = (path: string, data: FileData | null) => {
       if (SKIP.test(path) || TEMP.test(path) || local(path)) return;
       const known = onDisk.get(path);
-      if (same(data, vfs.files.get(path) ?? null) || (known !== undefined && same(data, known))) return;
+      if (same(data, vfs.data(path) ?? null) || (known !== undefined && same(data, known))) return;
       onDisk.set(path, data);
       if (data === null) vfs.remove(path);
       else vfs.write(path, data);

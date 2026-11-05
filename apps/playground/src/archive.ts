@@ -5,7 +5,7 @@ import type { VFS } from "@runbun/vfs";
 /** The project as a zip, without what `bun install` or the source brings back (node_modules, .git). */
 export function exportZip(vfs: VFS): Blob {
   const files: Record<string, Uint8Array> = {};
-  for (const [path, data] of vfs.files) if (!SKIP.test(path)) files[path] = typeof data === "string" ? strToU8(data) : data;
+  for (const [path, data] of vfs.files) if (!SKIP.test(path)) files[path] = typeof data === "string" ? strToU8(data) : vfs.readBytes(path)!;
   return new Blob([zipSync(files, { level: 6 })], { type: "application/zip" });
 }
 

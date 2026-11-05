@@ -2,6 +2,7 @@ import { CookieJar } from "./cookieJar";
 import { PANEL_COOKIE, joinCookies } from "./request";
 import { resetSyncEsm, serveModule, vfsRoot } from "./moduleServer";
 import type { VFS } from "@runbun/vfs";
+import { serveLazyRead } from "./pkgStore";
 
 /** Tells preview pages (see previewWebSocket in swPage.ts) that their WebSockets' server is gone. */
 const previewChannel = new BroadcastChannel("bun-preview");
@@ -187,6 +188,8 @@ export class Runner {
           void this.stop(false);
           if (started) this.onExit?.(m.code);
           resolve();
+        } else if (m.type === "lazy-read") {
+          void serveLazyRead(this.vfs, m);
         } else if (m.type === "vfs") {
           const [a, b] = m.args;
           this.applying = true;

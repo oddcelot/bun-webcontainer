@@ -40,12 +40,13 @@ async function mirrorVfs() {
   if (!vol || !vfs) return;
   let fromWasm = false;
   for (const d of vfs.dirs) vol.mkdirSync("/" + d, { recursive: true });
-  for (const [p, data] of vfs.files) vol.writeFileSync("/" + p, data);
+  // rolldown's wasi reads its own copy: every file, large installed ones loaded (see VFS.data).
+  for (const p of vfs.files.keys()) vol.writeFileSync("/" + p, vfs.data(p)!);
   vfs.onChange((e) => {
     if (fromWasm) return;
     if (e.removed) return vol.rmSync("/" + e.path, { force: true });
     vol.mkdirSync("/" + dirname(e.path), { recursive: true });
-    vol.writeFileSync("/" + e.path, vfs!.read(e.path)!);
+    vol.writeFileSync("/" + e.path, vfs!.data(e.path)!);
   });
 
   const fs = builtins.fs as typeof import("node:fs");

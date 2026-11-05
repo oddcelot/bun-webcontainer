@@ -7,7 +7,7 @@ import { transpileCached } from "./transpileCache";
 import { tsconfigFor } from "./tsconfig";
 import { inRanges, isMethod, literalRanges } from "./literals";
 import { DATA_FILE, dataFormat, loadResolver, parseDataFile, resolve, type DataFormat, type ResolveKind } from "./resolver";
-import { dirname, norm, type VFS } from "@runbun/vfs";
+import { dirname, isLazy, LazyMiss, norm, withLoaded, type VFS } from "@runbun/vfs";
 import hostNames, { version as hostVersion } from "virtual:host-package-names";
 import { builtins, exportNames } from "./worker/node";
 
@@ -151,9 +151,13 @@ const importSpecs = new Map<string, { src: string; specs: string[] }>();
  */
 function importedByEsm(vfs: VFS, target: string): boolean {
   const pkg = /^(?:.*\/)?node_modules\/(?:@[^/]+\/)?[^/]+\//.exec(target)?.[0];
-  for (const path of vfs.files.keys()) {
-    if (path === target || !JS_LIKE.test(path)) continue;
-    if (pkg ? !path.startsWith(pkg) || path.includes("/node_modules/", pkg.length - 1) : path.includes("node_modules/")) continue;
+  const candidates = [...vfs.files.keys()].filter(
+    (path) => path !== target && JS_LIKE.test(path) && !(pkg ? !path.startsWith(pkg) || path.includes("/node_modules/", pkg.length - 1) : path.includes("node_modules/")),
+  );
+  // Large files kept out of memory: all loaded in one go where reads can't block, not one retry each (withLoaded).
+  const lazy = vfs.loadSync ? [] : candidates.filter((p) => isLazy(vfs.read(p)));
+  if (lazy.length) throw new LazyMiss(...lazy);
+  for (const path of candidates) {
     const src = vfs.readText(path);
     if (!src) continue;
     let hit = importSpecs.get(path);
@@ -424,7 +428,15 @@ ${names.includes("default") ? "export default __ns.default;\n" : ""}${named.leng
 export { ${named.map((n, i) => `__s${i} as ${q(n)}`).join(", ")} };` : ""}`;
 }
 
-export async function serveModule(vfs: VFS, rawPath: string, onError: (msg: string) => void, target: ModuleTarget = "browser"): Promise<ModuleResponse> {
+/**
+ * A module for the service worker. Serving can read files it only finds on the way (requires it follows, re-exports),
+ * some of them large installed files kept out of memory: each is loaded and the module served again (withLoaded).
+ */
+export function serveModule(vfs: VFS, rawPath: string, onError: (msg: string) => void, target: ModuleTarget = "browser"): Promise<ModuleResponse> {
+  return withLoaded(vfs, () => serveModuleOnce(vfs, rawPath, onError, target));
+}
+
+async function serveModuleOnce(vfs: VFS, rawPath: string, onError: (msg: string) => void, target: ModuleTarget): Promise<ModuleResponse> {
   if (target === "bun" && rawPath.startsWith("__esmsync/")) return syncEsmRequest(rawPath.slice(10));
   const path = norm(rawPath);
   await loadResolver(vfs);

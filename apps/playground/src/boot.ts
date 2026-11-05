@@ -2,6 +2,7 @@ import { createEffect, createRoot } from "solid-js";
 import { BASE } from "./base";
 import { createConsole } from "./console";
 import { CHECKED, diagnose } from "./diagnostics";
+import { attachStore } from "./pkgStore";
 import { bunInstall } from "./install";
 import { Runner } from "./runner";
 import { setVfsOwner } from "./moduleServer";
@@ -41,6 +42,7 @@ export function createPlayground({ watch }: { watch?: () => boolean } = {}) {
     return [session, createWorkspace(), createPreviews(() => session.settled().state === "running", (path) => vfs.readBytes(path))] as const;
   });
   const vfs = new VFS();
+  attachStore(vfs);
   let runner: Runner | undefined;
   let semver: Semver | undefined;
 

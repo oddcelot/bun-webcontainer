@@ -31,12 +31,12 @@ const projectFiles = (vfs: VFS) => [...vfs.files].filter(([path]) => !SKIP.test(
  * gives the short link that loads them again instead of packing them into the URL.
  */
 export function rememberSource(vfs: VFS, query: string, label: string) {
-  source = { query, label, files: new Map(projectFiles(vfs).map(([p, d]) => [p, typeof d === "string" ? d : `\0${d.length}`])) };
+  source = { query, label, files: new Map(projectFiles(vfs).map(([p, d]) => [p, typeof d === "string" ? d : `\0${vfs.size(p)}`])) };
 }
 
 const unchanged = (vfs: VFS, s: Source) => {
   const now = projectFiles(vfs);
-  return now.length === s.files.size && now.every(([p, d]) => s.files.get(p) === (typeof d === "string" ? d : `\0${d.length}`));
+  return now.length === s.files.size && now.every(([p, d]) => s.files.get(p) === (typeof d === "string" ? d : `\0${vfs.size(p)}`));
 };
 
 /** Files that usually hold secrets: never packed into a link (templates like .env.example are fine). */

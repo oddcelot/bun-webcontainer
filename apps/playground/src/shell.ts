@@ -1,6 +1,7 @@
 import type { CookieJar } from "./cookieJar";
 import { asConsoleEntry, fmt as formatFile, walks } from "./fmt";
 import { clearPkgCache, pkgCacheInfo } from "./pkgCache";
+import { clearStore, storeInfo } from "./pkgStore";
 import type { VFS } from "@runbun/vfs";
 
 type Log = (level: string, text: string) => void;
@@ -133,10 +134,12 @@ export function createShell(host: ShellHost) {
 
   async function pm([sub, action]: string[]) {
     if (sub !== "cache") return fail(`bun pm ${sub ?? ""}: only "bun pm cache [rm]" is available here`);
-    if (action === "rm") return await clearPkgCache(), log("sys", "[bun pm cache] cleared");
+    if (action === "rm") return await Promise.all([clearPkgCache(), clearStore()]), log("sys", "[bun pm cache] cleared");
     if (action) return fail(`bun pm cache: unknown option ${action}`);
-    const { tarballs, packuments, bytes } = await pkgCacheInfo();
-    log("log", `${tarballs} tarballs, ${packuments} manifests, ${(bytes / 2 ** 20).toFixed(1)} MB in browser storage`);
+    const [{ tarballs, packuments, bytes }, store] = await Promise.all([pkgCacheInfo(), storeInfo()]);
+    const mb = (n: number) => (n / 2 ** 20).toFixed(1);
+    log("log", `${tarballs} tarballs, ${packuments} manifests, ${mb(bytes)} MB in browser storage`);
+    if (store.entries) log("log", `${store.entries} packages' large files unpacked, ${mb(store.bytes)} MB (read when a program needs them)`);
   }
 
   function remove(names: string[]) {
@@ -218,9 +221,11 @@ export function createShell(host: ShellHost) {
     log("log", entries.map((e) => (e.dir ? `\x1b[1;34m${e.name}/\x1b[0m` : e.name)).join("  "));
   }
 
-  function cat(file?: string) {
+  async function cat(file?: string) {
     if (!file) return fail("usage: cat <file>");
-    const text = vfs.readText(file.replace(/^\.\//, ""));
+    const path = file.replace(/^\.\//, "");
+    await vfs.ensure([path]);
+    const text = vfs.readText(path);
     if (text === undefined) return fail(`cat: ${file}: No such file or directory`);
     for (const line of text.replace(/\n$/, "").split("\n")) log("log", line);
   }
@@ -233,7 +238,7 @@ export function createShell(host: ShellHost) {
       if (cmd === "cookies") return cookies(args[0]);
       if (cmd === "clear") return host.clear();
       if (cmd === "ls") return ls(args[0]);
-      if (cmd === "cat") return cat(args[0]);
+      if (cmd === "cat") return await cat(args[0]);
       if (cmd !== "bun") return fail(`${cmd}: command not found (try "help")`);
       const [sub, ...rest] = args;
       if (!sub || sub === "help" || sub === "--help") return log("log", HELP);
