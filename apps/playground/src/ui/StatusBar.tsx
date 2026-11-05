@@ -1,4 +1,5 @@
-import { Show, useContext } from "solid-js";
+import { Show, createSignal, onSettled, useContext } from "solid-js";
+import { trackChanges } from "../changes";
 import { DOCS } from "../base";
 import { chordKeys, keysFor, type Command } from "../keymap";
 import { TYPED } from "../typecheck";
@@ -81,7 +82,8 @@ export function StatusBar(props: { treeShown: boolean; toggleTree(): void; previ
         <StatusPill role="status" status={s.status()} title={s.status().text} />
       </Show>
       <span class="spacer" />
-      <Show when={ws.state.active}>
+      <Changed />
+      <Show when={!ws.state.changesShown && ws.state.active}>
         {(path) => (
           <>
             {/* aria-disabled, not disabled: a disabled button gets no pointer events, so no tooltip. */}
@@ -152,5 +154,23 @@ export function StatusBar(props: { treeShown: boolean; toggleTree(): void; previ
         Privacy
       </Tip>
     </footer>
+  );
+}
+
+/** How many files differ from the project's source; opens the Changes tab. No count until a repo's source is fetched. */
+function Changed() {
+  const { vfs, workspace: ws } = useContext(AppContext);
+  const [count, setCount] = createSignal<number | null>(null);
+  onSettled(() => trackChanges(vfs, (list) => setCount(list?.length ?? null), false));
+  const tip = () => {
+    const n = count();
+    if (n === null) return "Compare the files with the project's source";
+    return n ? `${n} ${n === 1 ? "file differs" : "files differ"} from the project's source: show the changes` : "No changes from the project's source";
+  };
+  return (
+    <Tip tip={tip()} type="button" class="changed" aria-pressed={ws.state.changesShown ? "true" : "false"} onClick={() => ws.showChanges()}>
+      <i class="i-lucide-git-compare" aria-hidden="true" /> {count() ?? ""}
+      <span class="sr-only">Changes</span>
+    </Tip>
   );
 }

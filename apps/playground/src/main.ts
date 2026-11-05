@@ -13,6 +13,7 @@ import { importZip } from "./archive";
 import { canWrite, lastFolder, rememberFolder } from "./folders";
 import { setThemeVars, urlVars } from "./theme";
 import { showCanaryBadge } from "./canary";
+import { setBaseline, setBaselineSource } from "./changes";
 
 showCanaryBadge();
 
@@ -85,6 +86,12 @@ if (!shared && !restored) {
     loaded = projectId === "demo";
   }
 }
+// The Changes tab compares against the source: as just loaded, or rebuilt from it for a restored project.
+if (!restored) setBaseline(vfs);
+else if (isShareLink(location.hash)) setBaselineSource((scratch) => loadShareLink(scratch, location.hash));
+else if (repo) setBaselineSource((scratch) => loadRepo(scratch, repo, log), { costly: true });
+else if (exampleName) setBaselineSource((scratch) => loadExample(scratch, exampleName));
+else setBaselineSource(seedDemo);
 if (projectId && (restored || loaded)) stopSaving = await attach(projectId, vfs, log, !restored);
 savedAs(projectId);
 
@@ -146,6 +153,7 @@ async function openFolder(files: File[]) {
     vfs.write(rel, data);
     n++;
   }
+  setBaseline(vfs);
   workspace.reloadTree();
   log("sys", `[open] ${files[0].webkitRelativePath.split("/")[0] || "files"}: ${n} files (node_modules skipped)`);
   openFile(entryFile());
@@ -176,6 +184,7 @@ async function openDirectory(dir?: FileSystemDirectoryHandle) {
   await stopSaving();
   await pg.clearProject();
   for (const [path, data] of files) vfs.write(path, data);
+  setBaseline(vfs);
   // After the load: the files just read are on disk already.
   stopSaving = mirror(dir, vfs, log, { all: false, tag: "[folder]", watch: true });
   workspace.reloadTree();
@@ -211,6 +220,7 @@ async function openZip(file: File) {
   void stopSaving();
   await pg.clearProject();
   for (const [path, data] of entries) vfs.write(path, data);
+  setBaseline(vfs);
   workspace.reloadTree();
   log("sys", `[open] ${file.name}: ${entries.length} files (node_modules skipped)`);
   openFile(entryFile());

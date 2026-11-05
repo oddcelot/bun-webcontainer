@@ -10,6 +10,7 @@ import { AppContext } from "./context";
 import { guarded } from "./guarded";
 import type { Peek } from "./workspace";
 import { EditorTabs } from "./Tabs";
+import { ChangesView } from "./Changes";
 import { Keys, Tip } from "@runbun/ui/solid/Tip";
 
 /** How long auto-save waits after the last keystroke. */
@@ -246,9 +247,13 @@ export function EditorPane() {
       </Show>
       {/* "No file open" only once the project has loaded, not while its first file is on the way. */}
       <div class="code-area">
-        <div id="editor" ref={el} data-empty={app.session.ready() && !ws.state.active ? "" : undefined} />
+        <div id="editor" ref={el} hidden={ws.state.changesShown} data-empty={app.session.ready() && !ws.state.active ? "" : undefined} />
+        {/* Kept while its tab is open (scroll position, rendered diffs), hidden behind a file tab. */}
+        <Show when={ws.state.changes}>
+          <ChangesView shown={ws.state.changesShown} />
+        </Show>
         {/* Over the code's top right corner, shown while the pointer is over the code (always on touch screens). */}
-        <Show when={has("format") && ws.state.active}>
+        <Show when={has("format") && ws.state.active && !ws.state.changesShown}>
           <Tip class="format" type="button" tip="Format the open file with bun fmt" keys={keysFor("format").map(chordKeys)} onClick={() => void formatOpenFile()}>
             <i class="i-lucide-wand-sparkles" aria-hidden="true" /> Format
           </Tip>
