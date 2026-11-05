@@ -19,6 +19,8 @@
 //   ls_definition()          request: `config \0 path \0 line \0 character` (UTF-16); reply: LSP LocationLink[]
 //                            JSON or null
 //   ls_diagnostics()         request: `config \0 path`; reply: LSP Diagnostic[] JSON
+//   ls_read_lib()            request: a bundled lib's path, as a definition into it names it; reply: its text, or
+//                            empty when it isn't one (so the host can show `lib.dom.d.ts` read-only)
 //   ls_output() -> ptr, ls_output_len() -> len    the reply
 // `config` is the tsconfig.json the program comes from. A program lives until a file changes; a change to one file
 // of it reuses the rest (Program::update_program), and parsed files are cached by content across programs.
@@ -642,6 +644,14 @@ mod abi {
     #[unsafe(no_mangle)]
     pub extern "C" fn ls_diagnostics() {
         with(super::diagnostics);
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn ls_read_lib() {
+        with(|_, request| {
+            let path = std::str::from_utf8(request).unwrap_or("");
+            tsrs_vfs::bundled::embedded_file(path).unwrap_or("").to_owned()
+        });
     }
 
     #[unsafe(no_mangle)]
