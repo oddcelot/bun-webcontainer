@@ -1,7 +1,6 @@
 // tsrs's language service runs here and not on the page: the checker recurses deeply, and a request blocks until it
 // is answered. The instance keeps the project's files between requests and is replaced once its memory (which never
 // shrinks) passes MEMORY_LIMIT.
-import { unshared } from "@runbun/vfs";
 import { TsrsLs, type LspCompletionItem, type LspCompletionList, type LspDefinition, type LspDiagnostic, type LspHover, type LspSignatureHelp } from "./tsrsLs";
 
 type Files = Record<string, string | Uint8Array>;
@@ -28,9 +27,8 @@ export type LsReply = {
 
 const MEMORY_LIMIT = 1.5 * 2 ** 30;
 const PACKAGE = /^\/node_modules\/((?:@[^/]+\/)?[^/]+)\//;
-const dec = new TextDecoder();
 
-const project = new Map<string, string>();
+const project = new Map<string, string | Uint8Array>();
 let ls: Promise<TsrsLs> | undefined;
 /** Bundled type files (./bunTypes.ts) the instance has, for packages the project's node_modules lacks. */
 let bunShown = new Set<string>();
@@ -45,7 +43,8 @@ async function instance(): Promise<{ ls: TsrsLs; fresh: boolean }> {
 
 async function sync({ changed, removed }: Sync) {
   const { bunTypes } = await import("./bunTypes");
-  for (const [p, data] of Object.entries(changed)) project.set(p, typeof data === "string" ? data : dec.decode(unshared(data)));
+  // Kept as they came: installed files are the page's bytes (shared, no copy), pushed into tsrs as they are.
+  for (const [p, data] of Object.entries(changed)) project.set(p, data);
   for (const p of removed) project.delete(p);
   const own = new Set<string>();
   for (const p of project.keys()) {
