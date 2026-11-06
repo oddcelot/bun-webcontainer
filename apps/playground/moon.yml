@@ -33,8 +33,12 @@ tasks:
     # Console/inspect formatting against native bun on a corpus of values (scripts/inspect-corpus/diff.ts), and the
     # data APIs that need no wasm (scripts/data-apis: Bun.JSONL, Bun.XML.stringify; Bun.markdown and Bun.XML.parse are
     # in transpile-wasm:test), the embed's `requests` parser (scripts/requests.ts) and the request panel's helpers
-    # (scripts/request-fields.ts), and the worker's VFS mirror (scripts/vfs-mirror.ts).
-    script: 'bun scripts/inspect-corpus/diff.ts && bun scripts/data-apis/jsonl.ts && bun scripts/data-apis/xml-stringify.ts && bun scripts/requests.ts && bun scripts/request-fields.ts && bun scripts/vfs-mirror.ts'
+    # (scripts/request-fields.ts), the worker's VFS mirror (scripts/vfs-mirror.ts), `bun test`'s per-file counts
+    # (scripts/test-results.ts), what `persist` leaves unsaved (scripts/persist-skip.ts), how a test run that doesn't
+    # report ends: Stop, the watchdog, process.exit (scripts/runner-stop.ts), who the embed's `change` event says
+    # changed a file (scripts/change-origin.ts), and the worker's Requests keeping forbidden headers
+    # (scripts/request-headers.ts).
+    script: 'bun scripts/inspect-corpus/diff.ts && bun scripts/data-apis/jsonl.ts && bun scripts/data-apis/xml-stringify.ts && bun scripts/requests.ts && bun scripts/request-fields.ts && bun scripts/vfs-mirror.ts && bun scripts/test-results.ts && bun scripts/persist-skip.ts && bun scripts/runner-stop.ts && bun scripts/change-origin.ts && bun scripts/request-headers.ts'
     toolchains: ['bun']
     inputs:
       - 'scripts/inspect-corpus/**/*'
@@ -50,6 +54,17 @@ tasks:
       - 'src/embed/requests.ts'
       - 'scripts/request-fields.ts'
       - 'src/request.ts'
+      - 'scripts/test-results.ts'
+      - 'src/worker/node/test.ts'
+      - 'scripts/persist-skip.ts'
+      - 'src/persist.ts'
+      - 'scripts/runner-stop.ts'
+      - 'src/runner.ts'
+      - 'scripts/change-origin.ts'
+      - 'src/embed/changes.ts'
+      - '/packages/vfs/vfs.ts'
+      - 'scripts/request-headers.ts'
+      - 'src/worker/requestHeaders.ts'
   test-git:
     # The WASI host over the VFS (src/git/wasi.ts): its edge cases, then crates/git-wasm's git.wasm committing into a
     # VFS whose .git native git then checks (fsck, log, status); the git worker's copy of the project (mirror.ts) staying
