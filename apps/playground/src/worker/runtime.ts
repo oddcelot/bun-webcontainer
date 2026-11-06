@@ -112,6 +112,8 @@ interface Instance {
 }
 
 const servers: Instance[] = [];
+/** Called when a server starts (see the "start" handler: a package's bin starting one late). */
+let onServer: (() => void) | undefined;
 let nextPort = 40001;
 /** What the preview shows: the first server on a fixed port. */
 const previewServer = () => servers.find((s) => !s.ephemeral) ?? servers[0];
@@ -273,6 +275,7 @@ function createInstance(opts: ServeOptions): Instance {
     },
   };
   servers.push(inst);
+  onServer?.();
   return inst;
 }
 
@@ -1118,6 +1121,8 @@ self.addEventListener("message", async (e: MessageEvent) => {
     return;
   }
   (g.Bun as { main: string }).main = process.argv[1] = `/${e.data.entry}`;
+  // A package's bin run from a script (`"dev": "vite --port 3000"`) reads its arguments here.
+  process.argv.splice(2, Infinity, ...((e.data.args as string[] | undefined) ?? []));
   try {
     const mod = (await importUrl(`${VFS_ROOT}${e.data.entry}`)) as { default?: ServeOptions };
     // Bun serves an entry whose default export has a fetch handler (Hono's `export default app`), unless that
@@ -1130,5 +1135,9 @@ self.addEventListener("message", async (e: MessageEvent) => {
     // passes it as the entry's rejection.
     uncaught(err, "uncaughtException", "unhandledRejection");
   }
+  // A package's bin often starts its server after its entry has run (Vite's `import("../dist/node/cli.js")`): a moment
+  // for it, so the preview doesn't load before there is a server.
+  if (e.data.entry.startsWith("node_modules/") && !servers.length) await new Promise<void>((r) => ((onServer = r), setTimeout(r, 10000)));
+  onServer = undefined;
   post({ type: "ready" });
 });

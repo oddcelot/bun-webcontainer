@@ -75,7 +75,7 @@ The console is not a full shell: no quotes, pipes, `&&`, `bunx`, or file command
 - **Watch** (on by default; the refresh icon next to Run, beside Auto-save): saving an edit restarts the running program and clears the console, like `bun --watch`. A crash doesn't end it: the status says so and the next save runs the program again. A save that leaves an open file with a syntax error (half-typed, as auto-save saves it) keeps the program running as it was until a save parses. Stop, or a program that exits by itself, ends it until the next Run. While the server restarts, the preview's requests wait for it.
 - With Watch off, edits still reach the running code: the next import or request sees them, and `fs.watch` fires. A script's `--watch` and `--hot` flags are ignored either way.
 - A file location in the console (`index.ts:3:7` in an error or a stack trace) is a link: click it to open the file there.
-- Scripts must have the form `bun <file>`. Scripts like `vite`, `astro dev` or `tsc && …` can't run; start those tools from a file instead (see [Frameworks](/compatibility/frameworks/)).
+- A script runs when it is `bun <file>` or calls one installed package's bin: with no entry file, Run starts the `dev` (else `start`) script, so `"dev": "vite"` runs Vite's CLI with its arguments. Scripts that chain commands (`tsc && …`), pipe, set variables or use `npx` can't run; start those tools from a file instead (see [Frameworks](/compatibility/frameworks/)).
 
 ## Preview
 

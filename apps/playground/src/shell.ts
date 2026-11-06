@@ -10,8 +10,8 @@ type Log = (level: string, text: string) => void;
 export interface ShellHost {
   vfs: VFS;
   log: Log;
-  /** Start the server on `entry` (the project's entry file when omitted). */
-  run(entry?: string): Promise<void>;
+  /** Start the server on `entry` (the project's entry file when omitted), `args` after it in `process.argv`. */
+  run(entry?: string, args?: string[]): Promise<void>;
   install(): Promise<void>;
   /** Run these test files (`bun test`); resolves with the number of failed tests. */
   test(files: string[]): Promise<number>;
@@ -29,14 +29,61 @@ type Pkg = { scripts?: Record<string, string>; dependencies?: Record<string, str
 export const scriptEntry = (s?: string) =>
   s?.match(/^bun\s+(?:(?:run\s+)?--?[\w-]+(?:=\S+)?\s+)*(?:run\s+)?(\S+\.[cm]?[jt]sx?)\b/)?.[1]?.replace(/^\.\//, "");
 
-/** The file Run starts: package.json's module/main or a `bun <file>` dev/start script, else a usual index file. */
-export function entryOf(has: (path: string) => boolean, read: (path: string) => string | undefined): string {
+/** A file to run and the arguments it sees in `process.argv` after its own path. */
+export type Command = { entry: string; args: string[] };
+
+type Has = (path: string) => boolean;
+type Read = (path: string) => string | undefined;
+
+const parse = <T>(text: string | undefined): T | undefined => {
   try {
-    const pkg = JSON.parse(read("package.json") ?? "{}") as { module?: string; main?: string; scripts?: Record<string, string> };
-    for (const e of [pkg.module, pkg.main, scriptEntry(pkg.scripts?.dev), scriptEntry(pkg.scripts?.start)])
-      if (e && has(e.replace(/^\.\//, ""))) return e.replace(/^\.\//, "");
+    return text === undefined ? undefined : (JSON.parse(text) as T);
   } catch {}
-  return ["index.ts", "index.tsx", "index.js", "src/index.ts"].find(has) ?? "index.ts";
+};
+
+/** The file a package's bin `name` runs: `node_modules/<pkg>/…` of the package that declares it, if installed. */
+function binFile(name: string, has: Has, read: Read): string | undefined {
+  const root = parse<Pkg>(read("package.json"));
+  const pkgs = [name, ...Object.keys({ ...root?.dependencies, ...root?.devDependencies })];
+  for (const pkg of pkgs) {
+    const meta = parse<{ name?: string; bin?: string | Record<string, string> }>(read(`node_modules/${pkg}/package.json`));
+    const bin = meta?.bin;
+    const file = typeof bin === "string" ? (pkg.split("/").pop() === name ? bin : undefined) : bin?.[name];
+    const path = file && `node_modules/${pkg}/${file.replace(/^\.\//, "")}`;
+    if (path && has(path)) return path;
+  }
+}
+
+/** `"dev": "vite --port 3000"`: the bin a script calls and its arguments, for a plain command (no `&&`, pipes or env). */
+export function binCommand(script: string | undefined, has: Has, read: Read): Command | undefined {
+  if (!script || /[&|;<>$`()]|^\s*\w+=/.test(script)) return;
+  const [name, ...args] = script.trim().split(/\s+/).map((w) => w.replace(/^(["'])(.*)\1$/, "$2"));
+  if (!name || name === "bun" || name === "node") return;
+  const entry = binFile(name, has, read);
+  return entry ? { entry, args } : undefined;
+}
+
+/**
+ * What Run starts: package.json's module/main or a `bun <file>` dev/start script, else a dev/start script that calls
+ * an installed package's bin (`"dev": "vite"`), else a usual index file.
+ */
+export function commandOf(has: Has, read: Read): Command {
+  const pkg = parse<{ module?: string; main?: string; scripts?: Record<string, string> }>(read("package.json")) ?? {};
+  for (const e of [pkg.module, pkg.main, scriptEntry(pkg.scripts?.dev), scriptEntry(pkg.scripts?.start)])
+    if (e && has(e.replace(/^\.\//, ""))) return { entry: e.replace(/^\.\//, ""), args: [] };
+  const index = ["index.ts", "index.tsx", "index.js", "src/index.ts"].find(has);
+  const bin = index ? undefined : (binCommand(pkg.scripts?.dev, has, read) ?? binCommand(pkg.scripts?.start, has, read));
+  return bin ?? { entry: index ?? "index.ts", args: [] };
+}
+
+/**
+ * The project's own file to open first: the one Run starts, else (a package's bin, or none found, as before an install)
+ * index.html or package.json.
+ */
+export function entryOf(has: Has, read: Read): string {
+  const { entry } = commandOf(has, read);
+  if (has(entry) && !entry.startsWith("node_modules/")) return entry;
+  return ["index.html", "package.json"].find(has) ?? entry;
 }
 
 /** Files `bun test` picks up: `*.test.*`, `*_test.*`, `*.spec.*`, `*_spec.*`, outside node_modules. */
@@ -90,9 +137,11 @@ export function createShell(host: ShellHost) {
     const script = readPkg()?.scripts?.[target];
     if (script === undefined) return fail(`error: Script not found "${target}"`);
     const entry = scriptEntry(script);
-    if (!entry || !vfs.files.has(entry)) return fail(`error: only "bun <file>" scripts can run here: "${script}"`);
+    const has = (path: string) => vfs.files.has(path);
+    const bin = entry && has(entry) ? undefined : binCommand(script, has, (path) => vfs.readText(path));
+    if (!(entry && has(entry)) && !bin) return fail(`error: only "bun <file>" scripts and installed packages' bins can run here: "${script}"`);
     log("sys", `$ ${script}`);
-    return host.run(entry);
+    return bin ? host.run(bin.entry, bin.args) : host.run(entry);
   }
 
   async function test(args: string[]) {
