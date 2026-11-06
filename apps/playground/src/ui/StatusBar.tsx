@@ -150,6 +150,9 @@ export function StatusBar(props: { treeShown: boolean; toggleTree(): void; previ
         Bun {BUN_VERSION}
       </Tip>
       <Feedback />
+      <Tip as="a" href={`${import.meta.env.BASE_URL}about`} target="_blank" rel="noopener" placement="top-end" tip="What runbun.dev is and how it runs Bun">
+        About
+      </Tip>
       <Tip as="a" href={`${DOCS}privacy/`} target="_blank" rel="noopener" placement="top-end" tip="No cookies or tracking; what is stored, and where">
         Privacy
       </Tip>

@@ -68,18 +68,20 @@ function docsLink(url: string): Plugin {
 /**
  * The embed (embed.html, src/embed/) at `/embed`, its configurator (configure.html) at `/configure`, and the
  * <bun-playground> element at `/embed.js`: in dev and preview these paths are rewritten (Cloudflare serves /embed from
- * embed.html itself); builds emit the element as dist/embed.js.
+ * embed.html itself); builds emit the element as dist/embed.js. `/about` is index.html, which shows its landing page
+ * there (worker/index.ts serves it on Cloudflare).
  */
 function embedRoutes(): Plugin {
   const rewrite = (req: { url?: string }) => {
     const [path, rest = ""] = (req.url ?? "").split(/(?=[?#])/);
     if (path.endsWith("/embed") || path.endsWith("/configure")) req.url = path + ".html" + rest;
     else if (path.endsWith("/embed.js")) req.url = path.replace(/embed\.js$/, "embed-element/index.ts") + rest;
+    else if (path.endsWith("/about")) req.url = path.replace(/about$/, "") + rest;
   };
   return {
     name: "embed-routes",
     configureServer: (server) => void server.middlewares.use((req, _res, next) => (rewrite(req), next())),
-    configurePreviewServer: (server) => void server.middlewares.use((req, _res, next) => (req.url = (req.url ?? "").replace(/\/(embed|configure)(?=$|[?#])/, "/$1.html"), next())),
+    configurePreviewServer: (server) => void server.middlewares.use((req, _res, next) => (req.url = (req.url ?? "").replace(/\/(embed|configure)(?=$|[?#])/, "/$1.html").replace(/\/about(?=$|[?#])/, "/"), next())),
   };
 }
 

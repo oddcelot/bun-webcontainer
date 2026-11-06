@@ -24,13 +24,14 @@
       Landing page or playground. runbun.dev/ opens on the landing page (#landing), which is what search engines index;
       its "Open the playground" button starts the playground in place (src/entry.ts). A link to a project (?example=,
       ?repo=, a #code= share link, /s/<id>) opens the playground right away, and so does every visit after the first
-      time it was opened. ?landing shows the landing page anyway. Set before the first paint, so neither flashes.
+      time it was opened. /about always shows the landing page. Set before the first paint, so neither flashes.
     -->
     <script>
       try {
         const q = new URLSearchParams(location.search);
         const project = q.has("example") || q.has("repo") || location.hash.startsWith("#code=");
-        if (!q.has("landing") && (project || localStorage.getItem("playground.opened"))) document.documentElement.dataset.view = "app";
+        const about = location.pathname.endsWith("/about");
+        if (!about && (project || localStorage.getItem("playground.opened"))) document.documentElement.dataset.view = "app";
       } catch {}
     </script>
     <!--
@@ -176,8 +177,8 @@ console.log(`Listening on ${server.url}`);
         </p>
         <h2>Examples</h2>
         <ul>
-          <li><a href="?example=elysia-demo">Elysia</a>, <a href="?repo=honojs/starter/tree/main/templates/bun">Hono</a>, <a href="?example=vite-demo">Vite</a> and <a href="?example=astro-solid-demo">Astro + Solid</a> dev servers</li>
-          <li><a href="?example=node-demo">Node built-ins</a> and a <a href="?example=lockfile-demo"><code>bun.lock</code> install</a></li>
+          <li><a href="./?example=elysia-demo">Elysia</a>, <a href="./?repo=honojs/starter/tree/main/templates/bun">Hono</a>, <a href="./?example=vite-demo">Vite</a> and <a href="./?example=astro-solid-demo">Astro + Solid</a> dev servers</li>
+          <li><a href="./?example=node-demo">Node built-ins</a> and a <a href="./?example=lockfile-demo"><code>bun.lock</code> install</a></li>
           <li>Any public GitHub repo: <code>runbun.dev/?repo=owner/repo</code></li>
           <li><a href="https://docs.runbun.dev/guides/embedding/">Embed a runnable example</a> in your own page, like the one above</li>
         </ul>

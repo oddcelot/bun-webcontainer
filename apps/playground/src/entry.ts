@@ -5,6 +5,8 @@ import "virtual:uno.css";
 const root = document.documentElement;
 
 function openPlayground() {
+  // From /about, the playground is at the home page's URL: a reload there opens it again.
+  if (location.pathname.endsWith("/about")) history.replaceState(null, "", location.pathname.replace(/about$/, "") + location.search + location.hash);
   root.dataset.view = "app";
   document.getElementById("landing")?.remove();
   try {
