@@ -12,6 +12,7 @@ import { Glob } from "./glob";
 import { installConsole, table } from "./console";
 import { bunInspect, formatLog as formatValues, installWebInspect } from "./inspect";
 import { trackBodies } from "./bodies";
+import { keepRequestHeaders, withHeaders } from "./requestHeaders";
 import { fulfilled, tracked, trackedFn } from "./promises";
 import { currentGeneration, hold, holdUntil, release, whenIdle } from "./loop";
 import { frameMapper, previewSource } from "./sourceMaps";
@@ -341,6 +342,7 @@ class ServerResponse extends NativeResponse {
 }
 Object.defineProperty(ServerResponse, "name", { value: "Response" });
 self.Response = ServerResponse as typeof Response;
+self.Request = keepRequestHeaders(Request);
 
 /**
  * Bun's `Headers#toJSON`: a plain object of lower-cased names, values joined with ", " except Set-Cookie (an array).
@@ -369,15 +371,10 @@ function servedHeaders(res: Response, setCookies: string[]): [string, string][] 
   return headers;
 }
 
-/**
- * A server-side Request. `new Request()` drops forbidden header names (Cookie, Origin, Upgrade, Sec-*), which a
- * server must see; a standalone `Headers` keeps them.
- */
+/** A server-side Request; it keeps forbidden header names (Cookie, Origin, Upgrade, Sec-*), see requestHeaders.ts. */
 function serverRequest(path: string, init: { method?: string; body?: BodyInit | null }, headers: [string, string][]) {
   headers = headers.map(([k, v]) => [k, k === "origin" || k === "referer" ? asPageOrigin(v) : v]);
-  // The init's headers too: body methods (`formData()`) read the Request's own content-type.
-  const req = new Request(self.location.origin + path, { ...init, headers });
-  return Object.defineProperty(req, "headers", { value: new Headers(headers) });
+  return new Request(self.location.origin + path, { ...init, headers });
 }
 
 /**
@@ -970,7 +967,7 @@ const networkFetch = globalThis.fetch;
 const fileFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = input instanceof Request ? input.url : String(input);
   if (!URL.canParse(url)) throw Object.assign(new TypeError("fetch() URL is invalid"), { code: "ERR_INVALID_URL" });
-  if (!url.startsWith("file:")) return networkFetch(input, init);
+  if (!url.startsWith("file:")) return networkFetch(input, withHeaders(input, init));
   const path = norm(decodeURIComponent(new URL(url).pathname));
   const data = vfs.readBytes(path);
   if (data === undefined) throw new TypeError(`fetch failed: no such file /${path}`);
