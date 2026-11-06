@@ -1,4 +1,7 @@
 import "virtual:uno.css";
+// The landing page's pixel fonts (index.html, style.css #landing); only fetched where used.
+import "@fontsource/press-start-2p/latin-400.css";
+import "@fontsource/vt323/latin-400.css";
 
 // index.html's script. On the landing page (runbun.dev/ on a first visit), "Open the playground" starts the
 // playground in place: no navigation, and the landing page is dropped. index.html's head script picks the view.
