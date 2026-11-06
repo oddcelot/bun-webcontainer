@@ -20,7 +20,7 @@ export interface ShellHost {
   run(entry?: string, args?: string[]): Promise<void>;
   install(): Promise<void>;
   /** Run these test files (`bun test`); resolves with the number of failed tests. */
-  test(files: string[]): Promise<number>;
+  test(files: string[]): Promise<{ failed: number }>;
   stop(): void;
   clear(): void;
   /** Forget this project's saved files and reload it from its source. */

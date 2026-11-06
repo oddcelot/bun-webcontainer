@@ -3,7 +3,7 @@
 // @runbun/embed. Registering the elements is `define` (index.ts calls it), so a page can pick the playground first.
 // Types only: a runtime import would make runbun.dev's build share protocol.ts with the embed page as a chunk, and
 // embed.js, loaded from other origins, has to be one file.
-import type { Event, Feature, Library, LibraryProject, Mode, Reply, Request, Vars } from "./protocol.js";
+import type { Event, Feature, Library, LibraryProject, Mode, Reply, Request, TestResult, Vars } from "./protocol.js";
 
 const TAG = "bunPlayground"; // = protocol TAG
 const VERSION = 1; // = protocol VERSION
@@ -233,8 +233,8 @@ export class BunPlayground extends HTMLElement {
   install() {
     return this.#call("install");
   }
-  /** Runs tests (all, or the given files); resolves with the embed's result. */
-  test(files?: string[]) {
+  /** Runs tests (all, or the given files); resolves with how many failed, in all and per file. */
+  test(files?: string[]): Promise<TestResult> {
     return this.#call("test", files ? { files } : undefined);
   }
   /** Reads a file's text. */

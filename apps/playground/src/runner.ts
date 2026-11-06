@@ -21,14 +21,19 @@ function sendText(port: MessagePort, status: number, text: string) {
 
 /** How long a stopping worker gets to write its databases back. */
 const FLUSH_TIMEOUT = 500;
-/** How long a starting program gets before it counts as hung (a test run has no limit). */
+/** How long a starting program gets before it counts as hung. */
 const START_TIMEOUT = 15000;
+/** How long `bun test` may run before it's stopped as hung (a test that never yields, which no per-test timeout ends). */
+const TEST_TIMEOUT = 30_000;
 /** How long the program a restart replaced gets to finish the preview responses it had begun. */
 const DRAIN_TIMEOUT = 5000;
 /** What the console puts before the replaced program's lines while it is still around (see `swap`). */
 const PREVIOUS = "[previous] ";
 
 export type LogFn = (level: string, text: string) => void;
+
+/** What a `bun test` run found: failed tests in all, and per test file that ran (worker/node/test.ts TestOutcome). */
+export type TestResults = { failed: number; results?: { file: string; failed: number }[] };
 
 /** How a program's start went: up (its entry ran), ended itself (with this code), or neither in time. */
 type Outcome = { kind: "ready" } | { kind: "exit"; code: number } | { kind: "timeout" } | { kind: "error"; message: string } | { kind: "cancelled" };
@@ -74,6 +79,9 @@ export class Runner {
     // The content origin's service worker asks through its host frame (contentHost.ts).
     if (CONTENT_ORIGIN) answerAsks((e) => this.onSw(e));
   }
+
+  /** Settles the start under way as stopped before it answered (a test run that didn't finish failed). */
+  private abort?: () => void;
 
   /** The worker whose op is being applied to the page VFS, so it isn't echoed back to it. */
   private applying?: Worker;
@@ -286,23 +294,28 @@ export class Runner {
   /** Stops the program that answers previews, and only that one (a restart's new program, if any, keeps starting). */
   private async retire(flush: boolean) {
     const worker = this.worker;
+    const abort = this.abort;
     this.worker = undefined;
+    this.abort = undefined;
     if (!worker) return;
     this.onPorts?.([]);
     this.endPending(worker);
     this.dropSockets();
     if (flush) await this.flush(worker);
     worker.terminate();
+    abort?.();
   }
 
   /** Failed tests of the last `runTests`. */
   failed = 0;
+  /** Failed tests per file of the last `runTests`; undefined when it ended before reporting (process.exit). */
+  results: TestResults["results"];
 
   /** `bun test`: runs test files in a fresh worker (replacing any server) and resolves when the run is over. */
-  async runTests(files: string[]): Promise<number> {
+  async runTests(files: string[]): Promise<TestResults> {
     await this.start("", files);
     await this.stop();
-    return this.failed;
+    return { failed: this.failed, results: this.results };
   }
 
   async start(entry: string, tests?: string[], args: string[] = []): Promise<void> {
@@ -319,12 +332,28 @@ export class Runner {
     while (this.worker);
     resetSyncEsm();
     this.exitCode = undefined;
-    const { worker, outcome } = this.boot(entry, tests, args, content);
+    this.results = undefined;
+    const { worker, outcome, cancel } = this.boot(entry, tests, args, content);
     this.worker = worker;
+    // Stop settles it as cancelled, once the worker is gone (retire).
+    this.abort = cancel;
+    // A test that never yields: stopped like Stop does, which settles the run.
+    const watchdog = tests
+      ? setTimeout(() => {
+          this.log("error", `bun test timed out after ${TEST_TIMEOUT / 1000}s`);
+          void this.stop();
+        }, TEST_TIMEOUT)
+      : undefined;
     this.ready = outcome.then((o) => {
+      clearTimeout(watchdog);
+      if (this.abort === cancel) this.abort = undefined;
+      // A test run that didn't report (process.exit, even with code 0; an error; Stop; the watchdog) failed, by file unknown.
+      if (tests && o.kind !== "ready") {
+        this.failed = 1;
+        this.results = undefined;
+      }
       if (o.kind === "exit") {
         this.exitCode = o.code;
-        if (tests) this.failed = o.code ? 1 : 0;
         if (this.worker === worker) void this.retire(false);
       } else if (o.kind === "timeout") this.log("error", "worker start timed out");
     });
@@ -417,7 +446,10 @@ export class Runner {
         if (this.worker === worker) this.onPorts?.(m.ports);
       }
       else if (m.type === "ready") {
+        // From a worker Stop already let go of (still flushing): its report doesn't count.
+        if (this.worker !== worker && this.next?.worker !== worker) return;
         this.failed = m.failed ?? 0;
+        this.results = m.results;
         done({ kind: "ready" });
       } else if (m.type === "exit") {
         // The program ended itself: process.exit, or an uncaught error.

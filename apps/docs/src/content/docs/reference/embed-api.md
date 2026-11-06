@@ -107,7 +107,7 @@ On the element, each returns a promise. Call them after `await el.ready`.
 | `run(entry?)` | file to start instead of the entry | resolves when started |
 | `stop()` | | |
 | `install()` | | resolves when done |
-| `test(files?)` | file paths | `{ failed }` |
+| `test(files?)` | file paths (default: every test file) | `{ failed, results }`: `results` is `{ file, failed }[]`, one per file that ran |
 | `readFile(path)` | path | the file's text (bytes for a binary file) |
 | `writeFile(path, text)` | path, text | |
 | `listFiles()` | | array of paths |
@@ -125,6 +125,8 @@ On the element, each returns a promise. Call them after `await el.ready`.
 
 `el.expanded` is true while the modal is open.
 
+`test()` counts a file that fails to load as one failure. A run that ends before `bun test` reports fails, with no `results`: a test called `process.exit` (with any code), `stop()` ended it, or it ran past 30 seconds. `results` is also missing from playgrounds older than it. Without `results`, treat each file as not passed, or unknown: `failed` alone doesn't say which one failed. `run()`, `test()` and `install()` take turns: one called while another is under way starts when that one is done, so a `test()` right after `ready` waits for the install the embed starts then.
+
 `el.ready` resolves once the embed has sent `ready` (or `unsupported`); read the data from the `bun-playground:ready` event. Requests sent earlier wait until the project has loaded.
 
 ## Events
@@ -138,7 +140,7 @@ On the element they are DOM events named `bun-playground:<event>`, with the data
 | `status` | `{ state: "idle" \| "busy" \| "running" \| "error", text }` |
 | `console` | `{ level, text }` |
 | `change` | `{ path, removed }` |
-| `test` | `{ failed }` |
+| `test` | `{ failed, results }`, as `test()` returns |
 | `mode` | `{ mode, features }`: after `setMode`, `setFeatures` or the reader's menu |
 | `resize` | `{ height }`: the content's height in pixels, for iframes |
 | `expand` | `{ open }`: on the element, the modal opened or closed. Over postMessage, the reader pressed the expand button (or Escape while open); the host opens or closes its modal and answers with `setExpanded` |

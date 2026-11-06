@@ -92,6 +92,13 @@ export type LibraryProject = {
  */
 export type Library = { projects: LibraryProject[]; open?: string };
 
+/**
+ * What `test` replies and the `test` event carries: failed tests in all, and per test file that ran, in order (a file
+ * that fails to load counts one). `results` is missing from embeds older than it, and when the run ended before it
+ * reported (`process.exit` in a test, `stop`, past 30 s; `failed` is then at least 1): grade no file as passed then.
+ */
+export type TestResult = { failed: number; results?: { file: string; failed: number }[] };
+
 /** Host → embed. Each gets a reply with the same `id`: `{ id, result }` or `{ id, error }`. */
 export type Request =
   | {
@@ -104,6 +111,10 @@ export type Request =
   | { method: "run"; params?: { entry?: string } }
   | { method: "stop" }
   | { method: "install" }
+  /**
+   * `bun test` on these files (default: every test file); replies a TestResult. `run`, `test` and `install` take turns:
+   * one sent while another is under way starts when it's done.
+   */
   | { method: "test"; params?: { files?: string[] } }
   | { method: "readFile"; params: { path: string } }
   | { method: "writeFile"; params: { path: string; text: string } }
@@ -129,7 +140,7 @@ export type Event =
   | { event: "status"; data: Status }
   | { event: "console"; data: { level: string; text: string } }
   | { event: "change"; data: { path: string; removed: boolean } }
-  | { event: "test"; data: { failed: number } }
+  | { event: "test"; data: TestResult }
   | { event: "mode"; data: { mode: Mode; features: Feature[] } }
   | { event: "resize"; data: { height: number } }
   /** The reader pressed the expand button (or Escape while expanded): the host should open or close its modal. */

@@ -1187,8 +1187,8 @@ self.addEventListener("message", async (e: MessageEvent) => {
   if (e.data.tests) {
     testing = true;
     // `bun test`: load and run each file instead of an entry.
-    const failed = await runTestFiles(e.data.tests, (f) => importUrl(`${VFS_ROOT}${f}`), (g.Bun as { version: string }).version).catch((err) => (post({ type: "console", level: "error", text: fmt(err) }), 1));
-    post({ type: "ready", failed });
+    const { failed, results } = await runTestFiles(e.data.tests, (f) => importUrl(`${VFS_ROOT}${f}`), (g.Bun as { version: string }).version).catch((err) => (post({ type: "console", level: "error", text: fmt(err) }), { failed: 1, results: undefined }));
+    post({ type: "ready", failed, results });
     return;
   }
   (g.Bun as { main: string }).main = process.argv[1] = `/${e.data.entry}`;

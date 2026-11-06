@@ -4,7 +4,7 @@ import { createConsole } from "./console";
 import { CHECKED, diagnose } from "./diagnostics";
 import { attachStore, reportStoreProblems } from "./pkgStore";
 import { bunInstall } from "./install";
-import { Runner } from "./runner";
+import { Runner, type TestResults } from "./runner";
 import { RemoteRunner } from "./remoteRunner";
 import { connectLocalBun, type LocalBun } from "./localBun";
 import { setVfsOwner } from "./moduleServer";
@@ -146,7 +146,7 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
    * Runs `entry` (default: what Run starts). `swap` (a save under watch): the program keeps serving while the new one
    * starts in the browser, and keeps going if that fails (Runner.swap); native Bun restarts it as a Run does.
    */
-  async function run(entry?: string, args: string[] = [], swap = false) {
+  async function startRun(entry?: string, args: string[] = [], swap = false) {
     if (entry === undefined) ({ entry, args } = command());
     if (!runner) return cantRun();
     if (runner instanceof RemoteRunner && !(await mayRunNative())) return;
@@ -175,7 +175,7 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
     });
   }
 
-  async function install() {
+  async function startInstall() {
     if (runner instanceof RemoteRunner) {
       // `bun install` runs packages' install scripts: someone else's code too.
       if (!(await mayRunNative())) return;
@@ -201,20 +201,53 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
     });
   }
 
-  /** `bun test`: a fresh worker runs the files; a server that was running is started again afterwards. */
-  async function test(files: string[]): Promise<number> {
-    if (!runner) return cantRun(), 0;
-    if (runner instanceof RemoteRunner && !(await mayRunNative())) return 0;
+  /** True while `bun test` runs, so Stop ends it; `stoppedTest` once Stop (or clearing the project) did. */
+  let testing = false;
+  let stoppedTest = false;
+
+  /** `bun test`: a fresh worker runs the files; a server that was running is started again afterwards, unless stopped. */
+  async function runTests(files: string[]): Promise<TestResults> {
+    if (!runner) return cantRun(), { failed: 0 };
+    if (runner instanceof RemoteRunner && !(await mayRunNative())) return { failed: 0 };
     workspace.saveAll();
     const wasRunning = session.settled().state === "running";
-    let failed = 0;
-    await session.task("run", "Testing…", async (): Promise<Status> => {
-      failed = await runner!.runTests(files);
-      return failed ? { state: "error", text: `${failed} test${failed === 1 ? "" : "s"} failed` } : { state: "idle", text: "Tests passed" };
-    });
-    if (wasRunning) await run(lastEntry, lastArgs);
-    return failed;
+    let tested: TestResults = { failed: 0 };
+    testing = true;
+    stoppedTest = false;
+    try {
+      await session.task("run", "Testing…", async (): Promise<Status> => {
+        tested = await runner!.runTests(files);
+        const { failed } = tested;
+        if (stoppedTest) return { state: "idle", text: "Stopped" };
+        return failed ? { state: "error", text: `${failed} test${failed === 1 ? "" : "s"} failed` } : { state: "idle", text: "Tests passed" };
+      });
+    } finally {
+      testing = false;
+    }
+    if (wasRunning && !stoppedTest) await startRun(lastEntry, lastArgs);
+    return tested;
   }
+
+  /**
+   * Runs and tests take turns. Each starts a worker in place of the last, and one started while another was under way
+   * terminated that one's worker before it answered: the first never settled, and Run stayed busy.
+   */
+  let turn: Promise<unknown> = Promise.resolve();
+  function inTurn<A extends unknown[], R>(fn: (...args: A) => Promise<R>) {
+    return (...args: A): Promise<R> => {
+      const done = turn.then(() => fn(...args));
+      turn = done.catch(() => {});
+      return done;
+    };
+  }
+  const queuedRun = inTurn(startRun);
+  /** A save under watch still waiting its turn gives way to a newer one: only the latest edit restarts the program. */
+  let saves = 0;
+  const restartForSave = inTurn((save: number, entry?: string, args: string[] = []) => (save === saves ? startRun(entry, args, true) : Promise.resolve()));
+  const run = (entry?: string, args: string[] = [], swap = false) => (swap ? restartForSave(++saves, entry, args) : queuedRun(entry, args));
+  const test = inTurn(runTests);
+  // In turn too, so a run or test asked for during an install (startup's, say) sees the installed packages.
+  const install = inTurn(startInstall);
 
   /** The program ended itself (process.exit, an uncaught error): the console and status say with which code. */
   function exited(code: number): Status {
@@ -225,7 +258,8 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
   }
 
   function stop() {
-    if (session.settled().state !== "running") return;
+    if (session.settled().state !== "running" && !testing) return;
+    stoppedTest = testing;
     void runner?.stop();
     log("sys", "[stopped]");
     session.setStatus({ state: "idle", text: "Stopped" });
@@ -240,6 +274,7 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
   async function clearProject() {
     await session.started;
     // Finished before the clear: a database flushed afterwards would land in the next project.
+    stoppedTest = testing;
     await runner?.stop();
     workspace.closeAll();
     vfs.clear();

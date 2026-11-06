@@ -326,6 +326,7 @@ async function begin() {
   // The host's `autorun` wins; without one, the project's runbun.json may say not to.
   const autorun = hostSet("autorun") ? options.autorun : (projectConfig.autorun ?? options.autorun);
   // Missing packages install before the first run whatever the mode; the `install` feature is the menu's action.
+  // Queued right after `ready` (boot.ts inTurn), so a host's run or test waits for it.
   if ((embed.has("install") || autorun) && pg.missingDeps()) await pg.install();
   if (autorun) await pg.run();
   else session.setStatus({ state: "idle", text: "Ready" });
@@ -573,9 +574,9 @@ async function handle(req: Request): Promise<unknown> {
     case "install":
       return pg.install();
     case "test": {
-      const failed = await pg.test(req.params?.files ?? [...vfs.files.keys()].filter((p) => /[._](test|spec)\.[cm]?[jt]sx?$/.test(p) && !SKIP.test(p)));
-      emit("test", { failed });
-      return { failed };
+      const { failed, results } = await pg.test(req.params?.files ?? [...vfs.files.keys()].filter((p) => /[._](test|spec)\.[cm]?[jt]sx?$/.test(p) && !SKIP.test(p)));
+      emit("test", { failed, results });
+      return { failed, results };
     }
     case "readFile": {
       workspace.saveAll();
