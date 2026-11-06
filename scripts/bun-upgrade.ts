@@ -4,6 +4,7 @@
 //   scripts/bun-upgrade.ts --check [tag]   Is there a newer release (default: the latest), and do our patches apply
 //                                          to it? Changes nothing. Exit: 0 up to date, 2 newer release and the
 //                                          patches apply, 3 newer release but patches conflict, 1 error.
+//   scripts/bun-upgrade.ts --check main    The same against a branch, to see ahead of a release what it will need.
 //   scripts/bun-upgrade.ts [tag]           Rebase bun/'s wasm-experiment branch onto the release, then --finish.
 //   scripts/bun-upgrade.ts --finish        After resolving a rebase that stopped on a conflict (and
 //                                          `git -C bun rebase --continue`): update the pins, vendored crates,
@@ -71,13 +72,18 @@ async function gitId(args: string[]) {
 async function check(explicit: string): Promise<number> {
   const tag = explicit || (await latestTag());
   if (!tag) die(`no release tags found at ${UPSTREAM}`);
-  const ver = tag.slice("bun-v".length);
+  // Anything but a release tag is a branch upstream (`main`): no version to compare, just whether the patches apply.
+  const branch = !tag.startsWith("bun-v");
+  const ref = branch ? `refs/heads/${tag}` : `refs/tags/${tag}`;
+  // Fetched under refs/remotes/: `git init` has its own `main` checked out, which a fetch may not overwrite.
+  const local = branch ? `refs/remotes/upstream/${tag}` : ref;
+  const ver = branch ? "" : tag.slice("bun-v".length);
   const pinned = BUN_TAG || BUN_COMMIT;
   if (!explicit && !newer(ver, BUN_VERSION)) {
     say(`bun-upgrade: up to date (pinned ${pinned} is Bun ${BUN_VERSION}; latest release is ${tag})`);
     return 0;
   }
-  if (newer(ver, BUN_VERSION)) say(`bun-upgrade: ${tag} is out (pinned: ${pinned}, Bun ${BUN_VERSION}).`);
+  if (ver && newer(ver, BUN_VERSION)) say(`bun-upgrade: ${tag} is out (pinned: ${pinned}, Bun ${BUN_VERSION}).`);
   say(`bun-upgrade: trying patches/bun on ${tag}…`);
 
   const tmp = await mkdtemp(join(tmpdir(), "bun-upgrade-"));
@@ -86,8 +92,9 @@ async function check(explicit: string): Promise<number> {
     // Borrow bun/'s objects when there is a checkout, so only what's new is downloaded.
     if (existsSync(join(bun, ".git/objects"))) await writeFile(join(tmp, ".git/objects/info/alternates"), `${join(bun, ".git/objects")}\n`);
     // The pinned commit too: `am -3` needs the blobs the patches were made against.
-    await $`git -C ${tmp} fetch -q --depth 1 ${UPSTREAM} ${`refs/tags/${tag}:refs/tags/${tag}`} ${BUN_COMMIT}`;
-    await $`git -C ${tmp} -c advice.detachedHead=false checkout -q ${`${tag}^{commit}`}`;
+    await $`git -C ${tmp} fetch -q --depth 1 ${UPSTREAM} ${`${ref}:${local}`} ${BUN_COMMIT}`;
+    await $`git -C ${tmp} -c advice.detachedHead=false checkout -q ${`${local}^{commit}`}`;
+    if (branch) say(`bun-upgrade: ${tag} is at ${await out($`git -C ${tmp} log -1 --format=${"%h %cs %s"}`)}`);
 
     let ok = 0;
     let bad = 0;
@@ -107,11 +114,12 @@ async function check(explicit: string): Promise<number> {
     }
     await pinChanges(tmp);
     if (bad === 0) {
-      say(`bun-upgrade: all ${ok} patches apply to ${tag}. Upgrade with: scripts/bun-upgrade.ts ${tag}`);
+      say(`bun-upgrade: all ${ok} patches apply to ${tag}.${branch ? "" : ` Upgrade with: scripts/bun-upgrade.ts ${tag}`}`);
       return 2;
     }
     say(`bun-upgrade: ${bad} of ${ok + bad} patches conflict with ${tag} (later ones may only depend on an earlier conflict).`);
-    say(`  Upgrade with: scripts/bun-upgrade.ts ${tag}, then resolve the rebase in bun/ and run --finish.`);
+    // A branch is only a preview: upgrades follow releases.
+    if (!branch) say(`  Upgrade with: scripts/bun-upgrade.ts ${tag}, then resolve the rebase in bun/ and run --finish.`);
     return 3;
   } finally {
     await rm(tmp, { recursive: true, force: true });

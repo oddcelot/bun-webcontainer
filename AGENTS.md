@@ -73,6 +73,7 @@ moon run playground:fmt-fixtures                       # the bundled examples (f
 scripts/setup-bun.ts                       # recreate bun/ (pinned commit + patches/bun/ via git am); bun/ is not tracked
 scripts/export-bun-patches.ts              # after committing in bun/ on wasm-experiment
 scripts/bun-upgrade.ts --check             # newer Bun release? do patches/bun/ still apply? (changes nothing)
+scripts/bun-upgrade.ts --check main        # the same against upstream main, ahead of the next release
 scripts/bun-upgrade.ts [tag]               # rebase bun/ onto a release (default: latest); on conflict resolve, then --finish
 scripts/w64.ts <crate>...                  # wasm64 compile check of bun crates
 scripts/vendor-astro-solid.ts --check      # withastro/astro#17891 merged? @astrojs/solid-js v8 on npm? ([sha]: re-vendor)
