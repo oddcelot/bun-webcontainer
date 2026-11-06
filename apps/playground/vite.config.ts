@@ -7,6 +7,7 @@ import solid from "@solidjs/vite-plugin";
 import UnoCSS from "unocss/vite";
 import { rolldown } from "rolldown";
 import { defaultClientConditions, defineConfig, type Plugin } from "vite";
+import { BUN_VERSION } from "./src/worker/bunVersion";
 
 const isolation = {
   "Cross-Origin-Opener-Policy": "same-origin",
@@ -56,29 +57,31 @@ function docsUrl(mode: string): string {
   return url.endsWith("/") ? url : url + "/";
 }
 
-/** index.html's static header (for crawlers and no-JS visitors) links the same docs as the app. */
+/** index.html's static parts (for crawlers and no-JS visitors) link the same docs as the app, and name the Bun release. */
 function docsLink(url: string): Plugin {
   return {
     name: "docs-link",
-    transformIndexHtml: (html) => html.replace('<a id="docs" href="https://docs.runbun.dev/">', `<a id="docs" href="${url}">`),
+    transformIndexHtml: (html) => html.replaceAll('href="https://docs.runbun.dev/', `href="${url}`).replaceAll("%BUN_VERSION%", BUN_VERSION),
   };
 }
 
 /**
  * The embed (embed.html, src/embed/) at `/embed`, its configurator (configure.html) at `/configure`, and the
  * <bun-playground> element at `/embed.js`: in dev and preview these paths are rewritten (Cloudflare serves /embed from
- * embed.html itself); builds emit the element as dist/embed.js.
+ * embed.html itself); builds emit the element as dist/embed.js. `/about` is index.html, which shows its landing page
+ * there (worker/index.ts serves it on Cloudflare).
  */
 function embedRoutes(): Plugin {
   const rewrite = (req: { url?: string }) => {
     const [path, rest = ""] = (req.url ?? "").split(/(?=[?#])/);
     if (path.endsWith("/embed") || path.endsWith("/configure")) req.url = path + ".html" + rest;
     else if (path.endsWith("/embed.js")) req.url = path.replace(/embed\.js$/, "embed-element/index.ts") + rest;
+    else if (path.endsWith("/about")) req.url = path.replace(/about$/, "") + rest;
   };
   return {
     name: "embed-routes",
     configureServer: (server) => void server.middlewares.use((req, _res, next) => (rewrite(req), next())),
-    configurePreviewServer: (server) => void server.middlewares.use((req, _res, next) => (req.url = (req.url ?? "").replace(/\/(embed|configure)(?=$|[?#])/, "/$1.html"), next())),
+    configurePreviewServer: (server) => void server.middlewares.use((req, _res, next) => (req.url = (req.url ?? "").replace(/\/(embed|configure)(?=$|[?#])/, "/$1.html").replace(/\/about(?=$|[?#])/, "/"), next())),
   };
 }
 

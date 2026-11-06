@@ -12,6 +12,353 @@
 *:hover { scrollbar-color: var(--scrollbar-hover) transparent; }
 html, body { height: 100%; margin: 0; background: var(--canvas); color: var(--fg); font: 13px var(--font-ui); }
 body { display: flex; flex-direction: column; }
+/*
+ * index.html: the landing page (#landing) until the playground starts (html[data-view="app"]), which then fills the
+ * window in #app. The landing page scrolls like a document.
+ */
+html:not([data-view="app"]) {
+  #app {
+    display: none;
+  }
+
+  body:has(> #landing) {
+    display: block;
+    height: auto;
+    min-height: 100%;
+    /* The landing page's night sky (#landing's palette), with a faint pixel grid. */
+    background:
+      linear-gradient(#ffffff06 1px, transparent 1px) 0 0 / 8px 8px,
+      linear-gradient(90deg, #ffffff06 1px, transparent 1px) 0 0 / 8px 8px,
+      #1a1c2c;
+  }
+}
+html[data-view="app"] #landing {
+  display: none;
+}
+/*
+ * The landing page: an 8-bit look, on its own fixed palette (not the playground's theme). Headings and buttons in
+ * Press Start 2P, text in VT323; sections are RPG-style dialog boxes, each with a dumpling from dumplings.png as its
+ * speaker. Pixel borders are box-shadows offset by one "pixel" (--retro-px), which leaves the corners notched.
+ */
+#landing {
+  --retro-px: 4px;
+  --retro-night: #1a1c2c;
+  --retro-panel: #262b44;
+  --retro-ink: #f4f4f4;
+  --retro-dim: #94b0c2;
+  --retro-gold: #ffcd75;
+  --retro-coral: #ef7d57;
+  --retro-red: #b13e53;
+  --retro-green: #a7f070;
+  --retro-sky: #41a6f6;
+  --retro-pixel: "Press Start 2P", ui-monospace, monospace;
+  --retro-text: "VT323", ui-monospace, monospace;
+
+  box-sizing: border-box;
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 48px 24px 64px;
+  color: var(--retro-ink);
+  font: 22px/1.3 var(--retro-text);
+
+  code {
+    color: var(--retro-gold);
+    font: inherit;
+  }
+
+  a {
+    color: var(--retro-sky);
+    text-decoration: underline dotted;
+    text-underline-offset: 3px;
+
+    &:hover {
+      color: var(--retro-gold);
+      text-decoration-style: solid;
+    }
+  }
+
+  /* One face of dumplings.png (8 × 8 faces of 32px): --x and --y pick it, scaled by whole pixels. */
+  .sprite {
+    flex: none;
+    display: inline-block;
+    width: 48px;
+    height: 48px;
+    background: url("./dumplings.png") calc(var(--x) * 100% / 7) calc(var(--y) * 100% / 7) / 800% 800%;
+    image-rendering: pixelated;
+
+    &.big {
+      width: 96px;
+      height: 96px;
+      animation: landing-bob 1s steps(2, jump-none) infinite;
+    }
+  }
+
+  /* An RPG dialog box: a light border with notched corners around a dark one, and a caret that blinks in the corner. */
+  .box {
+    position: relative;
+    margin: var(--retro-px);
+    padding: 20px 24px;
+    background: var(--retro-night);
+    box-shadow:
+      inset 0 0 0 var(--retro-px) var(--retro-panel),
+      0 calc(-1 * var(--retro-px)) 0 0 var(--retro-ink),
+      0 var(--retro-px) 0 0 var(--retro-ink),
+      calc(-1 * var(--retro-px)) 0 0 0 var(--retro-ink),
+      var(--retro-px) 0 0 0 var(--retro-ink);
+
+    &::after {
+      content: "";
+      position: absolute;
+      right: 14px;
+      bottom: 10px;
+      border: 6px solid transparent;
+      border-top: 8px solid var(--retro-gold);
+      border-bottom: 0;
+      animation: landing-blink 1s steps(1) infinite;
+    }
+
+    p,
+    ul {
+      margin: 0 0 8px;
+    }
+
+    > :last-child {
+      margin-bottom: 0;
+    }
+  }
+
+  .hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+    gap: 48px;
+    align-items: center;
+    min-height: min(600px, calc(100dvh - 112px));
+
+    @media (width < 900px) {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  .brand {
+    display: flex;
+    gap: 16px;
+    align-items: end;
+    margin: 0 0 20px;
+    color: var(--retro-gold);
+    font: 14px var(--retro-pixel);
+  }
+
+  h1 {
+    margin: 0 0 28px;
+    color: var(--retro-ink);
+    font: clamp(20px, 2.6vw, 30px) / 1.5 var(--retro-pixel);
+    text-shadow: var(--retro-px) var(--retro-px) 0 var(--retro-red);
+    text-wrap: balance;
+  }
+
+  .lead {
+    margin-bottom: 32px;
+    font-size: 24px;
+  }
+
+  /* Menu buttons: a ▶ cursor points at the one under the pointer or focus, and a press sinks it into its shadow. */
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px 28px;
+    align-items: center;
+    margin: 0 0 0 20px;
+
+    .primary,
+    .secondary {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      padding: 14px 18px;
+      border: 0;
+      font: 12px/1.4 var(--retro-pixel);
+      text-decoration: none;
+      text-transform: uppercase;
+      cursor: pointer;
+      box-shadow:
+        0 calc(-1 * var(--retro-px)) 0 0 var(--retro-ink),
+        0 var(--retro-px) 0 0 var(--retro-ink),
+        calc(-1 * var(--retro-px)) 0 0 0 var(--retro-ink),
+        var(--retro-px) 0 0 0 var(--retro-ink),
+        var(--retro-px) calc(3 * var(--retro-px)) 0 0 #000;
+
+      &::before {
+        content: "▶";
+        position: absolute;
+        left: -28px;
+        color: var(--retro-gold);
+        visibility: hidden;
+        animation: landing-nudge 0.6s steps(2, jump-none) infinite;
+      }
+
+      &:hover,
+      &:focus-visible {
+        outline: none;
+
+        &::before {
+          visibility: visible;
+        }
+      }
+
+      &:active {
+        translate: 0 var(--retro-px);
+        box-shadow:
+          0 calc(-1 * var(--retro-px)) 0 0 var(--retro-ink),
+          0 var(--retro-px) 0 0 var(--retro-ink),
+          calc(-1 * var(--retro-px)) 0 0 0 var(--retro-ink),
+          var(--retro-px) 0 0 0 var(--retro-ink);
+      }
+    }
+
+    .primary {
+      background: var(--retro-gold);
+      color: var(--retro-night);
+    }
+
+    .secondary {
+      background: var(--retro-panel);
+      color: var(--retro-ink);
+
+      &:hover {
+        color: var(--retro-ink);
+      }
+    }
+  }
+
+  /* The live example, in a window with a pixel title bar. */
+  .window {
+    min-width: 0;
+    /* Room on the right and below for the offset shadow, which would otherwise overflow a narrow screen. */
+    margin: var(--retro-px) calc(4 * var(--retro-px)) calc(4 * var(--retro-px)) var(--retro-px);
+    background: #000;
+    box-shadow:
+      0 calc(-1 * var(--retro-px)) 0 0 var(--retro-ink),
+      0 var(--retro-px) 0 0 var(--retro-ink),
+      calc(-1 * var(--retro-px)) 0 0 0 var(--retro-ink),
+      var(--retro-px) 0 0 0 var(--retro-ink),
+      calc(3 * var(--retro-px)) calc(3 * var(--retro-px)) 0 0 var(--retro-red);
+  }
+
+  .window-title {
+    display: flex;
+    justify-content: space-between;
+    margin: 0;
+    padding: 10px 12px;
+    background: var(--retro-panel);
+    color: var(--retro-ink);
+    font: 10px var(--retro-pixel);
+    text-transform: uppercase;
+
+    > :last-child {
+      color: var(--retro-green);
+    }
+  }
+
+  .demo {
+    display: block;
+    min-width: 0;
+  }
+
+  /* A row of dumplings walking in place between the hero and the boxes. */
+  .party {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px 24px;
+    justify-content: center;
+    margin: 64px 0 40px;
+
+    .sprite {
+      animation: landing-bob 0.8s steps(2, jump-none) infinite;
+
+      &:nth-child(even) {
+        animation-delay: -0.4s;
+      }
+    }
+  }
+
+  .about {
+    display: grid;
+    gap: 36px;
+    max-width: 50rem;
+    margin: 0 auto;
+
+    h2 {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      margin: 0 0 14px;
+      color: var(--retro-gold);
+      font: 14px/1.5 var(--retro-pixel);
+    }
+
+    ul {
+      padding: 0;
+      list-style: none;
+    }
+
+    li {
+      position: relative;
+      margin: 0 0 4px;
+      padding-left: 28px;
+
+      &::before {
+        position: absolute;
+        left: 0;
+      }
+    }
+
+    .works li::before {
+      content: "♥";
+      color: var(--retro-red);
+    }
+
+    .examples li::before {
+      content: "▶";
+      color: var(--retro-gold);
+      font-size: 0.8em;
+      line-height: 1.6;
+    }
+  }
+
+  footer {
+    max-width: 50rem;
+    margin: 56px auto 0;
+    color: var(--retro-dim);
+    font-size: 20px;
+    text-align: center;
+
+    p {
+      margin: 0 0 6px;
+    }
+
+    .disclaimer {
+      font-size: 18px;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sprite.big,
+    .party .sprite,
+    .box::after,
+    .actions ::before {
+      animation: none;
+    }
+  }
+}
+@keyframes landing-bob { to { translate: 0 -4px; } }
+@keyframes landing-blink { 50% { opacity: 0; } }
+@keyframes landing-nudge { to { translate: 4px 0; } }
+#app {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
 header { display: flex; gap: 8px; align-items: center; padding: 6px 10px 4px; }
 header button:not(.select-trigger), #docs, #clear, #request button { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 /* By id: the share menu is in the header too, and its items mustn't take this height. */
@@ -57,7 +404,7 @@ html.theme-switch::view-transition-new(root) { mask: url("./bun-mask.svg") no-re
  * the previous page (e.g. before a project switch) until the real header renders (mountUI drops data-booting).
  * If the app never mounts, the static header shows after a few seconds anyway.
  */
-html[data-booting] body > header > * { visibility: hidden; animation: boot-fallback 0s 3s forwards; }
+html[data-booting] #app > header > * { visibility: hidden; animation: boot-fallback 0s 3s forwards; }
 @keyframes boot-fallback { to { visibility: visible; } }
 /* Share menu: a popover anchored under the Share button, right edges aligned (the button sits at the header's right). */
 #share { anchor-name: --share; }
@@ -99,7 +446,7 @@ html[data-booting] body > header > * { visibility: hidden; animation: boot-fallb
 @keyframes logo-x { to { background-position-x: 100%; } }
 @keyframes logo-y { to { background-position-y: 100%; } }
 @media (prefers-reduced-motion: reduce) { .logo { animation: none; } }
-/* Read by screen readers and crawlers, not shown: the h1's stable name next to the random visible one. */
+/* Read by screen readers and crawlers, not shown: the playground header's h1, next to the random visible name. */
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 #example { min-width: 6rem; flex: 0 1 14rem; }
 /* The project and theme pickers: Kobalte Selects whose lists open in a portal. */

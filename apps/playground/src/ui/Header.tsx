@@ -22,13 +22,14 @@ export function Header() {
 
   return (
     <>
-      <h1 class="title">
+      {/* The h1 holds only the page's stable name, so crawlers don't read it run into this visit's random one. */}
+      <div class="title">
         <span class="logo" aria-hidden="true" />
-        <span class="sr-only">runbun.dev: Bun in your browser</span>
+        <h1 class="sr-only">Bun Playground: run Bun in your browser</h1>
         <span id="title" aria-hidden="true">
           <Title />
         </span>
-      </h1>
+      </div>
       <ProjectPicker />
       {/* Startup installs and runs the project itself, so Run and Install ignore clicks until it's done (no greying out meanwhile). */}
       <span id="run-group">

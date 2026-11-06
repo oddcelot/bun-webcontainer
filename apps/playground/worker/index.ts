@@ -3,8 +3,8 @@
 //
 // Opt-in short links for Share: POST /api/short stores a share payload (the text after "#code=") in KV under an id
 // derived from its content, so sharing the same project twice gives the same link and costs no second write.
-// GET /s/<id> redirects to /#code=<payload>, which the playground already knows how to open. Everything else is
-// the static site.
+// GET /s/<id> redirects to /#code=<payload>, which the playground already knows how to open. GET /about is the home
+// page (index.html), which shows its landing page there. Everything else is the static site.
 //
 // Links are kept until someone asks for one to be removed (docs: /privacy/). Each key's metadata records the day it was
 // created and the day it was last opened, for a later cleanup of links nobody uses; reading it costs nothing extra.
@@ -177,6 +177,8 @@ export default {
     if (url.pathname === "/api/feedback" && (req.method === "POST" || req.method === "OPTIONS")) return feedback(req, env, url);
     if (url.pathname.startsWith("/s/")) return open(url.pathname.slice(3), env, url, ctx);
     if (url.pathname.startsWith("/api/")) return json(404, { error: "not found" });
+    // The landing page again, for visitors the home page now takes straight to the playground (index.html reads the path).
+    if (url.pathname === "/about") return env.ASSETS.fetch(new Request(new URL("/", url), req));
     return env.ASSETS.fetch(req);
   },
 } satisfies ExportedHandler<Env>;

@@ -114,7 +114,8 @@ Any project can be put in another page, as a `<bun-playground>` element or an if
 
 | URL | Opens |
 |---|---|
-| `runbun.dev` | The demo project |
+| `runbun.dev` | A short intro with a live example, on a first visit; **Open the playground** starts the playground in the same page. After that, `runbun.dev` opens the demo project directly |
+| `/about` | The intro, always (also linked as **About** in the status bar) |
 | `?example=<name>` | A bundled example, e.g. `?example=elysia-demo` |
 | `?repo=owner/repo` | A GitHub repo. Also `owner/repo@ref`, a github.com URL, or `…/tree/<ref>/<dir>` |
 | `#code=…` | A shared project |
