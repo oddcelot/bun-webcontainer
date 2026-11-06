@@ -28,6 +28,17 @@ function pickVersion(doc: Packument, range: string, semver: Semver): string {
   return best;
 }
 
+/**
+ * The wasm32-wasi binding a napi-rs package leaves out of its per-platform optionalDependencies (oxc-parser does, where
+ * rolldown lists it): `[name, range]` from the name and range of a native one, which is all this browser can't load.
+ */
+export function unlistedWasiBinding(optional: Record<string, string> | undefined): [string, string] | undefined {
+  const names = Object.keys(optional ?? {});
+  if (names.some((n) => n.endsWith("-wasm32-wasi"))) return;
+  const native = names.find((n) => /-(?:darwin|linux|win32)-(?:x64|arm64)(?:-\w+)?$/.test(n));
+  return native ? [native.replace(/-(?:darwin|linux|win32)-.*$/, "-wasm32-wasi"), optional![native]] : undefined;
+}
+
 export async function bunInstall(vfs: VFS, semver: Semver, log: Log): Promise<number> {
   const lock = vfs.readText("bun.lock");
   if (lock !== undefined) {
@@ -40,7 +51,8 @@ export async function bunInstall(vfs: VFS, semver: Semver, log: Log): Promise<nu
   const seen = new Set<string>();
   let installed = 0;
 
-  async function add(name: string, range: string, optional = false): Promise<void> {
+  /** `guessed`: a package that may not exist (unlistedWasiBinding), skipped without an error if it doesn't. */
+  async function add(name: string, range: string, optional = false, guessed = false): Promise<void> {
     if (seen.has(name)) return;
     seen.add(name);
     if (vfs.files.has(`node_modules/${name}/package.json`)) return;
@@ -56,10 +68,12 @@ export async function bunInstall(vfs: VFS, semver: Semver, log: Log): Promise<nu
       log("log", `+ ${name}@${version}`);
       await Promise.all(Object.entries(meta.dependencies ?? {}).filter(([n]) => !meta.optionalDependencies?.[n]).map(([n, r]) => add(n, r)));
       await Promise.all(Object.entries(meta.optionalDependencies ?? {}).map(([n, r]) => add(n, r, true)));
+      const wasi = unlistedWasiBinding(meta.optionalDependencies);
+      if (wasi) await add(...wasi, true, true);
       // Like Bun, install required peers (Elysia 1.x needs @sinclair/typebox); a direct dependency wins via `seen`.
       await Promise.all(Object.entries(meta.peerDependencies ?? {}).filter(([n]) => !meta.peerDependenciesMeta?.[n]?.optional).map(([n, r]) => add(n, r)));
     } catch (e) {
-      log("error", `install ${name}@${range}: ${e instanceof Error ? e.message : e}`);
+      if (!guessed) log("error", `install ${name}@${range}: ${e instanceof Error ? e.message : e}`);
     }
   }
 
