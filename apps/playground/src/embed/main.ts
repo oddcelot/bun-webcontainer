@@ -13,6 +13,7 @@ import { isFeature, isMode, lockedFeatures, optionsFromUrl, resolveFeatures } fr
 import { mountEmbed } from "./mount";
 import { parseRequests } from "./requests";
 import { readConfig, type ProjectConfig } from "../projectConfig";
+import { watchChanges } from "./changes";
 import { responseReserve } from "../preview";
 import { isMessage, TAG, VERSION, type Event, type Feature, type LibraryProject, type Mode, type Options, type Request } from "@runbun/embed/protocol";
 import { VFS } from "@runbun/vfs";
@@ -405,9 +406,7 @@ addEventListener("keydown", (e) => {
   embed.requestExpand(false);
 });
 
-vfs.onChange(({ path, removed }) => {
-  if (!SKIP.test(path)) emit("change", { path, removed: !!removed });
-});
+const asHost = watchChanges(vfs, () => pg.programWriting, (path) => SKIP.test(path) || generated.has(path), (data) => emit("change", data));
 // The height the embed would like (`height="auto"` on <bun-playground>): the bar, the open file's lines (within
 // bounds) and the console when it sits under the editor.
 const LINE = 20;
@@ -594,8 +593,7 @@ async function handle(req: Request): Promise<unknown> {
       return text ?? new Uint8Array(vfs.readBytes(req.params.path)!);
     }
     case "writeFile":
-      vfs.write(req.params.path, req.params.text);
-      return;
+      return asHost(() => vfs.write(req.params.path, req.params.text));
     case "listFiles":
       return [...vfs.files.keys()].filter((p) => !SKIP.test(p));
     case "openFile":

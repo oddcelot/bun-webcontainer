@@ -595,6 +595,10 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
     get lastEntry() {
       return lastEntry;
     },
+    /** True while the running program's file writes reach the VFS (see Runner.applying). */
+    get programWriting() {
+      return !!runner?.applying;
+    },
   };
 }
 

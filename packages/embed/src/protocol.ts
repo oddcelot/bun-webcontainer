@@ -99,6 +99,12 @@ export type Library = { projects: LibraryProject[]; open?: string };
  */
 export type TestResult = { failed: number; results?: { file: string; failed: number }[] };
 
+/**
+ * Who changed a file (the `change` event): "reader" in the editor, the file tree or the console; "program" the code
+ * running (`run` or `test`); "host" with `writeFile` or `removeFile`.
+ */
+export type ChangeBy = "reader" | "program" | "host";
+
 /** Host → embed. Each gets a reply with the same `id`: `{ id, result }` or `{ id, error }`. */
 export type Request =
   | {
@@ -144,7 +150,8 @@ export type Event =
   | { event: "unsupported"; data: { checks: { name: string; ok: boolean; why: string }[] } }
   | { event: "status"; data: Status }
   | { event: "console"; data: { level: string; text: string } }
-  | { event: "change"; data: { path: string; removed: boolean } }
+  /** `by` is missing from embeds older than it: count those changes as the reader's. */
+  | { event: "change"; data: { path: string; removed: boolean; by?: ChangeBy } }
   | { event: "test"; data: TestResult }
   | { event: "mode"; data: { mode: Mode; features: Feature[] } }
   | { event: "resize"; data: { height: number } }

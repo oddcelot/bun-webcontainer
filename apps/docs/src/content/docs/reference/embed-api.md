@@ -139,13 +139,15 @@ On the element they are DOM events named `bun-playground:<event>`, with the data
 | `unsupported` | `{ checks: { name, ok, why }[] }`: the browser lacks something, so nothing runs; the code still shows and edits |
 | `status` | `{ state: "idle" \| "busy" \| "running" \| "error", text }` |
 | `console` | `{ level, text }` |
-| `change` | `{ path, removed }` |
+| `change` | `{ path, removed, by }`: a file changed; `by` says who changed it, see below |
 | `test` | `{ failed, results }`, as `test()` returns |
 | `mode` | `{ mode, features }`: after `setMode`, `setFeatures` or the reader's menu |
 | `resize` | `{ height }`: the content's height in pixels, for iframes |
 | `expand` | `{ open }`: on the element, the modal opened or closed. Over postMessage, the reader pressed the expand button (or Escape while open); the host opens or closes its modal and answers with `setExpanded` |
 | `project` | `{ id }`: another library project opened, picked by the reader or by `openProject` |
 | `boot` | `{ version }`: postMessage only; see below |
+
+`change` comes when a file's contents change, not for a write that left a file as it was, and never for `node_modules`, generated files or the files the project loads with. `by` is `"reader"` for the reader's edits in the editor, the file tree and the console (`bun add` writing `package.json` included), `"program"` for files the running code writes (`run` or `test`: a database, a file written at startup), and `"host"` for your `writeFile` and `removeFile`. Playgrounds older than `by` leave it out: treat a `change` without it as the reader's. A host that checks the reader's code on each change can skip the other two, so a program that writes a file as it starts doesn't set off another check.
 
 ## postMessage protocol
 

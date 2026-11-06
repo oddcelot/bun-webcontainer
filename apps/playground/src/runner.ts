@@ -83,8 +83,11 @@ export class Runner {
   /** Settles the start under way as stopped before it answered (a test run that didn't finish failed). */
   private abort?: () => void;
 
-  /** The worker whose op is being applied to the page VFS, so it isn't echoed back to it. */
-  private applying?: Worker;
+  /**
+   * The worker whose op is being applied to the page VFS: it isn't echoed back to it, and the embed says the program
+   * made the change.
+   */
+  applying?: Worker;
 
   /** Hands a page VFS change to the running programs (both while a restart overlaps), except the one that made it. */
   private mirror(op: "write" | "mkdir" | "remove", path: string, data?: unknown) {
