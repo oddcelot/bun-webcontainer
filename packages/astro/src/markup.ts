@@ -280,11 +280,12 @@ export const withTabs = (features?: string): string => (/(^|,)\s*-?tabs\s*(,|$)/
 
 /**
  * A file as an inline source of a <bun-playground>: `<\/script` and `<\!--` are how it is written inside a script.
- * `hidden` (a file the package generated) keeps it out of the embed's tabs.
+ * `hidden` (a file the package generated) keeps it out of the embed's tabs; `generated` (the page's own, such as a
+ * check a test runs) out of its tree and tabs too, and out of what `persist` saves.
  */
-export function fileScript(path: string, text: string, hidden = false) {
+export function fileScript(path: string, text: string, hidden = false, generated = false) {
   const body = text.replace(/<\/(script)/gi, "<\\/$1").replace(/<!--/g, "<\\!--");
-  return `<script type="text/plain" data-file="${esc(path)}"${hidden ? " data-hidden" : ""}>\n${body}\n</script>`;
+  return `<script type="text/plain" data-file="${esc(path)}"${hidden ? " data-hidden" : ""}${generated ? " data-generated" : ""}>\n${body}\n</script>`;
 }
 
 /**
