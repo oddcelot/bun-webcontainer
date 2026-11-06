@@ -21,6 +21,19 @@
       } catch {}
     </script>
     <!--
+      Landing page or playground. runbun.dev/ opens on the landing page (#landing), which is what search engines index;
+      its "Open the playground" button starts the playground in place (src/entry.ts). A link to a project (?example=,
+      ?repo=, a #code= share link, /s/<id>) opens the playground right away, and so does every visit after the first
+      time it was opened. ?landing shows the landing page anyway. Set before the first paint, so neither flashes.
+    -->
+    <script>
+      try {
+        const q = new URLSearchParams(location.search);
+        const project = q.has("example") || q.has("repo") || location.hash.startsWith("#code=");
+        if (!q.has("landing") && (project || localStorage.getItem("playground.opened"))) document.documentElement.dataset.view = "app";
+      } catch {}
+    </script>
+    <!--
       A different name on every visit, shown in the header and the tab title from the first paint. Switching projects
       reloads the page too, so the name lives in the tab's session storage and is picked again (never the same one)
       only on a real reload or in a new tab. src/ui/Title.tsx shows the stored name.
@@ -35,8 +48,8 @@
           title = pool[Math.floor(Math.random() * pool.length)];
           sessionStorage.setItem("title", title);
         }
-        // Search engines index the title as set here: it leads with what people search for, then this visit's name.
-        document.title = `Bun Playground · ${title} · runbun.dev`;
+        // The playground's tab title (the landing page keeps the static one); src/entry.ts sets it when started from there.
+        if (document.documentElement.dataset.view === "app") document.title = `Bun Playground · ${title} · runbun.dev`;
       } catch {}
       // Hides the static header until the app renders its own (see style.css); without JavaScript it stays visible.
       document.documentElement.dataset.booting = "";
@@ -79,18 +92,103 @@
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
-    <!-- src/ui/App.tsx renders the page; this header is what crawlers and no-JS visitors see. -->
-    <header>
-      <div class="title"><span class="logo" aria-hidden="true"></span><h1 class="sr-only">Bun Playground: run Bun in your browser</h1><span id="title" aria-hidden="true">Bun playground</span></div>
-      <script>
-        try {
-          document.getElementById("title").textContent = sessionStorage.getItem("title") || "Bun playground";
-        } catch {}
-      </script>
-      <a id="docs" href="https://docs.runbun.dev/">Docs</a>
-    </header>
+    <!-- The playground: src/ui/mount.tsx renders src/ui/App.tsx into #app, replacing this placeholder header. -->
+    <div id="app">
+      <header>
+        <div class="title"><span class="logo" aria-hidden="true"></span><span id="title">Bun playground</span></div>
+        <script>
+          try {
+            document.getElementById("title").textContent = sessionStorage.getItem("title") || "Bun playground";
+          } catch {}
+        </script>
+        <a id="docs" href="https://docs.runbun.dev/">Docs</a>
+      </header>
+    </div>
+    <!-- The landing page: what search engines, link previews and first-time visitors see. Static HTML. -->
+    <main id="landing">
+      <section class="hero">
+        <div class="intro">
+          <p class="brand"><span class="logo" aria-hidden="true"></span>runbun.dev</p>
+          <h1>Bun Playground: run Bun in your browser</h1>
+          <p class="lead">
+            Write TypeScript, install packages with <code>bun install</code> and serve apps with <code>Bun.serve</code>,
+            all in a browser tab. Built from Bun's own Rust crates compiled to WebAssembly: no install, no server, no
+            account.
+          </p>
+          <p class="actions">
+            <button type="button" class="primary" data-open-playground>Open the playground</button>
+            <a class="secondary" href="https://docs.runbun.dev/">Read the docs</a>
+          </p>
+        </div>
+        <bun-playground class="demo" load="click" mode="preview" height="380px" title="A Bun.serve app, running in this page">
+          <script type="text/plain" data-file="index.ts">
+const server = Bun.serve({
+  routes: {
+    "/": () => new Response(`Hello from Bun ${Bun.version}!`),
+    "/api/time": () =>
+      Response.json({ now: new Date(), bun: Bun.version }),
+  },
+});
+console.log(`Listening on ${server.url}`);
+          </script>
+        </bun-playground>
+      </section>
+      <section class="about">
+        <h2>What it is</h2>
+        <p>
+          runbun.dev is a Bun playground that runs entirely in your browser tab. Write TypeScript, install packages from
+          npm with <code>bun install</code>, run tests with <code>bun test</code> and serve an app with
+          <code>Bun.serve</code>, without installing Bun, creating an account or sending your code to a server. Projects
+          are saved in your browser, and a share link carries a whole project, so a bug reproduction is one URL.
+        </p>
+        <h2>How it works</h2>
+        <p>
+          runbun.dev runs Bun client-side by compiling Bun's own Rust crates to 64-bit WebAssembly (wasm64): the
+          transpiler, module resolver, bundler, formatter and semver are Bun's code, not lookalikes. Your code runs in the
+          browser's JavaScript engine inside a Web Worker, where the <code>Bun.*</code>, <code>bun:*</code> and
+          <code>node:*</code> APIs are JavaScript shims over an in-memory virtual file system. A service worker serves your
+          modules and puts the responses of a <code>Bun.serve</code> or <code>node:http</code> server in the preview pane.
+          There is no remote container or VM: close the tab and nothing keeps running. The editor's completions, hovers and
+          type errors come from TypeScript 7's language service, also compiled to WebAssembly.
+        </p>
+        <h2>What works</h2>
+        <ul>
+          <li><code>Bun.serve</code> with routes, WebSockets and streaming, previewed in the page</li>
+          <li><code>bun install</code> from npm, with <code>bun.lock</code>; <code>bun test</code>; <code>bun:sqlite</code></li>
+          <li><code>Bun.file</code>, <code>Bun.write</code>, <code>Bun.build</code> (Bun's real bundler) and <code>Bun.password</code></li>
+          <li>Frameworks: Elysia, Hono, Vite and the Astro dev server, with hot reload</li>
+          <li>TypeScript and JSX without a build step, and many <code>node:*</code> built-ins (<code>fs</code>, <code>path</code>, <code>http</code>, <code>events</code>, <code>crypto</code>)</li>
+        </ul>
+        <h2>What doesn't</h2>
+        <p>
+          It is not Bun itself. The runtime APIs are reimplemented in JavaScript, so coverage is uneven: a browser has no
+          processes and no raw sockets, so <code>Bun.spawn</code>, <code>Bun.$</code>, <code>Bun.connect</code>,
+          <code>Bun.sql</code>, <code>bun:ffi</code> and native <code>.node</code> addons are missing. The
+          <a href="https://docs.runbun.dev/compatibility/">compatibility pages</a> list the status of every
+          <a href="https://docs.runbun.dev/compatibility/bun/">Bun API</a> and
+          <a href="https://docs.runbun.dev/compatibility/node/">Node built-in</a>.
+        </p>
+        <h2>Browser support</h2>
+        <p>
+          Running code needs WebAssembly Memory64: Chrome and Edge 133+, and Firefox 134+. Safari, and every browser on iOS
+          and iPadOS, open projects in edit-only mode until WebKit ships Memory64.
+          <a href="https://docs.runbun.dev/compatibility/browsers/">Browser details</a>.
+        </p>
+        <h2>Examples</h2>
+        <ul>
+          <li><a href="?example=elysia-demo">Elysia</a>, <a href="?repo=honojs/starter/tree/main/templates/bun">Hono</a>, <a href="?example=vite-demo">Vite</a> and <a href="?example=astro-solid-demo">Astro + Solid</a> dev servers</li>
+          <li><a href="?example=node-demo">Node built-ins</a> and a <a href="?example=lockfile-demo"><code>bun.lock</code> install</a></li>
+          <li>Any public GitHub repo: <code>runbun.dev/?repo=owner/repo</code></li>
+          <li><a href="https://docs.runbun.dev/guides/embedding/">Embed a runnable example</a> in your own page, like the one above</li>
+        </ul>
+      </section>
+      <footer>
+        <p>Built from Bun %BUN_VERSION%. <a href="https://docs.runbun.dev/">Docs</a> · <a href="https://docs.runbun.dev/privacy/">Privacy</a></p>
+        <p class="disclaimer">runbun is an independent project, not affiliated with or endorsed by Oven or Bun.</p>
+      </footer>
+    </main>
     <!-- The theme's overlay (style.css); outside the header, which the app replaces. -->
     <div class="overlay" aria-hidden="true"></div>
-    <script type="module" src="/src/main.ts"></script>
+    <script type="module" src="/src/entry.ts"></script>
   </body>
 </html>

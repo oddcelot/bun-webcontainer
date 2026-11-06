@@ -7,6 +7,7 @@ import solid from "@solidjs/vite-plugin";
 import UnoCSS from "unocss/vite";
 import { rolldown } from "rolldown";
 import { defaultClientConditions, defineConfig, type Plugin } from "vite";
+import { BUN_VERSION } from "./src/worker/bunVersion";
 
 const isolation = {
   "Cross-Origin-Opener-Policy": "same-origin",
@@ -56,11 +57,11 @@ function docsUrl(mode: string): string {
   return url.endsWith("/") ? url : url + "/";
 }
 
-/** index.html's static header (for crawlers and no-JS visitors) links the same docs as the app. */
+/** index.html's static parts (for crawlers and no-JS visitors) link the same docs as the app, and name the Bun release. */
 function docsLink(url: string): Plugin {
   return {
     name: "docs-link",
-    transformIndexHtml: (html) => html.replace('<a id="docs" href="https://docs.runbun.dev/">', `<a id="docs" href="${url}">`),
+    transformIndexHtml: (html) => html.replaceAll('href="https://docs.runbun.dev/', `href="${url}`).replaceAll("%BUN_VERSION%", BUN_VERSION),
   };
 }
 

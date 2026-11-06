@@ -12,6 +12,166 @@
 *:hover { scrollbar-color: var(--scrollbar-hover) transparent; }
 html, body { height: 100%; margin: 0; background: var(--canvas); color: var(--fg); font: 13px var(--font-ui); }
 body { display: flex; flex-direction: column; }
+/*
+ * index.html: the landing page (#landing) until the playground starts (html[data-view="app"]), which then fills the
+ * window in #app. The landing page scrolls like a document.
+ */
+html:not([data-view="app"]) {
+  #app {
+    display: none;
+  }
+
+  body:has(> #landing) {
+    display: block;
+    height: auto;
+    min-height: 100%;
+  }
+}
+html[data-view="app"] #landing {
+  display: none;
+}
+#app {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+#landing {
+  box-sizing: border-box;
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 48px 24px 64px;
+  font-size: 15px;
+  line-height: 1.6;
+
+  code {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+  }
+
+  a {
+    color: inherit;
+    text-decoration-color: var(--muted);
+    text-underline-offset: 2px;
+
+    &:hover {
+      text-decoration-color: currentColor;
+    }
+  }
+
+  .hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    gap: 40px;
+    align-items: center;
+    min-height: min(560px, calc(100dvh - 112px));
+
+    @media (width < 860px) {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  .brand {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin: 0 0 16px;
+    color: var(--muted);
+    font-weight: 600;
+  }
+
+  h1 {
+    margin: 0 0 16px;
+    font-size: clamp(30px, 4.2vw, 46px);
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+
+  .lead {
+    margin: 0 0 24px;
+    color: var(--muted);
+    font-size: 17px;
+    text-wrap: pretty;
+  }
+
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    margin: 0;
+
+    .primary,
+    .secondary {
+      display: inline-flex;
+      align-items: center;
+      height: 40px;
+      padding: 0 18px;
+      border: 1px solid var(--control-border);
+      border-radius: 8px;
+      font: 600 14px var(--font-ui);
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    .primary {
+      border-color: transparent;
+      background: var(--accent);
+      color: var(--canvas);
+
+      &:hover {
+        filter: brightness(1.08);
+      }
+    }
+
+    .secondary {
+      background: var(--control);
+
+      &:hover {
+        background: var(--control-hover);
+      }
+    }
+  }
+
+  .demo {
+    display: block;
+    min-width: 0;
+  }
+
+  .about {
+    max-width: 46rem;
+    margin: 72px auto 0;
+
+    h2 {
+      margin: 36px 0 8px;
+      font-size: 20px;
+      line-height: 1.3;
+    }
+
+    p,
+    ul {
+      margin: 0 0 12px;
+    }
+
+    ul {
+      padding-left: 20px;
+    }
+  }
+
+  footer {
+    max-width: 46rem;
+    margin: 56px auto 0;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 13px;
+
+    p {
+      margin: 0 0 6px;
+    }
+  }
+}
 header { display: flex; gap: 8px; align-items: center; padding: 6px 10px 4px; }
 header button:not(.select-trigger), #docs, #clear, #request button { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 /* By id: the share menu is in the header too, and its items mustn't take this height. */
@@ -57,7 +217,7 @@ html.theme-switch::view-transition-new(root) { mask: url("./bun-mask.svg") no-re
  * the previous page (e.g. before a project switch) until the real header renders (mountUI drops data-booting).
  * If the app never mounts, the static header shows after a few seconds anyway.
  */
-html[data-booting] body > header > * { visibility: hidden; animation: boot-fallback 0s 3s forwards; }
+html[data-booting] #app > header > * { visibility: hidden; animation: boot-fallback 0s 3s forwards; }
 @keyframes boot-fallback { to { visibility: visible; } }
 /* Share menu: a popover anchored under the Share button, right edges aligned (the button sits at the header's right). */
 #share { anchor-name: --share; }
@@ -99,7 +259,7 @@ html[data-booting] body > header > * { visibility: hidden; animation: boot-fallb
 @keyframes logo-x { to { background-position-x: 100%; } }
 @keyframes logo-y { to { background-position-y: 100%; } }
 @media (prefers-reduced-motion: reduce) { .logo { animation: none; } }
-/* Read by screen readers and crawlers, not shown: the h1 with the stable name, next to the random visible one. */
+/* Read by screen readers and crawlers, not shown: the playground header's h1, next to the random visible name. */
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 #example { min-width: 6rem; flex: 0 1 14rem; }
 /* The project and theme pickers: Kobalte Selects whose lists open in a portal. */
