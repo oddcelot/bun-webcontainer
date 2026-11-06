@@ -10,6 +10,7 @@ members = [
   "crates/sys-wasm",
   "crates/resolve-wasm",
   "crates/fmt-wasm",
+  "crates/check-wasm",
   "crates/sys-host",
   "crates/wasm-stubs",
   "crates/shim-test",
