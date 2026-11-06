@@ -1,0 +1,21 @@
+[package]
+name = "bun_check_wasm"
+version = "0.0.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+bun_sema_driver = { path = "../../bun/src/sema/driver" }
+bun_core = { path = "../../bun/src/bun_core" }
+bun_wasm_stubs = { path = "../wasm-stubs" }
+# defines the bun_sys_host_* symbols bun_sys declares, as `bun_sys.*` wasm imports served by the VFS
+bun_sys_host = { path = "../sys-host", features = ["imports"] }
+# TypeScript's lib.*.d.ts files, deflated by build.rs (zstd's C library isn't linked on wasm)
+miniz_oxide = "0.8"
+
+[build-dependencies]
+# For the host only: reads Bun's typescript_libs.bin (zstd frames with a prefix dictionary).
+zstd = "0.13"
+miniz_oxide = "0.8"

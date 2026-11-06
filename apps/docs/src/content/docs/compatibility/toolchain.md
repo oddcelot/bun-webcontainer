@@ -1,6 +1,6 @@
 ---
 title: Toolchain
-description: Transpiler, type checking, bun fmt, module resolution, CommonJS, bun install and the bundler in the playground.
+description: Transpiler, type checking, bun check, bun fmt, module resolution, CommonJS, bun install and the bundler in the playground.
 sidebar:
   order: 4
 ---
@@ -50,7 +50,21 @@ example's `node_modules`), later ones a few milliseconds.
 - ✅ Completions: members after `.`, names in scope, keywords, and import paths, each with its type and documentation. Auto-imports offer what the project's other files, its installed packages and Bun's and Node's built-in modules (`bun:sqlite`, `node:fs`) export, and add the import
 - ✅ Parameter hints in calls: the signature, its overloads, and the current parameter's documentation
 - 🟡 Go to definition: <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+click a name, or <kbd>F12</kbd>; opens the file it's declared in, including `.d.ts` files in `node_modules`. Not into TypeScript's own libs or Bun's bundled types (a project without `@types/bun` installed)
+- ✅ `bun check` in the console, Bun's own type checker (below)
 - ❌ No `tsc` command in the console
+
+### `bun check`
+
+Bun's type checker, the one behind `bun check` (TypeScript 7.0 ported into Bun), compiled to WebAssembly. Type
+`bun check` in the console: it reads the project like Bun reads the disk and prints what Bun prints, the errors with
+the lines in question, then a summary. It loads the first time (~3.3 MB compressed) and takes a fraction of a second on
+a small project.
+
+- ✅ `bun check` with the project's `tsconfig.json`, `bun check <file…>` without one, `-p <tsconfig>`, `--all`, `--no-pretty`, and compiler options as flags (`--strict`, `--noImplicitAny`)
+- ✅ Types from `node_modules`, as in Bun: without `@types/bun` installed, `Bun` and `console` are errors and the note says to run `bun add -d @types/bun` (the editor has Bun's types built in; `bun check` doesn't)
+- ✅ TypeScript's `lib.*.d.ts` files built in, those of the version Bun's checker is a port of
+- ❌ `--watch`, `--threads`, `--cwd`, and a `check` script in `package.json` (`bun check` always runs the checker)
+- ❌ `bun --check <file>` (check, then run)
 
 ## Formatter (`bun fmt`)
 

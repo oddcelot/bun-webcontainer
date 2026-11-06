@@ -6,6 +6,7 @@ const files = [
   ["../../../target/wasm64-unknown-unknown/release/bun_bundle_wasm.wasm", "bun_bundle_wasm.wasm"],
   ["../../../target/wasm64-unknown-unknown/release/bun_resolve_wasm.wasm", "bun_resolve_wasm.wasm"],
   ["../../../target/wasm64-unknown-unknown/release/bun_fmt_wasm.wasm", "bun_fmt_wasm.wasm"],
+  ["../../../target/wasm64-unknown-unknown/release/bun_check_wasm.wasm", "bun_check_wasm.wasm"],
   ["../../../crates/tsrs-ls-wasm/target/wasm32-wasip1/release/tsrs_ls_wasm.wasm", "tsrs_ls_wasm.wasm"],
 ];
 

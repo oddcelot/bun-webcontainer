@@ -1,0 +1,47 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Stefan Kopco <hey@oddcelot.dev>
+Date: Fri, 6 Nov 2026 23:25:16 +0100
+Subject: [PATCH] sema_driver: Instant from bun_core's monotonic clock on wasm
+
+std::time::Instant::now panics on wasm64-unknown-unknown, so bun check's
+timings came from a clock that isn't there. wasm-only; native builds are
+unchanged.
+---
+ src/sema/driver/lib.rs | 23 +++++++++++++++++++++++
+ 1 file changed, 23 insertions(+)
+
+diff --git a/src/sema/driver/lib.rs b/src/sema/driver/lib.rs
+index 1bb746d7..54666e6c 100644
+--- a/src/sema/driver/lib.rs
++++ b/src/sema/driver/lib.rs
+@@ -46,7 +46,30 @@ use std::collections::BTreeSet;
+ use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize, Ordering};
+ use std::sync::{Arc, OnceLock};
+ use std::thread::ThreadId;
++#[cfg(target_family = "wasm")]
++use std::time::Duration;
++#[cfg(not(target_family = "wasm"))]
+ use std::time::{Duration, Instant};
++#[cfg(target_family = "wasm")]
++use wasm_instant::Instant;
++
++// wasm-experiment: `std::time::Instant::now` panics on wasm64-unknown-unknown. The same two methods over bun_core's
++// monotonic clock, which is the host's there.
++#[cfg(target_family = "wasm")]
++pub mod wasm_instant {
++    #[derive(Clone, Copy)]
++    pub struct Instant(u64);
++
++    impl Instant {
++        pub fn now() -> Instant {
++            Instant(bun_core::Timespec::now(bun_core::TimespecMockMode::ForceRealTime).ns())
++        }
++
++        pub fn elapsed(&self) -> core::time::Duration {
++            core::time::Duration::from_nanos(Self::now().0.saturating_sub(self.0))
++        }
++    }
++}
+ 
+ /// The caches that a check's worker threads reuse from one file to the next. The threads belong to the pool and outlive
+ /// the check, so the caches are owned here. A thread holds its set for the duration of a parallel region and gets the
