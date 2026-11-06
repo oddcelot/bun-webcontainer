@@ -15,6 +15,7 @@ These ship as examples in the playground (project picker → Examples). Unless n
 | [Lit SSR + Elysia](https://runbun.dev/?repo=oddcelot/lit-devtools/tree/main/examples/elysia) | ✅ Works | Streams Lit SSR, hydrates, uses `bun:sqlite` and WebSockets. |
 | [Astro + Solid](https://runbun.dev/?example=astro-solid-demo) | ✅ Works | Astro 7 dev server with its default config: on-demand pages, a hydrated Solid island, an API route, the dev toolbar, and HMR (Solid edits swap in place, `.astro` edits reload the page). |
 | [Vite](https://runbun.dev/?example=vite-demo) | ✅ Works | Vite 8 dev server, started from a script with `createServer()`. HMR works over the preview's WebSocket: CSS edits apply in place, other edits reload the page as Vite decides. |
+| [Lit + Vite CLI](https://runbun.dev/?repo=oddcelot/lit-devtools/tree/main/examples/flame) | ✅ Works | `"dev": "vite"` with a `vite.config.ts`, from GitHub. Run starts Vite's CLI; the config's plugin parses with oxc-parser's wasm binding. |
 | [Node built-ins demo](https://runbun.dev/?example=node-demo) | ✅ Works | Output matches real Bun. |
 | [`bun.lock` demo](https://runbun.dev/?example=lockfile-demo) | ✅ Works | Nested installs from a lockfile. |
 
@@ -38,7 +39,7 @@ The Vite and Astro examples need cross-origin isolation, which this site doesn't
 
 ## What usually blocks a framework
 
-- **CLI scripts.** Only `"script": "bun <file>"` runs. Start the dev server from a file instead (for example `createServer()` in Vite, `dev()` in Astro).
+- **CLI scripts** beyond one command. `"dev": "bun <file>"` and a package's bin (`"dev": "vite"`) run; `tsc && vite`, pipes, variables and `npx` don't. Start the dev server from a file instead (for example `createServer()` in Vite, `dev()` in Astro).
 - **Native bindings** without a wasm fallback.
 - **Child processes** (`child_process`, `Bun.spawn`).
 - **Install scripts**, which never run.

@@ -220,7 +220,7 @@ export class Runner {
     return this.failed;
   }
 
-  async start(entry: string, tests?: string[]): Promise<void> {
+  async start(entry: string, tests?: string[], args: string[] = []): Promise<void> {
     // A restart (Run while running, a save under watch) is a moment without a server while the old one flushes:
     // preview requests in that moment wait for the new one instead of getting "No server running". Not for a test
     // run, which has no server and takes as long as it takes.
@@ -281,7 +281,7 @@ export class Runner {
         resolve();
       };
     });
-    worker.postMessage({ type: "start", entry, tests, files: this.vfs.files, dirs: this.vfs.dirs, vfsRoot: vfsRoot() });
+    worker.postMessage({ type: "start", entry, args, tests, files: this.vfs.files, dirs: this.vfs.dirs, vfsRoot: vfsRoot() });
     void this.ready.then(handOver);
     return this.ready;
   }

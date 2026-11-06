@@ -8,7 +8,7 @@ import { Runner } from "./runner";
 import { setVfsOwner } from "./moduleServer";
 import { setPreviewOwner } from "./preview";
 import { loadSemver, type Semver } from "./semver";
-import { createShell, entryOf } from "./shell";
+import { commandOf, createShell, entryOf, type Command } from "./shell";
 import { checkSupport } from "./support";
 import { createPreviews } from "./ui/previews";
 import { createSession, type Status } from "./ui/session";
@@ -79,22 +79,30 @@ export function createPlayground({ watch }: { watch?: () => boolean } = {}) {
     navigator.serviceWorker.controller.postMessage({ type: "adopt-shell", urls });
   }
 
-  /** The file Run starts (see `entryOf`). */
+  /** The file to open first (see `entryOf`). */
   function entryFile(): string {
     return entryOf((path) => vfs.files.has(path), (path) => vfs.readText(path));
   }
 
-  /** What the last Run started, to start it again after `bun test` (which replaces the server). */
-  let lastEntry: string | undefined;
+  /** What Run starts (see `commandOf`). */
+  function command(): Command {
+    return commandOf((path) => vfs.files.has(path), (path) => vfs.readText(path));
+  }
 
-  async function run(entry = entryFile()) {
+  /** What the last Run started, to start it again after `bun test` (which replaces the server) or a save. */
+  let lastEntry: string | undefined;
+  let lastArgs: string[] = [];
+
+  async function run(entry?: string, args: string[] = []) {
+    if (entry === undefined) ({ entry, args } = command());
     if (!runner) return cantRun();
     workspace.saveAll();
     await session.task("run", "Starting…", async (): Promise<Status> => {
-      log("sys", `[run] ${entry}`);
+      log("sys", `[run] ${[entry, ...args].join(" ")}`);
       lastEntry = entry;
+      lastArgs = args;
       try {
-        await runner!.start(entry);
+        await runner!.start(entry!, undefined, args);
         if (runner!.exitCode !== undefined) return exited(runner!.exitCode);
         previews.reload();
         return { state: "running", text: `Running ${entry}` };
@@ -130,7 +138,7 @@ export function createPlayground({ watch }: { watch?: () => boolean } = {}) {
       failed = await runner!.runTests(files);
       return failed ? { state: "error", text: `${failed} test${failed === 1 ? "" : "s"} failed` } : { state: "idle", text: "Tests passed" };
     });
-    if (wasRunning) await run(lastEntry);
+    if (wasRunning) await run(lastEntry, lastArgs);
     return failed;
   }
 
@@ -233,7 +241,7 @@ export function createPlayground({ watch }: { watch?: () => boolean } = {}) {
     waitingFor = undefined;
     clearConsole();
     log("sys", "[watch] restarting");
-    void run(lastEntry);
+    void run(lastEntry, lastArgs);
   }
   workspace.onSaved(() => {
     clearTimeout(watchTimer);
