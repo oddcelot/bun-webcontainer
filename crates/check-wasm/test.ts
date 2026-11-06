@@ -66,6 +66,11 @@ const cases: { name: string; files: Record<string, string>; args?: string[] }[] 
   { name: "no tsconfig, one file", files: { "a.ts": "let x: number = 'one';\n" }, args: ["a.ts"] },
   { name: "compiler flag", files: { "a.ts": "function f(x) { return x; }\nf(1);\n" }, args: ["--noImplicitAny", "a.ts"] },
   { name: "unknown flag", files: { "a.ts": "" }, args: ["--nope"] },
+  {
+    name: "-p elsewhere",
+    files: { "app/tsconfig.json": tsconfig, "app/main.ts": "const n: number = \"x\";\n", "other.ts": "const s: string = 1;\n" },
+    args: ["-p", "app/tsconfig.json"],
+  },
 ];
 
 let failed = 0;
