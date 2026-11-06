@@ -91,6 +91,7 @@ export default defineConfig({
         { label: "Examples", items: [{ autogenerate: { directory: "examples" } }] },
         { label: "Reference", items: [{ autogenerate: { directory: "reference" } }] },
         { label: "Compatibility", items: [{ autogenerate: { directory: "compatibility" } }] },
+        { label: "Compare", items: [{ autogenerate: { directory: "compare" } }] },
         { label: "Privacy", link: "/privacy/" },
       ],
     }),
