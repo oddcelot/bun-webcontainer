@@ -375,6 +375,11 @@ export class BunPlayground extends HTMLElement {
     return [...this.querySelectorAll(":scope > script[data-file][data-hidden]")].map((s) => s.getAttribute("data-file")!);
   }
 
+  /** Inline files marked `data-generated`: the page's own, written on every load, never saved or shown to edit. */
+  #generated(): string[] {
+    return [...this.querySelectorAll(":scope > script[data-file][data-generated]")].map((s) => s.getAttribute("data-file")!);
+  }
+
   /** The `vars` attribute: a JSON object (see protocol.ts Vars) merged per scheme over the page default's. Malformed JSON
    * is ignored like other bad values (that layer is skipped). */
   #vars(): Vars | undefined {
@@ -430,7 +435,7 @@ export class BunPlayground extends HTMLElement {
     const def = document.createElement("div");
     def.className = "def";
     const pre = document.createElement("pre");
-    const hidden = new Set(this.#hidden());
+    const hidden = new Set([...this.#hidden(), ...this.#generated()]);
     pre.textContent = Object.entries(this.#files()).find(([path]) => !hidden.has(path))?.[1] ?? "Bun playground";
     def.append(pre);
     this.#poster.prepend(def);
@@ -566,8 +571,10 @@ export class BunPlayground extends HTMLElement {
     if (event === "expand") return void this.#setExpanded(data.open);
     if (event === "boot") {
       this.#booted = true;
+      // Generated files are hidden too, for embeds older than `generated`: there they at least stay out of the tabs.
+      const generated = this.#generated();
       void this.#library()
-        .then((library) => this.#request("init", { files: this.#files(), hidden: this.#hidden(), options: {}, vars: this.#vars(), library }))
+        .then((library) => this.#request("init", { files: this.#files(), hidden: [...this.#hidden(), ...generated], generated, options: {}, vars: this.#vars(), library }))
         .catch(() => {});
     } else if (event === "ready" || event === "unsupported") {
       this.#isReady = true;

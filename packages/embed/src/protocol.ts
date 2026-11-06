@@ -103,8 +103,13 @@ export type TestResult = { failed: number; results?: { file: string; failed: num
 export type Request =
   | {
       method: "init";
-      /** `hidden`: files of `files` not opened as tabs (`data-hidden`): generated ones, such as a package.json. */
-      params: { files?: Record<string, string>; hidden?: string[]; options?: Partial<Options>; vars?: Vars; library?: Library };
+      /**
+       * `hidden`: files of `files` not opened as tabs (`data-hidden`), still in the file tree.
+       * `generated`: files of `files` the host owns (`data-generated`), such as checks a test runs: written on every
+       * load over what `persist` restored, never saved, and kept out of the file tree and the tabs so the reader can't
+       * edit them. Run and test see them. Embeds older than it ignore `generated`: name them in `hidden` too.
+       */
+      params: { files?: Record<string, string>; hidden?: string[]; generated?: string[]; options?: Partial<Options>; vars?: Vars; library?: Library };
     }
   /** Opens a project of the library in place of the current one, as the reader picking it in the gallery does. */
   | { method: "openProject"; params: { id: string } }

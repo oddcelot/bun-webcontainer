@@ -72,6 +72,10 @@ const initFiles = init?.files ?? {};
 /** The host's own projects (`library`): a project button in the bar opens a gallery of only these. */
 const library = (init?.library?.projects ?? []).filter((p): p is LibraryProject => !!p && typeof p.id === "string" && typeof p.name === "string");
 const locked = lockedFeatures(options.features);
+const bare = (path: string) => path.replace(/^\.?\//, "");
+/** The host's own files (`generated`): written on every load, never saved, out of the tree and the tabs. */
+const generated = new Set((init?.generated ?? []).map(bare));
+workspace.setGenerated([...generated]);
 
 /** A short FNV-1a hash, base 36. */
 function hash(text: string) {
@@ -309,6 +313,8 @@ function switchProject(id: string, fresh = false): Promise<void> {
     await pg.clearProject();
     for (const [path, data] of files.files) vfs.write(path, data);
     pg.previews.reset();
+    // The host's generated files are its inline project's, not a library project's.
+    workspace.setGenerated([]);
     workspace.reloadTree();
     projectConfig = applyConfig(false);
     if (key) stopSaving = await attach(key, vfs, log, !restored);
@@ -344,7 +350,6 @@ function applyConfig(inline: boolean): ProjectConfig {
   const problems: string[] = [];
   const config = readConfig((path) => vfs.readText(path), problems);
   for (const p of problems) log("warn", `[config] ${p}`);
-  const bare = (path: string) => path.replace(/^\.?\//, "");
   // Hidden ones (generated, such as a package.json) stay in the project and the tree, out of the tabs.
   const hidden = new Set([...(init?.hidden ?? []).map(bare), ...(config.hidden ?? [])]);
   const listed = inline ? Object.keys(initFiles).map(bare) : (config.open ?? []);
@@ -382,7 +387,10 @@ const startKey = persistKey(startProject);
 const restored = startKey ? await restore(startKey, vfs, log) : 0;
 const startEntry = library.find((p) => p.id === startProject);
 if (!restored) await (startEntry ? loadLibraryProject(vfs, startEntry) : loadSource());
-if (startKey) stopSaving = await attach(startKey, vfs, log, !restored);
+// Generated files are the host's inline project's. Theirs win over saved copies (one saved before the host marked it generated).
+if (startEntry) workspace.setGenerated([]);
+else for (const [path, text] of Object.entries(initFiles)) if (generated.has(bare(path))) vfs.write(bare(path), text);
+if (startKey) stopSaving = await attach(startKey, vfs, log, !restored, startEntry ? undefined : (path) => generated.has(path));
 embed.setProject(startProject);
 await pg.start({ reset });
 
@@ -592,6 +600,7 @@ async function handle(req: Request): Promise<unknown> {
       return [...vfs.files.keys()].filter((p) => !SKIP.test(p));
     case "openFile":
       if (!vfs.files.has(req.params.path)) throw new Error(`no such file: ${req.params.path}`);
+      if (workspace.isGenerated(req.params.path)) throw new Error(`generated, not opened: ${req.params.path}`);
       return workspace.open(req.params.path);
     case "setMode":
       if (!isMode(req.params.mode)) throw new Error(`unknown mode: ${req.params.mode}`);

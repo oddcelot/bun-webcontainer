@@ -123,6 +123,8 @@ export function FileTree() {
   let open: ReadonlySet<string> = new Set();
   // The active tab, as last applied. Selecting it below calls onSelectionChange from inside that effect.
   let active: string | null = null;
+  /** The VFS's files but those an embedding page generated. */
+  const paths = () => treePaths(vfs).filter((p) => !ws.isGenerated(p));
 
   // Rename, delete and New file here, unless an embed is read-only.
   const editable = () => app.features?.has("edit") ?? true;
@@ -147,7 +149,7 @@ export function FileTree() {
   const tree = new PierreTree({
     // A dot on files open in a tab.
     renderRowDecoration: ({ item }) => (item.kind === "file" && open.has(item.path) ? { text: "●", title: "Open in a tab" } : null),
-    paths: treePaths(vfs),
+    paths: paths(),
     initialExpansion: "closed",
     search: true,
     ...TREE_LOOK,
@@ -258,14 +260,14 @@ export function FileTree() {
       pending.set(op.path, op);
     };
     const unsubscribe = vfs.onChange(({ path, created, removed }) => {
-      if ((created || removed) && !inGitDir(path)) queue({ type: removed ? "remove" : "add", path });
+      if ((created || removed) && !inGitDir(path) && !ws.isGenerated(path)) queue({ type: removed ? "remove" : "add", path });
     });
     // The tree keeps a folder whose files are gone; a removed directory takes its row (and anything left in it).
     const unsubscribeDirs = vfs.onDir((path, removed) => {
       if (removed && !inGitDir(path)) queue({ type: "remove", path: `${path}/`, recursive: true });
     });
     // Files written between creating the tree and subscribing.
-    tree.resetPaths(treePaths(vfs));
+    tree.resetPaths(paths());
     return () => {
       unsubscribe();
       unsubscribeDirs();
@@ -306,7 +308,7 @@ export function FileTree() {
   createEffect(
     () => ws.state.treeVersion,
     guarded("file tree", () => {
-      tree.resetPaths(treePaths(vfs));
+      tree.resetPaths(paths());
     }),
     { defer: true },
   );

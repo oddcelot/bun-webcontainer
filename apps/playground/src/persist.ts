@@ -198,10 +198,11 @@ export async function projectsKept(ask = false): Promise<boolean> {
 
 /**
  * Mirrors the VFS into OPFS (`projects/<id>/`), write-behind (see `mirror`). `all` saves every file now (a project
- * just loaded from its source). Only the tab holding the project's lock writes. Never throws; returns a function that
- * stops saving, settles once a flush in progress is done, and then lets go of the lock (another project opened here).
+ * just loaded from its source); `generated` names more files never saved (an embed's generated ones). Only the tab
+ * holding the project's lock writes. Never throws; returns a function that stops saving, settles once a flush in
+ * progress is done, and then lets go of the lock (another project opened here).
  */
-export async function attach(id: string, vfs: VFS, log: Log, all: boolean): Promise<StopSaving> {
+export async function attach(id: string, vfs: VFS, log: Log, all: boolean, generated?: (path: string) => boolean): Promise<StopSaving> {
   const off = async () => {};
   let release = () => {};
   try {
@@ -224,6 +225,7 @@ export async function attach(id: string, vfs: VFS, log: Log, all: boolean): Prom
     if (!dir) throw new Error("can't create the project directory");
     const stop = mirror(dir, vfs, log, {
       all,
+      generated,
       stash: stashKey(id),
       tag: "[storage]",
       where: "browser",
@@ -252,6 +254,8 @@ export type StopSaving = (opts?: { flush?: boolean }) => Promise<void>;
 type MirrorOptions = {
   /** Write every file now, not only changed ones. */
   all: boolean;
+  /** Files never written besides `skip` (nor taken from the stash): an embed's generated ones. */
+  generated?: (path: string) => boolean;
   /** sessionStorage key for files a reload cut off (see `stashKey`); replayed first. */
   stash?: string;
   /** Log prefix. */
@@ -279,8 +283,9 @@ type ObserverClass = new (callback: (records: ChangeRecord[]) => void) => Observ
  * short pause, and on pagehide. `skip` (node_modules and .git) is left alone. Returns a function that stops writing and
  * settles once a flush in progress is done.
  */
-export function mirror(dir: Dir, vfs: VFS, log: Log, { all, stash: stashAt, tag, where, onFirstFlush, watch, skip = SKIP }: MirrorOptions): StopSaving {
+export function mirror(dir: Dir, vfs: VFS, log: Log, { all, generated, stash: stashAt, tag, where, onFirstFlush, watch, skip = SKIP }: MirrorOptions): StopSaving {
   let stopped = false;
+  const skipped = (path: string) => skip.test(path) || !!generated?.(path);
   const self = {};
   current = self;
   let failed: string | undefined;
@@ -381,6 +386,7 @@ export function mirror(dir: Dir, vfs: VFS, log: Log, { all, stash: stashAt, tag,
     try {
       const stash: Record<string, string | null> = JSON.parse(sessionStorage.getItem(stashAt) ?? "{}");
       for (const [path, data] of Object.entries(stash)) {
+        if (skipped(path)) continue;
         if (data === null) vfs.remove(path);
         else vfs.write(path, data);
         dirty.add(path);
@@ -390,7 +396,7 @@ export function mirror(dir: Dir, vfs: VFS, log: Log, { all, stash: stashAt, tag,
   }
 
   const unsub = vfs.onChange(({ path }) => {
-    if (stopped || skip.test(path)) return;
+    if (stopped || skipped(path)) return;
     // Already what the folder holds: an outside change just read in, or an edit undone.
     const known = onDisk.get(path);
     if (known !== undefined && same(known, vfs.data(path) ?? null)) return;
@@ -419,7 +425,7 @@ export function mirror(dir: Dir, vfs: VFS, log: Log, { all, stash: stashAt, tag,
   document.addEventListener("visibilitychange", onHide);
   addEventListener("pagehide", onHide);
   if (all) {
-    for (const p of vfs.files.keys()) if (!skip.test(p)) dirty.add(p);
+    for (const p of vfs.files.keys()) if (!skipped(p)) dirty.add(p);
     schedule();
   }
   report();
