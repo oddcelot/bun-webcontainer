@@ -208,6 +208,39 @@ if (spawnSync("bun", ["--version"]).status === 0) {
   else console.log("SYNC_ESM: imports in order, live exports, export *, require, top-level await refused");
 }
 
+// SYNC_ESM namespaces: Bun names them after the path (`export * from "./const.mjs"` declares `const`, as TypeBox's
+// barrels have it) and leaves clashes to the bundler's renamer; here they'd be a syntax error, shadow `hmr` or a
+// global, or merge two imports. The module's own `import * as` keeps its name for a direct eval.
+{
+  type Case = [name: string, src: string, mods: Record<string, object>, ok: (e: Record<string, any>) => boolean, flags?: number];
+  const cases: Case[] = [
+    ["reserved, hmr, bindings", 'export * from "./const.mjs";\nexport * from "./default/index.mjs";\nexport * from "./hmr.mjs";\nexport * from "./foo.mjs";\nimport { a } from "./c.mjs";\nconst foo = 1, import_c = 2;\nexport { a, foo as f, import_c };\n',
+      { "./const.mjs": { k: 1 }, "./default/index.mjs": { d: 2 }, "./hmr.mjs": { h: 3 }, "./foo.mjs": { o: 4 }, "./c.mjs": { a: 5 } }, (e) => e.k === 1 && e.d === 2 && e.h === 3 && e.o === 4 && e.a === 5 && e.f === 1 && e.import_c === 2],
+    ["undefined", 'export * from "./undefined.mjs";\nexport const v = void 0;\n', { "./undefined.mjs": { k: 1 } }, (e) => e.k === 1 && "v" in e && e.v === undefined],
+    ["NaN, minified", 'export * from "./NaN.mjs";\nexport const x = 0/0;\n', { "./NaN.mjs": { k: 1 } }, (e) => e.k === 1 && Number.isNaN(e.x), 16384 | 64],
+    ["string alias", 'export * as "a b" from "./x.mjs";\n', { "./x.mjs": { k: 1 } }, (e) => e["a b"]?.k === 1],
+    ["direct eval of an own namespace", 'import * as foo from "./x.mjs";\nexport function g() { let foo = 2; return foo }\nexport const y = eval("foo.k");\n', { "./x.mjs": { k: 7 } }, (e) => e.y === 7 && e.g() === 2],
+    ["two imports of the same file name", 'import { x } from "./a/u.mjs";\nimport { y } from "./b/u.mjs";\nexport { x, y };\n', { "./a/u.mjs": { x: 1 }, "./b/u.mjs": { y: 2 } }, (e) => e.x === 1 && e.y === 2],
+    ["shadowed in a function", 'import { a } from "./c.mjs";\nexport function f() { const import_c = 1; return a; }\n', { "./c.mjs": { a: 5 } }, (e) => e.f() === 5],
+    ["numbered names", 'export * from "./const.mjs";\nexport * from "./a/const.mjs";\nexport * from "./const2.mjs";\n', { "./const.mjs": { p: 1 }, "./a/const.mjs": { q: 2 }, "./const2.mjs": { r: 3 } }, (e) => e.p === 1 && e.q === 2 && e.r === 3],
+  ];
+  let bad = 0;
+  for (const [name, src, mods, ok, flags = 16384] of cases) {
+    const code = call("transpile_flags_c", "m.mjs", src, flags);
+    const hmr = { exports: {} as Record<string, any>, importSync: (s: string) => mods[s], importMeta: {} };
+    let passed: boolean, why = "";
+    try {
+      new Function("hmr", code)(hmr);
+      passed = ok(hmr.exports);
+    } catch (e) {
+      passed = false;
+      why = String(e);
+    }
+    if (!passed) { bad++; fail++; console.log(`SYNC_ESM names, ${name}: MISMATCH ${why}\n${code}`); }
+  }
+  if (!bad) console.log(`SYNC_ESM: namespaces named after reserved words, globals, hmr or other bindings (${cases.length} cases)`);
+}
+
 // Bun.Transpiler's options (`options_c` and the option flags, encoded by the playground's transpiler/options.ts) and
 // per-call data loaders, vs native Bun's transformSync and scan.
 import { runtimeOptions, FLAGS, LOADER_NUMBERS } from "../../apps/playground/src/transpiler/options.ts";
