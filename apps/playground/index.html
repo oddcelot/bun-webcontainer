@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>runbun.dev · Bun in your browser</title>
+    <title>Bun Playground: Run Bun Online in Your Browser | runbun.dev</title>
     <meta name="description" content="Run Bun.serve apps, install packages and edit TypeScript in a tab, built from Bun&#39;s own Rust crates compiled to wasm64." />
     <link rel="canonical" href="https://runbun.dev/" />
 
@@ -35,8 +35,8 @@
           title = pool[Math.floor(Math.random() * pool.length)];
           sessionStorage.setItem("title", title);
         }
-        // The tab keeps the site name, so bookmarks and search results stay recognizable.
-        document.title = `${title} · runbun.dev`;
+        // Search engines index the title as set here: it leads with what people search for, then this visit's name.
+        document.title = `Bun Playground · ${title} · runbun.dev`;
       } catch {}
       // Hides the static header until the app renders its own (see style.css); without JavaScript it stays visible.
       document.documentElement.dataset.booting = "";
@@ -47,7 +47,7 @@
     <meta property="og:site_name" content="runbun.dev" />
     <meta property="og:locale" content="en_US" />
     <meta property="og:url" content="https://runbun.dev/" />
-    <meta property="og:title" content="Bun in your browser · runbun.dev" />
+    <meta property="og:title" content="Bun Playground: run Bun in your browser · runbun.dev" />
     <meta property="og:description" content="Run Bun.serve apps, install packages and edit TypeScript in a tab, built from Bun&#39;s own Rust crates compiled to wasm64." />
     <meta property="og:image" content="https://runbun.dev/og.png" />
     <meta property="og:image:type" content="image/png" />
@@ -56,7 +56,7 @@
     <meta property="og:image:alt" content="Bun&#39;s logo next to the words: Bun in your browser" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@oddcelot" />
-    <meta name="twitter:title" content="Bun in your browser · runbun.dev" />
+    <meta name="twitter:title" content="Bun Playground: run Bun in your browser · runbun.dev" />
     <meta name="twitter:description" content="Run Bun.serve apps, install packages and edit TypeScript in a tab, built from Bun&#39;s own Rust crates compiled to wasm64." />
     <meta name="twitter:image" content="https://runbun.dev/og.png" />
     <meta name="twitter:image:alt" content="Bun&#39;s logo next to the words: Bun in your browser" />
@@ -81,7 +81,7 @@
   <body>
     <!-- src/ui/App.tsx renders the page; this header is what crawlers and no-JS visitors see. -->
     <header>
-      <h1 class="title"><span class="logo" aria-hidden="true"></span><span class="sr-only">runbun.dev: Bun in your browser</span><span id="title" aria-hidden="true">Bun playground</span></h1>
+      <div class="title"><span class="logo" aria-hidden="true"></span><h1 class="sr-only">Bun Playground: run Bun in your browser</h1><span id="title" aria-hidden="true">Bun playground</span></div>
       <script>
         try {
           document.getElementById("title").textContent = sessionStorage.getItem("title") || "Bun playground";
