@@ -1,6 +1,10 @@
 ---
 title: Bun APIs
-description: Which parts of the Bun global, bun:* modules and import.meta work in the playground.
+description: "The status of every Bun API in the browser playground: Bun.serve, Bun.file, Bun.build, Bun.password, bun:sqlite, bun:test and more, each marked Works, Partial, Stub or Missing."
+head:
+  # The browser tab and search result title; the page heading stays `title`.
+  - tag: title
+    content: "Bun API compatibility in the browser: Bun.serve, bun:sqlite, bun:test | Run Bun"
 sidebar:
   order: 2
 ---

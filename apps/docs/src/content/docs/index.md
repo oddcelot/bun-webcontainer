@@ -1,6 +1,10 @@
 ---
 title: Overview
-description: What the playground is and how it runs your code.
+description: "runbun.dev runs Bun in your browser: Bun's Rust crates compiled to wasm64, JavaScript shims for the runtime APIs and a virtual file system. How it works, what it's for and where to start."
+head:
+  # The browser tab and search result title; the page heading stays `title`.
+  - tag: title
+    content: "Run Bun docs: the Bun playground that runs in your browser"
 ---
 
 The playground runs a Bun project entirely in your browser:
@@ -23,4 +27,15 @@ const server = Bun.serve({
 console.log(`Listening on ${server.url}`);
 ```
 
-Because the runtime is a set of shims, not every Bun or Node API is there yet. Check [Compatibility](/compatibility/) before porting a project, and the [Features](/guides/features/) tour for what the playground can do.
+## What it's for
+
+- **Trying Bun without installing it.** Open [runbun.dev](https://runbun.dev/), edit the demo or pick an example, and press Run. There's no account and nothing to install.
+- **Sharing a reproduction.** A share link carries the whole project in its URL, so a bug report can be one link. [Reproduce a bug with an agent](/guides/agent-repro/) shows how to make one, by hand or with a coding agent.
+- **Runnable examples in docs and posts.** The [`<bun-playground>` element](/guides/embedding/), or [`@runbun/astro`](/guides/astro/) in an Astro site, turns a code block into one that runs in the reader's browser. The [examples](/examples/) on this site are built that way.
+- **Checking a package or a framework.** `bun install` fetches packages from npm, and [frameworks](/compatibility/frameworks/) like Elysia, Hono, Vite and Astro run with their dev servers.
+
+## What it isn't
+
+runbun.dev is not Bun itself. Your code runs in the browser's JavaScript engine, not in Bun's JavaScriptCore, and the runtime APIs are reimplemented on top of it. A browser has no processes and no raw sockets, so `Bun.spawn`, `Bun.$`, `Bun.connect` and native `.node` addons are missing, and everything else is marked API by API in [Compatibility](/compatibility/). Running code needs WebAssembly Memory64, which Chrome, Edge and Firefox have and Safari doesn't yet ([Browsers](/compatibility/browsers/)). [Bun APIs](/compatibility/bun/) names the Bun release the playground is built from.
+
+runbun is an independent project, not affiliated with or endorsed by Oven or Bun. For what the playground can do, take the [Features](/guides/features/) tour.

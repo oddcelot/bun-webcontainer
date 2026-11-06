@@ -1,6 +1,10 @@
 ---
 title: Browsers
-description: Which browsers run the playground and what they need.
+description: "Running Bun in the browser needs WebAssembly Memory64: Chrome and Edge 133+ and Firefox 134+ run code, Safari and iOS are edit-only. What each browser feature is used for."
+head:
+  # The browser tab and search result title; the page heading stays `title`.
+  - tag: title
+    content: "Browser support: running Bun in Chrome, Firefox and Safari | Run Bun"
 sidebar:
   order: 1
 ---

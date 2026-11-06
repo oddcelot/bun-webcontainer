@@ -1,6 +1,10 @@
 ---
 title: Storage and persistence
-description: Where your projects are saved and how long they stay.
+description: "Where the runbun.dev playground saves your projects (the browser's Origin Private File System), how long they stay, and how to keep or clear them."
+head:
+  # The browser tab and search result title; the page heading stays `title`.
+  - tag: title
+    content: "Where the Bun playground saves your projects | Run Bun"
 sidebar:
   order: 3
 ---

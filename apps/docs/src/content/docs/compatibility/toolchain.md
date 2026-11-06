@@ -1,6 +1,10 @@
 ---
 title: Toolchain
-description: Transpiler, type checking, bun check, bun fmt, module resolution, CommonJS, bun install and the bundler in the playground.
+description: "How Bun's toolchain runs in the browser: the transpiler, bun install and bun.lock, module resolution, CommonJS, Bun.build, bun fmt, bun check and type checking."
+head:
+  # The browser tab and search result title; the page heading stays `title`.
+  - tag: title
+    content: "bun install, the transpiler and the bundler in the browser | Run Bun"
 sidebar:
   order: 4
 ---

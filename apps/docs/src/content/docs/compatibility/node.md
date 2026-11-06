@@ -1,6 +1,10 @@
 ---
 title: Node built-ins
-description: Which node:* modules work in the playground.
+description: "The status of every node:* built-in in the browser playground, from node:fs and node:http to node:crypto and node:stream, each marked Works, Partial, Stub or Missing."
+head:
+  # The browser tab and search result title; the page heading stays `title`.
+  - tag: title
+    content: "Node.js built-ins in the browser: node:fs, node:http and more | Run Bun"
 sidebar:
   order: 3
 ---

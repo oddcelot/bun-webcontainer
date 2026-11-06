@@ -1,6 +1,10 @@
 ---
 title: Features
-description: "A tour of the playground: editor, console, running code, preview, installs and projects."
+description: "A tour of the runbun.dev playground: the editor with TypeScript completions, the console, running code, the Bun.serve preview, package installs, projects and share links."
+head:
+  # The browser tab and search result title; the page heading stays `title`.
+  - tag: title
+    content: "Bun playground features: editor, console, preview, sharing | Run Bun"
 sidebar:
   order: 2
 ---
