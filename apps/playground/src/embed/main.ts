@@ -600,6 +600,10 @@ async function handle(req: Request): Promise<unknown> {
       if (!vfs.files.has(req.params.path)) throw new Error(`no such file: ${req.params.path}`);
       if (workspace.isGenerated(req.params.path)) throw new Error(`generated, not opened: ${req.params.path}`);
       return workspace.open(req.params.path);
+    case "removeFile":
+      // Its tab closes and the host hears `change` with `removed` (both on the VFS's change, boot.ts and below).
+      if (!vfs.files.has(req.params.path)) throw new Error(`no such file: ${req.params.path}`);
+      return asHost(() => vfs.remove(req.params.path));
     case "setMode":
       if (!isMode(req.params.mode)) throw new Error(`unknown mode: ${req.params.mode}`);
       return embed.setMode(req.params.mode);

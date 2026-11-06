@@ -112,6 +112,7 @@ On the element, each returns a promise. Call them after `await el.ready`.
 | `writeFile(path, text)` | path, text | |
 | `listFiles()` | | array of paths |
 | `openFile(path)` | path | rejects for a missing or generated file |
+| `removeFile(path)` | path | deletes the file and closes its tab; rejects for a missing file |
 | `setMode(mode)` | a mode | |
 | `setFeatures(obj)` | `{ types: true, format: false }` | |
 | `setTheme(theme)` | a theme | |

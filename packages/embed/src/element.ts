@@ -253,6 +253,10 @@ export class BunPlayground extends HTMLElement {
   openFile(path: string) {
     return this.#call("openFile", { path });
   }
+  /** Deletes a file (closing its tab); rejects when there's no such file. */
+  removeFile(path: string): Promise<void> {
+    return this.#call("removeFile", { path });
+  }
   /** Switches the layout mode. */
   setMode(mode: Mode) {
     return this.#call("setMode", { mode });

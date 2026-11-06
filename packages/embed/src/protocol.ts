@@ -131,6 +131,8 @@ export type Request =
   | { method: "writeFile"; params: { path: string; text: string } }
   | { method: "listFiles" }
   | { method: "openFile"; params: { path: string } }
+  /** Deletes a file (and closes its tab); an error when there's no such file. */
+  | { method: "removeFile"; params: { path: string } }
   | { method: "setMode"; params: { mode: Mode } }
   | { method: "setFeatures"; params: Partial<Record<Feature, boolean>> }
   | { method: "setTheme"; params: { theme: string } }

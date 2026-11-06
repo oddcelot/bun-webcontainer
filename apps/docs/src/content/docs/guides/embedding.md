@@ -264,6 +264,8 @@ Give the embed test files of your own and mark them `data-generated`. The reader
 </script>
 ```
 
+`el.removeFile(path)` deletes a file, generated or not.
+
 ## Limits
 
 - **Browsers.** Embeds need WebAssembly Memory64: Chrome and Edge 133+, Firefox 134+. Safari doesn't have it yet. There the embed still shows and edits the code, says why it can't run it, and sends `unsupported`. See [Browsers](/compatibility/browsers/).
