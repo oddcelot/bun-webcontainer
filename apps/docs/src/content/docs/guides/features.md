@@ -56,6 +56,7 @@ A terminal with colors, clickable links, history (<kbd>↑</kbd>/<kbd>↓</kbd>)
 | `bun remove <pkg>` (`rm`) | Remove a dependency |
 | `bun pm cache [rm]` | Show or clear the package cache |
 | `bun fmt [-c] [path…]` | Format files like Prettier, or only check them (`-c`) |
+| `bun check [path…]` | Type check with Bun's own checker, as [`bun check`](/compatibility/toolchain/#bun-check) does |
 | `ls [dir]`, `cat <file>` | List a folder, print a file |
 | `cookies [clear]` | List or clear the preview's cookies |
 | `reset` | Throw away your changes and reload the project from its source |

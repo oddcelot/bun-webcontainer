@@ -1,4 +1,5 @@
 import type { Cookie } from "./cookieJar";
+import { check as typeCheck } from "./check";
 import { asConsoleEntry, fmt as formatFile, walks } from "./fmt";
 import { clearPkgCache, pkgCacheInfo } from "./pkgCache";
 import { clearStore, storeInfo } from "./pkgStore";
@@ -97,6 +98,7 @@ bun add <pkg> [-d]     add (dev) dependencies
 bun remove <pkg>       remove dependencies
 bun pm cache [rm]      show (or clear) the package cache, shared by all projects
 bun fmt [-c] [path...]  format (or --check) files like Prettier, with the project's configs
+bun check [path...]    type check with Bun's TypeScript 7 checker (tsconfig.json, @types)
 ls [dir]  cat <file>  clear  help
 reset                  discard saved files, reload from source
 cookies [clear]        list (or delete) the preview's cookies
@@ -263,6 +265,14 @@ export function createShell(host: ShellHost) {
     } else log("log", `Formatted ${changed} ${s(changed)}, ${same} unchanged [${(performance.now() - started).toFixed(2)}ms]`);
   }
 
+  /** `bun check [flags] [path...]`: Bun's type checker over the project, errors as it prints them. */
+  async function check(args: string[]) {
+    const r = await typeCheck(vfs, args);
+    if (r.stdout) log(r.exitCode ? "error" : "log", asConsoleEntry(r.stdout));
+    // The summary: "Found 2 errors in 1 file", "✓ No type errors in 3 files", a usage error.
+    if (r.stderr.trim()) log(r.exitCode ? "error" : "log", asConsoleEntry(r.stderr));
+  }
+
   function ls(dir = "") {
     const path = dir.replace(/^\.\/?/, "").replace(/\/$/, "");
     if (path && !vfs.isDir(path)) return vfs.files.has(path) ? log("log", path) : fail(`ls: ${dir}: No such file or directory`);
@@ -297,6 +307,7 @@ export function createShell(host: ShellHost) {
       if (sub === "add" || sub === "a") return await add(rest);
       if (sub === "remove" || sub === "rm") return remove(rest);
       if (sub === "fmt") return await fmt(rest);
+      if (sub === "check") return await check(rest);
       if (sub === "pm") return await pm(rest);
       if (vfs.files.has(sub.replace(/^\.\//, ""))) return await runTarget(sub);
       fail(`bun ${sub}: not available here (try "help")`);

@@ -65,6 +65,7 @@ tasks:
       - 'bundle-wasm:build'
       - 'resolve-wasm:build'
       - 'fmt-wasm:build'
+      - 'check-wasm:build'
       - 'tsrs-ls-wasm:build'
     inputs:
       - '@group(sources)'
@@ -80,6 +81,7 @@ tasks:
       - 'bundle-wasm:build'
       - 'resolve-wasm:build'
       - 'fmt-wasm:build'
+      - 'check-wasm:build'
       - 'tsrs-ls-wasm:build'
   deploy-canary:
     # canary.runbun.dev (wrangler.jsonc env.canary): a production build into dist-canary/ that links docs-canary, so
@@ -98,6 +100,7 @@ tasks:
       - 'bundle-wasm:build'
       - 'resolve-wasm:build'
       - 'fmt-wasm:build'
+      - 'check-wasm:build'
       - 'tsrs-ls-wasm:build'
     options:
       cache: false
