@@ -1,10 +1,10 @@
-import { For, Show, createContext, createMemo, createSignal, onSettled, useContext } from "solid-js";
+import { For, Show, createContext, createEffect, createMemo, createSignal, onSettled, useContext } from "solid-js";
 import { Tip } from "@runbun/ui/solid/Tip";
 import { Menu, MenuCheckItem, MenuGroup, MenuItem, MenuSeparator, MenuTrigger } from "@runbun/ui/solid/Menu";
 import { Dialog } from "@runbun/ui/solid/Dialog";
 import logo from "../bun-logo.svg";
 import { COST } from "../embed/config";
-import { matches, type Command } from "../keymap";
+import { chordKeys, keysFor, matches, type Command } from "../keymap";
 import type { Embed } from "../embed/main";
 import type { Feature } from "@runbun/embed/protocol";
 import { AppContext } from "./context";
@@ -21,6 +21,11 @@ import { Unsupported } from "./Unsupported";
 export const EmbedContext = createContext<Embed>();
 
 const CANT_RUN = "This browser can't run code here";
+// embed.css's narrow frames, which drop the tree.
+const NARROW = "(max-width: 560px)";
+// Stacked, the tree sits beside the editor where the frame fits it (170px) and ~70 columns of 13px code with the
+// gutter (600px), plus the grid's padding and gap.
+const STACK_TREE = `(min-width: ${170 + 600 + 3 * 4}px)`;
 
 const TREE: Split = { size: "tree", a: "tree", b: "editor-pane", label: "Resize file tree" };
 const SIDE_PREVIEW: Split = { size: "side", a: "editor-pane", b: "preview-panel", label: "Resize editor and preview" };
@@ -47,10 +52,68 @@ export function EmbedApp() {
   const e = useContext(EmbedContext);
   const has = (f: Feature) => e.has(f);
   const editor = () => e.mode() !== "result";
-  // Stacked, the tree stays out, as in a narrow frame.
-  const tree = () => editor() && has("files") && !e.stacked();
+  const narrowQuery = matchMedia(NARROW);
+  const [narrow, setNarrow] = createSignal(narrowQuery.matches);
+  const roomyQuery = matchMedia(STACK_TREE);
+  const [roomy, setRoomy] = createSignal(roomyQuery.matches);
+  const tree = () => editor() && has("files") && (!e.stacked() || roomy());
   const side = e.side;
-  const showTree = sticky(tree);
+  // Out of the grid (stacked without room, or a narrow frame), the tree opens over the editor instead: a drawer, from the bar.
+  const drawerOk = () => editor() && has("files") && (e.stacked() ? !roomy() : narrow());
+  const [open, setOpen] = createSignal(false);
+  const drawer = () => open() && drawerOk();
+  let nav: HTMLElement | undefined;
+  let filesButton: HTMLElement | undefined;
+  const closeDrawer = (refocus = false) => {
+    setOpen(false);
+    if (refocus) filesButton?.focus();
+  };
+  // Into the tree: its focused row, else its search box (rows may take a frame to render after the first open).
+  const focusDrawer = (tries = 3) =>
+    requestAnimationFrame(() => {
+      const root = nav?.querySelector("file-tree-container")?.shadowRoot;
+      const target = root?.querySelector<HTMLElement>('[role="treeitem"][tabindex="0"]') ?? root?.querySelector<HTMLElement>("input");
+      if (target) target.focus();
+      else if (tries) focusDrawer(tries - 1);
+    });
+  const toggleDrawer = () => {
+    if (drawer()) return closeDrawer();
+    setOpen(true);
+    focusDrawer();
+  };
+  const onDrawerKey = (ev: KeyboardEvent) => {
+    if (ev.key !== "Escape" || !drawer()) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    closeDrawer(true);
+  };
+  // A file picked in it closes it.
+  createEffect(
+    () => app.workspace.state.active,
+    () => closeDrawer(),
+    { defer: true },
+  );
+  onSettled(() => {
+    const onChange = () => {
+      setNarrow(narrowQuery.matches);
+      setRoomy(roomyQuery.matches);
+      setOpen(false);
+    };
+    narrowQuery.addEventListener("change", onChange);
+    roomyQuery.addEventListener("change", onChange);
+    // A press outside it (but in a dialog it opened) closes it.
+    const onDown = (ev: PointerEvent) => {
+      const t = ev.target as Element;
+      if (drawer() && !nav?.contains(t) && !filesButton?.contains(t) && !t.closest?.('[role="dialog"]')) closeDrawer();
+    };
+    addEventListener("pointerdown", onDown, { capture: true });
+    return () => {
+      narrowQuery.removeEventListener("change", onChange);
+      roomyQuery.removeEventListener("change", onChange);
+      removeEventListener("pointerdown", onDown, { capture: true });
+    };
+  });
+  const showTree = sticky(() => tree() || drawer());
   const showPreview = sticky(() => has("preview"));
   const showConsole = sticky(() => has("console"));
   const sizes = createSizes(e.sizesKey);
@@ -67,7 +130,8 @@ export function EmbedApp() {
       const s = app.session;
       const pane = panes.find(([c, f]) => matches(c, ev) && !e.locked.has(f))?.[1];
       if (inCommitBox(ev) && matches("run", ev)) return;
-      if (matches("toggleGit", ev)) {
+      if (drawerOk() && matches("toggleExplorer", ev)) toggleDrawer();
+      else if (matches("toggleGit", ev)) {
         if (!toggleGit(app, tree())) return;
       } else if (matches("run", ev)) s.canRun && !s.busy.run && s.ready() && e.run();
       else if (matches("stop", ev)) e.stop();
@@ -94,6 +158,7 @@ export function EmbedApp() {
       id="embed"
       data-mode={e.mode()}
       data-tree={tree() ? "" : undefined}
+      data-drawer={drawer() ? "" : undefined}
       data-editor={editor() ? "" : undefined}
       data-side={side() ? "" : undefined}
       data-stack={e.stacked() ? "" : undefined}
@@ -101,13 +166,15 @@ export function EmbedApp() {
       data-preview={has("preview") ? "" : undefined}
       data-console={has("console") ? "" : undefined}
     >
-      <EmbedBar />
+      <EmbedBar
+        drawer={{ ok: drawerOk, open: drawer, toggle: toggleDrawer, onKey: onDrawerKey, ref: (el: HTMLElement) => (filesButton = el) }}
+      />
       <Show when={!app.session.canRun}>
         <Unsupported checks={app.support} />
       </Show>
       <div id="embed-main" style={sizes.vars()}>
         <Show when={showTree()}>
-          <nav id="tree" class="pane" hidden={!tree()}>
+          <nav id="tree" class="pane" ref={nav} hidden={!tree() && !drawer()} onKeyDown={onDrawerKey}>
             <Explorer switcher />
           </nav>
         </Show>
@@ -133,13 +200,31 @@ export function EmbedApp() {
   );
 }
 
-function EmbedBar() {
+type Drawer = { ok: () => boolean; open: () => boolean; toggle: () => void; onKey: (ev: KeyboardEvent) => void; ref: (el: HTMLElement) => void };
+
+function EmbedBar(props: { drawer: Drawer }) {
   const app = useContext(AppContext);
   const e = useContext(EmbedContext);
   const s = app.session;
   const running = () => s.settled().state === "running";
   return (
     <header id="embed-bar">
+      <Show when={props.drawer.ok()}>
+        <Tip
+          type="button"
+          class="files"
+          ref={props.drawer.ref}
+          tip="Files"
+          keys={keysFor("toggleExplorer").map(chordKeys)}
+          aria-label="Files"
+          aria-expanded={props.drawer.open() ? "true" : "false"}
+          aria-controls="tree"
+          onClick={props.drawer.toggle}
+          onKeyDown={props.drawer.onKey}
+        >
+          <i class="i-lucide-panel-left" aria-hidden="true" />
+        </Tip>
+      </Show>
       <Show when={e.library.length}>
         <ProjectButton />
       </Show>
