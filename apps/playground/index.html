@@ -90,6 +90,79 @@
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
       }
     </script>
+    <!-- The landing page's Questions box (#landing .faq), word for word: keep the two in step. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Can I run Bun in the browser?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. runbun.dev runs Bun projects in a browser tab. Bun's own transpiler, resolver, bundler, formatter and semver are compiled to WebAssembly, and the Bun.*, bun:* and node:* APIs are JavaScript shims. Most everyday code runs; processes, raw sockets and native addons don't. The compatibility pages list every API."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Is my code sent to a server?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "No. Your code runs in your browser, and your projects are saved there. The browser only fetches packages from the npm registry when you install, and a GitHub repository when you open one. A short link stores a copy of a project on runbun.dev only when you choose to make one. See Privacy."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Which browsers does it work in?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Chrome and Edge 133+ and Firefox 134+ run code. Safari, and every browser on iOS and iPadOS, can open and edit projects but can't run them yet, because WebKit doesn't ship WebAssembly Memory64."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Which version of Bun is it?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Bun %BUN_VERSION%. Bun.version reports %BUN_VERSION%-browser, since the runtime APIs are reimplemented for the browser."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Does bun install work?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. bun install fetches packages from npm into the project and caches them across projects, and installs the exact versions in an existing bun.lock. It doesn't write a bun.lock yet, and packages that need native .node addons can't load."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Is it free? Do I need an account?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "It's free to use, and there is no account or sign-up."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Is runbun.dev an official Bun project?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "No. runbun is an independent project, not affiliated with or endorsed by Oven or Bun."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Can I embed it in my own site?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Yes. Add the <bun-playground> element (from runbun.dev/embed.js or the @runbun/embed package) or an iframe, and your page gets a runnable Bun example. See Embedding."
+            }
+          }
+        ]
+      }
+    </script>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
@@ -201,6 +274,25 @@ console.log(`Listening on ${server.url}`);
             <li>Any public GitHub repo: <code>runbun.dev/?repo=owner/repo</code></li>
             <li><a href="https://docs.runbun.dev/guides/embedding/">Embed a runnable example</a> in your own page, like the one above</li>
           </ul>
+        </div>
+        <div class="box faq">
+          <h2><span class="sprite" style="--x: 3; --y: 7" aria-hidden="true"></span>Questions</h2>
+          <h3>Can I run Bun in the browser?</h3>
+          <p>Yes. runbun.dev runs Bun projects in a browser tab. Bun's own transpiler, resolver, bundler, formatter and semver are compiled to WebAssembly, and the <code>Bun.*</code>, <code>bun:*</code> and <code>node:*</code> APIs are JavaScript shims. Most everyday code runs; processes, raw sockets and native addons don't. The <a href="https://docs.runbun.dev/compatibility/">compatibility pages</a> list every API.</p>
+          <h3>Is my code sent to a server?</h3>
+          <p>No. Your code runs in your browser, and your projects are saved there. The browser only fetches packages from the npm registry when you install, and a GitHub repository when you open one. A short link stores a copy of a project on runbun.dev only when you choose to make one. See <a href="https://docs.runbun.dev/privacy/">Privacy</a>.</p>
+          <h3>Which browsers does it work in?</h3>
+          <p>Chrome and Edge 133+ and Firefox 134+ run code. Safari, and every browser on iOS and iPadOS, can open and edit projects but can't run them yet, because WebKit doesn't ship WebAssembly Memory64.</p>
+          <h3>Which version of Bun is it?</h3>
+          <p>Bun %BUN_VERSION%. <code>Bun.version</code> reports <code>%BUN_VERSION%-browser</code>, since the runtime APIs are reimplemented for the browser.</p>
+          <h3>Does bun install work?</h3>
+          <p>Yes. <code>bun install</code> fetches packages from npm into the project and caches them across projects, and installs the exact versions in an existing <code>bun.lock</code>. It doesn't write a <code>bun.lock</code> yet, and packages that need native <code>.node</code> addons can't load.</p>
+          <h3>Is it free? Do I need an account?</h3>
+          <p>It's free to use, and there is no account or sign-up.</p>
+          <h3>Is runbun.dev an official Bun project?</h3>
+          <p>No. runbun is an independent project, not affiliated with or endorsed by Oven or Bun.</p>
+          <h3>Can I embed it in my own site?</h3>
+          <p>Yes. Add the <code>&lt;bun-playground&gt;</code> element (from <code>runbun.dev/embed.js</code> or the <code>@runbun/embed</code> package) or an iframe, and your page gets a runnable Bun example. See <a href="https://docs.runbun.dev/guides/embedding/">Embedding</a>.</p>
         </div>
       </section>
       <footer>
