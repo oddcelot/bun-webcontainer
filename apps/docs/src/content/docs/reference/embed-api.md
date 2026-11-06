@@ -1,6 +1,10 @@
 ---
 title: Embed API
-description: Attributes, features, methods, events and the postMessage protocol of the embed.
+description: "Reference for the <bun-playground> embed and its iframe: attributes, features, methods, events, theming and the postMessage protocol."
+head:
+  # The browser tab and search result title; the page heading stays `title`.
+  - tag: title
+    content: "bun-playground embed API reference | Run Bun"
 sidebar:
   order: 1
 ---

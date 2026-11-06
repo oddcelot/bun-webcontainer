@@ -323,6 +323,22 @@ html[data-view="app"] #landing {
       font-size: 0.8em;
       line-height: 1.6;
     }
+
+    /* Questions: a "?" prompt in front of each, answers below in the box's text. */
+    .faq h3 {
+      margin: 22px 0 6px;
+      color: var(--retro-sky);
+      font: 11px/1.7 var(--retro-pixel);
+
+      &::before {
+        content: "? ";
+        color: var(--retro-gold);
+      }
+
+      h2 + & {
+        margin-top: 0;
+      }
+    }
   }
 
   footer {

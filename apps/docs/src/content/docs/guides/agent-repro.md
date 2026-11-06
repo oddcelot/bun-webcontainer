@@ -1,6 +1,10 @@
 ---
 title: Reproduce a bug with an agent
 description: Let a coding agent write a minimal reproduction and hand you a runbun.dev link to post in an issue.
+head:
+  # The browser tab and search result title; the page heading stays `title`.
+  - tag: title
+    content: "Reproduce a Bun bug with a coding agent and a share link | Run Bun"
 sidebar:
   order: 7
 ---

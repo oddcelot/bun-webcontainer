@@ -1,6 +1,10 @@
 ---
 title: Frameworks
-description: Frameworks and projects known to run in the playground.
+description: "Frameworks and projects known to run on Bun in the browser, including Elysia, Hono, Vite, Astro and Lit SSR, each with a link that opens it in the playground."
+head:
+  # The browser tab and search result title; the page heading stays `title`.
+  - tag: title
+    content: "Frameworks that run on Bun in the browser: Elysia, Hono, Vite, Astro | Run Bun"
 sidebar:
   order: 5
 ---

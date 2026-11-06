@@ -88,8 +88,10 @@ export default defineConfig({
       sidebar: [
         // The home page is the overview, first among the guides.
         { label: "Guides", items: [{ label: "Overview", link: "/" }, { autogenerate: { directory: "guides" } }] },
+        { label: "Examples", items: [{ autogenerate: { directory: "examples" } }] },
         { label: "Reference", items: [{ autogenerate: { directory: "reference" } }] },
         { label: "Compatibility", items: [{ autogenerate: { directory: "compatibility" } }] },
+        { label: "Compare", items: [{ autogenerate: { directory: "compare" } }] },
         { label: "Privacy", link: "/privacy/" },
       ],
     }),

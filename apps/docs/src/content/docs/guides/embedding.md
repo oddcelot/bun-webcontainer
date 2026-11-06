@@ -1,6 +1,10 @@
 ---
 title: Embedding
-description: Put a runnable Bun example in your own page, with a custom element or an iframe.
+description: "Put a runnable Bun example in your own page with the <bun-playground> element or an iframe; the code runs in the reader's browser, with no server."
+head:
+  # The browser tab and search result title; the page heading stays `title`.
+  - tag: title
+    content: "Embed runnable Bun examples in your site | Run Bun"
 sidebar:
   order: 4
 ---

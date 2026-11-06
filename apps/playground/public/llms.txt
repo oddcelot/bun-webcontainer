@@ -30,6 +30,7 @@ The JSON is `{ "v": 1, "files": { "<path>": "<text>" } }`, with paths relative t
 - [Compatibility](https://docs.runbun.dev/compatibility/): what works, per API (Works, Partial, Stub, Missing, Untested)
 - [Bun APIs](https://docs.runbun.dev/compatibility/bun/), [Node built-ins](https://docs.runbun.dev/compatibility/node/), [Toolchain](https://docs.runbun.dev/compatibility/toolchain/), [Browsers](https://docs.runbun.dev/compatibility/browsers/)
 - [Embedding](https://docs.runbun.dev/guides/embedding/): runnable examples in other pages
+- [Examples](https://docs.runbun.dev/examples/): runnable Bun.serve, routes, WebSocket, bun:sqlite, Bun.file, Bun.password, Elysia and Hono examples
 
 ## Optional
 
