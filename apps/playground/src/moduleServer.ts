@@ -192,6 +192,8 @@ function resolveSpecifier(vfs: VFS, spec: string, dir: string, kind: ResolveKind
     return `__host/${spec}`;
   }
   if (spec.startsWith("node:") || builtin in builtins) return builtin in builtins ? `__node/${builtin}` : null;
+  // A `file:` URL names a path, as in the config Vite bundles and imports (`import … from "file:///node_modules/vite/…"`).
+  if (spec.startsWith("file:")) spec = decodeURIComponent(new URL(spec).pathname);
   return resolveWith(vfs, spec, dir, kind);
 }
 
