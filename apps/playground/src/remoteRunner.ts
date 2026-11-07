@@ -47,11 +47,11 @@ export class RemoteRunner extends Runner {
   ) {
     super(files, out);
     local.on((m) => this.onMessage(m));
-    local.onClose = () => {
-      this.out("error", "[local] the runner on this machine went away; start it again and reload");
+    // boot.ts says so in the console and moves runs to the browser.
+    void local.closed.then(() => {
       const c = this.current;
       if (c) this.finish(c, 1);
-    };
+    });
   }
 
   private snapshot(): Record<string, FileData> {

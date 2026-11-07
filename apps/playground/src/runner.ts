@@ -34,13 +34,18 @@ export class Runner {
     private vfs: VFS,
     private log: LogFn,
   ) {
-    navigator.serviceWorker.onmessage = (e) => this.onSw(e);
+    this.attach();
     // Keep the worker's copy of the VFS coherent with edits made on the page while it runs.
     vfs.onChange(({ path, removed }) => {
       if (removed) this.mirror("remove", path);
       else this.mirror("write", path, vfs.read(path));
     });
     vfs.onDir((path, removed) => this.mirror(removed ? "remove" : "mkdir", path));
+  }
+
+  /** Makes this the runner that answers the service worker (previews); with two runners, the one in use. */
+  attach() {
+    navigator.serviceWorker.onmessage = (e) => this.onSw(e);
   }
 
   /** True while applying a worker-originated op to the page VFS, so it isn't echoed back. */

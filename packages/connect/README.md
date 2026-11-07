@@ -54,6 +54,11 @@ bun test.ts [secret]    # end-to-end: access checks, native APIs, sandbox, previ
 (apps/playground/src/remoteRunner.ts): Run, Stop, `bun install` and `bun test` go to the runner, output comes back as
 console lines, and previews keep going through the service worker, with the last hop a fetch to the runner.
 
+With a runner, the header shows a **Local Bun** toggle: pressed, runs go to native Bun; off, to the in-browser runtime
+(it installs node_modules in the page first). A running program starts again on the other side; the choice is kept in
+localStorage. If the runner stops, runs move to the browser and the toggle greys out. `?connect=` waits for Chrome's
+local-network permission prompt instead of giving up, and says in the console when it can't reach the runner.
+
 Checked by hand: stable Safari 27.2 (no Memory64) runs the Elysia example with its preview. In Chrome also JSON, POST
 bodies, 404s, a redirect with an HttpOnly cookie, and Stop (the native process and its port are gone). Without a
 runner the in-browser runtime is unchanged.
@@ -68,6 +73,5 @@ runner the in-browser runtime is unchanged.
   doesn't upgrade.
 - **Edits while running** reach the program only with the next Run (or Restart on save).
 - **Fixed ports** are the host's: two projects on `:3000` collide, and so does another app on that port.
-- **UI**: no switch between local and in-browser runs; the console's `[local]` line is the only sign.
 - Resource limits (cgroups / `ulimit`), a tighter bwrap root than `--ro-bind / /`, Windows; publishing
   `@runbun/connect` to npm, then the docs (`guides/`, `compatibility/browsers.md`) and changelog entries.

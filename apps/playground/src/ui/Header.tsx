@@ -2,7 +2,7 @@ import { Show, useContext } from "solid-js";
 import { DOCS } from "../base";
 import { chordKeys, keysFor } from "../keymap";
 import logo from "../bun-logo.svg";
-import { AppContext } from "./context";
+import { AppContext, type App } from "./context";
 import { AutosaveTip } from "./EditorPane";
 import { ProjectPicker } from "./ProjectPicker";
 import { ShareMenu } from "./ShareMenu";
@@ -14,6 +14,41 @@ import { Menu, MenuItem, MenuTrigger } from "@runbun/ui/solid/Menu";
 import { Tip } from "@runbun/ui/solid/Tip";
 
 const CANT_RUN = "This browser can't run code here";
+
+/**
+ * Shown when the page has a runner on this machine (`bunx @runbun/connect`): pressed, runs go to native Bun there;
+ * not pressed, to the in-browser runtime. A running program starts again on the other side.
+ */
+function LocalBunToggle(props: { rt: NonNullable<App["runtime"]> }) {
+  const rt = props.rt;
+  const on = () => rt.current() === "local";
+  const native = () => {
+    const i = rt.info();
+    return i ? `Bun ${i.bun} on this machine (sandbox: ${i.sandbox})` : "Bun on this machine";
+  };
+  const tip = () => {
+    switch (rt.local()) {
+      case "connecting":
+        return "Connecting to the runner on this machine…";
+      case "lost":
+        return "The runner on this machine isn't reachable. Start it (bunx @runbun/connect) and reload.";
+    }
+    if (!rt.browserOk) return `Runs go to ${native()}: this browser can't run code itself.`;
+    return on() ? `Runs go to ${native()}. Click to run in the browser instead.` : `Runs go to the in-browser runtime. Click to run with ${native()}.`;
+  };
+  return (
+    <Tip
+      id="local-bun"
+      aria-pressed={on() ? "true" : "false"}
+      data-state={rt.local()}
+      disabled={rt.local() !== "connected" || !rt.browserOk}
+      tip={tip()}
+      onClick={() => void rt.switchTo(on() ? "browser" : "local")}
+    >
+      <i class={rt.local() === "lost" ? "i-lucide-unplug" : "i-lucide-cpu"} aria-hidden="true" /> Local Bun
+    </Tip>
+  );
+}
 
 export function Header() {
   const app = useContext(AppContext);
@@ -53,6 +88,7 @@ export function Header() {
           <MenuItem icon="i-lucide-download" label="bun install" disabled={!!s.busy.install} onSelect={() => s.ready() && app.install()} />
         </Menu>
       </span>
+      <Show when={app.runtime?.local() !== "none" ? app.runtime : undefined}>{(rt) => <LocalBunToggle rt={rt()} />}</Show>
       {/* What a save does: when edits save, and whether a save restarts the program. Icons only; the tooltips say which. */}
       <span id="save-group">
         <Tip
