@@ -56,6 +56,10 @@ export function sandboxed(kind: SandboxKind, dir: string, bunArgs: string[], ext
 (deny file-read* (subpath ${q(home)}))
 (allow file-read* (subpath ${q(dirname(bun))}))
 (allow file-read-metadata (literal ${q(home)}) (literal ${q(dirname(home))}))
+; \`(allow default)\` would let a program ask LaunchServices to start an app outside the sandbox (\`open x.command\`
+; opens Terminal): no open/osascript, and no talking to the services that launch apps or send Apple Events.
+(deny process-exec (literal "/usr/bin/open") (literal "/usr/bin/osascript"))
+(deny mach-lookup (global-name "com.apple.coreservices.launchservicesd") (global-name "com.apple.coreservices.appleevents") (global-name-prefix "com.apple.lsd."))
 ${runnerPort ? `(deny network-outbound (remote ip "localhost:${runnerPort}"))` : ""}
 `;
     return ["sandbox-exec", "-p", profile, bun, ...bunArgs];

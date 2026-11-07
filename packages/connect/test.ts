@@ -107,6 +107,16 @@ try {
   if (r.sandbox === "sandbox-exec") check("the program can't reach the runner's port", reached.length === 3 && reached.every((x) => x === "blocked"), reach.out + reach.err);
   else console.log(`skip the runner's port is closed to the program (${r.sandbox}: not filterable)`);
 
+  // macOS: no launching apps outside the sandbox through LaunchServices (`open note.txt` would start TextEdit).
+  if (r.sandbox === "sandbox-exec") {
+    const opened = await run(ws, "open", {
+      "index.ts": `try { const p = Bun.spawnSync(["/usr/bin/open", "note.txt"]); console.log(JSON.stringify({ code: p.exitCode })); } catch (e: any) { console.log(JSON.stringify({ threw: e.code })); }`,
+      "note.txt": "hi",
+    });
+    const o = JSON.parse(opened.out.trim().split("\n").at(-1) || "{}");
+    check("open can't launch an app from the sandbox", o.threw === "EPERM" || (typeof o.code === "number" && o.code !== 0), opened.out + opened.err);
+  }
+
   // Bun.serve in the run, reached through the runner's preview proxy.
   let body = "";
   const served = await run(
