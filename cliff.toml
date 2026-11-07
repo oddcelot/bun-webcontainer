@@ -1,5 +1,5 @@
 # Draft generator for CHANGELOG.md, the changelog of runbun: the playground, its runtime and toolchain, the editor and
-# the docs, released together as one version (root package.json, `v*` tags). @runbun/astro and @runbun/embed keep
+# the docs, released together as one version (root package.json, `v*` tags). @runbun/astro, @runbun/connect and @runbun/embed keep
 # their own changelogs, drafted by packages/<name>/cliff.toml.
 #
 # The committed changelog is hand-written prose; no generator writes a release's intro paragraph. This config does the
@@ -23,6 +23,7 @@
 #   editor       Editor       the TypeScript language service: completions, hovers, diagnostics
 #   docs         Docs         docs.runbun.dev
 #   astro        (packages/astro/CHANGELOG.md only)
+#   connect      (packages/connect/CHANGELOG.md only)
 #   embed        (packages/embed/CHANGELOG.md only)
 #
 # A trailer with no entry folded under it still lands in the draft, drafted from the body and marked for a rewrite.
@@ -62,7 +63,7 @@ conventional_commits = false
 filter_unconventional = false
 # Only commits that opted in with a trailer reach the draft.
 filter_commits = true
-# Anchored: `astro-v*` and `embed-v*` tags are the packages' releases, not runbun's.
+# Anchored: `astro-v*`, `connect-v*` and `embed-v*` tags are the packages' releases, not runbun's.
 tag_pattern = "^v[0-9]"
 commit_preprocessors = [
   # A folded trailer: keep only its kind, part and entry lines, so the template can tell an authored entry from a body
@@ -74,7 +75,7 @@ commit_preprocessors = [
 # Merges carry no trailer and drop out with filter_commits. The first parser that matches wins.
 commit_parsers = [
   { message = "(?ms)^Changelog(-Entry)?: ?skip", skip = true },
-  { message = "(?ms)^Changelog(-Entry)?: ?\\w+ (astro|embed)$", skip = true },
+  { message = "(?ms)^Changelog(-Entry)?: ?\\w+ (astro|connect|embed)$", skip = true },
   { message = "(?ms)^Changelog(-Entry)?: ?\\w+ playground$", group = "<!-- 1 -->Playground" },
   { message = "(?ms)^Changelog(-Entry)?: ?\\w+ runtime$", group = "<!-- 2 -->Runtime" },
   { message = "(?ms)^Changelog(-Entry)?: ?\\w+ toolchain$", group = "<!-- 3 -->Toolchain" },
