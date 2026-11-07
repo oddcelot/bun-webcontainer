@@ -30,7 +30,7 @@ Projects saved on runbun.dev don't show up at `127.0.0.1:7357`: browsers keep ea
 
 ## From runbun.dev
 
-The runner also prints a `https://runbun.dev/?connect=…` link. It opens runbun.dev itself (with your saved projects) connected to the runner; pasting it into the **Local Bun** dialog on an open page does the same.
+The runner also prints a `https://runbun.dev/?connect=…` link. It opens runbun.dev itself (with your saved projects) connected to the runner; pasting it into the **Local Bun** dialog on an open page does the same. The playground only connects to a runner on this machine (`127.0.0.1`, `localhost` or `[::1]`); a `?connect=` link to any other host is ignored, so a link can't make it send your project elsewhere.
 
 - Chrome asks whether runbun.dev may access devices on your local network. Allow it; the console says when the playground is waiting for that.
 - Firefox connects without asking.
@@ -45,12 +45,12 @@ The runner listens only on `127.0.0.1`, and only runbun.dev (or the playground i
 | | Linux (bubblewrap) | macOS (sandbox-exec) |
 |---|---|---|
 | Your home folder | Hidden: it looks empty | Can't be read |
-| Writing files | Only the project's folder and Bun's package cache are kept; other writes land in a throwaway copy | Refused, except in the project's folder and Bun's package cache |
+| Writing files | Only the project's folder and its own Bun package cache are kept; other writes land in a throwaway copy | Refused, except in the project's folder and its own Bun package cache |
 | The rest of the file system | Readable | Readable |
 | Environment variables | None of yours | None of yours |
 | Network | Open | Open |
 
-The network stays open because the preview has to reach the program's server and `bun install` has to reach the registry. That means a program can also reach other services on your computer and your local network.
+The network stays open because the preview has to reach the program's server and `bun install` has to reach the registry. That means a program can also reach other services on your computer and your local network. The exception is the runner's own port on macOS, which a program can't connect to; on Linux it can, so a program could read the runner's token there (a new connection still waits for your answer in the terminal).
 
 So nothing runs on your machine without asking you there. Before a playground page's first run, the runner asks in its terminal:
 

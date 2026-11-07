@@ -1,6 +1,6 @@
 // End-to-end check of the runner: the access checks, native-only Bun APIs, the sandbox, the preview proxy.
 //   bun test.ts [secret-file]    secret-file: a file the sandbox must hide (default: this package.json)
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import type { ServerMessage } from "./src/protocol.ts";
 import { startRunner } from "./src/server.ts";
 
@@ -98,6 +98,25 @@ try {
   check(`writing outside the project ${confined ? "doesn't reach" : "reaches"} the host`, confined !== existsSync(escape), JSON.stringify(j));
   check("writing inside the project works", j.writeProject === "allowed", JSON.stringify(j) + jail.err);
 
+  // The runner's own port (it serves the token at /__connect/info) is closed to the program where the sandbox can do that.
+  const reach = await run(ws, "reach", {
+    "index.ts": `const t = async (h: string) => fetch("http://" + h + ":${port}/__connect/info").then((r) => r.status, () => "blocked");
+      console.log(JSON.stringify([await t("127.0.0.1"), await t("localhost"), await t("[::1]")]));`,
+  });
+  const reached = JSON.parse(reach.out.trim().split("\\n").at(-1) || "[]") as unknown[];
+  if (r.sandbox === "sandbox-exec") check("the program can't reach the runner's port", reached.length === 3 && reached.every((x) => x === "blocked"), reach.out + reach.err);
+  else console.log(`skip the runner's port is closed to the program (${r.sandbox}: not filterable)`);
+
+  // macOS: no launching apps outside the sandbox through LaunchServices (`open note.txt` would start TextEdit).
+  if (r.sandbox === "sandbox-exec") {
+    const opened = await run(ws, "open", {
+      "index.ts": `try { const p = Bun.spawnSync(["/usr/bin/open", "note.txt"]); console.log(JSON.stringify({ code: p.exitCode })); } catch (e: any) { console.log(JSON.stringify({ threw: e.code })); }`,
+      "note.txt": "hi",
+    });
+    const o = JSON.parse(opened.out.trim().split("\n").at(-1) || "{}");
+    check("open can't launch an app from the sandbox", o.threw === "EPERM" || (typeof o.code === "number" && o.code !== 0), opened.out + opened.err);
+  }
+
   // Bun.serve in the run, reached through the runner's preview proxy.
   let body = "";
   const served = await run(
@@ -133,6 +152,48 @@ try {
   );
   const s2 = JSON.parse(second.out.trim().split("\n").at(-1) || "{}");
   check("the project keeps node_modules and drops stale files", s2.nm === true && s2.stale === false, second.out + second.err);
+  // The runner writes and deletes outside the sandbox: a symlink the program planted must not redirect that.
+  const victim = `/tmp/runbun-victim-${process.pid}`;
+  mkdirSync(victim, { recursive: true });
+  writeFileSync(`${victim}/file`, "orig");
+  writeFileSync(`${victim}/stale.txt`, "keep");
+  await run(
+    ws,
+    "link1",
+    {
+      "index.ts": `import { rmSync, symlinkSync } from "node:fs";
+        symlinkSync(${JSON.stringify(`${victim}/file`)}, "lnk");
+        rmSync("d", { recursive: true }); symlinkSync(${JSON.stringify(victim)}, "d");`,
+      "d/stale.txt": "x",
+    },
+    undefined,
+    { project: "links" },
+  );
+  const viaFile = await run(ws, "link2", { "index.ts": `console.log("ran")`, "d/stale.txt": "x", lnk: "pwned" }, undefined, { project: "links" });
+  check("a symlinked file isn't written through", readFileSync(`${victim}/file`, "utf8") === "orig" && /symlink/.test(viaFile.err) && !viaFile.out, JSON.stringify(viaFile));
+  const viaDir = await run(ws, "link3", { "index.ts": `console.log("ran")`, lnk: "x" }, undefined, { project: "links" });
+  check("a symlinked directory isn't deleted through", existsSync(`${victim}/stale.txt`) && /symlink/.test(viaDir.err) && !viaDir.out, JSON.stringify(viaDir));
+  rmSync(victim, { recursive: true, force: true });
+  // The install cache is per project: a run can write its own, not another project's.
+  await run(ws, "cache-b", { "index.ts": `import { writeFileSync } from "node:fs"; writeFileSync(process.env.BUN_INSTALL_CACHE_DIR + "/marker", "b")` }, undefined, { project: "cache-b" });
+  const cached = await run(
+    ws,
+    "cache-a",
+    {
+      "index.ts": `import { dirname, join } from "node:path"; import { existsSync, writeFileSync } from "node:fs";
+        const mine = process.env.BUN_INSTALL_CACHE_DIR!;
+        const t = (f: () => unknown) => { try { f(); return "allowed"; } catch (e: any) { return e.code ?? String(e); } };
+        console.log(JSON.stringify({ sees: existsSync(join(mine, "marker")), own: t(() => writeFileSync(join(mine, "x"), "1")), other: t(() => writeFileSync(join(dirname(mine), "cache-b", "planted"), "1")) }));`,
+    },
+    undefined,
+    { project: "cache-a" },
+  );
+  const c = JSON.parse(cached.out.trim().split("\n").at(-1) || "{}");
+  check(
+    `one project can't write another's install cache`,
+    c.own === "allowed" && c.sees === false && (r.sandbox === "none" ? c.other === "allowed" : c.other !== "allowed"),
+    cached.out + cached.err,
+  );
   const bin = await run(ws, "bin", { "index.ts": `console.log([...new Uint8Array(await Bun.file("b.bin").arrayBuffer())].join())`, "b.bin": { b64: "AAEC/w==" } } as any);
   check("binary files arrive intact", bin.out.trim() === "0,1,2,255", bin.out + bin.err);
   const tests = await run(ws, "tests", { "a.test.ts": `import { test, expect } from "bun:test"; test("ok", () => expect(1).toBe(1)); test("no", () => expect(1).toBe(2));` }, undefined, { entry: "", test: ["a.test.ts"] });
@@ -237,6 +298,39 @@ try {
   const own = await connect(info.ws, `http://localhost:${port}`);
   check("the runner's own origin connects", typeof own === "object");
   if (typeof own === "object") own.close();
+
+  // Proxying a playground URL: `//host/x` must not replace the upstream's host (an off-host fetch from the runner).
+  const evil = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response("EVIL") });
+  const upstream = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: (req) => new Response("upstream " + new URL(req.url).pathname) });
+  const proxied = startRunner({ port: 0, playground: `http://127.0.0.1:${upstream.port}` });
+  try {
+    const raw = async (path: string) => {
+      let data = "";
+      let done!: () => void;
+      const closed = new Promise<void>((res) => (done = res));
+      const sock = await Bun.connect({
+        hostname: "127.0.0.1",
+        port: proxied.server.port!,
+        socket: {
+          open: (s) => void s.write(`GET ${path} HTTP/1.1\r\nHost: 127.0.0.1:${proxied.server.port}\r\nConnection: close\r\n\r\n`),
+          data: (_s, d) => void (data += d.toString()),
+          close: () => done(),
+          error: () => done(),
+        },
+      });
+      await Promise.race([closed, Bun.sleep(3000)]);
+      sock.end();
+      return data;
+    };
+    const ok = await raw("/x");
+    check("a proxied playground serves the upstream", ok.includes("upstream /x"), ok);
+    const off = await raw(`//127.0.0.1:${evil.port}/x`);
+    check("a `//host/x` path doesn't reach another host", !off.includes("EVIL"), off);
+  } finally {
+    proxied.stop();
+    upstream.stop(true);
+    evil.stop(true);
+  }
 } finally {
   r.stop();
 }

@@ -24,6 +24,8 @@ async function sql<T>(command: string): Promise<T[]> {
   if ((await p.exited) !== 0) throw new Error(`wrangler d1 execute failed:\n${out}`);
   return (JSON.parse(out) as { results: T[] }[])[0]?.results ?? [];
 }
+// Rows from before the Worker stripped control characters may carry escape sequences: never print them raw.
+const safe = (s: string) => s.replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, "\uFFFD");
 const quote = (s: string) => `'${s.replace(/'/g, "''")}'`;
 
 if (opts.delete) {
@@ -48,14 +50,14 @@ const messages = rows.filter((r) => r.message);
 console.log(`${messages.length} messages, ${rows.filter((r) => r.kind === "rating").length} page ratings\n`);
 if (pages.length) {
   console.log("Ratings by page (👍 👎):");
-  for (const p of pages) console.log(`  ${String(p.up).padStart(3)} ${String(p.down).padStart(3)}  ${p.page}`);
+  for (const p of pages) console.log(safe(`  ${String(p.up).padStart(3)} ${String(p.down).padStart(3)}  ${p.page}`));
   console.log();
 }
 const host = opts.env === "canary" ? "https://canary.runbun.dev" : "https://runbun.dev";
 for (const r of messages) {
-  console.log([`#${r.id}`, r.at, r.kind === "rating" ? (r.rating === "up" ? "👍" : "👎") : "✉", r.page, r.email && `<${r.email}>`].filter(Boolean).join("  "));
-  console.log(r.message!.replace(/^/gm, "  "));
-  if (r.project) console.log(`  project: ${host}${r.project}`);
-  if (r.env) console.log(`  ${Object.entries(JSON.parse(r.env) as Record<string, string>).map(([k, v]) => `${k}: ${v}`).join(" · ")}`);
+  console.log(safe([`#${r.id}`, r.at, r.kind === "rating" ? (r.rating === "up" ? "👍" : "👎") : "✉", r.page, r.email && `<${r.email}>`].filter(Boolean).join("  ")));
+  console.log(safe(r.message!).replace(/^/gm, "  "));
+  if (r.project) console.log(safe(`  project: ${host}${r.project}`));
+  if (r.env) console.log(safe(`  ${Object.entries(JSON.parse(r.env) as Record<string, string>).map(([k, v]) => `${k}: ${v}`).join(" · ")}`));
   console.log();
 }

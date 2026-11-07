@@ -242,7 +242,11 @@ if (params.has("folder")) {
 }
 
 openFile(entryFile());
-if (pg.canRun) {
+if (pg.canRun && from !== undefined) {
+  // Someone else's code (a share link, a GitHub repo) loads into the editor but runs only on the reader's Run click.
+  log("sys", `[open] ${from} comes from a link: review it, then press Run`);
+  session.setStatus({ state: "idle", text: "From a link: review it, then press Run" });
+} else if (pg.canRun) {
   // The runner installs before each run itself.
   if (pg.missingDeps() && pg.runtime.current() === "browser") await install();
   await run();

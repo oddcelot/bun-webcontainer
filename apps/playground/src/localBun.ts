@@ -24,10 +24,25 @@ const HELLO_TIMEOUT = 5000;
 /** A connection still pending after this is most likely waiting on the browser's permission prompt. */
 const WAITING_AFTER = 1500;
 
-/** The runner's WebSocket URL for this page, if it has one: `?connect=`, or the runner serving this page. */
+/** Whether `url` is a WebSocket on this machine: the runner never lives elsewhere, and anything else would get the project. */
+export function isLoopbackWs(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return (u.protocol === "ws:" || u.protocol === "wss:") && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(u.hostname);
+  } catch {
+    return false;
+  }
+}
+
+/** The runner's WebSocket URL for this page, if it has one: `?connect=` (on this machine only), or the runner serving this page. */
 export async function findLocalBun(params: URLSearchParams): Promise<string | undefined> {
   const url = params.get("connect");
-  if (url) return url;
+  if (url) {
+    if (isLoopbackWs(url)) return url;
+    // A link could point this page at someone else's server, which would be sent the project on Run.
+    console.warn("[local] ignoring ?connect=: the runner must be on this machine (ws://127.0.0.1, ws://localhost or ws://[::1])");
+    return;
+  }
   if (!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) return;
   // The playground's own dev server (localhost:5173) has no runner: a 404, or Vite's index.html.
   const info = await fetch(`${BASE}__connect/info`, { cache: "no-store" })
@@ -43,6 +58,7 @@ export async function findLocalBun(params: URLSearchParams): Promise<string | un
  */
 export function connectLocalBun(url: string, onWaiting?: () => void): Promise<LocalBun | undefined> {
   return new Promise((resolve) => {
+    if (!isLoopbackWs(url)) return resolve(undefined);
     let ws: WebSocket;
     try {
       ws = new WebSocket(url);

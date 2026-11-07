@@ -7,7 +7,7 @@
 //   /__connect/info                    { ws, token, … } for a same-origin page (the playground served from here)
 //   /__connect/preview/<token>/<run>/  the run's Bun.serve
 // Everything else is the playground (--playground: a URL to proxy, or a built dist/ directory), when enabled.
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, extname, isAbsolute, join, normalize } from "node:path";
 import type { ServerWebSocket, Subprocess } from "bun";
@@ -44,6 +44,8 @@ interface Run {
   proc?: Subprocess<"pipe", "pipe", "pipe">;
   killed: boolean;
   port: number;
+  /** The project's own install cache: writable only in its runs, so one project can't plant packages for another. */
+  cache: string;
 }
 
 /** Per connection (one playground page): its runs, the Host it used, its Origin, and the answer to `approve`. */
@@ -136,8 +138,6 @@ export function startRunner(opts: RunnerOptions = {}) {
   const limits: Limits = { ...DEFAULT_LIMITS, ...opts.limits };
   const runs = new Map<string, Run>();
   const root = realpathSync(mkdtempSync(join(tmpdir(), "runbun-connect-")));
-  const cache = join(root, "cache");
-  mkdirSync(cache, { recursive: true });
   /** project → the files its last run wrote, to delete the ones a later run no longer has. */
   const manifests = new Map<string, Set<string>>();
   const busyProjects = new Set<string>();
@@ -279,7 +279,10 @@ export function startRunner(opts: RunnerOptions = {}) {
     const src = opts.playground!;
     let res: Response;
     if (/^https?:\/\//.test(src)) {
-      res = await fetch(new URL(url.pathname + url.search, src), {
+      // `//host/x` is a scheme-relative URL: collapse the slashes, and never leave the upstream's origin.
+      const target = new URL(url.pathname.replace(/^\/+/, "/") + url.search, src);
+      if (target.origin !== new URL(src).origin) return new Response("bad path", { status: 400 });
+      res = await fetch(target, {
         method: req.method === "HEAD" ? "HEAD" : "GET",
         headers: { "accept-encoding": "identity", accept: req.headers.get("accept") ?? "*/*" },
       });
@@ -308,7 +311,7 @@ export function startRunner(opts: RunnerOptions = {}) {
 
   /** Runs `bun <args>` in dir, streaming its output; resolves with its exit. */
   async function spawn(ws: Socket, id: string, run: Run, dir: string, args: string[]) {
-    const proc = Bun.spawn(sandboxed(sandbox, dir, args, [cache]), {
+    const proc = Bun.spawn(sandboxed(sandbox, dir, args, [run.cache], server.port), {
       cwd: dir,
       // A clean environment: none of the user's tokens or keys. Bun.serve() with no port listens on $PORT.
       env: {
@@ -316,7 +319,7 @@ export function startRunner(opts: RunnerOptions = {}) {
         HOME: dir,
         TMPDIR: join(dir, ".tmp"),
         PORT: String(run.port),
-        BUN_INSTALL_CACHE_DIR: cache,
+        BUN_INSTALL_CACHE_DIR: run.cache,
         NO_COLOR: "1",
       },
       stdin: "pipe",
@@ -368,16 +371,31 @@ export function startRunner(opts: RunnerOptions = {}) {
       if (isAbsolute(rel) || rel.startsWith("..") || /(^|\/)node_modules(\/|$)/.test(rel)) return bad(`bad path ${path}`);
       paths.add(rel);
     }
-    for (const old of manifests.get(project) ?? []) if (!paths.has(old)) rmSync(join(dir, old), { force: true });
+    // The runner writes outside the sandbox, so a symlink the program planted must not steer it: refuse a path with
+    // a link on the way (a stale file that is itself a link is just unlinked).
+    const linked = (rel: string, last: boolean) => {
+      const parts = rel.split("/");
+      for (let i = last ? parts.length : parts.length - 1; i > 0; i--)
+        if (lstatSync(join(dir, ...parts.slice(0, i)), { throwIfNoEntry: false })?.isSymbolicLink()) return true;
+      return false;
+    };
+    for (const old of manifests.get(project) ?? []) {
+      if (paths.has(old)) continue;
+      if (linked(old, false)) return bad(`refusing to delete ${old}: a symlink on its path`);
+      rmSync(join(dir, old), { force: true });
+    }
     for (const [path, data] of Object.entries(msg.files)) {
       const rel = normalize(path).replace(/^\/+/, "");
+      if (linked(rel, true)) return bad(`refusing to write ${rel}: a symlink on its path`);
       mkdirSync(dirname(join(dir, rel)), { recursive: true });
       writeFileSync(join(dir, rel), typeof data === "string" ? data : Buffer.from(data.b64, "base64"));
     }
     manifests.set(project, paths);
     mkdirSync(join(dir, ".tmp"), { recursive: true });
 
-    const run: Run = { killed: false, port: await freePort() };
+    const cache = join(root, "cache", project);
+    mkdirSync(cache, { recursive: true });
+    const run: Run = { killed: false, port: await freePort(), cache };
     runs.set(msg.id, run);
     busyProjects.add(project);
     ws.data.runs.add(msg.id);

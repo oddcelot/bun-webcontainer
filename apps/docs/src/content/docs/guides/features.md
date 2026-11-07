@@ -103,7 +103,7 @@ Limits: the server isn't reachable from outside the browser, there's no HTTP cac
 
 ## Installing packages
 
-Dependencies install automatically when a project opens with missing packages. `bun install` uses `bun.lock` when there is one. Details and limits are in [Toolchain](/compatibility/toolchain/#bun-install).
+Dependencies install automatically when one of your own projects or an example opens with missing packages (a project from a link waits for Run, which installs first). `bun install` uses `bun.lock` when there is one. Details and limits are in [Toolchain](/compatibility/toolchain/#bun-install).
 
 ## Projects
 
@@ -129,5 +129,7 @@ Any project can be put in another page, as a `<bun-playground>` element or an if
 | `/s/<id>` | A short share link |
 
 Your saved changes win over the link's source; use `reset` to start over from it.
+
+A project that comes from a link (`#code=…`, `/s/<id>` or `?repo=`) opens in the editor but doesn't run until you press Run, so you can read it first. Your own saved projects and the bundled examples run as soon as they open.
 
 `?vars=` sets the overlay drawn over the whole page, for this visit only: Share links drop it and the next visit doesn't remember it. It takes a JSON object with `base` (both schemes) and optionally `light` or `dark`, each with `--overlay` (a wash) and `--overlay-ring` (a 1px border), e.g. `?vars={"base":{"--overlay-ring":"linear-gradient(135deg,%23f9d6e3,%23a8cdf0)"}}`. Other names are ignored, and a value may only use colors, `none`, and the functions `linear-gradient`, `radial-gradient`, `conic-gradient` (and their `repeating-` forms), `rgb`, `rgba`, `hsl`, `hsla`, `hwb`, `lab`, `lch`, `oklab`, `oklch`, `color`, `color-mix`, `light-dark` and `calc`; no images or `var()`. `none` or `""` turns off the theme's own overlay (the Elysia family has one). An embed doesn't draw this overlay; style `bun-playground::part(overlay)` on the host page instead (see the [embed reference](/reference/embed-api/#theming)).
