@@ -8,7 +8,7 @@
   "homepage": "https://docs.runbun.dev/guides/local-bun/",
   "repository": { "type": "git", "url": "git+https://github.com/oddcelot/bun-webcontainer.git", "directory": "packages/connect" },
   "bin": {
-    "runbun-connect": "./src/cli.ts"
+    "runbun-connect": "src/cli.ts"
   },
   "exports": {
     "./protocol": "./src/protocol.ts"

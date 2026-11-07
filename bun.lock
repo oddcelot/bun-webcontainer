@@ -133,7 +133,7 @@
       "name": "@runbun/connect",
       "version": "0.1.0",
       "bin": {
-        "runbun-connect": "./src/cli.ts",
+        "runbun-connect": "src/cli.ts",
       },
     },
     "packages/embed": {
