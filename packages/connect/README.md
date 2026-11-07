@@ -46,11 +46,28 @@ bun test.ts [secret]    # end-to-end: access checks, native APIs, sandbox, previ
   only" (`compatibility/browsers.md`) is out of date; it is only the local runner that TP can't reach from
   runbun.dev.
 
+## Playground integration (built)
+
+`bun src/cli.ts --open` serves the playground (default: proxies https://runbun.dev; `--playground
+../../apps/playground/dist` for a local build) at http://127.0.0.1:7357/. The playground finds the runner there
+(`/__connect/info`) or from `?connect=` (apps/playground/src/localBun.ts) and then runs with native Bun
+(apps/playground/src/remoteRunner.ts): Run, Stop, `bun install` and `bun test` go to the runner, output comes back as
+console lines, and previews keep going through the service worker, with the last hop a fetch to the runner.
+
+Checked by hand: stable Safari 27.2 (no Memory64) runs the Elysia example with its preview. In Chrome also JSON, POST
+bodies, 404s, a redirect with an HttpOnly cookie, and Stop (the native process and its port are gone). Without a
+runner the in-browser runtime is unchanged.
+
 ## Not done
 
-- `--open`: serve (or proxy) the playground on the runner's port, so Safari works and no browser asks for
-  local-network permission; the runner then needs its own origin in the allowlist.
-- Playground integration: a "Run with local Bun" switch, which in Safari would turn edit-only into runnable; syncing the VFS (and `bun install` output) both ways;
-  serving the preview through the existing `/__preview/` service worker, ideally tunnelled over the one
-  WebSocket so only one local-network connection needs the permission.
-- Resource limits (cgroups / `ulimit`), a tighter bwrap root than `--ro-bind / /`, Windows.
+- **Types in the editor**: node_modules lives on the runner, so the editor can't see packages' types (`elysia`
+  shows as unresolved). Fix: also install into the page's VFS where the browser can (Chrome, Firefox), or send the
+  runner's `node_modules/**/*.d.ts` and package.json files back.
+- **stdin**: the console is a shell; a line typed while a native program runs isn't sent as stdin yet.
+- **Preview WebSockets**: `new WebSocket` in a preview page still goes to the in-browser bridge; the runner's proxy
+  doesn't upgrade.
+- **Edits while running** reach the program only with the next Run (or Restart on save).
+- **Fixed ports** are the host's: two projects on `:3000` collide, and so does another app on that port.
+- **UI**: no switch between local and in-browser runs; the console's `[local]` line is the only sign.
+- Resource limits (cgroups / `ulimit`), a tighter bwrap root than `--ro-bind / /`, Windows; publishing
+  `@runbun/connect` to npm, then the docs (`guides/`, `compatibility/browsers.md`) and changelog entries.
