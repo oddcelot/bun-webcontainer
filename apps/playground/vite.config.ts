@@ -28,9 +28,12 @@ const served = contentOrigin ? { ...isolation, "Cross-Origin-Resource-Policy": "
  */
 function originHeaders(): Plugin {
   const host = contentOrigin ? new URL(process.env.VITE_CONTENT_ORIGIN!).host : "";
-  const set = (req: { headers: { host?: string } }, res: { setHeader(k: string, v: string): void }, next: () => void) => {
+  const set = (req: { url?: string; headers: { host?: string } }, res: { setHeader(k: string, v: string): void }, next: () => void) => {
     res.setHeader("Origin-Agent-Cluster", "?1");
     if (req.headers.host === host) res.setHeader("X-Robots-Tag", "noindex");
+    // Any page may frame the host page (an embedder frames /embed, which frames this): who may drive it is host.html's own check
+    // of its parent against the configured editor origins. Production's _headers says the same for /host.html.
+    if (req.headers.host === host && /^\/(?:[^?#]*\/)?host\.html(?:[?#]|$)/.test(req.url ?? "")) res.setHeader("Content-Security-Policy", "frame-ancestors *");
     next();
   };
   return {
