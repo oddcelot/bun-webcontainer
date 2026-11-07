@@ -4,7 +4,7 @@ import { resetSyncEsm, serveModule, vfsRoot } from "./moduleServer";
 import type { VFS } from "@runbun/vfs";
 import { serveLazyRead } from "./pkgStore";
 import { CONTENT_ORIGIN } from "./contentOrigin";
-import { answerAsks, connectHost, spawnWorker } from "./contentHost";
+import { answerAsks, connectHost, readContentCookies, spawnWorker, writeContentCookies } from "./contentHost";
 
 /** Tells preview pages (see previewWebSocket in swPage.ts) that their WebSockets' server is gone. */
 const previewChannel = new BroadcastChannel("bun-preview");
@@ -79,8 +79,9 @@ export class Runner {
   /** The browser's cookies for the preview's root (`a=1; b=2`), read through the cookie page. */
   private async browserCookies(): Promise<string> {
     const base = this.base;
-    // wip: the cookie page is an editor-origin frame; project cookies live on the content origin (phase 2: a bridge).
-    if (!base || CONTENT_ORIGIN) return "";
+    if (!base) return "";
+    // Project cookies live on the content origin: its host frame owns the cookie page.
+    if (CONTENT_ORIGIN) return readContentCookies(base).catch(() => "");
     this.cookiePage ??= new Promise((resolve) => {
       const frame = document.createElement("iframe");
       frame.hidden = true;
@@ -118,11 +119,13 @@ export class Runner {
     for (const line of setCookies) {
       const c = parseSetCookie(path, line);
       if (!c) continue;
-      if (!base || CONTENT_ORIGIN) {
+      if (!base) {
         this.cookies.put(c);
         continue;
       }
-      document.cookie = browserCookie(base, c.httpOnly ? { ...c, expires: 0 } : c);
+      const assign = browserCookie(base, c.httpOnly ? { ...c, expires: 0 } : c);
+      if (CONTENT_ORIGIN) void writeContentCookies(base, [assign]).catch(() => {});
+      else document.cookie = assign;
       if (c.httpOnly || c.path !== "/") this.cookies.put(c);
       else this.cookies.drop(c.name, c.path);
     }
@@ -143,8 +146,10 @@ export class Runner {
   /** Deletes the preview's cookies in both places. */
   async clearCookies() {
     const base = this.base;
-    if (base && !CONTENT_ORIGIN) {
-      for (const c of await this.listCookies()) document.cookie = browserCookie(base, { ...c, expires: 0 });
+    if (base) {
+      const lines = (await this.listCookies()).map((c) => browserCookie(base, { ...c, expires: 0 }));
+      if (CONTENT_ORIGIN) await writeContentCookies(base, lines).catch(() => {});
+      else for (const line of lines) document.cookie = line;
     }
     this.cookies.clear();
   }

@@ -13,7 +13,14 @@ export type ToHost =
   | { kind: "w"; g: number; d: unknown }
   | { kind: "kill"; g: number }
   | { kind: "fetch"; url: string; method: string; headers: [string, string][]; body: ArrayBuffer | null }
-  | { kind: "ping"; n: number };
+  | { kind: "ping"; n: number }
+  /**
+   * The preview's cookies in the browser, which live on this origin (the host frame owns the page whose document.cookie
+   * reads and writes them under `base`, `/__preview/@<id>`): `read` answers `{ cookie }` on the reply port; `write` takes
+   * `document.cookie` assignments and answers nothing.
+   */
+  | { kind: "cookies"; op: "read"; base: string }
+  | { kind: "cookies"; op: "write"; base: string; lines: string[] };
 
 /** Over the MessagePort, host -> editor. `sw` carries the service worker's reply port. */
 export type ToEditor =

@@ -221,3 +221,17 @@ export async function fetchContent(path: string, init: RequestInit): Promise<Res
   if (res.error) throw new TypeError(res.error);
   return new Response([101, 204, 205, 304].includes(res.status) ? null : res.body, { status: res.status, statusText: res.statusText, headers: res.headers });
 }
+
+/** The preview's cookies in the browser (`a=1; b=2`), read from the content origin through the host frame. */
+export async function readContentCookies(base: string): Promise<string> {
+  const { port } = await connectHost();
+  const res = await ask<{ cookie?: string; error?: string }>(port, { kind: "cookies", op: "read", base }, [], 10_000);
+  if (res.error) throw new Error(res.error);
+  return res.cookie ?? "";
+}
+
+/** `document.cookie` assignments for the preview's cookies, made on the content origin; in order with the reads after them. */
+export async function writeContentCookies(base: string, lines: string[]): Promise<void> {
+  const { port } = await connectHost();
+  send(port, { kind: "cookies", op: "write", base, lines });
+}

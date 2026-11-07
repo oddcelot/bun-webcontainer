@@ -28,6 +28,27 @@ async function whoami(): Promise<string> {
   return answer;
 }
 
+/** This frame's client id (the preview base's `@<id>`), once known. */
+let myId = "";
+/** The editor's cookie requests run one at a time, in the order they came. */
+let cookieQueue: Promise<unknown> = Promise.resolve();
+/** The blank page under the preview's base whose document.cookie is the browser's preview cookies (sw.ts serves it). */
+let cookiePage: Promise<Document> | undefined;
+
+const cookieBase = () => `${BASE}__preview/@${myId}`;
+function cookieDocument(): Promise<Document> {
+  return (cookiePage ??= new Promise((resolve, reject) => {
+    const frame = document.createElement("iframe");
+    frame.hidden = true;
+    frame.setAttribute("aria-hidden", "true");
+    // Same origin as this page: its document is readable here, and it is the one at the cookies' path.
+    frame.onload = () => (frame.contentDocument ? resolve(frame.contentDocument) : reject(new Error("the cookie page did not load")));
+    frame.onerror = () => reject(new Error("the cookie page did not load"));
+    frame.src = `${cookieBase()}/__runbun_cookies__`;
+    document.body.append(frame);
+  }));
+}
+
 const reply = (port: MessagePort, m: ToEditor, transfer: Transferable[] = []) => port.postMessage(envelope(m), transfer);
 
 function connect(port: MessagePort) {
@@ -55,6 +76,19 @@ function connect(port: MessagePort) {
       workers.delete(m.g);
     } else if (m.kind === "ping") {
       reply(port, { kind: "pong", n: m.n, workers: workers.size });
+    } else if (m.kind === "cookies") {
+      const out = e.ports[0];
+      cookieQueue = cookieQueue.then(async () => {
+        try {
+          // Only the preview of this frame's own server: the cookies' path is its base.
+          if (m.base !== cookieBase()) throw new Error("not this host's preview base");
+          const doc = await cookieDocument();
+          if (m.op === "write") for (const line of m.lines) doc.cookie = line;
+          else out?.postMessage({ cookie: doc.cookie });
+        } catch (err) {
+          out?.postMessage({ error: String(err) });
+        }
+      });
     } else if (m.kind === "fetch") {
       // The editor can't fetch from this origin's service worker (it doesn't control the editor); this frame does.
       const out = e.ports[0];
@@ -84,6 +118,7 @@ window.addEventListener("message", (e) => {
 if (!EDITOR) throw new Error(`host.html: ${asked || "no editor"} is not a configured editor origin`);
 whoami().then(
   (id) => {
+    myId = id;
     started = true;
     window.parent.postMessage(envelope<HandshakeMessage>({ kind: "host-ready", id }), EDITOR);
   },
