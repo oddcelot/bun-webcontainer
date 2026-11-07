@@ -4,6 +4,16 @@ Notable changes per release of `@runbun/connect`, the local runner for runbun.de
 `connect-v<version>` and has a GitHub Release with its section. The runner talks to the playground over its own
 protocol (`src/protocol.ts`); the deployed runbun.dev and the runner from npm can differ in version.
 
+## 0.1.1 — 2026-11-07
+
+A security fix: update before opening projects from others while the runner is on (`bunx @runbun/connect@latest`). A
+shared project's own code could reach the runner from the playground's page and run on your machine without the
+playground's confirmation; it was still sandboxed. Now the runner itself asks.
+
+- **Fixed** — **Nothing runs without your OK in the runner's terminal.** Before a playground page's first run, the
+  runner asks where it runs; until now a shared project's own code could reach the runner and skip the playground's
+  confirmation. `--no-confirm` turns the question off.
+
 ## 0.1.0 — 2026-11-07
 
 The first release: a runner that lets the runbun.dev playground run projects with the Bun installed on your machine,
