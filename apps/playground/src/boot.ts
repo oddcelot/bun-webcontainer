@@ -5,6 +5,8 @@ import { CHECKED, diagnose } from "./diagnostics";
 import { attachStore } from "./pkgStore";
 import { bunInstall } from "./install";
 import { Runner } from "./runner";
+import { RemoteRunner } from "./remoteRunner";
+import type { LocalBun } from "./localBun";
 import { setVfsOwner } from "./moduleServer";
 import { setPreviewOwner } from "./preview";
 import { loadSemver, type Semver } from "./semver";
@@ -23,10 +25,13 @@ import { VFS } from "@runbun/vfs";
 /** A console path as the VFS keys it: `/index.ts` and `./index.ts` are `index.ts`. */
 const bare = (path: string) => path.replace(/^\.?\//, "");
 
-export function createPlayground({ watch }: { watch?: () => boolean } = {}) {
+export function createPlayground({ watch, local }: { watch?: () => boolean; local?: LocalBun } = {}) {
   const support = checkSupport();
-  /** False when a requirement is missing: the interface still loads, but nothing that runs code starts. */
-  const canRun = support.every((c) => c.ok);
+  /**
+   * False when a requirement is missing: the interface still loads, but nothing that runs code starts. With native
+   * Bun on this machine (`local`, see localBun.ts) the program runs there, so the browser needs no WebAssembly.
+   */
+  const canRun = support.every((c) => c.ok || (!!local && c.name.startsWith("WebAssembly")));
   const logListeners = new Set<(level: string, text: string) => void>();
   // The shell (see `start`) needs the runner, which comes later.
   let exec: (line: string) => Promise<void> = async () => {};
@@ -43,7 +48,7 @@ export function createPlayground({ watch }: { watch?: () => boolean } = {}) {
   });
   const vfs = new VFS();
   attachStore(vfs);
-  let runner: Runner | undefined;
+  let runner: Runner | RemoteRunner | undefined;
   let semver: Semver | undefined;
 
   function log(level: string, text: string) {
@@ -114,6 +119,15 @@ export function createPlayground({ watch }: { watch?: () => boolean } = {}) {
   }
 
   async function install() {
+    if (runner instanceof RemoteRunner) {
+      workspace.saveAll();
+      const remote = runner;
+      await session.task("install", "Installing…", async () => {
+        log("sys", "[bun install]");
+        await remote.install();
+      });
+      return;
+    }
     if (!semver) return cantRun();
     workspace.saveAll();
     // A running server keeps running through an install, so the status goes back to what it was.
@@ -253,8 +267,13 @@ export function createPlayground({ watch }: { watch?: () => boolean } = {}) {
   async function start({ reset }: { reset(): Promise<void> }) {
     if (canRun) {
       await setupServiceWorker();
-      semver = await loadSemver();
-      runner = new Runner(vfs, log);
+      if (local) {
+        runner = new RemoteRunner(vfs, log, local);
+        log("sys", `[local] runs go to Bun ${local.bun} on this machine (sandbox: ${local.sandbox})`);
+      } else {
+        semver = await loadSemver();
+        runner = new Runner(vfs, log);
+      }
       runner.onExit = (code) => session.setStatus(exited(code));
     }
     exec = createShell({ vfs, log, run, install, test, stop, clear: clearConsole, reset, cookies: runner && { list: () => runner!.listCookies(), clear: () => runner!.clearCookies() } });
@@ -264,6 +283,8 @@ export function createPlayground({ watch }: { watch?: () => boolean } = {}) {
   return {
     support,
     canRun,
+    /** Native Bun on this machine, when runs go there (localBun.ts). */
+    local,
     terminal,
     session,
     workspace,

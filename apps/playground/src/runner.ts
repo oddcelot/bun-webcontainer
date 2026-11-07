@@ -24,7 +24,7 @@ export type LogFn = (level: string, text: string) => void;
 
 export class Runner {
   private worker?: Worker;
-  private ready: Promise<void> = Promise.resolve();
+  protected ready: Promise<void> = Promise.resolve();
   /** The exit code of the last started program once it ended itself (`process.exit`, an uncaught error). */
   exitCode: number | undefined;
   /** Called when a program that had started ends itself (one that ends while starting sets `exitCode` instead). */
@@ -55,7 +55,7 @@ export class Runner {
    * Preview responses still on their way from the worker, by the service worker's port; true once the head went out.
    * A stopped worker never finishes them, so stop() does.
    */
-  private pending = new Map<MessagePort, boolean>();
+  protected pending = new Map<MessagePort, boolean>();
   /**
    * The preview host's cookies the browser doesn't hold for us: the HttpOnly ones (the preview's scripts mustn't see
    * them, and scripts can't create them) and those with a narrower Path than the preview's root (the cookie page can't
@@ -152,7 +152,7 @@ export class Runner {
       await this.ready;
       const { base, ...req } = m.req;
       const headers = await this.withCookies(req.path, req.headers, base);
-      if (!this.worker) return sendText(port, 503, "No server running. Press Run.");
+      if (!this.serving()) return sendText(port, 503, "No server running. Press Run.");
       // Relayed instead of handing the worker `port`, so an unfinished response can still be ended.
       const { port1, port2 } = new MessageChannel();
       this.pending.set(port, false);
@@ -172,7 +172,7 @@ export class Runner {
       };
       // A cancel from the service worker (the page went away) goes on to the worker.
       port.onmessage = ({ data }) => port1.postMessage(data);
-      this.worker.postMessage({ type: "request", req: { ...req, headers } }, [port2]);
+      this.forward({ ...req, headers }, port2);
     } else if (m.type === "ws") {
       await this.ready;
       const { base, ...ws } = m;
@@ -180,6 +180,28 @@ export class Runner {
       if (!this.worker) return port.postMessage({ type: "close", code: 1011, reason: "No server running" });
       this.worker.postMessage({ ...ws, headers }, [port]);
     }
+  }
+
+  /** Whether a program is there to answer preview requests. */
+  protected serving(): boolean {
+    return !!this.worker;
+  }
+
+  /**
+   * Hands a preview request (cookies already in its headers) to the program; the answer comes back on `port` in the
+   * streamed shape (`head`, `chunk`…, `end` or `error`; see sendResponse in worker/runtime.ts).
+   */
+  protected forward(req: { path: string; method: string; headers: [string, string][]; body: ArrayBuffer | null }, port: MessagePort) {
+    this.worker!.postMessage({ type: "request", req }, [port]);
+  }
+
+  /** Ends the preview responses still on their way: the program that would have finished them is gone. */
+  protected endPending() {
+    for (const [port, started] of this.pending) {
+      if (started) port.postMessage({ type: "error", message: "The server stopped." });
+      else sendText(port, 503, "The server stopped before it answered.");
+    }
+    this.pending.clear();
   }
 
   /**
@@ -190,11 +212,7 @@ export class Runner {
   async stop(flush = true) {
     const worker = this.worker;
     this.worker = undefined;
-    for (const [port, started] of this.pending) {
-      if (started) port.postMessage({ type: "error", message: "The server stopped." });
-      else sendText(port, 503, "The server stopped before it answered.");
-    }
-    this.pending.clear();
+    this.endPending();
     if (!worker) return;
     previewChannel.postMessage("stopped");
     if (flush)
