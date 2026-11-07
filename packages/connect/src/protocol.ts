@@ -15,6 +15,8 @@ export type ClientMessage =
       args?: string[];
       /** `bun install` before the run (default: when there is a package.json). */
       install?: boolean;
+      /** `bun test <files>` instead of `bun run <entry>`. An empty entry and no `test` only installs. */
+      test?: string[];
     }
   | { t: "stdin"; id: string; data: string }
   | { t: "kill"; id: string };
@@ -25,6 +27,8 @@ export type ServerMessage =
   | { t: "out"; id: string; fd: 1 | 2; data: string }
   /** phase: which step a line or exit belongs to. */
   | { t: "phase"; id: string; phase: "install" | "run" }
+  /** The program accepts connections on its port (Bun.serve is up): previews can go to it. */
+  | { t: "listening"; id: string }
   | { t: "exit"; id: string; code: number | null; signal: string | null }
   | { t: "error"; id?: string; message: string };
 

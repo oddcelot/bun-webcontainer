@@ -253,10 +253,25 @@ export function startRunner(opts: RunnerOptions = {}) {
         send(ws, { t: "phase", id: msg.id, phase: "install" });
         result = await spawn(ws, msg.id, run, dir, ["install"]);
       }
-      if (result.code === 0 && !run.killed) {
+      if (result.code === 0 && !run.killed && (msg.entry || msg.test)) {
         send(ws, { t: "phase", id: msg.id, phase: "run" });
         send(ws, { t: "started", id: msg.id, preview: `http://${ws.data.host}/__connect/preview/${token}/${msg.id}/` });
-        result = await spawn(ws, msg.id, run, dir, ["run", msg.entry, ...(msg.args ?? [])]);
+        const args = msg.test ? ["test", ...msg.test] : ["run", msg.entry, ...(msg.args ?? [])];
+        let exited = false;
+        const done = spawn(ws, msg.id, run, dir, args).finally(() => (exited = true));
+        // Tell the page once the program accepts connections on its port, so Run can show the preview.
+        if (!msg.test)
+          void (async () => {
+            while (!exited && !run.killed) {
+              const up = await Bun.connect({ hostname: "127.0.0.1", port: run.port, socket: { data() {} } }).then(
+                (s) => (s.end(), true),
+                () => false,
+              );
+              if (up) return send(ws, { t: "listening", id: msg.id });
+              await Bun.sleep(50);
+            }
+          })();
+        result = await done;
       }
     } finally {
       send(ws, { t: "exit", id: msg.id, ...result });

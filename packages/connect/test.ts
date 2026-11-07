@@ -29,15 +29,17 @@ function connect(url: string, origin: string): Promise<WebSocket | number> {
 }
 
 function run(ws: WebSocket, id: string, files: Record<string, string>, onStart?: (m: ServerMessage & { t: "started" }) => void | Promise<void>, extra: object = {}) {
-  return new Promise<{ out: string; err: string; code: number | null }>((resolve) => {
+  return new Promise<{ out: string; err: string; code: number | null; seen: string[] }>((resolve) => {
+    const seen: string[] = [];
     let out = "", err = "";
     const on = async (e: MessageEvent) => {
       const m = JSON.parse(e.data) as ServerMessage;
       if (!("id" in m) || m.id !== id) return;
+      seen.push(m.t);
       if (m.t === "started") await onStart?.(m);
       if (m.t === "out") m.fd === 1 ? (out += m.data) : (err += m.data);
-      if (m.t === "error") (err += m.message), resolve({ out, err, code: -1 });
-      if (m.t === "exit") ws.removeEventListener("message", on), resolve({ out, err, code: m.code });
+      if (m.t === "error") (err += m.message), resolve({ out, err, code: -1, seen });
+      if (m.t === "exit") ws.removeEventListener("message", on), resolve({ out, err, code: m.code, seen });
     };
     ws.addEventListener("message", on);
     ws.send(JSON.stringify({ t: "run", id, files, entry: "index.ts", ...extra }));
@@ -133,6 +135,16 @@ try {
   check("the project keeps node_modules and drops stale files", s2.nm === true && s2.stale === false, second.out + second.err);
   const bin = await run(ws, "bin", { "index.ts": `console.log([...new Uint8Array(await Bun.file("b.bin").arrayBuffer())].join())`, "b.bin": { b64: "AAEC/w==" } } as any);
   check("binary files arrive intact", bin.out.trim() === "0,1,2,255", bin.out + bin.err);
+  const tests = await run(ws, "tests", { "a.test.ts": `import { test, expect } from "bun:test"; test("ok", () => expect(1).toBe(1)); test("no", () => expect(1).toBe(2));` }, undefined, { entry: "", test: ["a.test.ts"] });
+  check("bun test runs the files", tests.code === 1 && /1 pass/.test(tests.err + tests.out) && /1 fail/.test(tests.err + tests.out), tests.out + tests.err);
+  const only = await run(ws, "install-only", dep, undefined, { entry: "", project: "p1" });
+  check("an empty entry only installs", only.code === 0 && !only.seen.includes("started"), JSON.stringify(only));
+  const up = await run(ws, "up", { "index.ts": `await Bun.sleep(300); Bun.serve({ fetch: () => new Response("up") }); console.log("serving");` }, (m) => {
+    setTimeout(() => ws.send(JSON.stringify({ t: "kill", id: "up" })), 1500);
+  });
+  check("listening comes once Bun.serve is up", up.seen.includes("listening"), JSON.stringify(up.seen));
+  const script = await run(ws, "script", { "index.ts": `console.log("done")` });
+  check("a program that doesn't serve never says listening", !script.seen.includes("listening") && script.code === 0, JSON.stringify(script.seen));
   ws.close();
 
   // The playground, served from the runner.
