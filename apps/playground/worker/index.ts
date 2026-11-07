@@ -87,7 +87,12 @@ export interface Feedback {
 }
 
 const MAX_MESSAGE = 4000;
-const str = (v: unknown, max: number) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : undefined);
+/** Control characters out (C0 but \n and \t, DEL, C1): feedback is read in a terminal, where they are escape sequences. */
+const clean = (s: string) => s.replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, "");
+const str = (v: unknown, max: number) => {
+  const s = typeof v === "string" ? clean(v).trim() : "";
+  return s ? s.slice(0, max) : undefined;
+};
 
 /** The request body, checked and trimmed; a string says what's wrong with it. */
 function parseFeedback(body: unknown): Feedback | string {
@@ -117,7 +122,7 @@ function parseFeedback(body: unknown): Feedback | string {
   if (b.env && typeof b.env === "object") {
     const env = Object.entries(b.env as Record<string, unknown>)
       .slice(0, 12)
-      .flatMap(([k, v]) => (typeof v === "string" ? [[k.slice(0, 40), v.slice(0, 300)]] : []));
+      .flatMap(([k, v]) => (typeof v === "string" ? [[clean(k).slice(0, 40), clean(v).slice(0, 300)]] : []));
     if (env.length) fb.env = Object.fromEntries(env);
   }
   const project = str(b.project, 20);
