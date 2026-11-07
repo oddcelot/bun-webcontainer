@@ -116,6 +116,7 @@ export function createPlayground({ watch, localUrl }: { watch?: () => boolean; l
   async function run(entry?: string, args: string[] = []) {
     if (entry === undefined) ({ entry, args } = command());
     if (!runner) return cantRun();
+    if (runner instanceof RemoteRunner && !(await mayRunNative())) return;
     workspace.saveAll();
     await session.task("run", "Starting…", async (): Promise<Status> => {
       log("sys", `[run] ${[entry, ...args].join(" ")}`);
@@ -135,6 +136,8 @@ export function createPlayground({ watch, localUrl }: { watch?: () => boolean; l
 
   async function install() {
     if (runner instanceof RemoteRunner) {
+      // `bun install` runs packages' install scripts: someone else's code too.
+      if (!(await mayRunNative())) return;
       workspace.saveAll();
       const remote = runner;
       await session.task("install", "Installing…", async () => {
@@ -160,6 +163,7 @@ export function createPlayground({ watch, localUrl }: { watch?: () => boolean; l
   /** `bun test`: a fresh worker runs the files; a server that was running is started again afterwards. */
   async function test(files: string[]): Promise<number> {
     if (!runner) return cantRun(), 0;
+    if (runner instanceof RemoteRunner && !(await mayRunNative())) return 0;
     workspace.saveAll();
     const wasRunning = session.settled().state === "running";
     let failed = 0;
@@ -371,12 +375,34 @@ export function createPlayground({ watch, localUrl }: { watch?: () => boolean; l
   }
 
   /**
+   * Where the project came from when it's someone else's code (a share link, a GitHub repo; see `start`): native Bun
+   * runs it only once the reader agreed, once per page. While asking, `asking` is that source.
+   */
+  let untrustedFrom: string | undefined;
+  const [asking, setAsking] = createSignal<string>();
+  let answer: ((ok: boolean) => void) | undefined;
+  async function mayRunNative(): Promise<boolean> {
+    if (untrustedFrom === undefined) return true;
+    answer?.(false);
+    const ok = await new Promise<boolean>((r) => {
+      answer = r;
+      setAsking(untrustedFrom);
+    });
+    setAsking(undefined);
+    answer = undefined;
+    if (ok) untrustedFrom = undefined;
+    else log("sys", "[local] not run on this machine");
+    return ok;
+  }
+
+  /**
    * The header's switch: runs go to `kind` from now on (and on later visits). A running program starts again there;
    * moving to the browser installs first if node_modules is missing (the runner's own stays on the runner).
    */
   async function switchRuntime(kind: "local" | "browser") {
     await session.started;
     if (kind === runtime()) return;
+    if (kind === "local" && !(await mayRunNative())) return;
     localStorage.setItem(RUNTIME_KEY, kind);
     const wasRunning = session.settled().state === "running";
     await useRuntime(kind);
@@ -385,12 +411,15 @@ export function createPlayground({ watch, localUrl }: { watch?: () => boolean; l
   }
 
   /** Brings up the service worker, semver and the runner (when the browser can run code) and the console's shell. */
-  async function start({ reset }: { reset(): Promise<void> }) {
+  async function start({ reset, from }: { reset(): Promise<void>; from?: string }) {
     if (canRun) {
       await setupServiceWorker();
       if (localUrl) await connectLocal(localUrl);
-      const preferBrowser = localStorage.getItem(RUNTIME_KEY) === "browser" && browserOk;
+      untrustedFrom = from;
+      // Someone else's project stays in the browser (where it can't reach this machine) until the reader moves it.
+      const preferBrowser = (from !== undefined || localStorage.getItem(RUNTIME_KEY) === "browser") && browserOk;
       await useRuntime(local && !preferBrowser ? "local" : "browser");
+      if (local && from !== undefined && browserOk) log("sys", `[local] ${from} runs in the browser; press Local Bun to run it on this machine`);
     }
     exec = createShell({ vfs, log, run, install, test, stop, clear: clearConsole, reset, cookies: runner && { list: () => runner!.listCookies(), clear: () => runner!.clearCookies() } });
     session.markReady();
@@ -408,6 +437,9 @@ export function createPlayground({ watch, localUrl }: { watch?: () => boolean; l
       /** Whether this browser can run the program itself. */
       browserOk,
       switchTo: switchRuntime,
+      /** Where the project came from, while asking whether to run it on this machine; `answer` replies. */
+      asking,
+      answer: (ok: boolean) => answer?.(ok),
     },
     terminal,
     session,

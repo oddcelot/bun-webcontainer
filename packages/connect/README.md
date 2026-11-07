@@ -14,7 +14,10 @@ bun test.ts [secret]    # end-to-end: access checks, native APIs, sandbox, previ
   (`HOME`/`TMPDIR` inside the dir, `PORT` for `Bun.serve`). stdout/stderr stream back; stdin and kill go in.
 - **Sandbox**: Linux `bwrap` (root read-only, `/home` `/root` `/tmp` empty, the project dir the only writable
   bind, `--unshare-all --share-net`); macOS `sandbox-exec` (writes only to the project, home unreadable apart
-  from the Bun binary); elsewhere none, reported in `hello`.
+  from the Bun binary). Without either (Windows, Linux without bwrap) the CLI refuses to start unless given
+  `--no-sandbox`; the sandbox in use is reported in `hello`.
+- **Limits**: a watchdog kills a run's whole process tree (its own process group) past `--max-memory` (default 2048
+  MB, all its processes together) or `--max-processes` (64). Stop kills the children too, not only Bun.
 - **Preview**: `/preview/<token>/<run>/…` proxies to the run's `Bun.serve`, with CORS for the allowed origins
   and CORP/COEP so the cross-origin-isolated playground can frame it.
 
@@ -58,6 +61,8 @@ With a runner, the header shows a **Local Bun** toggle: pressed, runs go to nati
 (it installs node_modules in the page first). A running program starts again on the other side; the choice is kept in
 localStorage. If the runner stops, runs move to the browser and the toggle greys out. `?connect=` waits for Chrome's
 local-network permission prompt instead of giving up, and says in the console when it can't reach the runner.
+Someone else's code (a share link, `?repo=`) opens in the browser whatever the saved choice; Local Bun then asks before
+running it natively, once per page. Where the browser can't run code (stable Safari), Run, Install and Test ask instead.
 
 Checked by hand: stable Safari 27.2 (no Memory64) runs the Elysia example with its preview. In Chrome also JSON, POST
 bodies, 404s, a redirect with an HttpOnly cookie, and Stop (the native process and its port are gone). Without a
@@ -73,5 +78,6 @@ runner the in-browser runtime is unchanged.
   doesn't upgrade.
 - **Edits while running** reach the program only with the next Run (or Restart on save).
 - **Fixed ports** are the host's: two projects on `:3000` collide, and so does another app on that port.
-- Resource limits (cgroups / `ulimit`), a tighter bwrap root than `--ro-bind / /`, Windows; publishing
+- Hard limits (cgroups on Linux: the watchdog checks every 500 ms, so a fast fork bomb or allocation spike gets past
+  it for a moment; no disk quota), a tighter bwrap root than `--ro-bind / /`, Windows; publishing
   `@runbun/connect` to npm, then the docs (`guides/`, `compatibility/browsers.md`) and changelog entries.
