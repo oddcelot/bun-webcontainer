@@ -4,9 +4,14 @@
   "private": true,
   "description": "Probe: run runbun.dev playground code with the real Bun on your machine, sandboxed.",
   "type": "module",
-  "bin": { "runbun-connect": "./src/cli.ts" },
+  "bin": {
+    "runbun-connect": "./src/cli.ts"
+  },
   "scripts": {
     "start": "bun src/cli.ts",
     "test": "bun test.ts"
+  },
+  "exports": {
+    "./protocol": "./src/protocol.ts"
   }
 }

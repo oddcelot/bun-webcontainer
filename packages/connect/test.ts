@@ -143,6 +143,25 @@ try {
     setTimeout(() => ws.send(JSON.stringify({ t: "kill", id: "up" })), 1500);
   });
   check("listening comes once Bun.serve is up", up.seen.includes("listening"), JSON.stringify(up.seen));
+  // A program that picks its own port (Elysia's `.listen(3000)`): the preview finds it.
+  let ownPort = "";
+  const pick = new Promise<void>((resolve) => {
+    let preview = "";
+    const on = async (e: MessageEvent) => {
+      const m = JSON.parse(e.data) as ServerMessage;
+      if (!("id" in m) || m.id !== "own-port") return;
+      if (m.t === "started") preview = m.preview;
+      if (m.t === "listening") {
+        ownPort = await fetch(preview).then((r) => r.text());
+        ws.send(JSON.stringify({ t: "kill", id: "own-port" }));
+      }
+      if (m.t === "exit") ws.removeEventListener("message", on), resolve();
+    };
+    ws.addEventListener("message", on);
+  });
+  ws.send(JSON.stringify({ t: "run", id: "own-port", files: { "index.ts": `Bun.serve({ port: 0, fetch: () => new Response("own port") });` }, entry: "index.ts" }));
+  await pick;
+  check("the preview finds a port the program chose itself", ownPort === "own port", ownPort);
   const script = await run(ws, "script", { "index.ts": `console.log("done")` });
   check("a program that doesn't serve never says listening", !script.seen.includes("listening") && script.code === 0, JSON.stringify(script.seen));
   ws.close();

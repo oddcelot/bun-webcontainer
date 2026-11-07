@@ -32,6 +32,14 @@ export type ServerMessage =
   | { t: "exit"; id: string; code: number | null; signal: string | null }
   | { t: "error"; id?: string; message: string };
 
+/**
+ * Preview requests from the playground: the request's headers as JSON `[name, value][]` (fetch can't send Cookie),
+ * and the response's `{ status, statusText, headers }` back (fetch can't read Set-Cookie, nor a redirect's Location;
+ * the response itself is then a 200).
+ */
+export const PACKED_REQUEST = "x-runbun-headers";
+export const PACKED_RESPONSE = "x-runbun-head";
+
 /** GET /__connect/info, same-origin only: what a page served by the runner needs to connect. */
 export interface ConnectInfo {
   ws: string;

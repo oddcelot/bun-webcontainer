@@ -11,7 +11,7 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, wri
 import { tmpdir } from "node:os";
 import { dirname, extname, isAbsolute, join, normalize } from "node:path";
 import type { ServerWebSocket, Subprocess } from "bun";
-import type { ClientMessage, ConnectInfo, ServerMessage } from "./protocol.ts";
+import { PACKED_REQUEST, PACKED_RESPONSE, type ClientMessage, type ConnectInfo, type ServerMessage } from "./protocol.ts";
 import { detectSandbox, sandboxed, type SandboxKind } from "./sandbox.ts";
 
 export const DEFAULT_ORIGINS = ["https://runbun.dev", "https://canary.runbun.dev", "http://localhost:5173"];
@@ -38,6 +38,27 @@ async function freePort(): Promise<number> {
   const p = s.port!;
   s.stop(true);
   return p;
+}
+
+/**
+ * The TCP port the process `pid` or one of its descendants listens on (sandbox-exec execs Bun; bwrap forks it), the
+ * preferred one if it's among them; undefined while there is none. Without lsof, only `preferred` is checked.
+ */
+async function listeningPort(pid: number, preferred: number): Promise<number | undefined> {
+  if (!Bun.which("lsof")) {
+    const up = await Bun.connect({ hostname: "127.0.0.1", port: preferred, socket: { data() {} } }).then((s) => (s.end(), true), () => false);
+    return up ? preferred : undefined;
+  }
+  const children = new Map<number, number[]>();
+  for (const line of (await Bun.$`ps -A -o pid=,ppid=`.quiet().nothrow().text()).split("\n")) {
+    const [p, pp] = line.trim().split(/\s+/).map(Number);
+    if (p && pp) children.set(pp, [...(children.get(pp) ?? []), p]);
+  }
+  const tree = [pid];
+  for (let i = 0; i < tree.length; i++) tree.push(...(children.get(tree[i]!) ?? []));
+  const out = await Bun.$`lsof -nP -a -iTCP -sTCP:LISTEN -p ${tree.join(",")} -Fn`.quiet().nothrow().text();
+  const ports = [...out.matchAll(/^n.*:(\d+)$/gm)].map((m) => Number(m[1]));
+  return ports.includes(preferred) ? preferred : ports[0];
 }
 
 // What the deployed playground sends (apps/playground/public/_headers); localhost is a secure context, so this
@@ -139,7 +160,10 @@ export function startRunner(opts: RunnerOptions = {}) {
     if (tok !== token) return new Response("bad token", { status: 403 });
     const run = runs.get(id);
     if (!run) return new Response("no such run", { status: 404 });
-    const headers = new Headers(req.headers);
+    // The playground's preview (RemoteRunner) can't send Cookie or read Set-Cookie and redirects with fetch, so it
+    // packs the request's headers into one and gets the response's status and headers back the same way.
+    const packed = req.headers.get(PACKED_REQUEST);
+    const headers = new Headers(packed ? (JSON.parse(packed) as [string, string][]) : req.headers);
     headers.set("host", `localhost:${run.port}`);
     let res: Response;
     try {
@@ -151,6 +175,14 @@ export function startRunner(opts: RunnerOptions = {}) {
       });
     } catch {
       return new Response("the program isn't listening (yet)", { status: 502, headers: cors });
+    }
+    if (packed) {
+      const list: [string, string][] = [...res.headers].filter(([k]) => !/^(set-cookie|content-encoding|content-length)$/.test(k));
+      for (const c of res.headers.getSetCookie()) list.push(["set-cookie", c]);
+      const head = JSON.stringify({ status: res.status, statusText: res.statusText, headers: list });
+      return new Response(res.body, {
+        headers: { ...cors, "access-control-expose-headers": PACKED_RESPONSE, [PACKED_RESPONSE]: head, "cross-origin-resource-policy": "cross-origin" },
+      });
     }
     const out = new Headers(res.headers);
     out.delete("content-encoding");
@@ -259,16 +291,17 @@ export function startRunner(opts: RunnerOptions = {}) {
         const args = msg.test ? ["test", ...msg.test] : ["run", msg.entry, ...(msg.args ?? [])];
         let exited = false;
         const done = spawn(ws, msg.id, run, dir, args).finally(() => (exited = true));
-        // Tell the page once the program accepts connections on its port, so Run can show the preview.
+        // Tell the page once the program listens, so Run can show the preview. On $PORT, or wherever it chose
+        // (Elysia's `.listen(3000)`): the preview goes to that port.
         if (!msg.test)
           void (async () => {
             while (!exited && !run.killed) {
-              const up = await Bun.connect({ hostname: "127.0.0.1", port: run.port, socket: { data() {} } }).then(
-                (s) => (s.end(), true),
-                () => false,
-              );
-              if (up) return send(ws, { t: "listening", id: msg.id });
-              await Bun.sleep(50);
+              const port = run.proc?.pid ? await listeningPort(run.proc.pid, run.port) : undefined;
+              if (port) {
+                run.port = port;
+                return send(ws, { t: "listening", id: msg.id });
+              }
+              await Bun.sleep(100);
             }
           })();
         result = await done;
@@ -287,7 +320,9 @@ export function startRunner(opts: RunnerOptions = {}) {
     sandbox,
     origins,
     url: `ws://127.0.0.1:${server.port}/__connect/ws?token=${token}`,
-    open: `http://localhost:${server.port}/`,
+    // 127.0.0.1, not localhost: browsers scope cookies by host, not port, so on localhost the preview would see (and
+    // forward to the program) the cookies of every other app the user runs on localhost.
+    open: `http://127.0.0.1:${server.port}/`,
     stop() {
       for (const r of runs.values()) (r.killed = true), r.proc?.kill();
       server.stop(true);
