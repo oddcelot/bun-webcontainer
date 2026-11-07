@@ -217,6 +217,10 @@ export function FileTree() {
           // The last change per path wins (a file written and removed in one frame isn't added).
           const ops = [...pending.values()].filter((op) => (op.type === "add") === (tree.getItem(op.path) === null));
           pending.clear();
+          // A removed folder takes everything in it: removing its files or subfolders after it would throw.
+          const gone = ops.flatMap((op) => (op.type === "remove" && op.path.endsWith("/") ? [op.path] : []));
+          const covered = (path: string) => gone.some((dir) => dir !== path && path.startsWith(dir));
+          if (gone.length) ops.splice(0, ops.length, ...ops.filter((op) => !(op.type === "remove" && covered(op.path))));
           tree.batch(ops);
         });
       }
