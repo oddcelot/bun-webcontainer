@@ -75,6 +75,7 @@ export function createPlayground({ watch, localUrl }: { watch?: () => boolean; l
     session.countLine(level);
     for (const fn of logListeners) fn(level, text);
   }
+  reportStoreProblems((message) => log("warn", `[store] ${message}`));
   const cantRun = () => log("error", "this browser can't run code here; see the banner above the editor");
 
   async function setupServiceWorker() {
