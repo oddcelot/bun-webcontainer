@@ -1,6 +1,6 @@
 {
   "name": "@runbun/connect",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Run runbun.dev playground code with the real Bun on your own machine, sandboxed: bunx @runbun/connect --open",
   "type": "module",
   "license": "MIT",

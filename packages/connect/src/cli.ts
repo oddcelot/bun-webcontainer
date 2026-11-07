@@ -1,6 +1,9 @@
 #!/usr/bin/env bun
 // bunx @runbun/connect [--open] [--port 7357] [--playground https://runbun.dev | ./dist] [--allow-origin <origin>]...
-//                      [--no-sandbox] [--max-memory 2048] [--max-processes 64]
+//                      [--no-sandbox] [--no-confirm] [--max-memory 2048] [--max-processes 64]
+//
+// Each playground page (WebSocket connection) is approved in this terminal before its first run (approve.ts);
+// --no-confirm skips that.
 //
 // --max-memory (MB, all of a run's processes together) and --max-processes: past them the run is killed.
 //
@@ -8,6 +11,7 @@
 // works in every browser: Safari won't let an https page reach http://localhost, and Chrome asks for
 // local-network permission; a page on localhost talking to its own origin needs neither.
 import { parseArgs } from "node:util";
+import { terminalApproval } from "./approve.ts";
 import { detectSandbox } from "./sandbox.ts";
 import { DEFAULT_LIMITS, DEFAULT_ORIGINS, startRunner } from "./server.ts";
 
@@ -19,6 +23,7 @@ const { values } = parseArgs({
     playground: { type: "string", default: "https://runbun.dev" },
     "allow-origin": { type: "string", multiple: true, default: [] },
     "no-sandbox": { type: "boolean", default: false },
+    "no-confirm": { type: "boolean", default: false },
     "max-memory": { type: "string", default: String(DEFAULT_LIMITS.memoryMB) },
     "max-processes": { type: "string", default: String(DEFAULT_LIMITS.processes) },
   },
@@ -41,6 +46,7 @@ To run code from the playground with all your user's rights anyway, start with -
 
 const r = startRunner({
   sandbox,
+  approve: values["no-confirm"] ? undefined : terminalApproval(),
   limits: { memoryMB: Number(values["max-memory"]), processes: Number(values["max-processes"]) },
   port: Number(values.port),
   origins: [...DEFAULT_ORIGINS, ...values["allow-origin"]!],
@@ -48,6 +54,8 @@ const r = startRunner({
 });
 console.log(`runbun connect: Bun ${Bun.version}, sandbox: ${r.sandbox}`);
 if (r.sandbox === "none") console.warn("warning: no sandbox (--no-sandbox): code from the playground runs with all your user's rights");
+if (values["no-confirm"]) console.warn("warning: --no-confirm: any page with the link runs code here without asking, a shared project's preview too");
+else console.log("Each playground page asks here before its first run.");
 if (!values["no-playground"]) console.log(`playground (${values.playground}) at:\n  ${r.open}`);
 console.log(`from runbun.dev in Chrome or Firefox:\n  https://runbun.dev/?connect=${encodeURIComponent(r.url)}`);
 if (values.open) {

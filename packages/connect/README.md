@@ -34,8 +34,13 @@ Each run is a real program on your machine, in a sandbox:
 | Network | open | open |
 
 The network stays open because the program's server has to be reachable and `bun install` has to reach the
-registry. So a program can reach other services on this machine and on your local network. Projects from someone else
-(a share link, a GitHub repo) open in the browser and ask before running here.
+registry. So a program can reach other services on this machine and on your local network.
+
+So the runner asks before running anything: each playground page (until it reloads) has to be allowed in the terminal
+where the runner runs, before its first run. A web page can't answer there, so a shared project whose code reaches for
+the runner on its own still needs your "y". Say no if you didn't just press Run. In the playground, projects from someone
+else (a share link, a GitHub repo) also open in the browser and ask before moving to Local Bun. `--no-confirm` turns
+the terminal question off.
 
 Without a sandbox (Windows, Linux without bubblewrap) the runner refuses to start. `--no-sandbox` starts it anyway, and
 then code from the playground runs with all your user's rights.
@@ -52,6 +57,7 @@ Each run is stopped, with everything it started, past `--max-memory` (MB, all it
 --no-playground         only the runner, for ?connect= links
 --allow-origin <url>    another site that may connect (repeatable)
 --no-sandbox            run without a sandbox (see above)
+--no-confirm            run pages' code without asking in the terminal (see above)
 --max-memory <MB>       default 2048
 --max-processes <n>     default 64
 ```

@@ -25,8 +25,8 @@ export type ServerMessage =
   | { t: "hello"; bun: string; platform: string; sandbox: string }
   | { t: "started"; id: string; preview: string }
   | { t: "out"; id: string; fd: 1 | 2; data: string }
-  /** phase: which step a line or exit belongs to. */
-  | { t: "phase"; id: string; phase: "install" | "run" }
+  /** phase: which step a line or exit belongs to; "approval": waiting for the runner's terminal to allow this page. */
+  | { t: "phase"; id: string; phase: "approval" | "install" | "run" }
   /** The program accepts connections on its port (Bun.serve is up): previews can go to it. */
   | { t: "listening"; id: string }
   | { t: "exit"; id: string; code: number | null; signal: string | null }
