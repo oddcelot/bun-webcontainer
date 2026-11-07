@@ -29,6 +29,8 @@ const bare = (path: string) => path.replace(/^\.?\//, "");
 export type LocalState = "none" | "connecting" | "connected" | "lost";
 /** Where the reader last chose to run: "browser" keeps runs in the browser even with a runner connected. */
 const RUNTIME_KEY = "runbun:runtime";
+/** How long startup waits for the runner before running in the browser (see `start`). */
+const LOCAL_WAIT_MS = 1500;
 
 export function createPlayground({ watch, localUrl }: { watch?: () => boolean; localUrl?: string } = {}) {
   const support = checkSupport();
@@ -326,8 +328,9 @@ export function createPlayground({ watch, localUrl }: { watch?: () => boolean; l
   /** Connects to the runner on this machine; says so in the console when it takes long or fails. */
   async function connectLocal(url: string) {
     const fallback = browserOk ? "runs stay in the browser" : "nothing can run here until it is";
+    const meanwhile = browserOk ? "; runs start in the browser meanwhile and move to it once connected" : "";
     local = await connectLocalBun(url, () =>
-      log("sys", "[local] waiting for the runner on this machine… if the browser asks whether this site may reach devices on your local network, allow it"),
+      log("sys", `[local] waiting for the runner on this machine${meanwhile}. If the browser asks whether this site may reach devices on your local network, allow it`),
     );
     if (!local) {
       setLocalState("lost");
@@ -414,12 +417,28 @@ export function createPlayground({ watch, localUrl }: { watch?: () => boolean; l
   async function start({ reset, from }: { reset(): Promise<void>; from?: string }) {
     if (canRun) {
       await setupServiceWorker();
-      if (localUrl) await connectLocal(localUrl);
+      // A runner that answers at once (it serves this page, or the browser allowed access before) decides where the
+      // first run goes. One still waiting on the browser's permission prompt doesn't hold the page up where the
+      // browser can run code itself: the project opens and runs there, and moves to the runner once it connects.
+      let later: Promise<void> | undefined;
+      if (localUrl) {
+        const connecting = connectLocal(localUrl);
+        const answered = await Promise.race([connecting.then(() => true), new Promise<false>((r) => setTimeout(() => r(false), LOCAL_WAIT_MS))]);
+        if (answered || !browserOk) await connecting;
+        else later = connecting;
+      }
       untrustedFrom = from;
       // Someone else's project stays in the browser (where it can't reach this machine) until the reader moves it.
       const preferBrowser = (from !== undefined || localStorage.getItem(RUNTIME_KEY) === "browser") && browserOk;
       await useRuntime(local && !preferBrowser ? "local" : "browser");
       if (local && from !== undefined && browserOk) log("sys", `[local] ${from} runs in the browser; press Local Bun to run it on this machine`);
+      void later?.then(async () => {
+        if (!local || preferBrowser) return;
+        await session.started;
+        // Not in the middle of startup's install or run: the switch restarts a running program on the runner.
+        while (session.busy.run || session.busy.install) await new Promise((r) => setTimeout(r, 200));
+        await switchRuntime("local");
+      });
     }
     exec = createShell({ vfs, log, run, install, test, stop, clear: clearConsole, reset, cookies: runner && { list: () => runner!.listCookies(), clear: () => runner!.clearCookies() } });
     session.markReady();
