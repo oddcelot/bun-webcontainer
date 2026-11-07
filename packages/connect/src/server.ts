@@ -16,6 +16,14 @@ import { detectSandbox, sandboxed, type SandboxKind } from "./sandbox.ts";
 
 export const DEFAULT_ORIGINS = ["https://runbun.dev", "https://canary.runbun.dev", "http://localhost:5173"];
 
+/** What a page asks to run first, for the person approving it. */
+export interface ApprovalRequest {
+  origin: string;
+  entry: string;
+  test?: string[];
+  files: string[];
+}
+
 export interface RunnerOptions {
   port?: number;
   token?: string;
@@ -23,6 +31,11 @@ export interface RunnerOptions {
   sandbox?: SandboxKind;
   /** What each run may use (default: DEFAULT_LIMITS). */
   limits?: Partial<Limits>;
+  /**
+   * Asked once per connection (a playground page), before its first run: resolves true to let the page run code here.
+   * Without it every page with the token may run code (tests, embedding the runner).
+   */
+  approve?: (request: ApprovalRequest) => Promise<boolean>;
   /** Serve the playground: a URL to proxy (https://runbun.dev) or a directory with a playground build. */
   playground?: string;
 }
@@ -33,7 +46,16 @@ interface Run {
   port: number;
 }
 
-type Socket = ServerWebSocket<{ runs: Set<string>; host: string }>;
+/** Per connection (one playground page): its runs, the Host it used, its Origin, and the answer to `approve`. */
+interface SocketData {
+  runs: Set<string>;
+  host: string;
+  origin: string;
+  approval?: Promise<boolean>;
+  /** Runs stopped while waiting for the approval: they never start. */
+  cancelled: Set<string>;
+}
+type Socket = ServerWebSocket<SocketData>;
 
 async function freePort(): Promise<number> {
   const s = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response() });
@@ -122,7 +144,7 @@ export function startRunner(opts: RunnerOptions = {}) {
 
   const loopbackHost = (host: string | null) => !!host && /^(127\.0\.0\.1|localhost|\[::1\]):\d+$/.test(host);
 
-  const server = Bun.serve<{ runs: Set<string>; host: string }>({
+  const server = Bun.serve<SocketData>({
     hostname: "127.0.0.1",
     port: opts.port ?? 7357,
     idleTimeout: 0,
@@ -139,7 +161,7 @@ export function startRunner(opts: RunnerOptions = {}) {
         const origin = req.headers.get("origin");
         if (!origin || !origins.has(origin)) return new Response("origin not allowed", { status: 403 });
         if (url.searchParams.get("token") !== token) return new Response("bad token", { status: 403 });
-        if (srv.upgrade(req, { data: { runs: new Set(), host: host! } })) return;
+        if (srv.upgrade(req, { data: { runs: new Set(), host: host!, origin, cancelled: new Set() } })) return;
         return new Response("upgrade failed", { status: 400 });
       }
 
@@ -166,8 +188,23 @@ export function startRunner(opts: RunnerOptions = {}) {
         } catch {
           return send(ws, { t: "error", message: "bad json" });
         }
-        if (msg.t === "run") return startRun(ws, msg);
+        if (msg.t === "run") {
+          // The page's first run waits for the person at the runner's terminal: code on the page's origin (a
+          // project's preview, its program) can reach the runner too, so the page's own consent isn't enough.
+          if (opts.approve && !ws.data.approval) {
+            send(ws, { t: "phase", id: msg.id, phase: "approval" });
+            ws.data.approval = opts.approve({ origin: ws.data.origin, entry: msg.entry, test: msg.test, files: Object.keys(msg.files) }).catch(() => false);
+          }
+          if (ws.data.approval && !(await ws.data.approval)) {
+            send(ws, { t: "error", id: msg.id, message: "not allowed: the runner's terminal said no to this page (reload to ask again)" });
+            return send(ws, { t: "exit", id: msg.id, code: 1, signal: null });
+          }
+          if (ws.data.cancelled.delete(msg.id)) return send(ws, { t: "exit", id: msg.id, code: null, signal: "SIGTERM" });
+          return startRun(ws, msg);
+        }
         const run = runs.get(msg.id);
+        // A run still waiting for the approval: it won't start.
+        if (!run && msg.t === "kill") return void ws.data.cancelled.add(msg.id);
         if (!run) return send(ws, { t: "error", id: msg.id, message: "no such run" });
         if (msg.t === "stdin" && run.proc) {
           run.proc.stdin.write(msg.data);

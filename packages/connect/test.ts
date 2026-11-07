@@ -180,6 +180,52 @@ try {
   check("Stop ends the program's child processes too", kids.out.includes("up") && (await leftover(`32.${process.pid}`)) === 0, kids.out + kids.err);
   ws.close();
 
+  // Approval: asked once per page (connection), before its first run; a refused page runs nothing.
+  const asked: string[] = [];
+  let allow = true;
+  let hold: Promise<void> | undefined;
+  const gated = startRunner({
+    port: 0,
+    approve: async (req) => {
+      asked.push(req.entry);
+      await hold;
+      return allow;
+    },
+  });
+  try {
+    const page1 = (await connect(gated.url, ORIGIN)) as WebSocket;
+    await new Promise((res) => (page1.onmessage = res));
+    const a = await run(page1, "a1", { "index.ts": `console.log("one")` });
+    const b = await run(page1, "a2", { "index.ts": `console.log("two")` });
+    check("a page is asked about once, before its first run", asked.length === 1 && a.seen.includes("phase") && a.out.trim() === "one" && b.out.trim() === "two", JSON.stringify({ asked, a, b }));
+    page1.close();
+
+    allow = false;
+    const page2 = (await connect(gated.url, ORIGIN)) as WebSocket;
+    await new Promise((res) => (page2.onmessage = res));
+    const refused = await run(page2, "r1", { "index.ts": `console.log("should not run")` });
+    const again = await run(page2, "r2", { "index.ts": `console.log("should not run")` });
+    check("a refused page runs nothing, and isn't asked again", !refused.out && /not allowed/.test(refused.err) && !again.out && asked.length === 2, JSON.stringify({ asked, refused, again }));
+    page2.close();
+
+    allow = true;
+    let release!: () => void;
+    hold = new Promise((r) => (release = r));
+    const page3 = (await connect(gated.url, ORIGIN)) as WebSocket;
+    await new Promise((res) => (page3.onmessage = res));
+    const waiting = run(page3, "w1", { "index.ts": `console.log("should not run")` });
+    await Bun.sleep(100);
+    page3.send(JSON.stringify({ t: "kill", id: "w1" }));
+    // The kill crosses the socket before the answer (in one process, release() would win the race).
+    await Bun.sleep(50);
+    release();
+    const stopped = await waiting;
+    check("Stop while waiting for the answer: the run never starts", !stopped.out && !stopped.seen.includes("started"), JSON.stringify(stopped));
+    page3.close();
+  } finally {
+    gated.stop();
+  }
+
   // The playground, served from the runner.
   const page = await fetch(`http://127.0.0.1:${port}/`);
   check("the playground is served, cross-origin isolated", (await page.text()).includes("<title>app") && page.headers.get("cross-origin-embedder-policy") === "credentialless" && page.headers.get("cross-origin-opener-policy") === "same-origin");

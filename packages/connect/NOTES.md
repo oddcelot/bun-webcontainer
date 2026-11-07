@@ -12,6 +12,10 @@ bun test.ts [secret]    # end-to-end: access checks, native APIs, sandbox, previ
 
 - **Access**: loopback only; the WebSocket needs the startup token and an allowed `Origin` (runbun.dev,
   canary, localhost:5173, `--allow-origin`); a non-loopback `Host` gets 421 (DNS rebinding).
+- **Approval**: the token and Origin don't tell the playground from a project's own code on the playground's origin (an
+  unsandboxed same-origin preview can read `parent.location`'s `?connect=` or use the page's socket; a program's
+  worker can fetch `/__connect/info` when the runner serves the page). So the CLI asks in its terminal before each
+  connection's first run (`approve.ts`, server.ts `approve`); a page can't answer there. `--no-confirm` skips it.
 - **Run**: files from the playground are written to a fresh temp dir; `bun run <entry>` with a clean env
   (`HOME`/`TMPDIR` inside the dir, `PORT` for `Bun.serve`). stdout/stderr stream back; stdin and kill go in.
 - **Sandbox**: Linux `bwrap` (root read-only, `/home` `/root` `/tmp` empty, the project dir the only writable
