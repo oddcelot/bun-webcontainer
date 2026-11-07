@@ -35,3 +35,7 @@ runbun.dev isn't a replacement for Bun. Installed Bun is the real runtime: JavaS
 ## Move a project between them
 
 From the playground, **Download as zip** saves the project; unzip it, then `bun install` and `bun index.ts` (or `bun run dev`). The other way, open a folder from disk in the playground, or a GitHub repository with `runbun.dev/?repo=owner/repo`.
+
+## Both at once
+
+With Bun installed, the playground can run projects with it: `bunx @runbun/connect --open` adds a **Local Bun** button, and runs go to the real runtime on your machine, sandboxed, while you keep the playground's editor and preview. See [Run with local Bun](/guides/local-bun/).

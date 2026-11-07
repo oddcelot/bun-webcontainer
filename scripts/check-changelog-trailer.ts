@@ -7,7 +7,7 @@
 //   Changelog: skip                   tests, tooling, refactors, docs plumbing
 import { $ } from "bun";
 
-const PARTS = ["playground", "runtime", "toolchain", "editor", "docs", "astro", "embed"] as const;
+const PARTS = ["playground", "runtime", "toolchain", "editor", "docs", "astro", "connect", "embed"] as const;
 const KINDS = ["Added", "Changed", "Fixed", "Removed"];
 
 const file = process.argv[2];

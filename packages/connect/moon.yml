@@ -1,0 +1,34 @@
+$schema: 'https://moonrepo.dev/schemas/project.json'
+
+# @runbun/connect: the local runner (`bunx @runbun/connect --open`) that runs playground code with the real Bun on the
+# user's machine, sandboxed. Shipped as TypeScript source (Bun runs it as is). Published by
+# .github/workflows/publish-connect.yml.
+language: 'typescript'
+
+fileGroups:
+  sources:
+    - 'src/**/*'
+    - 'package.json'
+
+tasks:
+  test:
+    # End to end: access checks, native APIs, the sandbox (bwrap or sandbox-exec), limits, the preview proxy.
+    command: 'bun test.ts'
+    inputs:
+      - '@group(sources)'
+      - 'test.ts'
+  pack:
+    # What npm would publish.
+    command: 'npm pack --dry-run'
+    inputs:
+      - '@group(sources)'
+      - 'README.md'
+    options:
+      cache: false
+  changelog:
+    # Draft of CHANGELOG.md's next section from the `connect` Changelog trailers since the last connect-v* tag
+    # (cliff.toml). `-- --tag connect-v0.2.0` heads it with the version.
+    command: 'git-cliff --config packages/connect/cliff.toml --unreleased'
+    options:
+      cache: false
+      runFromWorkspaceRoot: true

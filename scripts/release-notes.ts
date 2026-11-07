@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // Prints one version's section of a changelog, without its heading, for GitHub Release notes. A tag names its
 // version after the `v`, and picks the changelog: `v0.2.0` → CHANGELOG.md, `<name>-v0.2.0` →
-// packages/<name>/CHANGELOG.md (astro, embed).
+// packages/<name>/CHANGELOG.md (astro, connect, embed).
 //
 //   scripts/release-notes.ts v0.2.0 > notes.md
 //   scripts/release-notes.ts embed-v0.2.0 > notes.md

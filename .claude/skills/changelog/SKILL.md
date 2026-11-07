@@ -3,7 +3,7 @@ name: changelog
 description:
   Draft the user-facing Changelog trailer for a commit, or write a release's changelog section from the commits since
   the last tag. Covers CHANGELOG.md (runbun, `v*` tags) and packages/<name>/CHANGELOG.md (@runbun/astro `astro-v*`,
-  @runbun/embed `embed-v*`). Use at commit time (`/changelog entry`) and at release time (`/changelog release v0.2.0`,
+  @runbun/connect `connect-v*`, @runbun/embed `embed-v*`). Use at commit time (`/changelog entry`) and at release time (`/changelog release v0.2.0`,
   `/changelog release embed-v0.2.0`).
 ---
 
@@ -35,6 +35,7 @@ Changelog: Fixed playground
 | `editor`     | `crates/tsrs-ls-wasm`, the editor's completions, hovers, diagnostics                        |
 | `docs`       | `apps/docs` content users read (not plumbing)                                               |
 | `astro`      | `packages/astro` (lands in packages/astro/CHANGELOG.md only)                                |
+| `connect`    | `packages/connect`: the local runner, `bunx @runbun/connect` (packages/connect/CHANGELOG.md only) |
 | `embed`      | `packages/embed`: `<bun-playground>`, the protocol (packages/embed/CHANGELOG.md only)       |
 
 A change to `packages/embed` also reaches everyone loading runbun.dev/embed.js at the next deploy; when it changes
@@ -72,7 +73,7 @@ Nothing here tags, pushes or deploys; that stays with the person.
    ending in "See CHANGELOG.md for the full section.", its trailer `Changelog: skip`. After it merges to `main`:
    `git tag v0.2.0 && git push origin main --follow-tags` creates the GitHub Release; deploy separately.
 
-## `/changelog release astro-v0.2.0`, `embed-v0.2.0` (the npm packages)
+## `/changelog release astro-v0.2.0`, `connect-v0.1.0`, `embed-v0.2.0` (the npm packages)
 
 The same, with `moon run <name>:changelog -- --tag <name>-v0.2.0` (a flat list, no part headings),
 `packages/<name>/CHANGELOG.md`, and `version` in `packages/<name>/package.json`, then `bun install` so `bun.lock`

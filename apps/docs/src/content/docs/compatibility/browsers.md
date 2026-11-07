@@ -20,6 +20,8 @@ sidebar:
 
 "Edit only" means you get the editor, examples and sharing, but can't run code. Safari Technology Preview already has Memory64 and runs code (the Elysia example installs and starts), so Safari should work once Memory64 ships there.
 
+On a Mac, Safari can run code today through [local Bun](/guides/local-bun/): `bunx @runbun/connect --open` serves the playground and runs projects with the Bun installed on your machine. Checked in Safari 27.2 with the Elysia example and its preview.
+
 ## What the browser needs
 
 Without these, the playground opens in edit-only mode, with a banner naming what's missing. Run, Install and the preview request bar are disabled.

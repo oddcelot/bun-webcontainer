@@ -1,0 +1,83 @@
+# Publishes packages/connect (@runbun/connect) to npm. Pushing a `connect-v<version>` tag is the release: it checks the
+# tag against packages/connect/package.json and the section for it in packages/connect/CHANGELOG.md, packs the package
+# (its TypeScript source: Bun runs it as is, so there is no build), publishes it through npm's trusted publishing (no
+# token; set up once with `npm trust github --file publish-connect.yml --repo oddcelot/bun-webcontainer
+# --allow-publish`, which needs the package on npm already) and creates the GitHub Release from the changelog section.
+# A version already on npm is skipped, so a failed run can be rerun. A version with a `-` (connect-v0.2.0-beta.1)
+# publishes under `next` and makes a prerelease. No provenance: npm only generates it for public repos. The tests
+# (test.ts) aren't run here: GitHub's Ubuntu runners restrict the user namespaces bubblewrap needs.
+#
+# Running it by hand (Actions → Publish @runbun/connect → Run workflow) is a dry run: it packs and prints what would go out.
+name: Publish @runbun/connect
+
+on:
+  push:
+    tags: ["connect-v[0-9]*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write # the GitHub Release
+  id-token: write # npm trusted publishing (OIDC)
+
+concurrency: publish-connect
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      RELEASE: ${{ github.event_name == 'push' }}
+    defaults:
+      run:
+        working-directory: packages/connect
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      # Trusted publishing needs npm 11.5 or later.
+      - run: npm install -g npm@latest
+
+      - name: Version
+        id: version
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "$RELEASE" = "true" ] && [ "$GITHUB_REF_NAME" != "connect-v$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match packages/connect/package.json version $version"
+            exit 1
+          fi
+          ../../scripts/release-notes.ts "connect-v$version" > "$RUNNER_TEMP/notes.md"
+          if npm view "@runbun/connect@$version" version >/dev/null 2>&1; then
+            echo "::notice::@runbun/connect@$version is on npm already; not publishing it again."
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Pack
+        run: npm pack --dry-run
+
+      - name: Publish
+        if: ${{ env.RELEASE == 'true' && !steps.version.outputs.published }}
+        run: |
+          case "${GITHUB_REF_NAME#connect-v}" in
+            *-*) npm publish --access public --tag next ;;
+            *) npm publish --access public ;;
+          esac
+
+      - name: Create the release
+        if: ${{ env.RELEASE == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "::notice::the $GITHUB_REF_NAME release exists already."
+            exit 0
+          fi
+          prerelease=()
+          case "${GITHUB_REF_NAME#connect-v}" in *-*) prerelease=(--prerelease) ;; esac
+          gh release create "$GITHUB_REF_NAME" --verify-tag \
+            --title "@runbun/connect ${GITHUB_REF_NAME#connect-v}" --notes-file "$RUNNER_TEMP/notes.md" "${prerelease[@]}"

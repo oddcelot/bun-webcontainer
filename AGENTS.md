@@ -69,6 +69,7 @@ moon run docs:dev                          # docs dev server + playground:dev (l
 moon run root:typecheck-scripts root:typos docs:links  # scripts/ + hook types (tsrs), spelling, the built docs' internal links (typos, lychee: Brewfile)
 moon run root:secrets                                  # betterleaks over the git history, as CI does on every push (Brewfile)
 moon run astro-demo:check-static                       # a static <Code> page stays HTML + CSS (examples/astro-demo; dev: astro-demo:dev)
+moon run connect:test                                  # the local runner end to end (sandbox-exec on macOS; bwrap on Linux)
 moon run playground:fmt-fixtures                       # the bundled examples (fixtures/, demo included) are `bun fmt`-clean (`-- --write` fixes)
 scripts/setup-bun.ts                       # recreate bun/ (pinned commit + patches/bun/ via git am); bun/ is not tracked
 scripts/export-bun-patches.ts              # after committing in bun/ on wasm-experiment
@@ -108,7 +109,7 @@ playground runs user code in the browser engine with JS shims for `Bun.*`, a VFS
 (`/__vfs/` modules, `/__preview/` Bun.serve), and Bun's wasm transpiler.
 
 Layout: `apps/` (playground, docs), `examples/` (`astro-demo`: a minimal site on `@runbun/astro`'s defaults), `crates/` (the Rust wrapper crates, one Cargo workspace), `packages/`
-(`@runbun/astro` and `@runbun/embed` on npm; private `@runbun/ui` (tokens, and Solid 2 components in `solid/`, each importing its CSS from `css/` in the `runbun-ui` layer; shipped as source; see its README) and `@runbun/vfs`; `astro-solid`: vendored `@astrojs/solid-js` v8 for Solid 2, see its README), `patches/` (`bun/`, `npm/`, `bun-codegen/`).
+(`@runbun/astro`, `@runbun/embed` and `@runbun/connect` (the local runner, see its NOTES.md) on npm; private `@runbun/ui` (tokens, and Solid 2 components in `solid/`, each importing its CSS from `css/` in the `runbun-ui` layer; shipped as source; see its README) and `@runbun/vfs`; `astro-solid`: vendored `@astrojs/solid-js` v8 for Solid 2, see its README), `patches/` (`bun/`, `npm/`, `bun-codegen/`).
 
 ## Git Workflow
 
@@ -149,15 +150,16 @@ possible. `/changelog entry` drafts it from the staged diff.
 | `editor`     | the TypeScript language service: completions, hovers, diagnostics  | CHANGELOG.md, Editor        |
 | `docs`       | docs.runbun.dev                                                    | CHANGELOG.md, Docs          |
 | `astro`      | `@runbun/astro` (`packages/astro`)                                 | packages/astro/CHANGELOG.md |
+| `connect`    | `@runbun/connect` (`packages/connect`): the local runner         | packages/connect/CHANGELOG.md |
 | `embed`      | `@runbun/embed` (`packages/embed`): `<bun-playground>`, the protocol | packages/embed/CHANGELOG.md |
 
-Three release lines, each a hand-written changelog drafted by git-cliff (Brewfile) from the trailers:
+Four release lines, each a hand-written changelog drafted by git-cliff (Brewfile) from the trailers:
 
 - **runbun** (every part but the packages'): version in the root `package.json`, `CHANGELOG.md`, `v<version>` tags;
   `moon run root:changelog` drafts the next section (`cliff.toml`). Pushing the tag runs
   `.github/workflows/release.yml`, which checks the tag and the section and creates the GitHub Release. Deploying
   runbun.dev and docs.runbun.dev stays a separate step.
-- **@runbun/astro** and **@runbun/embed**: `packages/<name>/package.json`, `packages/<name>/CHANGELOG.md`,
+- **@runbun/astro**, **@runbun/connect** and **@runbun/embed**: `packages/<name>/package.json`, `packages/<name>/CHANGELOG.md`,
   `<name>-v<version>` tags; `moon run <name>:changelog` (`packages/<name>/cliff.toml`). Pushing the tag runs
   `.github/workflows/publish-<name>.yml`, which publishes to npm over trusted publishing and creates the GitHub
   Release. Don't `npm publish` by hand.
