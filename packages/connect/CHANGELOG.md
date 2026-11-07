@@ -4,6 +4,25 @@ Notable changes per release of `@runbun/connect`, the local runner for runbun.de
 `connect-v<version>` and has a GitHub Release with its section. The runner talks to the playground over its own
 protocol (`src/protocol.ts`); the deployed runbun.dev and the runner from npm can differ in version.
 
+## 0.1.2 — 2026-11-07
+
+Security fixes from an audit of the runner: update before running projects from others (`bunx
+@runbun/connect@latest`). A sandboxed program could make the runner write or delete files outside its project, reach
+the runner's token, or start apps outside the sandbox on macOS, and a web page could serve its own script from the
+runner's address through the playground proxy. The sandbox and the terminal question stay as they were.
+
+- **Fixed** — **A program can't make the runner touch files outside its project.** A symlink left by one run could
+  redirect the next run's file writes and stale-file deletes to anywhere your user can write.
+- **Fixed** — **The runner's playground proxy stays on its upstream.** A request path starting with `//` made
+  `--playground <url>` fetch from another host and serve it from the runner's own address.
+- **Fixed** — **A program can't read the runner's token.** It could fetch it from the runner's own port and open a
+  connection of its own; macOS now blocks the port inside the sandbox, and on Linux the runner turns away connections
+  from its own runs.
+- **Fixed** — **A program on macOS can't open apps outside the sandbox.** `open` could launch Terminal or another app
+  with your user's rights.
+- **Fixed** — **Projects no longer share an install cache.** A project could plant packages that another project's
+  `bun install` would reuse.
+
 ## 0.1.1 — 2026-11-07
 
 A security fix: update before opening projects from others while the runner is on (`bunx @runbun/connect@latest`). A
