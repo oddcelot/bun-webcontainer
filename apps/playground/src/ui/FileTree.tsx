@@ -18,6 +18,8 @@ import type { Peek } from "./workspace";
 import { Tip } from "@runbun/ui/solid/Tip";
 
 const TREE_VARS_KEY = "tree-vars";
+/** How long a rename or delete stays undoable (ms). */
+const UNDO_FOR = 10_000;
 
 /** How every tree here looks (the project's and a peeked example's). */
 const TREE_LOOK = {
@@ -121,6 +123,21 @@ export function FileTree() {
   // Rename, delete and New file here, unless an embed is read-only.
   const editable = () => app.features?.has("edit") ?? true;
   const [deleting, setDeleting] = createSignal<string | null>(null);
+  /** The last rename or delete, undoable for a while: Undo in the notice under the tree, or Ctrl/Cmd+Z in it. */
+  const [undo, setUndo] = createSignal<{ label: string; run(): Promise<void> } | null>(null);
+  let undoTimer: ReturnType<typeof setTimeout> | undefined;
+  function offerUndo(label: string, run: () => Promise<void>) {
+    clearTimeout(undoTimer);
+    setUndo({ label, run });
+    undoTimer = setTimeout(() => setUndo(null), UNDO_FOR);
+  }
+  function runUndo() {
+    const u = undo();
+    if (!u) return;
+    clearTimeout(undoTimer);
+    setUndo(null);
+    void u.run();
+  }
   const [newFileAt, setNewFileAt] = createSignal("new.ts");
 
   const tree = new PierreTree({
@@ -133,7 +150,10 @@ export function FileTree() {
     // Inline, in the row (F2, or Rename in the menu): the tree moves the row, the VFS follows.
     renaming: {
       canRename: () => editable(),
-      onRename: ({ sourcePath, destinationPath }) => void app.renamePath(vfsPath(sourcePath), vfsPath(destinationPath)),
+      onRename: ({ sourcePath, destinationPath }) => {
+        const [from, to] = [vfsPath(sourcePath), vfsPath(destinationPath)];
+        void app.renamePath(from, to).then((run) => offerUndo(`Renamed ${from} to ${to}`, run));
+      },
       onError: (error) => app.log("warn", `[files] ${error}`),
     },
     onSelectionChange(paths) {
@@ -177,10 +197,17 @@ export function FileTree() {
     return actions;
   }
 
-  /** Delete (or Ctrl/Cmd+Backspace) on a focused row asks to delete it; not while renaming or searching. */
+  /**
+   * Delete (or Ctrl/Cmd+Backspace) on a focused row asks to delete it; Ctrl/Cmd+Z undoes the last rename or delete. Not
+   * while renaming or searching.
+   */
   function onKeyDown(e: KeyboardEvent) {
-    if (!(e.key === "Delete" || (e.key === "Backspace" && (e.metaKey || e.ctrlKey)))) return;
     if ((e.composedPath()[0] as HTMLElement).closest?.("input, textarea")) return;
+    if (e.key.toLowerCase() === "z" && (e.metaKey || e.ctrlKey) && !e.shiftKey && undo()) {
+      e.preventDefault();
+      return runUndo();
+    }
+    if (!(e.key === "Delete" || (e.key === "Backspace" && (e.metaKey || e.ctrlKey)))) return;
     const path = tree.getFocusedPath();
     if (!path || !editable()) return;
     e.preventDefault();
@@ -302,6 +329,16 @@ export function FileTree() {
         onSubmit={(name) => app.newFile(name)}
         returnFocus={() => button}
       />
+      <Show when={undo()}>
+        {(u) => (
+          <div class="tree-undo" role="status">
+            <span class="label">{u().label}</span>
+            <button type="button" onClick={runUndo}>
+              Undo
+            </button>
+          </div>
+        )}
+      </Show>
       <Dialog open={deleting() !== null} onOpenChange={(open) => open || setDeleting(null)}>
         <Show when={deleting()}>
           {(path) => (
@@ -311,7 +348,7 @@ export function FileTree() {
                 {path().endsWith("/")
                   ? `The folder and the ${fileCount(path())} ${fileCount(path()) === 1 ? "file" : "files"} in it are deleted.`
                   : "The file is deleted."}{" "}
-                This can't be undone.
+                Undo brings it back for a few seconds after.
               </DialogDescription>
               <DialogActions>
                 <DialogClose>Cancel</DialogClose>
@@ -320,7 +357,7 @@ export function FileTree() {
                   onClick={() => {
                     const row = path();
                     setDeleting(null);
-                    void app.removePath(vfsPath(row));
+                    void app.removePath(vfsPath(row)).then((run) => offerUndo(`Deleted ${vfsPath(row)}`, run));
                   }}
                 >
                   Delete

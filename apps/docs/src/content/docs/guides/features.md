@@ -12,7 +12,7 @@ sidebar:
 ## Editor and files
 
 - Syntax-highlighted editor with themes and light/dark mode
-- File tree with search and a "New file" button. Right-click a file or folder (or use its ⋯ button) to **rename** or **delete** it, or to add a file to a folder. <kbd>F2</kbd> renames the focused row in place; <kbd>Delete</kbd> (or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Backspace</kbd>) deletes it after asking. Open tabs follow a rename and close when their file is deleted; with Watch on, either restarts the program.
+- File tree with search and a "New file" button. Right-click a file or folder (or use its ⋯ button) to **rename** or **delete** it, or to add a file to a folder. <kbd>F2</kbd> renames the focused row in place; <kbd>Delete</kbd> (or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Backspace</kbd>) deletes it after asking. Open tabs follow a rename and close when their file is deleted; with Watch on, either restarts the program. For ten seconds after, **Undo** under the tree (or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Z</kbd> in the tree) brings a deleted file or folder back, tabs included, or moves a renamed one back. In an opened folder, both reach the folder on disk.
 - Tabs for open files: close with the × button, <kbd>Delete</kbd>, or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>W</kbd>
 - **Auto-save** (on by default): edits are saved a moment after you stop typing. Switch it off with the save icon next to Run (in an embed, the tab bar's Auto-save switch) to save with <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>S</kbd> instead; unsaved tabs show a dot, and Run, Install, `bun test` and Share save everything first. The setting applies to every project and every open playground tab.
 - **Format** (top right of the code while the pointer is over it, or <kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd>) formats the open file with `bun fmt`, as one undoable edit (see [Toolchain](/compatibility/toolchain/#formatter-bun-fmt))
@@ -42,6 +42,7 @@ Very large files are slow, because every line is rendered.
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>W</kbd>, <kbd>Delete</kbd> | Close the focused tab |
 | <kbd>F2</kbd> | Rename the focused file or folder in the file tree |
 | <kbd>Delete</kbd>, <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Backspace</kbd> | Delete the focused file or folder in the file tree (asks first) |
+| <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Z</kbd> (in the file tree) | Undo the last rename or delete |
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>B</kbd> | Show or hide the file tree |
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>J</kbd> | Show or hide the console |
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>K</kbd> | Show or hide the preview |

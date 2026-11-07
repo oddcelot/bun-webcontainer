@@ -179,23 +179,43 @@ export function createPlayground({ watch }: { watch?: () => boolean } = {}) {
 
   /**
    * Moves a file, or a folder with everything in it, as the file tree's rename does. Unsaved edits are saved first and
-   * go with it; open tabs follow it. Counts as a save the reader made, so Watch restarts the program.
+   * go with it; open tabs follow it. Counts as a save the reader made, so Watch restarts the program. Returns the undo:
+   * the move back, unless something has taken the old path since.
    */
-  async function renamePath(from: string, to: string) {
+  async function renamePath(from: string, to: string): Promise<() => Promise<void>> {
     await session.started;
     workspace.saveAll();
     // Before the move: its events close the tabs of paths that no longer exist.
     workspace.rename(from, to);
     vfs.rename(from, to);
     workspace.markSaved();
+    return async () => {
+      if (vfs.exists(from)) return log("warn", `[files] can't undo the rename: ${from} exists again`);
+      await renamePath(to, from);
+    };
   }
 
-  /** Deletes a file, or a folder with everything in it (their tabs close); like a save for Watch. */
-  async function removePath(path: string) {
+  /**
+   * Deletes a file, or a folder with everything in it (their tabs close); like a save for Watch. Returns the undo: the
+   * files back as they were (but those written again since), their tabs open again.
+   */
+  async function removePath(path: string): Promise<() => Promise<void>> {
     await session.started;
     workspace.saveAll();
-    vfs.remove(path);
+    const p = path.replace(/\/$/, "");
+    const gone = [...vfs.files].filter(([k]) => k === p || k.startsWith(`${p}/`));
+    const paths = new Set(gone.map(([k]) => k));
+    const tabs = workspace.state.open.filter((t) => paths.has(t));
+    const active = workspace.state.active;
+    vfs.remove(p);
     workspace.markSaved();
+    return async () => {
+      await session.started;
+      for (const [k, data] of gone) if (!vfs.files.has(k)) vfs.write(k, data);
+      for (const t of tabs) workspace.open(t);
+      if (active && tabs.includes(active)) workspace.activate(active);
+      workspace.markSaved();
+    };
   }
 
   /** Like StackBlitz: install on load when a dependency is missing from node_modules. */
