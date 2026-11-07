@@ -39,6 +39,12 @@ bun test.ts [secret]    # end-to-end: access checks, native APIs, sandbox, previ
   Safari *run* code, which runbun.dev can't do today. The same setup avoids Chrome's Local Network Access
   prompt in every browser. The cost: a different origin, so projects saved on runbun.dev (IndexedDB) aren't
   visible there.
+- Safari through a localhost reverse proxy of runbun.dev, in detail: Safari 27.2 registers the playground's
+  `sw.js`, which controls the page after a reload and answers `/__vfs/`; Run stays disabled (no Memory64).
+  Safari Technology Preview (Version/27.0) *has* Memory64: it runs the playground natively, on runbun.dev
+  and through the proxy (`bun install` and Elysia start). So the docs' "Safari Technology Preview: edit
+  only" (`compatibility/browsers.md`) is out of date; it is only the local runner that TP can't reach from
+  runbun.dev.
 
 ## Not done
 
