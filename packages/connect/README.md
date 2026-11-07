@@ -61,6 +61,8 @@ With a runner, the header shows a **Local Bun** toggle: pressed, runs go to nati
 (it installs node_modules in the page first). A running program starts again on the other side; the choice is kept in
 localStorage. If the runner stops, runs move to the browser and the toggle greys out. `?connect=` waits for Chrome's
 local-network permission prompt instead of giving up, and says in the console when it can't reach the runner.
+Someone else's code (a share link, `?repo=`) opens in the browser whatever the saved choice; Local Bun then asks before
+running it natively, once per page. Where the browser can't run code (stable Safari), Run, Install and Test ask instead.
 
 Checked by hand: stable Safari 27.2 (no Memory64) runs the Elysia example with its preview. In Chrome also JSON, POST
 bodies, 404s, a redirect with an HttpOnly cookie, and Stop (the native process and its port are gone). Without a

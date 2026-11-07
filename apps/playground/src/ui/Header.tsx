@@ -12,6 +12,8 @@ import { ThemePicker } from "./ThemePicker";
 import { Title } from "./Title";
 import { Menu, MenuItem, MenuTrigger } from "@runbun/ui/solid/Menu";
 import { Tip } from "@runbun/ui/solid/Tip";
+import { Button } from "@runbun/ui/solid/Button";
+import { Dialog, DialogActions, DialogClose, DialogDescription, DialogTitle } from "@runbun/ui/solid/Dialog";
 
 const CANT_RUN = "This browser can't run code here";
 
@@ -37,16 +39,33 @@ function LocalBunToggle(props: { rt: NonNullable<App["runtime"]> }) {
     return on() ? `Runs go to ${native()}. Click to run in the browser instead.` : `Runs go to the in-browser runtime. Click to run with ${native()}.`;
   };
   return (
-    <Tip
-      id="local-bun"
-      aria-pressed={on() ? "true" : "false"}
-      data-state={rt.local()}
-      disabled={rt.local() !== "connected" || !rt.browserOk}
-      tip={tip()}
-      onClick={() => void rt.switchTo(on() ? "browser" : "local")}
-    >
-      <i class={rt.local() === "lost" ? "i-lucide-unplug" : "i-lucide-cpu"} aria-hidden="true" /> Local Bun
-    </Tip>
+    <>
+      <Tip
+        id="local-bun"
+        aria-pressed={on() ? "true" : "false"}
+        data-state={rt.local()}
+        disabled={rt.local() !== "connected" || !rt.browserOk}
+        tip={tip()}
+        onClick={() => void rt.switchTo(on() ? "browser" : "local")}
+      >
+        <i class={rt.local() === "lost" ? "i-lucide-unplug" : "i-lucide-cpu"} aria-hidden="true" /> Local Bun
+      </Tip>
+      {/* Someone else's project (a share link, a GitHub repo) runs natively only once the reader agrees (boot.ts). */}
+      <Dialog open={rt.asking() !== undefined} onOpenChange={(open) => !open && rt.answer(false)}>
+        <DialogTitle>Run {rt.asking()} on this machine?</DialogTitle>
+        <DialogDescription>
+          It's someone else's code. With Local Bun it runs as a real program on your computer, sandboxed: it can't read
+          your home folder or write outside the project, but it can use the network, including other services on this
+          machine and your local network.{rt.browserOk ? " In the browser it can reach neither." : ""}
+        </DialogDescription>
+        <DialogActions>
+          <DialogClose>{rt.browserOk ? "Keep it in the browser" : "Don't run it"}</DialogClose>
+          <Button primary onClick={() => rt.answer(true)}>
+            Run on this machine
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
   );
 }
 

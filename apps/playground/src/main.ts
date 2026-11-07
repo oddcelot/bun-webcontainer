@@ -122,7 +122,9 @@ async function reset() {
   location.reload();
 }
 
-await pg.start({ reset });
+// Someone else's code: native Bun on this machine runs it only once the reader agrees (boot.ts, mayRunNative).
+const from = isShareLink(location.hash) ? "this shared project" : repo ? `${repoQuery(repo)} from GitHub` : undefined;
+await pg.start({ reset, from });
 
 /** Deletes a saved project; this page's own reloads from its source, like `reset`. */
 async function removeProject(id: string) {
