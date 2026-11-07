@@ -384,18 +384,15 @@ header button:not(.select-trigger), #docs, #clear, #request button { display: in
 #run { border-radius: 6px 0 0 6px; }
 #run-more { display: grid; place-items: center; margin-left: -1px; padding: 0 6px; border-radius: 0 6px 6px 0; }
 /* Local Bun: pressed, runs go to native Bun on this machine; off reads muted, as the save toggles do. */
+/* Without a runner it opens the setup dialog, so it reads as a plain button there, not as a toggle that's off. */
 #local-bun {
-  &[aria-pressed="false"] {
+  &[data-state="connected"][aria-pressed="false"],
+  &[data-state="connecting"] {
     color: var(--muted);
   }
 
   &[data-state="connected"][aria-pressed="true"] > i {
     color: var(--accent);
-  }
-
-  &[data-state="lost"],
-  &[data-state="connecting"] {
-    color: var(--muted);
   }
 }
 /* Auto-save and Watch: two icon toggles joined like Run's pair; off reads muted. */
@@ -1408,3 +1405,71 @@ body:has(#req-handle[data-dragging]) * {
 .canary-badge a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .canary-badge button { width: 22px; height: 22px; border: 0; border-radius: 999px; background: none; color: inherit; font: inherit; font-size: 15px; line-height: 1; cursor: pointer; }
 .canary-badge button:hover { background: rgba(0, 0, 0, 0.12); }
+/* The Local Bun button's setup dialog (ui/LocalBunSetup.tsx): the steps, the command to copy, the link to paste. */
+.dialog.local-bun-setup {
+  width: min(34rem, calc(100vw - 2rem));
+
+  .segmented {
+    margin-top: 12px;
+  }
+
+  ol {
+    margin: 12px 0;
+    padding-left: 1.4em;
+    display: grid;
+    gap: 10px;
+  }
+
+  code {
+    font-family: var(--font-mono);
+    font-size: 0.92em;
+  }
+
+  .command {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 6px 0;
+
+    > code {
+      flex: 1;
+      padding: 6px 8px;
+      border: 1px solid var(--control-border);
+      border-radius: 6px;
+      background: var(--control);
+      user-select: all;
+    }
+
+    > button {
+      display: grid;
+      place-items: center;
+      align-self: stretch;
+    }
+  }
+
+  form {
+    display: grid;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+
+  .paste {
+    display: flex;
+    gap: 6px;
+
+    > input {
+      flex: 1;
+      min-width: 0;
+    }
+  }
+
+  .error {
+    margin: 0;
+    color: var(--error);
+  }
+
+  .note {
+    color: var(--muted);
+    font-size: 0.92em;
+  }
+}

@@ -19,7 +19,7 @@ You need [Bun](https://bun.sh) 1.3 or later installed, and on Linux [bubblewrap]
 bunx @runbun/connect --open
 ```
 
-This opens the playground at `http://127.0.0.1:7357/`, served by the runner. The header now has a **Local Bun** button:
+This opens the playground at `http://127.0.0.1:7357/`, served by the runner. The header's **Local Bun** button, which on runbun.dev opens these steps, now switches where runs go:
 
 - **Pressed**: Run, `bun install` and `bun test` go to Bun on your machine. The console says which version and sandbox, and the output of the native program shows there. The preview works as before.
 - **Not pressed**: runs stay in the browser, as without the runner.
@@ -30,7 +30,7 @@ Projects saved on runbun.dev don't show up at `127.0.0.1:7357`: browsers keep ea
 
 ## From runbun.dev
 
-The runner also prints a `https://runbun.dev/?connect=…` link. It opens runbun.dev itself (with your saved projects) connected to the runner.
+The runner also prints a `https://runbun.dev/?connect=…` link. It opens runbun.dev itself (with your saved projects) connected to the runner; pasting it into the **Local Bun** dialog on an open page does the same.
 
 - Chrome asks whether runbun.dev may access devices on your local network. Allow it; the console says when the playground is waiting for that.
 - Firefox connects without asking.
