@@ -4,8 +4,13 @@
 
 export const PROTOCOL_VERSION = 1;
 
-/** Over `window.postMessage`, before the port exists (host -> editor, then editor -> host with the port). */
-export type HandshakeMessage = { kind: "host-ready"; id: string } | { kind: "host-error"; message: string } | { kind: "connect" };
+/**
+ * Over `window.postMessage`, before the port exists (host -> editor, then editor -> host with the port).
+ * `host-ready.isolated`: whether the host frame is cross-origin isolated (SharedArrayBuffer, Atomics.wait for its Worker).
+ * Not so when an embedder did not delegate `cross-origin-isolated` or is not isolated itself; the editor then keeps package
+ * files in memory instead of the store (a lazy read would block for ever). Absent (an older host) means not isolated.
+ */
+export type HandshakeMessage = { kind: "host-ready"; id: string; isolated?: boolean } | { kind: "host-error"; message: string } | { kind: "connect" };
 
 /** Over the MessagePort, editor -> host. `w` carries the Worker's ports in its transfer list, `fetch` a reply port. */
 export type ToHost =

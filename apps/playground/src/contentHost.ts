@@ -40,6 +40,10 @@ export const onHost = (fn: (h: Host) => void) => void hostListeners.add(fn);
 let onLost: ((reason: string) => void) | undefined;
 export const whenLost = (fn: typeof onLost) => void (onLost = fn);
 
+/** Whether the current host frame is cross-origin isolated (its handshake); false until one is ready. */
+let hostIsolated = false;
+export const isHostIsolated = () => hostIsolated;
+
 /** What the host last reported (its Worker count), for the dev check that Stop and Run leave none behind. */
 let lastWorkers = 0;
 if (import.meta.env.DEV) (globalThis as any).__runbunHost = { workers: () => lastWorkers, editorWorkers: () => workers.size };
@@ -129,6 +133,7 @@ function startHost(): Promise<Host> {
       }, PING_INTERVAL);
       frame.contentWindow!.postMessage(envelope<HandshakeMessage>({ kind: "connect" }), CONTENT_ORIGIN!, [port2]);
       settled = true;
+      hostIsolated = (e.data as { isolated?: boolean }).isolated === true;
       const h = { id: (e.data as { id: string }).id, port: port1 };
       resolve(h);
       for (const fn of hostListeners) fn(h);

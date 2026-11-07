@@ -4,6 +4,7 @@ import { fetchTarball } from "./pkgCache";
 import { bucket } from "./storage";
 import { CONTENT_ORIGIN } from "./contentOrigin";
 import type { ToHost } from "./contentProtocol";
+import { isHostIsolated } from "./contentHost";
 
 /**
  * Large installed files, kept out of memory. A program reads few of an install's files, and the large ones hold
@@ -33,9 +34,12 @@ const askHost = async <T>(m: ToHost, transfer: Transferable[] = []): Promise<T> 
   return res;
 };
 
-// The editor page's own check also stands for the host frame's (the same headers, and the frame is allowed to be isolated).
+// With a content origin it is the host frame that must be isolated (it says so in its handshake): the Worker blocks there.
+// An embedder that doesn't delegate `cross-origin-isolated`, or isn't isolated itself, leaves it not, and files stay in memory.
 const enabled = () =>
-  typeof SharedArrayBuffer === "function" && (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated === true && (remote || !!navigator.storage?.getDirectory);
+  remote
+    ? isHostIsolated()
+    : typeof SharedArrayBuffer === "function" && (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated === true && !!navigator.storage?.getDirectory;
 
 type File = { name: string; data: Uint8Array };
 

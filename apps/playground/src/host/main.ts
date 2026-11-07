@@ -156,7 +156,7 @@ whoami().then(
   (id) => {
     myId = id;
     started = true;
-    window.parent.postMessage(envelope<HandshakeMessage>({ kind: "host-ready", id }), EDITOR);
+    window.parent.postMessage(envelope<HandshakeMessage>({ kind: "host-ready", id, isolated: crossOriginIsolated === true && typeof SharedArrayBuffer === "function" }), EDITOR);
   },
   (err) => window.parent.postMessage(envelope<HandshakeMessage>({ kind: "host-error", message: String(err) }), EDITOR),
 );
