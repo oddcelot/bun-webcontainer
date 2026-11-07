@@ -22,6 +22,11 @@ const HANDSHAKE_TIMEOUT = 20_000;
 const PING_INTERVAL = 3_000;
 const PING_MISSES = 3;
 
+/** How long a request to the host frame (fetch) may take: the service worker answers within 30s, so this is for a host that went quiet. */
+const ASK_TIMEOUT = 45_000;
+/** What fails each request still waiting for the host frame, with why: the frame was lost. */
+const asking = new Set<(reason: string) => void>();
+
 let host: Promise<Host> | undefined;
 let nextGen = 0;
 const workers = new Map<number, HostWorker>();
@@ -79,6 +84,7 @@ function startHost(): Promise<Host> {
         return;
       }
       host = undefined;
+      for (const fail of [...asking]) fail(reason);
       for (const w of [...workers.values()]) w.lost(reason);
       onLost?.(reason);
     };
@@ -179,16 +185,39 @@ export function spawnWorker(h: Host): Worker {
   return new HostWorker(h.port) as unknown as Worker;
 }
 
+/**
+ * A request to the host frame that it answers on a reply port. Rejects when the host doesn't answer in `timeout` ms,
+ * or is lost meanwhile (the heartbeat above), instead of waiting for ever.
+ */
+function ask<T>(port: MessagePort, m: ToHost, transfer: Transferable[], timeout = ASK_TIMEOUT): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const { port1, port2 } = new MessageChannel();
+    const done = () => {
+      clearTimeout(timer);
+      asking.delete(fail);
+      port1.close();
+    };
+    const fail = (reason: string) => {
+      done();
+      reject(new Error(`the content host did not answer: ${reason}`));
+    };
+    const timer = setTimeout(() => fail(`no reply within ${timeout / 1000}s`), timeout);
+    asking.add(fail);
+    port1.onmessage = (e) => {
+      done();
+      resolve(e.data);
+    };
+    port1.onmessageerror = () => fail("its reply could not be read");
+    send(port, m, [port2, ...transfer]);
+  });
+}
+
 /** `fetch` of a path on the content origin, made by the host frame (its service worker doesn't control the editor). */
 export async function fetchContent(path: string, init: RequestInit): Promise<Response> {
   const { port } = await connectHost();
   const req = new Request(new URL(path, CONTENT_ORIGIN), init);
   const body = req.body ? await req.arrayBuffer() : null;
-  const { port1, port2 } = new MessageChannel();
-  const answer = new Promise<any>((r) => (port1.onmessage = (e) => r(e.data)));
-  send(port, { kind: "fetch", url: req.url, method: req.method, headers: [...req.headers], body }, [port2, ...(body ? [body] : [])]);
-  const res = await answer;
-  port1.close();
+  const res = await ask<any>(port, { kind: "fetch", url: req.url, method: req.method, headers: [...req.headers], body }, body ? [body] : []);
   if (res.error) throw new TypeError(res.error);
   return new Response([101, 204, 205, 304].includes(res.status) ? null : res.body, { status: res.status, statusText: res.statusText, headers: res.headers });
 }
