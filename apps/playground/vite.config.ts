@@ -21,6 +21,26 @@ const isolation = {
 const contentOrigin = !!process.env.VITE_CONTENT_ORIGIN;
 const served = contentOrigin ? { ...isolation, "Cross-Origin-Resource-Policy": "cross-origin" } : isolation;
 
+/**
+ * With a content origin: each origin is its own agent cluster (Origin-Agent-Cluster), and the content origin, which hosts
+ * other people's pages, stays out of search indexes. The dev server answers as both, told apart by the Host header.
+ * Production sets the same in public/_headers.
+ */
+function originHeaders(): Plugin {
+  const host = contentOrigin ? new URL(process.env.VITE_CONTENT_ORIGIN!).host : "";
+  const set = (req: { headers: { host?: string } }, res: { setHeader(k: string, v: string): void }, next: () => void) => {
+    res.setHeader("Origin-Agent-Cluster", "?1");
+    if (req.headers.host === host) res.setHeader("X-Robots-Tag", "noindex");
+    next();
+  };
+  return {
+    name: "origin-headers",
+    apply: () => contentOrigin,
+    configureServer: (server) => void server.middlewares.use(set),
+    configurePreviewServer: (server) => void server.middlewares.use(set),
+  };
+}
+
 const require = createRequire(import.meta.url);
 const browserDist = require.resolve("@rolldown/browser/package.json").replace(/package\.json$/, "dist/");
 
@@ -175,7 +195,7 @@ export default defineConfig(({ mode }) => ({
     // CANARY=1 (playground:deploy-canary) shows the canary badge (src/canary.ts).
     "import.meta.env.CANARY": JSON.stringify(process.env.CANARY === "1"),
   },
-  plugins: [UnoCSS(), solid(), hostPackageNames(), emnapiNotNode(), docsLink(docsUrl(mode)), embedRoutes(), serviceWorker()],
+  plugins: [UnoCSS(), solid(), hostPackageNames(), emnapiNotNode(), docsLink(docsUrl(mode)), embedRoutes(), originHeaders(), serviceWorker()],
   build: {
     target: "esnext",
     rollupOptions: {

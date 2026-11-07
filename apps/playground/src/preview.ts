@@ -14,7 +14,7 @@ export function setPreviewOwner(clientId: string) {
   PREFIX = `${BASE}__preview/@${clientId}`;
 }
 
-// Added by sw.ts to every preview response, not sent by the user's server.
+// Added by sw.ts to every preview response (x-robots-tag too on the content origin), not sent by the user's server.
 const SW_HEADERS = new Set(["cross-origin-embedder-policy", "cross-origin-resource-policy"]);
 
 export const normalize = (p: string) => (p.startsWith("/") ? p : `/${p}`);
@@ -56,7 +56,7 @@ export async function sendRequest(method: string, req: Built): Promise<"page" | 
   const type = res.headers.get("content-type") ?? "";
   if (method === "GET" && type.startsWith("text/html")) return "page";
   const head = [...res.headers]
-    .filter(([k]) => !SW_HEADERS.has(k))
+    .filter(([k]) => !SW_HEADERS.has(k) && !(CONTENT_ORIGIN && k === "x-robots-tag"))
     .map(([k, v]) => `${k}: ${v}`)
     .join("\n");
   return { ok: res.ok, line: `${method} ${path}`, status: `${res.status} ${res.statusText}`.trim(), head, type, text: pretty(type, await res.text()) };

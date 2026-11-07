@@ -156,6 +156,8 @@ function isolated(init: ResponseInit): ResponseInit {
   const headers = new Headers(init.headers);
   headers.set("cross-origin-embedder-policy", "credentialless");
   headers.set("cross-origin-resource-policy", CONTENT ? "cross-origin" : "same-origin");
+  // The content origin hosts other people's pages: not for search engines (the server's own headers can't reach these).
+  if (CONTENT) headers.set("x-robots-tag", "noindex");
   return { ...init, headers };
 }
 
@@ -400,7 +402,7 @@ function strangerToPreview(req: Request, url: URL): boolean {
 const forbidden = () =>
   new Response(`<!doctype html><meta charset="utf-8"><title>Blocked</title><p>This preview can only be opened from the playground. <a href="${BASE}">Open the playground</a>.</p>`, {
     status: 403,
-    headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+    headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", ...(CONTENT && { "x-robots-tag": "noindex" }) },
   });
 
 self.addEventListener("fetch", (e) => {
