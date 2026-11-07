@@ -14,7 +14,8 @@ bun test.ts [secret]    # end-to-end: access checks, native APIs, sandbox, previ
   (`HOME`/`TMPDIR` inside the dir, `PORT` for `Bun.serve`). stdout/stderr stream back; stdin and kill go in.
 - **Sandbox**: Linux `bwrap` (root read-only, `/home` `/root` `/tmp` empty, the project dir the only writable
   bind, `--unshare-all --share-net`); macOS `sandbox-exec` (writes only to the project, home unreadable apart
-  from the Bun binary); elsewhere none, reported in `hello`.
+  from the Bun binary). Without either (Windows, Linux without bwrap) the CLI refuses to start unless given
+  `--no-sandbox`; the sandbox in use is reported in `hello`.
 - **Preview**: `/preview/<token>/<run>/…` proxies to the run's `Bun.serve`, with CORS for the allowed origins
   and CORP/COEP so the cross-origin-isolated playground can frame it.
 
