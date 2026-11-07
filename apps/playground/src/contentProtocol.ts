@@ -35,6 +35,7 @@ export type ToHost =
    * `store-read` answers `{ buf }` with `size` bytes at `at` of entry `key`; `store-info` `{ entries, bytes }`;
    * `store-clear` `{}`. A failure is answered `{ error }`. No message carries shared memory.
    */
+  /** `store-put` answers `{ warning }` when the write failed twice and the host holds the entry in memory instead. */
   | { kind: "store-put"; key: string; url: string; buf: ArrayBuffer }
   | { kind: "store-read"; key: string; url: string; at: number; size: number }
   | { kind: "store-info" }

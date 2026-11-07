@@ -41,6 +41,14 @@ const enabled = () =>
     ? isHostIsolated()
     : typeof SharedArrayBuffer === "function" && (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated === true && !!navigator.storage?.getDirectory;
 
+/** Told when the store could not do what it was asked (a failed put): boot.ts shows it in the console. */
+let onProblem: ((message: string) => void) | undefined;
+export const reportStoreProblems = (fn: typeof onProblem) => void (onProblem = fn);
+const problem = (message: string) => (onProblem ? onProblem(message) : console.error(`[store] ${message}`));
+
+/** Entries the store could not keep, held in memory (a failed write on the host, or a put that failed twice in the editor). */
+const memory = new Map<string, Uint8Array>();
+
 type File = { name: string; data: Uint8Array };
 
 /** The store entry's name for a tarball URL. */
@@ -89,7 +97,22 @@ async function put(key: string, url: string, parts: Uint8Array[], size: number) 
     all.set(p, at);
     at += p.byteLength;
   }
-  await askHost({ kind: "store-put", key, url, buf }, [buf]);
+  // The buffer is transferred, so a retry needs its own copy; the editor keeps it for good if the retry fails too.
+  const spare = buf.slice(0);
+  const send = async (b: ArrayBuffer) => {
+    const res = await askHost<{ warning?: string }>({ kind: "store-put", key, url, buf: b }, [b]);
+    if (res.warning) problem(res.warning);
+  };
+  try {
+    await send(buf);
+  } catch (first) {
+    try {
+      await send(spare.slice(0));
+    } catch (second) {
+      memory.set(key, new Uint8Array(spare));
+      problem(`could not store package files (${second instanceof Error ? second.message : second}); they stay in the editor's memory, and a program reading them may fail`);
+    }
+  }
 }
 
 async function write(key: string, parts: Uint8Array[], size: number) {
@@ -99,9 +122,13 @@ async function write(key: string, parts: Uint8Array[], size: number) {
   const w = await (await d.getFileHandle(key, { create: true })).createWritable();
   try {
     for (const p of parts) await w.write(p.slice() as FileSystemWriteChunkType);
-  } finally {
-    await w.close();
+  } catch (e) {
+    // A write that fails (quota) leaves nothing half-written for a read to trust.
+    await w.abort().catch(() => {});
+    await d.removeEntry(key).catch(() => {});
+    throw e;
   }
+  await w.close();
   void prune().catch(() => {});
 }
 
@@ -147,6 +174,13 @@ async function rebuild(key: string): Promise<Uint8Array> {
 /** A lazy file's bytes, read into `into` (shared memory, so the page can keep it and hand it to workers). */
 async function readLazy(ref: LazyData, into?: Uint8Array): Promise<Uint8Array> {
   await writing.get(ref.lazy);
+  const held = memory.get(ref.lazy);
+  if (held && held.byteLength >= ref.at + ref.size) {
+    const bytes = held.subarray(ref.at, ref.at + ref.size);
+    if (!into) return bytes.slice();
+    into.set(bytes);
+    return into;
+  }
   if (remote) {
     const { buf } = await askHost<{ buf: ArrayBuffer }>({ kind: "store-read", key: ref.lazy, url: sources.get(ref.lazy) ?? "", at: ref.at, size: ref.size });
     return new Uint8Array(buf);
@@ -202,6 +236,7 @@ export async function storeInfo(): Promise<{ entries: number; bytes: number }> {
 
 /** Empties the store. Files of this page's installs come back from their tarballs when read. */
 export async function clearStore() {
+  memory.clear();
   if (remote) return void (await askHost({ kind: "store-clear" }).catch(() => {}));
   if (!navigator.storage?.getDirectory) return;
   const root = await (await bucket("pkg-cache", { durability: "relaxed" })).getDirectory();
@@ -216,9 +251,16 @@ export async function answerStore(m: Extract<ToHost, { kind: `store-${string}` }
     if (m.kind === "store-put") {
       if (m.url) sources.set(m.key, m.url);
       if (!writing.has(m.key)) {
-        const done = write(m.key, [new Uint8Array(m.buf)], m.buf.byteLength);
+        const bytes = new Uint8Array(m.buf);
+        // One more try, then the entry is kept in this frame's memory: the Worker's reads still find it.
+        const done = write(m.key, [bytes], bytes.byteLength).catch(() => write(m.key, [bytes], bytes.byteLength));
         writing.set(m.key, done.catch(() => {}).finally(() => writing.delete(m.key)));
-        await done;
+        try {
+          await done;
+        } catch (e) {
+          memory.set(m.key, bytes);
+          return { warning: `the package store could not write ${m.key} (${e instanceof Error ? e.message : e}); its files stay in memory` };
+        }
       } else await writing.get(m.key);
       return {};
     }

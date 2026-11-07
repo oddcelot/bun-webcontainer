@@ -2,7 +2,7 @@ import { createEffect, createRoot, createSignal } from "solid-js";
 import { BASE } from "./base";
 import { createConsole } from "./console";
 import { CHECKED, diagnose } from "./diagnostics";
-import { attachStore } from "./pkgStore";
+import { attachStore, reportStoreProblems } from "./pkgStore";
 import { bunInstall } from "./install";
 import { Runner } from "./runner";
 import { RemoteRunner } from "./remoteRunner";
