@@ -20,7 +20,10 @@ bun test.ts [secret]    # end-to-end: access checks, native APIs, sandbox, previ
   (`HOME`/`TMPDIR` inside the dir, `PORT` for `Bun.serve`). stdout/stderr stream back; stdin and kill go in.
 - **Sandbox**: Linux `bwrap` (root read-only, `/home` `/root` `/tmp` empty, the project dir the only writable
   bind, `--unshare-all --share-net`); macOS `sandbox-exec` (writes only to the project, home unreadable apart
-  from the Bun binary). Without either (Windows, Linux without bwrap) the CLI refuses to start unless given
+  from the Bun binary; connecting to the runner's own port is denied, so the program can't fetch the token from
+  `/__connect/info`). On Linux that port stays reachable (bwrap shares the host network and can't filter by port),
+  so a program there can still read the token and drive the runner; the terminal approval is the only guard.
+  Without either (Windows, Linux without bwrap) the CLI refuses to start unless given
   `--no-sandbox`; the sandbox in use is reported in `hello`.
 - **Limits**: a watchdog kills a run's whole process tree (its own process group) past `--max-memory` (default 2048
   MB, all its processes together) or `--max-processes` (64). Stop kills the children too, not only Bun.

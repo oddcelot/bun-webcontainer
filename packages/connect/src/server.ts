@@ -311,7 +311,7 @@ export function startRunner(opts: RunnerOptions = {}) {
 
   /** Runs `bun <args>` in dir, streaming its output; resolves with its exit. */
   async function spawn(ws: Socket, id: string, run: Run, dir: string, args: string[]) {
-    const proc = Bun.spawn(sandboxed(sandbox, dir, args, [cache]), {
+    const proc = Bun.spawn(sandboxed(sandbox, dir, args, [cache], server.port), {
       cwd: dir,
       // A clean environment: none of the user's tokens or keys. Bun.serve() with no port listens on $PORT.
       env: {

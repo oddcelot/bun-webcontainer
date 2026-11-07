@@ -98,6 +98,15 @@ try {
   check(`writing outside the project ${confined ? "doesn't reach" : "reaches"} the host`, confined !== existsSync(escape), JSON.stringify(j));
   check("writing inside the project works", j.writeProject === "allowed", JSON.stringify(j) + jail.err);
 
+  // The runner's own port (it serves the token at /__connect/info) is closed to the program where the sandbox can do that.
+  const reach = await run(ws, "reach", {
+    "index.ts": `const t = async (h: string) => fetch("http://" + h + ":${port}/__connect/info").then((r) => r.status, () => "blocked");
+      console.log(JSON.stringify([await t("127.0.0.1"), await t("localhost"), await t("[::1]")]));`,
+  });
+  const reached = JSON.parse(reach.out.trim().split("\\n").at(-1) || "[]") as unknown[];
+  if (r.sandbox === "sandbox-exec") check("the program can't reach the runner's port", reached.length === 3 && reached.every((x) => x === "blocked"), reach.out + reach.err);
+  else console.log(`skip the runner's port is closed to the program (${r.sandbox}: not filterable)`);
+
   // Bun.serve in the run, reached through the runner's preview proxy.
   let body = "";
   const served = await run(

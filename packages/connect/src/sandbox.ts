@@ -14,8 +14,11 @@ export function detectSandbox(): SandboxKind {
   return "none";
 }
 
-/** The argv that runs `bun <args>` inside `dir` under the given sandbox; `dir` and `extra` are writable. */
-export function sandboxed(kind: SandboxKind, dir: string, bunArgs: string[], extra: string[] = []): string[] {
+/**
+ * The argv that runs `bun <args>` inside `dir` under the given sandbox; `dir` and `extra` are writable. `runnerPort` is
+ * the runner's own loopback port: the token is served there (/__connect/info), so on macOS the program can't connect to it.
+ */
+export function sandboxed(kind: SandboxKind, dir: string, bunArgs: string[], extra: string[] = [], runnerPort?: number): string[] {
   const bun = realpathSync(process.execPath);
   if (kind === "bwrap") {
     // The whole root read-only, then every home hidden behind an empty tmpfs; the project is the only bind
@@ -32,6 +35,8 @@ export function sandboxed(kind: SandboxKind, dir: string, bunArgs: string[], ext
       "--dev", "/dev",
       "--proc", "/proc",
       "--unshare-all",
+      // The network is shared with the host, loopback included, so a program can still reach the runner's port
+      // (and its token): bwrap has no per-port filter. See NOTES.md.
       "--share-net",
       "--die-with-parent",
       "--new-session",
@@ -51,6 +56,7 @@ export function sandboxed(kind: SandboxKind, dir: string, bunArgs: string[], ext
 (deny file-read* (subpath ${q(home)}))
 (allow file-read* (subpath ${q(dirname(bun))}))
 (allow file-read-metadata (literal ${q(home)}) (literal ${q(dirname(home))}))
+${runnerPort ? `(deny network-outbound (remote ip "localhost:${runnerPort}"))` : ""}
 `;
     return ["sandbox-exec", "-p", profile, bun, ...bunArgs];
   }
