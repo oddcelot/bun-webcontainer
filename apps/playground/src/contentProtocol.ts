@@ -45,3 +45,35 @@ export function isMessage<T extends { kind: string }>(data: unknown, where: stri
 
 /** Wraps a message in the envelope. */
 export const envelope = <T extends { kind: string }>(m: T): T & { v: typeof PROTOCOL_VERSION } => ({ v: PROTOCOL_VERSION, ...m });
+
+/**
+ * The preview bridge: messages between the editor and a preview document on the content origin (the script the service
+ * worker injects, swPage.ts previewBridge). Same envelope and version as above. Previewed pages are untrusted and
+ * can send anything, so the editor takes these only from a preview iframe's own window and origin and validates every
+ * field (previewBridge.ts); the frame side takes them only from its parent, at the configured editor origin.
+ */
+
+/** A chord the editor owns (a keymap command, parsed): the bridge keeps its key from the page, and forwards it. */
+export type OwnedChord = { key: string; ctrl: boolean; alt: boolean; shift: boolean; meta: boolean };
+
+/** Preview document -> editor. `path` is relative to the preview's base (`/__preview/@<id>`). */
+export type FromFrame =
+  /** A document with a bridge started: answered with `init`. */
+  | { kind: "hello" }
+  /** The document is going away: the editor can't message it any more. */
+  | { kind: "bye" }
+  | { kind: "key"; key: string; code: string; ctrl: boolean; alt: boolean; shift: boolean; meta: boolean; repeat: boolean }
+  /** A link that opens a preview tab: in the background, or switched to (`foreground`). */
+  | { kind: "open-tab"; path: string; foreground: boolean }
+  | { kind: "loaded"; path: string; title: string; contentType: string; status: number; text?: string };
+
+/** Editor -> preview document. */
+export type ToFrame =
+  | { kind: "init"; mode: string; shortcuts: OwnedChord[] }
+  | { kind: "color-scheme"; mode: string }
+  | { kind: "navigate"; path: string };
+
+/** Longest text a `loaded` card may carry, and longest path or title. */
+export const MAX_CARD_TEXT = 2_000_000;
+export const MAX_PATH = 4096;
+export const MAX_TITLE = 1024;

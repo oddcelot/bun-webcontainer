@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 // Built to <base>sw.js as one classic script (vite.config.ts serviceWorker). Page-side code lives in swPage.ts.
-import { previewColorScheme, previewWebSocket } from "#sw-page";
+import { previewBridge, previewColorScheme, previewWebSocket } from "#sw-page";
 import { HEADERS_HEADER, PANEL_COOKIE, mergeHeaders, unpackHeaders } from "./request";
 
 declare const self: ServiceWorkerGlobalScope;
@@ -49,6 +49,25 @@ const COOKIE_PAGE = "/__runbun_cookies__";
 const FRAMED = new RegExp(`^${BASE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(embed|configure|host)(\\.html)?$`);
 /** Registered on the content origin (`sw.js?content`, src/host/main.ts): its responses are framed by the editor, another origin. */
 const CONTENT = new URL(self.location.href).searchParams.has("content");
+
+/**
+ * The editor origins a content-origin preview may talk to (vite.config.ts defines it from VITE_EDITOR_ORIGINS, as
+ * contentOrigin.ts reads it). The bridge posts to one of these, found from the host frame that owns the preview.
+ */
+declare const __EDITOR_ORIGINS__: string[] | undefined;
+const EDITOR_ORIGINS: string[] = typeof __EDITOR_ORIGINS__ === "object" ? __EDITOR_ORIGINS__ : [];
+/** The bridge protocol's version (contentProtocol.ts PROTOCOL_VERSION; vite.config.ts defines it too). */
+declare const __PROTOCOL_VERSION__: number;
+
+/** The editor a host frame serves: its `?editor=` (host.html), only if it is one of the configured origins. */
+function editorOf(owner: Client): string | undefined {
+  try {
+    const asked = new URL(owner.url).searchParams.get("editor") ?? "";
+    return EDITOR_ORIGINS.includes(asked) ? asked : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => e.waitUntil(Promise.all([self.clients.claim(), pruneShell()])));
@@ -272,9 +291,11 @@ async function servePreview(req: Request, url: URL, path?: string, ownerId = pre
   const hasBody = req.method !== "GET" && req.method !== "HEAD";
   const body = hasBody ? await req.arrayBuffer() : null;
   let asked: Awaited<ReturnType<typeof askStream>>;
+  let editor: string | undefined;
   try {
     const owner = ownerId ? await windowClient(ownerId) : undefined;
     if (ownerId && !owner) throw new Error("gone");
+    if (CONTENT && owner) editor = editorOf(owner);
     asked = await askStream({
       type: "preview",
       // A 304 would reach the page as an empty response (we answer from memory, nothing is cached), so never ask for one.
@@ -306,7 +327,19 @@ async function servePreview(req: Request, url: URL, path?: string, ownerId = pre
     stream.cancel().catch(() => {});
   } else if (headers.get("content-type")?.startsWith("text/html")) {
     // The preview scripts go into <head>, so an HTML page is read whole first.
-    out = withPreviewScripts(await new Response(stream).text(), base);
+    out = withPreviewScripts(await new Response(stream).text(), base, editor);
+    headers.delete("content-length");
+  } else if (editor && req.mode === "navigate" && req.destination === "iframe" && /[/+]json\b|^text\/plain\b/.test(headers.get("content-type") ?? "")) {
+    // A frame that follows a link to JSON or text: the editor can't read its document (another origin), so the page is
+    // a wrapper that tells it what came (previewBridge reads the metas and the <pre>).
+    const type = headers.get("content-type")!;
+    const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+    out = withPreviewScripts(
+      `<!doctype html><meta charset="utf-8"><meta name="runbun-type" content="${esc(type)}"><meta name="runbun-status" content="${head.status}"><meta name="color-scheme" content="light dark"><pre style="white-space: pre-wrap">${esc(await new Response(stream).text())}</pre>`,
+      base,
+      editor,
+    );
+    headers.set("content-type", "text/html; charset=utf-8");
     headers.delete("content-length");
   }
   return new Response(out, isolated({ status: head.status, statusText: head.statusText, headers }));
@@ -316,10 +349,12 @@ async function servePreview(req: Request, url: URL, path?: string, ownerId = pre
  * Runs first in every preview page: same-host WebSockets go to the worker's `Bun.serve` instead of the
  * network, and the page follows the playground's color scheme toggle.
  */
-function withPreviewScripts(html: string, base: string): string {
+function withPreviewScripts(html: string, base: string, editor?: string): string {
   const script =
     `<script>(${previewWebSocket})(${JSON.stringify(base)})</script>` +
-    `<script>(${previewColorScheme})()</script>`;
+    `<script>(${previewColorScheme})()</script>` +
+    // `editor` is the host frame's, checked against the configured origins: never a value from the page.
+    (editor ? `<script>(${previewBridge})(${JSON.stringify(base)}, ${JSON.stringify(editor)}, ${__PROTOCOL_VERSION__})</script>` : "");
   const head = html.match(/<head\b[^>]*>/i);
   if (head) return html.slice(0, head.index! + head[0].length) + script + html.slice(head.index! + head[0].length);
   const doctype = html.match(/^\s*<!doctype[^>]*>/i);

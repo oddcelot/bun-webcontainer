@@ -78,7 +78,6 @@ function pretty(type: string, text: string): string {
  * only where the browser reports it (PerformanceNavigationTiming.responseStatus). Null for anything else.
  */
 export function cardFromFrame(path: string, frame: HTMLIFrameElement): Card | null {
-  if (CONTENT_ORIGIN) return null;
   const doc = frame.contentDocument;
   const type = doc?.contentType ?? "";
   if (!doc?.body || !/[/+]json\b|^text\/plain\b/.test(type)) return null;
@@ -86,5 +85,11 @@ export function cardFromFrame(path: string, frame: HTMLIFrameElement): Card | nu
   const code = nav?.responseStatus || 0;
   // The browser shows such a document as one <pre> (Chrome adds its JSON viewer's controls around it).
   const text = (doc.querySelector("body > pre") ?? doc.body).textContent ?? "";
+  return cardOf(path, type, code, text);
+}
+
+/** The card for a document of JSON or plain text that `type` and `code` (0: unknown) describe, or null for any other type. */
+export function cardOf(path: string, type: string, code: number, text: string): Card | null {
+  if (!/[/+]json\b|^text\/plain\b/.test(type)) return null;
   return { ok: !code || code < 400, line: `GET ${path}`, status: code ? String(code) : "", head: "", type, text: pretty(type, text) };
 }

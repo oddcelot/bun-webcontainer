@@ -7,6 +7,7 @@ import { chordKeys, isMac, keysFor, matches, recordingKeys } from "../keymap";
 import { createPierre, createViewer } from "../editors/pierre";
 import type { CodeEditor } from "../editors/types";
 import { CONTENT_ORIGIN } from "../contentOrigin";
+import { onFrameMessage } from "../previewBridge";
 import { BODY_ROOM_LINES, normalize, previewUrl, responseReserve, PREFIX, type Card } from "../preview";
 import { AppContext } from "./context";
 import { draftKey, hasBody, type PreviewTab, type Rows, type Section } from "./previews";
@@ -84,6 +85,13 @@ export function Preview() {
   onSettled(() => {
     addEventListener("keydown", onGlobalSendKey, { capture: true });
     return () => removeEventListener("keydown", onGlobalSendKey, { capture: true });
+  });
+  // On the content origin the preview documents report through their bridge (previewBridge.ts).
+  onSettled(() => {
+    if (!CONTENT_ORIGIN) return;
+    const onMessage = (e: MessageEvent) => onFrameMessage(e, p);
+    addEventListener("message", onMessage);
+    return () => removeEventListener("message", onMessage);
   });
   onSettled(() => {
     addEventListener("keydown", onKey);
@@ -202,9 +210,9 @@ export function Preview() {
                     hidden={id !== s.active || tab.view !== "frame"}
                     ref={(el) => p.frames.set(id, el)}
                     onLoad={(e) => {
-                      p.loaded(id, e.currentTarget);
-                      // On the content origin the page's window is cross-origin: no key forwarding or link clicks (phase 2: a bridge).
+                      // On the content origin the page's window is cross-origin: its bridge does all of this (previewBridge.ts).
                       if (CONTENT_ORIGIN) return;
+                      p.loaded(id, e.currentTarget);
                       const win = e.currentTarget.contentWindow;
                       win?.addEventListener("keydown", forwardKeys);
                       // A link opened "in a new tab" from a page opens a preview tab: a browser tab has no server.

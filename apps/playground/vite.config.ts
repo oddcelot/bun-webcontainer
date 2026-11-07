@@ -92,6 +92,17 @@ function embedRoutes(): Plugin {
   };
 }
 
+/** What sw.ts reads at build time: the editor origins (as src/contentOrigin.ts) and the bridge protocol's version. */
+function swDefines(): Record<string, string> {
+  const origins = (process.env.VITE_EDITOR_ORIGINS ?? "http://localhost:5173")
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean)
+    .map((o) => new URL(o).origin);
+  const version = /PROTOCOL_VERSION = (\d+)/.exec(readFileSync(fileURLToPath(new URL("src/contentProtocol.ts", import.meta.url)), "utf8"))![1];
+  return { __EDITOR_ORIGINS__: JSON.stringify(origins), __PROTOCOL_VERSION__: version };
+}
+
 /**
  * The service worker (src/sw.ts) at `<base>sw.js`, the URL boot.ts registers: one classic script (an IIFE, no imports,
  * no hash in the name), so installs from before it was TypeScript update in place. Bundled by rolldown on its own,
@@ -107,7 +118,7 @@ function serviceWorker(): Plugin {
   const entry = fileURLToPath(new URL("src/sw.ts", import.meta.url));
   const page = fileURLToPath(new URL("src/swPage.ts", import.meta.url));
   async function bundle(): Promise<string> {
-    const build = await rolldown({ input: entry, platform: "browser", resolve: { alias: { "#sw-page": page } }, logLevel: "warn" });
+    const build = await rolldown({ input: entry, platform: "browser", resolve: { alias: { "#sw-page": page } }, transform: { define: swDefines() }, logLevel: "warn" });
     try {
       const { output } = await build.generate({ format: "iife", minify: false });
       return output[0].code;

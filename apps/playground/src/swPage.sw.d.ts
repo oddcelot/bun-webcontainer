@@ -2,3 +2,4 @@
 // swPage.ts needs the DOM lib and sw.ts the worker lib, so each is checked in its own project.
 export function previewColorScheme(): void;
 export function previewWebSocket(prefix: string): void;
+export function previewBridge(base: string, editor: string, v: number): void;

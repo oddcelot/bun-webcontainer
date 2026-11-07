@@ -2,6 +2,7 @@ import { createStore, flush, reconcile } from "solid-js";
 import type { PresetRequest } from "../embed/requests";
 import { CONTENT_ORIGIN } from "../contentOrigin";
 import { PREFIX, cardFromFrame, normalize, previewUrl, sendRequest, type Card } from "../preview";
+import { sendToFrame } from "../previewBridge";
 import { build, fromHttp, modeOf, noAuth, paramRows, queryOf, sent, splitParams, withQuery, type Auth, type BodyMode, type Field, type OffParam } from "../request";
 
 /** The request panel's sections (ui/Preview.tsx): the path's query, the headers, Auth and the body. */
@@ -78,6 +79,8 @@ export function createPreviews(running: () => boolean = () => false, read: (path
   // One tab to start with (created here: writing to the store from inside the caller's root isn't allowed).
   let lastId = 1;
   const frames = new Map<number, HTMLIFrameElement>();
+  /** Tabs whose frame holds a document with a bridge (content origin): it takes `navigate` messages, until it says `bye`. */
+  const live = new Set<number>();
   const [state, setState] = createStore({ tabs: [blank(1, "/")], active: 1, expanded: false });
   /** `rows` as the tab's path and its params turned off, the latter merged into the list there is (no fresh rows). */
   const setParams = (t: PreviewTab, rows: Field[]) => {
@@ -95,6 +98,14 @@ export function createPreviews(running: () => boolean = () => false, read: (path
   const previews = {
     state,
     frames,
+    /** The tab whose frame's window is `win`, if any. */
+    tabOf(win: unknown): number | undefined {
+      for (const [id, f] of frames) if (win && f.contentWindow === win) return id;
+    },
+    setLive(id: number, on: boolean) {
+      if (on) live.add(id);
+      else live.delete(id);
+    },
     /** Opens a tab after the active one and activates it; returns its id. */
     open(path = "/") {
       const id = ++lastId;
@@ -113,6 +124,7 @@ export function createPreviews(running: () => boolean = () => false, read: (path
         if (s.active === id) s.active = (s.tabs[i] ?? s.tabs[i - 1]).id;
       });
       frames.delete(id);
+      live.delete(id);
       sendIfPending(state.active);
     },
     activate(id: number) {
@@ -240,7 +252,12 @@ export function createPreviews(running: () => boolean = () => false, read: (path
         update(id, (t) => {
           t.view = "frame";
         });
-        frames.get(id)?.contentWindow?.location.replace(previewUrl(path));
+        const frame = frames.get(id);
+        if (!CONTENT_ORIGIN) frame?.contentWindow?.location.replace(previewUrl(path));
+        // On the content origin the page's location is unreachable from here: a document with a bridge navigates itself
+        // on request (replacing its history entry, as location.replace does); one without (first load, an error page) gets a new src.
+        else if (live.has(id)) sendToFrame(frame?.contentWindow, { kind: "navigate", path });
+        else if (frame) frame.src = previewUrl(path);
       } else {
         const card = result;
         update(id, (t) => {
@@ -257,15 +274,18 @@ export function createPreviews(running: () => boolean = () => false, read: (path
      * lands on JSON or plain text, the tab shows it as a response card, as if requested from the bar.
      */
     loaded(id: number, frame: HTMLIFrameElement) {
-      // A frame on the content origin is unreadable from here (phase 2: a bridge): the tab keeps the path it was sent.
+      // A frame on the content origin is unreadable from here: its bridge reports in (previewBridge.ts, `adopt`).
       if (CONTENT_ORIGIN) return;
       const loc = frame.contentWindow?.location;
       if (!loc?.pathname.startsWith(PREFIX)) return;
       const path = loc.pathname.slice(PREFIX.length) + loc.search;
-      const card = cardFromFrame(path, frame);
+      previews.adopt(id, path, frame.contentDocument?.title ?? "", cardFromFrame(path, frame));
+    },
+    /** What a loaded page reports: its path and title, and `card` where it is JSON or plain text. */
+    adopt(id: number, path: string, title: string, card: Card | null) {
       update(id, (t) => {
         t.path = path;
-        t.title = card ? "" : (frame.contentDocument?.title ?? "");
+        t.title = card ? "" : title;
         if (!card) return;
         if (t.response) reconcile(card)(t.response);
         else t.response = card;
