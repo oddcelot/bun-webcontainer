@@ -1,10 +1,14 @@
 import { BASE } from "./base";
 import { CONTENT_ORIGIN } from "./contentOrigin";
+import { envelope, isMessage, type HandshakeMessage, type ToEditor, type ToHost } from "./contentProtocol";
 
 // The editor's end of the content origin (host.html, src/host/main.ts): one hidden iframe per tab, a MessagePort to it,
-// and a Worker-like proxy for the runtime Worker that lives there. Messages over the port:
-//   editor -> host  spawn {g} | w {g, d} (+ ports) | kill {g} | fetch {url, method, headers, body} (+ reply port)
-//   host -> editor  w {g, d} (+ ports) | werr {g, message} | sw {d} (+ the service worker's reply port)
+// and a Worker-like proxy for the runtime Worker that lives there. The messages are in contentProtocol.ts.
+//
+// The frame's life: created by the first `connectHost()`; it is dropped (and the next call makes a new one) when it
+// doesn't answer, reports an error, reloads, or stops answering the heartbeat. Workers it ran then fail with an error,
+// so a Run that was waiting on one ends and the next Run starts clean. Closing the tab needs nothing: the frame is a
+// child of this document.
 
 export interface Host {
   /** The host frame's client id on the content origin: the `@<id>` of module and preview URLs. */
@@ -12,43 +16,121 @@ export interface Host {
   port: MessagePort;
 }
 
+/** How long the frame gets to load, register its service worker and say it is ready. */
+const HANDSHAKE_TIMEOUT = 20_000;
+/** A ping each interval; the host is gone after this many without an answer. */
+const PING_INTERVAL = 3_000;
+const PING_MISSES = 3;
+
 let host: Promise<Host> | undefined;
 let nextGen = 0;
 const workers = new Map<number, HostWorker>();
 /** Answers the content service worker's asks (module, preview, ws), as Runner.onSw does for the editor's own. */
 let onAsk: ((e: { data: any; ports: readonly MessagePort[] }) => void) | undefined;
 export const answerAsks = (fn: typeof onAsk) => void (onAsk = fn);
+/** Told of each host frame that becomes ready (the first, and any after a loss): module and preview URLs name its id. */
+const hostListeners = new Set<(h: Host) => void>();
+export const onHost = (fn: (h: Host) => void) => void hostListeners.add(fn);
+/** Told when the host frame is lost, with why. */
+let onLost: ((reason: string) => void) | undefined;
+export const whenLost = (fn: typeof onLost) => void (onLost = fn);
 
-/** The host frame, started on first use. */
+/** What the host last reported (its Worker count), for the dev check that Stop and Run leave none behind. */
+let lastWorkers = 0;
+if (import.meta.env.DEV) (globalThis as any).__runbunHost = { workers: () => lastWorkers, editorWorkers: () => workers.size };
+
+const send = (port: MessagePort, m: ToHost, transfer: Transferable[] = []) => port.postMessage(envelope(m), transfer);
+
+/** The host frame, started on first use (and again after it was lost). */
 export function connectHost(): Promise<Host> {
-  return (host ??= new Promise<Host>((resolve, reject) => {
+  const attempt = (host ??= startHost());
+  // A failed attempt is forgotten, so the next Run tries again.
+  attempt.catch(() => {
+    if (host === attempt) host = undefined;
+  });
+  return attempt;
+}
+
+function startHost(): Promise<Host> {
+  return new Promise<Host>((resolve, reject) => {
     const frame = document.createElement("iframe");
     frame.hidden = true;
     frame.title = "runtime host";
     frame.setAttribute("aria-hidden", "true");
     // The embedded document is cross-origin isolated too (SharedArrayBuffer for its Worker) only if we allow it.
     frame.allow = "cross-origin-isolated";
-    const timer = setTimeout(() => reject(new Error("the content origin did not answer")), 20_000);
-    const onMessage = (e: MessageEvent) => {
-      if (e.source !== frame.contentWindow || e.origin !== CONTENT_ORIGIN || e.data?.v !== 1) return;
-      if (e.data.kind === "host-error") return void reject(new Error(e.data.message));
-      if (e.data.kind !== "host-ready") return;
+    let settled = false;
+    let port: MessagePort | undefined;
+    let pings: ReturnType<typeof setInterval> | undefined;
+    const cleanup = () => {
       clearTimeout(timer);
+      clearInterval(pings);
       removeEventListener("message", onMessage);
+    };
+    /** Gives the frame up: it never became ready (reject), or it did and is gone (fail its Workers). */
+    const lose = (reason: string) => {
+      const was = settled;
+      cleanup();
+      port?.close();
+      frame.remove();
+      if (!was) {
+        settled = true;
+        reject(new Error(reason));
+        return;
+      }
+      host = undefined;
+      for (const w of [...workers.values()]) w.lost(reason);
+      onLost?.(reason);
+    };
+    const timer = setTimeout(() => lose(`the content origin ${CONTENT_ORIGIN} did not answer within ${HANDSHAKE_TIMEOUT / 1000}s (is it reachable, and does it allow this page to frame it?)`), HANDSHAKE_TIMEOUT);
+
+    let loads = 0;
+    frame.addEventListener("load", () => {
+      // The first load is the page we asked for; another one means the frame reloaded or navigated: it lost its Workers.
+      if (++loads > 1) lose("the content host frame reloaded");
+    });
+
+    const onMessage = (e: MessageEvent) => {
+      if (e.source !== frame.contentWindow || e.origin !== CONTENT_ORIGIN || !isMessage<HandshakeMessage>(e.data, "editor")) return;
+      if (e.data.kind === "host-error") return lose(`the content host failed to start: ${e.data.message}`);
+      if (e.data.kind !== "host-ready" || port) return;
+      clearTimeout(timer);
       const { port1, port2 } = new MessageChannel();
-      port1.onmessage = (m) => {
+      port = port1;
+      let seen = true;
+      let missed = 0;
+      let n = 0;
+      port1.onmessage = (m: MessageEvent) => {
+        if (!isMessage<ToEditor>(m.data, "editor")) return;
         const d = m.data;
-        if (d.t === "sw") onAsk?.({ data: d.d, ports: m.ports });
-        else if (d.t === "w") workers.get(d.g)?.deliver(d.d, m.ports);
-        else if (d.t === "werr") workers.get(d.g)?.fail(d.message);
+        if (d.kind === "sw") onAsk?.({ data: d.d, ports: m.ports });
+        else if (d.kind === "w") workers.get(d.g)?.deliver(d.d, m.ports);
+        else if (d.kind === "werr") workers.get(d.g)?.fail(d.message);
+        else if (d.kind === "pong") {
+          seen = true;
+          lastWorkers = d.workers;
+        } else if (d.kind === "merr") {
+          for (const w of workers.values()) w.fail("a message to the runtime could not be delivered (a message carrying shared memory cannot cross to another origin)");
+        }
       };
-      frame.contentWindow!.postMessage({ v: 1, kind: "connect" }, CONTENT_ORIGIN!, [port2]);
-      resolve({ id: e.data.id, port: port1 });
+      port1.onmessageerror = () => {
+        for (const w of workers.values()) w.fail("a message from the runtime could not be read");
+      };
+      pings = setInterval(() => {
+        if (seen) (seen = false), (missed = 0);
+        else if (++missed >= PING_MISSES) return lose("the content host stopped answering");
+        send(port1, { kind: "ping", n: ++n });
+      }, PING_INTERVAL);
+      frame.contentWindow!.postMessage(envelope<HandshakeMessage>({ kind: "connect" }), CONTENT_ORIGIN!, [port2]);
+      settled = true;
+      const h = { id: (e.data as { id: string }).id, port: port1 };
+      resolve(h);
+      for (const fn of hostListeners) fn(h);
     };
     addEventListener("message", onMessage);
     frame.src = `${CONTENT_ORIGIN}${BASE}host.html?editor=${encodeURIComponent(location.origin)}`;
     document.body.append(frame);
-  }));
+  });
 }
 
 /** The part of `Worker` that Runner uses, over the host's port. */
@@ -56,17 +138,23 @@ class HostWorker extends EventTarget {
   onmessage: ((e: MessageEvent) => void) | null = null;
   onerror: ((e: { message: string }) => void) | null = null;
   readonly #g = nextGen++;
+  #dead = false;
   constructor(private port: MessagePort) {
     super();
     workers.set(this.#g, this);
-    port.postMessage({ t: "spawn", g: this.#g });
+    send(port, { kind: "spawn", g: this.#g });
   }
   postMessage(message: unknown, transfer: Transferable[] = []) {
-    this.port.postMessage({ t: "w", g: this.#g, d: message }, transfer);
+    if (this.#dead) {
+      // A Stop's flush gets its answer at once instead of after its timeout.
+      if ((message as { type?: string } | null)?.type === "flush") queueMicrotask(() => this.deliver({ type: "flushed" }, []));
+      return;
+    }
+    send(this.port, { kind: "w", g: this.#g, d: message }, transfer);
   }
   terminate() {
-    workers.delete(this.#g);
-    this.port.postMessage({ t: "kill", g: this.#g });
+    if (!workers.delete(this.#g) || this.#dead) return;
+    send(this.port, { kind: "kill", g: this.#g });
   }
   deliver(data: unknown, ports: readonly MessagePort[]) {
     const e = new MessageEvent("message", { data, ports: [...ports] });
@@ -75,6 +163,14 @@ class HostWorker extends EventTarget {
   }
   fail(message: string) {
     this.onerror?.({ message });
+  }
+  /** The host is gone: the Worker with it. A Stop waiting for its flush gets an answer, a Run waiting for it an error. */
+  lost(reason: string) {
+    if (this.#dead) return;
+    this.#dead = true;
+    workers.delete(this.#g);
+    this.deliver({ type: "flushed" }, []);
+    this.fail(reason);
   }
 }
 
@@ -90,7 +186,7 @@ export async function fetchContent(path: string, init: RequestInit): Promise<Res
   const body = req.body ? await req.arrayBuffer() : null;
   const { port1, port2 } = new MessageChannel();
   const answer = new Promise<any>((r) => (port1.onmessage = (e) => r(e.data)));
-  port.postMessage({ t: "fetch", url: req.url, method: req.method, headers: [...req.headers], body }, [port2, ...(body ? [body] : [])]);
+  send(port, { kind: "fetch", url: req.url, method: req.method, headers: [...req.headers], body }, [port2, ...(body ? [body] : [])]);
   const res = await answer;
   port1.close();
   if (res.error) throw new TypeError(res.error);
