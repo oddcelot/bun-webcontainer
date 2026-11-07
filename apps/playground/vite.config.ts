@@ -168,7 +168,7 @@ export default defineConfig(({ mode }) => ({
   build: {
     target: "esnext",
     rollupOptions: {
-      input: { index: "index.html", embed: "embed.html", configure: "configure.html", element: "embed-element/index.ts" },
+      input: { index: "index.html", embed: "embed.html", configure: "configure.html", host: "host.html", element: "embed-element/index.ts" },
       // The element has a stable URL that host pages load (it imports nothing, so it's a single file).
       output: { entryFileNames: (chunk) => (chunk.name === "element" ? "embed.js" : "assets/[name]-[hash].js") },
     },

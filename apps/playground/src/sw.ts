@@ -46,7 +46,9 @@ const PREVIEW = `${BASE}__preview`;
 /** A blank page under each preview's base, whose document.cookie the playground reads (runner.ts COOKIE_PAGE). */
 const COOKIE_PAGE = "/__runbun_cookies__";
 /** Pages other sites frame (embed.html, configure.html): an iframe navigating to one isn't a preview leaving `/__preview`. */
-const FRAMED = new RegExp(`^${BASE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(embed|configure)(\\.html)?$`);
+const FRAMED = new RegExp(`^${BASE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(embed|configure|host)(\\.html)?$`);
+/** Registered on the content origin (`sw.js?content`, src/host/main.ts): its responses are framed by the editor, another origin. */
+const CONTENT = new URL(self.location.href).searchParams.has("content");
 
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => e.waitUntil(Promise.all([self.clients.claim(), pruneShell()])));
@@ -134,7 +136,7 @@ async function adoptShell(urls: string[]): Promise<void> {
 function isolated(init: ResponseInit): ResponseInit {
   const headers = new Headers(init.headers);
   headers.set("cross-origin-embedder-policy", "credentialless");
-  headers.set("cross-origin-resource-policy", "same-origin");
+  headers.set("cross-origin-resource-policy", CONTENT ? "cross-origin" : "same-origin");
   return { ...init, headers };
 }
 
