@@ -1,6 +1,7 @@
 import { createStore, flush, reconcile } from "solid-js";
 import type { PresetRequest } from "../embed/requests";
-import { PREFIX, cardFromFrame, normalize, sendRequest, type Card } from "../preview";
+import { CONTENT_ORIGIN } from "../contentOrigin";
+import { PREFIX, cardFromFrame, normalize, previewUrl, sendRequest, type Card } from "../preview";
 import { build, fromHttp, modeOf, noAuth, paramRows, queryOf, sent, splitParams, withQuery, type Auth, type BodyMode, type Field, type OffParam } from "../request";
 
 /** The request panel's sections (ui/Preview.tsx): the path's query, the headers, Auth and the body. */
@@ -239,7 +240,7 @@ export function createPreviews(running: () => boolean = () => false, read: (path
         update(id, (t) => {
           t.view = "frame";
         });
-        frames.get(id)?.contentWindow?.location.replace(PREFIX + path);
+        frames.get(id)?.contentWindow?.location.replace(previewUrl(path));
       } else {
         const card = result;
         update(id, (t) => {
@@ -256,6 +257,8 @@ export function createPreviews(running: () => boolean = () => false, read: (path
      * lands on JSON or plain text, the tab shows it as a response card, as if requested from the bar.
      */
     loaded(id: number, frame: HTMLIFrameElement) {
+      // A frame on the content origin is unreadable from here (phase 2: a bridge): the tab keeps the path it was sent.
+      if (CONTENT_ORIGIN) return;
       const loc = frame.contentWindow?.location;
       if (!loc?.pathname.startsWith(PREFIX)) return;
       const path = loc.pathname.slice(PREFIX.length) + loc.search;

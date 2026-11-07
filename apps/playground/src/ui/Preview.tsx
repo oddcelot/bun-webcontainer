@@ -6,7 +6,8 @@ import { TabItem, TabList } from "@runbun/ui/solid/Tabs";
 import { chordKeys, isMac, keysFor, matches, recordingKeys } from "../keymap";
 import { createPierre, createViewer } from "../editors/pierre";
 import type { CodeEditor } from "../editors/types";
-import { BODY_ROOM_LINES, PREFIX, normalize, responseReserve, type Card } from "../preview";
+import { CONTENT_ORIGIN } from "../contentOrigin";
+import { BODY_ROOM_LINES, normalize, previewUrl, responseReserve, PREFIX, type Card } from "../preview";
 import { AppContext } from "./context";
 import { draftKey, hasBody, type PreviewTab, type Rows, type Section } from "./previews";
 import { LOCAL_ORIGIN, fromAuth, paramRows, queryOf, sent, toCurl, toFetch, toHttp, type Auth, type BodyMode, type Field } from "../request";
@@ -168,7 +169,7 @@ export function Preview() {
             disabled={disabled}
             onClick={() => {
               const path = active().path.trim() || "/";
-              window.open(`${PREFIX}${path.startsWith("/") ? path : `/${path}`}`, "_blank", "noopener");
+              window.open(previewUrl(path.startsWith("/") ? path : `/${path}`), "_blank", "noopener");
             }}
           >
             <i class="i-lucide-external-link" aria-hidden="true" />
@@ -197,10 +198,13 @@ export function Preview() {
                   <iframe
                     class="preview-frame"
                     title="preview"
+                    allow={CONTENT_ORIGIN ? `cross-origin-isolated ${CONTENT_ORIGIN}` : undefined}
                     hidden={id !== s.active || tab.view !== "frame"}
                     ref={(el) => p.frames.set(id, el)}
                     onLoad={(e) => {
                       p.loaded(id, e.currentTarget);
+                      // On the content origin the page's window is cross-origin: no key forwarding or link clicks (phase 2: a bridge).
+                      if (CONTENT_ORIGIN) return;
                       const win = e.currentTarget.contentWindow;
                       win?.addEventListener("keydown", forwardKeys);
                       // A link opened "in a new tab" from a page opens a preview tab: a browser tab has no server.

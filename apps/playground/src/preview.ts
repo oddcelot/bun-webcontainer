@@ -78,6 +78,7 @@ function pretty(type: string, text: string): string {
  * only where the browser reports it (PerformanceNavigationTiming.responseStatus). Null for anything else.
  */
 export function cardFromFrame(path: string, frame: HTMLIFrameElement): Card | null {
+  if (CONTENT_ORIGIN) return null;
   const doc = frame.contentDocument;
   const type = doc?.contentType ?? "";
   if (!doc?.body || !/[/+]json\b|^text\/plain\b/.test(type)) return null;
