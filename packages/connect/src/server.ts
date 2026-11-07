@@ -21,6 +21,8 @@ export interface RunnerOptions {
   token?: string;
   origins?: string[];
   sandbox?: SandboxKind;
+  /** What each run may use (default: DEFAULT_LIMITS). */
+  limits?: Partial<Limits>;
   /** Serve the playground: a URL to proxy (https://runbun.dev) or a directory with a playground build. */
   playground?: string;
 }
@@ -41,6 +43,53 @@ async function freePort(): Promise<number> {
 }
 
 /**
+ * The processes of the run started as `pid` (spawned `detached`, so its own process group): its descendants and its
+ * group's members (a child whose parent died is no one's descendant any more), with their resident memory in KiB.
+ */
+async function processTree(pid: number): Promise<{ pid: number; rss: number }[]> {
+  const children = new Map<number, number[]>();
+  const rss = new Map<number, number>();
+  const group: number[] = [];
+  for (const line of (await Bun.$`ps -A -o pid=,ppid=,pgid=,rss=`.quiet().nothrow().text()).split("\n")) {
+    const [p, pp, pg, kb] = line.trim().split(/\s+/).map(Number);
+    if (!p) continue;
+    rss.set(p, kb ?? 0);
+    if (pp) children.set(pp, [...(children.get(pp) ?? []), p]);
+    if (pg === pid) group.push(p);
+  }
+  const tree = new Set(rss.has(pid) ? [pid, ...group] : group);
+  for (const p of tree) for (const c of children.get(p) ?? []) tree.add(c);
+  return [...tree].map((p) => ({ pid: p, rss: rss.get(p) ?? 0 }));
+}
+
+/**
+ * Kills the run started as `pid` and everything it started (killing Bun alone leaves its children running under
+ * sandbox-exec). Stops them all first, so none can fork past the kill, and goes again until none is left.
+ */
+async function killTree(pid: number) {
+  for (let pass = 0; pass < 20; pass++) {
+    const tree = await processTree(pid);
+    for (const sig of ["SIGSTOP", "SIGKILL"] as const)
+      for (const p of [-pid, ...tree.map((t) => t.pid)])
+        try {
+          process.kill(p, sig);
+        } catch {}
+    if (!tree.length) return;
+  }
+}
+
+/** What one run may use; past it, the runner kills the run's whole process tree. */
+export interface Limits {
+  /** Resident memory of the run's processes together, in MiB. */
+  memoryMB: number;
+  /** Processes in the run's tree, Bun included. */
+  processes: number;
+}
+export const DEFAULT_LIMITS: Limits = { memoryMB: 2048, processes: 64 };
+/** How often a run's processes are checked against the limits. */
+const WATCH_MS = 500;
+
+/**
  * The TCP port the process `pid` or one of its descendants listens on (sandbox-exec execs Bun; bwrap forks it), the
  * preferred one if it's among them; undefined while there is none. Without lsof, only `preferred` is checked.
  */
@@ -49,13 +98,7 @@ async function listeningPort(pid: number, preferred: number): Promise<number | u
     const up = await Bun.connect({ hostname: "127.0.0.1", port: preferred, socket: { data() {} } }).then((s) => (s.end(), true), () => false);
     return up ? preferred : undefined;
   }
-  const children = new Map<number, number[]>();
-  for (const line of (await Bun.$`ps -A -o pid=,ppid=`.quiet().nothrow().text()).split("\n")) {
-    const [p, pp] = line.trim().split(/\s+/).map(Number);
-    if (p && pp) children.set(pp, [...(children.get(pp) ?? []), p]);
-  }
-  const tree = [pid];
-  for (let i = 0; i < tree.length; i++) tree.push(...(children.get(tree[i]!) ?? []));
+  const tree = (await processTree(pid)).map((p) => p.pid);
   const out = await Bun.$`lsof -nP -a -iTCP -sTCP:LISTEN -p ${tree.join(",")} -Fn`.quiet().nothrow().text();
   const ports = [...out.matchAll(/^n.*:(\d+)$/gm)].map((m) => Number(m[1]));
   return ports.includes(preferred) ? preferred : ports[0];
@@ -68,6 +111,7 @@ const ISOLATION = { "cross-origin-opener-policy": "same-origin", "cross-origin-e
 export function startRunner(opts: RunnerOptions = {}) {
   const token = opts.token ?? crypto.randomUUID().replaceAll("-", "");
   const sandbox = opts.sandbox ?? detectSandbox();
+  const limits: Limits = { ...DEFAULT_LIMITS, ...opts.limits };
   const runs = new Map<string, Run>();
   const root = realpathSync(mkdtempSync(join(tmpdir(), "runbun-connect-")));
   const cache = join(root, "cache");
@@ -130,13 +174,13 @@ export function startRunner(opts: RunnerOptions = {}) {
           run.proc.stdin.flush();
         } else if (msg.t === "kill") {
           run.killed = true;
-          run.proc?.kill();
+          if (run.proc) void killTree(run.proc.pid);
         }
       },
       close(ws) {
         for (const id of ws.data.runs) {
           const r = runs.get(id);
-          if (r) (r.killed = true), r.proc?.kill();
+          if (r) (r.killed = true), r.proc && void killTree(r.proc.pid);
         }
       },
     },
@@ -241,13 +285,34 @@ export function startRunner(opts: RunnerOptions = {}) {
       stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",
+      // Its own process group: Stop and the limits kill everything the program started (killTree).
+      detached: true,
     });
     run.proc = proc;
     const pump = async (stream: ReadableStream<Uint8Array>, fd: 1 | 2) => {
       const dec = new TextDecoder();
       for await (const chunk of stream) send(ws, { t: "out", id, fd, data: dec.decode(chunk, { stream: true }) });
     };
+    let exited = false;
+    void proc.exited.then(() => (exited = true));
+    // The limits: checked every WATCH_MS while it runs (no cgroups on macOS; a hard cap on Linux is still to do).
+    void (async () => {
+      while (!exited) {
+        await Bun.sleep(WATCH_MS);
+        const tree = await processTree(proc.pid);
+        const mb = tree.reduce((n, p) => n + p.rss, 0) / 1024;
+        const over =
+          tree.length > limits.processes ? `more than ${limits.processes} processes` : mb > limits.memoryMB ? `more than ${limits.memoryMB} MB of memory` : "";
+        if (!over || exited) continue;
+        send(ws, { t: "out", id, fd: 2, data: `\n[runbun connect] stopped: the program used ${over} (--max-processes, --max-memory)\n` });
+        run.killed = true;
+        await killTree(proc.pid);
+        return;
+      }
+    })();
     await Promise.all([pump(proc.stdout, 1), pump(proc.stderr, 2), proc.exited]);
+    // A child that outlived Bun (it held no output pipe, or the run ended itself) goes with it.
+    void killTree(proc.pid);
     return { code: proc.exitCode, signal: proc.signalCode };
   }
 
@@ -324,7 +389,14 @@ export function startRunner(opts: RunnerOptions = {}) {
     // forward to the program) the cookies of every other app the user runs on localhost.
     open: `http://127.0.0.1:${server.port}/`,
     stop() {
-      for (const r of runs.values()) (r.killed = true), r.proc?.kill();
+      for (const r of runs.values()) {
+        r.killed = true;
+        // Synchronous: the process may be exiting. The whole group (see killTree).
+        if (r.proc)
+          try {
+            process.kill(-r.proc.pid, "SIGKILL");
+          } catch {}
+      }
       server.stop(true);
       rmSync(root, { recursive: true, force: true });
     },

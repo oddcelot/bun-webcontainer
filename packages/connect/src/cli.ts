@@ -1,13 +1,15 @@
 #!/usr/bin/env bun
 // bunx @runbun/connect [--open] [--port 7357] [--playground https://runbun.dev | ./dist] [--allow-origin <origin>]...
-//                      [--no-sandbox]
+//                      [--no-sandbox] [--max-memory 2048] [--max-processes 64]
+//
+// --max-memory (MB, all of a run's processes together) and --max-processes: past them the run is killed.
 //
 // --open serves the playground from the runner (http://localhost:<port>/) and opens it. That's the way that
 // works in every browser: Safari won't let an https page reach http://localhost, and Chrome asks for
 // local-network permission; a page on localhost talking to its own origin needs neither.
 import { parseArgs } from "node:util";
 import { detectSandbox } from "./sandbox.ts";
-import { DEFAULT_ORIGINS, startRunner } from "./server.ts";
+import { DEFAULT_LIMITS, DEFAULT_ORIGINS, startRunner } from "./server.ts";
 
 const { values } = parseArgs({
   options: {
@@ -17,6 +19,8 @@ const { values } = parseArgs({
     playground: { type: "string", default: "https://runbun.dev" },
     "allow-origin": { type: "string", multiple: true, default: [] },
     "no-sandbox": { type: "boolean", default: false },
+    "max-memory": { type: "string", default: String(DEFAULT_LIMITS.memoryMB) },
+    "max-processes": { type: "string", default: String(DEFAULT_LIMITS.processes) },
   },
 });
 
@@ -37,6 +41,7 @@ To run code from the playground with all your user's rights anyway, start with -
 
 const r = startRunner({
   sandbox,
+  limits: { memoryMB: Number(values["max-memory"]), processes: Number(values["max-processes"]) },
   port: Number(values.port),
   origins: [...DEFAULT_ORIGINS, ...values["allow-origin"]!],
   playground: values["no-playground"] ? undefined : values.playground,

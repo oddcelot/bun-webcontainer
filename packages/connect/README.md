@@ -16,6 +16,8 @@ bun test.ts [secret]    # end-to-end: access checks, native APIs, sandbox, previ
   bind, `--unshare-all --share-net`); macOS `sandbox-exec` (writes only to the project, home unreadable apart
   from the Bun binary). Without either (Windows, Linux without bwrap) the CLI refuses to start unless given
   `--no-sandbox`; the sandbox in use is reported in `hello`.
+- **Limits**: a watchdog kills a run's whole process tree (its own process group) past `--max-memory` (default 2048
+  MB, all its processes together) or `--max-processes` (64). Stop kills the children too, not only Bun.
 - **Preview**: `/preview/<token>/<run>/…` proxies to the run's `Bun.serve`, with CORS for the allowed origins
   and CORP/COEP so the cross-origin-isolated playground can frame it.
 
@@ -74,5 +76,6 @@ runner the in-browser runtime is unchanged.
   doesn't upgrade.
 - **Edits while running** reach the program only with the next Run (or Restart on save).
 - **Fixed ports** are the host's: two projects on `:3000` collide, and so does another app on that port.
-- Resource limits (cgroups / `ulimit`), a tighter bwrap root than `--ro-bind / /`, Windows; publishing
+- Hard limits (cgroups on Linux: the watchdog checks every 500 ms, so a fast fork bomb or allocation spike gets past
+  it for a moment; no disk quota), a tighter bwrap root than `--ro-bind / /`, Windows; publishing
   `@runbun/connect` to npm, then the docs (`guides/`, `compatibility/browsers.md`) and changelog entries.

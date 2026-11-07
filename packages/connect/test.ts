@@ -11,7 +11,7 @@ process.env.RUNBUN_TEST_SECRET = "hunter2";
 const site = (await import("node:fs")).mkdtempSync("/tmp/runbun-site-");
 await Bun.write(`${site}/index.html`, "<!doctype html><title>app</title>");
 await Bun.write(`${site}/assets/app.js`, "console.log(1)");
-const r = startRunner({ port: 0, playground: site });
+const r = startRunner({ port: 0, playground: site, limits: { memoryMB: 512, processes: 16 } });
 const port = r.server.port;
 let failed = 0;
 const check = (name: string, ok: boolean, detail = "") => {
@@ -164,6 +164,20 @@ try {
   check("the preview finds a port the program chose itself", ownPort === "own port", ownPort);
   const script = await run(ws, "script", { "index.ts": `console.log("done")` });
   check("a program that doesn't serve never says listening", !script.seen.includes("listening") && script.code === 0, JSON.stringify(script.seen));
+
+  // The limits (this runner: 512 MB, 16 processes), and Stop taking the program's children with it.
+  const leftover = async (marker: string) => (await Bun.$`ps -A -o command=`.text()).split("\n").filter((l) => l.startsWith(`sleep ${marker}`)).length;
+  const hog = await run(ws, "hog", { "index.ts": `const a = []; for (;;) { a.push(new Uint8Array(1 << 24).fill(1)); await Bun.sleep(5); }` });
+  check("a program over the memory limit is stopped", /stopped: the program used more than 512 MB/.test(hog.err) && hog.code !== 0, hog.err.slice(-300));
+  const forks = await run(ws, "forks", { "index.ts": `for (let i = 0; i < 40; i++) Bun.spawn(["sleep", "31.${process.pid}"]); await Bun.sleep(60000);` });
+  check("a program over the process limit is stopped", /more than 16 processes/.test(forks.err), forks.err.slice(-300));
+  await Bun.sleep(300);
+  check("…with all its processes", (await leftover(`31.${process.pid}`)) === 0);
+  const kids = await run(ws, "kids", { "index.ts": `for (let i = 0; i < 3; i++) Bun.spawn(["sleep", "32.${process.pid}"]); console.log("up"); await Bun.sleep(60000);` }, () => {
+    setTimeout(() => ws.send(JSON.stringify({ t: "kill", id: "kids" })), 800);
+  });
+  await Bun.sleep(300);
+  check("Stop ends the program's child processes too", kids.out.includes("up") && (await leftover(`32.${process.pid}`)) === 0, kids.out + kids.err);
   ws.close();
 
   // The playground, served from the runner.
