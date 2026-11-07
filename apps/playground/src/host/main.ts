@@ -49,6 +49,12 @@ function cookieDocument(): Promise<Document> {
   }));
 }
 
+/**
+ * Tells the preview pages on this origin that their server is gone, as the editor's channel does for its own origin
+ * (runner.ts stop, previewWebSocket in swPage.ts): a BroadcastChannel doesn't cross to this origin from the editor's.
+ */
+const previewChannel = new BroadcastChannel("bun-preview");
+
 const reply = (port: MessagePort, m: ToEditor, transfer: Transferable[] = []) => port.postMessage(envelope(m), transfer);
 
 function connect(port: MessagePort) {
@@ -74,6 +80,8 @@ function connect(port: MessagePort) {
     } else if (m.kind === "kill") {
       workers.get(m.g)?.terminate();
       workers.delete(m.g);
+    } else if (m.kind === "stopped") {
+      previewChannel.postMessage("stopped");
     } else if (m.kind === "ping") {
       reply(port, { kind: "pong", n: m.n, workers: workers.size });
     } else if (m.kind === "cookies") {

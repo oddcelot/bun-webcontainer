@@ -235,3 +235,8 @@ export async function writeContentCookies(base: string, lines: string[]): Promis
   const { port } = await connectHost();
   send(port, { kind: "cookies", op: "write", base, lines });
 }
+
+/** Tells the preview pages on the content origin that the server stopped (their WebSockets drop), if a host frame is up. */
+export function notifyStopped(): void {
+  void host?.then(({ port }) => send(port, { kind: "stopped" }), () => {});
+}

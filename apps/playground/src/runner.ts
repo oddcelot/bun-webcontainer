@@ -4,7 +4,7 @@ import { resetSyncEsm, serveModule, vfsRoot } from "./moduleServer";
 import type { VFS } from "@runbun/vfs";
 import { serveLazyRead } from "./pkgStore";
 import { CONTENT_ORIGIN } from "./contentOrigin";
-import { answerAsks, connectHost, readContentCookies, spawnWorker, writeContentCookies } from "./contentHost";
+import { answerAsks, connectHost, notifyStopped, readContentCookies, spawnWorker, writeContentCookies } from "./contentHost";
 
 /** Tells preview pages (see previewWebSocket in swPage.ts) that their WebSockets' server is gone. */
 const previewChannel = new BroadcastChannel("bun-preview");
@@ -230,6 +230,7 @@ export class Runner {
     this.endPending();
     if (!worker) return;
     previewChannel.postMessage("stopped");
+    if (CONTENT_ORIGIN) notifyStopped();
     if (flush)
       await new Promise<void>((resolve) => {
         const timer = setTimeout(resolve, FLUSH_TIMEOUT);

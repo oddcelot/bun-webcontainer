@@ -14,6 +14,8 @@ export type ToHost =
   | { kind: "kill"; g: number }
   | { kind: "fetch"; url: string; method: string; headers: [string, string][]; body: ArrayBuffer | null }
   | { kind: "ping"; n: number }
+  /** The server stopped (the editor's Stop or Run): tell this origin's preview pages, as the editor's own channel tells its origin's. */
+  | { kind: "stopped" }
   /**
    * The preview's cookies in the browser, which live on this origin (the host frame owns the page whose document.cookie
    * reads and writes them under `base`, `/__preview/@<id>`): `read` answers `{ cookie }` on the reply port; `write` takes
