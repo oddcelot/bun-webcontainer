@@ -27,12 +27,24 @@ bun test.ts [secret]    # end-to-end: access checks, native APIs, sandbox, previ
 - From the deployed `https://runbun.dev` in Chrome: the WebSocket to `ws://127.0.0.1` connects and runs code
   (no mixed-content block); `fetch` of the preview needs CORS, an `<iframe>` needs CORP + COEP (the playground
   is `COEP: credentialless`). Chrome's Local Network Access flags these requests (`PermissionBlock`); in the
-  automated profile they still went through, so expect a one-time permission prompt for users. Not checked:
-  Firefox, Safari.
+  automated profile they still went through, so expect a one-time permission prompt for users.
+- Other browsers, same probe from `https://runbun.dev` (WebSocket run, CORS `fetch` of the preview, preview in
+  an `<iframe>`): Chrome 156 (launched by Puppeteer), Firefox Developer Edition 160 and Zen (Firefox 159)
+  pass everything. Safari 27.2 and Safari Technology Preview fail: Safari blocks `ws://` and `http://` to
+  `127.0.0.1`/`localhost` from an https page as mixed content, before any request leaves (the server sees
+  nothing).
+- The way around it in Safari: serve the playground from the runner. On `http://localhost` Safari treats the
+  page as a secure context with service workers; runbun.dev proxied there loads (edit-only, as Safari has no
+  Memory64) and a same-origin WebSocket to the runner works. As native Bun runs the code, this would let
+  Safari *run* code, which runbun.dev can't do today. The same setup avoids Chrome's Local Network Access
+  prompt in every browser. The cost: a different origin, so projects saved on runbun.dev (IndexedDB) aren't
+  visible there.
 
 ## Not done
 
-- Playground integration: a "Run with local Bun" switch; syncing the VFS (and `bun install` output) both ways;
+- `--open`: serve (or proxy) the playground on the runner's port, so Safari works and no browser asks for
+  local-network permission; the runner then needs its own origin in the allowlist.
+- Playground integration: a "Run with local Bun" switch, which in Safari would turn edit-only into runnable; syncing the VFS (and `bun install` output) both ways;
   serving the preview through the existing `/__preview/` service worker, ideally tunnelled over the one
   WebSocket so only one local-network connection needs the permission.
 - Resource limits (cgroups / `ulimit`), a tighter bwrap root than `--ro-bind / /`, Windows.
