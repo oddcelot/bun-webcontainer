@@ -186,6 +186,8 @@ export function EditorPane() {
         check?.(path, d);
       }
     });
+    // A renamed file keeps its undo history under the new path.
+    const unrename = ws.onRename((from, to) => editor?.rename(from, to));
     const onKey = (e: KeyboardEvent) => {
       if (matches("goToDefinition", e)) {
         e.preventDefault();
@@ -229,6 +231,7 @@ export function EditorPane() {
     addEventListener("beforeunload", onUnload);
     return () => {
       unsubscribe();
+      unrename();
       removeEventListener("keydown", onKey);
       removeEventListener("beforeunload", onUnload);
       clearTimeout(timer);

@@ -21,6 +21,8 @@ export function mountEmbed(pg: Playground, embed: Embed) {
     stop: pg.stop,
     install: () => void pg.install(),
     newFile: pg.newFile,
+    renamePath: pg.renamePath,
+    removePath: pg.removePath,
     // Opening other projects, folders and zips is the full playground's.
     openProject: noop,
     openFolder: noop,

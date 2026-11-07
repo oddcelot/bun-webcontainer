@@ -111,5 +111,7 @@ export interface CodeEditor {
   reveal(line: number, column: number): void;
   /** Show no file (the last tab was closed). */
   clear(): void;
+  /** A file or folder moved: its files keep their undo history at the new paths. */
+  rename(from: string, to: string): void;
   destroy(): void;
 }

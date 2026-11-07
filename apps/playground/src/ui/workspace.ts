@@ -48,6 +48,7 @@ export function createWorkspace() {
   let reveal: (line: number, column: number) => void = () => {};
   let openAt: (path: string, line: number, column: number) => void = () => {};
   let format = () => {};
+  const renamed = new Set<(from: string, to: string) => void>();
   return {
     state,
     setDirty(path: string, dirty: boolean) {
@@ -140,6 +141,23 @@ export function createWorkspace() {
         if (s.active === path) s.active = s.open[i] ?? s.open[i - 1] ?? null;
       });
       readOnly.delete(path);
+    },
+    /** Calls `fn` when a file or folder is renamed (before the tabs follow it); returns the unsubscribe. */
+    onRename(fn: (from: string, to: string) => void) {
+      renamed.add(fn);
+      return () => void renamed.delete(fn);
+    },
+    /** Points the tabs (and their unsaved marks) at a file's or folder's new path, keeping their order and the active one. */
+    rename(from: string, to: string) {
+      for (const fn of renamed) fn(from, to);
+      const a = from.replace(/\/$/, "");
+      const b = to.replace(/\/$/, "");
+      const move = (p: string) => (p === a ? b : p.startsWith(`${a}/`) ? b + p.slice(a.length) : p);
+      setState((s) => {
+        s.open = s.open.map(move);
+        s.dirty = s.dirty.map(move);
+        if (s.active) s.active = move(s.active);
+      });
     },
     closeAll() {
       setState((s) => {

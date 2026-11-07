@@ -11,8 +11,8 @@ sidebar:
 
 ## Editor and files
 
-- Syntax-highlighted editor with themes and light/dark mode
-- File tree with search and a "New file" button
+- Syntax-highlighted editor with themes and light/dark mode. Each file keeps its undo history while the page is open: switching tabs and back, or renaming the file, doesn't lose it. A file changed outside the editor (by your program, or in an opened folder by another editor) starts a fresh history.
+- File tree with search and a "New file" button. Right-click a file or folder (or use its ⋯ button) to **rename** or **delete** it, or to add a file to a folder. <kbd>F2</kbd> renames the focused row in place; <kbd>Delete</kbd> (or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Backspace</kbd>) deletes it after asking. Open tabs follow a rename and close when their file is deleted; with Watch on, either restarts the program. For ten seconds after, **Undo** under the tree (or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Z</kbd> in the tree) brings a deleted file or folder back, tabs included, or moves a renamed one back. In an opened folder, both reach the folder on disk.
 - Tabs for open files: close with the × button, <kbd>Delete</kbd>, or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>W</kbd>
 - **Auto-save** (on by default): edits are saved a moment after you stop typing. Switch it off with the save icon next to Run (in an embed, the tab bar's Auto-save switch) to save with <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>S</kbd> instead; unsaved tabs show a dot, and Run, Install, `bun test` and Share save everything first. The setting applies to every project and every open playground tab.
 - **Format** (top right of the code while the pointer is over it, or <kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd>) formats the open file with `bun fmt`, as one undoable edit (see [Toolchain](/compatibility/toolchain/#formatter-bun-fmt))
@@ -24,7 +24,7 @@ sidebar:
 - **Open folder** or **Open zip file** loads a project from your computer (skips `node_modules` and `.git`). A zip whose files all sit in one folder, like GitHub's downloads, opens that folder. In Chrome, edits to an opened folder are saved back to it, and changes made to it in another editor show up in the playground.
 - In Chrome and Edge, an opened folder stays linked: edits, new files and deletions are saved to it on disk. `node_modules` stays in the browser and the folder's own `node_modules` and `.git` aren't touched. A reload opens it again if the browser still allows access; otherwise pick **Reopen <folder>** in the project picker, which asks once more. Other browsers open a copy.
 
-Not yet: renaming or deleting files from the tree. Very large files are slow, because every line is rendered.
+Very large files are slow, because every line is rendered.
 
 ### Keyboard shortcuts
 
@@ -40,6 +40,9 @@ Not yet: renaming or deleting files from the tree. Very large files are slow, be
 | <kbd>Ctrl</kbd>+<kbd>Space</kbd> | Show completions at the cursor (`suggest`; <kbd>Ctrl</kbd> on macOS too) |
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>Space</kbd> | Show the parameters of the call at the cursor (`signatureHelp`) |
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>W</kbd>, <kbd>Delete</kbd> | Close the focused tab |
+| <kbd>F2</kbd> | Rename the focused file or folder in the file tree |
+| <kbd>Delete</kbd>, <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Backspace</kbd> | Delete the focused file or folder in the file tree (asks first) |
+| <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Z</kbd> (in the file tree) | Undo the last rename or delete |
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>B</kbd> | Show or hide the file tree |
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>J</kbd> | Show or hide the console |
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>K</kbd> | Show or hide the preview |

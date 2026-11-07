@@ -27,6 +27,10 @@ export type App = {
   openProject(value: string): void;
   /** Creates an empty file and opens it. */
   newFile(path: string): Promise<void>;
+  /** Moves a file or folder (its tabs follow); resolves to its undo. */
+  renamePath(from: string, to: string): Promise<() => Promise<void>>;
+  /** Deletes a file or folder (its tabs close); resolves to its undo. */
+  removePath(path: string): Promise<() => Promise<void>>;
   openFolder(files: File[]): void;
   /** Opens a folder on disk and saves edits to it (only where `showDirectoryPicker` exists). */
   openDirectory(): void;

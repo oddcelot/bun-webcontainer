@@ -96,9 +96,10 @@ export class VFS {
     return () => void this.listeners.delete(fn);
   }
 
-  /** Fires when a directory is created or removed (file events don't cover empty directories). */
+  /** Fires when a directory is created or removed (file events don't cover empty directories). Returns the unsubscribe. */
   onDir(fn: (path: string, removed: boolean) => void) {
     this.dirListeners.add(fn);
+    return () => void this.dirListeners.delete(fn);
   }
 
   /** Fires after `clear` (and so `load`), which drop everything without per-file events. */

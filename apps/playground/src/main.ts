@@ -22,8 +22,8 @@ let savedAs!: (id: string | null) => void;
 const saving = new Promise<string | null>((r) => (savedAs = r));
 
 const pg = createPlayground();
-const { support, session, workspace, previews, terminal, vfs, log, run, stop, install, clearConsole, newFile, entryFile } = pg;
-mountUI({ session, support, workspace, previews, terminal, clearConsole, vfs, log, run: () => run(), stop, install, openProject, newFile, openFolder, openDirectory, reopenFolder, openZip, storage: { current: () => saving, remove: removeProject, clearAll }, repoParam: new URLSearchParams(location.search).get("repo") ?? "" });
+const { support, session, workspace, previews, terminal, vfs, log, run, stop, install, clearConsole, newFile, renamePath, removePath, entryFile } = pg;
+mountUI({ session, support, workspace, previews, terminal, clearConsole, vfs, log, run: () => run(), stop, install, openProject, newFile, renamePath, removePath, openFolder, openDirectory, reopenFolder, openZip, storage: { current: () => saving, remove: removeProject, clearAll }, repoParam: new URLSearchParams(location.search).get("repo") ?? "" });
 const params = new URLSearchParams(location.search);
 // ?vars= sets the overlay for this visit (theme.ts allows only that); not saved, and Share links drop it.
 if (params.has("vars")) setThemeVars(urlVars(params.get("vars")));
