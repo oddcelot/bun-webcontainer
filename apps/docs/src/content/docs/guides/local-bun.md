@@ -52,7 +52,17 @@ The runner listens only on `127.0.0.1`, and only runbun.dev (or the playground i
 
 The network stays open because the preview has to reach the program's server and `bun install` has to reach the registry. That means a program can also reach other services on your computer and your local network.
 
-So the playground doesn't run someone else's code on your machine without asking. A share link or a GitHub repo opens in the browser, whatever you chose before; pressing **Local Bun** then asks "Run … on this machine?" first. In Safari, which can't run it in the browser, Run asks instead.
+So nothing runs on your machine without asking you there. Before a playground page's first run, the runner asks in its terminal:
+
+```
+http://127.0.0.1:7357 wants to run code on this machine:
+  bun run index.ts  ·  index.ts, util.ts, index.html, client.ts, styles.css, … (6 files)
+Allow this page to run code here until it reloads? Say no if you didn't just press Run. [y/N]
+```
+
+The answer holds until the page reloads. A web page can't answer in your terminal, so even code that tries to reach the runner by itself (a shared project's preview, say) needs your "y". The console says when the playground is waiting for it. Started without a terminal, the runner refuses every page; `--no-confirm` turns the question off.
+
+The playground asks too. A share link or a GitHub repo opens in the browser, whatever you chose before; pressing **Local Bun** then asks "Run … on this machine?" first. In Safari, which can't run it in the browser, Run asks instead.
 
 A run is stopped, with every process it started, when it uses more than 2048 MB of memory or 64 processes. Change the limits with `--max-memory` and `--max-processes`. They are checked twice a second, so a program can briefly go past them.
 
@@ -68,6 +78,7 @@ Without a sandbox, the runner doesn't start. `--no-sandbox` starts it anyway, an
 | `--no-playground` | | Only the runner, for `?connect=` links. |
 | `--allow-origin <url>` | | Another site that may connect; repeat for more. |
 | `--no-sandbox` | | Runs without a sandbox (see above). |
+| `--no-confirm` | | Runs pages' code without asking in the terminal (see above). |
 | `--max-memory <MB>` | `2048` | Memory for one run, all its processes together. |
 | `--max-processes <n>` | `64` | Processes for one run. |
 
