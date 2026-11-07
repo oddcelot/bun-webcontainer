@@ -46,7 +46,7 @@ const lazyFiles = (files: File[]) => files.filter((f) => f.data.byteLength > LAZ
  */
 export function splitPackage(files: File[], url: string): { name: string; data: Uint8Array | LazyData }[] {
   const lazy = enabled() ? new Set(lazyFiles(files)) : new Set<File>();
-  if (!lazy.size) return shareFiles(files);
+  if (!lazy.size) return shareFiles(files, !CONTENT_ORIGIN);
   const key = keyOf(url);
   sources.set(key, url);
   const out: { name: string; data: Uint8Array | LazyData }[] = [];
@@ -61,7 +61,7 @@ export function splitPackage(files: File[], url: string): { name: string; data: 
     const done = write(key, parts, size).finally(() => writing.delete(key));
     writing.set(key, done.catch(() => {}));
   }
-  return [...out, ...shareFiles(files.filter((f) => !lazy.has(f)))];
+  return [...out, ...shareFiles(files.filter((f) => !lazy.has(f)), !CONTENT_ORIGIN)];
 }
 
 async function write(key: string, parts: Uint8Array[], size: number) {

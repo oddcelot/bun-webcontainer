@@ -62,10 +62,11 @@ export const unshared = (u: Uint8Array): Uint8Array => (SAB && u.buffer instance
 /**
  * Copies the files of one package (views of its unpacked tarball) into one SharedArrayBuffer where the page is
  * cross-origin isolated: posting them to a worker shares them instead of copying. Elsewhere each gets a buffer of its
- * own, so a message carrying one file doesn't carry the whole tarball.
+ * own, so a message carrying one file doesn't carry the whole tarball. `share: false` for a worker on another origin
+ * (a content origin), where a shared buffer in a message can't be delivered (`messageerror`).
  */
-export function shareFiles<T extends { data: Uint8Array }>(files: T[]): T[] {
-  if (!SAB || !(globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated) return files.map((f) => ({ ...f, data: f.data.slice() }));
+export function shareFiles<T extends { data: Uint8Array }>(files: T[], share = true): T[] {
+  if (!share || !SAB || !(globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated) return files.map((f) => ({ ...f, data: f.data.slice() }));
   let size = 0;
   for (const f of files) size += f.data.byteLength;
   const mem = new Uint8Array(new SAB(size));
