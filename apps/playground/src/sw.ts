@@ -422,10 +422,16 @@ self.addEventListener("fetch", (e) => {
   }
 });
 
+/**
+ * A 302 to `to`. On the content origin the editor frames us under COEP, which holds every response of a navigation (a
+ * redirect included) to the embedder policy: Response.redirect() has no CORP header and the frame fails to load.
+ */
+const redirect = (to: string): Response => (CONTENT ? new Response(null, isolated({ status: 302, headers: { location: to } })) : Response.redirect(to, 302));
+
 /** A preview frame navigating outside `/__preview` (a link to `/entries/2`): its own server, found from where it came from. */
 function leavePreview(req: Request, url: URL): Response | Promise<Response> {
   const ownerId = req.referrer ? previewOwnerOf(new URL(req.referrer).pathname) : undefined;
-  if (req.method === "GET") return Response.redirect(previewBase(ownerId) + url.pathname + url.search, 302);
+  if (req.method === "GET") return redirect(previewBase(ownerId) + url.pathname + url.search);
   return servePreview(req, url, url.pathname + url.search, ownerId);
 }
 
@@ -439,7 +445,7 @@ async function fromPreviewOrNetwork(e: FetchEvent): Promise<Response> {
       // A preview in its own tab following a link out of /__preview: with no playground open there's no server, so
       // it's the playground being opened; otherwise it's the app's own page, as for the iframe above.
       if (!(ownerId ? await windowClient(ownerId) : await host())) return fetch(e.request);
-      if (e.request.method === "GET") return Response.redirect(previewBase(ownerId) + url.pathname + url.search, 302);
+      if (e.request.method === "GET") return redirect(previewBase(ownerId) + url.pathname + url.search);
     }
     return servePreview(e.request, url, url.pathname + url.search, ownerId);
   }
