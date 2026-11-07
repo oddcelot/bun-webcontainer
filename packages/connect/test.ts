@@ -164,6 +164,26 @@ try {
   const viaDir = await run(ws, "link3", { "index.ts": `console.log("ran")`, lnk: "x" }, undefined, { project: "links" });
   check("a symlinked directory isn't deleted through", existsSync(`${victim}/stale.txt`) && /symlink/.test(viaDir.err) && !viaDir.out, JSON.stringify(viaDir));
   rmSync(victim, { recursive: true, force: true });
+  // The install cache is per project: a run can write its own, not another project's.
+  await run(ws, "cache-b", { "index.ts": `import { writeFileSync } from "node:fs"; writeFileSync(process.env.BUN_INSTALL_CACHE_DIR + "/marker", "b")` }, undefined, { project: "cache-b" });
+  const cached = await run(
+    ws,
+    "cache-a",
+    {
+      "index.ts": `import { dirname, join } from "node:path"; import { existsSync, writeFileSync } from "node:fs";
+        const mine = process.env.BUN_INSTALL_CACHE_DIR!;
+        const t = (f: () => unknown) => { try { f(); return "allowed"; } catch (e: any) { return e.code ?? String(e); } };
+        console.log(JSON.stringify({ sees: existsSync(join(mine, "marker")), own: t(() => writeFileSync(join(mine, "x"), "1")), other: t(() => writeFileSync(join(dirname(mine), "cache-b", "planted"), "1")) }));`,
+    },
+    undefined,
+    { project: "cache-a" },
+  );
+  const c = JSON.parse(cached.out.trim().split("\n").at(-1) || "{}");
+  check(
+    `one project can't write another's install cache`,
+    c.own === "allowed" && c.sees === false && (r.sandbox === "none" ? c.other === "allowed" : c.other !== "allowed"),
+    cached.out + cached.err,
+  );
   const bin = await run(ws, "bin", { "index.ts": `console.log([...new Uint8Array(await Bun.file("b.bin").arrayBuffer())].join())`, "b.bin": { b64: "AAEC/w==" } } as any);
   check("binary files arrive intact", bin.out.trim() === "0,1,2,255", bin.out + bin.err);
   const tests = await run(ws, "tests", { "a.test.ts": `import { test, expect } from "bun:test"; test("ok", () => expect(1).toBe(1)); test("no", () => expect(1).toBe(2));` }, undefined, { entry: "", test: ["a.test.ts"] });

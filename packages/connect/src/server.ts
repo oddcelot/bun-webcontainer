@@ -44,6 +44,8 @@ interface Run {
   proc?: Subprocess<"pipe", "pipe", "pipe">;
   killed: boolean;
   port: number;
+  /** The project's own install cache: writable only in its runs, so one project can't plant packages for another. */
+  cache: string;
 }
 
 /** Per connection (one playground page): its runs, the Host it used, its Origin, and the answer to `approve`. */
@@ -136,8 +138,6 @@ export function startRunner(opts: RunnerOptions = {}) {
   const limits: Limits = { ...DEFAULT_LIMITS, ...opts.limits };
   const runs = new Map<string, Run>();
   const root = realpathSync(mkdtempSync(join(tmpdir(), "runbun-connect-")));
-  const cache = join(root, "cache");
-  mkdirSync(cache, { recursive: true });
   /** project → the files its last run wrote, to delete the ones a later run no longer has. */
   const manifests = new Map<string, Set<string>>();
   const busyProjects = new Set<string>();
@@ -311,7 +311,7 @@ export function startRunner(opts: RunnerOptions = {}) {
 
   /** Runs `bun <args>` in dir, streaming its output; resolves with its exit. */
   async function spawn(ws: Socket, id: string, run: Run, dir: string, args: string[]) {
-    const proc = Bun.spawn(sandboxed(sandbox, dir, args, [cache], server.port), {
+    const proc = Bun.spawn(sandboxed(sandbox, dir, args, [run.cache], server.port), {
       cwd: dir,
       // A clean environment: none of the user's tokens or keys. Bun.serve() with no port listens on $PORT.
       env: {
@@ -319,7 +319,7 @@ export function startRunner(opts: RunnerOptions = {}) {
         HOME: dir,
         TMPDIR: join(dir, ".tmp"),
         PORT: String(run.port),
-        BUN_INSTALL_CACHE_DIR: cache,
+        BUN_INSTALL_CACHE_DIR: run.cache,
         NO_COLOR: "1",
       },
       stdin: "pipe",
@@ -393,7 +393,9 @@ export function startRunner(opts: RunnerOptions = {}) {
     manifests.set(project, paths);
     mkdirSync(join(dir, ".tmp"), { recursive: true });
 
-    const run: Run = { killed: false, port: await freePort() };
+    const cache = join(root, "cache", project);
+    mkdirSync(cache, { recursive: true });
+    const run: Run = { killed: false, port: await freePort(), cache };
     runs.set(msg.id, run);
     busyProjects.add(project);
     ws.data.runs.add(msg.id);

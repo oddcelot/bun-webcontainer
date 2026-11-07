@@ -45,7 +45,7 @@ The runner listens only on `127.0.0.1`, and only runbun.dev (or the playground i
 | | Linux (bubblewrap) | macOS (sandbox-exec) |
 |---|---|---|
 | Your home folder | Hidden: it looks empty | Can't be read |
-| Writing files | Only the project's folder and Bun's package cache are kept; other writes land in a throwaway copy | Refused, except in the project's folder and Bun's package cache |
+| Writing files | Only the project's folder and its own Bun package cache are kept; other writes land in a throwaway copy | Refused, except in the project's folder and its own Bun package cache |
 | The rest of the file system | Readable | Readable |
 | Environment variables | None of yours | None of yours |
 | Network | Open | Open |

@@ -29,7 +29,7 @@ Each run is a real program on your machine, in a sandbox:
 | | Linux (bubblewrap) | macOS (sandbox-exec) |
 | --- | --- | --- |
 | Your home folder | hidden (empty) | can't be read |
-| Writes | only the project's folder and Bun's install cache | the same |
+| Writes | only the project's folder and its own Bun install cache | the same |
 | Rest of the file system | readable | readable |
 | Network | open | open |
 
