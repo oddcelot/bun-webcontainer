@@ -175,8 +175,10 @@ export default defineConfig(({ mode }) => ({
   },
   // In builds, worker bundles (the runtime and rolldown's wasi worker) only get worker.plugins.
   worker: { format: "es", plugins: () => [emnapiNotNode()] },
-  // localhost alone may listen on ::1 only; 127.0.0.1 is the content origin (localhost still works: browsers fall back to IPv4).
-  server: { headers: served, ...(contentOrigin && { host: "127.0.0.1" }) },
+  // Vite's default `localhost` bind may be ::1 only. As a content origin (src/contentOrigin.ts: run.runbun.localhost next to
+  // the editor at runbun.localhost) the server listens on 127.0.0.1, which every *.localhost name reaches (browsers resolve
+  // them to loopback and try IPv4); Vite's Host check is told to accept those names.
+  server: { headers: served, ...(contentOrigin && { host: "127.0.0.1", allowedHosts: ["localhost", ".localhost"] }) },
   preview: { headers: served },
   optimizeDeps: { exclude: ["@rolldown/browser", "@napi-rs/wasm-runtime", "@emnapi/core", "@emnapi/runtime", "@emnapi/wasi-threads"] },
   resolve: {

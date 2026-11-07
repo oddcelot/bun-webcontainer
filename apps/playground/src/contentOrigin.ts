@@ -1,7 +1,11 @@
 /**
  * The origin that runs project code (the runtime Worker and the previews), or undefined to run it on the editor's own
- * origin. Dev: the editor at http://localhost:5173 and `VITE_CONTENT_ORIGIN=http://127.0.0.1:5173`, the same server
- * under the other hostname (a different origin and site). Spike, see bead bwc-2kk.11.
+ * origin. Dev: the editor at http://runbun.localhost:5173 (VITE_EDITOR_ORIGINS) and
+ * `VITE_CONTENT_ORIGIN=http://run.runbun.localhost:5173`, the same server under a subdomain: a different origin but the
+ * same site, as run.runbun.dev is to runbun.dev. Chrome and Firefox resolve *.localhost to loopback. Same site matters:
+ * with another site the content origin's service worker is partitioned under the editor, and "open preview in a new
+ * tab" finds none. Plain `localhost` doesn't do as the editor: it is its own site (a bare `localhost` is a public
+ * suffix), and so is `run.localhost`, so the two are cross-site.
  */
 const raw = import.meta.env.VITE_CONTENT_ORIGIN as string | undefined;
 export const CONTENT_ORIGIN: string | undefined = raw ? new URL(raw).origin : undefined;
