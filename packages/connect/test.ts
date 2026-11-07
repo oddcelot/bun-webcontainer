@@ -8,7 +8,10 @@ const ORIGIN = "https://runbun.dev";
 const secret = realpathSync(process.argv[2] ?? new URL("./package.json", import.meta.url).pathname);
 const escape = `/tmp/runbun-escape-${process.pid}`;
 process.env.RUNBUN_TEST_SECRET = "hunter2";
-const r = startRunner({ port: 0 });
+const site = (await import("node:fs")).mkdtempSync("/tmp/runbun-site-");
+await Bun.write(`${site}/index.html`, "<!doctype html><title>app</title>");
+await Bun.write(`${site}/assets/app.js`, "console.log(1)");
+const r = startRunner({ port: 0, playground: site });
 const port = r.server.port;
 let failed = 0;
 const check = (name: string, ok: boolean, detail = "") => {
@@ -25,7 +28,7 @@ function connect(url: string, origin: string): Promise<WebSocket | number> {
   });
 }
 
-function run(ws: WebSocket, id: string, files: Record<string, string>, onStart?: (m: ServerMessage & { t: "started" }) => void | Promise<void>) {
+function run(ws: WebSocket, id: string, files: Record<string, string>, onStart?: (m: ServerMessage & { t: "started" }) => void | Promise<void>, extra: object = {}) {
   return new Promise<{ out: string; err: string; code: number | null }>((resolve) => {
     let out = "", err = "";
     const on = async (e: MessageEvent) => {
@@ -37,7 +40,7 @@ function run(ws: WebSocket, id: string, files: Record<string, string>, onStart?:
       if (m.t === "exit") ws.removeEventListener("message", on), resolve({ out, err, code: m.code });
     };
     ws.addEventListener("message", on);
-    ws.send(JSON.stringify({ t: "run", id, files, entry: "index.ts" }));
+    ws.send(JSON.stringify({ t: "run", id, files, entry: "index.ts", ...extra }));
   });
 }
 
@@ -46,7 +49,7 @@ try {
 
   check("another site's origin is refused", (await connect(r.url, "https://evil.example")) === 0);
   check("a wrong token is refused", (await connect(r.url.replace(/token=\w+/, "token=nope"), ORIGIN)) === 0);
-  const rebound = await fetch(`http://127.0.0.1:${port}/ws`, { headers: { host: "evil.example:80" } });
+  const rebound = await fetch(`http://127.0.0.1:${port}/__connect/ws`, { headers: { host: "evil.example:80" } });
   check("a non-loopback Host is refused (DNS rebinding)", rebound.status === 421);
 
   const ws = (await connect(r.url, ORIGIN)) as WebSocket;
@@ -115,7 +118,34 @@ try {
   ws.send(JSON.stringify({ t: "stdin", id: "stdin", data: "ping\n" }));
   check("stdin reaches the run", (await echo).out.trim() === "got ping", (await echo).err);
 
+  // A project's runs share a directory: `bun install` before the run, node_modules kept, stale files removed.
+  const dep = { "package.json": JSON.stringify({ dependencies: { ms: "2.1.3" } }) };
+  const first = await run(ws, "dep1", { ...dep, "stale.txt": "x", "index.ts": `import ms from "ms"; console.log(ms(60000));` }, undefined, { project: "p1" });
+  check("bun install runs before the run", first.out.trim().endsWith("1m"), first.out + first.err);
+  const second = await run(
+    ws,
+    "dep2",
+    { ...dep, "index.ts": `import { existsSync } from "node:fs"; console.log(JSON.stringify({ stale: existsSync("stale.txt"), nm: existsSync("node_modules/ms") }));` },
+    undefined,
+    { project: "p1" },
+  );
+  const s2 = JSON.parse(second.out.trim().split("\n").at(-1) || "{}");
+  check("the project keeps node_modules and drops stale files", s2.nm === true && s2.stale === false, second.out + second.err);
+  const bin = await run(ws, "bin", { "index.ts": `console.log([...new Uint8Array(await Bun.file("b.bin").arrayBuffer())].join())`, "b.bin": { b64: "AAEC/w==" } } as any);
+  check("binary files arrive intact", bin.out.trim() === "0,1,2,255", bin.out + bin.err);
   ws.close();
+
+  // The playground, served from the runner.
+  const page = await fetch(`http://127.0.0.1:${port}/`);
+  check("the playground is served, cross-origin isolated", (await page.text()).includes("<title>app") && page.headers.get("cross-origin-embedder-policy") === "credentialless" && page.headers.get("cross-origin-opener-policy") === "same-origin");
+  check("app routes fall back to index.html", (await (await fetch(`http://127.0.0.1:${port}/some/route?x=1`)).text()).includes("<title>app"));
+  check("a missing asset is a 404", (await fetch(`http://127.0.0.1:${port}/assets/missing.js`)).status === 404);
+  const info = await fetch(`http://localhost:${port}/__connect/info`, { headers: { "sec-fetch-site": "same-origin" } }).then((r) => r.json() as any);
+  check("a same-origin page gets the token", info.token === r.token && info.ws.includes("/__connect/ws"));
+  check("a cross-site page doesn't", (await fetch(`http://localhost:${port}/__connect/info`, { headers: { "sec-fetch-site": "cross-site" } })).status === 403);
+  const own = await connect(info.ws, `http://localhost:${port}`);
+  check("the runner's own origin connects", typeof own === "object");
+  if (typeof own === "object") own.close();
 } finally {
   r.stop();
 }
