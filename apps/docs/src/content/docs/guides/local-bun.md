@@ -50,7 +50,7 @@ The runner listens only on `127.0.0.1`, and only runbun.dev (or the playground i
 | Environment variables | None of yours | None of yours |
 | Network | Open | Open |
 
-The network stays open because the preview has to reach the program's server and `bun install` has to reach the registry. That means a program can also reach other services on your computer and your local network. The exception is the runner's own port on macOS, which a program can't connect to; on Linux it can, so a program could read the runner's token there (a new connection still waits for your answer in the terminal).
+The network stays open because the preview has to reach the program's server and `bun install` has to reach the registry. That means a program can also reach other services on your computer and your local network. The exception is the runner's own port: on macOS a program can't connect to it, and on Linux the runner turns away connections that come from a program it started, so a program can't read the runner's token. (The Linux check is new and not yet tested on a real Linux machine; a new connection also waits for your answer in the terminal.)
 
 So nothing runs on your machine without asking you there. Before a playground page's first run, the runner asks in its terminal:
 

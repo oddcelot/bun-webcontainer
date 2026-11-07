@@ -7,11 +7,12 @@
 //   /__connect/info                    { ws, token, … } for a same-origin page (the playground served from here)
 //   /__connect/preview/<token>/<run>/  the run's Bun.serve
 // Everything else is the playground (--playground: a URL to proxy, or a built dist/ directory), when enabled.
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, extname, isAbsolute, join, normalize } from "node:path";
 import type { ServerWebSocket, Subprocess } from "bun";
 import { PACKED_REQUEST, PACKED_RESPONSE, type ClientMessage, type ConnectInfo, type ServerMessage } from "./protocol.ts";
+import { peerVerdict, refuse } from "./peer.ts";
 import { detectSandbox, sandboxed, type SandboxKind } from "./sandbox.ts";
 
 export const DEFAULT_ORIGINS = ["https://runbun.dev", "https://canary.runbun.dev", "http://localhost:5173"];
@@ -144,6 +145,21 @@ export function startRunner(opts: RunnerOptions = {}) {
 
   const loopbackHost = (host: string | null) => !!host && /^(127\.0\.0\.1|localhost|\[::1\]):\d+$/.test(host);
 
+  /**
+   * Linux/bwrap: is this connection from a sandboxed program (or from somebody we can't identify)? bwrap shares the
+   * network, so such a program could reach /__connect/info and /__connect/ws; see peer.ts. With no run alive there is
+   * no program to turn away, so nothing is checked.
+   */
+  const fromSandbox = (req: Request, srv: { requestIP(r: Request): { address: string; port: number } | null }) => {
+    if (sandbox !== "bwrap" || process.platform !== "linux") return false;
+    const roots = [...runs.values()].flatMap((r) => (r.proc && r.proc.exitCode === null ? [r.proc.pid] : []));
+    if (!roots.length) return false;
+    const client = srv.requestIP(req);
+    if (!client) return true;
+    const fs = { readFile: (p: string) => readFileSync(p, "utf8"), readdir: (p: string) => readdirSync(p), readlink: (p: string) => readlinkSync(p) };
+    return refuse(peerVerdict(fs, client, { address: "127.0.0.1", port: server.port as number }, roots));
+  };
+
   const server = Bun.serve<SocketData>({
     hostname: "127.0.0.1",
     port: opts.port ?? 7357,
@@ -156,6 +172,9 @@ export function startRunner(opts: RunnerOptions = {}) {
 
       const pm = path.match(/^\/__connect\/preview\/([^/]+)\/([^/]+)(\/.*)?$/);
       if (pm) return preview(req, url, pm[1]!, pm[2]!, pm[3] ?? "/");
+
+      if ((path === "/__connect/ws" || path === "/__connect/info") && fromSandbox(req, srv))
+        return new Response("not available to sandboxed programs", { status: 403 });
 
       if (path === "/__connect/ws") {
         const origin = req.headers.get("origin");
