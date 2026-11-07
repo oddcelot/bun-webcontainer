@@ -212,6 +212,12 @@ function ask<T>(port: MessagePort, m: ToHost, transfer: Transferable[], timeout 
   });
 }
 
+/** A request to the host frame, once it is up, answered on a reply port. */
+export async function askHost<T>(m: ToHost, transfer: Transferable[] = [], timeout?: number): Promise<T> {
+  const { port } = await connectHost();
+  return ask<T>(port, m, transfer, timeout);
+}
+
 /** `fetch` of a path on the content origin, made by the host frame (its service worker doesn't control the editor). */
 export async function fetchContent(path: string, init: RequestInit): Promise<Response> {
   const { port } = await connectHost();

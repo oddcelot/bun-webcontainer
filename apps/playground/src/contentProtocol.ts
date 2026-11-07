@@ -22,7 +22,18 @@ export type ToHost =
    * `document.cookie` assignments and answers nothing.
    */
   | { kind: "cookies"; op: "read"; base: string }
-  | { kind: "cookies"; op: "write"; base: string; lines: string[] };
+  | { kind: "cookies"; op: "write"; base: string; lines: string[] }
+  /**
+   * The package store (pkgStore.ts) lives on this origin: its OPFS, and the answer to the Worker's synchronous lazy
+   * read, which can't cross origins. `store-put` hands over a package's large files (one ArrayBuffer, transferred; `url`
+   * is the tarball they came from, to rebuild the entry if it goes missing) and is answered `{}` once stored;
+   * `store-read` answers `{ buf }` with `size` bytes at `at` of entry `key`; `store-info` `{ entries, bytes }`;
+   * `store-clear` `{}`. A failure is answered `{ error }`. No message carries shared memory.
+   */
+  | { kind: "store-put"; key: string; url: string; buf: ArrayBuffer }
+  | { kind: "store-read"; key: string; url: string; at: number; size: number }
+  | { kind: "store-info" }
+  | { kind: "store-clear" };
 
 /** Over the MessagePort, host -> editor. `sw` carries the service worker's reply port. */
 export type ToEditor =

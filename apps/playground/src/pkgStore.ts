@@ -3,6 +3,7 @@ import { gunzip, untar } from "./lockfile";
 import { fetchTarball } from "./pkgCache";
 import { bucket } from "./storage";
 import { CONTENT_ORIGIN } from "./contentOrigin";
+import type { ToHost } from "./contentProtocol";
 
 /**
  * Large installed files, kept out of memory. A program reads few of an install's files, and the large ones hold
@@ -10,6 +11,10 @@ import { CONTENT_ORIGIN } from "./contentOrigin";
  * those go to the package store, one OPFS file per package version (`store/<key>`), and the VFS gets a reference
  * (LazyData: entry, offset, size). Reading one loads it: a worker blocks on Atomics.wait while the page reads it
  * (`serveLazyRead`); the page itself can't block, so its readers load first (`VFS.ensure`, `withLoaded`).
+ *
+ * With a content origin the store is on that origin (host/main.ts answers the worker, which is there; a shared buffer
+ * can't cross origins): the page installs as ever and hands each package's large files over once (`store-put`), and
+ * reads them back when it needs one (`store-read`: the module server, the editor, the type checker).
  *
  * Only where workers can block (cross-origin isolated: SharedArrayBuffer, Atomics.wait) and there's OPFS; elsewhere
  * every file stays in memory. A store entry that's gone (cleared, evicted) is rebuilt from the tarball.
@@ -20,10 +25,17 @@ const EAGER = /(^|\/)(package\.json|tsconfig[^/]*\.json)$|\.d\.[cm]?ts$/;
 /** The store's size the oldest entries go above (entries this page uses stay). */
 const STORE_BUDGET = 2 ** 30;
 
-// Not with a content origin: the worker there is another origin, so the shared buffer it blocks on can't reach the page.
+/** This is the editor page of a content origin: the store is the host frame's, over the port (see the head). */
+const remote = !!CONTENT_ORIGIN && globalThis.location?.origin !== CONTENT_ORIGIN;
+const askHost = async <T>(m: ToHost, transfer: Transferable[] = []): Promise<T> => {
+  const res = await (await import("./contentHost")).askHost<T & { error?: string }>(m, transfer);
+  if (res.error) throw new Error(res.error);
+  return res;
+};
+
+// The editor page's own check also stands for the host frame's (the same headers, and the frame is allowed to be isolated).
 const enabled = () =>
-  !CONTENT_ORIGIN &&
-  typeof SharedArrayBuffer === "function" && (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated === true && !!navigator.storage?.getDirectory;
+  typeof SharedArrayBuffer === "function" && (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated === true && (remote || !!navigator.storage?.getDirectory);
 
 type File = { name: string; data: Uint8Array };
 
@@ -58,10 +70,22 @@ export function splitPackage(files: File[], url: string): { name: string; data: 
   const size = at;
   if (!writing.has(key)) {
     const parts = [...lazy].map((f) => f.data);
-    const done = write(key, parts, size).finally(() => writing.delete(key));
+    const done = (remote ? put(key, url, parts, size) : write(key, parts, size)).finally(() => writing.delete(key));
     writing.set(key, done.catch(() => {}));
   }
   return [...out, ...shareFiles(files.filter((f) => !lazy.has(f)), !CONTENT_ORIGIN)];
+}
+
+/** Hands an entry to the host frame: its bytes in one buffer that is transferred (the frame writes it to its store). */
+async function put(key: string, url: string, parts: Uint8Array[], size: number) {
+  const buf = new ArrayBuffer(size);
+  const all = new Uint8Array(buf);
+  let at = 0;
+  for (const p of parts) {
+    all.set(p, at);
+    at += p.byteLength;
+  }
+  await askHost({ kind: "store-put", key, url, buf }, [buf]);
 }
 
 async function write(key: string, parts: Uint8Array[], size: number) {
@@ -117,8 +141,13 @@ async function rebuild(key: string): Promise<Uint8Array> {
 }
 
 /** A lazy file's bytes, read into `into` (shared memory, so the page can keep it and hand it to workers). */
-async function readLazy(ref: LazyData, into = new Uint8Array(new SharedArrayBuffer(ref.size))): Promise<Uint8Array> {
+async function readLazy(ref: LazyData, into?: Uint8Array): Promise<Uint8Array> {
   await writing.get(ref.lazy);
+  if (remote) {
+    const { buf } = await askHost<{ buf: ArrayBuffer }>({ kind: "store-read", key: ref.lazy, url: sources.get(ref.lazy) ?? "", at: ref.at, size: ref.size });
+    return new Uint8Array(buf);
+  }
+  into ??= new Uint8Array(new SharedArrayBuffer(ref.size));
   const file = await (await dir()).getFileHandle(ref.lazy).then((h) => h.getFile(), () => undefined);
   if (file && file.size >= ref.at + ref.size) into.set(new Uint8Array(await file.slice(ref.at, ref.at + ref.size).arrayBuffer()));
   else into.set((await rebuild(ref.lazy)).subarray(ref.at, ref.at + ref.size));
@@ -137,14 +166,15 @@ export type LazyRead = { type: "lazy-read"; path: string; ref: LazyData; sab: Sh
  * Answers a worker blocked on a lazy file: its bytes into the worker's buffer, then the state word set and notified
  * (1 read, 2 failed). The page keeps that buffer as the file's data, so it holds the bytes once with the worker.
  */
-export async function serveLazyRead(vfs: VFS, { path, ref, sab }: LazyRead) {
+export async function serveLazyRead(vfs: VFS | undefined, { path, ref, sab }: LazyRead) {
   const state = new Int32Array(sab, 0, 1);
   try {
     const into = new Uint8Array(sab, 8, ref.size);
-    const have = vfs.read(path);
+    const have = vfs?.read(path);
     if (have instanceof Uint8Array && have.byteLength === ref.size) into.set(have);
     else {
-      vfs.adopt(path, ref, await readLazy(ref, into));
+      const bytes = await readLazy(ref, into);
+      vfs?.adopt(path, ref, bytes);
     }
     Atomics.store(state, 0, 1);
   } catch {
@@ -155,6 +185,7 @@ export async function serveLazyRead(vfs: VFS, { path, ref, sab }: LazyRead) {
 
 /** The store's entries and size, for `bun pm cache`. */
 export async function storeInfo(): Promise<{ entries: number; bytes: number }> {
+  if (remote) return askHost<{ entries: number; bytes: number }>({ kind: "store-info" }).catch(() => ({ entries: 0, bytes: 0 }));
   const info = { entries: 0, bytes: 0 };
   if (!navigator.storage?.getDirectory) return info;
   for await (const [, h] of (await dir()) as unknown as AsyncIterable<[string, FileSystemHandle]>) {
@@ -167,8 +198,36 @@ export async function storeInfo(): Promise<{ entries: number; bytes: number }> {
 
 /** Empties the store. Files of this page's installs come back from their tarballs when read. */
 export async function clearStore() {
+  if (remote) return void (await askHost({ kind: "store-clear" }).catch(() => {}));
   if (!navigator.storage?.getDirectory) return;
   const root = await (await bucket("pkg-cache", { durability: "relaxed" })).getDirectory();
   await root.removeEntry("store", { recursive: true }).catch(() => {});
   storeDir = undefined;
+}
+
+/** The host frame's side of the store: what the editor hands over or asks for (contentProtocol.ts `store-*`). */
+export async function answerStore(m: Extract<ToHost, { kind: `store-${string}` }>): Promise<unknown> {
+  try {
+    if ("key" in m && (!/^[\w.@-]{1,300}$/.test(m.key) || /^\.+$/.test(m.key))) throw new Error("bad store key");
+    if (m.kind === "store-put") {
+      if (m.url) sources.set(m.key, m.url);
+      if (!writing.has(m.key)) {
+        const done = write(m.key, [new Uint8Array(m.buf)], m.buf.byteLength);
+        writing.set(m.key, done.catch(() => {}).finally(() => writing.delete(m.key)));
+        await done;
+      } else await writing.get(m.key);
+      return {};
+    }
+    if (m.kind === "store-read") {
+      if (!Number.isSafeInteger(m.at) || !Number.isSafeInteger(m.size) || m.at < 0 || m.size < 0 || m.size > 2 ** 31) throw new Error("bad range");
+      if (m.url && !sources.has(m.key)) sources.set(m.key, m.url);
+      const bytes = await readLazy({ lazy: m.key, at: m.at, size: m.size }, new Uint8Array(m.size));
+      return { buf: bytes.buffer };
+    }
+    if (m.kind === "store-info") return await storeInfo();
+    await clearStore();
+    return {};
+  } catch (e) {
+    return { error: String(e) };
+  }
 }

@@ -4,6 +4,7 @@
 // editor holds (OPFS, IndexedDB, cookies) is on this origin. Protocol: contentProtocol.ts.
 import { BASE } from "../base";
 import { EDITOR_ORIGINS } from "../contentOrigin";
+import { answerStore, serveLazyRead, type LazyRead } from "../pkgStore";
 import { envelope, isMessage, type HandshakeMessage, type ToEditor, type ToHost } from "../contentProtocol";
 
 // The editor names its origin (`?editor=`), but only a configured editor origin is answered: any site can frame this
@@ -55,6 +56,25 @@ function cookieDocument(): Promise<Document> {
  */
 const previewChannel = new BroadcastChannel("bun-preview");
 
+/** Dev check (host frame only): the lazy reads the Worker asked and this frame answered. */
+const lazyReads = { asked: 0, ok: 0, failed: 0, bytes: 0 };
+if (import.meta.env.DEV) (globalThis as any).__runbunLazyReads = lazyReads;
+async function answerLazyRead(m: LazyRead) {
+  lazyReads.asked++;
+  // The Worker runs project code, which can post anything: only a shared buffer big enough for what it asks is served.
+  const { ref, sab } = m ?? ({} as LazyRead);
+  if (!(sab instanceof SharedArrayBuffer) || sab.byteLength < 8) return void lazyReads.failed++;
+  if (typeof ref?.lazy !== "string" || !/^[\w.@-]{1,300}$/.test(ref.lazy) || !Number.isSafeInteger(ref.at) || !Number.isSafeInteger(ref.size) || ref.at < 0 || ref.size < 0 || sab.byteLength < 8 + ref.size) {
+    const state = new Int32Array(sab, 0, 1);
+    Atomics.store(state, 0, 2);
+    Atomics.notify(state, 0);
+    return void lazyReads.failed++;
+  }
+  await serveLazyRead(undefined, m);
+  if (Atomics.load(new Int32Array(sab, 0, 1), 0) === 1) (lazyReads.ok++, (lazyReads.bytes += ref.size));
+  else lazyReads.failed++;
+}
+
 const reply = (port: MessagePort, m: ToEditor, transfer: Transferable[] = []) => port.postMessage(envelope(m), transfer);
 
 function connect(port: MessagePort) {
@@ -72,7 +92,11 @@ function connect(port: MessagePort) {
       workers.get(g)?.terminate();
       const worker = new Worker(new URL("../worker/runtime.ts", import.meta.url), { type: "module" });
       workers.set(g, worker);
-      worker.onmessage = (we) => reply(port, { kind: "w", g, d: we.data }, [...we.ports]);
+      worker.onmessage = (we) => {
+        // The Worker blocks on a lazy package file: answered here, in its own agent cluster (a shared buffer can't go to the editor).
+        if (we.data?.type === "lazy-read") return void answerLazyRead(we.data);
+        reply(port, { kind: "w", g, d: we.data }, [...we.ports]);
+      };
       worker.onerror = (we) => reply(port, { kind: "werr", g, message: we.message });
     } else if (m.kind === "w") {
       // Ports ride in the transfer list (a request's reply port, a WebSocket); the message itself is cloned.
@@ -80,6 +104,10 @@ function connect(port: MessagePort) {
     } else if (m.kind === "kill") {
       workers.get(m.g)?.terminate();
       workers.delete(m.g);
+    } else if (m.kind.startsWith("store-")) {
+      const out = e.ports[0];
+      const res = (await answerStore(m as Extract<ToHost, { kind: `store-${string}` }>)) as { buf?: ArrayBuffer };
+      out?.postMessage(res, res.buf ? [res.buf] : []);
     } else if (m.kind === "stopped") {
       previewChannel.postMessage("stopped");
     } else if (m.kind === "ping") {
