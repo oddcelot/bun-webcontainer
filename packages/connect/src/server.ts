@@ -387,7 +387,8 @@ export function startRunner(opts: RunnerOptions = {}) {
     url: `ws://127.0.0.1:${server.port}/__connect/ws?token=${token}`,
     // 127.0.0.1, not localhost: browsers scope cookies by host, not port, so on localhost the preview would see (and
     // forward to the program) the cookies of every other app the user runs on localhost.
-    open: `http://127.0.0.1:${server.port}/`,
+    // With ?connect=, the playground opens straight away rather than on runbun.dev's landing page (a first visit).
+    open: `http://127.0.0.1:${server.port}/?connect=${encodeURIComponent(`ws://127.0.0.1:${server.port}/__connect/ws?token=${token}`)}`,
     stop() {
       for (const r of runs.values()) {
         r.killed = true;
