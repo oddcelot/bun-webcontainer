@@ -7,7 +7,7 @@
 //   /__connect/info                    { ws, token, … } for a same-origin page (the playground served from here)
 //   /__connect/preview/<token>/<run>/  the run's Bun.serve
 // Everything else is the playground (--playground: a URL to proxy, or a built dist/ directory), when enabled.
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, extname, isAbsolute, join, normalize } from "node:path";
 import type { ServerWebSocket, Subprocess } from "bun";
@@ -371,9 +371,22 @@ export function startRunner(opts: RunnerOptions = {}) {
       if (isAbsolute(rel) || rel.startsWith("..") || /(^|\/)node_modules(\/|$)/.test(rel)) return bad(`bad path ${path}`);
       paths.add(rel);
     }
-    for (const old of manifests.get(project) ?? []) if (!paths.has(old)) rmSync(join(dir, old), { force: true });
+    // The runner writes outside the sandbox, so a symlink the program planted must not steer it: refuse a path with
+    // a link on the way (a stale file that is itself a link is just unlinked).
+    const linked = (rel: string, last: boolean) => {
+      const parts = rel.split("/");
+      for (let i = last ? parts.length : parts.length - 1; i > 0; i--)
+        if (lstatSync(join(dir, ...parts.slice(0, i)), { throwIfNoEntry: false })?.isSymbolicLink()) return true;
+      return false;
+    };
+    for (const old of manifests.get(project) ?? []) {
+      if (paths.has(old)) continue;
+      if (linked(old, false)) return bad(`refusing to delete ${old}: a symlink on its path`);
+      rmSync(join(dir, old), { force: true });
+    }
     for (const [path, data] of Object.entries(msg.files)) {
       const rel = normalize(path).replace(/^\/+/, "");
+      if (linked(rel, true)) return bad(`refusing to write ${rel}: a symlink on its path`);
       mkdirSync(dirname(join(dir, rel)), { recursive: true });
       writeFileSync(join(dir, rel), typeof data === "string" ? data : Buffer.from(data.b64, "base64"));
     }

@@ -1,6 +1,6 @@
 // End-to-end check of the runner: the access checks, native-only Bun APIs, the sandbox, the preview proxy.
 //   bun test.ts [secret-file]    secret-file: a file the sandbox must hide (default: this package.json)
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import type { ServerMessage } from "./src/protocol.ts";
 import { startRunner } from "./src/server.ts";
 
@@ -133,6 +133,28 @@ try {
   );
   const s2 = JSON.parse(second.out.trim().split("\n").at(-1) || "{}");
   check("the project keeps node_modules and drops stale files", s2.nm === true && s2.stale === false, second.out + second.err);
+  // The runner writes and deletes outside the sandbox: a symlink the program planted must not redirect that.
+  const victim = `/tmp/runbun-victim-${process.pid}`;
+  mkdirSync(victim, { recursive: true });
+  writeFileSync(`${victim}/file`, "orig");
+  writeFileSync(`${victim}/stale.txt`, "keep");
+  await run(
+    ws,
+    "link1",
+    {
+      "index.ts": `import { rmSync, symlinkSync } from "node:fs";
+        symlinkSync(${JSON.stringify(`${victim}/file`)}, "lnk");
+        rmSync("d", { recursive: true }); symlinkSync(${JSON.stringify(victim)}, "d");`,
+      "d/stale.txt": "x",
+    },
+    undefined,
+    { project: "links" },
+  );
+  const viaFile = await run(ws, "link2", { "index.ts": `console.log("ran")`, "d/stale.txt": "x", lnk: "pwned" }, undefined, { project: "links" });
+  check("a symlinked file isn't written through", readFileSync(`${victim}/file`, "utf8") === "orig" && /symlink/.test(viaFile.err) && !viaFile.out, JSON.stringify(viaFile));
+  const viaDir = await run(ws, "link3", { "index.ts": `console.log("ran")`, lnk: "x" }, undefined, { project: "links" });
+  check("a symlinked directory isn't deleted through", existsSync(`${victim}/stale.txt`) && /symlink/.test(viaDir.err) && !viaDir.out, JSON.stringify(viaDir));
+  rmSync(victim, { recursive: true, force: true });
   const bin = await run(ws, "bin", { "index.ts": `console.log([...new Uint8Array(await Bun.file("b.bin").arrayBuffer())].join())`, "b.bin": { b64: "AAEC/w==" } } as any);
   check("binary files arrive intact", bin.out.trim() === "0,1,2,255", bin.out + bin.err);
   const tests = await run(ws, "tests", { "a.test.ts": `import { test, expect } from "bun:test"; test("ok", () => expect(1).toBe(1)); test("no", () => expect(1).toBe(2));` }, undefined, { entry: "", test: ["a.test.ts"] });
