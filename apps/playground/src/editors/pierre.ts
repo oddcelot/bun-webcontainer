@@ -1,5 +1,5 @@
 import { File, getHighlighterIfLoaded, getSharedHighlighter, registerCustomTheme } from "@pierre/diffs";
-import { Editor, type Marker } from "@pierre/diffs/edit";
+import { EditStateManager, Editor, type Marker } from "@pierre/diffs/edit";
 import { elysiaDark, elysiaLight } from "../elysiaTheme";
 import { isMac } from "../keymap";
 import { onTheme, themeName } from "../theme";
@@ -219,7 +219,23 @@ export function createViewer(parent: HTMLElement) {
 }
 
 /** @pierre/diffs edit mode: a highlighted `File` surface with an `Editor` attached. */
+/** Tells editors apart in the page-wide EditStateManager. */
+let instances = 0;
+
 export function createPierre(parent: HTMLElement, events: EditorEvents = {}): CodeEditor {
+  const instance = ++instances;
+  /**
+   * Each file's undo history (and draft, cursor, scroll) is kept by the EditStateManager under a key of its own, so
+   * switching tabs and back keeps it. Keyed per file, not by path: a rename moves the key (`rename`), and the history
+   * goes with the file.
+   */
+  const keys = new Map<string, string>();
+  let nextKey = 0;
+  const keyOf = (file: string) => {
+    let key = keys.get(file);
+    if (!key) keys.set(file, (key = `runbun-${instance}-${++nextKey}`));
+    return key;
+  };
   const host = document.createElement("div");
   host.className = "pierre-host";
   parent.replaceChildren(host);
@@ -732,7 +748,12 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
     });
     view.render({ containerWrapper: host, file: { name: path, contents: nextText ?? "(binary file)" } });
     if (nextText === null || events.readOnly?.()) return;
-    editor = new Editor("file");
+    const key = keyOf(path);
+    // Kept state for other text (the file changed since: a program wrote it, it was formatted from outside, it was
+    // deleted and made again) would show that old text: start afresh instead.
+    const kept = EditStateManager.get("file", key);
+    if (kept && kept.document.getText() !== text) EditStateManager.clear("file", key);
+    editor = new Editor("file", undefined, key);
     shown = false;
     finish = editor.edit(view);
     if (markers.length) applyMarkers();
@@ -816,6 +837,16 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
         return { line, character: offset - (before.lastIndexOf("\n") + 1) };
       };
       editor.applyEdits([{ range: { start: at(start), end: at(current.length - end) }, newText: next.slice(start, next.length - end) }]);
+    },
+    rename(from, to) {
+      const a = from.replace(/\/$/, "");
+      const b = to.replace(/\/$/, "");
+      for (const [file, key] of [...keys]) {
+        if (file !== a && !file.startsWith(`${a}/`)) continue;
+        keys.delete(file);
+        keys.set(b + file.slice(a.length), key);
+      }
+      if (path === a || path.startsWith(`${a}/`)) path = b + path.slice(a.length);
     },
     clear() {
       close();
