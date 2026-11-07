@@ -82,10 +82,10 @@ https://docs.runbun.dev/compatibility/browsers/.
 User-facing gaps are listed at https://docs.runbun.dev/compatibility/ and kept in step with the code. Internal ones:
 
 - Import rewriting is regex-based over a tokenizer that skips strings, templates, comments and regex literals (a heuristic: `/` after `)` counts as division).
-- Pierre editor: renders every line (no virtualization yet; `VirtualizedFile` would be needed for very large files) and has no autocomplete. Undo history is kept per file (EditStateManager, keyed per file so a rename keeps it) and starts afresh when the file changes outside the editor.
+- Pierre editor: renders every line (no virtualization yet; `VirtualizedFile` would be needed for very large files). Completions, hovers, signature help and go to definition come from the tsrs language service (`src/typecheck/`). Undo history is kept per file (EditStateManager, keyed per file so a rename keeps it) and starts afresh when the file changes outside the editor.
 - The bundler wasm (~7.5 MB) is fetched on first use and instantiated fresh per bundle, single-threaded. HTML imports are bundled on first request, cached, and dropped on any file change; if bundling fails the page falls back to the unbundled `/__vfs/` module server.
 - The preview SW drops `If-None-Match`/`If-Modified-Since` (nothing is cached, and a 304 would arrive empty).
-- Single tab only (the SW picks one page). A hard refresh (bypassing the SW) leaves the page uncontrolled; reload normally.
+- Several tabs and embeds share one service worker; modules and previews are routed by the owning page (`/__vfs/@<client id>/`, `/__preview/@<client id>/`). Two tabs on the same project save only from the first (a Web Lock per project). A hard refresh (bypassing the SW) leaves the page uncontrolled; reload normally.
 
 ## Deploying
 
