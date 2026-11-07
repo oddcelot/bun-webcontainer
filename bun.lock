@@ -131,7 +131,7 @@
     },
     "packages/connect": {
       "name": "@runbun/connect",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "bin": {
         "runbun-connect": "./src/cli.ts",
       },
