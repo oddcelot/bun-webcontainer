@@ -22,9 +22,22 @@ bun test.ts [secret]    # end-to-end: access checks, native APIs, sandbox, previ
   bind, `--unshare-all --share-net`); macOS `sandbox-exec` (writes only to the project, home unreadable apart
   from the Bun binary; no `open`/`osascript` or LaunchServices lookups, which would start apps outside the sandbox; connecting to the runner's own port is denied, so the program can't fetch the token from
   `/__connect/info`). On Linux that port stays reachable (bwrap shares the host network and can't filter by port),
-  so a program there can still read the token and drive the runner; the terminal approval is the only guard.
+  so the runner checks the peer instead (`peer.ts`, below). Only `bwrap` on Linux does this.
   Without either (Windows, Linux without bwrap) the CLI refuses to start unless given
   `--no-sandbox`; the sandbox in use is reported in `hello`.
+- **Peer check (Linux, bwrap)**: for `/__connect/info` and the `/__connect/ws` upgrade, while a run is alive, the
+  runner takes `server.requestIP(req)`, finds that connection's client-side row in `/proc/net/tcp(6)` (established,
+  local = client, remote = runner) for its socket inode, and scans `/proc/<pid>/fd` of every process for
+  `socket:[inode]`. Found in a run's tree (the bwrap pid, its descendants, anything in its session; `--new-session`
+  makes the root a session leader) -> 403. Preview requests aren't checked: they need the token a program can't get.
+  **Fail closed**: an inode nobody readable holds (or no row, or no `requestIP`) is refused too, since a program can
+  hide its fds with `prctl(PR_SET_DUMPABLE, 0)` and a failing-open check would be bypassed by exactly that. The
+  risk: a browser whose network process we can't read (another user, a non-dumpable or sandboxed one) is refused
+  while some run is alive; with no run alive nothing is checked, so the first connection always works. To revisit,
+  flip `FAIL_CLOSED` in `peer.ts`. **Untested on real Linux**: only `peer.test.ts` (fixtures, fake /proc) and a macOS
+  `test.ts` run, where this code is inert. Unverified: that the host user can read the fds of processes in bwrap's user
+  namespace, and the exact /proc formats on other kernels. TOCTOU: the check runs while the client's connection is
+  open, but a program that hands its socket to a process outside the run's tree isn't caught.
 - **Limits**: a watchdog kills a run's whole process tree (its own process group) past `--max-memory` (default 2048
   MB, all its processes together) or `--max-processes` (64). Stop kills the children too, not only Bun.
 - **Preview**: `/preview/<token>/<run>/…` proxies to the run's `Bun.serve`, with CORS for the allowed origins
