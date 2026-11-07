@@ -1409,6 +1409,10 @@ body:has(#req-handle[data-dragging]) * {
 .dialog.local-bun-setup {
   width: min(34rem, calc(100vw - 2rem));
 
+  .segmented {
+    margin-top: 12px;
+  }
+
   ol {
     margin: 12px 0;
     padding-left: 1.4em;
