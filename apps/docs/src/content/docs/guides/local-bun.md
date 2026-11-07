@@ -30,7 +30,7 @@ Projects saved on runbun.dev don't show up at `127.0.0.1:7357`: browsers keep ea
 
 ## From runbun.dev
 
-The runner also prints a `https://runbun.dev/?connect=…` link. It opens runbun.dev itself (with your saved projects) connected to the runner; pasting it into the **Local Bun** dialog on an open page does the same.
+The runner also prints a `https://runbun.dev/?connect=…` link. It opens runbun.dev itself (with your saved projects) connected to the runner; pasting it into the **Local Bun** dialog on an open page does the same. The playground only connects to a runner on this machine (`127.0.0.1`, `localhost` or `[::1]`); a `?connect=` link to any other host is ignored, so a link can't make it send your project elsewhere.
 
 - Chrome asks whether runbun.dev may access devices on your local network. Allow it; the console says when the playground is waiting for that.
 - Firefox connects without asking.
