@@ -1,4 +1,4 @@
-import { File, getHighlighterIfLoaded, getSharedHighlighter, registerCustomTheme } from "@pierre/diffs";
+import { File, VirtualizedFile, Virtualizer, getHighlighterIfLoaded, getSharedHighlighter, registerCustomTheme } from "@pierre/diffs";
 import { EditStateManager, Editor, type Marker } from "@pierre/diffs/edit";
 import { elysiaDark, elysiaLight } from "../elysiaTheme";
 import { isMac } from "../keymap";
@@ -239,8 +239,11 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
   const host = document.createElement("div");
   host.className = "pierre-host";
   parent.replaceChildren(host);
+  // Only the lines in view (and a margin) are in the DOM, so a large file opens and scrolls without lag.
+  const virtualizer = new Virtualizer();
+  virtualizer.setup(host);
 
-  let view: File | undefined;
+  let view: VirtualizedFile | undefined;
   let finish: (() => void) | undefined;
   let editor: Editor<"file"> | undefined;
   let text = "";
@@ -722,7 +725,7 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
     }
     path = nextPath;
     text = nextText ?? "";
-    view = new File({
+    view = new VirtualizedFile({
       theme,
       // The tab above already names the file.
       disableFileHeader: true,
@@ -745,7 +748,7 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
       },
       // The VFS already holds every change from onEditChange; keep the surface showing it.
       onEditComplete: () => "accept",
-    });
+    }, virtualizer);
     view.render({ containerWrapper: host, file: { name: path, contents: nextText ?? "(binary file)" } });
     if (nextText === null || events.readOnly?.()) return;
     const key = keyOf(path);
@@ -796,15 +799,12 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
         const shown = view;
         const go = (frames: number) => {
           if (view !== shown || !shown) return;
-          const row = [...host.querySelectorAll("*")].map((el) => el.shadowRoot?.querySelector(`[data-line="${line}"]`)).find(Boolean);
-          if (!row) return void (frames && requestAnimationFrame(() => go(frames - 1)));
+          // Its row may not be rendered (only the lines in view are), so scroll to where the layout puts it, in the
+          // middle, and only vertically (scrollIntoView would also scroll a long line sideways, hiding its start).
+          const at = shown.getLinePosition(line);
+          if (!at) return void (frames && requestAnimationFrame(() => go(frames - 1)));
+          host.scrollTop = (shown.top ?? 0) + at.top + at.height / 2 - host.clientHeight / 2;
           shown.setSelectedLines({ start: line, end: line });
-          // Only vertically: scrollIntoView would also scroll a long line sideways, hiding its start.
-          for (let el: Element | null = row; el; el = el.parentElement ?? ((el.getRootNode() as ShadowRoot).host ?? null)) {
-            if (el.scrollHeight <= el.clientHeight || !/auto|scroll/.test(getComputedStyle(el).overflowY)) continue;
-            el.scrollTop += row.getBoundingClientRect().top - el.getBoundingClientRect().top - el.clientHeight / 2;
-            break;
-          }
         };
         return go(30);
       }
@@ -859,6 +859,7 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
     },
     destroy() {
       close();
+      virtualizer.cleanUp();
       removeEventListener("keydown", onModKey);
       removeEventListener("keyup", onModKey);
       host.remove();
