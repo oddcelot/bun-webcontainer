@@ -1,9 +1,10 @@
-import { Show, useContext } from "solid-js";
+import { Show, createSignal, useContext } from "solid-js";
 import { DOCS } from "../base";
 import { chordKeys, keysFor } from "../keymap";
 import logo from "../bun-logo.svg";
 import { AppContext, type App } from "./context";
 import { AutosaveTip } from "./EditorPane";
+import { LocalBunSetup } from "./LocalBunSetup";
 import { ProjectPicker } from "./ProjectPicker";
 import { ShareMenu } from "./ShareMenu";
 import { Shortcuts } from "./Shortcuts";
@@ -18,12 +19,15 @@ import { Dialog, DialogActions, DialogClose, DialogDescription, DialogTitle } fr
 const CANT_RUN = "This browser can't run code here";
 
 /**
- * Shown when the page has a runner on this machine (`bunx @runbun/connect`): pressed, runs go to native Bun there;
- * not pressed, to the in-browser runtime. A running program starts again on the other side.
+ * Where runs go, on the full playground. With a runner on this machine (`bunx @runbun/connect`): pressed, runs go to
+ * native Bun there; not pressed, to the in-browser runtime; a running program starts again on the other side. Without
+ * one (or once it stopped), a click opens LocalBunSetup: how to start it.
  */
 function LocalBunToggle(props: { rt: NonNullable<App["runtime"]> }) {
   const rt = props.rt;
   const on = () => rt.current() === "local";
+  /** The setup dialog, for a click with no runner connected. */
+  const [setup, setSetup] = createSignal(false);
   const native = () => {
     const i = rt.info();
     return i ? `Bun ${i.bun} on this machine (sandbox: ${i.sandbox})` : "Bun on this machine";
@@ -33,7 +37,9 @@ function LocalBunToggle(props: { rt: NonNullable<App["runtime"]> }) {
       case "connecting":
         return "Connecting to the runner on this machine…";
       case "lost":
-        return "The runner on this machine isn't reachable. Start it (bunx @runbun/connect) and reload.";
+        return "The runner on this machine isn't reachable. Click to see how to start it again.";
+      case "none":
+        return "Run with the Bun installed on this machine: child processes, bun:ffi, real sockets. Click to set it up.";
     }
     if (!rt.browserOk) return `Runs go to ${native()}: this browser can't run code itself.`;
     return on() ? `Runs go to ${native()}. Click to run in the browser instead.` : `Runs go to the in-browser runtime. Click to run with ${native()}.`;
@@ -44,12 +50,13 @@ function LocalBunToggle(props: { rt: NonNullable<App["runtime"]> }) {
         id="local-bun"
         aria-pressed={on() ? "true" : "false"}
         data-state={rt.local()}
-        disabled={rt.local() !== "connected" || !rt.browserOk}
+        disabled={rt.local() === "connecting" || (rt.local() === "connected" && !rt.browserOk)}
         tip={tip()}
-        onClick={() => void rt.switchTo(on() ? "browser" : "local")}
+        onClick={() => (rt.local() === "connected" ? void rt.switchTo(on() ? "browser" : "local") : setSetup(true))}
       >
         <i class={rt.local() === "lost" ? "i-lucide-unplug" : "i-lucide-cpu"} aria-hidden="true" /> Local Bun
       </Tip>
+      <LocalBunSetup open={setup()} onOpenChange={setSetup} lost={rt.local() === "lost"} browserOk={rt.browserOk} />
       {/* Someone else's project (a share link, a GitHub repo) runs natively only once the reader agrees (boot.ts). */}
       <Dialog open={rt.asking() !== undefined} onOpenChange={(open) => !open && rt.answer(false)}>
         <DialogTitle>Run {rt.asking()} on this machine?</DialogTitle>
@@ -107,7 +114,7 @@ export function Header() {
           <MenuItem icon="i-lucide-download" label="bun install" disabled={!!s.busy.install} onSelect={() => s.ready() && app.install()} />
         </Menu>
       </span>
-      <Show when={app.runtime?.local() !== "none" ? app.runtime : undefined}>{(rt) => <LocalBunToggle rt={rt()} />}</Show>
+      <Show when={app.runtime}>{(rt) => <LocalBunToggle rt={rt()} />}</Show>
       {/* What a save does: when edits save, and whether a save restarts the program. Icons only; the tooltips say which. */}
       <span id="save-group">
         <Tip
