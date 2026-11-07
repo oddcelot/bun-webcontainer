@@ -60,6 +60,11 @@ export function sendToFrame(win: Window | null | undefined, m: ToFrame) {
   win?.postMessage(envelope(m), CONTENT_ORIGIN!);
 }
 
+/** A page can open preview tabs, but not without end (one that opens one on every load would never stop): this many, this often. */
+const MAX_TABS = 16;
+const OPEN_EVERY_MS = 400;
+let lastOpen = 0;
+
 /** The window's `message` handler for the preview tabs of `p`. */
 export function onFrameMessage(e: MessageEvent, p: Previews) {
   if (e.origin !== CONTENT_ORIGIN) return;
@@ -75,6 +80,8 @@ export function onFrameMessage(e: MessageEvent, p: Previews) {
     // As if pressed in the playground: its shortcuts take it from the window (App.tsx, ui/Preview.tsx).
     dispatchEvent(new KeyboardEvent("keydown", { key: m.key, code: m.code, ctrlKey: m.ctrl, altKey: m.alt, shiftKey: m.shift, metaKey: m.meta, repeat: m.repeat, bubbles: true, cancelable: true }));
   } else if (m.kind === "open-tab") {
+    if (p.state.tabs.length >= MAX_TABS || Date.now() - lastOpen < OPEN_EVERY_MS) return;
+    lastOpen = Date.now();
     const from = p.state.active;
     p.request(p.open(m.path));
     if (!m.foreground) p.activate(from);
