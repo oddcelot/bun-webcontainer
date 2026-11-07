@@ -14,6 +14,13 @@ const isolation = {
   "Cross-Origin-Embedder-Policy": "credentialless",
 };
 
+/**
+ * With VITE_CONTENT_ORIGIN set (src/contentOrigin.ts), this server also answers as the content origin, whose documents
+ * (host.html, previews) the editor frames under its COEP: they need CORP cross-origin to be embeddable.
+ */
+const contentOrigin = !!process.env.VITE_CONTENT_ORIGIN;
+const served = contentOrigin ? { ...isolation, "Cross-Origin-Resource-Policy": "cross-origin" } : isolation;
+
 const require = createRequire(import.meta.url);
 const browserDist = require.resolve("@rolldown/browser/package.json").replace(/package\.json$/, "dist/");
 
@@ -139,7 +146,7 @@ function serviceWorker(): Plugin {
         if (path !== url && path !== "/sw.js") return next();
         try {
           const code = await bundle();
-          for (const [k, v] of Object.entries(isolation)) res.setHeader(k, v);
+          for (const [k, v] of Object.entries(served)) res.setHeader(k, v);
           res.setHeader("content-type", "text/javascript; charset=utf-8");
           res.setHeader("cache-control", "no-cache");
           res.end(code);
@@ -168,8 +175,9 @@ export default defineConfig(({ mode }) => ({
   },
   // In builds, worker bundles (the runtime and rolldown's wasi worker) only get worker.plugins.
   worker: { format: "es", plugins: () => [emnapiNotNode()] },
-  server: { headers: isolation },
-  preview: { headers: isolation },
+  // localhost alone may listen on ::1 only; 127.0.0.1 is the content origin (localhost still works: browsers fall back to IPv4).
+  server: { headers: served, ...(contentOrigin && { host: "127.0.0.1" }) },
+  preview: { headers: served },
   optimizeDeps: { exclude: ["@rolldown/browser", "@napi-rs/wasm-runtime", "@emnapi/core", "@emnapi/runtime", "@emnapi/wasi-threads"] },
   resolve: {
     // @runbun/embed publishes built files; `runbun-source` (no other package uses it) resolves its sources here.
