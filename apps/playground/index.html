@@ -23,13 +23,14 @@
     <!--
       Landing page or playground. runbun.dev/ opens on the landing page (#landing), which is what search engines index;
       its "Open the playground" button starts the playground in place (src/entry.ts). A link to a project (?example=,
-      ?repo=, a #code= share link, /s/<id>) opens the playground right away, and so does every visit after the first
+      ?repo=, a #code= share link, /s/<id>) or to a local runner (?connect=, packages/connect) opens the playground
+      right away, and so does every visit after the first
       time it was opened. /about always shows the landing page. Set before the first paint, so neither flashes.
     -->
     <script>
       try {
         const q = new URLSearchParams(location.search);
-        const project = q.has("example") || q.has("repo") || location.hash.startsWith("#code=");
+        const project = q.has("example") || q.has("repo") || q.has("connect") || location.hash.startsWith("#code=");
         const about = location.pathname.endsWith("/about");
         if (!about && (project || localStorage.getItem("playground.opened"))) document.documentElement.dataset.view = "app";
       } catch {}
