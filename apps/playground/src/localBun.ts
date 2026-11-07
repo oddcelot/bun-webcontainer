@@ -1,9 +1,10 @@
 // "Run with local Bun": a runner on this machine (packages/connect, `bunx @runbun/connect --open`) runs the project
 // with native Bun, sandboxed. Found two ways:
-//   - the playground is served by the runner (http://localhost:7357/): it asks its own origin for the token, which
+//   - the playground is served by the runner (http://127.0.0.1:7357/): it asks its own origin for the token, which
 //     works in every browser, Safari included;
 //   - `?connect=ws://127.0.0.1:7357/__connect/ws?token=…` on another origin (runbun.dev): Chrome and Firefox only,
-//     as Safari blocks an https page's requests to http://localhost.
+//     as Safari blocks an https page's requests to http://localhost. Chrome asks first whether the site may reach
+//     devices on the local network, so connecting waits for that answer.
 import type { ClientMessage, ConnectInfo, ServerMessage } from "@runbun/connect/protocol";
 import { BASE } from "./base";
 
@@ -14,23 +15,33 @@ export interface LocalBun {
   send(m: ClientMessage): void;
   /** Calls `fn` with every message from the runner; returns the unsubscribe. */
   on(fn: (m: ServerMessage) => void): () => void;
-  /** Called once if the connection drops (the runner was stopped). */
-  onClose?: () => void;
+  /** Resolves when the connection drops (the runner was stopped). */
+  closed: Promise<void>;
 }
 
-const HELLO_TIMEOUT = 3000;
+/** Once the socket is open, the runner says hello at once; a server that doesn't isn't the runner. */
+const HELLO_TIMEOUT = 5000;
+/** A connection still pending after this is most likely waiting on the browser's permission prompt. */
+const WAITING_AFTER = 1500;
 
-/** Connects to the local runner, if there is one for this page; undefined otherwise (the in-browser runtime runs). */
-export async function connectLocalBun(params: URLSearchParams): Promise<LocalBun | undefined> {
-  let url = params.get("connect") ?? undefined;
-  if (!url && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) {
-    // The playground's own dev server (localhost:5173) has no runner: a 404, or Vite's index.html.
-    const info = await fetch(`${BASE}__connect/info`, { cache: "no-store" })
-      .then((r) => (r.ok && r.headers.get("content-type")?.includes("json") ? (r.json() as Promise<ConnectInfo>) : undefined))
-      .catch(() => undefined);
-    url = info?.ws;
-  }
-  if (!url) return;
+/** The runner's WebSocket URL for this page, if it has one: `?connect=`, or the runner serving this page. */
+export async function findLocalBun(params: URLSearchParams): Promise<string | undefined> {
+  const url = params.get("connect");
+  if (url) return url;
+  if (!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) return;
+  // The playground's own dev server (localhost:5173) has no runner: a 404, or Vite's index.html.
+  const info = await fetch(`${BASE}__connect/info`, { cache: "no-store" })
+    .then((r) => (r.ok && r.headers.get("content-type")?.includes("json") ? (r.json() as Promise<ConnectInfo>) : undefined))
+    .catch(() => undefined);
+  return info?.ws;
+}
+
+/**
+ * Connects to the runner at `url`; undefined if it isn't there or the browser refused. There is no time limit before
+ * the socket opens (a stopped runner fails at once; a permission prompt takes as long as the reader does): `onWaiting`
+ * is called if it takes a while.
+ */
+export function connectLocalBun(url: string, onWaiting?: () => void): Promise<LocalBun | undefined> {
   return new Promise((resolve) => {
     let ws: WebSocket;
     try {
@@ -39,17 +50,25 @@ export async function connectLocalBun(params: URLSearchParams): Promise<LocalBun
       return resolve(undefined);
     }
     const listeners = new Set<(m: ServerMessage) => void>();
-    const timer = setTimeout(() => (ws.close(), resolve(undefined)), HELLO_TIMEOUT);
     let local: LocalBun | undefined;
-    ws.onerror = () => {
-      clearTimeout(timer);
+    let closed!: () => void;
+    const waiting = setTimeout(() => onWaiting?.(), WAITING_AFTER);
+    let hello: ReturnType<typeof setTimeout> | undefined;
+    const fail = () => {
+      clearTimeout(waiting);
+      clearTimeout(hello);
       if (!local) resolve(undefined);
     };
-    ws.onclose = () => local?.onClose?.();
+    ws.onopen = () => {
+      clearTimeout(waiting);
+      hello = setTimeout(() => (ws.close(), fail()), HELLO_TIMEOUT);
+    };
+    ws.onerror = fail;
+    ws.onclose = () => (local ? closed() : fail());
     ws.onmessage = (e) => {
       const m = JSON.parse(e.data) as ServerMessage;
       if (m.t === "hello" && !local) {
-        clearTimeout(timer);
+        clearTimeout(hello);
         local = {
           bun: m.bun,
           sandbox: m.sandbox,
@@ -58,6 +77,7 @@ export async function connectLocalBun(params: URLSearchParams): Promise<LocalBun
             listeners.add(fn);
             return () => void listeners.delete(fn);
           },
+          closed: new Promise((r) => (closed = r)),
         };
         return resolve(local);
       }

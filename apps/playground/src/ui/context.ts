@@ -1,5 +1,6 @@
 import { createContext } from "solid-js";
 import type { createConsole } from "../console";
+import type { Playground } from "../boot";
 import type { LogFn } from "../runner";
 import type { Check } from "../support";
 import type { VFS } from "@runbun/vfs";
@@ -12,6 +13,8 @@ export type App = {
   session: Session;
   /** What the browser supports; `session.canRun` is false when any check fails. */
   support: Check[];
+  /** Where runs go: the browser or native Bun on this machine (the full playground only; boot.ts). */
+  runtime?: Playground["runtime"];
   workspace: Workspace;
   previews: Previews;
   /** The console's terminal; the Console pane attaches it. */

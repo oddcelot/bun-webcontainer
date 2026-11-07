@@ -1,4 +1,4 @@
-import { createEffect, createRoot } from "solid-js";
+import { createEffect, createRoot, createSignal } from "solid-js";
 import { BASE } from "./base";
 import { createConsole } from "./console";
 import { CHECKED, diagnose } from "./diagnostics";
@@ -6,7 +6,7 @@ import { attachStore } from "./pkgStore";
 import { bunInstall } from "./install";
 import { Runner } from "./runner";
 import { RemoteRunner } from "./remoteRunner";
-import type { LocalBun } from "./localBun";
+import { connectLocalBun, type LocalBun } from "./localBun";
 import { setVfsOwner } from "./moduleServer";
 import { setPreviewOwner } from "./preview";
 import { loadSemver, type Semver } from "./semver";
@@ -25,13 +25,20 @@ import { VFS } from "@runbun/vfs";
 /** A console path as the VFS keys it: `/index.ts` and `./index.ts` are `index.ts`. */
 const bare = (path: string) => path.replace(/^\.?\//, "");
 
-export function createPlayground({ watch, local }: { watch?: () => boolean; local?: LocalBun } = {}) {
+/** The runner on this machine: none for this page, being connected to, connected, or gone (stopped, or refused). */
+export type LocalState = "none" | "connecting" | "connected" | "lost";
+/** Where the reader last chose to run: "browser" keeps runs in the browser even with a runner connected. */
+const RUNTIME_KEY = "runbun:runtime";
+
+export function createPlayground({ watch, localUrl }: { watch?: () => boolean; localUrl?: string } = {}) {
   const support = checkSupport();
+  /** True when this browser can run the program itself (the in-browser runtime). */
+  const browserOk = support.every((c) => c.ok);
   /**
    * False when a requirement is missing: the interface still loads, but nothing that runs code starts. With native
-   * Bun on this machine (`local`, see localBun.ts) the program runs there, so the browser needs no WebAssembly.
+   * Bun on this machine (`localUrl`, see localBun.ts) the program runs there, so the browser needs no WebAssembly.
    */
-  const canRun = support.every((c) => c.ok || (!!local && c.name.startsWith("WebAssembly")));
+  const canRun = support.every((c) => c.ok || (!!localUrl && c.name.startsWith("WebAssembly")));
   const logListeners = new Set<(level: string, text: string) => void>();
   // The shell (see `start`) needs the runner, which comes later.
   let exec: (line: string) => Promise<void> = async () => {};
@@ -46,9 +53,17 @@ export function createPlayground({ watch, local }: { watch?: () => boolean; loca
     const session = createSession(canRun);
     return [session, createWorkspace(), createPreviews(() => session.settled().state === "running", (path) => vfs.readBytes(path))] as const;
   });
+  // Where runs go: "local" (native Bun, via the runner) or "browser". `localState`: is there a runner to switch to.
+  const [runtime, setRuntime] = createSignal<"local" | "browser">("browser");
+  const [localState, setLocalState] = createSignal<LocalState>(localUrl ? "connecting" : "none");
+  const [localInfo, setLocalInfo] = createSignal<{ bun: string; sandbox: string }>();
   const vfs = new VFS();
   attachStore(vfs);
   let runner: Runner | RemoteRunner | undefined;
+  /** Both runners, once used: switching between them keeps each (its cookies, the runner's node_modules). */
+  let browserRunner: Runner | undefined;
+  let remoteRunner: RemoteRunner | undefined;
+  let local: LocalBun | undefined;
   let semver: Semver | undefined;
 
   function log(level: string, text: string) {
@@ -304,18 +319,78 @@ export function createPlayground({ watch, local }: { watch?: () => boolean; loca
   });
 
 
+  /** Connects to the runner on this machine; says so in the console when it takes long or fails. */
+  async function connectLocal(url: string) {
+    const fallback = browserOk ? "runs stay in the browser" : "nothing can run here until it is";
+    local = await connectLocalBun(url, () =>
+      log("sys", "[local] waiting for the runner on this machine… if the browser asks whether this site may reach devices on your local network, allow it"),
+    );
+    if (!local) {
+      setLocalState("lost");
+      return log("error", `[local] can't reach the runner on this machine (is \`bunx @runbun/connect\` running, and was access allowed?); ${fallback}`);
+    }
+    setLocalInfo({ bun: local.bun, sandbox: local.sandbox });
+    setLocalState("connected");
+    void local.closed.then(async () => {
+      setLocalState("lost");
+      const reload = "start it again (bunx @runbun/connect) and reload to use it";
+      if (runtime() !== "local") return log("sys", `[local] the runner on this machine went away; ${reload}`);
+      if (!browserOk) return log("error", `[local] the runner on this machine went away; ${reload} and run code`);
+      log("error", "[local] the runner on this machine went away");
+      await useRuntime("browser");
+    });
+  }
+
+  /**
+   * Makes `kind` the runner Run, Install and Test use; a program still running on the other one is stopped. The
+   * in-browser runtime (semver, its runner) loads on first use.
+   */
+  async function useRuntime(kind: "local" | "browser") {
+    let next: Runner | RemoteRunner;
+    if (kind === "local") {
+      if (!local || localState() !== "connected") return;
+      next = remoteRunner ??= new RemoteRunner(vfs, log, local);
+    } else {
+      if (!browserOk) return;
+      semver ??= await loadSemver();
+      next = browserRunner ??= new Runner(vfs, log);
+    }
+    if (next === runner) return;
+    const previous = runner;
+    runner = next;
+    runner.attach();
+    runner.onExit = (code) => session.setStatus(exited(code));
+    setRuntime(kind);
+    if (previous) {
+      if (session.settled().state === "running") session.setStatus({ state: "idle", text: "Stopped" });
+      await previous.stop();
+    }
+    // Without a runner for this page, the browser is the only runtime: nothing to say.
+    if (kind === "local") log("sys", `[local] runs go to Bun ${local!.bun} on this machine (sandbox: ${local!.sandbox})`);
+    else if (localUrl) log("sys", "[browser] runs go to the in-browser runtime");
+  }
+
+  /**
+   * The header's switch: runs go to `kind` from now on (and on later visits). A running program starts again there;
+   * moving to the browser installs first if node_modules is missing (the runner's own stays on the runner).
+   */
+  async function switchRuntime(kind: "local" | "browser") {
+    await session.started;
+    if (kind === runtime()) return;
+    localStorage.setItem(RUNTIME_KEY, kind);
+    const wasRunning = session.settled().state === "running";
+    await useRuntime(kind);
+    if (kind === "browser" && missingDeps()) await install();
+    if (wasRunning && lastEntry !== undefined) await run(lastEntry, lastArgs);
+  }
+
   /** Brings up the service worker, semver and the runner (when the browser can run code) and the console's shell. */
   async function start({ reset }: { reset(): Promise<void> }) {
     if (canRun) {
       await setupServiceWorker();
-      if (local) {
-        runner = new RemoteRunner(vfs, log, local);
-        log("sys", `[local] runs go to Bun ${local.bun} on this machine (sandbox: ${local.sandbox})`);
-      } else {
-        semver = await loadSemver();
-        runner = new Runner(vfs, log);
-      }
-      runner.onExit = (code) => session.setStatus(exited(code));
+      if (localUrl) await connectLocal(localUrl);
+      const preferBrowser = localStorage.getItem(RUNTIME_KEY) === "browser" && browserOk;
+      await useRuntime(local && !preferBrowser ? "local" : "browser");
     }
     exec = createShell({ vfs, log, run, install, test, stop, clear: clearConsole, reset, cookies: runner && { list: () => runner!.listCookies(), clear: () => runner!.clearCookies() } });
     session.markReady();
@@ -324,8 +399,16 @@ export function createPlayground({ watch, local }: { watch?: () => boolean; loca
   return {
     support,
     canRun,
-    /** Native Bun on this machine, when runs go there (localBun.ts). */
-    local,
+    /** Where runs go, and the runner on this machine (localBun.ts) to switch to. */
+    runtime: {
+      current: runtime,
+      local: localState,
+      /** Native Bun's version and sandbox, once connected. */
+      info: localInfo,
+      /** Whether this browser can run the program itself. */
+      browserOk,
+      switchTo: switchRuntime,
+    },
     terminal,
     session,
     workspace,

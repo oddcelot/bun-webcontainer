@@ -378,11 +378,26 @@ html[data-view="app"] #landing {
 header { display: flex; gap: 8px; align-items: center; padding: 6px 10px 4px; }
 header button:not(.select-trigger), #docs, #clear, #request button { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 /* By id: the share menu is in the header too, and its items mustn't take this height. */
-#example, #run, #run-more, #autosave, #watch, #docs, #share, #shortcuts, #storage, #theme { height: var(--control-height); }
+#example, #run, #run-more, #local-bun, #autosave, #watch, #docs, #share, #shortcuts, #storage, #theme { height: var(--control-height); }
 /* Run and its menu (bun install): one control split in two. */
 #run-group { display: inline-flex; }
 #run { border-radius: 6px 0 0 6px; }
 #run-more { display: grid; place-items: center; margin-left: -1px; padding: 0 6px; border-radius: 0 6px 6px 0; }
+/* Local Bun: pressed, runs go to native Bun on this machine; off reads muted, as the save toggles do. */
+#local-bun {
+  &[aria-pressed="false"] {
+    color: var(--muted);
+  }
+
+  &[data-state="connected"][aria-pressed="true"] > i {
+    color: var(--accent);
+  }
+
+  &[data-state="lost"],
+  &[data-state="connecting"] {
+    color: var(--muted);
+  }
+}
 /* Auto-save and Watch: two icon toggles joined like Run's pair; off reads muted. */
 #save-group {
   display: inline-flex;

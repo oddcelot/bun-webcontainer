@@ -4,7 +4,7 @@ import { examples, loadExample, repoExamples } from "./examples";
 import { loadRepo, parseRepo, repoQuery } from "./github";
 import { isShareLink, loadShareLink, rememberSource } from "./share";
 import { createPlayground } from "./boot";
-import { connectLocalBun } from "./localBun";
+import { findLocalBun } from "./localBun";
 import { mountUI } from "./ui/mount";
 import { attach, discard, heldProjects, listProjects, mirror, readDir, restore, shareProjectId } from "./persist";
 import { clearPkgCache } from "./pkgCache";
@@ -22,11 +22,12 @@ showCanaryBadge();
 let savedAs!: (id: string | null) => void;
 const saving = new Promise<string | null>((r) => (savedAs = r));
 
-// Native Bun on this machine, when the playground is served by `bunx @runbun/connect` or has ?connect= (localBun.ts).
-const local = await connectLocalBun(new URLSearchParams(location.search));
-const pg = createPlayground({ local });
+// Native Bun on this machine, when the playground is served by `bunx @runbun/connect` or has ?connect= (localBun.ts);
+// `pg.start` connects to it.
+const localUrl = await findLocalBun(new URLSearchParams(location.search));
+const pg = createPlayground({ localUrl });
 const { support, session, workspace, previews, terminal, vfs, log, run, stop, install, clearConsole, newFile, renamePath, removePath, entryFile } = pg;
-mountUI({ session, support, workspace, previews, terminal, clearConsole, vfs, log, run: () => run(), stop, install, openProject, newFile, renamePath, removePath, openFolder, openDirectory, reopenFolder, openZip, storage: { current: () => saving, remove: removeProject, clearAll }, repoParam: new URLSearchParams(location.search).get("repo") ?? "" });
+mountUI({ session, support, runtime: pg.runtime, workspace, previews, terminal, clearConsole, vfs, log, run: () => run(), stop, install, openProject, newFile, renamePath, removePath, openFolder, openDirectory, reopenFolder, openZip, storage: { current: () => saving, remove: removeProject, clearAll }, repoParam: new URLSearchParams(location.search).get("repo") ?? "" });
 const params = new URLSearchParams(location.search);
 // ?vars= sets the overlay for this visit (theme.ts allows only that); not saved, and Share links drop it.
 if (params.has("vars")) setThemeVars(urlVars(params.get("vars")));
@@ -240,7 +241,8 @@ if (params.has("folder")) {
 
 openFile(entryFile());
 if (pg.canRun) {
-  if (pg.missingDeps() && !local) await install();
+  // The runner installs before each run itself.
+  if (pg.missingDeps() && pg.runtime.current() === "browser") await install();
   await run();
 }
 Object.assign(window, { vfs, semver: pg.semver });
