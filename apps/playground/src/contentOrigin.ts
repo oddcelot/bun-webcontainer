@@ -5,3 +5,15 @@
  */
 const raw = import.meta.env.VITE_CONTENT_ORIGIN as string | undefined;
 export const CONTENT_ORIGIN: string | undefined = raw ? new URL(raw).origin : undefined;
+
+/**
+ * The editor origins the content origin's host page (host.html) talks to. Fixed at build time, never taken from the
+ * page's URL: any site can frame host.html, and only these may drive it. `VITE_EDITOR_ORIGINS`, comma-separated.
+ */
+export const EDITOR_ORIGINS: ReadonlySet<string> = new Set(
+  ((import.meta.env.VITE_EDITOR_ORIGINS as string | undefined) ?? "http://localhost:5173")
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean)
+    .map((o) => new URL(o).origin),
+);

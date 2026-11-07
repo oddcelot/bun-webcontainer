@@ -3,8 +3,12 @@
 // WebSockets) to the editor over a MessagePort, which answers them with the handlers it has always had. Nothing the
 // editor holds (OPFS, IndexedDB, cookies) is on this origin. Protocol: contentHost.ts.
 import { BASE } from "../base";
+import { EDITOR_ORIGINS } from "../contentOrigin";
 
-const EDITOR = new URLSearchParams(location.search).get("editor") ?? "";
+// The editor names its origin (`?editor=`), but only a configured editor origin is answered: any site can frame this
+// page, and the relay (a Worker, the service worker's asks, fetch) must serve only the playground.
+const asked = new URLSearchParams(location.search).get("editor") ?? "";
+const EDITOR = EDITOR_ORIGINS.has(asked) ? asked : "";
 const workers = new Map<number, Worker>();
 /** Set once the handshake may begin (host-ready sent); cleared by the first connect. */
 let started = false;
@@ -62,6 +66,7 @@ window.addEventListener("message", (e) => {
   started = false;
   connect(e.ports[0]);
 });
+if (!EDITOR) throw new Error(`host.html: ${asked || "no editor"} is not a configured editor origin`);
 whoami().then(
   (id) => {
     started = true;
