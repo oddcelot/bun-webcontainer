@@ -279,7 +279,10 @@ export function startRunner(opts: RunnerOptions = {}) {
     const src = opts.playground!;
     let res: Response;
     if (/^https?:\/\//.test(src)) {
-      res = await fetch(new URL(url.pathname + url.search, src), {
+      // `//host/x` is a scheme-relative URL: collapse the slashes, and never leave the upstream's origin.
+      const target = new URL(url.pathname.replace(/^\/+/, "/") + url.search, src);
+      if (target.origin !== new URL(src).origin) return new Response("bad path", { status: 400 });
+      res = await fetch(target, {
         method: req.method === "HEAD" ? "HEAD" : "GET",
         headers: { "accept-encoding": "identity", accept: req.headers.get("accept") ?? "*/*" },
       });

@@ -237,6 +237,39 @@ try {
   const own = await connect(info.ws, `http://localhost:${port}`);
   check("the runner's own origin connects", typeof own === "object");
   if (typeof own === "object") own.close();
+
+  // Proxying a playground URL: `//host/x` must not replace the upstream's host (an off-host fetch from the runner).
+  const evil = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => new Response("EVIL") });
+  const upstream = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: (req) => new Response("upstream " + new URL(req.url).pathname) });
+  const proxied = startRunner({ port: 0, playground: `http://127.0.0.1:${upstream.port}` });
+  try {
+    const raw = async (path: string) => {
+      let data = "";
+      let done!: () => void;
+      const closed = new Promise<void>((res) => (done = res));
+      const sock = await Bun.connect({
+        hostname: "127.0.0.1",
+        port: proxied.server.port!,
+        socket: {
+          open: (s) => void s.write(`GET ${path} HTTP/1.1\r\nHost: 127.0.0.1:${proxied.server.port}\r\nConnection: close\r\n\r\n`),
+          data: (_s, d) => void (data += d.toString()),
+          close: () => done(),
+          error: () => done(),
+        },
+      });
+      await Promise.race([closed, Bun.sleep(3000)]);
+      sock.end();
+      return data;
+    };
+    const ok = await raw("/x");
+    check("a proxied playground serves the upstream", ok.includes("upstream /x"), ok);
+    const off = await raw(`//127.0.0.1:${evil.port}/x`);
+    check("a `//host/x` path doesn't reach another host", !off.includes("EVIL"), off);
+  } finally {
+    proxied.stop();
+    upstream.stop(true);
+    evil.stop(true);
+  }
 } finally {
   r.stop();
 }
