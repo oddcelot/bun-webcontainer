@@ -147,7 +147,7 @@ export function LocalBunSetup(props: { open: boolean; onOpenChange: (open: boole
         </form>
       </Show>
       <p class="note">
-        While the runner is on, open only projects you trust: their code can reach it and run on your computer.{" "}
+        Before a page runs anything, the runner asks in its terminal: say no if you didn't just press Run.{" "}
         <a href={`${DOCS}guides/local-bun/`} target="_blank" rel="noopener">
           How it works
         </a>

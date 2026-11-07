@@ -161,7 +161,8 @@ export class RemoteRunner extends Runner {
     if (m.t === "out") {
       if (c.test) c.output += m.data;
       this.line(c, m.fd, m.data);
-    } else if (m.t === "phase" && m.phase === "install") this.out("sys", "[bun install] on this machine (native Bun)");
+    } else if (m.t === "phase" && m.phase === "approval") this.out("sys", "[local] waiting for you to allow this page in the terminal where the runner runs");
+    else if (m.t === "phase" && m.phase === "install") this.out("sys", "[bun install] on this machine (native Bun)");
     else if (m.t === "started") {
       c.preview = m.preview;
       // A test run is over when it exits; a program is started once it serves, or keeps running for a moment.
