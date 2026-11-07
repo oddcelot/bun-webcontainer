@@ -177,6 +177,27 @@ export function createPlayground({ watch }: { watch?: () => boolean } = {}) {
     workspace.open(path);
   }
 
+  /**
+   * Moves a file, or a folder with everything in it, as the file tree's rename does. Unsaved edits are saved first and
+   * go with it; open tabs follow it. Counts as a save the reader made, so Watch restarts the program.
+   */
+  async function renamePath(from: string, to: string) {
+    await session.started;
+    workspace.saveAll();
+    // Before the move: its events close the tabs of paths that no longer exist.
+    workspace.rename(from, to);
+    vfs.rename(from, to);
+    workspace.markSaved();
+  }
+
+  /** Deletes a file, or a folder with everything in it (their tabs close); like a save for Watch. */
+  async function removePath(path: string) {
+    await session.started;
+    workspace.saveAll();
+    vfs.remove(path);
+    workspace.markSaved();
+  }
+
   /** Like StackBlitz: install on load when a dependency is missing from node_modules. */
   function missingDeps(): boolean {
     try {
@@ -283,6 +304,8 @@ export function createPlayground({ watch }: { watch?: () => boolean } = {}) {
     clearConsole,
     clearProject,
     newFile,
+    renamePath,
+    removePath,
     missingDeps,
     start,
     get semver() {

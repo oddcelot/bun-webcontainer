@@ -687,6 +687,26 @@ main [data-kb-resizable-root] { height: 100%; }
 /* New file: at the end of the tree's search row (FileTree.tsx leaves the room), the same size and corner as the box. */
 #newfile { position: absolute; top: calc(var(--pad) + 1px); right: var(--pad); display: grid; place-items: center; width: var(--control-height); height: var(--control-height); padding: 0; border: 1px solid var(--control-border); border-radius: var(--inner-radius); background: var(--control); color: inherit; cursor: pointer; }
 #newfile:hover { background: var(--control-hover); }
+/* A file tree row's menu (FileTree.tsx): plain buttons dressed as select.css's options, shortcut keys at the end. */
+.tree-menu {
+  display: flex;
+  flex-direction: column;
+  min-width: 12rem;
+
+  .select-option {
+    width: 100%;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+  }
+  kbd {
+    color: var(--muted);
+    font: inherit;
+    font-size: 11px;
+  }
+}
 /*
  * Draggable borders between the panes: a 1px line with a wider hit area that overlaps its neighbours (negative
  * margins, net zero), so the handles take no room from the panels' fractional sizes. The accent shows while hovered or dragged.

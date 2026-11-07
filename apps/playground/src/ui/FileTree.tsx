@@ -3,9 +3,13 @@ import {
   FileTree as PierreTree,
   themeToTreeStyles,
   type FileTreeBatchOperation,
+  type ContextMenuItem,
+  type ContextMenuOpenContext,
   type FileTreeDirectoryHandle,
   type FileTreeItemHandle,
 } from "@pierre/trees";
+import { Dialog, DialogActions, DialogClose, DialogDescription, DialogTitle } from "@runbun/ui/solid/Dialog";
+import { Button } from "@runbun/ui/solid/Button";
 import { onTheme } from "../theme";
 import { AppContext } from "./context";
 import { guarded } from "./guarded";
@@ -58,6 +62,53 @@ function mountTree(tree: PierreTree, host: HTMLElement) {
 
 const isDirectory = (item: FileTreeItemHandle | null): item is FileTreeDirectoryHandle => item?.isDirectory() === true;
 
+/** A tree path without a folder's trailing slash: the VFS's form. */
+const vfsPath = (path: string) => path.replace(/\/$/, "");
+
+type MenuAction = { label: string; icon: string; keys?: string; run(): void };
+
+/**
+ * A row's context menu, in the light DOM the tree slots in: styled like the app's menus (select.css), at the row's
+ * menu button or the pointer, with ↑/↓ moving between the actions.
+ */
+function contextMenu(actions: MenuAction[], context: ContextMenuOpenContext): HTMLElement {
+  const menu = document.createElement("div");
+  menu.className = "select-menu menu tree-menu";
+  menu.setAttribute("role", "menu");
+  const { top, bottom, left } = context.anchorRect;
+  // A right-click's anchor is the pointer (no height); the row's button opens it below the button.
+  Object.assign(menu.style, { position: "fixed", top: `${bottom > top ? bottom + 4 : top}px`, left: `${left}px` });
+  const items = actions.map((action) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "select-option";
+    item.setAttribute("role", "menuitem");
+    item.tabIndex = -1;
+    item.innerHTML = `<i class="${action.icon}" aria-hidden="true"></i><span class="name"></span>`;
+    item.querySelector(".name")!.textContent = action.label;
+    if (action.keys) {
+      const keys = document.createElement("kbd");
+      keys.textContent = action.keys;
+      item.append(keys);
+    }
+    item.addEventListener("click", () => action.run());
+    item.addEventListener("pointerenter", () => item.focus());
+    item.addEventListener("focus", () => item.setAttribute("data-highlighted", ""));
+    item.addEventListener("blur", () => item.removeAttribute("data-highlighted"));
+    return item;
+  });
+  menu.append(...items);
+  menu.addEventListener("keydown", (e) => {
+    const step = e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0;
+    if (!step) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const i = items.indexOf(document.activeElement as HTMLButtonElement);
+    items[(i + step + items.length) % items.length].focus();
+  });
+  return menu;
+}
+
 /** The VFS as a @pierre/trees file tree. Selecting a file opens it in a tab; files open in tabs get a dot. */
 export function FileTree() {
   const app = useContext(AppContext);
@@ -67,6 +118,11 @@ export function FileTree() {
   // The active tab, as last applied. Selecting it below calls onSelectionChange from inside that effect.
   let active: string | null = null;
 
+  // Rename, delete and New file here, unless an embed is read-only.
+  const editable = () => app.features?.has("edit") ?? true;
+  const [deleting, setDeleting] = createSignal<string | null>(null);
+  const [newFileAt, setNewFileAt] = createSignal("new.ts");
+
   const tree = new PierreTree({
     // A dot on files open in a tab.
     renderRowDecoration: ({ item }) => (item.kind === "file" && open.has(item.path) ? { text: "●", title: "Open in a tab" } : null),
@@ -74,11 +130,62 @@ export function FileTree() {
     initialExpansion: "closed",
     search: true,
     ...TREE_LOOK,
+    // Inline, in the row (F2, or Rename in the menu): the tree moves the row, the VFS follows.
+    renaming: {
+      canRename: () => editable(),
+      onRename: ({ sourcePath, destinationPath }) => void app.renamePath(vfsPath(sourcePath), vfsPath(destinationPath)),
+      onError: (error) => app.log("warn", `[files] ${error}`),
+    },
     onSelectionChange(paths) {
       const [path] = paths;
       if (paths.length === 1 && vfs.files.has(path) && path !== active) ws.open(path);
     },
   });
+
+  function menuActions(item: ContextMenuItem, context: ContextMenuOpenContext): MenuAction[] {
+    const actions: MenuAction[] = [
+      {
+        label: "Rename…",
+        icon: "i-lucide-pencil",
+        keys: "F2",
+        run() {
+          // Focus goes to the rename field, not back to the row.
+          context.close({ restoreFocus: false });
+          tree.startRenaming(item.path);
+        },
+      },
+      {
+        label: "Delete…",
+        icon: "i-lucide-trash-2",
+        keys: "⌦",
+        run() {
+          context.close();
+          setDeleting(item.path);
+        },
+      },
+    ];
+    if (item.kind === "directory")
+      actions.unshift({
+        label: "New file here…",
+        icon: "i-lucide-file-plus",
+        run() {
+          context.close();
+          setNewFileAt(`${item.path}new.ts`);
+          setAsking(true);
+        },
+      });
+    return actions;
+  }
+
+  /** Delete (or Ctrl/Cmd+Backspace) on a focused row asks to delete it; not while renaming or searching. */
+  function onKeyDown(e: KeyboardEvent) {
+    if (!(e.key === "Delete" || (e.key === "Backspace" && (e.metaKey || e.ctrlKey)))) return;
+    if ((e.composedPath()[0] as HTMLElement).closest?.("input, textarea")) return;
+    const path = tree.getFocusedPath();
+    if (!path || !editable()) return;
+    e.preventDefault();
+    setDeleting(path);
+  }
 
   /** Reflects the active tab as the tree's selection, expanding its folders. */
   function reveal(path: string, retry = true) {
@@ -104,8 +211,7 @@ export function FileTree() {
 
     // An install writes thousands of files; apply them in one batch per frame.
     const pending = new Map<string, FileTreeBatchOperation & { type: "add" | "remove" }>();
-    const unsubscribe = vfs.onChange(({ path, created, removed }) => {
-      if (!created && !removed) return;
+    const queue = (op: FileTreeBatchOperation & { type: "add" | "remove" }) => {
       if (!pending.size) {
         requestAnimationFrame(() => {
           // The last change per path wins (a file written and removed in one frame isn't added).
@@ -114,16 +220,31 @@ export function FileTree() {
           tree.batch(ops);
         });
       }
-      pending.set(path, { type: removed ? "remove" : "add", path });
+      pending.set(op.path, op);
+    };
+    const unsubscribe = vfs.onChange(({ path, created, removed }) => {
+      if (created || removed) queue({ type: removed ? "remove" : "add", path });
+    });
+    // The tree keeps a folder whose files are gone; a removed directory takes its row (and anything left in it).
+    const unsubscribeDirs = vfs.onDir((path, removed) => {
+      if (removed) queue({ type: "remove", path: `${path}/`, recursive: true });
     });
     // Files written between creating the tree and subscribing.
     tree.resetPaths([...vfs.files.keys()]);
     return () => {
       unsubscribe();
+      unsubscribeDirs();
       unmount();
     };
   });
 
+  // The rows' menu (right-click, or the ⋯ button) only while files can change: a read-only embed shows no button.
+  createEffect(
+    () => editable(),
+    guarded("file tree", (on) => {
+      tree.setComposition(on ? { contextMenu: { triggerMode: "both", render: (item, context) => contextMenu(menuActions(item, context), context) } } : undefined);
+    }),
+  );
   createEffect(
     () => [...ws.state.open],
     guarded("file tree", (paths) => {
@@ -150,15 +271,21 @@ export function FileTree() {
 
   const [asking, setAsking] = createSignal(false);
   let button!: HTMLButtonElement;
+  /** How many files a delete takes: one for a file, everything below a folder. */
+  const fileCount = (path: string) => (path.endsWith("/") ? vfs.list(vfsPath(path)).length : 1);
 
   return (
     <>
-      <div ref={host} style={{ height: "100%" }} />
+      <div ref={host} style={{ height: "100%" }} onKeyDown={onKeyDown} />
       {/* The example the project picker is on, over the project's files until the menu closes. */}
       <Show when={ws.peek()} keyed>
         {(peek) => <PeekTree peek={peek} />}
       </Show>
-      <Tip ref={(el: HTMLButtonElement) => (button = el)} id="newfile" type="button" tip="New file" aria-label="New file" onClick={() => setAsking(true)}>
+      <Tip ref={(el: HTMLButtonElement) => (button = el)} id="newfile" type="button" tip="New file" aria-label="New file" onClick={() => {
+          setNewFileAt("new.ts");
+          setAsking(true);
+        }}
+      >
         <i class="i-lucide-file-plus" aria-hidden="true" />
       </Tip>
       <PromptDialog
@@ -166,11 +293,39 @@ export function FileTree() {
         onOpenChange={setAsking}
         title="New file"
         label="File path"
-        initial="new.ts"
+        initial={newFileAt()}
         submit="Create"
         onSubmit={(name) => app.newFile(name)}
         returnFocus={() => button}
       />
+      <Dialog open={deleting() !== null} onOpenChange={(open) => open || setDeleting(null)}>
+        <Show when={deleting()}>
+          {(path) => (
+            <>
+              <DialogTitle>Delete {vfsPath(path())}?</DialogTitle>
+              <DialogDescription>
+                {path().endsWith("/")
+                  ? `The folder and the ${fileCount(path())} ${fileCount(path()) === 1 ? "file" : "files"} in it are deleted.`
+                  : "The file is deleted."}{" "}
+                This can't be undone.
+              </DialogDescription>
+              <DialogActions>
+                <DialogClose>Cancel</DialogClose>
+                <Button
+                  primary
+                  onClick={() => {
+                    const row = path();
+                    setDeleting(null);
+                    void app.removePath(vfsPath(row));
+                  }}
+                >
+                  Delete
+                </Button>
+              </DialogActions>
+            </>
+          )}
+        </Show>
+      </Dialog>
     </>
   );
 }

@@ -141,6 +141,17 @@ export function createWorkspace() {
       });
       readOnly.delete(path);
     },
+    /** Points the tabs (and their unsaved marks) at a file's or folder's new path, keeping their order and the active one. */
+    rename(from: string, to: string) {
+      const a = from.replace(/\/$/, "");
+      const b = to.replace(/\/$/, "");
+      const move = (p: string) => (p === a ? b : p.startsWith(`${a}/`) ? b + p.slice(a.length) : p);
+      setState((s) => {
+        s.open = s.open.map(move);
+        s.dirty = s.dirty.map(move);
+        if (s.active) s.active = move(s.active);
+      });
+    },
     closeAll() {
       setState((s) => {
         s.open = [];
