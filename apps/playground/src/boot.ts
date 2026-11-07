@@ -9,6 +9,8 @@ import { RemoteRunner } from "./remoteRunner";
 import { connectLocalBun, type LocalBun } from "./localBun";
 import { setVfsOwner } from "./moduleServer";
 import { setPreviewOwner } from "./preview";
+import { CONTENT_ORIGIN } from "./contentOrigin";
+import { connectHost } from "./contentHost";
 import { loadSemver, type Semver } from "./semver";
 import { commandOf, createShell, entryOf, type Command } from "./shell";
 import { checkSupport } from "./support";
@@ -92,7 +94,16 @@ export function createPlayground({ watch, localUrl }: { watch?: () => boolean; l
     const answer = new Promise<string>((r) => (ch.port1.onmessage = (e) => r(e.data)));
     navigator.serviceWorker.controller.postMessage({ type: "whoami" }, [ch.port2]);
     const id = await Promise.race([answer, new Promise<undefined>((r) => setTimeout(r, 3000))]);
-    if (id) {
+    if (CONTENT_ORIGIN) {
+      // Project code runs on the content origin: its module and preview URLs name the host frame, which answers there.
+      try {
+        const host = await connectHost();
+        setVfsOwner(host.id);
+        setPreviewOwner(host.id);
+      } catch (err) {
+        log("error", `content origin: ${err instanceof Error ? err.message : err}`);
+      }
+    } else if (id) {
       setVfsOwner(id);
       setPreviewOwner(id);
     }

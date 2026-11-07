@@ -3,6 +3,8 @@ import { PANEL_COOKIE, joinCookies } from "./request";
 import { resetSyncEsm, serveModule, vfsRoot } from "./moduleServer";
 import type { VFS } from "@runbun/vfs";
 import { serveLazyRead } from "./pkgStore";
+import { CONTENT_ORIGIN } from "./contentOrigin";
+import { answerAsks, connectHost, spawnWorker } from "./contentHost";
 
 /** Tells preview pages (see previewWebSocket in swPage.ts) that their WebSockets' server is gone. */
 const previewChannel = new BroadcastChannel("bun-preview");
@@ -46,6 +48,8 @@ export class Runner {
   /** Makes this the runner that answers the service worker (previews); with two runners, the one in use. */
   attach() {
     navigator.serviceWorker.onmessage = (e) => this.onSw(e);
+    // The content origin's service worker asks through its host frame (contentHost.ts).
+    if (CONTENT_ORIGIN) answerAsks((e) => this.onSw(e));
   }
 
   /** True while applying a worker-originated op to the page VFS, so it isn't echoed back. */
@@ -75,7 +79,8 @@ export class Runner {
   /** The browser's cookies for the preview's root (`a=1; b=2`), read through the cookie page. */
   private async browserCookies(): Promise<string> {
     const base = this.base;
-    if (!base) return "";
+    // wip: the cookie page is an editor-origin frame; project cookies live on the content origin (phase 2: a bridge).
+    if (!base || CONTENT_ORIGIN) return "";
     this.cookiePage ??= new Promise((resolve) => {
       const frame = document.createElement("iframe");
       frame.hidden = true;
@@ -113,7 +118,7 @@ export class Runner {
     for (const line of setCookies) {
       const c = parseSetCookie(path, line);
       if (!c) continue;
-      if (!base) {
+      if (!base || CONTENT_ORIGIN) {
         this.cookies.put(c);
         continue;
       }
@@ -138,13 +143,13 @@ export class Runner {
   /** Deletes the preview's cookies in both places. */
   async clearCookies() {
     const base = this.base;
-    if (base) {
+    if (base && !CONTENT_ORIGIN) {
       for (const c of await this.listCookies()) document.cookie = browserCookie(base, { ...c, expires: 0 });
     }
     this.cookies.clear();
   }
 
-  private async onSw(e: MessageEvent) {
+  private async onSw(e: Pick<MessageEvent, "data" | "ports">) {
     const port = e.ports[0];
     const m = e.data;
     if (m.type === "module") {
@@ -244,6 +249,8 @@ export class Runner {
   }
 
   async start(entry: string, tests?: string[], args: string[] = []): Promise<void> {
+    // On the content origin the Worker lives in the host frame (settled by boot already; awaited before any state changes).
+    const content = CONTENT_ORIGIN ? await connectHost() : undefined;
     // A restart (Run while running, a save under watch) is a moment without a server while the old one flushes:
     // preview requests in that moment wait for the new one instead of getting "No server running". Not for a test
     // run, which has no server and takes as long as it takes.
@@ -256,7 +263,7 @@ export class Runner {
     resetSyncEsm();
     this.exitCode = undefined;
     let started = false;
-    const worker = new Worker(new URL("./worker/runtime.ts", import.meta.url), { type: "module" });
+    const worker = content ? spawnWorker(content) : new Worker(new URL("./worker/runtime.ts", import.meta.url), { type: "module" });
     this.worker = worker;
     this.ready = new Promise<void>((resolve) => {
       // A test run takes as long as it takes (each test has its own timeout).

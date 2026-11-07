@@ -2,6 +2,7 @@ import { shareFiles, type LazyData, type VFS } from "@runbun/vfs";
 import { gunzip, untar } from "./lockfile";
 import { fetchTarball } from "./pkgCache";
 import { bucket } from "./storage";
+import { CONTENT_ORIGIN } from "./contentOrigin";
 
 /**
  * Large installed files, kept out of memory. A program reads few of an install's files, and the large ones hold
@@ -19,7 +20,9 @@ const EAGER = /(^|\/)(package\.json|tsconfig[^/]*\.json)$|\.d\.[cm]?ts$/;
 /** The store's size the oldest entries go above (entries this page uses stay). */
 const STORE_BUDGET = 2 ** 30;
 
+// Not with a content origin: the worker there is another origin, so the shared buffer it blocks on can't reach the page.
 const enabled = () =>
+  !CONTENT_ORIGIN &&
   typeof SharedArrayBuffer === "function" && (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated === true && !!navigator.storage?.getDirectory;
 
 type File = { name: string; data: Uint8Array };

@@ -1,4 +1,6 @@
 import { BASE } from "./base";
+import { CONTENT_ORIGIN } from "./contentOrigin";
+import { fetchContent } from "./contentHost";
 import { HEADERS_HEADER, packHeaders, type Built } from "./request";
 
 /**
@@ -6,6 +8,8 @@ import { HEADERS_HEADER, packHeaders, type Built } from "./request";
  * has said which client this page is, so it reaches this page's server and not another playground's.
  */
 export let PREFIX = `${BASE}__preview`;
+/** A preview path as the browser loads it: on the content origin when there is one (`/__preview/@<host frame id>`). */
+export const previewUrl = (path: string) => (CONTENT_ORIGIN ?? "") + PREFIX + path;
 export function setPreviewOwner(clientId: string) {
   PREFIX = `${BASE}__preview/@${clientId}`;
 }
@@ -48,7 +52,7 @@ export async function sendRequest(method: string, req: Built): Promise<"page" | 
   const init: RequestInit & { headers: Record<string, string> } = { method, headers: {}, body: req.body };
   if (req.type) init.headers["content-type"] = req.type;
   if (req.headers.length) init.headers[HEADERS_HEADER] = packHeaders(req.headers);
-  const res = await fetch(PREFIX + path, init);
+  const res = CONTENT_ORIGIN ? await fetchContent(PREFIX + path, init) : await fetch(PREFIX + path, init);
   const type = res.headers.get("content-type") ?? "";
   if (method === "GET" && type.startsWith("text/html")) return "page";
   const head = [...res.headers]
