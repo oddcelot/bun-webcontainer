@@ -344,6 +344,28 @@ self.addEventListener("message", (e) => {
   e.waitUntil((ownerId ? windowClient(ownerId) : host()).then((c) => (c ? c.postMessage(data,[e.ports[0]]) : e.ports[0].postMessage({ type: "close", code: 1011, reason: "playground page not found" }))));
 });
 
+/**
+ * A top-level navigation or a non-GET request to `/__preview/…` without an owner (`@<client id>`) is answered by
+ * whichever playground tab host() finds, so another site could drive that tab's server by linking or form-posting
+ * there. Such a request needs a same-origin referrer (the playground's own frames and tabs have one; no referrer
+ * counts as foreign: a service worker can't read Sec-Fetch-Site).
+ */
+function strangerToPreview(req: Request, url: URL): boolean {
+  if (previewOwnerOf(url.pathname) !== undefined) return false;
+  if (req.mode !== "navigate" && req.method === "GET") return false;
+  try {
+    return new URL(req.referrer).origin !== self.location.origin;
+  } catch {
+    return true;
+  }
+}
+
+const forbidden = () =>
+  new Response(`<!doctype html><meta charset="utf-8"><title>Blocked</title><p>This preview can only be opened from the playground. <a href="${BASE}">Open the playground</a>.</p>`, {
+    status: 403,
+    headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+  });
+
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
   if (url.origin !== self.location.origin) return;
@@ -352,7 +374,10 @@ self.addEventListener("fetch", (e) => {
   // Not the pages other sites frame.
   else if (e.request.mode === "navigate" && e.request.destination === "iframe" && !url.pathname.startsWith(PREVIEW) && !FRAMED.test(url.pathname))
     e.respondWith(leavePreview(e.request, url));
-  else if (url.pathname === PREVIEW || url.pathname.startsWith(`${PREVIEW}/`)) e.respondWith(servePreview(e.request, url));
+  else if (url.pathname === PREVIEW || url.pathname.startsWith(`${PREVIEW}/`)) {
+    if (strangerToPreview(e.request, url)) e.respondWith(forbidden());
+    else e.respondWith(servePreview(e.request, url));
+  }
   else if (e.clientId) e.respondWith(fromPreviewOrNetwork(e));
   else if (e.request.mode === "navigate" && e.request.method === "GET") {
     const path = shellPath(url, true);
