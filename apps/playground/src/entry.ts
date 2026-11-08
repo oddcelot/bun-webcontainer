@@ -40,7 +40,7 @@ if (root.dataset.view === "app") {
   // The CRT on the landing page (src/landing/crt.ts): "Open the playground" zooms into its screen. Without WebGL, or
   // with reduced motion, the playground just replaces the page.
   const screen = document.querySelector<HTMLElement>("#landing .crt-screen");
-  const crt = screen && !matchMedia("(prefers-reduced-motion: reduce)").matches ? import("./landing/crt").then((m) => m.startCrt(screen)) : Promise.resolve(null);
+  const crt = screen && !matchMedia("(prefers-reduced-motion: reduce)").matches ? import("./landing/crt").then((m) => m.startLandingCrt(screen)) : Promise.resolve(null);
   let opening = false;
   async function openPlayground() {
     if (opening) return;
