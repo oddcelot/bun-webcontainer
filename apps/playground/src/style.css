@@ -111,10 +111,12 @@ html[data-view="opening"] {
     width: 48px;
     height: 48px;
 
+    /* The smile's idle loop, smile-idle.png: 16 frames of 32px (a hop with squash, then a blink), 100 ms each. */
     &.big {
       width: 96px;
       height: 96px;
-      animation: landing-bob 1s steps(2, jump-none) infinite;
+      background: url("./smile-idle.png") 0 0 / 1600% 100%;
+      animation: smile-idle 1.6s steps(16, jump-none) infinite;
     }
   }
 
@@ -405,6 +407,7 @@ html[data-view="opening"] {
   }
 }
 @keyframes landing-bob { to { translate: 0 -4px; } }
+@keyframes smile-idle { to { background-position-x: 100%; } }
 #app {
   display: flex;
   flex: 1;
