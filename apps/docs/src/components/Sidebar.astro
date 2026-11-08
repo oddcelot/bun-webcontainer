@@ -20,10 +20,6 @@ const FACES: Record<string, [number, number]> = {
   Privacy: [3, 7],
 };
 
-// The buttons' fills, in turn: Bun's pink, then sky, lilac and peach. Fixed like the pink, so the near-black label and
-// outline read on them in every theme.
-const FILLS = ["var(--brand)", "#5ec8ff", "#b18cff", "#ffc46b"];
-
 const hasCurrent = (entry: Entry): boolean =>
   entry.type === "link" ? entry.isCurrent : entry.entries.some(hasCurrent);
 const firstHref = (entry: Entry): string | undefined =>
@@ -36,12 +32,8 @@ const current = sidebar.find(hasCurrent) ?? sidebar[0];
 <SidebarPersister>
   <nav class="sections" aria-label="Sections">
     {
-      sidebar.map((entry, i) => (
-        <a
-          href={firstHref(entry)}
-          aria-current={entry === current ? "true" : undefined}
-          style={`--fill: ${FILLS[i % FILLS.length]}`}
-        >
+      sidebar.map((entry) => (
+        <a href={firstHref(entry)} aria-current={entry === current ? "true" : undefined}>
           <span class="button">
             <span class="face" style={`--x: ${FACES[entry.label]?.[0] ?? 0}; --y: ${FACES[entry.label]?.[1] ?? 0}`} aria-hidden="true" />
             <span class="label">{entry.label}</span>
@@ -65,9 +57,10 @@ const current = sidebar.find(hasCurrent) ?? sidebar[0];
 
 <style>
   /*
-   * Pixel game buttons: corners stepped in --step pixels (clip-path), a near-black outline (.button's own background)
-   * around the fill (::before, the same shape inset by one step), white glints top left and bottom right (::after) and
-   * a hard shadow (the link's drop-shadow, outside the clip). The current section is pressed into its shadow.
+   * Pixel game buttons: corners stepped in --step pixels (clip-path), an outline (.button's own background) around the
+   * fill (::before, the same shape inset by one step), glints top left and bottom right (::after) and a hard shadow (the
+   * link's drop-shadow, outside the clip). Quiet in the theme's control colors; the current section is Bun's pink,
+   * pressed into its shadow.
    */
   .sections {
     --step: 3px;
@@ -101,17 +94,17 @@ const current = sidebar.find(hasCurrent) ?? sidebar[0];
     margin: 0 calc(2 * var(--step)) 1.5rem 0;
 
     a {
-      /* The outline and shadow: near-black, as in the reference art; a dark shade of the fill on a dark page, where
-       * near-black would vanish into the sidebar. */
-      --edge: var(--ink);
+      --fill: var(--control);
+      --edge: color-mix(in srgb, var(--fg) 28%, var(--bg));
+      --glint: color-mix(in srgb, #fff 35%, transparent);
 
       display: block;
-      color: var(--ink);
+      color: var(--fg);
       text-decoration: none;
       filter: drop-shadow(var(--step) var(--step) 0 var(--edge));
 
-      &:hover .button::before {
-        background: color-mix(in srgb, var(--fill) 80%, #fff);
+      &:hover {
+        --fill: var(--control-hover);
       }
 
       &:focus-visible {
@@ -119,7 +112,14 @@ const current = sidebar.find(hasCurrent) ?? sidebar[0];
         outline-offset: 4px;
       }
 
+      /* Near-black outline and label on the pink, as in pixel game art; a dark pink edge on a dark page, where
+       * near-black would vanish into the sidebar. */
       &[aria-current="true"] {
+        --fill: var(--brand);
+        --edge: var(--ink);
+        --glint: #fff;
+
+        color: var(--ink);
         filter: none;
         translate: var(--step) var(--step);
       }
@@ -148,10 +148,10 @@ const current = sidebar.find(hasCurrent) ?? sidebar[0];
         position: absolute;
         inset: 0;
         background:
-          linear-gradient(#fff, #fff) calc(4 * var(--step)) calc(2 * var(--step)) / calc(5 * var(--step)) var(--step) no-repeat,
-          linear-gradient(#fff, #fff) calc(10 * var(--step)) calc(2 * var(--step)) / var(--step) var(--step) no-repeat,
-          linear-gradient(#fff, #fff) right calc(10 * var(--step)) bottom calc(2 * var(--step)) / var(--step) var(--step) no-repeat,
-          linear-gradient(#fff, #fff) right calc(4 * var(--step)) bottom calc(2 * var(--step)) / calc(4 * var(--step)) var(--step) no-repeat;
+          linear-gradient(var(--glint), var(--glint)) calc(4 * var(--step)) calc(2 * var(--step)) / calc(5 * var(--step)) var(--step) no-repeat,
+          linear-gradient(var(--glint), var(--glint)) calc(10 * var(--step)) calc(2 * var(--step)) / var(--step) var(--step) no-repeat,
+          linear-gradient(var(--glint), var(--glint)) right calc(10 * var(--step)) bottom calc(2 * var(--step)) / var(--step) var(--step) no-repeat,
+          linear-gradient(var(--glint), var(--glint)) right calc(4 * var(--step)) bottom calc(2 * var(--step)) / calc(4 * var(--step)) var(--step) no-repeat;
         opacity: 0.85;
         pointer-events: none;
       }
@@ -177,8 +177,8 @@ const current = sidebar.find(hasCurrent) ?? sidebar[0];
     }
   }
 
-  :global(:root:not([data-theme="light"])) .sections a {
-    --edge: color-mix(in srgb, var(--fill) 40%, #000);
+  :global(:root:not([data-theme="light"])) .sections a[aria-current="true"] {
+    --edge: color-mix(in srgb, var(--brand) 40%, #000);
   }
 
   @media (prefers-reduced-motion: reduce) {
