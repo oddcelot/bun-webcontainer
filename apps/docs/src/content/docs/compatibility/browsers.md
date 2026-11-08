@@ -58,6 +58,8 @@ The playground uses these when the browser has them and works without them.
 | Vite / Rolldown projects in an iframe | 🟡 Partial | They need cross-origin isolation. It works only if the host page is isolated (`COOP: same-origin`, `COEP: credentialless`) and the iframe has `allow="cross-origin-isolated"`. Otherwise run them on runbun.dev. |
 | Everything else in an iframe | ✅ Works | No isolation needed. |
 | Storage | 🟡 Partial | The service worker and OPFS are partitioned per host site. The first visit on each site downloads the wasm again. |
+| Package files | 🟡 Partial | Project code runs on run.runbun.dev. An embed on another site doesn't get cross-origin isolation for that origin, so installed packages' large files stay in memory instead of the package cache. |
+| Open preview in a new tab | 🟡 Partial | From an embed on another site it opens the playground instead of a standalone preview. |
 
 ## Notes
 

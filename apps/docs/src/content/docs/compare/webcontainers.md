@@ -22,6 +22,8 @@ Both run your code inside the browser tab, with no remote machine behind it. The
 | Safari | Edit only, until Safari ships WebAssembly Memory64 | Beta, from Safari 16.4 |
 | Put it in your own page | [`<bun-playground>` element or iframe](/guides/embedding/), free | WebContainer API; a license for commercial production use |
 
+Project code on runbun.dev runs on its own origin, run.runbun.dev, apart from the editor, so a program you run can't read your saved projects, folder access or the Local Bun token.
+
 WebContainers' details are from [their introduction](https://webcontainers.io/guides/introduction), [browser support](https://webcontainers.io/guides/browser-support) and [licensing](https://webcontainers.io/enterprise) pages, as of November 2026.
 
 ## Pick WebContainers when
