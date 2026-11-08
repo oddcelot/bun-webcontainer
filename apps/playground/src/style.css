@@ -118,8 +118,14 @@ html[data-view="opening"] {
     }
   }
 
-  /* A dialog box's paragraphs and lists. */
+  /* A dialog box: sans text (retro.css) at a size that matches the page's VT323, code in the mono font. */
   .retro-dialog {
+    font-size: 17px;
+
+    code {
+      font: 0.9em var(--font-mono);
+    }
+
     p,
     ul {
       margin: 0 0 8px;
@@ -170,7 +176,7 @@ html[data-view="opening"] {
 
   .lead {
     margin-bottom: 32px;
-    font-size: 24px;
+    font-size: 19px;
   }
 
   /* Menu buttons: a ▶ cursor points at the one under the pointer or focus, and a press sinks it into its shadow. */
