@@ -1,6 +1,6 @@
 // The landing page's CRT: a small monitor (index.html, #landing .crt) showing a drawing of the playground, through a CRT
-// shader. "Open the playground" zooms the page into its screen while the shader settles to a plain pass-through, then
-// fades the screen out over the real playground (src/entry.ts).
+// shader. "Open the playground" zooms the page into its screen; filling the window, the shader
+// settles to a plain pass-through, then the screen fades out over the real playground (src/entry.ts).
 //
 // The fragment shader is the "Serenity Shader" from https://github.com/gingerbeardman/webgl-crt-shader
 // (CRTShader.js), MIT licensed, Copyright (c) Matt Sephton (gingerbeardman). Unchanged apart from the varyings.
@@ -414,16 +414,9 @@ export function startCrt(screen: HTMLElement): Crt | null {
         [{ transform: "none" }, { transform: `translate(${win.w / 2 - cx}px, ${win.h / 2 - cy}px) scale(${scale})` }],
         { duration, easing: "cubic-bezier(0.65, 0, 0.35, 1)", fill: "forwards" },
       );
-      // The shader settles while the screen grows: on the way in it is still a CRT, filling the window it is flat.
-      const t0 = performance.now();
-      for (let t = 0; t < 1; ) {
-        t = Math.min(1, (((await nextFrame()) - t0) / duration - 0.15) / 0.85);
-        const e = ease(Math.max(0, t));
-        params = Object.fromEntries(Object.entries(CRT).map(([key, from]) => [key, from + (BASELINE[key as keyof Params] - from) * e])) as Params;
-      }
       await motion.finished;
-      // The screen fills the window: move it onto the page as an overlay, swap the landing page for the playground
-      // underneath, and fade out once the playground has rendered.
+      // The screen fills the window: move it onto the page as an overlay and swap the landing page for the playground
+      // underneath, which keeps booting while the shader settles.
       const overlay = document.createElement("div");
       overlay.className = "crt-overlay";
       overlay.append(canvas);
@@ -431,6 +424,15 @@ export function startCrt(screen: HTMLElement): Crt | null {
       removeEventListener("wheel", lockScroll);
       removeEventListener("touchmove", lockScroll);
       swap();
+      // Only now, filling the window, the CRT look settles to a flat pass-through; then it fades out once the
+      // playground has rendered.
+      const settle = 700;
+      const t0 = performance.now();
+      for (let t = 0; t < 1; ) {
+        t = Math.min(1, ((await nextFrame()) - t0) / settle);
+        const e = ease(t);
+        params = Object.fromEntries(Object.entries(CRT).map(([key, from]) => [key, from + (BASELINE[key as keyof Params] - from) * e])) as Params;
+      }
       await Promise.race([ready, new Promise((r) => setTimeout(r, 10_000))]);
       await nextFrame();
       await overlay.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 350, easing: "ease-out", fill: "forwards" }).finished;
