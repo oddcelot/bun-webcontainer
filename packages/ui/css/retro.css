@@ -6,7 +6,7 @@
  *   --retro-ink     frame lines (default --fg)
  *   --retro-fill    inside a dialog box (default --bg)
  *   --retro-rim     the inner rim of a dialog box (default --panel)
- *   --retro-shade   the offset shadow (default the accent toned toward --bg)
+ *   --retro-shade   the offset shadow (default the brand pink toned toward --bg)
  *   --retro-hi      highlights: the caret, the ▶ cursor (default --warn)
  *
  * They're read with fallbacks where they're used, never set on :root: a custom property set on :root as
@@ -14,6 +14,8 @@
  *
  * --px (one art pixel), --font-pixel (titles) and --font-pixel-label (tiny uppercase labels) come from the uno preset.
  * The fonts themselves are each app's to load (@fontsource/pixelify-sans, @fontsource/press-start-2p).
+ *
+ * --brand and --on-brand (Bun's pink, and the text on it) are fixed, not per theme.
  *
  * Pixel borders are four box-shadows offset by --px, which leaves the corners notched.
  */
@@ -28,7 +30,7 @@
       0 var(--px) 0 0 var(--_ink),
       calc(-1 * var(--px)) 0 0 0 var(--_ink),
       var(--px) 0 0 0 var(--_ink);
-    --_shade: var(--retro-shade, color-mix(in srgb, var(--accent) 70%, var(--bg)));
+    --_shade: var(--retro-shade, color-mix(in srgb, var(--brand) 70%, var(--bg)));
     --_offset: calc(3 * var(--px)) calc(3 * var(--px)) 0 0 var(--_shade);
 
     margin: var(--px);
