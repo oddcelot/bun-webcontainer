@@ -22,3 +22,9 @@ declare module "virtual:starlight/components/Pagination" {
   const Component: (props: Record<string, never>) => unknown;
   export default Component;
 }
+
+// The mobile menu's footer, which components/Sidebar.astro renders as Starlight's own sidebar does.
+declare module "virtual:starlight/components/MobileMenuFooter" {
+  const Component: (props: Record<string, never>) => unknown;
+  export default Component;
+}

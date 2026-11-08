@@ -37,27 +37,25 @@ html:root[data-theme="light"]:is(:not([data-family]), [data-family^="pierre-"]) 
   --sl-color-text-accent: var(--sl-color-accent-high);
 }
 
-/* The current page: an accent dot on the section's guide line, and the label at full strength; no fill. */
-.sidebar-content a[aria-current="page"],
-.sidebar-content a[aria-current="page"]:hover,
-.sidebar-content a[aria-current="page"]:focus {
-  position: relative;
-  background: none;
-  color: var(--sl-color-white);
-  font-weight: 600;
-}
-.sidebar-content a[aria-current="page"]::before {
-  content: "";
-  position: absolute;
-  /* Centered on the list item's 1px border, which sits the item's padding (plus half the border) to the left. */
-  left: calc(-1 * var(--sl-sidebar-item-padding-inline) - 4px);
-  top: 50%;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 0 3px var(--sl-color-bg-sidebar);
-  transform: translateY(-50%);
+/* Sidebar: group labels in the pixel label face; the current page is a solid block of Bun's pink. */
+.sidebar-content {
+  summary .large {
+    font-family: var(--font-pixel-label);
+    font-size: 0.625rem;
+    font-weight: 400;
+    line-height: 1.6;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+
+  a[aria-current="page"],
+  a[aria-current="page"]:hover,
+  a[aria-current="page"]:focus {
+    border-radius: 0;
+    background: var(--brand);
+    color: var(--on-brand);
+    font-weight: 600;
+  }
 }
 
 /* Controls take the playground's 6px corners; cards its 12px panes. */
@@ -66,35 +64,100 @@ starlight-theme-select select,
 .sl-link-button {
   border-radius: 6px;
 }
-.sl-link-card,
-.card,
-.pagination-links a {
-  border-radius: var(--radius);
-}
 
 /* The site title in plain text, like the playground's header. */
 .site-title {
   color: var(--sl-color-white);
 }
 
-/* "Open playground" in the header (components/SocialIcons.astro): the playground's Run button. */
+/* "Open playground" in the header (components/SocialIcons.astro): a square pixel button at the header's control height. */
 .open-playground {
+  --_frame:
+    0 calc(-1 * var(--px)) 0 0 var(--fg),
+    0 var(--px) 0 0 var(--fg),
+    calc(-1 * var(--px)) 0 0 0 var(--fg),
+    var(--px) 0 0 0 var(--fg);
+
   display: inline-flex;
   align-items: center;
   gap: 6px;
   height: var(--control-height);
+  margin: 0 var(--px);
   padding: 0 10px;
-  border: 1px solid var(--control-border);
-  border-radius: 6px;
-  background: var(--control);
-  color: var(--fg);
-  font-size: var(--sl-text-sm);
+  border: 0;
+  border-radius: 0;
+  background: var(--brand);
+  box-shadow: var(--_frame);
+  color: var(--on-brand);
+  font: 0.5rem/1 var(--font-pixel-label);
   text-decoration: none;
+  text-transform: uppercase;
   white-space: nowrap;
+
+  &:hover,
+  &:focus-visible {
+    background: color-mix(in srgb, var(--brand) 80%, #fff);
+    color: var(--on-brand);
+  }
+
+  &:active {
+    translate: 0 var(--px);
+  }
 }
-.open-playground:hover {
-  background: var(--control-hover);
-  color: var(--fg);
+
+/* The CRT that "Open playground" zooms into (src/crt-launch.ts): a dark monitor over a dimmed page. */
+.crt-launch {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  overflow: hidden;
+
+  .crt-launch-backdrop {
+    position: absolute;
+    inset: 0;
+    background: #000;
+    opacity: 0;
+  }
+
+  .crt-launch-monitor {
+    position: absolute;
+    padding: 12px 12px 24px;
+    border-radius: 0;
+    background: var(--panel);
+    /* The pixel frame and offset shadow, as the retro layer draws them. */
+    box-shadow:
+      0 calc(-1 * var(--px)) 0 0 var(--fg),
+      0 var(--px) 0 0 var(--fg),
+      calc(-1 * var(--px)) 0 0 0 var(--fg),
+      var(--px) 0 0 0 var(--fg),
+      calc(3 * var(--px)) calc(3 * var(--px)) 0 0 color-mix(in srgb, var(--brand) 70%, var(--bg));
+    will-change: transform;
+
+    /* The power light. */
+    &::after {
+      content: "";
+      position: absolute;
+      right: 16px;
+      bottom: 9px;
+      width: 6px;
+      height: 6px;
+      background: var(--ok);
+    }
+  }
+
+  .crt-launch-screen {
+    aspect-ratio: var(--crt-aspect, 16 / 10);
+    overflow: hidden;
+    border-radius: 0;
+    background: #000;
+    box-shadow: 0 0 0 var(--px) var(--fg);
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+  }
 }
 
 /* A runnable code block's poster sits on the page, and its Run button is the same control. */
@@ -105,7 +168,7 @@ bun-playground {
   --play-bg-hover: var(--control-hover);
   --play-fg: var(--fg);
   --play-border: var(--control-border);
-  --play-radius: 6px;
+  --play-radius: 0;
 }
 
 /* Status icons on the compatibility pages (remark-status.ts): the playground's lucide icons in the status colors. */
@@ -161,10 +224,175 @@ bun-playground {
 
 /* @runbun/astro's code blocks (fences marked `playground`, <Code>) in the site's borders, corners and code font. */
 :root {
-  --runbun-code-border: var(--border);
-  --runbun-code-radius: var(--radius);
+  --runbun-code-border: transparent;
+  --runbun-code-radius: 0;
   --runbun-code-font: var(--__sl-font-mono);
   --runbun-code-size: var(--sl-text-code);
   --runbun-code-caption-size: var(--sl-text-xs);
   --runbun-code-line-height: var(--sl-line-height);
+}
+
+/*
+ * The pixel frame (a notched border from four 0-blur shadows) and its offset shadow, on Starlight markup we can't give
+ * retro-* classes. Set per element so --fg and --accent resolve where they are used, not on :root.
+ */
+.expressive-code .frame,
+.runbun-code:not(.runbun-tabs > *, bun-playground *),
+.runbun-tabs,
+bun-playground,
+.starlight-aside,
+.sl-link-card,
+.card,
+.pagination-links a {
+  --_frame:
+    0 calc(-1 * var(--px)) 0 0 var(--fg),
+    0 var(--px) 0 0 var(--fg),
+    calc(-1 * var(--px)) 0 0 0 var(--fg),
+    var(--px) 0 0 0 var(--fg);
+  --_shade: color-mix(in srgb, var(--brand) 70%, var(--bg));
+  --_offset: calc(3 * var(--px)) calc(3 * var(--px)) 0 0 var(--_shade);
+
+  border-radius: 0;
+  box-shadow: var(--_frame), var(--_offset);
+}
+
+/* Room for the shadow, which would otherwise overflow the column. */
+.expressive-code,
+.runbun-code:not(.runbun-tabs > *, bun-playground *),
+.runbun-tabs,
+bun-playground {
+  margin-block-end: calc(4 * var(--px));
+  margin-inline: var(--px) calc(4 * var(--px));
+}
+.expressive-code .frame {
+  /* Expressive Code draws its own border; the notched frame replaces it. */
+  border: 0;
+}
+
+/* Page and site titles in the pixel face; the site title leads with the logo dumpling (face 0,0). */
+h1,
+.site-title {
+  font-family: var(--font-pixel);
+  font-weight: 600;
+}
+.site-title {
+  gap: 0.75rem;
+
+  &::before {
+    content: "";
+    flex: none;
+    width: 32px;
+    height: 32px;
+    background: url("@runbun/ui/assets/dumplings.png") 0 0 / 800% 800%;
+    image-rendering: pixelated;
+  }
+}
+
+/* Asides: a dialog box per kind, its shadow in the status color, a dumpling and a blinking caret. */
+.starlight-aside {
+  --_kind: var(--brand);
+  --_face-x: 5;
+  --_face-y: 1;
+
+  position: relative;
+  padding: 1rem 1.5rem;
+  border: 0;
+  background: var(--bg);
+  box-shadow:
+    inset 0 0 0 var(--px) var(--panel),
+    var(--_frame),
+    calc(3 * var(--px)) calc(3 * var(--px)) 0 0 var(--_kind);
+  color: var(--fg);
+  margin: 1.5rem calc(4 * var(--px)) calc(5 * var(--px)) var(--px);
+
+  &.starlight-aside--note {
+    --_kind: var(--info);
+  }
+  &.starlight-aside--tip {
+    --_kind: var(--ok);
+    --_face-x: 1;
+    --_face-y: 1;
+  }
+  &.starlight-aside--caution {
+    --_kind: var(--warn);
+    --_face-x: 7;
+    --_face-y: 6;
+  }
+  &.starlight-aside--danger {
+    --_kind: var(--error);
+    --_face-x: 6;
+    --_face-y: 6;
+  }
+
+  .starlight-aside__title {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    color: var(--fg);
+    font-family: var(--font-pixel-label);
+    font-size: 0.625rem;
+    text-transform: uppercase;
+
+    /* The dumpling replaces Starlight's icon. */
+    svg {
+      display: none;
+    }
+
+    &::before {
+      content: "";
+      flex: none;
+      width: 32px;
+      height: 32px;
+      background: url("@runbun/ui/assets/dumplings.png") calc(var(--_face-x) * 100% / 7) calc(var(--_face-y) * 100% / 7) / 800% 800%;
+      image-rendering: pixelated;
+    }
+  }
+
+  .starlight-aside__content {
+    color: var(--fg);
+  }
+
+  &::after {
+    content: "";
+    position: absolute;
+    right: 14px;
+    bottom: 10px;
+    border: 6px solid transparent;
+    border-top: 8px solid var(--_kind);
+    border-bottom: 0;
+    animation: retro-blink 1s steps(1) infinite;
+  }
+}
+
+/* Link cards, cards and pagination lift by one art pixel on hover. */
+.sl-link-card,
+.card,
+.pagination-links a {
+  background: var(--bg);
+  margin-block-end: calc(4 * var(--px));
+  margin-inline: var(--px) calc(4 * var(--px));
+
+  &:hover {
+    translate: 0 calc(-1 * var(--px));
+  }
+}
+.pagination-links a {
+  margin-block: 0;
+  margin-inline: 0;
+}
+/* The shadow of one card must not run into the next. */
+.card-grid {
+  gap: calc(5 * var(--px));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .starlight-aside::after {
+    animation: none;
+  }
+  .sl-link-card:hover,
+  .card:hover,
+  .pagination-links a:hover,
+  .open-playground:active {
+    translate: none;
+  }
 }

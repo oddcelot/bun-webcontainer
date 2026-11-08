@@ -28,6 +28,14 @@ const BASE: Vars = {
   "--control-height": "28px",
   "--scrollbar": "color-mix(in srgb, var(--fg) 22%, transparent)",
   "--scrollbar-hover": "color-mix(in srgb, var(--fg) 38%, transparent)",
+  // The retro layer (css/retro.css): one art pixel, and its display fonts (each app loads the ones it uses).
+  "--px": "4px",
+  // Bun's pink: the retro layer's fills and offset shadows, the same in every theme. Text on it is near-black, which
+  // reads at 6:1 (white would be 3.3:1).
+  "--brand": "#ff5cb0",
+  "--on-brand": "#0a0a0a",
+  "--font-pixel": '"Pixelify Sans", var(--font-ui)',
+  "--font-pixel-label": '"Press Start 2P", ui-monospace, monospace',
 };
 
 const block = (selector: string, vars: Vars) =>

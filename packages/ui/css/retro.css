@@ -1,0 +1,163 @@
+/*
+ * The retro layer: the 8-bit parts of the landing page and the docs (not the playground app). Colors come from the
+ * theme tokens (--fg, --bg, --panel, --accent, the status colors), so the parts follow the reader's theme family and
+ * scheme. A scope can pin them by setting the optional overrides below on an ancestor (the landing page does).
+ *
+ *   --retro-ink     frame lines (default --fg)
+ *   --retro-fill    inside a dialog box (default --bg)
+ *   --retro-rim     the inner rim of a dialog box (default --panel)
+ *   --retro-shade   the offset shadow (default the brand pink toned toward --bg)
+ *   --retro-hi      highlights: the caret, the ▶ cursor (default --warn)
+ *
+ * They're read with fallbacks where they're used, never set on :root: a custom property set on :root as
+ * `var(--fg)` would keep :root's --fg even under a scope that overrides --fg.
+ *
+ * --px (one art pixel), --font-pixel (titles) and --font-pixel-label (tiny uppercase labels) come from the uno preset.
+ * The fonts themselves are each app's to load (@fontsource/pixelify-sans, @fontsource/press-start-2p).
+ *
+ * --brand and --on-brand (Bun's pink, and the text on it) are fixed, not per theme.
+ *
+ * Pixel borders are four box-shadows offset by --px, which leaves the corners notched.
+ */
+@layer runbun-retro {
+  .retro-frame,
+  .retro-shadow,
+  .retro-dialog,
+  .retro-button {
+    --_ink: var(--retro-ink, var(--fg));
+    --_frame:
+      0 calc(-1 * var(--px)) 0 0 var(--_ink),
+      0 var(--px) 0 0 var(--_ink),
+      calc(-1 * var(--px)) 0 0 0 var(--_ink),
+      var(--px) 0 0 0 var(--_ink);
+    --_shade: var(--retro-shade, color-mix(in srgb, var(--brand) 70%, var(--bg)));
+    --_offset: calc(3 * var(--px)) calc(3 * var(--px)) 0 0 var(--_shade);
+
+    margin: var(--px);
+    border-radius: 0;
+  }
+
+  /* A notched pixel border. */
+  .retro-frame {
+    box-shadow: var(--_frame);
+  }
+
+  /* The border with a solid shadow offset to the bottom right. */
+  .retro-shadow {
+    /* Room for the shadow, which would otherwise overflow a narrow screen. */
+    margin: var(--px) calc(4 * var(--px)) calc(4 * var(--px)) var(--px);
+    box-shadow: var(--_frame), var(--_offset);
+  }
+
+  /* An RPG dialog box: the border around a darker rim, and a caret blinking in the corner. Its text is in the UI font,
+   * readable at length; headings inside keep whatever display face they set. */
+  .retro-dialog {
+    position: relative;
+    padding: 20px 24px;
+    font-family: var(--font-ui);
+    line-height: 1.6;
+    background: var(--retro-fill, var(--bg));
+    box-shadow:
+      inset 0 0 0 var(--px) var(--retro-rim, var(--panel)),
+      var(--_frame);
+
+    &.retro-shadow {
+      box-shadow:
+        inset 0 0 0 var(--px) var(--retro-rim, var(--panel)),
+        var(--_frame),
+        var(--_offset);
+    }
+
+    &::after {
+      content: "";
+      position: absolute;
+      right: 14px;
+      bottom: 10px;
+      border: 6px solid transparent;
+      border-top: 8px solid var(--retro-hi, var(--warn));
+      border-bottom: 0;
+      animation: retro-blink 1s steps(1) infinite;
+    }
+  }
+
+  /* A menu button: sinks into its shadow when pressed; a ▶ cursor points at it on hover and focus. */
+  .retro-button {
+    position: relative;
+    display: inline-flex;
+    gap: 8px;
+    align-items: center;
+    padding: 14px 18px;
+    border: 0;
+    background: var(--panel);
+    color: var(--fg);
+    font: 10px/1.4 var(--font-pixel-label);
+    text-decoration: none;
+    text-transform: uppercase;
+    cursor: pointer;
+    box-shadow:
+      var(--_frame),
+      var(--px) calc(3 * var(--px)) 0 0 #000;
+
+    &.primary {
+      background: var(--retro-hi, var(--warn));
+      color: var(--retro-fill, var(--bg));
+    }
+
+    &::before {
+      content: "▶";
+      position: absolute;
+      left: -28px;
+      color: var(--retro-hi, var(--warn));
+      visibility: hidden;
+      animation: retro-nudge 0.6s steps(2, jump-none) infinite;
+    }
+
+    &:hover,
+    &:focus-visible {
+      outline: none;
+
+      &::before {
+        visibility: visible;
+      }
+    }
+
+    &:active {
+      translate: 0 var(--px);
+      box-shadow: var(--_frame);
+    }
+  }
+
+  /* Display type: page titles, the site title. */
+  .retro-title {
+    font-family: var(--font-pixel);
+    font-weight: 600;
+  }
+
+  /* One face of dumplings.png (8 × 8 faces of 32px): --x and --y pick it. Size it in whole multiples of 32px. */
+  .retro-sprite {
+    flex: none;
+    display: inline-block;
+    width: 32px;
+    height: 32px;
+    background: url("../assets/dumplings.png") calc(var(--x, 0) * 100% / 7) calc(var(--y, 0) * 100% / 7) / 800% 800%;
+    image-rendering: pixelated;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .retro-dialog::after,
+    .retro-button::before {
+      animation: none;
+    }
+  }
+}
+
+@keyframes retro-blink {
+  50% {
+    opacity: 0;
+  }
+}
+@keyframes retro-nudge {
+  to {
+    translate: 4px 0;
+  }
+}
