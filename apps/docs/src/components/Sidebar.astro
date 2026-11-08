@@ -9,11 +9,12 @@ type Entry = (typeof Astro.locals.starlightRoute.sidebar)[number];
 
 const { sidebar } = Astro.locals.starlightRoute;
 
-// Each section's dumpling (a face of @runbun/ui's dumplings.png, [x, y]); the landing page's boxes use the same ones.
+// Each section's dumpling (a face of @runbun/ui's dumplings.png, [x, y]): the cook for the examples, the reader for
+// the reference; the others are the faces the landing page's boxes use.
 const FACES: Record<string, [number, number]> = {
   Guides: [2, 1],
-  Examples: [6, 0],
-  Reference: [6, 1],
+  Examples: [6, 1],
+  Reference: [1, 7],
   Compatibility: [4, 1],
   Compare: [0, 4],
   Privacy: [3, 7],
