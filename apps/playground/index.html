@@ -30,7 +30,8 @@
     <script>
       try {
         const q = new URLSearchParams(location.search);
-        const project = q.has("example") || q.has("repo") || q.has("connect") || location.hash.startsWith("#code=");
+        // ?open: straight into the playground, e.g. from the docs' "Open playground" (src/entry.ts drops it from the URL).
+        const project = q.has("example") || q.has("repo") || q.has("connect") || q.has("open") || location.hash.startsWith("#code=");
         const about = location.pathname.endsWith("/about");
         if (!about && (project || localStorage.getItem("playground.opened"))) document.documentElement.dataset.view = "app";
       } catch {}

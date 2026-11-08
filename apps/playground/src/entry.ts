@@ -34,6 +34,12 @@ function rendered() {
 }
 
 if (root.dataset.view === "app") {
+  // ?open (index.html) has done its job: a reload or a share link doesn't need it.
+  const url = new URL(location.href);
+  if (url.searchParams.has("open")) {
+    url.searchParams.delete("open");
+    history.replaceState(history.state, "", url);
+  }
   showPlayground();
   void import("./main");
 } else {
