@@ -1,6 +1,6 @@
 ---
-// The sidebar in two parts, so it isn't one long list: a card with the top-level sections (astro.config.ts's sidebar
-// groups, and Privacy), then only the current section's pages. A section opens on its first page.
+// The sidebar in two parts, so it isn't one long list: the top-level sections (astro.config.ts's sidebar groups, and
+// Privacy) as pixel game buttons, then only the current section's pages. A section opens on its first page.
 import MobileMenuFooter from "virtual:starlight/components/MobileMenuFooter";
 import SidebarPersister from "@astrojs/starlight/components/SidebarPersister.astro";
 import SidebarSublist from "@astrojs/starlight/components/SidebarSublist.astro";
@@ -20,6 +20,10 @@ const FACES: Record<string, [number, number]> = {
   Privacy: [3, 7],
 };
 
+// The buttons' fills, in turn: Bun's pink, then sky, lilac and peach. Fixed like the pink, so the near-black label and
+// outline read on them in every theme.
+const FILLS = ["var(--brand)", "#5ec8ff", "#b18cff", "#ffc46b"];
+
 const hasCurrent = (entry: Entry): boolean =>
   entry.type === "link" ? entry.isCurrent : entry.entries.some(hasCurrent);
 const firstHref = (entry: Entry): string | undefined =>
@@ -32,10 +36,16 @@ const current = sidebar.find(hasCurrent) ?? sidebar[0];
 <SidebarPersister>
   <nav class="sections" aria-label="Sections">
     {
-      sidebar.map((entry) => (
-        <a href={firstHref(entry)} aria-current={entry === current ? "true" : undefined}>
-          <span class="face" style={`--x: ${FACES[entry.label]?.[0] ?? 0}; --y: ${FACES[entry.label]?.[1] ?? 0}`} aria-hidden="true" />
-          <span>{entry.label}</span>
+      sidebar.map((entry, i) => (
+        <a
+          href={firstHref(entry)}
+          aria-current={entry === current ? "true" : undefined}
+          style={`--fill: ${FILLS[i % FILLS.length]}`}
+        >
+          <span class="button">
+            <span class="face" style={`--x: ${FACES[entry.label]?.[0] ?? 0}; --y: ${FACES[entry.label]?.[1] ?? 0}`} aria-hidden="true" />
+            <span class="label">{entry.label}</span>
+          </span>
         </a>
       ))
     }
@@ -54,47 +64,126 @@ const current = sidebar.find(hasCurrent) ?? sidebar[0];
 </div>
 
 <style>
-  /* The section card: a darker panel in a quiet pixel frame; the current section is outlined in Bun's pink. */
+  /*
+   * Pixel game buttons: corners stepped in --step pixels (clip-path), a near-black outline (.button's own background)
+   * around the fill (::before, the same shape inset by one step), white glints top left and bottom right (::after) and
+   * a hard shadow (the link's drop-shadow, outside the clip). The current section is pressed into its shadow.
+   */
   .sections {
+    --step: 3px;
+    --ink: #15151f;
+    --pill: polygon(
+      0 calc(2 * var(--step)),
+      var(--step) calc(2 * var(--step)),
+      var(--step) var(--step),
+      calc(2 * var(--step)) var(--step),
+      calc(2 * var(--step)) 0,
+      calc(100% - 2 * var(--step)) 0,
+      calc(100% - 2 * var(--step)) var(--step),
+      calc(100% - var(--step)) var(--step),
+      calc(100% - var(--step)) calc(2 * var(--step)),
+      100% calc(2 * var(--step)),
+      100% calc(100% - 2 * var(--step)),
+      calc(100% - var(--step)) calc(100% - 2 * var(--step)),
+      calc(100% - var(--step)) calc(100% - var(--step)),
+      calc(100% - 2 * var(--step)) calc(100% - var(--step)),
+      calc(100% - 2 * var(--step)) 100%,
+      calc(2 * var(--step)) 100%,
+      calc(2 * var(--step)) calc(100% - var(--step)),
+      var(--step) calc(100% - var(--step)),
+      var(--step) calc(100% - 2 * var(--step)),
+      0 calc(100% - 2 * var(--step))
+    );
+
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    margin: var(--px) var(--px) 1.25rem;
-    padding: 6px;
-    background: var(--bg);
-    box-shadow:
-      0 calc(-1 * var(--px)) 0 0 var(--border),
-      0 var(--px) 0 0 var(--border),
-      calc(-1 * var(--px)) 0 0 0 var(--border),
-      var(--px) 0 0 0 var(--border);
+    gap: 10px;
+    margin: 0 calc(2 * var(--step)) 1.5rem 0;
 
     a {
-      display: flex;
-      gap: 0.75rem;
-      align-items: center;
-      padding: 0.2rem 0.65rem;
-      color: var(--sl-color-gray-2);
-      font-size: var(--sl-text-sm);
-      font-weight: 600;
-      text-decoration: none;
+      /* The outline and shadow: near-black, as in the reference art; a dark shade of the fill on a dark page, where
+       * near-black would vanish into the sidebar. */
+      --edge: var(--ink);
 
-      .face {
-        flex: none;
-        width: 32px;
-        height: 32px;
-        background: url("@runbun/ui/assets/dumplings.png") calc(var(--x) * 100% / 7) calc(var(--y) * 100% / 7) / 800% 800%;
-        image-rendering: pixelated;
+      display: block;
+      color: var(--ink);
+      text-decoration: none;
+      filter: drop-shadow(var(--step) var(--step) 0 var(--edge));
+
+      &:hover .button::before {
+        background: color-mix(in srgb, var(--fill) 80%, #fff);
       }
 
-      &:hover {
-        background: var(--control);
-        color: var(--fg);
+      &:focus-visible {
+        outline: 2px solid var(--brand);
+        outline-offset: 4px;
       }
 
       &[aria-current="true"] {
-        box-shadow: inset 0 0 0 2px var(--brand);
-        color: var(--fg);
+        filter: none;
+        translate: var(--step) var(--step);
       }
+    }
+
+    .button {
+      position: relative;
+      display: flex;
+      gap: 0.6rem;
+      align-items: center;
+      padding: 4px 14px;
+      background: var(--edge);
+      clip-path: var(--pill);
+
+      &::before {
+        content: "";
+        position: absolute;
+        inset: var(--step);
+        background: var(--fill);
+        clip-path: var(--pill);
+      }
+
+      /* The glints: a dash and a dot top left, a dot and a dash bottom right. */
+      &::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(#fff, #fff) calc(4 * var(--step)) calc(2 * var(--step)) / calc(5 * var(--step)) var(--step) no-repeat,
+          linear-gradient(#fff, #fff) calc(10 * var(--step)) calc(2 * var(--step)) / var(--step) var(--step) no-repeat,
+          linear-gradient(#fff, #fff) right calc(10 * var(--step)) bottom calc(2 * var(--step)) / var(--step) var(--step) no-repeat,
+          linear-gradient(#fff, #fff) right calc(4 * var(--step)) bottom calc(2 * var(--step)) / calc(4 * var(--step)) var(--step) no-repeat;
+        opacity: 0.85;
+        pointer-events: none;
+      }
+
+      > * {
+        position: relative;
+        z-index: 1;
+      }
+    }
+
+    .face {
+      flex: none;
+      width: 32px;
+      height: 32px;
+      background: url("@runbun/ui/assets/dumplings.png") calc(var(--x) * 100% / 7) calc(var(--y) * 100% / 7) / 800% 800%;
+      image-rendering: pixelated;
+    }
+
+    .label {
+      font: 0.5625rem/1.4 var(--font-pixel-label);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+  }
+
+  :global(:root:not([data-theme="light"])) .sections a {
+    --edge: color-mix(in srgb, var(--fill) 40%, #000);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sections a[aria-current="true"] {
+      translate: none;
     }
   }
 
