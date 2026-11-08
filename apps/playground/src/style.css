@@ -36,6 +36,35 @@ html[data-view="app"] #landing {
   display: none;
 }
 /*
+ * Opening from the landing page's CRT (src/entry.ts, src/landing/crt.ts): the playground boots laid out at the window's
+ * size but hidden, while the page zooms into the screen; the screen then stays on top (.crt-overlay) until it has rendered.
+ */
+html[data-view="opening"] {
+  #app {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    inset: 0;
+    visibility: hidden;
+  }
+
+  body:has(> #landing) {
+    overflow: hidden;
+  }
+}
+.crt-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  pointer-events: none;
+
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+}
+/*
  * The landing page: an 8-bit look, on its own fixed palette (not the playground's theme). Headings and buttons in
  * Press Start 2P, text in VT323; sections are RPG-style dialog boxes, each with a dumpling from dumplings.png as its
  * speaker. Pixel borders are box-shadows offset by one "pixel" (--retro-px), which leaves the corners notched.
@@ -139,13 +168,22 @@ html[data-view="app"] #landing {
     }
   }
 
+  /* The dumpling and the name, with the CRT on the right. */
   .brand {
     display: flex;
-    gap: 16px;
+    gap: 24px;
     align-items: end;
+    justify-content: space-between;
     margin: 0 0 20px;
-    color: var(--retro-gold);
-    font: 14px var(--retro-pixel);
+
+    > p {
+      display: flex;
+      gap: 16px;
+      align-items: end;
+      margin: 0;
+      color: var(--retro-gold);
+      font: 14px var(--retro-pixel);
+    }
   }
 
   h1 {
@@ -262,6 +300,74 @@ html[data-view="app"] #landing {
   .demo {
     display: block;
     min-width: 0;
+  }
+
+  /* A small CRT monitor showing the playground (src/landing/crt.ts); clicking it opens the playground, zooming in. */
+  .crt {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex: none;
+    width: 180px;
+    margin: 0 calc(4 * var(--retro-px)) var(--retro-px) 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+
+    .crt-case {
+      display: block;
+      width: 100%;
+      padding: 10px 10px 20px;
+      background: #c2c3c7;
+      box-shadow:
+        inset calc(-1 * var(--retro-px)) calc(-1 * var(--retro-px)) 0 0 #83769c,
+        inset var(--retro-px) var(--retro-px) 0 0 var(--retro-ink),
+        0 0 0 var(--retro-px) #000,
+        calc(3 * var(--retro-px)) calc(3 * var(--retro-px)) 0 var(--retro-px) var(--retro-red);
+      position: relative;
+
+      /* The power light. */
+      &::after {
+        content: "";
+        position: absolute;
+        right: 12px;
+        bottom: 7px;
+        width: 6px;
+        height: 6px;
+        background: var(--retro-green);
+        box-shadow: 0 0 6px var(--retro-green);
+      }
+    }
+
+    .crt-screen {
+      display: block;
+      aspect-ratio: var(--crt-aspect, 16 / 10);
+      overflow: hidden;
+      border-radius: 10px / 14px;
+      background: #000;
+      box-shadow: 0 0 0 var(--retro-px) #5f574f;
+
+      canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+    }
+
+    .crt-stand {
+      display: block;
+      width: 30%;
+      height: 10px;
+      background: #83769c;
+      box-shadow: 0 var(--retro-px) 0 0 #000;
+    }
+
+    &:hover .crt-case,
+    &:focus-visible .crt-case {
+      outline: var(--retro-px) solid var(--retro-gold);
+      outline-offset: calc(2 * var(--retro-px));
+    }
   }
 
   /* A row of dumplings walking in place between the hero and the boxes. */
