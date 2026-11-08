@@ -37,7 +37,6 @@ export default defineConfig({
     starlight({
       title: "Run Bun",
       description: "Bun in the browser: what runs, where, and how.",
-      logo: { src: "./src/favicon.svg" },
       // /llms.txt, /llms-full.txt and /llms-small.txt: the docs as plain text for coding agents. The playground's own
       // llms.txt (apps/playground/public/llms.txt) points here for the details.
       plugins: [
@@ -53,14 +52,20 @@ export default defineConfig({
       ],
       favicon: "/favicon.svg",
       // Starlight's colors mapped onto the playground's tokens (which UnoCSS adds).
-      customCss: ["./src/styles/theme.css"],
+      customCss: [
+        "@fontsource/pixelify-sans/latin-600.css",
+        "@fontsource/press-start-2p/latin-400.css",
+        "@runbun/ui/css/retro.css",
+        "./src/styles/theme.css",
+      ],
       // Every family's code themes; the page picks one with data-code-theme (components/ThemeProvider.astro), so a
       // runnable block's poster matches the embed it turns into.
       expressiveCode: {
         themes: codeThemes,
         useStarlightDarkModeSwitch: false,
         themeCssSelector: (theme) => `[data-code-theme='${theme.name}']`,
-        styleOverrides: { borderRadius: "var(--radius)", borderColor: "var(--border)" },
+        // Square corners; the pixel frame around each block is drawn in styles/theme.css.
+        styleOverrides: { borderRadius: "0", borderColor: "transparent" },
       },
       components: {
         SocialIcons: "./src/components/SocialIcons.astro",
