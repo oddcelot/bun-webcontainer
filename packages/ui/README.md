@@ -68,3 +68,17 @@ Put it in `solid/<Name>.tsx` and its rules in `css/<name>.css` inside `@layer ru
 the component. Nest the rules: one block per root class, with its states, parts and variants inside (see AGENTS.md).
 Write them over the preset's variables, with no hard-coded colors. Keep the component free of app imports: anything
 app-specific comes in through props.
+
+## The retro layer
+
+`css/retro.css` is the 8-bit look of the landing page and the docs (not the playground app, which doesn't import it):
+`.retro-frame` (a notched pixel border), `.retro-shadow` (with a solid offset shadow), `.retro-dialog` (an RPG dialog
+box with a blinking caret), `.retro-button` (a menu button; `.primary`), `.retro-title` (display type) and
+`.retro-sprite` (a face of `assets/dumplings.png`, picked with `--x`/`--y`). The rules are in the cascade layer
+`runbun-retro`, so app rules win.
+
+The colors are the theme's, so the parts follow the family and scheme. A scope can pin them with `--retro-ink`,
+`--retro-fill`, `--retro-rim`, `--retro-shade` and `--retro-hi` on an ancestor; don't set those on `:root` as
+`var(--…)`, or they keep the root's colors under a scope that overrides the tokens. The preset adds `--px` (one art
+pixel), `--font-pixel` (Pixelify Sans) and `--font-pixel-label` (Press Start 2P); each app loads the fonts it uses
+from `@fontsource`.

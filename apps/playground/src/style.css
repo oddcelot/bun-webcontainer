@@ -112,7 +112,7 @@ html[data-view="opening"] {
     display: inline-block;
     width: 48px;
     height: 48px;
-    background: url("./dumplings.png") calc(var(--x) * 100% / 7) calc(var(--y) * 100% / 7) / 800% 800%;
+    background: url("@runbun/ui/assets/dumplings.png") calc(var(--x) * 100% / 7) calc(var(--y) * 100% / 7) / 800% 800%;
     image-rendering: pixelated;
 
     &.big {
@@ -567,7 +567,7 @@ html[data-booting] #app > header > * { visibility: hidden; animation: boot-fallb
   flex: none;
   width: 24px;
   height: 24px;
-  background: url("./dumplings.png") 0 0 / 800% 800%;
+  background: url("@runbun/ui/assets/dumplings.png") 0 0 / 800% 800%;
   animation:
     logo-x 0.8s steps(8, jump-none) infinite,
     logo-y 6.4s steps(8, jump-none) infinite;

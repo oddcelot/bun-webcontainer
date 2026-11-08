@@ -28,6 +28,10 @@ const BASE: Vars = {
   "--control-height": "28px",
   "--scrollbar": "color-mix(in srgb, var(--fg) 22%, transparent)",
   "--scrollbar-hover": "color-mix(in srgb, var(--fg) 38%, transparent)",
+  // The retro layer (css/retro.css): one art pixel, and its display fonts (each app loads the ones it uses).
+  "--px": "4px",
+  "--font-pixel": '"Pixelify Sans", var(--font-ui)',
+  "--font-pixel-label": '"Press Start 2P", ui-monospace, monospace',
 };
 
 const block = (selector: string, vars: Vars) =>

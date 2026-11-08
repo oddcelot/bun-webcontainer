@@ -1,7 +1,7 @@
 {
   "name": "@runbun/ui",
   "private": true,
-  "description": "The design system the playground and the docs share: tokens (the UnoCSS preset, theme families, code themes) and Solid 2 components (solid/, shipped as source; each app's Solid plugin compiles them), and the CRT effect (crt/).",
+  "description": "The design system the playground and the docs share: tokens (the UnoCSS preset, theme families, code themes) and Solid 2 components (solid/, shipped as source; each app's Solid plugin compiles them), the retro layer of the landing page and the docs (css/retro.css, assets/), and the CRT effect (crt/).",
   "type": "module",
   "exports": {
     "./uno.preset": "./uno.preset.ts",
@@ -9,7 +9,8 @@
     "./code-themes/*": "./code-themes/*",
     "./solid/*": "./solid/*.tsx",
     "./css/*": "./css/*",
-    "./crt/*": "./crt/*.ts"
+    "./crt/*": "./crt/*.ts",
+    "./assets/*": "./assets/*"
   },
   "peerDependencies": {
     "@kobalte/core": "catalog:",
