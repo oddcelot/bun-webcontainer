@@ -1,6 +1,8 @@
 import { createThemeCatalog, createThemeController, type ColorMode, type ThemeLike } from "@pierre/theming";
 import { themes } from "@pierre/theming/themes";
 import type { Vars } from "@runbun/embed/protocol";
+import { CONTENT_ORIGIN } from "./contentOrigin";
+import { envelope } from "./contentProtocol";
 import { THEME_VARS, elysiaThemes } from "./elysiaTheme";
 import { FAMILIES, chromeVars, withRealColors } from "./themeColors";
 
@@ -157,10 +159,15 @@ let mode = controller.getState().mode;
 controller.subscribe(() => {
   if (controller.getState().mode === mode) return;
   mode = controller.getState().mode;
-  for (const frame of document.querySelectorAll("iframe")) {
-    try {
-      (frame.contentWindow as (Window & { __bunColorScheme?: (mode: string) => void }) | null)?.__bunColorScheme?.(mode);
-    } catch {} // not a preview (another origin)
+  // Previews on the content origin are another origin: their bridge takes the mode as a message (previewBridge.ts).
+  if (CONTENT_ORIGIN) {
+    for (const frame of document.querySelectorAll<HTMLIFrameElement>("iframe.preview-frame")) frame.contentWindow?.postMessage(envelope({ kind: "color-scheme", mode }), CONTENT_ORIGIN);
+  } else {
+    for (const frame of document.querySelectorAll("iframe")) {
+      try {
+        (frame.contentWindow as (Window & { __bunColorScheme?: (mode: string) => void }) | null)?.__bunColorScheme?.(mode);
+      } catch {} // not a preview (another origin)
+    }
   }
   // Other tabs' previews follow the playground's mode, not an embed's.
   if (!EMBEDDED) previewScheme.postMessage(mode);

@@ -108,10 +108,10 @@ The page must be cross-origin isolated (`Cross-Origin-Opener-Policy: same-origin
 `Cross-Origin-Embedder-Policy: credentialless`). `public/_headers` sets them on Cloudflare (Pages, and Workers
 static assets) and Netlify; hosts that can't send headers (GitHub Pages) need a COOP/COEP service-worker workaround.
 
-Cloudflare Workers: `wrangler.jsonc` deploys `dist/` as static assets: `bun run build && bunx wrangler deploy --env=""` (the empty env is production; `--env canary` is the canary).
+Cloudflare Workers: `wrangler.jsonc` deploys `dist/` as static assets: `moon run playground:build && bunx wrangler deploy --env=""` (the empty env is production; `--env canary` is the canary). Build with moon, not a bare `bun run build`: the moon task sets `VITE_CONTENT_ORIGIN` and `VITE_EDITOR_ORIGINS`, which put project code on https://run.runbun.dev (a build without them runs it on the editor's origin). The same Worker and assets answer on run.runbun.dev (run-canary.runbun.dev for the canary), created as custom domains by `wrangler deploy`: there `/api/*` and `/s/*` are refused and the editor's pages redirect to https://runbun.dev (`CONTENT_HOST`, `EDITOR_ORIGIN` in `wrangler.jsonc`). The editor origins include http://127.0.0.1:7357, the local runner's page (`packages/connect`).
 It serves only on the custom domain https://runbun.dev: `workers_dev` and `preview_urls` are off, so search engines
 don't find a duplicate copy of the site (the same goes for the docs and both canaries).
-A small Worker (`worker/index.ts`) runs first only on `/api/*` and `/s/*`, for opt-in short links: `POST /api/short`
+A small Worker (`worker/index.ts`) runs first only on `/api/*`, `/s/*` and the editor's HTML pages (so the content host can redirect them), for opt-in short links: `POST /api/short`
 stores a share payload in the `LINKS` KV namespace under a content-hash id (rate-limited per IP by `CREATE_LIMIT`,
 capped at ~64 KB packed) and `GET /s/<id>` redirects to `/#code=…`. `POST /api/feedback` (the playground's Feedback
 dialog and the docs' page rating, which it allows by CORS from `DOCS_ORIGIN`) stores a row in the `FEEDBACK` D1

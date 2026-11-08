@@ -1,4 +1,6 @@
 import { BASE } from "./base";
+import { CONTENT_ORIGIN } from "./contentOrigin";
+import { fetchContent } from "./contentHost";
 import { HEADERS_HEADER, packHeaders, type Built } from "./request";
 
 /**
@@ -6,11 +8,13 @@ import { HEADERS_HEADER, packHeaders, type Built } from "./request";
  * has said which client this page is, so it reaches this page's server and not another playground's.
  */
 export let PREFIX = `${BASE}__preview`;
+/** A preview path as the browser loads it: on the content origin when there is one (`/__preview/@<host frame id>`). */
+export const previewUrl = (path: string) => (CONTENT_ORIGIN ?? "") + PREFIX + path;
 export function setPreviewOwner(clientId: string) {
   PREFIX = `${BASE}__preview/@${clientId}`;
 }
 
-// Added by sw.ts to every preview response, not sent by the user's server.
+// Added by sw.ts to every preview response (x-robots-tag too on the content origin), not sent by the user's server.
 const SW_HEADERS = new Set(["cross-origin-embedder-policy", "cross-origin-resource-policy"]);
 
 export const normalize = (p: string) => (p.startsWith("/") ? p : `/${p}`);
@@ -48,11 +52,11 @@ export async function sendRequest(method: string, req: Built): Promise<"page" | 
   const init: RequestInit & { headers: Record<string, string> } = { method, headers: {}, body: req.body };
   if (req.type) init.headers["content-type"] = req.type;
   if (req.headers.length) init.headers[HEADERS_HEADER] = packHeaders(req.headers);
-  const res = await fetch(PREFIX + path, init);
+  const res = CONTENT_ORIGIN ? await fetchContent(PREFIX + path, init) : await fetch(PREFIX + path, init);
   const type = res.headers.get("content-type") ?? "";
   if (method === "GET" && type.startsWith("text/html")) return "page";
   const head = [...res.headers]
-    .filter(([k]) => !SW_HEADERS.has(k))
+    .filter(([k]) => !SW_HEADERS.has(k) && !(CONTENT_ORIGIN && k === "x-robots-tag"))
     .map(([k, v]) => `${k}: ${v}`)
     .join("\n");
   return { ok: res.ok, line: `${method} ${path}`, status: `${res.status} ${res.statusText}`.trim(), head, type, text: pretty(type, await res.text()) };
@@ -81,5 +85,11 @@ export function cardFromFrame(path: string, frame: HTMLIFrameElement): Card | nu
   const code = nav?.responseStatus || 0;
   // The browser shows such a document as one <pre> (Chrome adds its JSON viewer's controls around it).
   const text = (doc.querySelector("body > pre") ?? doc.body).textContent ?? "";
+  return cardOf(path, type, code, text);
+}
+
+/** The card for a document of JSON or plain text that `type` and `code` (0: unknown) describe, or null for any other type. */
+export function cardOf(path: string, type: string, code: number, text: string): Card | null {
+  if (!/[/+]json\b|^text\/plain\b/.test(type)) return null;
   return { ok: !code || code < 400, line: `GET ${path}`, status: code ? String(code) : "", head: "", type, text: pretty(type, text) };
 }

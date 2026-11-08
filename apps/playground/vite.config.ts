@@ -14,6 +14,36 @@ const isolation = {
   "Cross-Origin-Embedder-Policy": "credentialless",
 };
 
+/**
+ * With VITE_CONTENT_ORIGIN set (src/contentOrigin.ts), this server also answers as the content origin, whose documents
+ * (host.html, previews) the editor frames under its COEP: they need CORP cross-origin to be embeddable.
+ */
+const contentOrigin = !!process.env.VITE_CONTENT_ORIGIN;
+const served = contentOrigin ? { ...isolation, "Cross-Origin-Resource-Policy": "cross-origin" } : isolation;
+
+/**
+ * With a content origin: each origin is its own agent cluster (Origin-Agent-Cluster), and the content origin, which hosts
+ * other people's pages, stays out of search indexes. The dev server answers as both, told apart by the Host header.
+ * Production sets the same in public/_headers.
+ */
+function originHeaders(): Plugin {
+  const host = contentOrigin ? new URL(process.env.VITE_CONTENT_ORIGIN!).host : "";
+  const set = (req: { url?: string; headers: { host?: string } }, res: { setHeader(k: string, v: string): void }, next: () => void) => {
+    res.setHeader("Origin-Agent-Cluster", "?1");
+    if (req.headers.host === host) res.setHeader("X-Robots-Tag", "noindex");
+    // Any page may frame the host page (an embedder frames /embed, which frames this): who may drive it is host.html's own check
+    // of its parent against the configured editor origins. Production's _headers says the same for /host.html.
+    if (req.headers.host === host && /^\/(?:[^?#]*\/)?host\.html(?:[?#]|$)/.test(req.url ?? "")) res.setHeader("Content-Security-Policy", "frame-ancestors *");
+    next();
+  };
+  return {
+    name: "origin-headers",
+    apply: () => contentOrigin,
+    configureServer: (server) => void server.middlewares.use(set),
+    configurePreviewServer: (server) => void server.middlewares.use(set),
+  };
+}
+
 const require = createRequire(import.meta.url);
 const browserDist = require.resolve("@rolldown/browser/package.json").replace(/package\.json$/, "dist/");
 
@@ -85,6 +115,17 @@ function embedRoutes(): Plugin {
   };
 }
 
+/** What sw.ts reads at build time: the editor origins (as src/contentOrigin.ts) and the bridge protocol's version. */
+function swDefines(): Record<string, string> {
+  const origins = (process.env.VITE_EDITOR_ORIGINS ?? "http://localhost:5173")
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean)
+    .map((o) => new URL(o).origin);
+  const version = /PROTOCOL_VERSION = (\d+)/.exec(readFileSync(fileURLToPath(new URL("src/contentProtocol.ts", import.meta.url)), "utf8"))![1];
+  return { __EDITOR_ORIGINS__: JSON.stringify(origins), __PROTOCOL_VERSION__: version };
+}
+
 /**
  * The service worker (src/sw.ts) at `<base>sw.js`, the URL boot.ts registers: one classic script (an IIFE, no imports,
  * no hash in the name), so installs from before it was TypeScript update in place. Bundled by rolldown on its own,
@@ -100,7 +141,7 @@ function serviceWorker(): Plugin {
   const entry = fileURLToPath(new URL("src/sw.ts", import.meta.url));
   const page = fileURLToPath(new URL("src/swPage.ts", import.meta.url));
   async function bundle(): Promise<string> {
-    const build = await rolldown({ input: entry, platform: "browser", resolve: { alias: { "#sw-page": page } }, logLevel: "warn" });
+    const build = await rolldown({ input: entry, platform: "browser", resolve: { alias: { "#sw-page": page } }, transform: { define: swDefines() }, logLevel: "warn" });
     try {
       const { output } = await build.generate({ format: "iife", minify: false });
       return output[0].code;
@@ -139,7 +180,7 @@ function serviceWorker(): Plugin {
         if (path !== url && path !== "/sw.js") return next();
         try {
           const code = await bundle();
-          for (const [k, v] of Object.entries(isolation)) res.setHeader(k, v);
+          for (const [k, v] of Object.entries(served)) res.setHeader(k, v);
           res.setHeader("content-type", "text/javascript; charset=utf-8");
           res.setHeader("cache-control", "no-cache");
           res.end(code);
@@ -157,19 +198,22 @@ export default defineConfig(({ mode }) => ({
     // CANARY=1 (playground:deploy-canary) shows the canary badge (src/canary.ts).
     "import.meta.env.CANARY": JSON.stringify(process.env.CANARY === "1"),
   },
-  plugins: [UnoCSS(), solid(), hostPackageNames(), emnapiNotNode(), docsLink(docsUrl(mode)), embedRoutes(), serviceWorker()],
+  plugins: [UnoCSS(), solid(), hostPackageNames(), emnapiNotNode(), docsLink(docsUrl(mode)), embedRoutes(), originHeaders(), serviceWorker()],
   build: {
     target: "esnext",
     rollupOptions: {
-      input: { index: "index.html", embed: "embed.html", configure: "configure.html", element: "embed-element/index.ts" },
+      input: { index: "index.html", embed: "embed.html", configure: "configure.html", host: "host.html", element: "embed-element/index.ts" },
       // The element has a stable URL that host pages load (it imports nothing, so it's a single file).
       output: { entryFileNames: (chunk) => (chunk.name === "element" ? "embed.js" : "assets/[name]-[hash].js") },
     },
   },
   // In builds, worker bundles (the runtime and rolldown's wasi worker) only get worker.plugins.
   worker: { format: "es", plugins: () => [emnapiNotNode()] },
-  server: { headers: isolation },
-  preview: { headers: isolation },
+  // Vite's default `localhost` bind may be ::1 only. As a content origin (src/contentOrigin.ts: run.runbun.localhost next to
+  // the editor at runbun.localhost) the server listens on 127.0.0.1, which every *.localhost name reaches (browsers resolve
+  // them to loopback and try IPv4); Vite's Host check is told to accept those names.
+  server: { headers: served, ...(contentOrigin && { host: "127.0.0.1", allowedHosts: ["localhost", ".localhost"] }) },
+  preview: { headers: served },
   optimizeDeps: { exclude: ["@rolldown/browser", "@napi-rs/wasm-runtime", "@emnapi/core", "@emnapi/runtime", "@emnapi/wasi-threads"] },
   resolve: {
     // @runbun/embed publishes built files; `runbun-source` (no other package uses it) resolves its sources here.

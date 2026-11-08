@@ -135,3 +135,78 @@ export function previewWebSocket(prefix: string): void {
   new BroadcastChannel("bun-preview").onmessage = (e) => e.data === "stopped" && open.forEach((drop) => drop());
   window.WebSocket = PreviewWebSocket as never;
 }
+
+/**
+ * The preview bridge (content origin only; sw.ts injects it when it knows the editor's origin): the editor can't reach
+ * into this document, so the document tells it what it needs (its path and title, a card for JSON or text, key presses
+ * and links the editor handles) and takes its theme and navigations. Messages go to `parent` at `editor` only and are
+ * taken from there only. `v` is the protocol version (contentProtocol.ts, which has the message shapes).
+ */
+export function previewBridge(base: string, editor: string, v: number): void {
+  if (parent === window) return; // a preview opened in its own tab has no editor
+  const post = (m: Record<string, unknown>) => parent.postMessage({ v, ...m }, editor);
+  let owned: { key: string; ctrl: boolean; alt: boolean; shift: boolean; meta: boolean }[] = [];
+  // As keymap.ts keyOf: by physical key for letters, digits and the space bar.
+  const keyOf = (e: KeyboardEvent) => (e.code === "Space" ? "space" : (/^(?:Key|Digit)(.)$/.exec(e.code)?.[1] ?? e.key)).toLowerCase();
+  const mac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+
+  addEventListener("keydown", (e) => {
+    // Typing stays in the page; chords and named keys (Escape, F12) go to the editor's shortcuts.
+    if (!(e.ctrlKey || e.metaKey || e.altKey || e.key.length > 1)) return;
+    const k = keyOf(e);
+    // A shortcut the editor handles doesn't also reach the page (its default, e.g. Cmd+S saving the page, is cancelled).
+    if (owned.some((c) => c.key === k && c.ctrl === e.ctrlKey && c.alt === e.altKey && c.shift === e.shiftKey && c.meta === e.metaKey)) e.preventDefault();
+    post({ kind: "key", key: e.key, code: e.code, ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey, meta: e.metaKey, repeat: e.repeat });
+  });
+
+  // A link opened "in a new tab" (Cmd/Ctrl-click, middle click, target=_blank) opens a preview tab: a browser tab has no
+  // server. In the background for a modified click, as browsers do; with Shift, or for a plain target=_blank, switched to.
+  const onClick = (e: MouseEvent) => {
+    if (e.defaultPrevented) return;
+    const modified = e.button === 0 && (mac ? e.metaKey : e.ctrlKey);
+    const a = (e.target as Element | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
+    if (!a || typeof a.href !== "string" || a.hasAttribute("download")) return;
+    const blank = e.button === 0 && a.target === "_blank";
+    if (!(modified || e.button === 1 || blank)) return;
+    const url = new URL(a.href);
+    if (url.origin !== location.origin) return;
+    const path = url.pathname === base ? "/" : url.pathname.startsWith(base + "/") ? url.pathname.slice(base.length) : url.pathname;
+    e.preventDefault();
+    post({ kind: "open-tab", path: path + url.search, foreground: e.shiftKey || (blank && !modified) });
+  };
+  addEventListener("click", onClick);
+  addEventListener("auxclick", onClick);
+
+  addEventListener("message", (e) => {
+    const m = e.data;
+    if (e.source !== parent || e.origin !== editor || typeof m !== "object" || m === null || m.v !== v) return;
+    if (m.kind === "init") {
+      if (Array.isArray(m.shortcuts)) owned = m.shortcuts;
+      window.__bunColorScheme?.(m.mode);
+    } else if (m.kind === "color-scheme") window.__bunColorScheme?.(m.mode);
+    else if (m.kind === "navigate" && typeof m.path === "string" && m.path.startsWith("/") && !m.path.startsWith("//")) location.replace(base + m.path);
+  });
+
+  // The page leaving: the editor must not message it any more (it sets src instead).
+  addEventListener("pagehide", () => post({ kind: "bye" }));
+  addEventListener("load", () => {
+    // JSON and plain text come wrapped by the service worker (a card's document), which says what they were.
+    const meta = (n: string) => document.querySelector(`meta[name="runbun-${n}"]`)?.getAttribute("content") ?? undefined;
+    const wrapped = meta("type");
+    const contentType = wrapped ?? document.contentType;
+    const nav = performance.getEntriesByType("navigation")[0] as { responseStatus?: number } | undefined;
+    const status = wrapped !== undefined ? Number(meta("status")) || 0 : nav?.responseStatus || 0;
+    const card = /[/+]json\b|^text\/plain\b/.test(contentType) && wrapped !== undefined;
+    const rel = location.pathname === base ? "/" : location.pathname.startsWith(base + "/") ? location.pathname.slice(base.length) : undefined;
+    if (rel === undefined) return;
+    post({
+      kind: "loaded",
+      path: rel + location.search,
+      title: card ? "" : document.title.slice(0, 1024),
+      contentType: contentType.slice(0, 200),
+      status,
+      text: card ? (document.querySelector("body > pre") ?? document.body).textContent!.slice(0, 2000000) : undefined,
+    });
+  });
+  post({ kind: "hello" });
+}

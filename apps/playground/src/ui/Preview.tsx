@@ -6,7 +6,9 @@ import { TabItem, TabList } from "@runbun/ui/solid/Tabs";
 import { chordKeys, isMac, keysFor, matches, recordingKeys } from "../keymap";
 import { createPierre, createViewer } from "../editors/pierre";
 import type { CodeEditor } from "../editors/types";
-import { BODY_ROOM_LINES, PREFIX, normalize, responseReserve, type Card } from "../preview";
+import { CONTENT_ORIGIN } from "../contentOrigin";
+import { onFrameMessage } from "../previewBridge";
+import { BODY_ROOM_LINES, normalize, previewUrl, responseReserve, PREFIX, type Card } from "../preview";
 import { AppContext } from "./context";
 import { draftKey, hasBody, type PreviewTab, type Rows, type Section } from "./previews";
 import { LOCAL_ORIGIN, fromAuth, paramRows, queryOf, sent, toCurl, toFetch, toHttp, type Auth, type BodyMode, type Field } from "../request";
@@ -83,6 +85,13 @@ export function Preview() {
   onSettled(() => {
     addEventListener("keydown", onGlobalSendKey, { capture: true });
     return () => removeEventListener("keydown", onGlobalSendKey, { capture: true });
+  });
+  // On the content origin the preview documents report through their bridge (previewBridge.ts).
+  onSettled(() => {
+    if (!CONTENT_ORIGIN) return;
+    const onMessage = (e: MessageEvent) => onFrameMessage(e, p);
+    addEventListener("message", onMessage);
+    return () => removeEventListener("message", onMessage);
   });
   onSettled(() => {
     addEventListener("keydown", onKey);
@@ -168,7 +177,7 @@ export function Preview() {
             disabled={disabled}
             onClick={() => {
               const path = active().path.trim() || "/";
-              window.open(`${PREFIX}${path.startsWith("/") ? path : `/${path}`}`, "_blank", "noopener");
+              window.open(previewUrl(path.startsWith("/") ? path : `/${path}`), "_blank", "noopener");
             }}
           >
             <i class="i-lucide-external-link" aria-hidden="true" />
@@ -197,9 +206,12 @@ export function Preview() {
                   <iframe
                     class="preview-frame"
                     title="preview"
+                    allow={CONTENT_ORIGIN ? `cross-origin-isolated ${CONTENT_ORIGIN}` : undefined}
                     hidden={id !== s.active || tab.view !== "frame"}
                     ref={(el) => p.frames.set(id, el)}
                     onLoad={(e) => {
+                      // On the content origin the page's window is cross-origin: its bridge does all of this (previewBridge.ts).
+                      if (CONTENT_ORIGIN) return;
                       p.loaded(id, e.currentTarget);
                       const win = e.currentTarget.contentWindow;
                       win?.addEventListener("keydown", forwardKeys);

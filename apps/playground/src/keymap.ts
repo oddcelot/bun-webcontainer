@@ -115,6 +115,14 @@ export function matches(command: Command, e: KeyboardEvent): boolean {
   return chords(command).some((c) => c.key === key && c.ctrl === e.ctrlKey && c.alt === e.altKey && c.shift === e.shiftKey && c.meta === e.metaKey);
 }
 
+/**
+ * The chords of the commands handled on the playground's window (App.tsx, ui/Preview.tsx), parsed, for a preview frame
+ * to keep from its page (contentProtocol.ts OwnedChord).
+ */
+export function windowChords(): { key: string; ctrl: boolean; alt: boolean; shift: boolean; meta: boolean }[] {
+  return (["run", "stop", "send", "toggleExplorer", "togglePreview", "toggleConsole"] as Command[]).flatMap(chords);
+}
+
 /** The overrides in effect. */
 export const currentOverrides = () => overrides();
 

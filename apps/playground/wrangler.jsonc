@@ -1,4 +1,8 @@
 // Everything runs in the browser from static assets (public/_headers, copied into dist/, sets COOP/COEP).
+// The same Worker and assets also answer on the content host (run.runbun.dev; vars CONTENT_HOST, EDITOR_ORIGIN), where
+// project code runs on its own origin (src/contentOrigin.ts). run_worker_first lists the editor's HTML pages besides the
+// API: the Worker redirects those to the editor on the content host and passes them through on the editor host. Patterns
+// can't tell hosts apart, and running first for everything would make every asset request a billed Worker invocation.
 // The Worker only handles opt-in short links (POST /api/short, GET /s/<id>; KV LINKS) and feedback (POST /api/feedback;
 // D1 FEEDBACK, schema in worker/migrations/); worker/index.ts.
 {
@@ -8,7 +12,7 @@
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
-    "run_worker_first": ["/api/*", "/s/*"]
+    "run_worker_first": ["/api/*", "/s/*", "/", "/index.html", "/about", "/embed", "/embed.html", "/configure", "/configure.html", "/robots.txt", "/sitemap.xml"]
   },
   "kv_namespaces": [{ "binding": "LINKS", "id": "af919e62d9334718b4e63cf62eb5bb28" }],
   // Feedback is other data than links, kept for another time, and wants queries (ratings per page): its own D1 database.
@@ -21,8 +25,12 @@
     { "name": "FEEDBACK_LIMIT", "namespace_id": "1003", "simple": { "limit": 5, "period": 60 } }
   ],
   // The docs post page ratings and feedback from their own origin (worker/index.ts allows it with CORS).
-  "vars": { "DOCS_ORIGIN": "https://docs.runbun.dev" },
-  "routes": [{ "pattern": "runbun.dev", "custom_domain": true }],
+  "vars": { "DOCS_ORIGIN": "https://docs.runbun.dev", "CONTENT_HOST": "run.runbun.dev", "EDITOR_ORIGIN": "https://runbun.dev" },
+  // Custom domains: `wrangler deploy` creates their DNS records and certificates in the runbun.dev zone.
+  "routes": [
+    { "pattern": "runbun.dev", "custom_domain": true },
+    { "pattern": "run.runbun.dev", "custom_domain": true }
+  ],
   // Only the custom domain: a workers.dev or preview-URL copy would be a duplicate site for search engines.
   "workers_dev": false,
   "preview_urls": false,
@@ -33,7 +41,7 @@
       "assets": {
         "directory": "./dist-canary",
         "binding": "ASSETS",
-        "run_worker_first": ["/api/*", "/s/*"]
+        "run_worker_first": ["/api/*", "/s/*", "/", "/index.html", "/about", "/embed", "/embed.html", "/configure", "/configure.html", "/robots.txt", "/sitemap.xml"]
       },
       "kv_namespaces": [{ "binding": "LINKS", "id": "5823c967357a4e149e3fd4347898c0a2" }],
       "d1_databases": [
@@ -43,8 +51,11 @@
         { "name": "CREATE_LIMIT", "namespace_id": "1002", "simple": { "limit": 10, "period": 60 } },
         { "name": "FEEDBACK_LIMIT", "namespace_id": "1004", "simple": { "limit": 5, "period": 60 } }
       ],
-      "vars": { "DOCS_ORIGIN": "https://docs-canary.runbun.dev" },
-      "routes": [{ "pattern": "canary.runbun.dev", "custom_domain": true }]
+      "vars": { "DOCS_ORIGIN": "https://docs-canary.runbun.dev", "CONTENT_HOST": "run-canary.runbun.dev", "EDITOR_ORIGIN": "https://canary.runbun.dev" },
+      "routes": [
+        { "pattern": "canary.runbun.dev", "custom_domain": true },
+        { "pattern": "run-canary.runbun.dev", "custom_domain": true }
+      ]
     }
   }
 }

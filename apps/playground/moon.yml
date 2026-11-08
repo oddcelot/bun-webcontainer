@@ -59,6 +59,11 @@ tasks:
   build:
     # prebuild (scripts/copy-wasm.ts) copies the crates' .wasm into public/.
     command: 'bun run build'
+    # The runbun.dev build: project code runs on run.runbun.dev (src/contentOrigin.ts), and host.html there answers the
+    # editor (and the local runner's page, packages/connect). Bake them here so the cached dist/ always has them.
+    env:
+      VITE_CONTENT_ORIGIN: 'https://run.runbun.dev'
+      VITE_EDITOR_ORIGINS: 'https://runbun.dev,http://127.0.0.1:7357'
     deps:
       - 'semver-wasm:build'
       - 'transpile-wasm:build'
@@ -92,6 +97,9 @@ tasks:
     env:
       DOCS_URL: 'https://docs-canary.runbun.dev/'
       PLAYGROUND_URL: 'https://canary.runbun.dev/'
+      # Its own content origin (wrangler.jsonc env.canary), so the canary never depends on the runbun.dev one.
+      VITE_CONTENT_ORIGIN: 'https://run-canary.runbun.dev'
+      VITE_EDITOR_ORIGINS: 'https://canary.runbun.dev,http://127.0.0.1:7357'
       # Shows the canary badge/banner (apps/playground/src/canary.ts, apps/docs/src/components/Banner.astro).
       CANARY: '1'
     deps:

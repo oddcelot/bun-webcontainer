@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 // Built to <base>sw.js as one classic script (vite.config.ts serviceWorker). Page-side code lives in swPage.ts.
-import { previewColorScheme, previewWebSocket } from "#sw-page";
+import { previewBridge, previewColorScheme, previewWebSocket } from "#sw-page";
 import { HEADERS_HEADER, PANEL_COOKIE, mergeHeaders, unpackHeaders } from "./request";
 
 declare const self: ServiceWorkerGlobalScope;
@@ -46,7 +46,28 @@ const PREVIEW = `${BASE}__preview`;
 /** A blank page under each preview's base, whose document.cookie the playground reads (runner.ts COOKIE_PAGE). */
 const COOKIE_PAGE = "/__runbun_cookies__";
 /** Pages other sites frame (embed.html, configure.html): an iframe navigating to one isn't a preview leaving `/__preview`. */
-const FRAMED = new RegExp(`^${BASE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(embed|configure)(\\.html)?$`);
+const FRAMED = new RegExp(`^${BASE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(embed|configure|host)(\\.html)?$`);
+/** Registered on the content origin (`sw.js?content`, src/host/main.ts): its responses are framed by the editor, another origin. */
+const CONTENT = new URL(self.location.href).searchParams.has("content");
+
+/**
+ * The editor origins a content-origin preview may talk to (vite.config.ts defines it from VITE_EDITOR_ORIGINS, as
+ * contentOrigin.ts reads it). The bridge posts to one of these, found from the host frame that owns the preview.
+ */
+declare const __EDITOR_ORIGINS__: string[] | undefined;
+const EDITOR_ORIGINS: string[] = typeof __EDITOR_ORIGINS__ === "object" ? __EDITOR_ORIGINS__ : [];
+/** The bridge protocol's version (contentProtocol.ts PROTOCOL_VERSION; vite.config.ts defines it too). */
+declare const __PROTOCOL_VERSION__: number;
+
+/** The editor a host frame serves: its `?editor=` (host.html), only if it is one of the configured origins. */
+function editorOf(owner: Client): string | undefined {
+  try {
+    const asked = new URL(owner.url).searchParams.get("editor") ?? "";
+    return EDITOR_ORIGINS.includes(asked) ? asked : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => e.waitUntil(Promise.all([self.clients.claim(), pruneShell()])));
@@ -134,7 +155,9 @@ async function adoptShell(urls: string[]): Promise<void> {
 function isolated(init: ResponseInit): ResponseInit {
   const headers = new Headers(init.headers);
   headers.set("cross-origin-embedder-policy", "credentialless");
-  headers.set("cross-origin-resource-policy", "same-origin");
+  headers.set("cross-origin-resource-policy", CONTENT ? "cross-origin" : "same-origin");
+  // The content origin hosts other people's pages: not for search engines (the server's own headers can't reach these).
+  if (CONTENT) headers.set("x-robots-tag", "noindex");
   return { ...init, headers };
 }
 
@@ -270,9 +293,11 @@ async function servePreview(req: Request, url: URL, path?: string, ownerId = pre
   const hasBody = req.method !== "GET" && req.method !== "HEAD";
   const body = hasBody ? await req.arrayBuffer() : null;
   let asked: Awaited<ReturnType<typeof askStream>>;
+  let editor: string | undefined;
   try {
     const owner = ownerId ? await windowClient(ownerId) : undefined;
     if (ownerId && !owner) throw new Error("gone");
+    if (CONTENT && owner) editor = editorOf(owner);
     asked = await askStream({
       type: "preview",
       // A 304 would reach the page as an empty response (we answer from memory, nothing is cached), so never ask for one.
@@ -304,7 +329,19 @@ async function servePreview(req: Request, url: URL, path?: string, ownerId = pre
     stream.cancel().catch(() => {});
   } else if (headers.get("content-type")?.startsWith("text/html")) {
     // The preview scripts go into <head>, so an HTML page is read whole first.
-    out = withPreviewScripts(await new Response(stream).text(), base);
+    out = withPreviewScripts(await new Response(stream).text(), base, editor);
+    headers.delete("content-length");
+  } else if (editor && req.mode === "navigate" && req.destination === "iframe" && /[/+]json\b|^text\/plain\b/.test(headers.get("content-type") ?? "")) {
+    // A frame that follows a link to JSON or text: the editor can't read its document (another origin), so the page is
+    // a wrapper that tells it what came (previewBridge reads the metas and the <pre>).
+    const type = headers.get("content-type")!;
+    const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+    out = withPreviewScripts(
+      `<!doctype html><meta charset="utf-8"><meta name="runbun-type" content="${esc(type)}"><meta name="runbun-status" content="${head.status}"><meta name="color-scheme" content="light dark"><pre style="white-space: pre-wrap">${esc(await new Response(stream).text())}</pre>`,
+      base,
+      editor,
+    );
+    headers.set("content-type", "text/html; charset=utf-8");
     headers.delete("content-length");
   }
   return new Response(out, isolated({ status: head.status, statusText: head.statusText, headers }));
@@ -314,10 +351,12 @@ async function servePreview(req: Request, url: URL, path?: string, ownerId = pre
  * Runs first in every preview page: same-host WebSockets go to the worker's `Bun.serve` instead of the
  * network, and the page follows the playground's color scheme toggle.
  */
-function withPreviewScripts(html: string, base: string): string {
+function withPreviewScripts(html: string, base: string, editor?: string): string {
   const script =
     `<script>(${previewWebSocket})(${JSON.stringify(base)})</script>` +
-    `<script>(${previewColorScheme})()</script>`;
+    `<script>(${previewColorScheme})()</script>` +
+    // `editor` is the host frame's, checked against the configured origins: never a value from the page.
+    (editor ? `<script>(${previewBridge})(${JSON.stringify(base)}, ${JSON.stringify(editor)}, ${__PROTOCOL_VERSION__})</script>` : "");
   const head = html.match(/<head\b[^>]*>/i);
   if (head) return html.slice(0, head.index! + head[0].length) + script + html.slice(head.index! + head[0].length);
   const doctype = html.match(/^\s*<!doctype[^>]*>/i);
@@ -363,7 +402,7 @@ function strangerToPreview(req: Request, url: URL): boolean {
 const forbidden = () =>
   new Response(`<!doctype html><meta charset="utf-8"><title>Blocked</title><p>This preview can only be opened from the playground. <a href="${BASE}">Open the playground</a>.</p>`, {
     status: 403,
-    headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+    headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", ...(CONTENT && { "x-robots-tag": "noindex" }) },
   });
 
 self.addEventListener("fetch", (e) => {
@@ -385,10 +424,16 @@ self.addEventListener("fetch", (e) => {
   }
 });
 
+/**
+ * A 302 to `to`. On the content origin the editor frames us under COEP, which holds every response of a navigation (a
+ * redirect included) to the embedder policy: Response.redirect() has no CORP header and the frame fails to load.
+ */
+const redirect = (to: string): Response => (CONTENT ? new Response(null, isolated({ status: 302, headers: { location: to } })) : Response.redirect(to, 302));
+
 /** A preview frame navigating outside `/__preview` (a link to `/entries/2`): its own server, found from where it came from. */
 function leavePreview(req: Request, url: URL): Response | Promise<Response> {
   const ownerId = req.referrer ? previewOwnerOf(new URL(req.referrer).pathname) : undefined;
-  if (req.method === "GET") return Response.redirect(previewBase(ownerId) + url.pathname + url.search, 302);
+  if (req.method === "GET") return redirect(previewBase(ownerId) + url.pathname + url.search);
   return servePreview(req, url, url.pathname + url.search, ownerId);
 }
 
@@ -402,7 +447,7 @@ async function fromPreviewOrNetwork(e: FetchEvent): Promise<Response> {
       // A preview in its own tab following a link out of /__preview: with no playground open there's no server, so
       // it's the playground being opened; otherwise it's the app's own page, as for the iframe above.
       if (!(ownerId ? await windowClient(ownerId) : await host())) return fetch(e.request);
-      if (e.request.method === "GET") return Response.redirect(previewBase(ownerId) + url.pathname + url.search, 302);
+      if (e.request.method === "GET") return redirect(previewBase(ownerId) + url.pathname + url.search);
     }
     return servePreview(e.request, url, url.pathname + url.search, ownerId);
   }
