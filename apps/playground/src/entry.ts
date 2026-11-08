@@ -2,6 +2,8 @@ import "virtual:uno.css";
 // The landing page's pixel fonts (index.html, style.css #landing); only fetched where used.
 import "@fontsource/press-start-2p/latin-400.css";
 import "@fontsource/vt323/latin-400.css";
+// The landing page's shared 8-bit parts (dialogs, buttons, window, dumplings); see style.css #landing.
+import "@runbun/ui/css/retro.css";
 
 // index.html's script. On the landing page (runbun.dev/ on a first visit), "Open the playground" starts the
 // playground in place: no navigation, and the landing page is dropped. index.html's head script picks the view.
@@ -52,7 +54,8 @@ if (root.dataset.view === "app") {
     if (opening) return;
     opening = true;
     const monitor = await crt;
-    if (!monitor) {
+    // No monitor, or it isn't shown (a narrow screen, style.css): open without the zoom.
+    if (!monitor || !screen?.getClientRects().length) {
       showPlayground();
       void import("./main");
       return;

@@ -185,14 +185,14 @@
       <section class="hero">
         <div class="intro">
           <div class="brand">
-            <p><span class="sprite big" style="--x: 0; --y: 0" aria-hidden="true"></span>runbun.dev</p>
+            <p><span class="retro-sprite big" style="--x: 0; --y: 0" aria-hidden="true"></span>runbun.dev</p>
             <button type="button" class="crt" data-open-playground aria-label="Open the playground">
               <span class="crt-case"><span class="crt-screen"><canvas></canvas></span></span>
               <span class="crt-stand"></span>
             </button>
           </div>
           <h1>Bun Playground: run Bun in your browser</h1>
-          <div class="box lead">
+          <div class="retro-dialog lead">
             <p>
               Write TypeScript, install packages with <code>bun install</code> and serve apps with <code>Bun.serve</code>,
               all in a browser tab. Built from Bun's own Rust crates compiled to WebAssembly: no install, no server, no
@@ -200,11 +200,11 @@
             </p>
           </div>
           <p class="actions">
-            <button type="button" class="primary" data-open-playground>Open the playground</button>
-            <a class="secondary" href="https://docs.runbun.dev/">Read the docs</a>
+            <button type="button" class="retro-button primary" data-open-playground>Open the playground</button>
+            <a class="retro-button" href="https://docs.runbun.dev/">Read the docs</a>
           </p>
         </div>
-        <div class="window">
+        <div class="window retro-shadow">
           <p class="window-title" aria-hidden="true"><span>index.ts</span><span>Live</span></p>
           <bun-playground class="demo" load="click" mode="preview" height="380px" title="A Bun.serve app, running in this page">
           <script type="text/plain" data-file="index.ts">
@@ -221,11 +221,11 @@ console.log(`Listening on ${server.url}`);
         </div>
       </section>
       <div class="party" aria-hidden="true">
-        <span class="sprite" style="--x: 1; --y: 0"></span><span class="sprite" style="--x: 4; --y: 1"></span><span class="sprite" style="--x: 6; --y: 1"></span><span class="sprite" style="--x: 1; --y: 6"></span><span class="sprite" style="--x: 6; --y: 5"></span><span class="sprite" style="--x: 0; --y: 7"></span>
+        <span class="retro-sprite" style="--x: 1; --y: 0"></span><span class="retro-sprite" style="--x: 4; --y: 1"></span><span class="retro-sprite" style="--x: 6; --y: 1"></span><span class="retro-sprite" style="--x: 1; --y: 6"></span><span class="retro-sprite" style="--x: 6; --y: 5"></span><span class="retro-sprite" style="--x: 0; --y: 7"></span>
       </div>
       <section class="about">
-        <div class="box">
-          <h2><span class="sprite" style="--x: 2; --y: 1" aria-hidden="true"></span>What it is</h2>
+        <div class="retro-dialog">
+          <h2><span class="retro-sprite" style="--x: 2; --y: 1" aria-hidden="true"></span>What it is</h2>
           <p>
             runbun.dev is a Bun playground that runs entirely in your browser tab. Write TypeScript, install packages from
             npm with <code>bun install</code>, run tests with <code>bun test</code> and serve an app with
@@ -233,8 +233,8 @@ console.log(`Listening on ${server.url}`);
             are saved in your browser, and a share link carries a whole project, so a bug reproduction is one URL.
           </p>
         </div>
-        <div class="box">
-          <h2><span class="sprite" style="--x: 6; --y: 1" aria-hidden="true"></span>How it works</h2>
+        <div class="retro-dialog">
+          <h2><span class="retro-sprite" style="--x: 6; --y: 1" aria-hidden="true"></span>How it works</h2>
           <p>
             runbun.dev runs Bun client-side by compiling Bun's own Rust crates to 64-bit WebAssembly (wasm64): the
             transpiler, module resolver, bundler, formatter and semver are Bun's code, not lookalikes. Your code runs in the
@@ -245,8 +245,8 @@ console.log(`Listening on ${server.url}`);
             hovers and type errors come from TypeScript 7's language service, also compiled to WebAssembly.
           </p>
         </div>
-        <div class="box">
-          <h2><span class="sprite" style="--x: 4; --y: 1" aria-hidden="true"></span>What works</h2>
+        <div class="retro-dialog">
+          <h2><span class="retro-sprite" style="--x: 4; --y: 1" aria-hidden="true"></span>What works</h2>
           <ul class="works">
             <li><code>Bun.serve</code> with routes, WebSockets and streaming, previewed in the page</li>
             <li><code>bun install</code> from npm, with <code>bun.lock</code>; <code>bun test</code>; <code>bun:sqlite</code></li>
@@ -255,8 +255,8 @@ console.log(`Listening on ${server.url}`);
             <li>TypeScript and JSX without a build step, and many <code>node:*</code> built-ins (<code>fs</code>, <code>path</code>, <code>http</code>, <code>events</code>, <code>crypto</code>)</li>
           </ul>
         </div>
-        <div class="box">
-          <h2><span class="sprite" style="--x: 7; --y: 0" aria-hidden="true"></span>What doesn't</h2>
+        <div class="retro-dialog">
+          <h2><span class="retro-sprite" style="--x: 7; --y: 0" aria-hidden="true"></span>What doesn't</h2>
           <p>
             It is not Bun itself. The runtime APIs are reimplemented in JavaScript, so coverage is uneven: a browser has no
             processes and no raw sockets, so <code>Bun.spawn</code>, <code>Bun.$</code>, <code>Bun.connect</code>,
@@ -266,16 +266,16 @@ console.log(`Listening on ${server.url}`);
             <a href="https://docs.runbun.dev/compatibility/node/">Node built-in</a>.
           </p>
         </div>
-        <div class="box">
-          <h2><span class="sprite" style="--x: 0; --y: 4" aria-hidden="true"></span>Browser support</h2>
+        <div class="retro-dialog">
+          <h2><span class="retro-sprite" style="--x: 0; --y: 4" aria-hidden="true"></span>Browser support</h2>
           <p>
             Running code needs WebAssembly Memory64: Chrome and Edge 133+, and Firefox 134+. Safari, and every browser on
             iOS and iPadOS, open projects in edit-only mode until WebKit ships Memory64.
             <a href="https://docs.runbun.dev/compatibility/browsers/">Browser details</a>.
           </p>
         </div>
-        <div class="box">
-          <h2><span class="sprite" style="--x: 6; --y: 0" aria-hidden="true"></span>Examples</h2>
+        <div class="retro-dialog">
+          <h2><span class="retro-sprite" style="--x: 6; --y: 0" aria-hidden="true"></span>Examples</h2>
           <ul class="examples">
             <li><a href="./?example=elysia-demo">Elysia</a>, <a href="./?repo=honojs/starter/tree/main/templates/bun">Hono</a>, <a href="./?example=vite-demo">Vite</a> and <a href="./?example=astro-solid-demo">Astro + Solid</a> dev servers</li>
             <li><a href="./?example=node-demo">Node built-ins</a> and a <a href="./?example=lockfile-demo"><code>bun.lock</code> install</a></li>
@@ -284,8 +284,8 @@ console.log(`Listening on ${server.url}`);
             <li><a href="https://docs.runbun.dev/guides/embedding/">Embed a runnable example</a> in your own page, like the one above</li>
           </ul>
         </div>
-        <div class="box faq">
-          <h2><span class="sprite" style="--x: 3; --y: 7" aria-hidden="true"></span>Questions</h2>
+        <div class="retro-dialog faq">
+          <h2><span class="retro-sprite" style="--x: 3; --y: 7" aria-hidden="true"></span>Questions</h2>
           <h3>Can I run Bun in the browser?</h3>
           <p>Yes. runbun.dev runs Bun projects in a browser tab. Bun's own transpiler, resolver, bundler, formatter and semver are compiled to WebAssembly, and the <code>Bun.*</code>, <code>bun:*</code> and <code>node:*</code> APIs are JavaScript shims. Most everyday code runs; processes, raw sockets and native addons don't. The <a href="https://docs.runbun.dev/compatibility/">compatibility pages</a> list every API.</p>
           <h3>Is my code sent to a server?</h3>
