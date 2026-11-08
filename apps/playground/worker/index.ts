@@ -17,6 +17,10 @@ interface Env {
   FEEDBACK_LIMIT: RateLimit;
   /** The docs site's origin (wrangler.jsonc vars), which may send feedback from another origin. */
   DOCS_ORIGIN: string;
+  /** The content origin's host name (wrangler.jsonc vars): the same Worker and assets answer there, see contentHost(). */
+  CONTENT_HOST: string;
+  /** The editor origin the content host sends visitors to. */
+  EDITOR_ORIGIN: string;
 }
 
 /** The longest payload kept: about 64 KB of compressed project, as base64url. */
@@ -175,9 +179,32 @@ async function feedback(req: Request, env: Env, url: URL): Promise<Response> {
   return reply(200, { ok: true });
 }
 
+/**
+ * The editor's HTML pages, which the content host must not serve (run_worker_first in wrangler.jsonc lists the same
+ * paths). Project code runs on the content host and the editor holds the user's data, so the editor never loads there.
+ */
+const EDITOR_PAGES = new Set(["/", "/index.html", "/about", "/embed", "/embed.html", "/configure", "/configure.html"]);
+
+/**
+ * The content origin (run.runbun.dev, src/contentOrigin.ts) is this Worker and these assets under another host name, so
+ * project code is a different origin from the editor's saved projects, folder grants and Local Bun token. It serves
+ * host.html, sw.js and the built assets; no API (short links and feedback are the editor's), no editor pages (they
+ * redirect to the editor), and no sitemap. Its headers (CORP, noindex, frame-ancestors on host.html) are in _headers.
+ */
+function contentHost(req: Request, env: Env, url: URL): Promise<Response> | Response {
+  const { pathname } = url;
+  if (pathname.startsWith("/api/") || pathname.startsWith("/s/")) return json(404, { error: "not found" });
+  // Crawlers may fetch pages here and see their noindex (a blocked URL can still be listed); nothing lists the host.
+  if (pathname === "/robots.txt") return new Response("User-agent: *\nAllow: /\n", { headers: { "content-type": "text/plain; charset=utf-8" } });
+  if (pathname === "/sitemap.xml") return new Response("Not found", { status: 404 });
+  if (EDITOR_PAGES.has(pathname)) return Response.redirect(env.EDITOR_ORIGIN + pathname + url.search, 302);
+  return env.ASSETS.fetch(req);
+}
+
 export default {
   async fetch(req, env, ctx): Promise<Response> {
     const url = new URL(req.url);
+    if (url.hostname === env.CONTENT_HOST) return contentHost(req, env, url);
     if (url.pathname === "/api/short" && req.method === "POST") return create(req, env, url);
     if (url.pathname === "/api/feedback" && (req.method === "POST" || req.method === "OPTIONS")) return feedback(req, env, url);
     if (url.pathname.startsWith("/s/")) return open(url.pathname.slice(3), env, url, ctx);
