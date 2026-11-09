@@ -20,7 +20,7 @@ export const catalog: CatalogEntry[] = [
   { value: "starter-blank", kind: "starter", name: "Blank", description: "One TypeScript file that logs to the console", tags: [], icon: "i-logos-bun?bg" },
   { value: "starter-http", kind: "starter", name: "HTTP API", description: "A JSON API with Bun.serve routes", tags: [], icon: "i-logos-bun?bg" },
   { value: "starter-react", kind: "starter", name: "React", description: "Bun.serve with an HTML import that bundles a React app", tags: ["React", "HTML imports"], icon: "i-logos-react?bg" },
-  { value: "starter-sqlite", kind: "starter", name: "SQLite", description: "Notes in bun:sqlite, served as JSON", tags: ["bun:sqlite"], icon: "i-runbun-sqlite?bg" },
+  { value: "starter-sqlite", kind: "starter", name: "SQLite", description: "Notes in bun:sqlite, served as JSON", tags: ["SQLite"], icon: "i-runbun-sqlite?bg" },
   { value: "starter-websocket", kind: "starter", name: "WebSocket chat", description: "A chat room over Bun.serve WebSockets and pub/sub", tags: ["WebSocket", "HTML imports"], icon: "i-logos-websocket" },
   { value: "", kind: "example", name: "Confetti demo", description: "An API route, an HTML import and a package from npm", tags: ["HTML imports"], icon: "i-logos-bun?bg" },
   { value: "elysia-demo", kind: "example", name: "Elysia", description: "Routes, params and validation in Elysia 1.4", tags: ["Elysia"], icon: "i-runbun-elysia?bg" },
@@ -30,13 +30,13 @@ export const catalog: CatalogEntry[] = [
   { value: "node-demo", kind: "example", name: "node:* built-ins", description: "fs, crypto, events, path, url and util", tags: ["Node.js"], icon: "i-logos-nodejs-icon?bg" },
   { value: "lockfile-demo", kind: "example", name: "bun.lock", description: "Nested node_modules installed from a lockfile", tags: [], icon: "i-logos-bun?bg" },
   { value: "repo:oddcelot/bun-elysia-demo", kind: "github", name: "Elysia", description: "oddcelot/bun-elysia-demo", tags: ["Elysia"], icon: "i-runbun-elysia?bg" },
-  { value: "repo:https://github.com/oddcelot/lit-devtools/tree/main/examples/elysia", kind: "github", name: "Lit SSR guestbook", description: "Streamed Lit SSR, bun:sqlite and WebSockets on Elysia", tags: ["Lit", "Elysia", "bun:sqlite"], icon: "i-logos-lit-icon?bg" },
+  { value: "repo:https://github.com/oddcelot/lit-devtools/tree/main/examples/elysia", kind: "github", name: "Lit SSR guestbook", description: "Streamed Lit SSR, bun:sqlite and WebSockets on Elysia", tags: ["Lit", "Elysia", "SQLite"], icon: "i-logos-lit-icon?bg" },
   { value: "repo:https://github.com/honojs/starter/tree/main/templates/bun", kind: "github", name: "Hono", description: "The Hono starter for Bun", tags: ["Hono"], icon: "i-logos-hono?bg" },
 ];
 
 /** Each tag's product logo (see uno.config.ts). */
 export const techIcons: Record<string, string> = {
-  "bun:sqlite": "i-runbun-sqlite?bg",
+  "SQLite": "i-runbun-sqlite?bg",
   "HTML imports": "i-logos-html-5?bg",
   WebSocket: "i-logos-websocket",
   React: "i-logos-react?bg",
