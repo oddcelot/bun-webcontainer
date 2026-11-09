@@ -19,10 +19,10 @@ export type CatalogEntry = { value: string; kind: ProjectKind; name: string; des
 export const catalog: CatalogEntry[] = [
   { value: "starter-blank", kind: "starter", name: "Blank", description: "One TypeScript file that logs to the console", tags: [], icon: "i-logos-bun?bg" },
   { value: "starter-http", kind: "starter", name: "HTTP API", description: "A JSON API with Bun.serve routes", tags: [], icon: "i-logos-bun?bg" },
-  { value: "starter-react", kind: "starter", name: "React", description: "Bun.serve with an HTML import that bundles a React app", tags: ["React", "HTML imports"], icon: "i-logos-react?bg" },
+  { value: "starter-react", kind: "starter", name: "React", description: "Bun.serve with an HTML import that bundles a React app", tags: ["React"], icon: "i-logos-react?bg" },
   { value: "starter-sqlite", kind: "starter", name: "SQLite", description: "Notes in bun:sqlite, served as JSON", tags: ["SQLite"], icon: "i-runbun-sqlite?bg" },
-  { value: "starter-websocket", kind: "starter", name: "WebSocket chat", description: "A chat room over Bun.serve WebSockets and pub/sub", tags: ["WebSocket", "HTML imports"], icon: "i-logos-websocket" },
-  { value: "", kind: "example", name: "Confetti demo", description: "An API route, an HTML import and a package from npm", tags: ["HTML imports"], icon: "i-logos-bun?bg" },
+  { value: "starter-websocket", kind: "starter", name: "WebSocket chat", description: "A chat room over Bun.serve WebSockets and pub/sub", tags: ["WebSocket"], icon: "i-logos-websocket" },
+  { value: "", kind: "example", name: "Confetti demo", description: "An API route, an HTML import and a package from npm", tags: [], icon: "i-logos-bun?bg" },
   { value: "elysia-demo", kind: "example", name: "Elysia", description: "Routes, params and validation in Elysia 1.4", tags: ["Elysia"], icon: "i-runbun-elysia?bg" },
   { value: "elysia2-demo", kind: "example", name: "Elysia 2 (rc)", description: "Plugins, macros, server-sent events and a WebSocket chat", tags: ["Elysia", "WebSocket"], icon: "i-runbun-elysia?bg" },
   { value: "astro-solid-demo", kind: "example", name: "Astro + Solid", description: "The Astro dev server with a hydrated Solid island", tags: ["Astro", "Solid"], icon: "i-logos-astro-icon" },
@@ -37,7 +37,6 @@ export const catalog: CatalogEntry[] = [
 /** Each tag's product logo (see uno.config.ts). */
 export const techIcons: Record<string, string> = {
   "SQLite": "i-runbun-sqlite?bg",
-  "HTML imports": "i-logos-html-5?bg",
   WebSocket: "i-logos-websocket",
   React: "i-logos-react?bg",
   Elysia: "i-runbun-elysia?bg",
