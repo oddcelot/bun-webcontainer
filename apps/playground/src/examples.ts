@@ -17,8 +17,8 @@ export type ProjectKind = "starter" | "example" | "github";
 export type CatalogEntry = { value: string; kind: ProjectKind; name: string; description: string; tags: string[]; icon: string };
 
 export const catalog: CatalogEntry[] = [
-  { value: "starter-blank", kind: "starter", name: "Blank", description: "One TypeScript file that logs to the console", tags: ["TypeScript"], icon: "i-logos-bun?bg" },
-  { value: "starter-http", kind: "starter", name: "HTTP API", description: "A JSON API with Bun.serve routes", tags: ["TypeScript"], icon: "i-logos-bun?bg" },
+  { value: "starter-blank", kind: "starter", name: "Blank", description: "One TypeScript file that logs to the console", tags: [], icon: "i-logos-bun?bg" },
+  { value: "starter-http", kind: "starter", name: "HTTP API", description: "A JSON API with Bun.serve routes", tags: [], icon: "i-logos-bun?bg" },
   { value: "starter-react", kind: "starter", name: "React", description: "Bun.serve with an HTML import that bundles a React app", tags: ["React", "HTML imports"], icon: "i-logos-react?bg" },
   { value: "starter-sqlite", kind: "starter", name: "SQLite", description: "Notes in bun:sqlite, served as JSON", tags: ["bun:sqlite"], icon: "i-runbun-sqlite?bg" },
   { value: "starter-websocket", kind: "starter", name: "WebSocket chat", description: "A chat room over Bun.serve WebSockets and pub/sub", tags: ["WebSocket", "HTML imports"], icon: "i-logos-websocket" },
@@ -36,7 +36,6 @@ export const catalog: CatalogEntry[] = [
 
 /** Each tag's product logo (see uno.config.ts). */
 export const techIcons: Record<string, string> = {
-  TypeScript: "i-logos-typescript-icon?bg",
   "bun:sqlite": "i-runbun-sqlite?bg",
   "HTML imports": "i-logos-html-5?bg",
   WebSocket: "i-logos-websocket",
