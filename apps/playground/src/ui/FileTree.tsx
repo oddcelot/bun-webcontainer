@@ -14,14 +14,13 @@ import { onTheme } from "../theme";
 import { AppContext } from "./context";
 import { guarded } from "./guarded";
 import { PromptDialog } from "./PromptDialog";
-import type { Peek } from "./workspace";
 import { Tip } from "@runbun/ui/solid/Tip";
 
 const TREE_VARS_KEY = "tree-vars";
 /** How long a rename or delete stays undoable (ms). */
 const UNDO_FOR = 10_000;
 
-/** How every tree here looks (the project's and a peeked example's). */
+/** How the project's tree looks. */
 const TREE_LOOK = {
   icons: "standard",
   density: "compact",
@@ -308,10 +307,6 @@ export function FileTree() {
   return (
     <>
       <div ref={host} style={{ height: "100%" }} onKeyDown={onKeyDown} />
-      {/* The example the project picker is on, over the project's files until the menu closes. */}
-      <Show when={ws.peek()} keyed>
-        {(peek) => <PeekTree peek={peek} />}
-      </Show>
       <Tip ref={(el: HTMLButtonElement) => (button = el)} id="newfile" type="button" tip="New file" aria-label="New file" onClick={() => {
           setNewFileAt("new.ts");
           setAsking(true);
@@ -369,14 +364,4 @@ export function FileTree() {
       </Dialog>
     </>
   );
-}
-
-/** A peeked example's files, every folder open and the file the editor shows selected; nothing in it opens. */
-function PeekTree(props: { peek: Peek }) {
-  let host!: HTMLDivElement;
-  onSettled(() => {
-    const tree = new PierreTree({ paths: props.peek.paths, initialExpansion: "open", initialSelectedPaths: [props.peek.path], ...TREE_LOOK });
-    return mountTree(tree, host);
-  });
-  return <div class="peek-tree" ref={host} aria-label={`Files of ${props.peek.title}`} />;
 }
