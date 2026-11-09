@@ -34,4 +34,4 @@ The playground asks the browser to keep its storage (`navigator.storage.persist(
 
 **Install the playground** to make its storage last longer: in Chrome or Edge, use the install button in the address bar; in Safari, File → Add to Dock (on iPhone and iPad, Share → Add to Home Screen). Safari doesn't apply the seven-day limit to web apps added this way.
 
-To keep a copy of a project, use **Download as zip** in the Share menu and open it again with **Zip file…** in the project picker. A share link or a push to GitHub works too.
+To keep a copy of a project, use **Download as zip** in the Share menu and open it again with **Zip file…** in the project gallery. A share link or a push to GitHub works too.

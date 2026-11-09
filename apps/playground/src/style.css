@@ -515,7 +515,299 @@ html[data-booting] #app > header > * { visibility: hidden; animation: boot-fallb
 @media (prefers-reduced-motion: reduce) { .logo { animation: none; } }
 /* Read by screen readers and crawlers, not shown: the playground header's h1, next to the random visible name. */
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-#example { min-width: 6rem; flex: 0 1 14rem; }
+/* The project button (ProjectPicker.tsx): the open project's name, which opens the gallery. */
+#example {
+  min-width: 6rem;
+  max-width: 16rem;
+  flex: 0 1 auto;
+
+  .name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .chevron {
+    flex: none;
+    margin-left: auto;
+    color: var(--muted);
+  }
+}
+/* The project gallery (ProjectPicker.tsx): sections and Open on the left, the cards beside them. */
+/*
+ * Astro's logo (examples.ts): its shape as a mask in the text color, so the "A" is near-black on light themes and
+ * white on dark ones as in Astro's own two versions, and the colored flame drawn over it.
+ */
+.logo-astro {
+  background-image: url("./icons/astro-flame.svg");
+  background-size: 100% 100%;
+}
+.dialog.gallery {
+  display: flex;
+  flex-direction: column;
+  width: min(68rem, calc(100vw - 2rem));
+  height: min(44rem, calc(100vh - 14vh - 2rem));
+  padding: 0;
+  overflow: hidden;
+}
+.gallery-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 12px 12px 16px;
+  border-bottom: 1px solid var(--border);
+
+  .dialog-title {
+    margin: 0;
+    white-space: nowrap;
+  }
+}
+.gallery-search {
+  position: relative;
+  flex: 1;
+  max-width: 28rem;
+  margin-left: auto;
+
+  > i {
+    position: absolute;
+    top: 50%;
+    left: 8px;
+    translate: 0 -50%;
+    color: var(--muted);
+    pointer-events: none;
+  }
+
+  .input {
+    width: 100%;
+    padding-left: 28px;
+  }
+}
+.gallery-close {
+  display: grid;
+  place-items: center;
+  width: var(--control-height);
+  height: var(--control-height);
+  padding: 0;
+  border: 0;
+  border-radius: var(--inner-radius);
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--control-hover);
+    color: var(--fg);
+  }
+}
+.gallery-body {
+  display: grid;
+  grid-template-columns: 11.5rem minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+}
+.gallery-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 10px 8px;
+  border-right: 1px solid var(--border);
+
+  [role="tablist"],
+  .gallery-open {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 6px 8px;
+    border: 0;
+    border-radius: var(--inner-radius);
+    background: none;
+    color: var(--muted);
+    font: inherit;
+    text-align: left;
+    white-space: nowrap;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--control-hover);
+      color: var(--fg);
+    }
+
+    &[aria-selected="true"] {
+      background: color-mix(in srgb, var(--accent) 16%, var(--panel));
+      color: var(--fg);
+    }
+  }
+
+  .count {
+    margin-left: auto;
+    color: var(--muted);
+    font: 11px var(--font-mono);
+  }
+
+  .heading {
+    padding: 0 8px 4px;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+}
+.gallery-main {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  overflow: auto;
+
+  /* The technology filter: a quieter, denser row than the library's chips. */
+  .chips {
+    gap: 4px;
+
+    .chip {
+      height: 22px;
+      padding: 0 8px;
+      font-family: inherit;
+      font-size: 11px;
+    }
+  }
+}
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.gallery-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  height: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--inner-radius);
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    border-color: var(--control-border);
+    background: var(--control);
+  }
+
+  &[data-current] {
+    border-color: color-mix(in srgb, var(--accent) 60%, var(--control-border));
+  }
+
+  .icon {
+    flex: none;
+    font-size: 20px;
+    margin-top: 2px;
+  }
+
+  .text {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  .name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+  }
+
+  .badge {
+    padding: 0 5px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 20%, transparent);
+    color: var(--accent);
+    font-size: 10px;
+    font-weight: 500;
+  }
+
+  .description {
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  .tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 3px;
+  }
+
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 6px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--muted);
+    font-size: 11px;
+    white-space: nowrap;
+
+    &.on {
+      border-color: color-mix(in srgb, var(--accent) 60%, var(--control-border));
+      color: var(--fg);
+    }
+  }
+}
+.gallery-empty {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 32px;
+  color: var(--muted);
+
+  p {
+    margin: 0;
+  }
+}
+/* Narrow windows: the sections in a row over the cards. */
+@media (max-width: 56rem) {
+  .gallery-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .gallery-nav {
+    flex-direction: row;
+    overflow-x: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+
+    [role="tablist"],
+    .gallery-open {
+      flex-direction: row;
+    }
+
+    button {
+      width: auto;
+      white-space: nowrap;
+    }
+
+    .heading {
+      display: none;
+    }
+  }
+}
 /* The project and theme pickers: Kobalte Selects whose lists open in a portal. */
 .dialog.shortcuts { width: min(44rem, calc(100vw - 2rem)); max-height: calc(100vh - 14vh - 2rem); overflow: auto; }
 .shortcuts-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); gap: 14px 24px; margin-top: 10px; }
@@ -728,13 +1020,6 @@ main { position: relative; flex: 1; min-height: 0; padding: 0 4px 4px; }
 [data-kb-resizable-panel]:not(#right) { border: 4px solid transparent; border-radius: calc(var(--radius) + 4px); background: var(--bg) padding-box; }
 main [data-kb-resizable-root] { height: 100%; }
 #tree { position: relative; height: 100%; }
-/* A peeked example's files (FileTree.tsx), over the project's and its New file button. */
-.peek-tree {
-  position: absolute;
-  inset: 0;
-  z-index: 3;
-  background: var(--bg);
-}
 /* New file: at the end of the tree's search row (FileTree.tsx leaves the room), the same size and corner as the box. */
 #newfile { position: absolute; top: calc(var(--pad) + 1px); right: var(--pad); display: grid; place-items: center; width: var(--control-height); height: var(--control-height); padding: 0; border: 1px solid var(--control-border); border-radius: var(--inner-radius); background: var(--control); color: inherit; cursor: pointer; }
 #newfile:hover { background: var(--control-hover); }
@@ -951,55 +1236,6 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
 .overlay::after { content: ""; position: absolute; inset: 0; padding: 1px; background: var(--overlay-ring, none); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude; }
 #editor .pierre-host { height: 100%; overflow: auto; background: var(--bg); }
 #editor diffs-container { min-height: 100%; }
-/* An example the project picker is on (ProjectPicker.tsx), over the open file: not loaded, not run. */
-.peek {
-  position: absolute;
-  inset: 0;
-  z-index: 3;
-  display: flex;
-  flex-direction: column;
-  background: var(--bg);
-
-  .peek-head {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 6px var(--pad);
-    border-bottom: 1px solid var(--border);
-    background: var(--panel);
-    font-size: 12px;
-  }
-
-  .title {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    color: var(--fg);
-  }
-
-  .path {
-    margin-left: auto;
-    color: var(--muted);
-    font-family: var(--font-mono);
-    font-size: 11px;
-  }
-
-  .peek-code {
-    flex: 1;
-    min-height: 0;
-    overflow: hidden;
-
-    .pierre-host {
-      height: 100%;
-      overflow: auto;
-      background: var(--bg);
-    }
-
-    diffs-container {
-      min-height: 100%;
-    }
-  }
-}
 #preview-panel { display: flex; flex-direction: column; }
 #preview-wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 /* Expanded: almost the whole window, over the playground; the frame stays where it is, so it doesn't reload. */

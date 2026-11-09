@@ -47,7 +47,7 @@ const repoLabels = new Map(
 function label(id: string): { name: string; detail?: string } {
   if (id === "demo") return { name: "Confetti demo" };
   const [kind, rest] = [id.slice(0, id.indexOf(":")), id.slice(id.indexOf(":") + 1)];
-  if (kind === "example") return { name: examples[rest] ?? rest, detail: "example" };
+  if (kind === "example") return { name: examples[rest] ?? rest, detail: rest.startsWith("starter-") ? "starter" : "example" };
   if (kind === "repo") return { name: repoLabels.get(rest) ?? rest, detail: "GitHub" };
   if (kind === "share") return { name: "Shared project", detail: `link ${rest.slice(0, 8)}` };
   return { name: id };

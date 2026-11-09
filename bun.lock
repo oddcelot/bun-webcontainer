@@ -71,6 +71,7 @@
       "devDependencies": {
         "@fontsource/inter": "^5.3.0",
         "@fontsource/jetbrains-mono": "^5.3.0",
+        "@iconify-json/logos": "catalog:",
         "@iconify-json/lucide": "catalog:",
         "@resvg/resvg-js": "^2.6.2",
         "@runbun/connect": "workspace:*",
@@ -162,6 +163,7 @@
     "@kobalte/core@2.0.0-alpha.4": "patches/npm/@kobalte%2Fcore@2.0.0-alpha.4.patch",
   },
   "catalog": {
+    "@iconify-json/logos": "^1.2.19",
     "@iconify-json/lucide": "^1.2.148",
     "@kobalte/core": "2.0.0-alpha.4",
     "@solidjs/vite-plugin": "3.0.0-next.55",
@@ -379,6 +381,8 @@
     "@fontsource/press-start-2p": ["@fontsource/press-start-2p@5.3.0", "", {}, "sha512-gxWFxdeDglPhEYSwEeooomcaFK8kSQYLQwVxfnOJeYRj2sPEHXjpVtFgEaYfqzOjuAJGrIcJOipu2KY5YkbyuQ=="],
 
     "@fontsource/vt323": ["@fontsource/vt323@5.3.0", "", {}, "sha512-3w33Rg/0+R1587HQfz4t7Q7e0GGeCqr3wmzIwqdGInUnrGEwMA5eX39GP4Z9wpTQnwfhVOhYuxuRwRUeIcicbw=="],
+
+    "@iconify-json/logos": ["@iconify-json/logos@1.2.19", "", { "dependencies": { "@iconify/types": "*" } }, "sha512-ICjDNu2RW4xMk+0YAHyrTj/pW2BHgywcYyvf9DS16upalmSUbg+WqkEYJRim8iVOuVylyo9FFjzWLzACFhj8oA=="],
 
     "@iconify-json/lucide": ["@iconify-json/lucide@1.2.150", "", { "dependencies": { "@iconify/types": "*" } }, "sha512-av3IH1CB8RuKrlKGDmBbt6dLYtZus1Vr89VOysxORLhKcTr4ARe4Dmp0gL7Q47sK9GMkyROn1a+h07tAYpSuEw=="],
 

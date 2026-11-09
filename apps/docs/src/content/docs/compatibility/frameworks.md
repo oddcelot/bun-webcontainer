@@ -9,7 +9,7 @@ sidebar:
   order: 5
 ---
 
-These ship as examples in the playground (project picker → Examples). Unless noted, they were checked in Chrome.
+These ship as examples in the playground (project gallery → Examples). Unless noted, they were checked in Chrome.
 
 | Project | Status | Notes |
 |---|---|---|

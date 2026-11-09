@@ -22,7 +22,7 @@ sidebar:
 - **Run status** as a pill in the status bar (default) or a toast over the panes that fades a few seconds after the program settles; errors stay until the next change. Pick one under **Appearance**.
 - **Status bar** along the bottom: buttons to show or hide the file tree, the preview and the console (with both of those hidden, the editor takes their room), what the program is doing, and for the open file its error and warning counts (click to go to the next one), the cursor's line and column, and its language (for TypeScript, with the version the type checker follows). The Bun version links to [Bun compatibility](/compatibility/bun/). **Feedback** opens a form that sends a message to us, optionally with an email address to answer, the Bun release and browser, and the open project as a short link (see [Privacy](/privacy/#feedback)).
 - **Open folder** or **Open zip file** loads a project from your computer (skips `node_modules` and `.git`). A zip whose files all sit in one folder, like GitHub's downloads, opens that folder. In Chrome, edits to an opened folder are saved back to it, and changes made to it in another editor show up in the playground.
-- In Chrome and Edge, an opened folder stays linked: edits, new files and deletions are saved to it on disk. `node_modules` stays in the browser and the folder's own `node_modules` and `.git` aren't touched. A reload opens it again if the browser still allows access; otherwise pick **Reopen <folder>** in the project picker, which asks once more. Other browsers open a copy.
+- In Chrome and Edge, an opened folder stays linked: edits, new files and deletions are saved to it on disk. `node_modules` stays in the browser and the folder's own `node_modules` and `.git` aren't touched. A reload opens it again if the browser still allows access; otherwise pick **Reopen <folder>** in the project gallery, which asks once more. Other browsers open a copy.
 
 Large files open and scroll quickly: the editor renders only the lines in view.
 
@@ -109,8 +109,8 @@ Dependencies install automatically when one of your own projects or an example o
 
 - **Saved as you type**, in your browser. See [Storage and persistence](/guides/storage/).
 - **Share:** the Share menu copies a link with the whole project in the URL (nothing is uploaded), a Markdown badge, or HTML. `node_modules`, `.git`, binary files and secrets (`.env`, keys, `.npmrc`) are left out. Very long links can be shortened to `runbun.dev/s/<id>`, which stores a copy on runbun.dev (see [Privacy](/privacy/)). **Download as zip** saves every file except `node_modules` and `.git`, binaries included.
-- **GitHub:** open any public repo, branch or subfolder from the project picker or with `?repo=`. Up to 500 files; GitHub allows 60 imports an hour per IP.
-- **Examples:** Elysia, Hono, Astro + Solid, Vite, Lit SSR and more in the project picker. Hovering an example (or moving to it with the arrow keys) shows its files in the file tree and its entry file in the editor; nothing loads or runs until you pick it.
+- **GitHub:** open any public repo, branch or subfolder from the project gallery or with `?repo=`. Up to 500 files; GitHub allows 60 imports an hour per IP.
+- **Project gallery:** the project button in the header opens a gallery of starters (Blank, HTTP API, React, SQLite, WebSocket chat), examples (Elysia, Astro + Solid, Vite and more) and GitHub projects (Hono, Lit SSR), in sections down the side. Search by name or technology, or narrow it with the technology tags. Open a folder, a zip or a GitHub repo from the same gallery.
 - **One tab per project:** a second tab with the same project can't save its changes.
 
 ## Embedding

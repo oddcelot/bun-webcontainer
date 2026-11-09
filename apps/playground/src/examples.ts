@@ -1,6 +1,4 @@
 import type { VFS } from "@runbun/vfs";
-import { listRepo, parseRepo, repoFile } from "./github";
-import { entryOf } from "./shell";
 
 // Project files of each fixture (top level and src/), bundled as text. Their node_modules are never
 // included; "bun install" fetches packages from the lockfile.
@@ -9,21 +7,54 @@ const files = import.meta.glob<string>("../fixtures/*/{package.json,tsconfig.jso
   import: "default",
 });
 
-export const examples: Record<string, string> = {
-  "elysia-demo": "Elysia",
-  "elysia2-demo": "Elysia 2 (rc)",
-  "node-demo": "node:* built-ins",
-  "lockfile-demo": "bun.lock + nested node_modules",
-  "vite-demo": "Vite (probe)",
-  "astro-solid-demo": "Astro + Solid",
+/** Where a project in the gallery sits: a starting point, a bundled example, or a public GitHub repo. */
+export type ProjectKind = "starter" | "example" | "github";
+
+/**
+ * A project in the gallery (ui/ProjectPicker.tsx). `value` is what `openProject` takes: `""` the confetti demo, a
+ * fixture's name (`?example=`), or `repo:<query>` (`?repo=`, see github.ts). `tags` name its core technologies.
+ */
+export type CatalogEntry = { value: string; kind: ProjectKind; name: string; description: string; tags: string[]; icon: string };
+
+export const catalog: CatalogEntry[] = [
+  { value: "starter-blank", kind: "starter", name: "Blank", description: "One TypeScript file that logs to the console", tags: [], icon: "i-logos-bun?bg" },
+  { value: "starter-http", kind: "starter", name: "HTTP API", description: "A JSON API with Bun.serve routes", tags: [], icon: "i-logos-bun?bg" },
+  { value: "starter-react", kind: "starter", name: "React", description: "Bun.serve with an HTML import that bundles a React app", tags: ["React"], icon: "i-logos-react?bg" },
+  { value: "starter-sqlite", kind: "starter", name: "SQLite", description: "Notes in bun:sqlite, served as JSON", tags: ["SQLite"], icon: "i-runbun-sqlite?bg" },
+  { value: "starter-websocket", kind: "starter", name: "WebSocket chat", description: "A chat room over Bun.serve WebSockets and pub/sub", tags: ["WebSocket"], icon: "i-logos-websocket" },
+  { value: "", kind: "example", name: "Confetti demo", description: "An API route, an HTML import and a package from npm", tags: [], icon: "i-logos-bun?bg" },
+  { value: "elysia-demo", kind: "example", name: "Elysia", description: "Routes, params and validation in Elysia 1.4", tags: ["Elysia"], icon: "i-runbun-elysia?bg" },
+  { value: "elysia2-demo", kind: "example", name: "Elysia 2 (rc)", description: "Plugins, macros, server-sent events and a WebSocket chat", tags: ["Elysia", "WebSocket"], icon: "i-runbun-elysia?bg" },
+  { value: "astro-solid-demo", kind: "example", name: "Astro + Solid", description: "The Astro dev server with a hydrated Solid island", tags: ["Astro", "Solid"], icon: "i-logos-astro-icon logo-astro" },
+  { value: "vite-demo", kind: "example", name: "Vite", description: "The Vite dev server, with HMR over the preview", tags: ["Vite"], icon: "i-logos-vitejs?bg" },
+  { value: "node-demo", kind: "example", name: "node:* built-ins", description: "fs, crypto, events, path, url and util", tags: ["Node.js"], icon: "i-logos-nodejs-icon?bg" },
+  { value: "lockfile-demo", kind: "example", name: "bun.lock", description: "Nested node_modules installed from a lockfile", tags: [], icon: "i-logos-bun?bg" },
+  { value: "repo:oddcelot/bun-elysia-demo", kind: "github", name: "Elysia", description: "oddcelot/bun-elysia-demo", tags: ["Elysia"], icon: "i-runbun-elysia?bg" },
+  { value: "repo:https://github.com/oddcelot/lit-devtools/tree/main/examples/elysia", kind: "github", name: "Lit SSR guestbook", description: "Streamed Lit SSR, bun:sqlite and WebSockets on Elysia", tags: ["Lit", "Elysia", "SQLite"], icon: "i-logos-lit-icon?bg" },
+  { value: "repo:https://github.com/honojs/starter/tree/main/templates/bun", kind: "github", name: "Hono", description: "The Hono starter for Bun", tags: ["Hono"], icon: "i-logos-hono?bg" },
+];
+
+/** Each tag's product logo (see uno.config.ts). */
+export const techIcons: Record<string, string> = {
+  "SQLite": "i-runbun-sqlite?bg",
+  WebSocket: "i-logos-websocket",
+  React: "i-logos-react?bg",
+  Elysia: "i-runbun-elysia?bg",
+  Astro: "i-logos-astro-icon logo-astro",
+  Solid: "i-logos-solidjs-icon?bg",
+  Vite: "i-logos-vitejs?bg",
+  "Node.js": "i-logos-nodejs-icon?bg",
+  Lit: "i-logos-lit-icon?bg",
+  Hono: "i-logos-hono?bg",
 };
 
-/** Public GitHub repos in the picker, loaded with `?repo=` (see github.ts). */
-export const repoExamples: Record<string, string> = {
-  "oddcelot/bun-elysia-demo": "Elysia (from GitHub)",
-  "https://github.com/oddcelot/lit-devtools/tree/main/examples/elysia": "Lit SSR guestbook (from GitHub)",
-  "https://github.com/honojs/starter/tree/main/templates/bun": "Hono (from GitHub)",
-};
+/** The bundled projects (starters and examples) by fixture name, for labels; the demo isn't one. */
+export const examples: Record<string, string> = Object.fromEntries(catalog.filter((e) => e.kind !== "github" && e.value).map((e) => [e.value, e.name]));
+
+/** Public GitHub repos in the gallery, by `?repo=` query (see github.ts). */
+export const repoExamples: Record<string, string> = Object.fromEntries(
+  catalog.filter((e) => e.kind === "github").map((e) => [e.value.slice(5), `${e.name} (from GitHub)`]),
+);
 
 /** The files of `fixtures/<name>/` (`demo` included) by path, without touching the VFS; null if there is no such example. */
 export async function exampleFiles(name: string): Promise<Map<string, string> | null> {
@@ -40,51 +71,4 @@ export async function loadExample(vfs: VFS, name: string): Promise<boolean> {
   vfs.clear();
   for (const [path, text] of loaded) vfs.write(path, text);
   return true;
-}
-
-/** A look at a project without opening it: its file paths, and the file to show (its entry, else its first) with its text. */
-export type ProjectPeek = { paths: string[]; path: string; text: string };
-
-const peeks = new Map<string, Promise<ProjectPeek | null>>();
-
-/**
- * What a picker value (`""` the demo, an example's name, `repo:<query>`) holds, without loading it. A repo costs one
- * GitHub API call (60/hour without a token) and two raw files, so each value is fetched once per page.
- */
-export function peekProject(value: string): Promise<ProjectPeek | null> {
-  let peek = peeks.get(value);
-  if (!peek) {
-    peek = (value.startsWith("repo:") ? peekRepo(value.slice(5)) : peekBundled(value || "demo")).catch(() => null);
-    peeks.set(value, peek);
-  }
-  return peek;
-}
-
-async function peekBundled(name: string): Promise<ProjectPeek | null> {
-  const files = await exampleFiles(name);
-  if (!files) return null;
-  const path = shownFile([...files.keys()], (f) => files.get(f));
-  return { paths: [...files.keys()], path, text: files.get(path) ?? "" };
-}
-
-async function peekRepo(query: string): Promise<ProjectPeek | null> {
-  const r = parseRepo(query);
-  const list = r && (await listRepo(r));
-  if (!r || !list || typeof list === "string") return null;
-  const prefix = r.dir ? `${r.dir}/` : "";
-  const paths = list.paths.map((p) => p.slice(prefix.length));
-  const text = async (path: string) => {
-    const data = await repoFile(r, prefix + path);
-    return typeof data === "string" ? data : "(binary file)";
-  };
-  const pkg = paths.includes("package.json") ? await text("package.json") : undefined;
-  const path = shownFile(paths, (f) => (f === "package.json" ? pkg : undefined));
-  return { paths, path, text: path === "package.json" && pkg !== undefined ? pkg : await text(path) };
-}
-
-/** The entry file Run would start, else the first file. */
-function shownFile(paths: string[], read: (path: string) => string | undefined) {
-  const has = new Set(paths);
-  const entry = entryOf((f) => has.has(f), read);
-  return has.has(entry) ? entry : paths[0];
 }
