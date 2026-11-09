@@ -305,9 +305,9 @@ export function createPreviews(running: () => boolean = () => false, read: (path
       frames.clear();
       live.clear();
     },
-    /** Where the first tab requests before anything has been sent: the embed's `path` option. */
+    /** Where the first tab requests before anything has been sent: the embed's `path` option, runbun.json's `preview.path`. */
     start(path: string) {
-      update(1, (t) => {
+      update(state.tabs[0].id, (t) => {
         t.path = normalize(path.trim() || "/");
       });
     },

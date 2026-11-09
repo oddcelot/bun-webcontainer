@@ -1,4 +1,4 @@
-import { Show, createSignal, onSettled, untrack, useContext } from "solid-js";
+import { Show, createEffect, createSignal, onSettled, untrack, useContext } from "solid-js";
 import { Resizable, type RootChildrenProps } from "@kobalte/core/resizable";
 import { matches, recordingKeys } from "../keymap";
 import { Preview } from "./Preview";
@@ -73,6 +73,43 @@ export function App() {
       split.setSizes(i ? [1, 0] : [0, 1]);
     }
   };
+  // A project's runbun.json `panels`: shown or hidden as it asks, the others as they are. What that changes isn't the
+  // reader's layout, so it isn't saved; a project without `panels` brings the saved layout back.
+  let applying = false;
+  let overridden = false;
+  const saved = { columns: [...columns], rows: [...rows] };
+  const setPanels = (want: { files?: boolean; preview?: boolean; console?: boolean } | null) => {
+    if (!cols || !split) return;
+    applying = true;
+    if (!want) {
+      if (overridden) {
+        cols.setSizes(saved.columns);
+        split.setSizes(saved.rows);
+      }
+      overridden = false;
+    } else {
+      overridden = true;
+      if (want.files !== undefined && want.files !== cols.sizes[0] > 0) toggleColumn(0);
+      const right = cols.sizes[2] > 0;
+      const now = { preview: right && split.sizes[0] > 0, console: right && split.sizes[1] > 0 };
+      const next = { preview: want.preview ?? now.preview, console: want.console ?? now.console };
+      if (next.preview !== now.preview || next.console !== now.console) {
+        if (!next.preview && !next.console) toggleColumn(2);
+        else {
+          if (!right) toggleColumn(2);
+          split.setSizes(next.preview && next.console ? (saved.rows.every((r) => r > 0) ? saved.rows : [0.5, 0.5]) : next.preview ? [1, 0] : [0, 1]);
+        }
+      }
+    }
+    // The resize events the changes fire land before the next frame.
+    requestAnimationFrame(() => (applying = false));
+  };
+  createEffect(
+    () => app.workspace.panels(),
+    (want) => {
+      setPanels(want);
+    },
+  );
   onSettled(() => {
     // On the way down, and stopped there: the editor doesn't get a key that ran a command (its own keymap ignores
     // preventDefault, and has Mod+Enter as "insert a blank line"). Not while the shortcuts dialog records keys.
@@ -108,6 +145,8 @@ export function App() {
         <Resizable
           onSizesChange={(sizes) => {
             setColumnSizes(sizes);
+            if (applying) return;
+            saved.columns = sizes;
             saveColumns(sizes);
           }}
         >
@@ -137,6 +176,8 @@ export function App() {
                       orientation="vertical"
                       onSizesChange={(sizes) => {
                         setRowSizes(sizes);
+                        if (applying) return;
+                        saved.rows = sizes;
                         saveRows(sizes);
                       }}
                     >

@@ -16,6 +16,8 @@ import { canWrite, lastFolder, rememberFolder } from "./folders";
 import { setThemeVars, urlVars } from "./theme";
 import { showCanaryBadge } from "./canary";
 import { setBaseline, setBaselineSource } from "./changes";
+import { parseRequests } from "./embed/requests";
+import { readConfig, type ProjectConfig } from "./projectConfig";
 
 showCanaryBadge();
 
@@ -189,19 +191,45 @@ function switchTo(url: URL) {
       for (const [path, data] of next.files) vfs.write(path, data);
       previews.reset();
       workspace.reloadTree();
-      openFile(entryFile());
+      const config = applyConfig();
       // Into the new project's code, once the editor shows it (a pick from the gallery left focus nowhere).
       setTimeout(() => workspace.reveal(1, 1));
       await startSaving(loaded);
       from = loaded.from;
       await pg.opened(from);
-      await begin();
+      await begin(config);
     })
     .catch((e) => log("error", `[open] ${e}`));
   return switching;
 }
 
 const openFile = (path: string) => workspace.open(path);
+
+/**
+ * What the project's runbun.json asks for once it's loaded: its tabs (else the entry file), panels, preview path or
+ * requests, and a word on what it needs that this page lacks. Returns it for `begin`. Problems with the file are
+ * logged, the rest of it still applies.
+ */
+function applyConfig(): ProjectConfig {
+  const problems: string[] = [];
+  const config = readConfig((path) => vfs.readText(path), problems);
+  for (const p of problems) log("warn", `[config] ${p}`);
+  const hidden = new Set(config.hidden ?? []);
+  const tabs = (config.open ?? []).filter((p) => vfs.files.has(p) && !hidden.has(p));
+  for (const path of tabs) openFile(path);
+  if (tabs.length) workspace.activate(tabs[0]);
+  else if (!hidden.has(entryFile())) openFile(entryFile());
+  workspace.setPanels(config.panels ?? null);
+  const presets = parseRequests((config.preview?.requests ?? []).join("; "));
+  if (presets.length) previews.presets(presets);
+  else if (config.preview?.path) previews.start(config.preview.path);
+  for (const need of config.requires ?? []) {
+    if (need === "cross-origin-isolation" && !crossOriginIsolated)
+      log("warn", "[config] this project needs cross-origin isolation (SharedArrayBuffer), which this page doesn't have: open it on runbun.dev");
+    if (need === "local-bun" && pg.runtime.current() !== "local") log("warn", "[config] this project needs Bun on this machine: press Local Bun to run it there");
+  }
+  return config;
+}
 
 async function reset() {
   // A write still in flight would recreate the directory after the discard.
@@ -248,7 +276,7 @@ async function openFolder(files: File[]) {
   setBaseline(vfs);
   workspace.reloadTree();
   log("sys", `[open] ${files[0].webkitRelativePath.split("/")[0] || "files"}: ${n} files (node_modules skipped)`);
-  openFile(entryFile());
+  applyConfig();
 }
 
 /**
@@ -281,7 +309,7 @@ async function openDirectory(dir?: FileSystemDirectoryHandle) {
   stopSaving = mirror(dir, vfs, log, { all: false, tag: "[folder]", watch: true });
   workspace.reloadTree();
   log("sys", `[open] ${dir.name}: ${files.length} files; changes are saved to the folder (node_modules stays in the browser)`);
-  openFile(entryFile());
+  applyConfig();
   // A reload opens it again (see the end of startup).
   void rememberFolder(dir);
   const url = new URL(location.href);
@@ -316,7 +344,7 @@ async function openZip(file: File) {
   setBaseline(vfs);
   workspace.reloadTree();
   log("sys", `[open] ${file.name}: ${entries.length} files (node_modules skipped)`);
-  openFile(entryFile());
+  applyConfig();
 }
 
 
@@ -328,9 +356,11 @@ if (params.has("folder")) {
   else log("sys", `[open] pick "Reopen ${folder?.name ?? params.get("folder")}" in the project menu to keep working on the folder`);
 }
 
-/** Opens the project's entry file and runs it, installing first; someone else's code waits for the reader's Run. */
-async function begin() {
-  openFile(entryFile());
+/**
+ * Runs the project, installing first; someone else's code waits for the reader's Run, and so does a project whose
+ * runbun.json says `"autorun": false` (it still installs, for its types).
+ */
+async function begin(config: ProjectConfig) {
   if (pg.canRun && from !== undefined) {
     // Someone else's code (a share link, a GitHub repo) loads into the editor but runs only on the reader's Run click.
     log("sys", `[open] ${from} comes from a link: review it, then press Run`);
@@ -338,8 +368,9 @@ async function begin() {
   } else if (pg.canRun) {
     // The runner installs before each run itself.
     if (pg.missingDeps() && pg.runtime.current() === "browser") await install();
-    await run();
+    if (config.autorun === false) session.setStatus({ state: "idle", text: "Ready" });
+    else await run();
   }
 }
-await begin();
+await begin(applyConfig());
 Object.assign(window, { vfs, semver: pg.semver });

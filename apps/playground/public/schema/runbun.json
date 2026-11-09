@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://runbun.dev/schema/runbun.json",
+  "title": "runbun.json",
+  "description": "How runbun.dev opens and runs this project. Every field is optional; the file may hold comments and trailing commas. In an embed, what the host page sets wins.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "run": {
+      "description": "What Run starts, instead of the guess (package.json's module, main, dev script, else index.ts).",
+      "type": "object",
+      "required": ["entry"],
+      "additionalProperties": false,
+      "properties": {
+        "entry": { "type": "string", "description": "The file to run, e.g. \"src/server.ts\"." },
+        "args": { "type": "array", "items": { "type": "string" }, "description": "Its arguments (process.argv after the file)." }
+      }
+    },
+    "autorun": {
+      "type": "boolean",
+      "description": "Run once opened (default true). Code from a shared link or a GitHub repo always waits for the reader's Run."
+    },
+    "env": {
+      "type": "object",
+      "additionalProperties": { "type": ["string", "number", "boolean"] },
+      "description": "process.env for the program (in the browser). Not for secrets: this file is shared with the project."
+    },
+    "open": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Files opened as tabs, in order; the first is shown. Default: the entry file."
+    },
+    "hidden": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Files kept out of the tabs; they stay in the project and the file tree."
+    },
+    "panels": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Panes to show (true) or hide (false) when the project opens; the others stay as they are. The reader can still toggle them.",
+      "properties": {
+        "files": { "type": "boolean", "description": "The file tree." },
+        "tabs": { "type": "boolean", "description": "The editor's tab bar (embeds; the playground always has it)." },
+        "preview": { "type": "boolean", "description": "The preview of a running server." },
+        "console": { "type": "boolean", "description": "The console." }
+      }
+    },
+    "preview": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string", "description": "What the preview requests first, e.g. \"/user/123\"." },
+        "requests": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Requests a reader can try, each in its own preview tab: \"METHOD /path [-H \\\"Name: value\\\"] [body]\", e.g. \"POST /echo {\\\"hello\\\": \\\"Bun\\\"}\". Wins over path."
+        }
+      }
+    },
+    "requires": {
+      "type": "array",
+      "items": { "enum": ["cross-origin-isolation", "local-bun"] },
+      "description": "What it can't run without: cross-origin isolation (Vite, Rolldown), or Bun on the reader's machine (child processes, native addons). The playground says so up front."
+    }
+  }
+}

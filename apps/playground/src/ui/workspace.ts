@@ -1,4 +1,5 @@
 import { createSignal, createStore } from "solid-js";
+import type { Panel } from "../projectConfig";
 import type { EditorCursor, EditorDiagnostic } from "../editors/types";
 import { pref } from "../prefs";
 import { EMBEDDED } from "../theme";
@@ -34,6 +35,8 @@ export function createWorkspace() {
   // Read-only declaration files a definition opened (TypeScript's libs, Bun's bundled types), by their checker path:
   // not the VFS's, which has no leading "/" or scheme. Kept out of the store: lib.dom.d.ts is megabytes.
   const readOnly = new Map<string, string>();
+  // The open project's runbun.json `panels` (App.tsx shows and hides them); null: the reader's own layout.
+  const [panels, setPanels] = createSignal<Partial<Record<Panel, boolean>> | null>(null);
   // What the editor reports for the status bar.
   const [cursor, setCursor] = createSignal<EditorCursor | null>(null);
   const [problems, setProblems] = createSignal<EditorDiagnostic[]>([]);
@@ -70,6 +73,9 @@ export function createWorkspace() {
     /** The open file's cursor, null with no editable file open. */
     cursor,
     setCursor,
+    /** The panes the open project asks for (runbun.json), applied over the reader's layout without saving it. */
+    panels,
+    setPanels,
     /** The open file's error and warning markers. */
     problems,
     setProblems,

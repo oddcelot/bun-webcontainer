@@ -2,6 +2,7 @@ import { BASE } from "../base";
 import { loadResolver, parseData, parseDataFile, resolve } from "../resolver";
 import { loadSemver } from "../semver";
 import { dirname, norm, VFS } from "@runbun/vfs";
+import { readConfig } from "../projectConfig";
 import { BUN_NAMES, builtins, installTimers, setExit, setFs, setRequire, setStdio } from "./node";
 import { bundle, type BundleConfig, type BundleLog } from "./bundler";
 import { setHostVfs } from "./hostPackages";
@@ -1113,6 +1114,8 @@ self.addEventListener("message", async (e: MessageEvent) => {
   if (e.data.vfsRoot) VFS_ROOT = e.data.vfsRoot;
   vfs.load(e.data.files, e.data.dirs);
   await booted;
+  // runbun.json's `env`, over the defaults: runs, restarts on save and tests (the page logs what's wrong with the file).
+  Object.assign(env, readConfig((path) => vfs.readText(path)).env);
   if (e.data.tests) {
     testing = true;
     // `bun test`: load and run each file instead of an entry.
