@@ -12,7 +12,8 @@
     "./element": { "runbun-source": "./src/element.ts", "types": "./dist/element.d.ts", "default": "./dist/element.js" },
     "./protocol": { "runbun-source": "./src/protocol.ts", "types": "./dist/protocol.d.ts", "default": "./dist/protocol.js" }
   },
-  "files": ["dist", "README.md", "LICENSE"],
+  "bin": { "runbun-embed": "bin/pack.mjs" },
+  "files": ["dist", "bin", "README.md", "LICENSE"],
   "scripts": {
     "build": "rm -rf dist && tsrs",
     "typecheck": "tsrs --noEmit",

@@ -8,6 +8,7 @@ language: 'typescript'
 fileGroups:
   sources:
     - 'src/**/*'
+    - 'bin/**/*'
     - 'tsconfig.json'
     - 'package.json'
 

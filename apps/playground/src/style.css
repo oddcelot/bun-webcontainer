@@ -600,9 +600,14 @@ html[data-booting] #app > header > * { visibility: hidden; animation: boot-fallb
 }
 .gallery-body {
   display: grid;
-  grid-template-columns: 11.5rem minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   flex: 1;
   min-height: 0;
+
+  /* Sections or Open down the side (an embed's library of one kind has neither). */
+  &[data-nav] {
+    grid-template-columns: 11.5rem minmax(0, 1fr);
+  }
 }
 .gallery-nav {
   display: flex;
@@ -782,7 +787,7 @@ html[data-booting] #app > header > * { visibility: hidden; animation: boot-fallb
 }
 /* Narrow windows: the sections in a row over the cards. */
 @media (max-width: 56rem) {
-  .gallery-body {
+  .gallery-body[data-nav] {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr);
   }

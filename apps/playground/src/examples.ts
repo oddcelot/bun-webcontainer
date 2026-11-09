@@ -1,4 +1,5 @@
 import type { VFS } from "@runbun/vfs";
+import type { LibraryProject } from "@runbun/embed/protocol";
 
 // The gallery's projects come from the examples repo (oddcelot/runbun-examples), a git submodule at examples/: each
 // folder's example.json says how the gallery shows it, and its project files (top level and src/) are bundled as
@@ -37,6 +38,8 @@ export const techIcons: Record<string, string> = {
 };
 
 const KIND_ORDER: ProjectKind[] = ["starter", "example", "github"];
+/** A card's icon: its first tag's logo, else Bun's. */
+const iconOf = (tags: string[]) => tags.map((t) => techIcons[t]).find(Boolean) ?? "i-logos-bun?bg";
 
 export const catalog: CatalogEntry[] = Object.entries(metas)
   .map(([path, m]) => {
@@ -47,12 +50,30 @@ export const catalog: CatalogEntry[] = Object.entries(metas)
       name: m.name,
       description: m.description,
       tags: m.tags,
-      icon: m.tags.map((t) => techIcons[t]).find(Boolean) ?? "i-logos-bun?bg",
+      icon: iconOf(m.tags),
     };
     return [entry, m.order ?? Infinity] as const;
   })
   .sort(([a, ao], [b, bo]) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || ao - bo || a.name.localeCompare(b.name))
   .map(([entry]) => entry);
+
+/**
+ * An embed's library (`library` on <bun-playground>, protocol.ts) as gallery entries, valued by id: starters first,
+ * then the rest in the host's order.
+ */
+export function libraryCatalog(projects: LibraryProject[]): CatalogEntry[] {
+  const entries = projects.map(
+    (p): CatalogEntry => ({
+      value: p.id,
+      kind: p.repo ? "github" : (p.kind ?? "example"),
+      name: p.name,
+      description: p.description ?? "",
+      tags: p.tags ?? [],
+      icon: iconOf(p.tags ?? []),
+    }),
+  );
+  return entries.map((e, i) => [e, i] as const).sort(([a, ai], [b, bi]) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || ai - bi).map(([e]) => e);
+}
 
 /** The bundled projects (starters and examples) by fixture name, for labels; the demo isn't one. */
 export const examples: Record<string, string> = Object.fromEntries(catalog.filter((e) => e.kind !== "github" && e.value).map((e) => [e.value, e.name]));

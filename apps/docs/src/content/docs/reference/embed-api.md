@@ -35,6 +35,8 @@ The element's attributes and the iframe's URL parameters share names.
 | `example` | name | none | A bundled example. |
 | `repo` | `owner/repo[@ref]` | none | A public GitHub repo. |
 | `share` | `#code=…` | none | A share link's hash. In an iframe URL put it after `#`. |
+| `library` | URL | none | Element only. Your own example library: a JSON file (see [Libraries](#libraries)) read on your page, once per URL for every embed. The embed gets a project button whose gallery lists only these projects. A `<script type="application/json" data-library>` child does the same inline. Set at load: changing it reloads the embed. |
+| `project` | a library project's `id` | the library's `open`, else the inline files if any, else the first project | Element only. The project to start with. Changing it opens that project in place. |
 | `load` | `eager`, `visible`, `click` | `visible` | Element only. When the embed starts. |
 | `height` | CSS length, `auto` | `code`: `auto`; `console`: `360px`; `preview`: `420px`; `full`: `600px`; `result`: `420px` | Element only. |
 | `src` | URL | where `embed.js` came from; `https://runbun.dev/` from npm, or what `define({ src })` set | Element only. Another playground base URL. |
@@ -44,6 +46,22 @@ A boolean is on unless it is `false` or `0`. Unknown or malformed values fall ba
 
 Inline files: child `<script type="text/plain" data-file="path">` elements, dedented. Mark one `data-hidden` to keep it out of the editor's tabs (it's still in the project, and in the file tree where there is one), e.g. a generated `<script type="text/plain" data-file="package.json" data-hidden>`. Poster: children with `slot="poster"`, shown until the embed is ready; with `load="click"` a Run button over them starts it.
 
+## Libraries
+
+A library is JSON: `{ "projects": [ … ], "open"?: "<id>" }`. Each project:
+
+| Field | | |
+|---|---|---|
+| `id` | required | Names it for `project` and `openProject`. |
+| `name` | required | The card's title. |
+| `description` | | One line under it. |
+| `kind` | `starter`, `example` | Starters list first; with both kinds the gallery has a section for each. Default `example`. |
+| `tags` | strings | The frameworks and libraries it uses. The gallery filters by them; known ones (React, Elysia, Hono, SQLite, …) show their logo. |
+| `files` | `{ path: text }` | The project. |
+| `repo` | `owner/repo[@ref]` or a github.com URL | Instead of `files`: opened from GitHub when picked (60 projects an hour per reader without a token). |
+
+Each project loads in place of the last: the embed stays, and the project installs and runs as `autorun` says. With `persist`, each project keeps its own edits; **Reset** puts the open one back as the library has it. `npx @runbun/embed pack <dir>` builds a library from a folder of projects laid out like [runbun-examples](https://github.com/oddcelot/runbun-examples), one folder per project with an `example.json`.
+
 ## Page defaults
 
 `<bun-playground-defaults>` sets defaults for every `<bun-playground>` on the page. It takes the same attribute names and values, and renders nothing. Put it before the embeds.
@@ -52,7 +70,7 @@ Inline files: child `<script type="text/plain" data-file="path">` elements, dede
 <bun-playground-defaults family="github-light" status="bar" load="click" fonts="https://fonts.googleapis.com/css2?family=Inter&display=swap"></bun-playground-defaults>
 ```
 
-- Keys: `mode`, `features`, `autorun`, `theme`, `family`, `fonts`, `readonly`, `expand`, `status`, `layout`, `vars`, `load`, `height`, `src`. The others (`file`, `path`, `requests`, `example`, `repo`, `share`, `title`, `persist`) are per embed; a shared `persist` key would make embeds overwrite each other's edits.
+- Keys: `mode`, `features`, `autorun`, `theme`, `family`, `fonts`, `readonly`, `expand`, `status`, `layout`, `vars`, `load`, `height`, `src`, `library`. The others (`file`, `path`, `requests`, `example`, `repo`, `share`, `title`, `persist`, `project`) are per embed; a shared `persist` key would make embeds overwrite each other's edits. A shared `library` is read once, and each embed names its `project`.
 - Precedence: built-in default, then the page default, then the element's attribute, then what the reader picks in the embed's menu. An element opts out of a boolean default with `false`, e.g. `readonly="false"`. Removing an element's attribute falls back to the page default.
 - `vars` merges per scheme: the element's `base`, `light` and `dark` go over the page default's. Every other key replaces the default, `features` too. Malformed `vars` JSON in either place is skipped.
 - Changing `theme`, `family`, `vars`, `mode` or `height` on the defaults element updates running embeds without reloading them. The other keys only reach embeds that haven't started yet.
@@ -99,6 +117,7 @@ On the element, each returns a promise. Call them after `await el.ready`.
 | `setFamily(theme)` | a theme family's light variant | picks both halves without changing the color mode |
 | `setVars(vars)` | a `vars` object | sets the chrome's CSS variables |
 | `getShareUrl()` | | the share link as a string |
+| `openProject(id)` | a library project's `id` | resolves once it has loaded (and, with `autorun`, started); rejects for an unknown id |
 | `activate()` | | Starts an embed waiting for `load="click"` or `visible`. |
 | `expand()` | | Opens the modal (works without the `expand` button too). |
 | `collapse()` | | Puts the embed back in the page. |
@@ -122,6 +141,7 @@ On the element they are DOM events named `bun-playground:<event>`, with the data
 | `mode` | `{ mode, features }`: after `setMode`, `setFeatures` or the reader's menu |
 | `resize` | `{ height }`: the content's height in pixels, for iframes |
 | `expand` | `{ open }`: on the element, the modal opened or closed. Over postMessage, the reader pressed the expand button (or Escape while open); the host opens or closes its modal and answers with `setExpanded` |
+| `project` | `{ id }`: another library project opened, picked by the reader or by `openProject` |
 | `boot` | `{ version }`: postMessage only; see below |
 
 ## postMessage protocol
@@ -157,7 +177,7 @@ window.addEventListener("message", (e) => {
 });
 ```
 
-`files` maps paths to text; `hidden` lists those not to open as tabs (`data-hidden`). `options` takes `mode`, `features`, `file`, `path`, `requests`, `autorun`, `theme`, `family`, `fonts`, `readonly`, `persist`, `expand`, `status` and `layout`. `vars` takes the object described under [Theming](#theming). Without `?init=1`, the page loads from its URL and `init` isn't needed; `setFamily` and `setVars` change both afterwards.
+`files` maps paths to text; `hidden` lists those not to open as tabs (`data-hidden`). `options` takes `mode`, `features`, `file`, `path`, `requests`, `autorun`, `theme`, `family`, `fonts`, `readonly`, `persist`, `expand`, `status` and `layout`. `vars` takes the object described under [Theming](#theming). `library` takes a [library](#libraries), already read; its `open` is the project to start with. Without `?init=1`, the page loads from its URL and `init` isn't needed; `setFamily` and `setVars` change both afterwards.
 
 ## Theming
 

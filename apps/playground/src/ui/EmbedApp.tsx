@@ -1,6 +1,7 @@
-import { For, Show, createContext, createMemo, onSettled, useContext } from "solid-js";
+import { For, Show, createContext, createMemo, createSignal, onSettled, useContext } from "solid-js";
 import { Tip } from "@runbun/ui/solid/Tip";
 import { Menu, MenuCheckItem, MenuGroup, MenuItem, MenuSeparator, MenuTrigger } from "@runbun/ui/solid/Menu";
+import { Dialog } from "@runbun/ui/solid/Dialog";
 import logo from "../bun-logo.svg";
 import { COST } from "../embed/config";
 import { matches, type Command } from "../keymap";
@@ -11,6 +12,7 @@ import { Console } from "./Console";
 import { EditorPane } from "./EditorPane";
 import { Splits, createSizes, type Split } from "./EmbedSplit";
 import { FileTree } from "./FileTree";
+import { Gallery } from "./Gallery";
 import { Preview } from "./Preview";
 import { StatusPill, StatusToast } from "./Status";
 import { Unsupported } from "./Unsupported";
@@ -134,6 +136,9 @@ function EmbedBar() {
   const running = () => s.settled().state === "running";
   return (
     <header id="embed-bar">
+      <Show when={e.library.length}>
+        <ProjectButton />
+      </Show>
       <Show when={e.mode() !== "result" && !e.has("tabs")}>
         <span class="file">{app.workspace.state.active ?? ""}</span>
       </Show>
@@ -170,6 +175,45 @@ function EmbedBar() {
       </Show>
       <EmbedMenu />
     </header>
+  );
+}
+
+/** The host's library (`library`): a button naming the open project, which opens a gallery of only those. */
+function ProjectButton() {
+  const e = useContext(EmbedContext);
+  const [open, setOpen] = createSignal(false);
+  let trigger!: HTMLButtonElement;
+  const current = () => e.library.find((p) => p.value === e.project());
+  return (
+    <>
+      <button ref={trigger} type="button" class="project" aria-haspopup="dialog" title="Open another project" onClick={() => setOpen(true)}>
+        <Show when={current()} fallback={<i class="i-lucide-folder-code" aria-hidden="true" />}>
+          {(c) => <i class={c().icon} aria-hidden="true" />}
+        </Show>
+        <span class="name">{current()?.name ?? "Projects"}</span>
+        <i class="i-lucide-chevrons-up-down chevron" aria-hidden="true" />
+      </button>
+      {/* Controlled, so Kobalte has no trigger of its own to hand focus back to. */}
+      <Dialog
+        open={open()}
+        onOpenChange={setOpen}
+        class="gallery"
+        onCloseAutoFocus={(ev) => {
+          ev.preventDefault();
+          trigger.focus();
+        }}
+      >
+        <Gallery
+          catalog={e.library}
+          selected={e.project()}
+          onPick={(p) => {
+            setOpen(false);
+            void e.openProject(p.value).catch(() => {});
+          }}
+          onClose={() => setOpen(false)}
+        />
+      </Dialog>
+    </>
   );
 }
 

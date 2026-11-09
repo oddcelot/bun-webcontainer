@@ -3,9 +3,9 @@ import "./embed.css";
 import { createEffect, createMemo, createRoot, createSignal, createStore, untrack } from "solid-js";
 import { BASE } from "../base";
 import { createPlayground } from "../boot";
-import { examples, loadExample } from "../examples";
+import { examples, libraryCatalog, loadExample } from "../examples";
 import { loadRepo, parseRepo, repoQuery } from "../github";
-import { attach, discard, restore, SKIP } from "../persist";
+import { attach, discard, restore, SKIP, type StopSaving } from "../persist";
 import { isShareLink, loadShareLink, rememberSource, shareLink } from "../share";
 import { isFamily, pickFamily, setColorMode, setThemeVars } from "../theme";
 import { BUN_VERSION } from "../worker/bunVersion";
@@ -13,7 +13,8 @@ import { isFeature, isMode, lockedFeatures, optionsFromUrl, resolveFeatures } fr
 import { mountEmbed } from "./mount";
 import { parseRequests } from "./requests";
 import { responseReserve } from "../preview";
-import { isMessage, TAG, VERSION, type Event, type Feature, type Mode, type Options, type Request } from "@runbun/embed/protocol";
+import { isMessage, TAG, VERSION, type Event, type Feature, type LibraryProject, type Mode, type Options, type Request } from "@runbun/embed/protocol";
+import { VFS } from "@runbun/vfs";
 
 // runbun.dev/embed: the playground inside another page (an iframe, or <bun-playground>, which builds one). The URL's
 // parameters (embed/config.ts) pick the mode, features and project; with `?init=1` the host sends the files first.
@@ -67,6 +68,8 @@ const options = await (async (): Promise<Options> => {
 })();
 const init = params.get("init") === "1" ? await initReceived : undefined;
 const initFiles = init?.files ?? {};
+/** The host's own projects (`library`): a project button in the bar opens a gallery of only these. */
+const library = (init?.library?.projects ?? []).filter((p): p is LibraryProject => !!p && typeof p.id === "string" && typeof p.name === "string");
 const locked = lockedFeatures(options.features);
 
 /** A short FNV-1a hash, base 36. */
@@ -97,6 +100,8 @@ const embed = createRoot(() => {
   const stacked = () => side() && options.layout === "stack" && !expanded();
   // The frame is as tall as the embed asked (`resize`): a host with height="auto". Stacked rows then fit the code.
   const [fit, setFit] = createSignal(false);
+  // The library project open now; null for anything else (the host's inline files, a share link, an example).
+  const [project, setProject] = createSignal<string | null>(null);
   createEffect(
     () => ({ mode: mode(), features: features() }),
     (d) => {
@@ -113,6 +118,12 @@ const embed = createRoot(() => {
     options,
     locked,
     sizesKey,
+    /** The library as the gallery lists it; empty without one. */
+    library: libraryCatalog(library),
+    project,
+    setProject,
+    /** Opens a library project in place of the current one (the gallery, `openProject`). */
+    openProject: (id: string) => switchProject(id),
     mode,
     features,
     has,
@@ -203,10 +214,35 @@ applyFonts(options.fonts);
 applyFamily(options.family);
 applyTheme(options.theme);
 
-// --- The project: saved edits (with `persist`), else the host's files, a share link, a repo, an example or a stub.
+// --- The project: saved edits (with `persist`), else a project of the host's library, the host's files, a share link,
+// a repo, an example or a stub.
 
-const persistId = options.persist ? `embed:${options.persist}` : "";
-let stopSaving = async () => {};
+let stopSaving: StopSaving = async () => {};
+/** Where a project's edits are kept (with `persist`): per library project, so switching doesn't mix them. */
+const persistKey = (project: string | null) => (options.persist ? `embed:${options.persist}${project === null ? "" : `:${project}`}` : "");
+
+/**
+ * The library project to start with: the one the host names (`project`, else the library's `open`), else the first
+ * unless the host sent files of its own.
+ */
+const startProject = (() => {
+  if (!library.length) return null;
+  const named = init?.library?.open;
+  if (named && library.some((p) => p.id === named)) return named;
+  if (named) log("error", `[embed] the library has no project "${named}"`);
+  return Object.keys(initFiles).length ? null : library[0].id;
+})();
+
+/** Writes a library project into `into`: its files, or its GitHub repo. */
+async function loadLibraryProject(into: VFS, p: LibraryProject) {
+  if (p.files) for (const [path, text] of Object.entries(p.files)) into.write(path.replace(/^\.?\//, ""), text);
+  else if (p.repo) {
+    const repo = parseRepo(p.repo);
+    if (!repo) log("error", `[github] not a GitHub repo: ${p.repo}`);
+    else if (await loadRepo(into, repo, log)) return;
+  }
+  if (!into.files.size) into.write("index.ts", 'console.log("Hello from Bun!");\n');
+}
 
 async function loadSource() {
   const inline = Object.entries(initFiles);
@@ -234,9 +270,62 @@ async function loadSource() {
 }
 
 async function reset() {
+  // A library project starts over in place, from the host's files; anything else from the page's own source.
+  const id = untrack(embed.project);
+  if (id !== null) return switchProject(id, true);
   await stopSaving();
-  if (persistId) await discard(persistId).catch(() => {});
+  const key = persistKey(null);
+  if (key) await discard(key).catch(() => {});
   location.reload();
+}
+
+let switching: Promise<void> = Promise.resolve();
+/**
+ * Opens library project `id` in place of the open one, as at startup: the page around it stays, and it installs and
+ * runs as the options say. `fresh` (Reset) drops its saved edits first. Switches run one after another.
+ */
+function switchProject(id: string, fresh = false): Promise<void> {
+  const p = library.find((x) => x.id === id);
+  if (!p) return Promise.reject(new Error(`the library has no project "${id}"`));
+  const next = switching.then(async () => {
+    if (id === untrack(embed.project) && !fresh) return;
+    pg.clearConsole();
+    const key = persistKey(id);
+    if (fresh && key) {
+      await stopSaving();
+      stopSaving = async () => {};
+      await discard(key).catch(() => {});
+    }
+    // Loaded aside while the last project stays on screen (a repo takes a while), then swapped in at once.
+    const files = new VFS();
+    const restored = key ? await restore(key, files, log) : 0;
+    if (!restored) await loadLibraryProject(files, p);
+    while (session.busy.run || session.busy.install) await new Promise((r) => setTimeout(r, 100));
+    workspace.saveAll();
+    await stopSaving({ flush: true });
+    stopSaving = async () => {};
+    pg.stop();
+    await pg.clearProject();
+    for (const [path, data] of files.files) vfs.write(path, data);
+    pg.previews.reset();
+    workspace.reloadTree();
+    workspace.open(pg.entryFile());
+    if (key) stopSaving = await attach(key, vfs, log, !restored);
+    embed.setProject(id);
+    emit("project", { id });
+    await begin();
+  });
+  switching = next.catch(() => {});
+  return next;
+}
+
+/** Installs what's missing and runs, as the options say (startup, and each project opened from the library). */
+async function begin() {
+  if (!pg.canRun) return;
+  // Missing packages install before the first run whatever the mode; the `install` feature is the menu's action.
+  if ((embed.has("install") || options.autorun) && pg.missingDeps()) await pg.install();
+  if (options.autorun) await pg.run();
+  else session.setStatus({ state: "idle", text: "Ready" });
 }
 
 /** The project as a runbun.dev link (the full playground, not this page). */
@@ -249,9 +338,12 @@ async function shareUrl() {
 
 mountEmbed(pg, embed);
 
-const restored = persistId ? await restore(persistId, vfs, log) : 0;
-if (!restored) await loadSource();
-if (persistId) stopSaving = await attach(persistId, vfs, log, !restored);
+const startKey = persistKey(startProject);
+const restored = startKey ? await restore(startKey, vfs, log) : 0;
+const startEntry = library.find((p) => p.id === startProject);
+if (!restored) await (startEntry ? loadLibraryProject(vfs, startEntry) : loadSource());
+if (startKey) stopSaving = await attach(startKey, vfs, log, !restored);
+embed.setProject(startProject);
 await pg.start({ reset });
 
 // Inline files open in tabs, in their order; otherwise the entry file. `file` picks the one shown first. Hidden ones
@@ -260,7 +352,7 @@ const bare = (path: string) => path.replace(/^\.?\//, "");
 const hidden = new Set((init?.hidden ?? []).map(bare));
 const file = options.file && vfs.files.has(options.file) && !hidden.has(options.file) ? options.file : pg.entryFile();
 const first = hidden.has(file) ? undefined : file;
-for (const path of Object.keys(initFiles).map(bare)) if (!hidden.has(path)) workspace.open(path);
+if (startProject === null) for (const path of Object.keys(initFiles).map(bare)) if (!hidden.has(path)) workspace.open(path);
 if (first) workspace.open(first);
 
 // `path` picks where the preview's first tab points (default "/"); the next Run loads it there. `requests` wins over it:
@@ -440,12 +532,7 @@ markStarted();
 emit("ready", { version: VERSION, bun: BUN_VERSION, canRun: pg.canRun, mode: embed.mode(), features: embed.features() });
 if (!pg.canRun) emit("unsupported", { checks: pg.support });
 
-if (pg.canRun) {
-  // Missing packages install before the first run whatever the mode; the `install` feature is the menu's action.
-  if ((embed.has("install") || options.autorun) && pg.missingDeps()) await pg.install();
-  if (options.autorun) await pg.run();
-  else session.setStatus({ state: "idle", text: "Ready" });
-}
+await begin();
 
 // --- Requests
 
@@ -494,6 +581,8 @@ async function handle(req: Request): Promise<unknown> {
       return embed.setExpanded(!!req.params.open);
     case "getShareUrl":
       return shareUrl();
+    case "openProject":
+      return switchProject(req.params.id);
     default:
       throw new Error(`unknown method: ${(req as { method: string }).method}`);
   }
