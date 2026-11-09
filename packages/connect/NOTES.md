@@ -40,7 +40,8 @@ bun test.ts [secret]    # end-to-end: access checks, native APIs, sandbox, previ
   open, but a program that hands its socket to a process outside the run's tree isn't caught.
 - **Limits**: a watchdog kills a run's whole process tree (its own process group) past `--max-memory` (default 2048
   MB, all its processes together) or `--max-processes` (64). Stop kills the children too, not only Bun.
-- **Preview**: `/preview/<token>/<run>/…` proxies to the run's `Bun.serve`, with CORS for the allowed origins
+- **Preview**: `/preview/<token>/<run>/…` proxies to the run's `Bun.serve` (the port its tree listens on: `/proc` on
+  Linux, `lsof` on macOS), with CORS for the allowed origins
   and CORP/COEP so the cross-origin-isolated playground can frame it.
 
 ## Findings (2026-11-07)

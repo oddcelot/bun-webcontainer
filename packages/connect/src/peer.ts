@@ -180,13 +180,19 @@ export function classify(inode: number, procs: ProcView[], roots: number[]): Ver
   return other ? "other" : "unknown";
 }
 
-/** The whole check for one connection: the client's socket in /proc/net/tcp(6), then its owner. No inode found is "unknown". */
-export function peerVerdict(fs: FsLike, client: Endpoint, server: Endpoint, roots: number[]): Verdict {
+/** The rows of /proc/net/tcp and tcp6 together; a missing file (no IPv6) adds nothing. */
+export function readNetRows(fs: FsLike): NetRow[] {
   const rows: NetRow[] = [];
   for (const f of ["/proc/net/tcp", "/proc/net/tcp6"])
     try {
       rows.push(...parseProcNet(fs.readFile(f)));
     } catch {}
+  return rows;
+}
+
+/** The whole check for one connection: the client's socket in /proc/net/tcp(6), then its owner. No inode found is "unknown". */
+export function peerVerdict(fs: FsLike, client: Endpoint, server: Endpoint, roots: number[]): Verdict {
+  const rows = readNetRows(fs);
   const inode = findSocketInode(rows, client, server);
   if (inode === undefined) return "unknown";
   return classify(inode, readProcs(fs), roots);
@@ -195,4 +201,12 @@ export function peerVerdict(fs: FsLike, client: Endpoint, server: Endpoint, root
 /** Refuse this verdict? */
 export function refuse(v: Verdict, failClosed = FAIL_CLOSED): boolean {
   return v === "run" || (v === "unknown" && failClosed);
+}
+
+/** The TCP ports the processes in `root`'s tree listen on (state 0A), from /proc: what `lsof -sTCP:LISTEN` tells on macOS. */
+export function listeningPorts(rows: NetRow[], procs: ProcView[], root: number): number[] {
+  const tree = runPids(procs, [root]);
+  const held = new Set<number>();
+  for (const p of procs) if (tree.has(p.pid)) for (const i of p.inodes ?? []) held.add(i);
+  return [...new Set(rows.filter((r) => r.state === "0A" && held.has(r.inode)).map((r) => r.localPort))];
 }
