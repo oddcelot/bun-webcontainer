@@ -21,11 +21,30 @@ function sendText(port: MessagePort, status: number, text: string) {
 
 /** How long a stopping worker gets to write its databases back. */
 const FLUSH_TIMEOUT = 500;
+/** How long a starting program gets before it counts as hung (a test run has no limit). */
+const START_TIMEOUT = 15000;
+/** How long the program a restart replaced gets to finish the preview responses it had begun. */
+const DRAIN_TIMEOUT = 5000;
+/** What the console puts before the replaced program's lines while it is still around (see `swap`). */
+const PREVIOUS = "[previous] ";
 
 export type LogFn = (level: string, text: string) => void;
 
+/** How a program's start went: up (its entry ran), ended itself (with this code), or neither in time. */
+type Outcome = { kind: "ready" } | { kind: "exit"; code: number } | { kind: "timeout" } | { kind: "error"; message: string } | { kind: "cancelled" };
+
+/** How `swap` went: the new program took over, it didn't start (the old one keeps going), or a Run or Stop came first. */
+export type Swap = { kind: "swapped" } | { kind: "failed"; reason: string } | { kind: "superseded" };
+
 export class Runner {
+  /** The program that answers previews. */
   private worker?: Worker;
+  /** A restart's new program while it starts next to `worker` (see `swap`), and how to give up on it. */
+  private next?: { worker: Worker; cancel: () => void };
+  /** Programs a restart replaced, finishing the preview responses they had begun. */
+  private draining = new Set<Worker>();
+  /** Counts Stops and restarts, so a `swap` still on its way can tell that something came after it. */
+  private epoch = 0;
   protected ready: Promise<void> = Promise.resolve();
   /** The exit code of the last started program once it ended itself (`process.exit`, an uncaught error). */
   exitCode: number | undefined;
@@ -52,19 +71,20 @@ export class Runner {
     if (CONTENT_ORIGIN) answerAsks((e) => this.onSw(e));
   }
 
-  /** True while applying a worker-originated op to the page VFS, so it isn't echoed back. */
-  private applying = false;
+  /** The worker whose op is being applied to the page VFS, so it isn't echoed back to it. */
+  private applying?: Worker;
 
+  /** Hands a page VFS change to the running programs (both while a restart overlaps), except the one that made it. */
   private mirror(op: "write" | "mkdir" | "remove", path: string, data?: unknown) {
-    if (this.applying || !this.worker) return;
-    this.worker.postMessage({ type: "vfs", op, path, data }); // cloned, not transferred: the page keeps its data
+    for (const w of [this.worker, this.next?.worker])
+      if (w && w !== this.applying) w.postMessage({ type: "vfs", op, path, data }); // cloned, not transferred: the page keeps its data
   }
 
   /**
    * Preview responses still on their way from the worker, by the service worker's port; true once the head went out.
    * A stopped worker never finishes them, so stop() does.
    */
-  protected pending = new Map<MessagePort, boolean>();
+  protected pending = new Map<MessagePort, { started: boolean; owner?: Worker }>();
   /**
    * The preview host's cookies the browser doesn't hold for us: the HttpOnly ones (the preview's scripts mustn't see
    * them, and scripts can't create them) and those with a narrower Path than the preview's root (the cookie page can't
@@ -170,7 +190,8 @@ export class Runner {
       if (!this.serving()) return sendText(port, 503, "No server running. Press Run.");
       // Relayed instead of handing the worker `port`, so an unfinished response can still be ended.
       const { port1, port2 } = new MessageChannel();
-      this.pending.set(port, false);
+      const entry = { started: false, owner: this.worker };
+      this.pending.set(port, entry);
       port1.onmessage = ({ data }) => {
         if (!this.pending.has(port)) return;
         if (data.type === "head") {
@@ -179,7 +200,7 @@ export class Runner {
           data = { ...data, headers: headers.filter(([k]) => k.toLowerCase() !== "set-cookie") };
         }
         port.postMessage(data, data.type === "chunk" ? [data.data] : []);
-        if (data.type === "head") this.pending.set(port, true);
+        if (data.type === "head") entry.started = true;
         else if (data.type === "end" || data.type === "error") {
           this.pending.delete(port);
           port1.close();
@@ -210,37 +231,62 @@ export class Runner {
     this.worker!.postMessage({ type: "request", req }, [port]);
   }
 
-  /** Ends the preview responses still on their way: the program that would have finished them is gone. */
-  protected endPending() {
-    for (const [port, started] of this.pending) {
+  /** Ends the preview responses still on their way (only `owner`'s, if given): the program that would have finished them is gone. */
+  protected endPending(owner?: Worker) {
+    for (const [port, { started, owner: o }] of this.pending) {
+      if (owner && o !== owner) continue;
       if (started) port.postMessage({ type: "error", message: "The server stopped." });
       else sendText(port, 503, "The server stopped before it answered.");
+      this.pending.delete(port);
     }
-    this.pending.clear();
+  }
+
+  /** Lets `worker` write its open databases back (their bytes arrive as "vfs" messages); gives up after FLUSH_TIMEOUT. */
+  private flush(worker: Worker): Promise<void> {
+    return new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, FLUSH_TIMEOUT);
+      worker.addEventListener("message", (e) => {
+        if (e.data?.type !== "flushed") return;
+        clearTimeout(timer);
+        resolve();
+      });
+      worker.postMessage({ type: "flush" });
+    });
+  }
+
+  /** The preview pages' WebSockets were to the program that is gone: they drop, so the pages can reconnect. */
+  private dropSockets() {
+    previewChannel.postMessage("stopped");
+    if (CONTENT_ORIGIN) notifyStopped();
   }
 
   /**
-   * Stops the worker. It first gets a moment to write open databases back (their bytes arrive as "vfs" messages),
+   * Stops the program, and a restart's new one still starting. It first gets a moment to write open databases back,
    * so a Run or Stop doesn't drop a program's last writes; a worker that doesn't answer in time is terminated anyway.
    * A worker that ended itself has written them already (`flush` false).
    */
   async stop(flush = true) {
+    this.epoch++;
+    this.next?.cancel();
+    for (const w of this.draining) w.terminate();
+    this.draining.clear();
+    this.endPending();
+    await this.retire(flush);
+  }
+
+  /** Whether a program is running (answering previews or not). */
+  get running(): boolean {
+    return !!this.worker;
+  }
+
+  /** Stops the program that answers previews, and only that one (a restart's new program, if any, keeps starting). */
+  private async retire(flush: boolean) {
     const worker = this.worker;
     this.worker = undefined;
-    this.endPending();
     if (!worker) return;
-    previewChannel.postMessage("stopped");
-    if (CONTENT_ORIGIN) notifyStopped();
-    if (flush)
-      await new Promise<void>((resolve) => {
-        const timer = setTimeout(resolve, FLUSH_TIMEOUT);
-        worker.addEventListener("message", (e) => {
-          if (e.data?.type !== "flushed") return;
-          clearTimeout(timer);
-          resolve();
-        });
-        worker.postMessage({ type: "flush" });
-      });
+    this.endPending(worker);
+    this.dropSockets();
+    if (flush) await this.flush(worker);
     worker.terminate();
   }
 
@@ -257,9 +303,9 @@ export class Runner {
   async start(entry: string, tests?: string[], args: string[] = []): Promise<void> {
     // On the content origin the Worker lives in the host frame (settled by boot already; awaited before any state changes).
     const content = CONTENT_ORIGIN ? await connectHost() : undefined;
-    // A restart (Run while running, a save under watch) is a moment without a server while the old one flushes:
-    // preview requests in that moment wait for the new one instead of getting "No server running". Not for a test
-    // run, which has no server and takes as long as it takes.
+    // A restart (Run while running) is a moment without a server while the old one flushes: preview requests in that
+    // moment wait for the new one instead of getting "No server running". Not for a test run, which has no server and
+    // takes as long as it takes.
     let handOver: (() => void) | undefined;
     if (!tests) this.ready = new Promise<void>((r) => (handOver = r));
     // Before the new worker copies the VFS, so it sees the old one's last database writes. Again if another start
@@ -268,58 +314,134 @@ export class Runner {
     while (this.worker);
     resetSyncEsm();
     this.exitCode = undefined;
-    let started = false;
-    const worker = content ? spawnWorker(content) : new Worker(new URL("./worker/runtime.ts", import.meta.url), { type: "module" });
+    const { worker, outcome } = this.boot(entry, tests, args, content);
     this.worker = worker;
-    this.ready = new Promise<void>((resolve) => {
-      // A test run takes as long as it takes (each test has its own timeout).
-      const timer = tests ? undefined : setTimeout(() => {
-        this.log("error", "worker start timed out");
-        resolve();
-      }, 15000);
-      worker.onmessage = (e) => {
-        const m = e.data;
-        if (m.type === "console") this.log(m.level, m.text);
-        // A WebSocket upgrade's Set-Cookie headers (an HTTP response's are read off its head in onSw).
-        else if (m.type === "cookies") this.storeCookies(m.path, m.setCookies);
-        else if (m.type === "ready") {
-          clearTimeout(timer);
-          this.failed = m.failed ?? 0;
-          started = true;
-          resolve();
-        } else if (m.type === "exit") {
-          // The program ended itself: process.exit, or an uncaught error.
-          if (this.worker !== worker) return;
-          clearTimeout(timer);
-          this.exitCode = m.code;
-          if (tests) this.failed = m.code ? 1 : 0;
-          void this.stop(false);
-          if (started) this.onExit?.(m.code);
-          resolve();
-        } else if (m.type === "lazy-read") {
-          void serveLazyRead(this.vfs, m);
-        } else if (m.type === "vfs") {
-          const [a, b] = m.args;
-          this.applying = true;
-          try {
-            if (m.op === "write") this.vfs.write(a, b);
-            else if (m.op === "mkdir") this.vfs.mkdir(a);
-            else if (m.op === "remove") this.vfs.remove(a);
-            else if (m.op === "rename") this.vfs.rename(a, b);
-          } finally {
-            this.applying = false;
-          }
-        }
-      };
-      worker.onerror = (e) => {
-        this.log("error", `worker error: ${e.message}`);
-        clearTimeout(timer);
-        resolve();
-      };
+    this.ready = outcome.then((o) => {
+      if (o.kind === "exit") {
+        this.exitCode = o.code;
+        if (tests) this.failed = o.code ? 1 : 0;
+        if (this.worker === worker) void this.retire(false);
+      } else if (o.kind === "timeout") this.log("error", "worker start timed out");
     });
-    worker.postMessage({ type: "start", entry, args, tests, files: this.vfs.files, dirs: this.vfs.dirs, vfsRoot: vfsRoot() });
     void this.ready.then(handOver);
     return this.ready;
+  }
+
+  /**
+   * Watch's restart without a gap: the new program starts next to the running one, which keeps answering previews
+   * until the new one is up (its entry ran, so a `Bun.serve` in it listens), then hands over. The old one finishes the
+   * responses it had begun (up to DRAIN_TIMEOUT) and its WebSockets drop, so preview pages reconnect to the new one.
+   * A new program that ends with an error while starting, or doesn't start in time, is dropped and the old one keeps
+   * going. One that ends cleanly while starting (a script, not a server) takes over as `start` would: `exitCode` is set.
+   *
+   * The old program writes its databases back before the new one copies the files, as for a Run; what it writes
+   * while the two overlap (a request it answers meanwhile) isn't carried over. With nothing running this is `start`.
+   */
+  async swap(entry: string, args: string[] = []): Promise<Swap> {
+    if (!this.worker) return this.start(entry, undefined, args).then(() => ({ kind: "swapped" }));
+    const epoch = ++this.epoch;
+    this.next?.cancel();
+    const content = CONTENT_ORIGIN ? await connectHost() : undefined;
+    await this.flush(this.worker);
+    if (epoch !== this.epoch) return { kind: "superseded" }; // a Run, a Stop or a newer save meanwhile
+    resetSyncEsm();
+    const { worker, outcome, cancel } = this.boot(entry, undefined, args, content);
+    const next = { worker, cancel };
+    this.next = next;
+    const o = await outcome;
+    if (this.next !== next) return { kind: "superseded" }; // cancelled: a Run, a Stop or a newer save
+    this.next = undefined;
+    if (o.kind === "ready" || (o.kind === "exit" && o.code === 0)) {
+      const old = this.worker;
+      this.worker = worker;
+      this.exitCode = undefined;
+      if (old) this.drain(old);
+      if (o.kind === "exit") {
+        this.exitCode = 0;
+        void this.retire(false);
+      }
+      return { kind: "swapped" };
+    }
+    worker.terminate();
+    const reason =
+      o.kind === "exit" ? `it exited with code ${o.code} while starting` : o.kind === "timeout" ? `it didn't start within ${START_TIMEOUT / 1000}s` : o.kind === "error" ? `its worker failed: ${o.message}` : "it was cancelled";
+    return { kind: "failed", reason };
+  }
+
+  /** The program a restart replaced: lets it finish the responses it had begun, then ends it. */
+  private drain(old: Worker) {
+    this.draining.add(old);
+    this.dropSockets();
+    const until = Date.now() + DRAIN_TIMEOUT;
+    const check = () => {
+      if (!this.draining.has(old)) return; // a Stop ended it already
+      if (Date.now() < until && [...this.pending.values()].some((p) => p.owner === old)) return void setTimeout(check, 50);
+      this.endPending(old);
+      this.draining.delete(old);
+      old.terminate();
+    };
+    check();
+  }
+
+  /**
+   * A new worker running `entry` (or the test files). `outcome` settles once it is up, ended itself, or failed to start;
+   * after that its messages keep being handled: an "exit" of the program answering previews is its end (`onExit`).
+   */
+  private boot(entry: string, tests: string[] | undefined, args: string[], content: Awaited<ReturnType<typeof connectHost>> | undefined) {
+    const worker = content ? spawnWorker(content) : new Worker(new URL("./worker/runtime.ts", import.meta.url), { type: "module" });
+    let settle!: (o: Outcome) => void;
+    let settled = false;
+    const outcome = new Promise<Outcome>((resolve) => (settle = resolve));
+    const timer = tests ? undefined : setTimeout(() => done({ kind: "timeout" }), START_TIMEOUT);
+    const done = (o: Outcome) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      settle(o);
+    };
+    // The replaced program's lines while it overlaps the new one: marked, so the two don't read as one.
+    const previous = () => (this.worker === worker ? !!this.next : this.next?.worker !== worker);
+    worker.onmessage = (e) => {
+      const m = e.data;
+      if (m.type === "console") this.log(m.level, previous() ? PREVIOUS + m.text : m.text);
+      // A WebSocket upgrade's Set-Cookie headers (an HTTP response's are read off its head in onSw).
+      else if (m.type === "cookies") this.storeCookies(m.path, m.setCookies);
+      else if (m.type === "ready") {
+        this.failed = m.failed ?? 0;
+        done({ kind: "ready" });
+      } else if (m.type === "exit") {
+        // The program ended itself: process.exit, or an uncaught error.
+        if (!settled) return done({ kind: "exit", code: m.code });
+        if (this.worker !== worker) return;
+        this.exitCode = m.code;
+        void this.retire(false);
+        this.onExit?.(m.code);
+      } else if (m.type === "lazy-read") {
+        void serveLazyRead(this.vfs, m);
+      } else if (m.type === "vfs") {
+        const [a, b] = m.args;
+        this.applying = worker;
+        try {
+          if (m.op === "write") this.vfs.write(a, b);
+          else if (m.op === "mkdir") this.vfs.mkdir(a);
+          else if (m.op === "remove") this.vfs.remove(a);
+          else if (m.op === "rename") this.vfs.rename(a, b);
+        } finally {
+          this.applying = undefined;
+        }
+      }
+    };
+    worker.onerror = (e) => {
+      this.log("error", `worker error: ${e.message}`);
+      done({ kind: "error", message: e.message });
+    };
+    worker.postMessage({ type: "start", entry, args, tests, files: this.vfs.files, dirs: this.vfs.dirs, vfsRoot: vfsRoot() });
+    const cancel = () => {
+      worker.terminate();
+      if (this.next?.worker === worker) this.next = undefined;
+      done({ kind: "cancelled" });
+    };
+    return { worker, outcome, cancel };
   }
 }
 

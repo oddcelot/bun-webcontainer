@@ -134,17 +134,29 @@ export function createPlayground({ watch, localUrl }: { watch?: () => boolean; l
   let lastEntry: string | undefined;
   let lastArgs: string[] = [];
 
-  async function run(entry?: string, args: string[] = []) {
+  /**
+   * Runs `entry` (default: what Run starts). `swap` (a save under watch): the program keeps serving while the new one
+   * starts in the browser, and keeps going if that fails (Runner.swap); native Bun restarts it as a Run does.
+   */
+  async function run(entry?: string, args: string[] = [], swap = false) {
     if (entry === undefined) ({ entry, args } = command());
     if (!runner) return cantRun();
     if (runner instanceof RemoteRunner && !(await mayRunNative())) return;
     workspace.saveAll();
-    await session.task("run", "Starting…", async (): Promise<Status> => {
+    await session.task("run", swap ? "Restarting…" : "Starting…", async (): Promise<Status | void> => {
       log("sys", `[run] ${[entry, ...args].join(" ")}`);
       lastEntry = entry;
       lastArgs = args;
       try {
-        await runner!.start(entry!, undefined, args);
+        if (swap && !(runner instanceof RemoteRunner)) {
+          const result = await runner!.swap(entry!, args);
+          if (result.kind === "superseded") return; // what came after it sets the status
+          if (result.kind === "failed") {
+            if (!runner!.running) return exited(runner!.exitCode ?? 1);
+            log("error", `[watch] the edited program didn't start (${result.reason}); the previous one keeps running`);
+            return { state: "running", text: `Running ${entry} · the last save didn't start` };
+          }
+        } else await runner!.start(entry!, undefined, args);
         if (runner!.exitCode !== undefined) return exited(runner!.exitCode);
         previews.reload();
         return { state: "running", text: `Running ${entry}` };
@@ -336,7 +348,7 @@ export function createPlayground({ watch, localUrl }: { watch?: () => boolean; l
     waitingFor = undefined;
     clearConsole();
     log("sys", "[watch] restarting");
-    void run(lastEntry, lastArgs);
+    void run(lastEntry, lastArgs, true);
   }
   workspace.onSaved(() => {
     clearTimeout(watchTimer);
