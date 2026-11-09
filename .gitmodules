@@ -1,0 +1,3 @@
+[submodule "apps/playground/examples"]
+	path = apps/playground/examples
+	url = https://github.com/oddcelot/runbun-examples.git

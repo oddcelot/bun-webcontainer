@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -192,13 +192,27 @@ function serviceWorker(): Plugin {
   };
 }
 
+/**
+ * The gallery's projects come from the examples submodule (src/examples.ts). In a checkout without it the glob finds
+ * nothing and the build would ship an empty gallery: stop with the command that fetches it.
+ */
+function examplesSubmodule(): Plugin {
+  return {
+    name: "examples-submodule",
+    buildStart() {
+      if (!existsSync(fileURLToPath(new URL("./examples/demo/package.json", import.meta.url))))
+        this.error("apps/playground/examples is empty: run `git submodule update --init apps/playground/examples` (or clone with --recurse-submodules)");
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => ({
   define: {
     "import.meta.env.DOCS_URL": JSON.stringify(docsUrl(mode)),
     // CANARY=1 (playground:deploy-canary) shows the canary badge (src/canary.ts).
     "import.meta.env.CANARY": JSON.stringify(process.env.CANARY === "1"),
   },
-  plugins: [UnoCSS(), solid(), hostPackageNames(), emnapiNotNode(), docsLink(docsUrl(mode)), embedRoutes(), originHeaders(), serviceWorker()],
+  plugins: [examplesSubmodule(), UnoCSS(), solid(), hostPackageNames(), emnapiNotNode(), docsLink(docsUrl(mode)), embedRoutes(), originHeaders(), serviceWorker()],
   build: {
     target: "esnext",
     rollupOptions: {

@@ -45,9 +45,10 @@
   "devDependencies": {
     "@fontsource/inter": "^5.3.0",
     "@fontsource/jetbrains-mono": "^5.3.0",
-    "@iconify-json/lucide": "catalog:",
     "@iconify-json/logos": "catalog:",
+    "@iconify-json/lucide": "catalog:",
     "@resvg/resvg-js": "^2.6.2",
+    "@runbun/connect": "workspace:*",
     "@runbun/ui": "workspace:*",
     "@solidjs/vite-plugin": "catalog:",
     "@types/bun": "1.4.4",
@@ -55,12 +56,12 @@
     "@types/readable-stream": "^4.0.25",
     "@types/sql.js": "^1.4.11",
     "bun-types": "1.4.4",
+    "puppeteer-core": "^25.16.0",
     "rolldown": "1.2.16",
     "satori": "^0.63.2",
     "tsrs": "0.20.1-ts7.1.0-beta",
     "undici-types": "8.12.3",
     "unocss": "catalog:",
-    "vite": "^8.3.5",
-    "@runbun/connect": "workspace:*"
+    "vite": "^8.3.5"
   }
 }

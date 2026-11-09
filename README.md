@@ -29,7 +29,9 @@ JSC-independent Rust crates compiled to wasm64 (Memory64) plus JS shims for the 
 | `HANDOFF.md` | How the port works, findings, next steps |
 
 `brew bundle` installs the shell tools agents use (`Brewfile`: sd, ast-grep, wasm-tools, twiggy, cargo-machete, lychee, typos, hyperfine). `.prototools` pins Bun, Node 26 (the wasm64 tests need >= 24) and [moon](https://moonrepo.dev), which runs the wasm crates'
-builds and tests with caching (`proto install` once):
+builds and tests with caching (`proto install` once). The playground's gallery comes from
+[oddcelot/runbun-examples](https://github.com/oddcelot/runbun-examples), a submodule: clone with
+`--recurse-submodules`, or run `git submodule update --init` once.
 
 ```sh
 moon run :test                  # build every wasm crate (bun/ set up if missing) and run its test

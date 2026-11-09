@@ -1,18 +1,13 @@
 import type { VFS } from "@runbun/vfs";
-// The default project (no ?example=, ?repo= or share link), bundled into the page so it opens without a fetch.
-// System colors in its styles.css (Canvas, ButtonFace, AccentColor, ...) follow color-scheme: no dark-mode rules.
-import indexTs from "../fixtures/demo/index.ts?raw";
-import utilTs from "../fixtures/demo/util.ts?raw";
-import indexHtml from "../fixtures/demo/index.html?raw";
-import clientTs from "../fixtures/demo/client.ts?raw";
-import stylesCss from "../fixtures/demo/styles.css?raw";
-import pkg from "../fixtures/demo/package.json?raw";
+// The default project (no ?example=, ?repo= or share link): the examples repo's demo/, bundled into the page so it opens
+// without a fetch. System colors in its styles.css (Canvas, ButtonFace, AccentColor, ...) follow color-scheme: no
+// dark-mode rules. The same files as examples.ts takes from every project.
+const files = import.meta.glob<string>("../examples/demo/{package.json,tsconfig.json,bun.lock,*.ts,*.tsx,*.js,*.mjs,*.html,*.css,src/**/*}", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+});
 
 export function seedDemo(vfs: VFS) {
-  vfs.write("index.ts", indexTs);
-  vfs.write("util.ts", utilTs);
-  vfs.write("index.html", indexHtml);
-  vfs.write("client.ts", clientTs);
-  vfs.write("styles.css", stylesCss);
-  vfs.write("package.json", pkg);
+  for (const [path, text] of Object.entries(files)) vfs.write(path.slice("../examples/demo/".length), text);
 }
