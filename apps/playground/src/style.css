@@ -533,6 +533,14 @@ html[data-booting] #app > header > * { visibility: hidden; animation: boot-fallb
   }
 }
 /* The project gallery (ProjectPicker.tsx): sections and Open on the left, the cards beside them. */
+/*
+ * Astro's logo (examples.ts): its shape as a mask in the text color, so the "A" is near-black on light themes and
+ * white on dark ones as in Astro's own two versions, and the colored flame drawn over it.
+ */
+.logo-astro {
+  background-image: url("./icons/astro-flame.svg");
+  background-size: 100% 100%;
+}
 .dialog.gallery {
   display: flex;
   flex-direction: column;
