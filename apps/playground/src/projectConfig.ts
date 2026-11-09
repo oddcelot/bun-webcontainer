@@ -1,7 +1,7 @@
 // runbun.json: an optional file beside package.json that says how the playground (and an embed) opens and runs the
 // project. JSONC (comments and trailing commas allowed), every field optional; what's missing is guessed as before.
 // No code: a project from a link can't use it to run itself (main.ts) or to leave the browser. The schema is
-// public/schema/runbun.json; keep the two in step. Imported by the worker too (env): nothing here touches the page.
+// src/schema/runbun.json (served at /schema/runbun.json); keep the two in step. Imported by the worker too (env): nothing here touches the page.
 
 export const CONFIG_FILE = "runbun.json";
 

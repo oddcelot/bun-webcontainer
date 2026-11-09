@@ -1,6 +1,7 @@
 import { isLazy } from "@runbun/vfs";
 import { Show, createEffect, onSettled, useContext } from "solid-js";
 import { CHECKED, mountDiagnostics } from "../diagnostics";
+import { JSON_FILE, jsonComplete, jsonCompletionDetails, jsonHover } from "../jsonLanguage";
 import { createPierre } from "../editors/pierre";
 import { chordKeys, keysFor, matches } from "../keymap";
 import type { CodeEditor, EditorLocation } from "../editors/types";
@@ -37,6 +38,8 @@ export function EditorPane() {
   let timer: ReturnType<typeof setTimeout> | undefined;
   /** A project file the type checker answers for (a read-only declaration tab isn't one: it's not in the project). */
   const typed = (file: string) => TYPED.test(file) && has("types") && ws.readOnlyText(file) === undefined;
+  // Schema hints for .json files (runbun.json, or one naming its $schema), with type hints.
+  const json = (file: string) => JSON_FILE.test(file) && has("types") && ws.readOnlyText(file) === undefined;
 
   /** Writes `path`'s edits to the VFS; false when there were none. */
   function save(path: string) {
@@ -122,9 +125,17 @@ export function EditorPane() {
         onCursor: ws.setCursor,
         onDiagnostics: ws.setProblems,
         // Types for TypeScript files, with the editor's text (unsaved edits included).
-        hover: async (file, line, column) => (typed(file) && editor ? hover(vfs, file, editor.getText(), line, column) : null),
-        complete: async (file, line, column, trigger) => (typed(file) && editor ? complete(vfs, file, editor.getText(), line, column, trigger) : null),
-        resolveCompletion: async (file, item) => (editor ? resolveCompletion(vfs, file, editor.getText(), item) : null),
+        hover: async (file, line, column) =>
+          !editor ? null : typed(file) ? hover(vfs, file, editor.getText(), line, column) : json(file) ? jsonHover(file, editor.getText(), line, column) : null,
+        complete: async (file, line, column, trigger) =>
+          !editor
+            ? null
+            : typed(file)
+              ? complete(vfs, file, editor.getText(), line, column, trigger)
+              : json(file)
+                ? jsonComplete(file, editor.getText(), line, column)
+                : null,
+        resolveCompletion: async (file, item) => (!editor ? null : json(file) ? jsonCompletionDetails(item) : resolveCompletion(vfs, file, editor.getText(), item)),
         signatureHelp: async (file, line, column, trigger, retrigger) =>
           typed(file) && editor ? signatureHelp(vfs, file, editor.getText(), line, column, trigger, retrigger) : null,
         goToDefinition: (file, line, column) => void goToDefinition(file, line, column),
