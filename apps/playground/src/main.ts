@@ -4,9 +4,10 @@ import { examples, loadExample, repoExamples } from "./examples";
 import { loadRepo, parseRepo, repoQuery } from "./github";
 import { isShareLink, loadShareLink, rememberSource } from "./share";
 import { createPlayground } from "./boot";
+import { VFS } from "@runbun/vfs";
 import { findLocalBun } from "./localBun";
 import { mountUI } from "./ui/mount";
-import { attach, discard, heldProjects, listProjects, mirror, readDir, restore, shareProjectId } from "./persist";
+import { attach, discard, heldProjects, listProjects, mirror, readDir, restore, shareProjectId, type StopSaving } from "./persist";
 import { clearPkgCache } from "./pkgCache";
 import { clearStore } from "./pkgStore";
 import { clearTranspileCache } from "./transpileCache";
@@ -18,88 +19,130 @@ import { setBaseline, setBaselineSource } from "./changes";
 
 showCanaryBadge();
 
-// This page's saved project id (null: not saved), once its saving is set up.
-let savedAs!: (id: string | null) => void;
-const saving = new Promise<string | null>((r) => (savedAs = r));
+/** The open project's saved id (null: not saved); set as each project loads. */
+let projectId: string | null = null;
+let firstLoaded!: () => void;
+const firstLoad = new Promise<void>((r) => (firstLoaded = r));
+/** The open project's saved id, once the first one has loaded (the Storage dialog marks it). */
+const currentProject = () => firstLoad.then(() => projectId);
 
 // Native Bun on this machine, when the playground is served by `bunx @runbun/connect` or has ?connect= (localBun.ts);
 // `pg.start` connects to it.
 const localUrl = await findLocalBun(new URLSearchParams(location.search));
 const pg = createPlayground({ localUrl });
 const { support, session, workspace, previews, terminal, vfs, log, run, stop, install, clearConsole, newFile, renamePath, removePath, entryFile } = pg;
-mountUI({ session, support, runtime: pg.runtime, workspace, previews, terminal, clearConsole, vfs, log, run: () => run(), stop, install, openProject, newFile, renamePath, removePath, openFolder, openDirectory, reopenFolder, openZip, storage: { current: () => saving, remove: removeProject, clearAll }, repoParam: new URLSearchParams(location.search).get("repo") ?? "" });
+mountUI({ session, support, runtime: pg.runtime, workspace, previews, terminal, clearConsole, vfs, log, run: () => run(), stop, install, openProject, newFile, renamePath, removePath, openFolder, openDirectory, reopenFolder, openZip, storage: { current: currentProject, remove: removeProject, clearAll }, repoParam: new URLSearchParams(location.search).get("repo") ?? "" });
 const params = new URLSearchParams(location.search);
 // ?vars= sets the overlay for this visit (theme.ts allows only that); not saved, and Share links drop it.
 if (params.has("vars")) setThemeVars(urlVars(params.get("vars")));
-const exampleName = params.get("example") ?? "";
-const repoParam = params.get("repo") ?? "";
-const repo = repoParam ? parseRepo(repoParam) : null;
-if (repoParam && !repo) log("error", `[github] not a GitHub repo: ${repoParam}`);
-/** Selects this page's project in the picker (`shared`: it came from a share link). */
-function showProject(shared: boolean) {
+
+/** The project a URL names: `?repo=`, else `?example=` (none: the demo); a share link in its hash wins over both. */
+function sourceOf(url: URL) {
+  const repoParam = url.searchParams.get("repo") ?? "";
+  const share = isShareLink(url.hash) ? url.hash : "";
+  return { exampleName: url.searchParams.get("example") ?? "", repoParam, repo: repoParam ? parseRepo(repoParam) : null, share };
+}
+type Source = ReturnType<typeof sourceOf>;
+/** Which project a URL opens, to tell whether Back or Forward lands on another one. */
+const keyOf = (url: URL) => {
+  const { exampleName, repoParam, share } = sourceOf(url);
+  return JSON.stringify([exampleName, repoParam, share, url.searchParams.get("folder")]);
+};
+
+/** Selects the project in the gallery (`shared`: it came from a share link). */
+function showProject({ exampleName, repoParam }: Source, shared: boolean) {
   const selected = repoParam ? `repo:${repoParam}` : exampleName;
   const extra: [string, string][] = [];
   if (repoParam && !(repoParam in repoExamples)) extra.push([`GitHub: ${repoParam}`, selected]);
   if (shared) extra.push(["Shared project", "#shared"]);
-  session.setProject({ selected: shared ? "#shared" : repoParam || exampleName in examples ? selected : "", extra });
+  session.setProject({ ...session.project(), selected: shared ? "#shared" : repoParam || exampleName in examples ? selected : "", extra });
 }
-// Right away, from the URL: a repo can take a while to fetch, and the picker shouldn't say "Confetti demo" meanwhile.
-showProject(isShareLink(location.hash));
 
-// Where this page's project is saved in OPFS (null: a bad ?repo=, which opens the demo unsaved).
-const projectId = isShareLink(location.hash)
-  ? await shareProjectId(location.hash)
-  : repoParam
-    ? repo
-      ? `repo:${repoQuery(repo)}`
-      : null
-    : exampleName
-      ? `example:${exampleName}`
-      : "demo";
-let stopSaving = async () => {};
-// Saved files win over the source; without rememberSource, Share packs them.
-const restored = projectId ? await restore(projectId, vfs, log) : 0;
-if (restored) log("sys", `[storage] restored ${restored} saved files`);
-/** True when the source loaded as asked: a fallback demo must not overwrite the saved project. */
-let loaded = false;
+let stopSaving: StopSaving = async () => {};
 
-// A share link (#code=…) carries the project itself; it wins over ?repo= and ?example=.
-let shared = false;
-if (!restored && isShareLink(location.hash)) {
-  try {
-    const n = await loadShareLink(vfs, location.hash);
-    log("sys", `[share] opened a shared project: ${n} files`);
-    shared = true;
-    loaded = true;
-  } catch (e) {
-    log("error", "[share] this link is damaged or incomplete; opening the demo");
-    vfs.clear();
+/** A project loaded (see `loadProject`), not yet saved: `startSaving` takes it from there. */
+type Loaded = { id: string | null; save: boolean; fresh: boolean; from?: string; settle: (() => void)[] };
+
+/**
+ * Loads the project `url` names into the empty `into` (its saved files, else its source). `from` names where it came
+ * from when it's someone else's code (a share link, a GitHub repo). What Share and the Changes tab learn about it waits
+ * in `settle` until the files are in the playground's VFS (`startSaving`): the last project shows until then.
+ */
+async function loadProject(url: URL, into: VFS): Promise<Loaded> {
+  const src = sourceOf(url);
+  const { exampleName, repoParam, repo, share } = src;
+  if (repoParam && !repo) log("error", `[github] not a GitHub repo: ${repoParam}`);
+  // Right away: a repo can take a while to fetch, and the gallery shouldn't name the last project meanwhile.
+  showProject(src, !!share);
+
+  // Where the project is saved in OPFS (null: a bad ?repo=, which opens the demo unsaved).
+  const id = share ? await shareProjectId(share) : repoParam ? (repo ? `repo:${repoQuery(repo)}` : null) : exampleName ? `example:${exampleName}` : "demo";
+  // Saved files win over the source; without rememberSource, Share packs them.
+  const restored = id ? await restore(id, into, log) : 0;
+  if (restored) log("sys", `[storage] restored ${restored} saved files`);
+  /** True when the source loaded as asked: a fallback demo must not overwrite the saved project. */
+  let loaded = false;
+  const settle: (() => void)[] = [];
+
+  // A share link (#code=…) carries the project itself; it wins over ?repo= and ?example=.
+  let shared = false;
+  if (!restored && share) {
+    try {
+      const n = await loadShareLink(into, share);
+      log("sys", `[share] opened a shared project: ${n} files`);
+      shared = true;
+      loaded = true;
+    } catch (e) {
+      log("error", "[share] this link is damaged or incomplete; opening the demo");
+      into.clear();
+    }
   }
-}
-if (!shared && !restored) {
-  // While these files stay unchanged, Share links to where they came from instead of packing them.
-  if (repo && (await loadRepo(vfs, repo, log))) {
-    rememberSource(vfs, `?repo=${repoQuery(repo)}`, `${repoQuery(repo)} on GitHub`);
-    loaded = true;
-  } else if (!repo && exampleName && (await loadExample(vfs, exampleName))) {
-    rememberSource(vfs, `?example=${exampleName}`, `the ${examples[exampleName] ?? exampleName} example`);
-    loaded = true;
-  } else {
-    seedDemo(vfs);
-    rememberSource(vfs, "", "the demo");
-    loaded = projectId === "demo";
+  if (!shared && !restored) {
+    // While these files stay unchanged, Share links to where they came from instead of packing them.
+    if (repo && (await loadRepo(into, repo, log))) {
+      settle.push(() => rememberSource(vfs, `?repo=${repoQuery(repo)}`, `${repoQuery(repo)} on GitHub`));
+      loaded = true;
+    } else if (!repo && exampleName && (await loadExample(into, exampleName))) {
+      settle.push(() => rememberSource(vfs, `?example=${exampleName}`, `the ${examples[exampleName] ?? exampleName} example`));
+      loaded = true;
+    } else {
+      seedDemo(into);
+      settle.push(() => rememberSource(vfs, "", "the demo"));
+      loaded = id === "demo";
+    }
   }
+  // The Changes tab compares against the source: as just loaded, or rebuilt from it for a restored project.
+  settle.push(() => {
+    if (!restored) setBaseline(vfs);
+    else if (share) setBaselineSource((scratch) => loadShareLink(scratch, share));
+    else if (repo) setBaselineSource((scratch) => loadRepo(scratch, repo, log), { costly: true });
+    else if (exampleName) setBaselineSource((scratch) => loadExample(scratch, exampleName));
+    else setBaselineSource(seedDemo);
+  });
+  // A damaged share link fell back to the demo.
+  if (share && !shared) showProject(src, false);
+  // Someone else's code: native Bun on this machine runs it only once the reader agrees (boot.ts, mayRunNative).
+  const from = share ? "this shared project" : repo ? `${repoQuery(repo)} from GitHub` : undefined;
+  return { id, save: !!restored || loaded, fresh: !restored, from, settle };
 }
-// The Changes tab compares against the source: as just loaded, or rebuilt from it for a restored project.
-if (!restored) setBaseline(vfs);
-else if (isShareLink(location.hash)) setBaselineSource((scratch) => loadShareLink(scratch, location.hash));
-else if (repo) setBaselineSource((scratch) => loadRepo(scratch, repo, log), { costly: true });
-else if (exampleName) setBaselineSource((scratch) => loadExample(scratch, exampleName));
-else setBaselineSource(seedDemo);
-if (projectId && (restored || loaded)) stopSaving = await attach(projectId, vfs, log, !restored);
-savedAs(projectId);
 
-/** Reloads with `?example=` or `?repo=` (picker values for repos are `repo:<owner/repo>`). */
+/**
+ * Takes the project now in the VFS from here: Share and the Changes tab learn its source, and it saves from now on
+ * (`fresh`: every file, as it just came from its source).
+ */
+async function startSaving({ id, save, fresh, settle }: Loaded) {
+  for (const fn of settle) fn();
+  if (id && save) stopSaving = await attach(id, vfs, log, fresh);
+  projectId = id;
+}
+
+const first = await loadProject(new URL(location.href), vfs);
+await startSaving(first);
+let from = first.from;
+let openKey = keyOf(new URL(location.href));
+firstLoaded();
+
+/** Opens a project from the gallery (`repo:<query>` for a repo, `""` the demo) in place of this one, with its URL. */
 function openProject(value: string) {
   const url = new URL(location.href);
   url.hash = "";
@@ -108,11 +151,56 @@ function openProject(value: string) {
   url.searchParams.delete("folder");
   if (value.startsWith("repo:")) url.searchParams.set("repo", value.slice(5));
   else if (value) url.searchParams.set("example", value);
-  location.assign(url);
+  history.pushState(null, "", url);
+  void switchTo(url);
 }
 
-// A damaged share link fell back to the demo.
-if (isShareLink(location.hash) && !shared) showProject(false);
+// Back and Forward between projects switch in place too. A folder asks for access again, which needs a click: the
+// reload offers it (see the end of startup).
+addEventListener("popstate", () => {
+  const url = new URL(location.href);
+  if (keyOf(url) === openKey) return;
+  if (url.searchParams.has("folder")) return location.reload();
+  void switchTo(url);
+});
+
+let switching = Promise.resolve();
+/**
+ * Replaces the open project with the one `url` names, without reloading the page: the header, console and preview
+ * stay, and the project then installs and runs as at startup. The next one loads aside (a repo can take a while)
+ * while the last one stays on screen, then takes its place in one go. Switches run one after another.
+ */
+function switchTo(url: URL) {
+  openKey = keyOf(url);
+  switching = switching
+    .then(async () => {
+      await session.started;
+      clearConsole();
+      const next = new VFS();
+      const loaded = await loadProject(url, next);
+      // Not in the middle of an install or a run starting: either would write into, or run, the next project.
+      while (session.busy.run || session.busy.install) await new Promise((r) => setTimeout(r, 100));
+      workspace.saveAll();
+      await stopSaving({ flush: true });
+      stopSaving = async () => {};
+      stop();
+      await pg.clearProject();
+      // From the clear to the entry file opening, nothing awaits: no frame paints an empty editor or tree.
+      for (const [path, data] of next.files) vfs.write(path, data);
+      previews.reset();
+      workspace.reloadTree();
+      openFile(entryFile());
+      // Into the new project's code, once the editor shows it (a pick from the gallery left focus nowhere).
+      setTimeout(() => workspace.reveal(1, 1));
+      await startSaving(loaded);
+      from = loaded.from;
+      await pg.opened(from);
+      await begin();
+    })
+    .catch((e) => log("error", `[open] ${e}`));
+  return switching;
+}
+
 const openFile = (path: string) => workspace.open(path);
 
 async function reset() {
@@ -122,19 +210,17 @@ async function reset() {
   location.reload();
 }
 
-// Someone else's code: native Bun on this machine runs it only once the reader agrees (boot.ts, mayRunNative).
-const from = isShareLink(location.hash) ? "this shared project" : repo ? `${repoQuery(repo)} from GitHub` : undefined;
 await pg.start({ reset, from });
 
 /** Deletes a saved project; this page's own reloads from its source, like `reset`. */
 async function removeProject(id: string) {
-  if (id === (await saving)) return reset();
+  if (id === (await currentProject())) return reset();
   await discard(id);
 }
 
 /** Deletes every saved project but those open in other tabs, and the package and transpile caches; then reloads. */
 async function clearAll() {
-  const current = await saving;
+  const current = await currentProject();
   await stopSaving();
   const held = await heldProjects();
   const gone = (await listProjects()).filter((p) => p.id === current || !held.has(p.id));
@@ -204,6 +290,7 @@ async function openDirectory(dir?: FileSystemDirectoryHandle) {
   url.searchParams.delete("repo");
   url.searchParams.set("folder", dir.name);
   history.replaceState(null, "", url);
+  openKey = keyOf(url);
   session.setProject({ selected: "#folder", extra: [[`Folder: ${dir.name}`, "#folder"]], reopen: dir.name });
 }
 
@@ -241,14 +328,18 @@ if (params.has("folder")) {
   else log("sys", `[open] pick "Reopen ${folder?.name ?? params.get("folder")}" in the project menu to keep working on the folder`);
 }
 
-openFile(entryFile());
-if (pg.canRun && from !== undefined) {
-  // Someone else's code (a share link, a GitHub repo) loads into the editor but runs only on the reader's Run click.
-  log("sys", `[open] ${from} comes from a link: review it, then press Run`);
-  session.setStatus({ state: "idle", text: "From a link: review it, then press Run" });
-} else if (pg.canRun) {
-  // The runner installs before each run itself.
-  if (pg.missingDeps() && pg.runtime.current() === "browser") await install();
-  await run();
+/** Opens the project's entry file and runs it, installing first; someone else's code waits for the reader's Run. */
+async function begin() {
+  openFile(entryFile());
+  if (pg.canRun && from !== undefined) {
+    // Someone else's code (a share link, a GitHub repo) loads into the editor but runs only on the reader's Run click.
+    log("sys", `[open] ${from} comes from a link: review it, then press Run`);
+    session.setStatus({ state: "idle", text: "From a link: review it, then press Run" });
+  } else if (pg.canRun) {
+    // The runner installs before each run itself.
+    if (pg.missingDeps() && pg.runtime.current() === "browser") await install();
+    await run();
+  }
 }
+await begin();
 Object.assign(window, { vfs, semver: pg.semver });

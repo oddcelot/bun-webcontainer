@@ -294,6 +294,17 @@ export function createPreviews(running: () => boolean = () => false, read: (path
         t.sentKey = draftKey(t);
       });
     },
+    /** Back to one fresh tab on `/`, for another project (its paths and responses don't apply). */
+    reset() {
+      const id = ++lastId;
+      setState((s) => {
+        s.tabs = [blank(id, "/")];
+        s.active = id;
+        s.expanded = false;
+      });
+      frames.clear();
+      live.clear();
+    },
     /** Where the first tab requests before anything has been sent: the embed's `path` option. */
     start(path: string) {
       update(1, (t) => {

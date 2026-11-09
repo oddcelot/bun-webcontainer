@@ -444,6 +444,20 @@ export function createPlayground({ watch, localUrl }: { watch?: () => boolean; l
     if (wasRunning && lastEntry !== undefined) await run(lastEntry, lastArgs);
   }
 
+  /**
+   * Another project opened in place (main.ts): `from` names it when it's someone else's code. Like `start`, that keeps
+   * it in the browser, where it can't reach this machine, until the reader moves it; one of the reader's own goes
+   * where they last chose to run.
+   */
+  async function opened(from?: string) {
+    untrustedFrom = from;
+    answer?.(false);
+    if (!local || localState() !== "connected" || !browserOk) return;
+    const kind = from === undefined && localStorage.getItem(RUNTIME_KEY) !== "browser" ? "local" : "browser";
+    await useRuntime(kind);
+    if (from !== undefined) log("sys", `[local] ${from} runs in the browser; press Local Bun to run it on this machine`);
+  }
+
   /** Brings up the service worker, semver and the runner (when the browser can run code) and the console's shell. */
   async function start({ reset, from }: { reset(): Promise<void>; from?: string }) {
     if (canRun) {
@@ -509,6 +523,7 @@ export function createPlayground({ watch, localUrl }: { watch?: () => boolean; l
     stop,
     clearConsole,
     clearProject,
+    opened,
     newFile,
     renamePath,
     removePath,
