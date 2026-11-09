@@ -542,7 +542,7 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
     try {
       editor.applyEdits([
         ...extra.map((e) => ({ range: { start: pos(e.start), end: pos(e.end) }, newText: e.text })),
-        { range: { start: { line: s.line, character: from }, end: caret }, newText: item.insert },
+        { range: { start: { line: s.line, character: from }, end: { line: caret.line, character: caret.character + (item.after ?? 0) } }, newText: item.insert },
       ]);
     } finally {
       applying = false;
@@ -550,7 +550,9 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
     // Lines the import added above push the cursor's line down.
     let line = s.line;
     for (const e of extra) if (e.start.line - 1 <= s.line) line += e.text.split("\n").length - 1 - (e.end.line - e.start.line);
-    editor.focus({ lineNumber: line + 1, character: from + item.insert.length });
+    // At its end, or where it says, which may be on a line it added.
+    const upTo = item.insert.slice(0, item.cursor ?? item.insert.length).split("\n");
+    editor.focus({ lineNumber: line + upTo.length, character: (upTo.length > 1 ? 0 : from) + upTo[upTo.length - 1].length });
     onMove();
   }
 
