@@ -103,9 +103,29 @@ try {
     "index.ts": `const t = async (h: string) => fetch("http://" + h + ":${port}/__connect/info").then((r) => r.status, () => "blocked");
       console.log(JSON.stringify([await t("127.0.0.1"), await t("localhost"), await t("[::1]")]));`,
   });
-  const reached = JSON.parse(reach.out.trim().split("\\n").at(-1) || "[]") as unknown[];
+  const reached = JSON.parse(reach.out.trim().split("\n").at(-1) || "[]") as unknown[];
   if (r.sandbox === "sandbox-exec") check("the program can't reach the runner's port", reached.length === 3 && reached.every((x) => x === "blocked"), reach.out + reach.err);
-  else console.log(`skip the runner's port is closed to the program (${r.sandbox}: not filterable)`);
+  // bwrap shares the network, so the port answers; the peer check (peer.ts) turns the program away instead.
+  else if (r.sandbox === "bwrap") check("the program gets no token from the runner's port", reached.length === 3 && reached.every((x) => x === 403 || x === "blocked") && reached.includes(403), reach.out + reach.err);
+  else console.log(`skip the runner's port is closed to the program (${r.sandbox}: no sandbox)`);
+
+  // …while another process on this machine (the browser) still gets the token and connects with a run alive, which
+  // is when the peer check runs.
+  const probe = `
+    const info = await fetch("http://127.0.0.1:${port}/__connect/info").then((r) => r.status, () => "error");
+    const ws = await new Promise((res) => {
+      const w = new WebSocket(${JSON.stringify(r.url)}, { headers: { origin: ${JSON.stringify(ORIGIN)} } });
+      w.onopen = () => (w.close(), res("open"));
+      w.onerror = () => res("error");
+    });
+    console.log(JSON.stringify({ info, ws }));`;
+  let host: { info?: unknown; ws?: unknown } = {};
+  await run(ws, "alive", { "index.ts": `console.log("up"); await Bun.sleep(60000);` }, async () => {
+    const p = Bun.spawn([process.execPath, "-e", probe], { stdout: "pipe", stderr: "inherit" });
+    host = JSON.parse((await new Response(p.stdout).text()).trim() || "{}");
+    ws.send(JSON.stringify({ t: "kill", id: "alive" }));
+  });
+  check("another process gets the token and connects while a run is alive", host.info === 200 && host.ws === "open", JSON.stringify(host));
 
   // macOS: no launching apps outside the sandbox through LaunchServices (`open note.txt` would start TextEdit).
   if (r.sandbox === "sandbox-exec") {

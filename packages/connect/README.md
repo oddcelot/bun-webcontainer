@@ -35,8 +35,8 @@ Each run is a real program on your machine, in a sandbox:
 
 The network stays open because the program's server has to be reachable and `bun install` has to reach the
 registry. So a program can reach other services on this machine and on your local network. On macOS the runner's own
-port is the exception: the program can't connect to it. On Linux it can, so a program there could fetch the runner's
-token; the terminal question below is what stops that from running anything unasked.
+port is the exception: the program can't connect to it. On Linux it can connect, but the runner looks up who holds
+the other end of the connection (in `/proc`) and turns away programs it started, so they don't get the runner's token.
 
 So the runner asks before running anything: each playground page (until it reloads) has to be allowed in the terminal
 where the runner runs, before its first run. A web page can't answer there, so a shared project whose code reaches for
