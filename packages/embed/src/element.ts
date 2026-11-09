@@ -3,10 +3,13 @@
 // @runbun/embed. Registering the elements is `define` (index.ts calls it), so a page can pick the playground first.
 // Types only: a runtime import would make runbun.dev's build share protocol.ts with the embed page as a chunk, and
 // embed.js, loaded from other origins, has to be one file.
-import type { Event, Feature, Mode, Reply, Request, Vars } from "./protocol.js";
+import type { Event, Feature, Library, LibraryProject, Mode, Reply, Request, Vars } from "./protocol.js";
 
 const TAG = "bunPlayground"; // = protocol TAG
 const VERSION = 1; // = protocol VERSION
+
+/** Libraries (`library` URLs) being read or read, shared by every embed on the page. */
+const libraries = new Map<string, Promise<Library>>();
 
 /** Where embeds without a `src` frame the playground from; `define` sets it. */
 let defaultSrc = "https://runbun.dev/";
@@ -29,9 +32,10 @@ const PARAMS = [
   "status",
   "layout",
 ];
-/** Keys a page-wide `<bun-playground-defaults>` may set. Not `file path requests example repo share title persist`:
- * those are per embed (a shared `persist` key would make embeds overwrite each other's edits). */
-const DEFAULTABLE = new Set(["mode", "features", "autorun", "theme", "family", "fonts", "readonly", "expand", "status", "layout", "vars", "load", "height", "src"]);
+/** Keys a page-wide `<bun-playground-defaults>` may set. Not `file path requests example repo share title persist
+ * project`: those are per embed (a shared `persist` key would make embeds overwrite each other's edits). A shared
+ * `library` is the point: each embed then names its `project`. */
+const DEFAULTABLE = new Set(["mode", "features", "autorun", "theme", "family", "fonts", "readonly", "expand", "status", "layout", "vars", "load", "height", "src", "library"]);
 /** Defaults a running embed takes without reloading; the others only reach embeds that haven't started yet. */
 const LIVE = new Set(["theme", "family", "vars", "mode", "height"]);
 /** How long a start may take before the poster offers to try again (a first start downloads several MB of wasm). */
@@ -95,7 +99,7 @@ function dedent(s: string): string {
 }
 
 export class BunPlayground extends HTMLElement {
-  static observedAttributes = [...PARAMS, "vars", "share", "load", "height", "src", "title"];
+  static observedAttributes = [...PARAMS, "vars", "share", "load", "height", "src", "title", "library", "project"];
 
   #root = this.attachShadow({ mode: "open" });
   // The box sits in a dialog that's open in place; expanding reopens it as a modal (the top layer), so the iframe never
@@ -208,10 +212,15 @@ export class BunPlayground extends HTMLElement {
     else if (name === "family") void this.setFamily(this.#get("family") ?? "");
     else if (name === "vars") void this.setVars(this.#vars());
     else if (name === "height") this.#sizeBox();
-    else if (name !== "title" && name !== "load") this.#rebuild();
+    else if (name === "project" && this.#get("project")) void this.openProject(this.#get("project")!).catch(() => {});
+    else if (name !== "title" && name !== "load" && name !== "project") this.#rebuild();
     else if (name === "title") this.#frame.title = this.getAttribute("title") || "Bun playground";
   }
 
+  /** Opens a project of the library (`library`) by its id, in place of the open one. */
+  openProject(id: string) {
+    return this.#call("openProject", { id });
+  }
   /** Runs the project (optionally from another entry file). */
   run(entry?: string) {
     return this.#call("run", entry === undefined ? undefined : { entry });
@@ -332,6 +341,33 @@ export class BunPlayground extends HTMLElement {
       // `<\/script` and `<\!--` are how a page writes those inside a script element (docs/src/remark-playground.mjs does).
       files[s.getAttribute("data-file")!] = dedent(s.textContent ?? "").replace(/<\\\/script/gi, "</script").replace(/<\\!--/g, "<!--");
     return files;
+  }
+
+  /**
+   * The library (`library`): a `<script type="application/json" data-library>` child, else the JSON at the `library`
+   * URL, read on this page (so a file on the same site needs no CORS) and once per URL for all embeds. `project` picks
+   * the project to start with, over the library's own `open`, which inline files override.
+   */
+  async #library(): Promise<Library | undefined> {
+    const inline = this.querySelector(':scope > script[type="application/json"][data-library]');
+    const url = this.#get("library");
+    let lib: Library | undefined;
+    try {
+      if (inline) lib = JSON.parse(inline.textContent ?? "");
+      else if (url) {
+        const abs = new URL(url, location.href).href;
+        let load = libraries.get(abs);
+        if (!load) libraries.set(abs, (load = fetch(abs).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${r.status} ${r.statusText}`))))));
+        lib = await load;
+      }
+    } catch (e) {
+      console.warn(`<bun-playground>: can't read the library${url && !inline ? ` at ${url}` : ""}: ${e}`);
+      return undefined;
+    }
+    const projects = Array.isArray(lib?.projects) ? lib.projects.filter((p: LibraryProject) => p && typeof p.id === "string" && typeof p.name === "string") : [];
+    if (!projects.length) return undefined;
+    const files = Object.keys(this.#files()).length > 0;
+    return { projects, open: this.getAttribute("project") ?? (files ? undefined : lib!.open) };
   }
 
   /** Inline files marked `data-hidden`: in the project, but not opened in the editor. */
@@ -530,7 +566,9 @@ export class BunPlayground extends HTMLElement {
     if (event === "expand") return void this.#setExpanded(data.open);
     if (event === "boot") {
       this.#booted = true;
-      void this.#request("init", { files: this.#files(), hidden: this.#hidden(), options: {}, vars: this.#vars() }).catch(() => {});
+      void this.#library()
+        .then((library) => this.#request("init", { files: this.#files(), hidden: this.#hidden(), options: {}, vars: this.#vars(), library }))
+        .catch(() => {});
     } else if (event === "ready" || event === "unsupported") {
       this.#isReady = true;
       this.#frame.classList.remove("wait");

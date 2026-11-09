@@ -3,6 +3,22 @@
 #embed-bar { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 5px 6px 5px 10px; white-space: nowrap; }
 #embed-bar .file { min-width: 0; overflow: hidden; text-overflow: ellipsis; font: 12px var(--font-mono); }
 #embed-bar .spacer { flex: 1; }
+/* The library's project button (EmbedApp.tsx ProjectButton): the open project's logo and name. */
+#embed-bar .project {
+  min-width: 0;
+  max-width: 14rem;
+  padding: 0 8px;
+
+  .name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .chevron {
+    flex: none;
+    color: var(--muted);
+  }
+}
 #embed-bar #status { height: 22px; min-width: 0; font-size: 11px; }
 #embed-bar button { display: inline-flex; align-items: center; gap: 5px; height: var(--control-height); padding: 0 10px; border: 1px solid var(--control-border); border-radius: 6px; background: var(--control); color: inherit; font: inherit; cursor: pointer; }
 #embed-bar button:hover:not(:disabled) { background: var(--control-hover); }

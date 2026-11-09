@@ -126,6 +126,32 @@ export const greet = (n: string) => n;
 
 To get the same in your own Astro site, see [Astro](/guides/astro/).
 
+## Bring your own examples
+
+Give an embed a library of your projects and readers can switch between them, like the playground's gallery but with only yours. Write the library as JSON on your site, and point `library` at it:
+
+```html
+<bun-playground mode="preview" library="/runbun/examples.json" project="hello"></bun-playground>
+```
+
+```json
+{
+  "projects": [
+    { "id": "hello", "name": "Hello", "description": "Routes and validation", "kind": "starter", "tags": ["Elysia"],
+      "files": { "index.ts": "…", "package.json": "…" } },
+    { "id": "ws", "name": "WebSocket chat", "kind": "example", "tags": ["Elysia", "WebSocket"], "files": { "index.ts": "…" } }
+  ]
+}
+```
+
+The element reads the file on your page, so one on your own site needs no CORS headers. A bar button then names the open project and opens the gallery, and each pick loads in place. `project` names the one to start with. For several embeds on a page, set `library` once on `<bun-playground-defaults>` and give each embed its `project`. Small libraries can go inline as a `<script type="application/json" data-library>` child instead. Fields, the `openProject()` method and the `project` event are in the [reference](/reference/embed-api/#libraries).
+
+To build the file from a folder of projects (one folder each, with an `example.json`, as in [runbun-examples](https://github.com/oddcelot/runbun-examples)):
+
+```sh
+npx @runbun/embed pack ./examples --out public/runbun/examples.json
+```
+
 ## Turn features on and off
 
 `features` is a comma list added to the mode's defaults. A leading `-` turns one off and locks it, so readers can't turn it back on.

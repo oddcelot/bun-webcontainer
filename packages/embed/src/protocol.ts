@@ -69,13 +69,38 @@ export type Options = {
   status: "bar" | "toast";
 };
 
+/**
+ * A project of an example library: what its card in the gallery shows, and its files (path → text) or a public GitHub
+ * repo to open instead (`owner/repo`, `owner/repo@ref` or a github.com URL). `id` names it (`project`, `openProject`).
+ * The fields match example.json in github.com/oddcelot/runbun-examples; `pack` builds a library from such folders.
+ */
+export type LibraryProject = {
+  id: string;
+  name: string;
+  description?: string;
+  /** "starter": a small project to build on; "example" (default): one that shows a framework or feature. */
+  kind?: "starter" | "example";
+  /** The frameworks and libraries it is built on; the gallery filters by them. */
+  tags?: string[];
+  files?: Record<string, string>;
+  repo?: string;
+};
+
+/**
+ * The host's own projects (`library` on <bun-playground>): the embed gets a project button whose gallery lists only
+ * these. `open` names the one it starts with (default: the host's inline files if any, else the first).
+ */
+export type Library = { projects: LibraryProject[]; open?: string };
+
 /** Host → embed. Each gets a reply with the same `id`: `{ id, result }` or `{ id, error }`. */
 export type Request =
   | {
       method: "init";
       /** `hidden`: files of `files` not opened as tabs (`data-hidden`): generated ones, such as a package.json. */
-      params: { files?: Record<string, string>; hidden?: string[]; options?: Partial<Options>; vars?: Vars };
+      params: { files?: Record<string, string>; hidden?: string[]; options?: Partial<Options>; vars?: Vars; library?: Library };
     }
+  /** Opens a project of the library in place of the current one, as the reader picking it in the gallery does. */
+  | { method: "openProject"; params: { id: string } }
   | { method: "run"; params?: { entry?: string } }
   | { method: "stop" }
   | { method: "install" }
@@ -108,7 +133,9 @@ export type Event =
   | { event: "mode"; data: { mode: Mode; features: Feature[] } }
   | { event: "resize"; data: { height: number } }
   /** The reader pressed the expand button (or Escape while expanded): the host should open or close its modal. */
-  | { event: "expand"; data: { open: boolean } };
+  | { event: "expand"; data: { open: boolean } }
+  /** Another project of the library opened (the reader picked it, or `openProject`). */
+  | { event: "project"; data: { id: string } };
 
 export type EventName = Event["event"];
 
