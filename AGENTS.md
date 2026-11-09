@@ -61,6 +61,7 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 ## Build & Test
 
 ```bash
+git submodule update --init               # apps/playground/examples: the gallery's projects (oddcelot/runbun-examples)
 proto install                              # tools pinned in .prototools: moon, bun, node 26 (wasm64 tests need >= 24)
 moon run :test                             # build + test every wasm crate (cached; sets up bun/ if missing)
 moon run <crate>:build|test                # one crate; config in .moon/ and <crate>/moon.yml
@@ -70,7 +71,8 @@ moon run root:typecheck-scripts root:typos docs:links  # scripts/ + hook types (
 moon run root:secrets                                  # betterleaks over the git history, as CI does on every push (Brewfile)
 moon run astro-demo:check-static                       # a static <Code> page stays HTML + CSS (examples/astro-demo; dev: astro-demo:dev)
 moon run connect:test                                  # the local runner end to end (sandbox-exec on macOS; bwrap on Linux)
-moon run playground:fmt-fixtures                       # the bundled examples (fixtures/, demo included) are `bun fmt`-clean (`-- --write` fixes)
+moon run playground:fmt-examples                       # the gallery's projects (examples/ submodule, demo included) are `bun fmt`-clean
+moon run playground:check-examples                     # each of them installs and runs in the playground (headless Chrome)
 scripts/setup-bun.ts                       # recreate bun/ (pinned commit + patches/bun/ via git am); bun/ is not tracked
 scripts/export-bun-patches.ts              # after committing in bun/ on wasm-experiment
 scripts/bun-upgrade.ts --check             # newer Bun release? do patches/bun/ still apply? (changes nothing)
@@ -181,6 +183,11 @@ Section headings read `## 0.2.0 — 2026-11-03` (em dash); `scripts/release-note
   unexported. Every change is cfg-gated (`target_family = "wasm"`), marked `// wasm-experiment`,
   and leaves native builds unchanged.
 - Don't touch `*_jsc` crates.
+- The gallery's starters and examples live in [oddcelot/runbun-examples](https://github.com/oddcelot/runbun-examples)
+  (a submodule at `apps/playground/examples`; each folder's `example.json` is its card). Change them there, in a pull
+  request; its CI runs them with native Bun. To ship a new version here: `git -C apps/playground/examples pull`,
+  `moon run playground:check-examples playground:fmt-examples`, then commit the moved submodule (`playground: …`).
+  Test-only projects stay in `apps/playground/fixtures/`.
 - C/C++ symbol stand-ins belong in the wrapper crates (`crates/wasm-stubs`), not in bun.
 - Stop the playground dev server by port (`kill $(lsof -tiTCP:5173 -sTCP:LISTEN)`), never `pkill vite`.
 - Keep the docs site in step with the code. When a change adds, removes or changes what users can

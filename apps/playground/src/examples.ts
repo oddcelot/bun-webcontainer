@@ -1,42 +1,30 @@
 import type { VFS } from "@runbun/vfs";
 
-// Project files of each fixture (top level and src/), bundled as text. Their node_modules are never
-// included; "bun install" fetches packages from the lockfile.
-const files = import.meta.glob<string>("../fixtures/*/{package.json,tsconfig.json,bun.lock,*.ts,*.tsx,*.js,*.mjs,*.html,*.css,src/**/*}", {
+// The gallery's projects come from the examples repo (oddcelot/runbun-examples), a git submodule at examples/: each
+// folder's example.json says how the gallery shows it, and its project files (top level and src/) are bundled as
+// text. Their node_modules are never included; "bun install" fetches packages from the lockfile.
+const files = import.meta.glob<string>("../examples/*/{package.json,tsconfig.json,bun.lock,*.ts,*.tsx,*.js,*.mjs,*.html,*.css,src/**/*}", {
   query: "?raw",
   import: "default",
 });
+/** The examples repo's example.json (its example.schema.json): a project, or a GitHub repo to open (`repo`). */
+type ExampleMeta = { name: string; description: string; kind: "starter" | "example"; order?: number; tags: string[]; repo?: string };
+const metas = import.meta.glob<ExampleMeta>("../examples/*/example.json", { eager: true, import: "default" });
+if (!Object.keys(metas).length) throw new Error("the examples submodule is empty: git submodule update --init apps/playground/examples");
 
 /** Where a project in the gallery sits: a starting point, a bundled example, or a public GitHub repo. */
 export type ProjectKind = "starter" | "example" | "github";
 
 /**
- * A project in the gallery (ui/ProjectPicker.tsx). `value` is what `openProject` takes: `""` the confetti demo, a
- * fixture's name (`?example=`), or `repo:<query>` (`?repo=`, see github.ts). `tags` name its core technologies.
+ * A project in the gallery (ui/ProjectPicker.tsx). `value` is what `openProject` takes: `""` the confetti demo (the
+ * examples repo's demo/), a folder's name (`?example=`), or `repo:<query>` (`?repo=`, see github.ts). `tags` name its
+ * core technologies; `icon` is the first one's logo, else Bun's.
  */
 export type CatalogEntry = { value: string; kind: ProjectKind; name: string; description: string; tags: string[]; icon: string };
 
-export const catalog: CatalogEntry[] = [
-  { value: "starter-blank", kind: "starter", name: "Blank", description: "One TypeScript file that logs to the console", tags: [], icon: "i-logos-bun?bg" },
-  { value: "starter-http", kind: "starter", name: "HTTP API", description: "A JSON API with Bun.serve routes", tags: [], icon: "i-logos-bun?bg" },
-  { value: "starter-react", kind: "starter", name: "React", description: "Bun.serve with an HTML import that bundles a React app", tags: ["React"], icon: "i-logos-react?bg" },
-  { value: "starter-sqlite", kind: "starter", name: "SQLite", description: "Notes in bun:sqlite, served as JSON", tags: ["SQLite"], icon: "i-runbun-sqlite?bg" },
-  { value: "starter-websocket", kind: "starter", name: "WebSocket chat", description: "A chat room over Bun.serve WebSockets and pub/sub", tags: ["WebSocket"], icon: "i-logos-websocket" },
-  { value: "", kind: "example", name: "Confetti demo", description: "An API route, an HTML import and a package from npm", tags: [], icon: "i-logos-bun?bg" },
-  { value: "elysia-demo", kind: "example", name: "Elysia", description: "Routes, params and validation in Elysia 1.4", tags: ["Elysia"], icon: "i-runbun-elysia?bg" },
-  { value: "elysia2-demo", kind: "example", name: "Elysia 2 (rc)", description: "Plugins, macros, server-sent events and a WebSocket chat", tags: ["Elysia", "WebSocket"], icon: "i-runbun-elysia?bg" },
-  { value: "astro-solid-demo", kind: "example", name: "Astro + Solid", description: "The Astro dev server with a hydrated Solid island", tags: ["Astro", "Solid"], icon: "i-logos-astro-icon logo-astro" },
-  { value: "vite-demo", kind: "example", name: "Vite", description: "The Vite dev server, with HMR over the preview", tags: ["Vite"], icon: "i-logos-vitejs?bg" },
-  { value: "node-demo", kind: "example", name: "node:* built-ins", description: "fs, crypto, events, path, url and util", tags: ["Node.js"], icon: "i-logos-nodejs-icon?bg" },
-  { value: "lockfile-demo", kind: "example", name: "bun.lock", description: "Nested node_modules installed from a lockfile", tags: [], icon: "i-logos-bun?bg" },
-  { value: "repo:oddcelot/bun-elysia-demo", kind: "github", name: "Elysia", description: "oddcelot/bun-elysia-demo", tags: ["Elysia"], icon: "i-runbun-elysia?bg" },
-  { value: "repo:https://github.com/oddcelot/lit-devtools/tree/main/examples/elysia", kind: "github", name: "Lit SSR guestbook", description: "Streamed Lit SSR, bun:sqlite and WebSockets on Elysia", tags: ["Lit", "Elysia", "SQLite"], icon: "i-logos-lit-icon?bg" },
-  { value: "repo:https://github.com/honojs/starter/tree/main/templates/bun", kind: "github", name: "Hono", description: "The Hono starter for Bun", tags: ["Hono"], icon: "i-logos-hono?bg" },
-];
-
-/** Each tag's product logo (see uno.config.ts). */
+/** Each tag's product logo (see uno.config.ts); a tag without one shows without a logo. */
 export const techIcons: Record<string, string> = {
-  "SQLite": "i-runbun-sqlite?bg",
+  SQLite: "i-runbun-sqlite?bg",
   WebSocket: "i-logos-websocket",
   React: "i-logos-react?bg",
   Elysia: "i-runbun-elysia?bg",
@@ -48,6 +36,24 @@ export const techIcons: Record<string, string> = {
   Hono: "i-logos-hono?bg",
 };
 
+const KIND_ORDER: ProjectKind[] = ["starter", "example", "github"];
+
+export const catalog: CatalogEntry[] = Object.entries(metas)
+  .map(([path, m]) => {
+    const folder = path.split("/").at(-2)!;
+    const entry: CatalogEntry = {
+      value: m.repo ? `repo:${m.repo}` : folder === "demo" ? "" : folder,
+      kind: m.repo ? "github" : m.kind,
+      name: m.name,
+      description: m.description,
+      tags: m.tags,
+      icon: m.tags.map((t) => techIcons[t]).find(Boolean) ?? "i-logos-bun?bg",
+    };
+    return [entry, m.order ?? Infinity] as const;
+  })
+  .sort(([a, ao], [b, bo]) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || ao - bo || a.name.localeCompare(b.name))
+  .map(([entry]) => entry);
+
 /** The bundled projects (starters and examples) by fixture name, for labels; the demo isn't one. */
 export const examples: Record<string, string> = Object.fromEntries(catalog.filter((e) => e.kind !== "github" && e.value).map((e) => [e.value, e.name]));
 
@@ -56,15 +62,15 @@ export const repoExamples: Record<string, string> = Object.fromEntries(
   catalog.filter((e) => e.kind === "github").map((e) => [e.value.slice(5), `${e.name} (from GitHub)`]),
 );
 
-/** The files of `fixtures/<name>/` (`demo` included) by path, without touching the VFS; null if there is no such example. */
+/** The files of the examples repo's `<name>/` (`demo` included) by path, without touching the VFS; null if there is no such example. */
 export async function exampleFiles(name: string): Promise<Map<string, string> | null> {
-  const prefix = `../fixtures/${name}/`;
+  const prefix = `../examples/${name}/`;
   const entries = Object.entries(files).filter(([path]) => path.startsWith(prefix));
   if (!entries.length) return null;
   return new Map(await Promise.all(entries.map(async ([path, load]) => [path.slice(prefix.length), await load()] as const)));
 }
 
-/** Loads `fixtures/<name>/` into the VFS; false if there is no such example. */
+/** Loads the examples repo's `<name>/` into the VFS; false if there is no such example. */
 export async function loadExample(vfs: VFS, name: string): Promise<boolean> {
   const loaded = await exampleFiles(name);
   if (!loaded) return false;

@@ -7,8 +7,9 @@ fileGroups:
     - 'src/**/*'
     - 'worker/**/*'
     - 'embed-element/**/*'
-    # The bundled examples (src/examples.ts globs them into the build).
-    - 'fixtures/**/*'
+    # The gallery's projects, the examples submodule (src/examples.ts globs them into the build).
+    - 'examples/**/*'
+    - '!examples/**/node_modules/**/*'
     - 'public/**/*'
     # Copied in from the wasm crates by scripts/copy-wasm.ts; their builds are deps instead.
     - '!public/*.wasm'
@@ -49,13 +50,21 @@ tasks:
       - 'src/embed/requests.ts'
       - 'scripts/request-fields.ts'
       - 'src/request.ts'
-  fmt-fixtures:
-    # The bundled examples, fixtures/demo included, as `bun fmt` leaves them (`-- --write` formats them).
-    command: 'bun scripts/fmt-fixtures.ts'
+  check-examples:
+    # Every project of the examples submodule opened in the playground in headless Chrome: it installs and runs
+    # (scripts/check-examples.ts). Before moving the submodule to a new commit, and after a Bun upgrade.
+    command: 'bun scripts/check-examples.ts'
+    toolchains: ['bun']
+    options:
+      cache: false
+  fmt-examples:
+    # The gallery's projects (examples/, the demo included) as `bun fmt` leaves them (`-- --write` formats them).
+    command: 'bun scripts/fmt-examples.ts'
     toolchains: ['bun']
     inputs:
-      - 'fixtures/**/*'
-      - 'scripts/fmt-fixtures.ts'
+      - 'examples/**/*'
+      - '!examples/**/node_modules/**/*'
+      - 'scripts/fmt-examples.ts'
   build:
     # prebuild (scripts/copy-wasm.ts) copies the crates' .wasm into public/.
     command: 'bun run build'
