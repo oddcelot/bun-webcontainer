@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { dirname, extname, isAbsolute, join, normalize } from "node:path";
 import type { ServerWebSocket, Subprocess } from "bun";
 import { PACKED_REQUEST, PACKED_RESPONSE, type ClientMessage, type ConnectInfo, type ServerMessage } from "./protocol.ts";
-import { peerVerdict, refuse } from "./peer.ts";
+import { type FsLike, listeningPorts, peerVerdict, readNetRows, readProcs, refuse } from "./peer.ts";
 import { detectSandbox, sandboxed, type SandboxKind } from "./sandbox.ts";
 
 export const DEFAULT_ORIGINS = ["https://runbun.dev", "https://canary.runbun.dev", "http://localhost:5173"];
@@ -114,11 +114,19 @@ export const DEFAULT_LIMITS: Limits = { memoryMB: 2048, processes: 64 };
 /** How often a run's processes are checked against the limits. */
 const WATCH_MS = 500;
 
+/** The real /proc, for peer.ts. */
+const procFs: FsLike = { readFile: (p) => readFileSync(p, "utf8"), readdir: (p) => readdirSync(p), readlink: (p) => readlinkSync(p) };
+
 /**
  * The TCP port the process `pid` or one of its descendants listens on (sandbox-exec execs Bun; bwrap forks it), the
- * preferred one if it's among them; undefined while there is none. Without lsof, only `preferred` is checked.
+ * preferred one if it's among them; undefined while there is none. Linux reads /proc; elsewhere lsof, and without
+ * it only `preferred` is checked.
  */
 async function listeningPort(pid: number, preferred: number): Promise<number | undefined> {
+  if (process.platform === "linux") {
+    const ports = listeningPorts(readNetRows(procFs), readProcs(procFs), pid);
+    return ports.includes(preferred) ? preferred : ports[0];
+  }
   if (!Bun.which("lsof")) {
     const up = await Bun.connect({ hostname: "127.0.0.1", port: preferred, socket: { data() {} } }).then((s) => (s.end(), true), () => false);
     return up ? preferred : undefined;
@@ -156,8 +164,7 @@ export function startRunner(opts: RunnerOptions = {}) {
     if (!roots.length) return false;
     const client = srv.requestIP(req);
     if (!client) return true;
-    const fs = { readFile: (p: string) => readFileSync(p, "utf8"), readdir: (p: string) => readdirSync(p), readlink: (p: string) => readlinkSync(p) };
-    return refuse(peerVerdict(fs, client, { address: "127.0.0.1", port: server.port as number }, roots));
+    return refuse(peerVerdict(procFs, client, { address: "127.0.0.1", port: server.port as number }, roots));
   };
 
   const server = Bun.serve<SocketData>({

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { classify, findSocketInode, ipKey, parseProcNet, parseStat, peerVerdict, procAddrKey, readProcs, refuse, type FsLike } from "./src/peer.ts";
+import { classify, findSocketInode, ipKey, listeningPorts, parseProcNet, parseStat, peerVerdict, procAddrKey, readNetRows, readProcs, refuse, type FsLike } from "./src/peer.ts";
 
 // Real-format lines: 127.0.0.1:7357 is 0100007F:1CBD; a client at 127.0.0.1:41234 is 0100007F:A112.
 const TCP = `  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode
@@ -120,4 +120,15 @@ test("classify and readProcs", () => {
   expect(classify(22222, procs, [10])).toBe("run");
   expect(classify(22222, procs, [20])).toBe("other"); // 12 isn't under 20
   expect(classify(1, procs, [10])).toBe("unknown");
+});
+
+test("listeningPorts: what the run's tree listens on, not the runner's own port", () => {
+  // 12 (a run's grandchild) holds the [::1]:8080 listener (tcp6 inode 44444) and a client socket; 11111 is the runner's
+  // own 7357 listener, held by nobody in the run.
+  const fs = fakeFs({ ...base, 5: { ppid: 1, sid: 5, fds: ["socket:[11111]"] }, 12: { ppid: 11, sid: 10, fds: ["socket:[44444]", "socket:[22222]"] } });
+  const rows = readNetRows(fs);
+  const procs = readProcs(fs);
+  expect(listeningPorts(rows, procs, 10)).toEqual([8080]);
+  expect(listeningPorts(rows, procs, 20)).toEqual([]);
+  expect(listeningPorts(rows, procs, 30)).toEqual([]); // fds unreadable: nothing, not a guess
 });

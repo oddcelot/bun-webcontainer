@@ -34,13 +34,15 @@ bun test.ts [secret]    # end-to-end: access checks, native APIs, sandbox, previ
   hide its fds with `prctl(PR_SET_DUMPABLE, 0)` and a failing-open check would be bypassed by exactly that. The
   risk: a browser whose network process we can't read (another user, a non-dumpable or sandboxed one) is refused
   while some run is alive; with no run alive nothing is checked, so the first connection always works. To revisit,
-  flip `FAIL_CLOSED` in `peer.ts`. **Untested on real Linux**: only `peer.test.ts` (fixtures, fake /proc) and a macOS
-  `test.ts` run, where this code is inert. Unverified: that the host user can read the fds of processes in bwrap's user
-  namespace, and the exact /proc formats on other kernels. TOCTOU: the check runs while the client's connection is
+  flip `FAIL_CLOSED` in `peer.ts`. Checked on Linux arm64 (Debian 13, bubblewrap 0.12, 2026-11-09; see Findings): the
+  host user reads the fds of processes in bwrap's user namespace, and Chromium 156 with its sandbox on (namespaces,
+  seccomp-BPF) keeps a readable network service, so the browser still connects while a run is alive. Not checked:
+  Google Chrome builds, Firefox (its socket process, if on), Flatpak/Snap browsers, other kernels' /proc formats. TOCTOU: the check runs while the client's connection is
   open, but a program that hands its socket to a process outside the run's tree isn't caught.
 - **Limits**: a watchdog kills a run's whole process tree (its own process group) past `--max-memory` (default 2048
   MB, all its processes together) or `--max-processes` (64). Stop kills the children too, not only Bun.
-- **Preview**: `/preview/<token>/<run>/…` proxies to the run's `Bun.serve`, with CORS for the allowed origins
+- **Preview**: `/preview/<token>/<run>/…` proxies to the run's `Bun.serve` (the port its tree listens on: `/proc` on
+  Linux, `lsof` on macOS), with CORS for the allowed origins
   and CORP/COEP so the cross-origin-isolated playground can frame it.
 
 ## Findings (2026-11-07)
@@ -49,6 +51,13 @@ bun test.ts [secret]    # end-to-end: access checks, native APIs, sandbox, previ
   (Docker with `seccomp`/`apparmor`/`systempaths=unconfined`; plain Docker masks `/proc`, so bwrap's
   `--proc` fails there, unlike on a desktop). With `RUNBUN_CONNECT_SANDBOX=none` the secret is readable and
   the escape write lands, so the sandbox checks do test something.
+- 2026-11-09, same setup (Docker, Debian 13 arm64, bubblewrap 0.12, non-root): the peer check holds. A sandboxed
+  program's fetch of `/__connect/info` gets 403 (`[::1]` isn't served at all); another process on the host still gets
+  the token and opens `/__connect/ws` while a run is alive. With the check disabled the program gets 200, so `test.ts`
+  catches a regression. Chromium 156 (puppeteer-core, sandbox on and with `--no-sandbox`) loads the runner's page,
+  gets the token and connects with a run alive; every Chromium process's fds were readable, the network service
+  included. Without `lsof` (minimal images) the preview never found a port the program picked itself; Linux now
+  reads `/proc` for that.
 - From the deployed `https://runbun.dev` in Chrome: the WebSocket to `ws://127.0.0.1` connects and runs code
   (no mixed-content block); `fetch` of the preview needs CORS, an `<iframe>` needs CORP + COEP (the playground
   is `COEP: credentialless`). Chrome's Local Network Access flags these requests (`PermissionBlock`); in the
