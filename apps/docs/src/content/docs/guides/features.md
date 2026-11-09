@@ -110,7 +110,7 @@ Dependencies install automatically when one of your own projects or an example o
 - **Saved as you type**, in your browser. See [Storage and persistence](/guides/storage/).
 - **Share:** the Share menu copies a link with the whole project in the URL (nothing is uploaded), a Markdown badge, or HTML. `node_modules`, `.git`, binary files and secrets (`.env`, keys, `.npmrc`) are left out. Very long links can be shortened to `runbun.dev/s/<id>`, which stores a copy on runbun.dev (see [Privacy](/privacy/)). **Download as zip** saves every file except `node_modules` and `.git`, binaries included.
 - **GitHub:** open any public repo, branch or subfolder from the project gallery or with `?repo=`. Up to 500 files; GitHub allows 60 imports an hour per IP.
-- **Project gallery:** the project button in the header opens a gallery of starters (Blank, HTTP API, React, SQLite, WebSocket chat), examples (Elysia, Astro + Solid, Vite and more) and GitHub projects (Hono, Lit SSR), in sections down the side. Search by name or technology, or narrow it with the technology tags. Open a folder, a zip or a GitHub repo from the same gallery.
+- **Project gallery:** the project button in the header opens a gallery of starters (Blank, HTTP API, React, SQLite, WebSocket chat), examples (Elysia, Astro + Solid, Vite and more) and GitHub projects (Hono, Lit SSR), in sections down the side. Search by name or technology, or narrow it with the technology tags. Open a folder, a zip or a GitHub repo from the same gallery. A project opens in place, without reloading the page; Back and Forward go between the projects you opened.
 - **One tab per project:** a second tab with the same project can't save its changes.
 
 ## Embedding

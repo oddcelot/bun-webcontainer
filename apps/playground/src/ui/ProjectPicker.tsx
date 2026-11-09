@@ -42,9 +42,12 @@ export function ProjectPicker() {
   };
   const reopen = () => (s.project().selected === "#folder" ? undefined : s.project().reopen);
 
+  // A pick opens another project, whose editor takes focus (main.ts): the button doesn't, or its tooltip would show.
+  let picked = false;
   const pick = (e: CatalogEntry) => {
+    picked = e.value !== s.project().selected || s.project().extra.length > 0;
     setOpen(false);
-    if (e.value !== s.project().selected || s.project().extra.length) app.openProject(e.value);
+    if (picked) app.openProject(e.value);
   };
   // After the gallery closes, or its focus return would win over the next dialog or the file picker.
   const then = (fn: () => void) => {
@@ -77,9 +80,10 @@ export function ProjectPicker() {
         open={open()}
         onOpenChange={setOpen}
         class="gallery"
+        onOpenAutoFocus={() => (picked = false)}
         onCloseAutoFocus={(e) => {
           e.preventDefault();
-          trigger.focus();
+          if (!picked) trigger.focus();
         }}
       >
         <Gallery
