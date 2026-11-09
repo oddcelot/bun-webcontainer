@@ -37,7 +37,13 @@ if (!chrome) {
 }
 
 // Its output only matters if it doesn't start (it forwards the page's console warnings otherwise).
-const vite = Bun.spawn(["bunx", "vite", "--port", String(PORT), "--strictPort"], { cwd: app, stdout: "pipe", stderr: "pipe" });
+const vite = Bun.spawn(["bunx", "vite", "--port", String(PORT), "--strictPort"], {
+  cwd: app,
+  stdout: "pipe",
+  stderr: "pipe",
+  // Its own optimized-deps cache, so a dev server you have running isn't disturbed (vite.config.ts cacheDir).
+  env: { ...process.env, VITE_CACHE_DIR: join(app, "node_modules/.vite-check") },
+});
 const profile = mkdtempSync(join(tmpdir(), "check-examples-"));
 let failed = 0;
 try {

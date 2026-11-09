@@ -228,6 +228,9 @@ export default defineConfig(({ mode }) => ({
   // them to loopback and try IPv4); Vite's Host check is told to accept those names.
   server: { headers: served, ...(contentOrigin && { host: "127.0.0.1", allowedHosts: ["localhost", ".localhost"] }) },
   preview: { headers: served },
+  // A second dev server beside yours (scripts/check-examples.ts) gets its own: two servers optimizing into one cache
+  // folder invalidate each other's files (504 "Outdated Optimize Dep" on every load).
+  cacheDir: process.env.VITE_CACHE_DIR || undefined,
   optimizeDeps: { exclude: ["@rolldown/browser", "@napi-rs/wasm-runtime", "@emnapi/core", "@emnapi/runtime", "@emnapi/wasi-threads"] },
   resolve: {
     // @runbun/embed publishes built files; `runbun-source` (no other package uses it) resolves its sources here.
