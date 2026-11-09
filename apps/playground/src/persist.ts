@@ -174,18 +174,19 @@ export async function projectsKept(ask = false): Promise<boolean> {
 /**
  * Mirrors the VFS into OPFS (`projects/<id>/`), write-behind (see `mirror`). `all` saves every file now (a project
  * just loaded from its source). Only the tab holding the project's lock writes. Never throws; returns a function that
- * stops saving and settles once a flush in progress is done.
+ * stops saving, settles once a flush in progress is done, and then lets go of the lock (another project opened here).
  */
-export async function attach(id: string, vfs: VFS, log: Log, all: boolean): Promise<() => Promise<void>> {
+export async function attach(id: string, vfs: VFS, log: Log, all: boolean): Promise<StopSaving> {
   const off = async () => {};
+  let release = () => {};
   try {
     if (!navigator.storage?.getDirectory) throw new Error("OPFS is not available");
     if (navigator.locks) {
       const got = await new Promise<boolean>((resolve) => {
-        // Held until the page goes away.
+        // Held until the page goes away or the returned stop lets it go.
         void navigator.locks.request(LOCK + id, { ifAvailable: true }, (lock) => {
           resolve(!!lock);
-          return lock ? new Promise<void>(() => {}) : undefined;
+          return lock ? new Promise<void>((r) => (release = r)) : undefined;
         });
       });
       if (!got) {
@@ -195,18 +196,29 @@ export async function attach(id: string, vfs: VFS, log: Log, all: boolean): Prom
     }
     const dir = await projectDir(id, true);
     if (!dir) throw new Error("can't create the project directory");
-    return mirror(dir, vfs, log, {
+    const stop = mirror(dir, vfs, log, {
       all,
       stash: stashKey(id),
       tag: "[storage]",
       // Asked on the first save, not on every visit.
       onFirstFlush: () => void projects().then((b) => b.persist()).catch(() => {}),
     });
+    return async (opts) => {
+      await stop(opts);
+      release();
+    };
   } catch (e) {
+    release();
     log("warn", `[storage] saving is unavailable (${e}); this project won't be kept across reloads`);
     return off;
   }
 }
+
+/**
+ * Stops saving. Without `flush`, changes not written yet are dropped (the pagehide stash keeps them across a reload)
+ * and the VFS is let go of at once, before the promise settles; with it, they're written first.
+ */
+export type StopSaving = (opts?: { flush?: boolean }) => Promise<void>;
 
 type MirrorOptions = {
   /** Write every file now, not only changed ones. */
@@ -234,7 +246,7 @@ type ObserverClass = new (callback: (records: ChangeRecord[]) => void) => Observ
  * short pause, and on pagehide. node_modules and .git are left alone. Returns a function that stops writing and
  * settles once a flush in progress is done.
  */
-export function mirror(dir: Dir, vfs: VFS, log: Log, { all, stash: stashAt, tag, onFirstFlush, watch }: MirrorOptions): () => Promise<void> {
+export function mirror(dir: Dir, vfs: VFS, log: Log, { all, stash: stashAt, tag, onFirstFlush, watch }: MirrorOptions): StopSaving {
   let stopped = false;
   const dirty = new Set<string>();
   /** What `dir` is known to hold per path (null: nothing), from our writes and from outside changes read back. */
@@ -440,7 +452,12 @@ export function mirror(dir: Dir, vfs: VFS, log: Log, { all, stash: stashAt, tag,
     };
   }
 
-  return () => {
+  return async ({ flush: first = false } = {}) => {
+    // Another project is about to replace the files: what an edit changed in the last moments goes out first.
+    if (first && dirty.size) {
+      flush();
+      await chain;
+    }
     stopped = true;
     unwatch?.();
     unsub();
