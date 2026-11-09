@@ -2,12 +2,13 @@ import type { VFS } from "@runbun/vfs";
 import type { LibraryProject } from "@runbun/embed/protocol";
 
 // The gallery's projects come from the examples repo (oddcelot/runbun-examples), a git submodule at examples/: each
-// folder's example.json says how the gallery shows it, and its project files (top level and src/) are bundled as
-// text. Their node_modules are never included; "bun install" fetches packages from the lockfile.
-const files = import.meta.glob<string>("../examples/*/{package.json,tsconfig.json,bun.lock,*.ts,*.tsx,*.js,*.mjs,*.html,*.css,src/**/*}", {
-  query: "?raw",
-  import: "default",
-});
+// folder's example.json says how the gallery shows it, and every other file of it is bundled as text (the repo's
+// check keeps projects to text). Their node_modules are never included; "bun install" fetches packages from the
+// lockfile. demo.ts takes the demo's with the same pattern.
+const files = import.meta.glob<string>(
+  ["../examples/*/**/*", "../examples/*/**/.*", "!../examples/*/**/node_modules/**", "!../examples/*/example.json", "!../examples/*/**/*.{png,jpg,jpeg,gif,webp,ico,woff,woff2,sqlite,db}"],
+  { query: "?raw", import: "default" },
+);
 /** The examples repo's example.json (its example.schema.json): a project, or a GitHub repo to open (`repo`). */
 type ExampleMeta = { name: string; description: string; kind: "starter" | "example"; order?: number; tags: string[]; repo?: string };
 const metas = import.meta.glob<ExampleMeta>("../examples/*/example.json", { eager: true, import: "default" });
