@@ -745,7 +745,10 @@ html[data-booting] #app > header > * { visibility: hidden; animation: boot-fallb
   }
 
   .tag {
-    padding: 0 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 6px;
     border: 1px solid var(--border);
     border-radius: 999px;
     color: var(--muted);

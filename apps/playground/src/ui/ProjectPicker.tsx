@@ -1,5 +1,5 @@
 import { For, Show, createMemo, createSignal, useContext } from "solid-js";
-import { catalog, type CatalogEntry, type ProjectKind } from "../examples";
+import { catalog, techIcons, type CatalogEntry, type ProjectKind } from "../examples";
 import { AppContext } from "./context";
 import { PromptDialog } from "./PromptDialog";
 import { Button } from "@runbun/ui/solid/Button";
@@ -231,7 +231,13 @@ function Gallery(props: {
         </nav>
         <div class="gallery-main" id="gallery-list" role="tabpanel" aria-labelledby={`gallery-tab-${tab()}`}>
           <Chips label="Filter by technology" value={tags()} onChange={setTags}>
-            <For each={allTags()}>{(t) => <Chip value={t}>{t}</Chip>}</For>
+            <For each={allTags()}>
+              {(t) => (
+                <Chip value={t}>
+                  <TechIcon tag={t} /> {t}
+                </Chip>
+              )}
+            </For>
           </Chips>
           <Show
             when={shown().length}
@@ -270,7 +276,13 @@ function Gallery(props: {
                         </span>
                         <span class="description">{e.description}</span>
                         <span class="tags">
-                          <For each={e.tags}>{(t) => <span class={["tag", { on: tags().includes(t) }]}>{t}</span>}</For>
+                          <For each={e.tags}>
+                            {(t) => (
+                              <span class={["tag", { on: tags().includes(t) }]}>
+                                <TechIcon tag={t} /> {t}
+                              </span>
+                            )}
+                          </For>
                         </span>
                       </span>
                     </button>
@@ -282,5 +294,14 @@ function Gallery(props: {
         </div>
       </div>
     </>
+  );
+}
+
+/** A technology's logo, before its name in a tag. */
+function TechIcon(props: { tag: string }) {
+  return (
+    <Show when={techIcons[props.tag]}>
+      {(icon) => <i class={["tech", icon()]} aria-hidden="true" />}
+    </Show>
   );
 }

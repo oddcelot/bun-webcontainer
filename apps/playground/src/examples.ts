@@ -17,22 +17,40 @@ export type ProjectKind = "starter" | "example" | "github";
 export type CatalogEntry = { value: string; kind: ProjectKind; name: string; description: string; tags: string[]; icon: string };
 
 export const catalog: CatalogEntry[] = [
-  { value: "starter-blank", kind: "starter", name: "Blank", description: "One TypeScript file that logs to the console", tags: ["TypeScript"], icon: "i-simple-icons-bun" },
-  { value: "starter-http", kind: "starter", name: "HTTP API", description: "A JSON API with Bun.serve routes", tags: ["Bun.serve", "TypeScript"], icon: "i-lucide-server" },
-  { value: "starter-react", kind: "starter", name: "React", description: "Bun.serve with an HTML import that bundles a React app", tags: ["React", "Bun.serve", "HTML imports"], icon: "i-simple-icons-react" },
-  { value: "starter-sqlite", kind: "starter", name: "SQLite", description: "Notes in bun:sqlite, served as JSON", tags: ["bun:sqlite", "Bun.serve"], icon: "i-simple-icons-sqlite" },
-  { value: "starter-websocket", kind: "starter", name: "WebSocket chat", description: "A chat room over Bun.serve WebSockets and pub/sub", tags: ["WebSocket", "Bun.serve", "HTML imports"], icon: "i-lucide-messages-square" },
-  { value: "", kind: "example", name: "Confetti demo", description: "An API route, an HTML import and a package from npm", tags: ["Bun.serve", "HTML imports"], icon: "i-lucide-party-popper" },
-  { value: "elysia-demo", kind: "example", name: "Elysia", description: "Routes, params and validation in Elysia 1.4", tags: ["Elysia"], icon: "i-lucide-leaf" },
-  { value: "elysia2-demo", kind: "example", name: "Elysia 2 (rc)", description: "Plugins, macros, server-sent events and a WebSocket chat", tags: ["Elysia", "WebSocket"], icon: "i-lucide-leaf" },
-  { value: "astro-solid-demo", kind: "example", name: "Astro + Solid", description: "The Astro dev server with a hydrated Solid island", tags: ["Astro", "Solid"], icon: "i-simple-icons-astro" },
-  { value: "vite-demo", kind: "example", name: "Vite", description: "The Vite dev server, with HMR over the preview", tags: ["Vite"], icon: "i-simple-icons-vite" },
-  { value: "node-demo", kind: "example", name: "node:* built-ins", description: "fs, crypto, events, path, url and util", tags: ["Node.js"], icon: "i-simple-icons-nodedotjs" },
-  { value: "lockfile-demo", kind: "example", name: "bun.lock", description: "Nested node_modules installed from a lockfile", tags: ["bun install"], icon: "i-lucide-lock" },
-  { value: "repo:oddcelot/bun-elysia-demo", kind: "github", name: "Elysia", description: "oddcelot/bun-elysia-demo", tags: ["Elysia"], icon: "i-lucide-leaf" },
-  { value: "repo:https://github.com/oddcelot/lit-devtools/tree/main/examples/elysia", kind: "github", name: "Lit SSR guestbook", description: "Streamed Lit SSR, bun:sqlite and WebSockets on Elysia", tags: ["Lit", "Elysia", "bun:sqlite"], icon: "i-simple-icons-lit" },
-  { value: "repo:https://github.com/honojs/starter/tree/main/templates/bun", kind: "github", name: "Hono", description: "The Hono starter for Bun", tags: ["Hono"], icon: "i-simple-icons-hono" },
+  { value: "starter-blank", kind: "starter", name: "Blank", description: "One TypeScript file that logs to the console", tags: ["TypeScript"], icon: "i-logos-bun?bg" },
+  { value: "starter-http", kind: "starter", name: "HTTP API", description: "A JSON API with Bun.serve routes", tags: ["Bun.serve", "TypeScript"], icon: "i-logos-bun?bg" },
+  { value: "starter-react", kind: "starter", name: "React", description: "Bun.serve with an HTML import that bundles a React app", tags: ["React", "Bun.serve", "HTML imports"], icon: "i-logos-react?bg" },
+  { value: "starter-sqlite", kind: "starter", name: "SQLite", description: "Notes in bun:sqlite, served as JSON", tags: ["bun:sqlite", "Bun.serve"], icon: "i-runbun-sqlite?bg" },
+  { value: "starter-websocket", kind: "starter", name: "WebSocket chat", description: "A chat room over Bun.serve WebSockets and pub/sub", tags: ["WebSocket", "Bun.serve", "HTML imports"], icon: "i-logos-websocket" },
+  { value: "", kind: "example", name: "Confetti demo", description: "An API route, an HTML import and a package from npm", tags: ["Bun.serve", "HTML imports"], icon: "i-logos-bun?bg" },
+  { value: "elysia-demo", kind: "example", name: "Elysia", description: "Routes, params and validation in Elysia 1.4", tags: ["Elysia"], icon: "i-runbun-elysia?bg" },
+  { value: "elysia2-demo", kind: "example", name: "Elysia 2 (rc)", description: "Plugins, macros, server-sent events and a WebSocket chat", tags: ["Elysia", "WebSocket"], icon: "i-runbun-elysia?bg" },
+  { value: "astro-solid-demo", kind: "example", name: "Astro + Solid", description: "The Astro dev server with a hydrated Solid island", tags: ["Astro", "Solid"], icon: "i-logos-astro-icon" },
+  { value: "vite-demo", kind: "example", name: "Vite", description: "The Vite dev server, with HMR over the preview", tags: ["Vite"], icon: "i-logos-vitejs?bg" },
+  { value: "node-demo", kind: "example", name: "node:* built-ins", description: "fs, crypto, events, path, url and util", tags: ["Node.js"], icon: "i-logos-nodejs-icon?bg" },
+  { value: "lockfile-demo", kind: "example", name: "bun.lock", description: "Nested node_modules installed from a lockfile", tags: ["bun install"], icon: "i-logos-bun?bg" },
+  { value: "repo:oddcelot/bun-elysia-demo", kind: "github", name: "Elysia", description: "oddcelot/bun-elysia-demo", tags: ["Elysia"], icon: "i-runbun-elysia?bg" },
+  { value: "repo:https://github.com/oddcelot/lit-devtools/tree/main/examples/elysia", kind: "github", name: "Lit SSR guestbook", description: "Streamed Lit SSR, bun:sqlite and WebSockets on Elysia", tags: ["Lit", "Elysia", "bun:sqlite"], icon: "i-logos-lit-icon?bg" },
+  { value: "repo:https://github.com/honojs/starter/tree/main/templates/bun", kind: "github", name: "Hono", description: "The Hono starter for Bun", tags: ["Hono"], icon: "i-logos-hono?bg" },
 ];
+
+/** Each tag's product logo (see uno.config.ts); Bun's own features carry Bun's. */
+export const techIcons: Record<string, string> = {
+  TypeScript: "i-logos-typescript-icon?bg",
+  "Bun.serve": "i-logos-bun?bg",
+  "bun install": "i-logos-bun?bg",
+  "bun:sqlite": "i-runbun-sqlite?bg",
+  "HTML imports": "i-logos-html-5?bg",
+  WebSocket: "i-logos-websocket",
+  React: "i-logos-react?bg",
+  Elysia: "i-runbun-elysia?bg",
+  Astro: "i-logos-astro-icon",
+  Solid: "i-logos-solidjs-icon?bg",
+  Vite: "i-logos-vitejs?bg",
+  "Node.js": "i-logos-nodejs-icon?bg",
+  Lit: "i-logos-lit-icon?bg",
+  Hono: "i-logos-hono?bg",
+};
 
 /** The bundled projects (starters and examples) by fixture name, for labels; the demo isn't one. */
 export const examples: Record<string, string> = Object.fromEntries(catalog.filter((e) => e.kind !== "github" && e.value).map((e) => [e.value, e.name]));
