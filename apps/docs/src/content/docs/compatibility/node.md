@@ -36,7 +36,7 @@ Built-ins import with or without the `node:` prefix. Labels are explained on the
 | `os` | 🟡 Partial | Fixed values: Linux, x64, `/home/user`, `/tmp`. `cpus()` and `networkInterfaces()` are empty. |
 | `path`, `path/posix` | ✅ Works | POSIX only. `path.win32` behaves like POSIX; `path/win32` is missing. |
 | `perf_hooks` | 🟡 Partial | `performance`, `PerformanceObserver`. `monitorEventLoopDelay` reports zeros. |
-| `process` | 🟡 Partial | Reports Linux x64 and Node v24.3.0. `env`, `cwd`, `chdir`, `nextTick`, `hrtime`, `memoryUsage`, `uptime`. `stdout`/`stderr` go to the console. `argv` is `["bun", entry]`; `stdin` never emits. `exit(code)` ends the program as in Bun: `exit` listeners run, nothing after it does, servers and timers stop, and the console and status show the exit code. An uncaught error or unhandled rejection does the same with code 1 unless an `uncaughtException`/`unhandledRejection` listener takes it (a listener that throws ends it with code 7). A program that runs out of work keeps its worker (no exit code, `beforeExit` never fires). `kill` throws. |
+| `process` | 🟡 Partial | Reports Linux x64 and Node v24.3.0. `env`, `cwd`, `chdir`, `nextTick`, `hrtime`, `memoryUsage`, `uptime`. `stdout`/`stderr` go to the console. `argv` is `["bun", entry]`; `stdin` never emits. `exit(code)` ends the program as in Bun: `exit` listeners run, nothing after it does, servers and timers stop, and the console and status show the exit code. An uncaught error or unhandled rejection does the same with code 1 unless an `uncaughtException`/`unhandledRejection` listener takes it (a listener that throws ends it with code 7). A program that runs out of work ends as in Bun: `beforeExit` fires with `process.exitCode` (again each time its listeners start more work), then `exit`, and the status shows the code. Timers, servers, `fs.watch`, WebSocket clients and the playground's own pending promises (`fetch`, `Bun.sleep`, `Bun.file` reads, `fs.promises`, `Bun.password`) keep it running, unless `unref`'d; the browser's other async APIs (`crypto.subtle`, `WebAssembly.instantiate`, a literal `import()`) don't, so a program counts as idle only after 50 ms with nothing pending. `kill` throws. |
 | `punycode` | ✅ Works | |
 | `querystring` | ✅ Works | |
 | `readline`, `readline/promises` | ⚪ Stub | |
@@ -47,7 +47,7 @@ Built-ins import with or without the `node:` prefix. Labels are explained on the
 | `string_decoder` | ✅ Works | |
 | `sys` | 🟡 Partial | Same as `util`. |
 | `test` | ❌ Missing | Use [`bun:test`](/compatibility/bun/#buntest). |
-| `timers`, `timers/promises` | ✅ Works | `ref`, `unref`, `refresh`, promise timers with `AbortSignal`. |
+| `timers`, `timers/promises` | ✅ Works | `ref`, `unref` (an unref'd timer doesn't keep the program running), `hasRef`, `refresh`, promise timers with `AbortSignal`. |
 | `tls` | ⚪ Stub | |
 | `trace_events` | ❌ Missing | |
 | `tty` | 🟡 Partial | `isatty` returns `false`. |

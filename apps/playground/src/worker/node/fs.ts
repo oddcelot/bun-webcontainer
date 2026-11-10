@@ -6,6 +6,7 @@ import path from "./path";
 import { Readable, Writable } from "./stream";
 import { fileURLToPath } from "./url";
 import { tracked } from "../promises";
+import { hold, release } from "../loop";
 
 type Mirror = (op: "write" | "mkdir" | "remove" | "rename", ...args: unknown[]) => void;
 type Any = any;
@@ -543,16 +544,21 @@ class FSWatcher extends EventEmitter {
     subscribe();
     this.w = { key, recursive, emit: (type, rel) => setTimeout(() => this.emit("change", type, rel), 0) };
     watches.add(this.w);
+    hold(this);
   }
   close() {
     if (this.w) watches.delete(this.w);
     this.w = undefined;
+    release(this);
     this.emit("close");
   }
+  /** A watcher holds the program (loop.ts) until it is closed or `unref`'d. */
   ref() {
+    if (this.w) hold(this);
     return this;
   }
   unref() {
+    release(this);
     return this;
   }
 }
@@ -588,6 +594,7 @@ const watchFile = (p: unknown, a?: unknown, b?: unknown) => {
       }, 0),
   };
   watches.add(w);
+  hold(w);
   if (!statWatchers.has(key)) statWatchers.set(key, new Map());
   statWatchers.get(key)!.set(listener, w);
   return new FSWatcher();
@@ -596,7 +603,7 @@ const unwatchFile = (p: unknown, listener?: StatListener) => {
   const key = keyOf(toPath(p));
   const m = statWatchers.get(key);
   if (!m) return;
-  for (const [l, w] of [...m]) if (!listener || l === listener) (watches.delete(w), m.delete(l));
+  for (const [l, w] of [...m]) if (!listener || l === listener) (watches.delete(w), release(w), m.delete(l));
 };
 
 class ReadStream extends (Readable as Any) {

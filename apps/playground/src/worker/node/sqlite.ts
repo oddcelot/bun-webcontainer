@@ -7,6 +7,7 @@ import wasmUrl from "sql.js/dist/sql-wasm.wasm?url";
 import { norm } from "@runbun/vfs";
 import fs from "./fs";
 import path from "./path";
+import { quietTimeout } from "../loop";
 
 let SQL: SqlJsStatic | undefined;
 
@@ -158,7 +159,7 @@ export class Database {
 
   private touch() {
     this.dirty = true;
-    this.timer ??= setTimeout(() => this.flush(), FLUSH_MS);
+    this.timer ??= quietTimeout(() => this.flush(), FLUSH_MS);
   }
 
   /** Called with the SQL of everything that runs: reads leave the database clean. */

@@ -4,6 +4,7 @@
 import { passwordHash, passwordVerify, PasswordError, resolverModule, type PasswordAlgorithm } from "../resolver";
 import type { PasswordJob, PasswordResult } from "./passwordWorker";
 import { codeError } from "./node/errors";
+import { holdUntil, quietTimeout } from "./loop";
 import { CryptoHasher } from "./node/crypto";
 
 type Options = { algorithm?: string; cost?: unknown; memoryCost?: unknown; timeCost?: unknown };
@@ -159,7 +160,7 @@ function passwordThread(): Thread | undefined {
     t.pending.delete(r.id);
     if ("value" in r) p.resolve(r.value);
     else p.reject("password" in r ? failure(new PasswordError(r.password), p.verb) : new Error(r.message));
-    if (!t.pending.size) t.idle = setTimeout(() => stopThread(t), IDLE_MS);
+    if (!t.pending.size) t.idle = quietTimeout(() => stopThread(t), IDLE_MS);
   };
   worker.onerror = (e) => {
     e.preventDefault();
@@ -194,7 +195,7 @@ const verifyLabel = (v: unknown) => (v === undefined || v === null ? undefined :
 export const password = {
   hash(password: unknown, algorithm?: unknown): Promise<string> {
     const [pw, a] = prepareHash(password, algorithm);
-    return runAsync(hashJob(pw, a)) as Promise<string>;
+    return holdUntil(runAsync(hashJob(pw, a))) as Promise<string>;
   },
   hashSync(password: unknown, algorithm?: unknown): string {
     return runNow(hashJob(...prepareHash(password, algorithm))) as string;
@@ -203,7 +204,7 @@ export const password = {
     const [pw, h, a] = [bytes(password), bytes(hash), verifyLabel(algorithm)];
     try {
       const job = verifyJob(pw, h, a);
-      return job ? (runAsync(job) as Promise<boolean>) : Promise.resolve(false);
+      return job ? (holdUntil(runAsync(job)) as Promise<boolean>) : Promise.resolve(false);
     } catch (e) {
       // An unknown hash format rejects, as in Bun; bad arguments (above) throw.
       return Promise.reject(e);

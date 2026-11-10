@@ -85,8 +85,9 @@ Servers answer requests from the [preview](/guides/features/#preview), not from 
 | `req.cookies` | ✅ Works | A `Bun.CookieMap` over the request's Cookie header, in `routes` handlers (a `fetch` handler's request has none, as in Bun). What a handler sets or deletes in it by the time it returns goes out as Set-Cookie headers after the response's own; on a WebSocket upgrade, the Set-Cookie headers of `upgrade`'s `headers` option and what the handler set or deleted before calling `server.upgrade(req)` go to the cookie jar, as Bun sends them on the 101; a handler that returns a Response instead of upgrading sends that Response's Set-Cookie headers and its `req.cookies` changes, which go to the jar too. |
 | Cookies | ✅ Works | Kept in the browser's own cookie store under the preview's path (`/__preview/@<tab>/`), so a preview page's scripts read them with `document.cookie`, cookies those scripts set reach the server, and DevTools lists them under Application → Cookies. HttpOnly cookies are kept in the page's memory instead, out of the scripts' reach, so DevTools doesn't show them. A cookie a script sets on a page below a folder (`/admin/`) without `Path=/`, and one the server gives a narrower `Path`, aren't read back from the browser after scripts change them. `cookies` in the console lists them all, `cookies clear` deletes them. |
 | TLS | ❌ Missing | |
+| `server.ref`/`unref` | ✅ Works | A server keeps the program running until it stops, unless `unref`'d. |
 | `error`, `idleTimeout`, `maxRequestBodySize`, `unix`, `reusePort` | ❌ Missing | A throwing handler returns a plain-text 500; the error prints as Bun's development server prints it, then `GET - /path failed`. |
-| `server.requestIP`, `server.timeout`, `server.ref`/`unref` | ❌ Missing | |
+| `server.requestIP`, `server.timeout` | ❌ Missing | |
 
 Routes with parameters, JSON and a streamed response. Send requests from the bar above the preview:
 
