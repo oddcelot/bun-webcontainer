@@ -259,8 +259,9 @@ console.log(`Listening on ${server.url}`);
           <h2><span class="retro-sprite" style="--x: 7; --y: 0" aria-hidden="true"></span>What doesn't</h2>
           <p>
             It is not Bun itself. The runtime APIs are reimplemented in JavaScript, so coverage is uneven: a browser has no
-            processes and no raw sockets, so <code>Bun.spawn</code>, <code>Bun.$</code>, <code>Bun.connect</code>,
-            <code>Bun.sql</code>, <code>bun:ffi</code> and native <code>.node</code> addons are missing. The
+            processes and no raw sockets, so <code>Bun.spawn</code>, <code>Bun.connect</code>, <code>Bun.sql</code>,
+            <code>bun:ffi</code> and native <code>.node</code> addons are missing (<code>Bun.$</code> runs Bun's builtins,
+            not other programs). The
             <a href="https://docs.runbun.dev/compatibility/">compatibility pages</a> list the status of every
             <a href="https://docs.runbun.dev/compatibility/bun/">Bun API</a> and
             <a href="https://docs.runbun.dev/compatibility/node/">Node built-in</a>.

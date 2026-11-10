@@ -36,6 +36,6 @@ console.log(`Listening on ${server.url}`);
 
 ## What it isn't
 
-runbun.dev is not Bun itself. Your code runs in the browser's JavaScript engine, not in Bun's JavaScriptCore, and the runtime APIs are reimplemented on top of it. A browser has no processes and no raw sockets, so `Bun.spawn`, `Bun.$`, `Bun.connect` and native `.node` addons are missing, and everything else is marked API by API in [Compatibility](/compatibility/). Running code needs WebAssembly Memory64, which Chrome, Edge, Firefox and Safari Technology Preview have and Safari doesn't yet ([Browsers](/compatibility/browsers/)). [Bun APIs](/compatibility/bun/) names the Bun release the playground is built from.
+runbun.dev is not Bun itself. Your code runs in the browser's JavaScript engine, not in Bun's JavaScriptCore, and the runtime APIs are reimplemented on top of it. A browser has no processes and no raw sockets, so `Bun.spawn`, `Bun.connect` and native `.node` addons are missing (`Bun.$` runs Bun's builtins, not other programs), and everything else is marked API by API in [Compatibility](/compatibility/). Running code needs WebAssembly Memory64, which Chrome, Edge, Firefox and Safari Technology Preview have and Safari doesn't yet ([Browsers](/compatibility/browsers/)). [Bun APIs](/compatibility/bun/) names the Bun release the playground is built from.
 
 runbun is an independent project, not affiliated with or endorsed by Oven or Bun. For what the playground can do, take the [Features](/guides/features/) tour.

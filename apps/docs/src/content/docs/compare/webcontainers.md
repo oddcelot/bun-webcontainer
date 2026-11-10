@@ -16,7 +16,7 @@ Both run your code inside the browser tab, with no remote machine behind it. The
 | Runtime | Bun: `Bun.*`, `bun:*`, plus `node:*` built-ins | Node.js |
 | Package manager | `bun install` | npm, pnpm and yarn |
 | `Bun.serve`, `bun:sqlite`, `Bun.file` | Yes ([compatibility](/compatibility/)) | Not documented |
-| Shell and child processes | No: no `Bun.spawn` or `Bun.$` | Yes: runs operating system commands |
+| Shell and child processes | Bun's shell with its builtins (`Bun.$`, the console); no `Bun.spawn` or other programs | Yes: runs operating system commands |
 | Chrome, Edge | Chrome and Edge 133+ | Fully supported |
 | Firefox | Firefox 134+ | Alpha |
 | Safari | Edit only, until Safari ships WebAssembly Memory64 | Beta, from Safari 16.4 |
