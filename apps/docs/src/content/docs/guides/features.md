@@ -75,7 +75,7 @@ The console is not a full shell: no pipes, `&&`, `bunx`, or file commands like `
 
 ### Git
 
-The explorer has a **Files | Git** switch above the tree (<kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd> flips it; the choice is kept for the tab). The **Git view** takes the tree's place, like Source Control in VS Code, and runs the same `git` as the console, so the two always show one repository:
+The status bar has a **Git** button beside the file tree's (<kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd> does the same; the choice is kept for the tab); in an embed, a **Files | Git** switch sits above the tree. The **Git view** takes the tree's place, like Source Control in VS Code, and runs the same `git` as the console, so the two always show one repository:
 
 - **No repository yet:** **Initialize repository** runs `git init`.
 - **Branch:** the button at the top lists the branches (pick one to switch), creates a branch (**Create branch…**) or deletes another one (one whose commits are on no other branch only after a second **Delete anyway**). A switch git can't make because it would overwrite changed files says so in a box under the branch; the files stay as they were.

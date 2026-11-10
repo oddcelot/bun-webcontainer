@@ -1084,7 +1084,7 @@ main [data-kb-resizable-root] { height: 100%; }
   }
 }
 /*
- * The explorer pane (Explorer.tsx): a Files | Git switch over the file tree or the Git view. The tree stays mounted
+ * The explorer pane (Explorer.tsx): the file tree or the Git view, under a Files | Git switch in the embed. The tree stays mounted
  * beneath (hidden), so #newfile still sits at the end of its search row.
  */
 .explorer {

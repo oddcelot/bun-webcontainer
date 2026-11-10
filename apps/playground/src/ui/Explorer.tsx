@@ -5,26 +5,43 @@ import { FileTree } from "./FileTree";
 import { GitPanel } from "./GitPanel";
 
 /**
- * Shows or hides Git (the `toggleGit` shortcut): shows the Git view, or goes back to the files when it is the one
- * shown. `showTree` brings the pane back when it was hidden (an embed's can't be). False: nothing was done (git is
- * off, or the pane isn't there), so the key goes on.
+ * Shows or hides Git (the `toggleGit` shortcut, the status bar's Git button): shows the Git view, or hides the pane
+ * when Git is what it shows. `toggleTree` shows or hides the pane; without one (the embed's can't be toggled from
+ * here) a shown Git goes back to the files instead. False: nothing was done (git is off, or the pane isn't there), so
+ * the key goes on.
  */
-export function toggleGit(app: App, treeShown: boolean, showTree?: () => void): boolean {
+export function toggleGit(app: App, treeShown: boolean, toggleTree?: () => void): boolean {
   if (!(app.features?.has("git") ?? true)) return false;
+  const showsGit = treeShown && app.git.state.view === "git";
   if (!treeShown) {
-    if (!showTree) return false;
-    showTree();
+    if (!toggleTree) return false;
     app.git.setView("git");
-  } else app.git.setView(app.git.state.view === "git" ? "files" : "git");
+    toggleTree();
+  } else if (!showsGit) app.git.setView("git");
+  else if (toggleTree) toggleTree();
+  else app.git.setView("files");
   return true;
 }
 
 /**
- * The explorer pane: the file tree, or with Git on a Git view in its place (VS Code's Source Control), picked by a
- * Files | Git switch above. The tree stays mounted while Git shows (its selection and folders stay), the Git panel
- * is built when it is first shown.
+ * The status bar's Files button: shows the files (bringing the pane back if hidden), or hides the pane when the files
+ * are what it shows.
  */
-export function Explorer() {
+export function toggleFiles(app: App, treeShown: boolean, toggleTree: () => void) {
+  if (treeShown && app.git.state.view === "git") app.git.setView("files");
+  else {
+    if (!treeShown) app.git.setView("files");
+    toggleTree();
+  }
+}
+
+/**
+ * The explorer pane: the file tree, or with Git on a Git view in its place (VS Code's Source Control). The playground
+ * picks it with the status bar's Files and Git buttons; the embed, which has no status bar, with a Files | Git switch
+ * above (`switcher`). The tree stays mounted while Git shows (its selection and folders stay), the Git panel is built
+ * when it is first shown.
+ */
+export function Explorer(props: { switcher?: boolean }) {
   const app = useContext(AppContext);
   const git = app.git;
   const on = () => app.features?.has("git") ?? true;
@@ -39,7 +56,7 @@ export function Explorer() {
   );
   return (
     <div class="explorer">
-      <Show when={on()}>
+      <Show when={props.switcher && on()}>
         <div class="explorer-switch">
           <Segmented
             label="Explorer view"

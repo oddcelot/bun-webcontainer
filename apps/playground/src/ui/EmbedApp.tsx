@@ -108,7 +108,7 @@ export function EmbedApp() {
       <div id="embed-main" style={sizes.vars()}>
         <Show when={showTree()}>
           <nav id="tree" class="pane" hidden={!tree()}>
-            <Explorer />
+            <Explorer switcher />
           </nav>
         </Show>
         <section id="editor-pane" class="pane" hidden={!editor()}>

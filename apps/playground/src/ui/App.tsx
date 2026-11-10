@@ -6,7 +6,7 @@ import { pref } from "../prefs";
 import { AppContext } from "./context";
 import { Console } from "./Console";
 import { EditorPane } from "./EditorPane";
-import { Explorer, toggleGit } from "./Explorer";
+import { Explorer, toggleFiles, toggleGit } from "./Explorer";
 import { inCommitBox } from "../git/store";
 import { Header } from "./Header";
 import { StatusToast } from "./Status";
@@ -213,7 +213,8 @@ export function App() {
       </main>
       <StatusBar
         treeShown={columnSizes()[0] > 0}
-        toggleTree={() => toggleColumn(0)}
+        toggleFiles={() => toggleFiles(app, columnSizes()[0] > 0, () => toggleColumn(0))}
+        toggleGit={() => toggleGit(app, columnSizes()[0] > 0, () => toggleColumn(0))}
         previewShown={columnSizes()[2] > 0 && rowSizes()[0] > 0}
         consoleShown={columnSizes()[2] > 0 && rowSizes()[1] > 0}
         toggle={toggle}
