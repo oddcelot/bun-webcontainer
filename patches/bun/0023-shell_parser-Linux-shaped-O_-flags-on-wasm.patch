@@ -1,0 +1,51 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Stefan Kopco <hey@oddcelot.dev>
+Date: Tue, 10 Nov 2026 17:59:37 +0100
+Subject: [PATCH] shell_parser: Linux-shaped O_* flags on wasm
+
+libc has no O_* constants for wasm targets; use the values Windows
+already uses. // wasm-experiment
+---
+ src/shell_parser/parse.rs | 20 ++++++++++----------
+ 1 file changed, 10 insertions(+), 10 deletions(-)
+
+diff --git a/src/shell_parser/parse.rs b/src/shell_parser/parse.rs
+index eb923e7b..3e386af9 100644
+--- a/src/shell_parser/parse.rs
++++ b/src/shell_parser/parse.rs
+@@ -497,25 +497,25 @@ pub mod ast {
+             // against those exact values. Using `libc::O_CREAT` (0x100) /
+             // `libc::O_APPEND` (0x8) on Windows silently dropped CREAT/APPEND
+             // through `from_bun_o`, so `> file` failed to create the target.
+-            #[cfg(not(windows))]
++            #[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment: no O_* in libc on wasm
+             const O_RDONLY: i32 = libc::O_RDONLY;
+-            #[cfg(not(windows))]
++            #[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment: no O_* in libc on wasm
+             const O_WRONLY: i32 = libc::O_WRONLY;
+-            #[cfg(not(windows))]
++            #[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment: no O_* in libc on wasm
+             const O_CREAT: i32 = libc::O_CREAT;
+-            #[cfg(not(windows))]
++            #[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment: no O_* in libc on wasm
+             const O_TRUNC: i32 = libc::O_TRUNC;
+-            #[cfg(not(windows))]
++            #[cfg(not(any(windows, target_family = "wasm")))] // wasm-experiment: no O_* in libc on wasm
+             const O_APPEND: i32 = libc::O_APPEND;
+-            #[cfg(windows)]
++            #[cfg(any(windows, target_family = "wasm"))] // wasm-experiment: Linux-shaped, as on Windows
+             const O_RDONLY: i32 = 0o0;
+-            #[cfg(windows)]
++            #[cfg(any(windows, target_family = "wasm"))] // wasm-experiment: Linux-shaped, as on Windows
+             const O_WRONLY: i32 = 0o1;
+-            #[cfg(windows)]
++            #[cfg(any(windows, target_family = "wasm"))] // wasm-experiment: Linux-shaped, as on Windows
+             const O_CREAT: i32 = 0o100;
+-            #[cfg(windows)]
++            #[cfg(any(windows, target_family = "wasm"))] // wasm-experiment: Linux-shaped, as on Windows
+             const O_TRUNC: i32 = 0o1000;
+-            #[cfg(windows)]
++            #[cfg(any(windows, target_family = "wasm"))] // wasm-experiment: Linux-shaped, as on Windows
+             const O_APPEND: i32 = 0o2000;
+ 
+             let read_write_flags: i32 = if self.stdin() {
