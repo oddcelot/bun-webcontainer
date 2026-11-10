@@ -2,7 +2,8 @@
 // playground's shell under node: Bun.$ is src/shell/dollar.ts over real temp dirs (nodeFs.ts), and bun:test,
 // harness and friends are the shims next to this file. Tests that spawn a native Bun or need its internals are
 // skipped. Usage: node src/shell/conformance/run.ts [test file names...] [-v]
-import { readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { registerHooks } from "node:module";
 import { join } from "node:path";
 import * as bunTest from "./bun-test.ts";
@@ -102,6 +103,9 @@ const $ = createDollar({
   },
 };
 Object.assign(globalThis, { describe: bunTest.describe, test: bunTest.test, it: bunTest.it, expect: bunTest.expect, beforeAll: bunTest.beforeAll, afterAll: bunTest.afterAll });
+
+// Tests that write to the cwd (`echo 1 > test.txt` without a temp dir) do it in a scratch folder.
+process.chdir(mkdtempSync(join(tmpdir(), "bun-shell-cwd-")));
 
 // A test that starts a `$` without awaiting it: its failure isn't the run's.
 process.on("unhandledRejection", () => {});
