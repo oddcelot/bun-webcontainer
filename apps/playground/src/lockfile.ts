@@ -30,6 +30,16 @@ type BunLock = {
   packages: Record<string, unknown[]>;
 };
 
+type Manifest = { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+
+/** The dependencies whose range in package.json isn't the one bun.lock recorded (or that it lacks). */
+export function staleInLock(lock: BunLock, pkg: Manifest): string[] {
+  const want = { ...pkg.devDependencies, ...pkg.dependencies };
+  const root = lock.workspaces?.[""];
+  const locked: Record<string, string> = { ...root?.devDependencies, ...root?.dependencies };
+  return Object.keys(want).filter((n) => locked[n] !== want[n]);
+}
+
 /** `"a/@s/b/c"` → `["a", "@s/b", "c"]`: lockfile keys join the install path's package names with `/`. */
 function splitKey(key: string): string[] {
   const parts = key.split("/");
@@ -113,14 +123,8 @@ export async function installFromBunLock(vfs: VFS, lockText: string, log: Log): 
   if (lock.lockfileVersion > 2) log("error", `bun.lock: lockfileVersion ${lock.lockfileVersion} is newer than this installer knows`);
 
   const pkgText = vfs.readText("package.json");
-  if (pkgText) {
-    const pkg = JSON.parse(pkgText) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
-    const want = { ...pkg.devDependencies, ...pkg.dependencies };
-    const root = lock.workspaces?.[""];
-    const locked = { ...root?.devDependencies, ...root?.dependencies };
-    const stale = Object.keys(want).filter((n) => locked[n] !== want[n]);
-    if (stale.length) log("error", `bun.lock is out of date with package.json (${stale.join(", ")}); installing what the lockfile says`);
-  }
+  const stale = pkgText ? staleInLock(lock, JSON.parse(pkgText)) : [];
+  if (stale.length) log("error", `bun.lock is out of date with package.json (${stale.join(", ")}); installing what the lockfile says`);
 
   // Like Bun, only optional dependencies are dropped for a platform mismatch; a required one is still installed.
   const optional = new Set<string>();

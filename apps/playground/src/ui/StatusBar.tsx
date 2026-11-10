@@ -1,4 +1,5 @@
 import { Show, createSignal, onSettled, useContext } from "solid-js";
+import { installState, type InstallState } from "../installState";
 import { trackChanges } from "../changes";
 import { DOCS } from "../base";
 import { chordKeys, keysFor, type Command } from "../keymap";
@@ -152,6 +153,7 @@ export function StatusBar(props: { treeShown: boolean; toggleFiles(): void; togg
           <span class="sr-only">Format on save</span>
         </Tip>
       </Show>
+      <Install />
       <Tip
         as="a"
         href={`${DOCS}compatibility/bun/`}
@@ -223,6 +225,75 @@ function Ports(props: { previewShown: boolean; showPreview(): void }) {
         <i class="i-lucide-radio" aria-hidden="true" />:{session.ports()[0]}
         {session.ports().length > 1 ? ` +${session.ports().length - 1}` : ""}
       </Tip>
+    </Show>
+  );
+}
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+const listed = (names: string[]) => (names.length > 3 ? `${names.slice(0, 3).join(", ")} and ${names.length - 3} more` : names.join(", "));
+
+/**
+ * Whether the dependencies are installed (installState.ts). A click installs when some are missing (or again, when
+ * they're all there), and opens bun.lock or package.json when that's what is in the way. Nothing without dependencies.
+ */
+function Install() {
+  const { vfs, session, workspace: ws, install } = useContext(AppContext);
+  const [state, setState] = createSignal<InstallState>({ kind: "none" });
+  onSettled(() => {
+    setState(installState(vfs));
+    // An install writes thousands of files: look again once a burst of changes is over.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const off = vfs.onChange(({ path }) => {
+      if (path !== "package.json" && path !== "bun.lock" && !path.startsWith("node_modules/")) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => setState(installState(vfs)), 200);
+    });
+    return () => {
+      clearTimeout(timer);
+      off();
+    };
+  });
+  const busy = () => !!session.busy.install;
+  const view = () => {
+    const st = state();
+    if (busy()) return { icon: "i-lucide-loader-circle spin", label: "Installing…", tip: "bun install is running" };
+    switch (st.kind) {
+      case "none":
+        return undefined;
+      case "missing":
+        return { icon: "i-lucide-package-x", label: "Not installed", tip: `Not in node_modules: ${listed(st.names)}. Click to run bun install.` };
+      case "stale":
+        return {
+          icon: "i-lucide-package-minus",
+          label: "bun.lock out of date",
+          tip: `package.json changed ${listed(st.names)} since bun.lock was written, and an install here follows bun.lock. Delete bun.lock to install from package.json. Click to open it.`,
+        };
+      case "unreadable":
+        return { icon: "i-lucide-package-x", label: `${st.file} unreadable`, tip: `${st.file} doesn't parse, so nothing can be installed. Click to open it.` };
+      case "installed":
+        return {
+          icon: "i-lucide-package-check",
+          label: String(st.count),
+          tip: `${plural(st.count, "dependency")} installed${st.lock ? ", at the versions bun.lock pins" : " (no bun.lock: versions come from package.json)"}. Click to run bun install again.`,
+        };
+    }
+  };
+  const click = () => {
+    const st = state();
+    if (busy()) return;
+    if (st.kind === "stale") ws.open("bun.lock");
+    else if (st.kind === "unreadable") ws.open(st.file);
+    else install();
+  };
+  return (
+    <Show when={view()}>
+      {(v) => (
+        <Tip type="button" class="install" aria-disabled={busy() ? "true" : undefined} tip={v().tip} onClick={click}>
+          <i class={v().icon} aria-hidden="true" />
+          <span class="label">{v().label}</span>
+          <span class="sr-only">dependencies</span>
+        </Tip>
+      )}
     </Show>
   );
 }

@@ -1001,10 +1001,23 @@ html[data-booting] #app > header > * { visibility: hidden; animation: boot-fallb
 #statusbar #status { height: 18px; margin-left: 4px; min-width: 0; font-size: 11px; }
 @media (max-width: 640px) { #statusbar .language, #statusbar .cursor { display: none; } }
 #statusbar {
+  .spin {
+    animation: git-spin 1s linear infinite;
+    @media (prefers-reduced-motion: reduce) {
+      animation: none;
+    }
+  }
+  /* Install state and save state keep their icons when the bar is narrow; their words go. */
+  @media (max-width: 640px) {
+    .install .label {
+      display: none;
+    }
+  }
   /* A narrow bar keeps what it showed before these items: the links on the right stay in view. */
   @media (max-width: 560px) {
     .ports,
-    .format-on-save {
+    .format-on-save,
+    .install {
       display: none;
     }
   }
