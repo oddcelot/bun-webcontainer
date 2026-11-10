@@ -5,21 +5,34 @@ import { FileTree } from "./FileTree";
 import { GitPanel } from "./GitPanel";
 
 /**
- * Shows or hides Git (the `toggleGit` shortcut, the status bar's Git button): shows the Git view, or hides the pane
- * when Git is what it shows. `toggleTree` shows or hides the pane; without one (the embed's can't be toggled from
- * here) a shown Git goes back to the files instead. False: nothing was done (git is off, or the pane isn't there), so
- * the key goes on.
+ * Whether the files were showing when Git was opened in their place, so closing Git brings them back; false when Git
+ * opened a hidden pane, which closing Git hides again. After a reload with Git open, the files.
+ */
+let filesUnder = true;
+
+/**
+ * Shows or hides Git (the `toggleGit` shortcut, the status bar's change counter): shows the Git view in the files'
+ * place, or closes it, back to the files if they were showing before or hiding the pane if it was hidden.
+ * `toggleTree` shows or hides the pane; without one (the embed's can't be toggled from here) a shown Git always goes
+ * back to the files. False: nothing was done (git is off, or the pane isn't there), so the key goes on.
  */
 export function toggleGit(app: App, treeShown: boolean, toggleTree?: () => void): boolean {
   if (!(app.features?.has("git") ?? true)) return false;
   const showsGit = treeShown && app.git.state.view === "git";
   if (!treeShown) {
     if (!toggleTree) return false;
+    filesUnder = false;
     app.git.setView("git");
     toggleTree();
-  } else if (!showsGit) app.git.setView("git");
-  else if (toggleTree) toggleTree();
-  else app.git.setView("files");
+  } else if (!showsGit) {
+    filesUnder = true;
+    app.git.setView("git");
+  } else if (filesUnder || !toggleTree) app.git.setView("files");
+  else {
+    // Hidden with the files picked, so the pane comes back with them (Mod+B, the file tree button).
+    app.git.setView("files");
+    toggleTree();
+  }
   return true;
 }
 
