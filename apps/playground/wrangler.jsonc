@@ -1,7 +1,9 @@
 // Everything runs in the browser from static assets (public/_headers, copied into dist/, sets COOP/COEP).
 // The same Worker and assets also answer on the content host (run.runbun.dev; vars CONTENT_HOST, EDITOR_ORIGIN), where
 // project code runs on its own origin (src/contentOrigin.ts). run_worker_first lists the editor's HTML pages besides the
-// API: the Worker redirects those to the editor on the content host and passes them through on the editor host. Patterns
+// API: the Worker redirects those to the editor on the content host and passes them through on the editor host. Also
+// /__preview/* and /__vfs/*, which the content host's service worker answers: only a request it didn't (a preview opened
+// on its own) reaches the edge, and gets a page saying so (worker/stranded.ts) instead of a bare 404. Patterns
 // can't tell hosts apart, and running first for everything would make every asset request a billed Worker invocation.
 // The Worker only handles opt-in short links (POST /api/short, GET /s/<id>; KV LINKS) and feedback (POST /api/feedback;
 // D1 FEEDBACK, schema in worker/migrations/) and the git proxy (/git-proxy/*, worker/gitProxy.ts); worker/index.ts.
@@ -12,7 +14,7 @@
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
-    "run_worker_first": ["/api/*", "/s/*", "/git-proxy/*", "/", "/index.html", "/about", "/embed", "/embed.html", "/configure", "/configure.html", "/robots.txt", "/sitemap.xml"]
+    "run_worker_first": ["/api/*", "/s/*", "/git-proxy/*", "/__preview/*", "/__vfs/*", "/", "/index.html", "/about", "/embed", "/embed.html", "/configure", "/configure.html", "/robots.txt", "/sitemap.xml"]
   },
   "kv_namespaces": [{ "binding": "LINKS", "id": "af919e62d9334718b4e63cf62eb5bb28" }],
   // Feedback is other data than links, kept for another time, and wants queries (ratings per page): its own D1 database.
@@ -41,7 +43,7 @@
       "assets": {
         "directory": "./dist-canary",
         "binding": "ASSETS",
-        "run_worker_first": ["/api/*", "/s/*", "/git-proxy/*", "/", "/index.html", "/about", "/embed", "/embed.html", "/configure", "/configure.html", "/robots.txt", "/sitemap.xml"]
+        "run_worker_first": ["/api/*", "/s/*", "/git-proxy/*", "/__preview/*", "/__vfs/*", "/", "/index.html", "/about", "/embed", "/embed.html", "/configure", "/configure.html", "/robots.txt", "/sitemap.xml"]
       },
       "kv_namespaces": [{ "binding": "LINKS", "id": "5823c967357a4e149e3fd4347898c0a2" }],
       "d1_databases": [
