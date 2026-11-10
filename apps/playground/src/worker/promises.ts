@@ -7,6 +7,8 @@
 // seen without replacing the global `Promise` or patching its prototype's `then`, which programs would observe
 // (`p.constructor === Promise`, V8's fast paths), so they print `<pending>`.
 
+import { holdUntil } from "./loop";
+
 type Settled = { state: "resolved" | "rejected"; value: unknown };
 const settled = new WeakMap<Promise<unknown>, Settled>();
 
@@ -21,12 +23,13 @@ const then = Promise.prototype.then;
 
 /**
  * A promise that settles as `inner` does (a tick later), with its state recorded. `inner` gets handlers, so only the
- * returned promise's rejection goes unhandled if the program ignores it, as with Bun's.
+ * returned promise's rejection goes unhandled if the program ignores it, as with Bun's. It holds the program until then
+ * (loop.ts), as Bun's pending I/O does.
  */
 export function tracked<T>(inner: Promise<T>): Promise<T> {
   const p: Promise<T> = new Promise<T>((resolve, reject) =>
     then.call(
-      inner,
+      holdUntil(inner),
       (v) => {
         trackPromise(p, "resolved", v);
         resolve(v as T);

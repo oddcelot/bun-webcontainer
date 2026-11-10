@@ -13,6 +13,7 @@ import { installConsole, table } from "./console";
 import { bunInspect, formatLog as formatValues, installWebInspect } from "./inspect";
 import { trackBodies } from "./bodies";
 import { fulfilled, tracked, trackedFn } from "./promises";
+import { currentGeneration, hold, holdUntil, release, whenIdle } from "./loop";
 import { frameMapper, previewSource } from "./sourceMaps";
 import { json5Stringify, tomlStringify, yamlStringify } from "./dataStringify";
 import { password } from "./password";
@@ -29,7 +30,7 @@ import { flushDatabases } from "./node/sqlite";
 import nodePath from "./node/path";
 import process, { env } from "./node/process";
 import { isDeepStrictEqual } from "./node/util";
-import { runTestFiles } from "./node/test";
+import { failRunning, runTestFiles } from "./node/test";
 import { BUN_REVISION, BUN_VERSION } from "./bunVersion";
 import * as fflate from "fflate";
 import { createDollar } from "../shell/dollar";
@@ -124,7 +125,10 @@ let onServer: (() => void) | undefined;
 let nextPort = 40001;
 /** What the preview shows: the first server on a fixed port. */
 const previewServer = () => servers.find((s) => !s.ephemeral) ?? servers[0];
-const stopServer = (inst: Instance) => servers.splice(servers.indexOf(inst) >>> 0, 1);
+const stopServer = (inst: Instance) => {
+  servers.splice(servers.indexOf(inst) >>> 0, 1);
+  release(inst);
+};
 
 let nodeServer: Instance | undefined;
 /** A node:http server's accepted WebSockets carry their `ws` connection as data (see upgradeRequests). */
@@ -136,6 +140,8 @@ const nodeSockets: WebSocketHandlers = {
 hooks.set = (h) => {
   if (nodeServer) stopServer(nodeServer);
   nodeServer = h ? createInstance({ fetch: h, websocket: nodeSockets }) : undefined;
+  // The listening `http.Server` holds the program (net.ts), so its `unref()` lets it end.
+  if (nodeServer) release(nodeServer);
 };
 hooks.get = () => nodeServer?.handler;
 
@@ -280,8 +286,16 @@ function createInstance(opts: ServeOptions): Instance {
       for (const subs of inst.topics.values()) for (const ws of subs) ws.close(1001);
       stopServer(inst);
     },
+    /** A listening server holds the program, as in Bun, until `unref()`. */
+    ref() {
+      if (servers.includes(inst)) hold(inst);
+    },
+    unref() {
+      release(inst);
+    },
   };
   servers.push(inst);
+  hold(inst);
   onServer?.();
   return inst;
 }
@@ -610,7 +624,7 @@ const versionLine = () => `Bun v${(g.Bun as { version: string }).version} (${PLA
 /** An uncaught error as Bun prints it when it isn't ending the program (`bun test`): the error, then Bun's version line. */
 const reportUncaught = (v: unknown) => post({ type: "console", level: "error", text: `${uncaughtText(v)}\n${versionLine()}` });
 
-/** True while `bun test` runs: an uncaught error is reported, and the run goes on. */
+/** True while `bun test` runs: an uncaught error fails the test running now (or is reported), and the run goes on. */
 let testing = false;
 /** The `exit` listeners ran; the worker is waiting to be terminated. */
 let exitEmitted = false;
@@ -618,11 +632,11 @@ let halted = false;
 
 const printError = (err: unknown) => post({ type: "console", level: "error", text: uncaughtText(err).replace(/\n$/, "") });
 
-/** Runs the `exit` listeners, once, with `code` as `process.exitCode`. */
-function emitExit(code: number) {
+/** Runs the `exit` listeners, once, with `code` (as `process.exitCode` too, unless `setCode` is false). */
+function emitExit(code: number, setCode = true) {
   if (exitEmitted) return;
   exitEmitted = true;
-  process.exitCode = code;
+  if (setCode) process.exitCode = code;
   try {
     process.emit("exit", code);
   } catch (err) {
@@ -666,7 +680,7 @@ const EXIT = Symbol("exit");
  */
 function uncaught(v: unknown, kind: "uncaughtException" | "unhandledRejection", detail: unknown = kind) {
   if (v === EXIT || halted) return;
-  if (testing) return reportUncaught(v);
+  if (testing) return void (failRunning(v) || reportUncaught(v));
   if (process.listenerCount(kind) > 0) {
     try {
       process.emit(kind, v, detail);
@@ -678,9 +692,27 @@ function uncaught(v: unknown, kind: "uncaughtException" | "unhandledRejection", 
     }
   }
   printError(v);
-  emitExit(1);
+  // Bun's `exit` listeners get 1 for an uncaught error, but `process.exitCode` (0 when unset) for a rejection.
+  if (kind === "unhandledRejection") emitExit(Number(process.exitCode ?? 0) | 0, false);
+  else emitExit(1);
   post({ type: "console", level: "error", text: `\n${versionLine()}` });
   halt(1);
+}
+
+/**
+ * The program ran out of work (loop.ts): `beforeExit` listeners run with `process.exitCode`, and the program goes on if
+ * they started something (it comes back here once that's done). Otherwise it ends as with `process.exit()`.
+ */
+function drained() {
+  if (halted) return;
+  const before = currentGeneration();
+  try {
+    process.emit("beforeExit", Number(process.exitCode ?? 0) | 0);
+  } catch (err) {
+    uncaught(err, "uncaughtException");
+  }
+  if (halted || currentGeneration() !== before) return;
+  exit(Number(process.exitCode ?? 0) | 0);
 }
 
 const JS = "text/javascript;charset=utf-8";
@@ -944,6 +976,16 @@ globalThis.fetch = trackedFn(function fetch(input: RequestInfo | URL, init?: Req
   return fileFetch(input, init);
 }) as typeof fetch;
 
+/** The browser's WebSocket client, holding the program while it is connecting or open (loop.ts), as Bun's does. */
+if (typeof globalThis.WebSocket === "function")
+  globalThis.WebSocket = class WebSocket extends globalThis.WebSocket {
+    constructor(url: string | URL, protocols?: string | string[]) {
+      super(url, protocols);
+      hold(this);
+      this.addEventListener("close", () => release(this));
+    }
+  };
+
 const HTML_ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#x27;" };
 /** `Bun.escapeHTML`: like Bun's, non-strings are stringified first. */
 const escapeHTML = (v: unknown) => String(v).replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
@@ -1087,7 +1129,8 @@ async function main() {
       try {
         const inst = previewServer();
         if (!inst) return sendText(port, 503, "No Bun.serve handler registered");
-        out = await dispatch(inst, serverRequest(r.path, { method: r.method, body: r.body }, r.headers));
+        // A response being made holds the program, even after an unref'd or stopped server.
+        out = await holdUntil(dispatch(inst, serverRequest(r.path, { method: r.method, body: r.body }, r.headers)));
       } catch (err) {
         if (halted) return;
         // Bun's development server (`development` is true here) reports it as uncaught, then which request failed.
@@ -1167,4 +1210,6 @@ self.addEventListener("message", async (e: MessageEvent) => {
   if (e.data.entry.startsWith("node_modules/") && !servers.length) await new Promise<void>((r) => ((onServer = r), setTimeout(r, 10000)));
   onServer = undefined;
   post({ type: "ready" });
+  // From now on the program ends once it runs out of work.
+  whenIdle(drained);
 });

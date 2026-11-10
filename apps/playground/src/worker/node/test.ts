@@ -363,14 +363,29 @@ const ms = (t: number) => (t >= 1000 ? `${(t / 1000).toFixed(2)}s` : `${t.toFixe
 
 const hasOnly = (s: Suite): boolean => s.mode === "only" || s.items.some((i) => i.mode === "only" || (i.kind === "suite" && hasOnly(i)));
 
+/** Ends the callback running now (a test or a hook) with an error; see `failRunning`. */
+let failCurrent: ((err: unknown) => void) | undefined;
+
+/**
+ * An uncaught error or unhandled rejection while `bun test` runs: as in Bun, it fails the test (or hook) running now,
+ * whichever callback threw it. False between tests, where Bun lets it go.
+ */
+export function failRunning(err: unknown): boolean {
+  if (!failCurrent) return false;
+  failCurrent(err ?? new Error("thrown undefined"));
+  return true;
+}
+
 /** Runs one callback with `done` support and a timeout. */
 function call(fn: Fn, timeout: number): Promise<void> {
   return new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`test timed out after ${timeout}ms`)), timeout);
+    const timer = setTimeout(() => finish(new Error(`test timed out after ${timeout}ms`)), timeout);
     const finish = (err?: unknown) => {
       clearTimeout(timer);
+      if (failCurrent === finish) failCurrent = undefined;
       err ? reject(err) : resolve();
     };
+    failCurrent = finish;
     try {
       if (fn.length > 0) fn(finish);
       else Promise.resolve(fn()).then(() => finish(), finish);

@@ -1,5 +1,6 @@
 import EventEmitter from "events";
 import { Duplex } from "./stream";
+import { hold, release } from "../loop";
 
 const v4 = /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
 const v6 = /^(([0-9a-f]{1,4}:){7}[0-9a-f]{1,4}|(([0-9a-f]{1,4}:){0,6}[0-9a-f]{1,4})?::(([0-9a-f]{1,4}:){0,6}[0-9a-f]{1,4})?)(%\w+)?$/i;
@@ -46,6 +47,7 @@ let nextPort = 49152;
 /** A listening server that accepts no connections; `http.Server` builds on it. */
 export class Server extends EventEmitter {
   listening = false;
+  #refed = true;
   protected _addr: { address: string; family: string; port: number } | null = null;
   maxConnections = 0;
   constructor(opts?: unknown, listener?: (...a: any[]) => void) {
@@ -62,6 +64,7 @@ export class Server extends EventEmitter {
     const host = o.host ?? "::";
     this._addr = { address: host === "localhost" ? "127.0.0.1" : host, family: host.includes(":") ? "IPv6" : "IPv4", port };
     this.listening = true;
+    if (this.#refed) hold(this);
     this.onListen();
     if (cb) this.once("listening", cb as () => void);
     queueMicrotask(() => this.emit("listening"));
@@ -77,6 +80,7 @@ export class Server extends EventEmitter {
     if (was) this.onClose();
     this.listening = false;
     this._addr = null;
+    release(this);
     if (cb) this.once("close", (...a: unknown[]) => cb(was ? undefined : Object.assign(new Error("Server is not running."), { code: "ERR_SERVER_NOT_RUNNING" })));
     queueMicrotask(() => this.emit("close"));
     return this;
@@ -85,10 +89,15 @@ export class Server extends EventEmitter {
     queueMicrotask(() => cb(null, 0));
     return this;
   }
+  /** A listening server holds the program (loop.ts) until `unref()`. */
   ref() {
+    this.#refed = true;
+    if (this.listening) hold(this);
     return this;
   }
   unref() {
+    this.#refed = false;
+    release(this);
     return this;
   }
   [Symbol.asyncDispose]() {
