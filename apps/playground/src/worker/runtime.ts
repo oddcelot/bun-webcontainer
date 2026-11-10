@@ -32,6 +32,11 @@ import { isDeepStrictEqual } from "./node/util";
 import { runTestFiles } from "./node/test";
 import { BUN_REVISION, BUN_VERSION } from "./bunVersion";
 import * as fflate from "fflate";
+import { createDollar } from "../shell/dollar";
+import { builtins as shellBuiltins } from "../shell/builtins";
+import { vfsFs } from "../shell/interp";
+import { loadShellWasm } from "../shell/load";
+import { Buffer } from "./node/buffer";
 
 type Handler = (req: Request, server: unknown) => Response | Promise<Response>;
 type HtmlImport = { __htmlImport: string };
@@ -984,7 +989,8 @@ function colorfgbgLight(v: string | undefined): boolean {
 
 async function main() {
   // Bun's resolver, for `require` and `require.resolve` with a computed specifier (node/module.ts); the page has its own instance.
-  const [semver] = await Promise.all([loadSemver(), loadResolver(vfs)]);
+  // The shell's parser too: `$` parses as it's called, as Bun's does (a syntax error throws there).
+  const [semver, shellWasm] = await Promise.all([loadSemver(), loadShellWasm(), loadResolver(vfs)]);
   setRequire(vfs, (spec, dir) => resolve(spec, dir, "require", "bun"), (spec, dir) => resolve(spec, dir, "import", "bun"), () => VFS_ROOT);
   const bun: Record<(typeof BUN_NAMES)[number], unknown> = {
     version: `${BUN_VERSION}-browser`,
@@ -1040,6 +1046,18 @@ async function main() {
     password,
     Cookie,
     CookieMap,
+    // Bun's shell with its builtins over the project's files; other commands need processes, which the browser lacks.
+    $: createDollar({
+      fs: vfsFs(vfs),
+      wasm: shellWasm,
+      builtins: shellBuiltins,
+      stdout: { write: async (c) => (process.stdout.write(c), true) },
+      stderr: { write: async (c) => (process.stderr.write(c), true) },
+      cwd: () => process.cwd(),
+      env: () => env,
+      buffer: (b) => Buffer.from(b.buffer, b.byteOffset, b.byteLength),
+      home: env.HOME ?? "/",
+    }),
   };
   g.Bun = Object.assign(builtins.bun, bun);
 

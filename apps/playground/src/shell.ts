@@ -6,6 +6,9 @@ import { clearStore, storeInfo } from "./pkgStore";
 import type { VFS } from "@runbun/vfs";
 import { readConfig } from "./projectConfig";
 import { git as runGit } from "./git/git";
+import { builtins } from "./shell/builtins";
+import { EMPTY, Shell, ShellEnv, vfsFs, type Command as ShellCommand, type CommandCtx, type Writer } from "./shell/interp";
+import { loadShellWasm } from "./shell/load";
 
 type Log = (level: string, text: string) => void;
 
@@ -98,37 +101,12 @@ export function entryOf(has: Has, read: Read): string {
   return ["index.html", "package.json"].find(has) ?? entry;
 }
 
-/** A command line's words: split at whitespace; `"…"` and `'…'` keep spaces, a backslash escapes the next character. */
-export function words(line: string): string[] {
-  const out: string[] = [];
-  let word: string | undefined; // undefined between words, so `""` still makes an (empty) word
-  let quote: string | undefined;
-  for (let i = 0; i < line.length; i++) {
-    const c = line[i]!;
-    if (quote) {
-      if (c === quote) quote = undefined;
-      else if (c === "\\" && quote === '"' && i + 1 < line.length) word += line[++i];
-      else word += c;
-    } else if (c === '"' || c === "'") {
-      quote = c;
-      word ??= "";
-    } else if (c === "\\" && i + 1 < line.length) {
-      word = (word ?? "") + line[++i];
-    } else if (/\s/.test(c)) {
-      if (word !== undefined) out.push(word);
-      word = undefined;
-    } else {
-      word = (word ?? "") + c;
-    }
-  }
-  if (word !== undefined) out.push(word);
-  return out;
-}
-
 /** Files `bun test` picks up: `*.test.*`, `*_test.*`, `*.spec.*`, `*_spec.*`, outside node_modules. */
 export const isTestFile = (path: string) => /(^|\/)[^/]+[._](test|spec)\.[cm]?[jt]sx?$/.test(path) && !/(^|\/)node_modules\//.test(path);
 
-const HELP = `bun run <script|file>  run a script or a file
+const HELP = `Bun's shell: quotes, pipes |, && || ;, redirects > >> < 2>&1, $VAR, x=1, $(cmd), globs *.ts, {a,b}, cd
+
+bun run <script|file>  run a script or a file
 bun <file>             run a file
 bun test [filter...]   run *.test.ts, *.spec.ts… (stops the server meanwhile)
 bun install, bun i     install dependencies
@@ -138,16 +116,43 @@ bun pm cache [rm]      show (or clear) the package cache, shared by all projects
 bun fmt [-c] [path...]  format (or --check) files like Prettier, with the project's configs
 bun check [path...]    type check with Bun's TypeScript 7 checker (tsconfig.json, @types)
 git <command>          init, status, add, commit, log, diff… (git help: all of them)
-ls [dir]  cat <file>  clear  help
+echo cd pwd ls cat touch mkdir rm mv cp seq yes which export exit true false dirname basename
+clear  help
 reset                  discard saved files, reload from source
 cookies [clear]        list (or delete) the preview's cookies
 
 ↑/↓ history  Ctrl+C clear line or stop server
 Ctrl+L clear console`;
 
+/** Writes the console's way: whole lines, at a level (stdout "log", stderr "error"). */
+function lineWriter(log: Log, level: string): Writer & { flush(): void } {
+  const dec = new TextDecoder();
+  let rest = "";
+  return {
+    async write(chunk) {
+      rest += typeof chunk === "string" ? chunk : dec.decode(chunk, { stream: true });
+      const lines = rest.split("\n");
+      rest = lines.pop()!;
+      if (lines.length) log(level, lines.join("\n"));
+      return true;
+    },
+    flush() {
+      if (rest) log(level, rest);
+      rest = "";
+    },
+  };
+}
+
 export function createShell(host: ShellHost) {
-  const { vfs, log } = host;
-  const fail = (text: string) => log("error", text);
+  const { vfs } = host;
+  /** Where the commands below write: the console, or a pipe or file while the shell redirects one (`run`). */
+  let log: Log = host.log;
+  /** Set when a command reported an error: its exit code is 1. */
+  let failed = false;
+  const fail = (text: string) => {
+    failed = true;
+    log("error", text);
+  };
 
   async function cookies(sub?: string) {
     const jar = host.cookies;
@@ -312,22 +317,6 @@ export function createShell(host: ShellHost) {
     if (r.stderr.trim()) log(r.exitCode ? "error" : "log", asConsoleEntry(r.stderr));
   }
 
-  function ls(dir = "") {
-    const path = dir.replace(/^\.\/?/, "").replace(/\/$/, "");
-    if (path && !vfs.isDir(path)) return vfs.files.has(path) ? log("log", path) : fail(`ls: ${dir}: No such file or directory`);
-    const entries = vfs.readdir(path).sort((a, b) => a.name.localeCompare(b.name));
-    log("log", entries.map((e) => (e.dir ? `\x1b[1;34m${e.name}/\x1b[0m` : e.name)).join("  "));
-  }
-
-  async function cat(file?: string) {
-    if (!file) return fail("usage: cat <file>");
-    const path = file.replace(/^\.\//, "");
-    await vfs.ensure([path]);
-    const text = vfs.readText(path);
-    if (text === undefined) return fail(`cat: ${file}: No such file or directory`);
-    for (const line of text.replace(/\n$/, "").split("\n")) log("log", line);
-  }
-
   /** `git …`: gitoxide over the project's files; see git/git.ts. */
   async function git(args: string[]) {
     let shown = false;
@@ -344,31 +333,98 @@ export function createShell(host: ShellHost) {
     if (r.stderr) log(r.exitCode ? "error" : "log", asConsoleEntry(r.stderr));
   }
 
-  return async function exec(line: string) {
-    const [cmd = "", ...args] = words(line);
-    try {
-      if (cmd === "help") return log("log", HELP);
-      if (cmd === "reset") return await host.reset();
-      if (cmd === "cookies") return await cookies(args[0]);
-      if (cmd === "clear") return host.clear();
-      if (cmd === "ls") return ls(args[0]);
-      if (cmd === "cat") return await cat(args[0]);
-      if (cmd === "git") return host.git?.() === false ? fail("git: off in this embed (turn on Git in the ⋯ menu)") : await git(args);
-      if (cmd !== "bun") return fail(`${cmd}: command not found (try "help")`);
-      const [sub, ...rest] = args;
+  /** The console's terminal: what a command writes there shows at once, a line at a time. */
+  const terminal = { out: lineWriter((l, t) => host.log(l, t), "log"), err: lineWriter((l, t) => host.log(l, t), "error") };
+
+  /**
+   * One of the console's own commands as a shell command: while it runs, `log` writes to its stdout and stderr, which
+   * are the console itself (keeping its levels: warnings, the [sys] lines) unless the shell piped or redirected them.
+   */
+  const command =
+    (fn: (args: string[], ctx: CommandCtx) => unknown): ShellCommand =>
+    async (ctx) => {
+      const before = { log, failed };
+      const writes: Promise<unknown>[] = [];
+      log = (level, text) => {
+        const toErr = level === "error" || level === "warn";
+        const w = toErr ? ctx.stderr : ctx.stdout;
+        if (w === (toErr ? terminal.err : terminal.out)) {
+          terminal.out.flush();
+          terminal.err.flush();
+          host.log(level, text);
+        } else writes.push(w.write(text + "\n"));
+      };
+      failed = false;
+      try {
+        await fn(ctx.argv.slice(1), ctx);
+        await Promise.all(writes);
+        return failed ? 1 : 0;
+      } catch (e) {
+        fail(String(e));
+        await Promise.all(writes);
+        return 1;
+      } finally {
+        ({ log, failed } = before);
+      }
+    };
+
+  /** `bun run <file>` from a folder: the file as the project names it. */
+  const projectPath = (ctx: CommandCtx, p: string) => ctx.path(p).slice(1);
+
+  const commands: Record<string, ShellCommand> = {
+    help: command(() => log("log", HELP)),
+    reset: command(() => host.reset()),
+    cookies: command(([sub]) => cookies(sub)),
+    clear: command(() => host.clear()),
+    git: command((args) => (host.git?.() === false ? fail("git: off in this embed (turn on Git in the ⋯ menu)") : git(args))),
+    bun: command(async ([sub, ...rest], ctx) => {
       if (!sub || sub === "help" || sub === "--help") return log("log", HELP);
       if (sub === "test") return await test(rest);
-      if (sub === "run") return await runTarget(rest[0]);
+      if (sub === "run") return await runTarget(rest[0] && vfs.files.has(projectPath(ctx, rest[0])) ? projectPath(ctx, rest[0]) : rest[0]);
       if (sub === "install" || sub === "i") return await host.install();
       if (sub === "add" || sub === "a") return await add(rest);
       if (sub === "remove" || sub === "rm") return remove(rest);
       if (sub === "fmt") return await fmt(rest);
       if (sub === "check") return await check(rest);
       if (sub === "pm") return await pm(rest);
-      if (vfs.files.has(sub.replace(/^\.\//, ""))) return await runTarget(sub);
+      if (vfs.files.has(projectPath(ctx, sub))) return await runTarget(projectPath(ctx, sub));
       fail(`bun ${sub}: not available here (try "help")`);
-    } catch (e) {
-      fail(String(e));
-    }
+    }),
   };
+
+  /** The shell's state between lines: `cd`, `export` and `x=1` last until the page reloads. */
+  const env = new ShellEnv("/", new Map(), new Map([["HOME", "/"]]));
+  let running: AbortController | undefined;
+
+  async function exec(line: string) {
+    let wasm;
+    try {
+      wasm = await loadShellWasm();
+    } catch (e) {
+      return host.log("error", `shell: couldn't load (${e})`);
+    }
+    let script;
+    try {
+      script = wasm.parse(line);
+    } catch (e) {
+      return host.log("error", `bun: ${(e as Error).message}`);
+    }
+    running = new AbortController();
+    const shell = new Shell({ fs: vfsFs(vfs), wasm, builtins, commands, home: "/", signal: running.signal });
+    try {
+      await shell.run(script, { stdin: EMPTY, stdout: terminal.out, stderr: terminal.err }, env);
+    } catch (e) {
+      host.log("error", String(e));
+    } finally {
+      terminal.out.flush();
+      terminal.err.flush();
+      running = undefined;
+    }
+  }
+  return Object.assign(exec, {
+    /** Ctrl+C: stops the line that's running (`yes`, a long pipeline). */
+    interrupt: () => running?.abort(),
+    /** The shell's folder, for the prompt (`/` is the project). */
+    cwd: () => env.cwd,
+  });
 }

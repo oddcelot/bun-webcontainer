@@ -93,6 +93,7 @@ tasks:
       - 'check-wasm:build'
       - 'tsrs-ls-wasm:build'
       - 'git-wasm:build'
+      - 'shell-wasm:build'
     inputs:
       - '@group(sources)'
     outputs:
@@ -110,6 +111,7 @@ tasks:
       - 'check-wasm:build'
       - 'tsrs-ls-wasm:build'
       - 'git-wasm:build'
+      - 'shell-wasm:build'
   secrets:
     # Sign in with GitHub (worker/auth.ts): pushes apps/playground/.dev.vars (GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET,
     # BETTER_AUTH_SECRET; gitignored) to the runbun.dev and canary Workers as secrets. Again when a value changes.
@@ -140,6 +142,7 @@ tasks:
       - 'check-wasm:build'
       - 'tsrs-ls-wasm:build'
       - 'git-wasm:build'
+      - 'shell-wasm:build'
     options:
       cache: false
       runInCI: false

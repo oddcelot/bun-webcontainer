@@ -46,10 +46,15 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
   const canRun = support.every((c) => c.ok || (!!localUrl && c.name.startsWith("WebAssembly")));
   const logListeners = new Set<(level: string, text: string) => void>();
   // The shell (see `start`) needs the runner, which comes later.
-  let exec: (line: string) => Promise<void> = async () => {};
+  let exec: ReturnType<typeof createShell> | undefined;
   const terminal = createConsole({
-    onCommand: (line) => exec(line),
-    onInterrupt: () => stop(),
+    onCommand: async (line) => exec?.(line),
+    // Ctrl+C: the shell line that's running, and the program (like a shell's SIGINT).
+    onInterrupt: () => {
+      exec?.interrupt();
+      stop();
+    },
+    cwd: () => exec?.cwd() ?? "/",
     onClear: () => clearConsole(),
     isFile: (path) => vfs.files.has(bare(path)),
     onLocation: (path, line, column) => workspace.openAt(bare(path), line, column),
