@@ -23,8 +23,8 @@ print `git: '<cmd>' is not supported in the playground yet`).
 
 Output the panel parses (byte-identical to native git, checked by `test.ts`):
 
-- `status --porcelain|-s [-b] [-z] [-uall|-uno]`: `XY path` lines, `## main` / `## No commits yet on main` /
-  `## HEAD (no branch)` header; `-z` is NUL-terminated and raw; without `-z` paths are quoted like git (`"sp ace"`,
+- `status --porcelain|-s [-b] [-z] [-uall|-uno]`: `XY path` lines, `## main` / `## main...origin/main [ahead 1, behind 2]`
+  (`[gone]` without the tracking ref; `net.test.ts`) / `## No commits yet on main` / `## HEAD (no branch)` header; `-z` is NUL-terminated and raw; without `-z` paths are quoted like git (`"sp ace"`,
   octal for non-ASCII). Untracked directories collapse unless `-uall`. No rename detection (`D` + `A`). No colors in
   porcelain/`-z`.
 - `log --format=|--pretty=format:|tformat:`: `%H %h %T %t %P %p %an %ae %at %ad %ar %cn %ce %ct %cd %cr %s %b %B %n %% %xNN`
@@ -89,7 +89,7 @@ response (gix writes a POST body after `post` returns). Status
   updates the tracking refs; `-u` sets the upstream. Output as git's (`To <url>`, ` * [new branch]  main -> main`).
 
 `net.test.ts` runs these against native `git http-backend` (a CGI server in a child process), with curl serving the
-imports synchronously, and checks the results with native git (50 checks; the push checks set `http.receivepack` on the server's repositories).
+imports synchronously, and checks the results with native git (55 checks; the push checks set `http.receivepack` on the server's repositories).
 
 ## Results
 

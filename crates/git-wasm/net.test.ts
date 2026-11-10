@@ -110,6 +110,13 @@ async function git(dir: string, ...args: string[]): Promise<Run> {
   }
 }
 
+/** The `## branch...upstream [ahead n, behind m]` line of `status --porcelain -b`: ours as native git's. */
+async function header(dir: string, name: string) {
+  const ours = (await git(dir, "status", "--porcelain", "-b")).out.split("\n")[0];
+  const theirs = native(dir, "status", "--porcelain", "-b").split("\n")[0];
+  check(name, ours === theirs, `ours:   ${ours}\nnative: ${theirs}`);
+}
+
 // --- a smart-HTTP server: git http-backend as CGI ----------------------------------------------------------------------
 
 const root = join(tmp, "srv");
@@ -175,6 +182,7 @@ try {
   check("clone upstream config", native(a, "config", "branch.main.remote").trim() === "origin", native(a, "config", "--list"));
   check("clone native status clean", native(a, "status", "--porcelain") === "");
   r = await git(a, "status", "--porcelain");
+  await header(a, "status -b after clone");
   check("clone our status clean", r.code === 0 && r.out === "", JSON.stringify(r));
   native(a, "fsck", "--full", "--strict");
   check("clone fsck", true);
@@ -220,6 +228,7 @@ try {
   r = await git(a, "pull");
   check("pull diverged: refused", r.code === 1 && r.err.includes("Not possible to fast-forward"), JSON.stringify(r));
   check("pull diverged: main kept", native(a, "log", "-1", "--format=%s").trim() === "local");
+  await header(a, "status -b: ahead 1, behind 1");
 
   // remote add / remove
   r = await git(a, "remote", "add", "up", url);
@@ -249,11 +258,13 @@ try {
   check("push new branch: remote has it", remoteRef("feat") === native(a, "rev-parse", "feat").trim());
   check("push -u: upstream", native(a, "config", "branch.feat.merge").trim() === "refs/heads/feat" && r.out.includes("branch 'feat' set up to track 'origin/feat'."), JSON.stringify(r));
   check("push: tracking ref", native(a, "rev-parse", "origin/feat").trim() === remoteRef("feat"));
+  await header(a, "status -b: in step with the upstream");
   native(bare, "fsck", "--full", "--strict");
   check("push: remote fsck", true);
 
   write(a, "feat/x.txt", "x2\n");
   native(a, "commit", "-q", "-am", "feat 2");
+  await header(a, "status -b: ahead 1");
   r = await git(a, "push");
   check("push fast-forward", r.code === 0 && /[0-9a-f]{7}\.\.[0-9a-f]{7}\s+feat -> feat/.test(r.err) && remoteRef("feat") === native(a, "rev-parse", "feat").trim(), JSON.stringify(r));
   r = await git(a, "push");
@@ -265,6 +276,7 @@ try {
 
   r = await git(a, "push", "origin", "--delete", "feat");
   check("push --delete", r.code === 0 && /- \[deleted\]\s+feat/.test(r.err) && remoteRef("feat") === "", JSON.stringify(r));
+  await header(a, "status -b: upstream gone");
   check("push --delete: tracking ref gone", spawnSync("git", ["-C", a, "rev-parse", "-q", "--verify", "origin/feat"], { env }).status !== 0);
   native(a, "switch", "-q", "main");
 
