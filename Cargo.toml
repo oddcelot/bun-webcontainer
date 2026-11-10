@@ -11,6 +11,7 @@ members = [
   "crates/resolve-wasm",
   "crates/fmt-wasm",
   "crates/check-wasm",
+  "crates/shell-wasm",
   "crates/sys-host",
   "crates/wasm-stubs",
   "crates/shim-test",

@@ -61,6 +61,17 @@ tasks:
     inputs:
       - 'src/git/**/*'
       - '/crates/git-wasm/target/wasm32-wasip1/release/git.wasm'
+  test-shell:
+    # Bun's own shell tests (bun/test/js/bun/shell: bunshell.test.ts and commands/*.test.ts) against src/shell under
+    # node, on real temp dirs (src/shell/conformance/run.ts); tests that spawn a native Bun or tool are skipped.
+    script: 'node src/shell/conformance/run.ts'
+    toolchains: ['node']
+    deps:
+      - 'shell-wasm:build'
+    inputs:
+      - 'src/shell/**/*'
+      - '/bun/test/js/bun/shell/**/*'
+      - '/target/wasm64-unknown-unknown/release/bun_shell_wasm.wasm'
   check-examples:
     # Every project of the examples submodule opened in the playground in headless Chrome: it installs and runs
     # (scripts/check-examples.ts). Before moving the submodule to a new commit, and after a Bun upgrade.
@@ -93,6 +104,7 @@ tasks:
       - 'check-wasm:build'
       - 'tsrs-ls-wasm:build'
       - 'git-wasm:build'
+      - 'shell-wasm:build'
     inputs:
       - '@group(sources)'
     outputs:
@@ -110,6 +122,7 @@ tasks:
       - 'check-wasm:build'
       - 'tsrs-ls-wasm:build'
       - 'git-wasm:build'
+      - 'shell-wasm:build'
   secrets:
     # Sign in with GitHub (worker/auth.ts): pushes apps/playground/.dev.vars (GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET,
     # BETTER_AUTH_SECRET; gitignored) to the runbun.dev and canary Workers as secrets. Again when a value changes.
@@ -140,6 +153,7 @@ tasks:
       - 'check-wasm:build'
       - 'tsrs-ls-wasm:build'
       - 'git-wasm:build'
+      - 'shell-wasm:build'
     options:
       cache: false
       runInCI: false

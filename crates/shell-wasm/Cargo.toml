@@ -1,0 +1,14 @@
+[package]
+name = "bun_shell_wasm"
+version = "0.0.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+bun_shell_parser = { path = "../../bun/src/shell_parser" }
+bun_alloc = { path = "../../bun/src/bun_alloc" }
+bun_core = { path = "../../bun/src/bun_core" }
+bun_wasm_stubs = { path = "../wasm-stubs" }
+bun_sys_host = { path = "../sys-host" }

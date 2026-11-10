@@ -71,6 +71,8 @@ const format = (level: string, text: string) =>
 const LOCATION = /(?<=^|[\s(])(\/?[\w.@\-/]*\.(?:[cm]?[jt]sx?|json|css|html|md)):(\d+)(?::(\d+))?/g;
 
 const PROMPT = "\x1b[32m❯\x1b[0m ";
+/** The prompt, with the shell's folder before it once it isn't the project's root (`src ❯`). */
+const promptFor = (cwd: string) => (cwd === "/" ? PROMPT : `\x1b[34m${cwd.slice(1)}\x1b[0m ${PROMPT}`);
 // One input unit: an escape sequence (arrows, Home/End, Delete) or a single character.
 const TOKENS = /\x1b\[[0-9;]*[A-Za-z~]|\x1bO[A-Z]|[\s\S]/gu;
 
@@ -81,8 +83,10 @@ const TOKENS = /\x1b\[[0-9;]*[A-Za-z~]|\x1bO[A-Z]|[\s\S]/gu;
  * stack trace, an error) is a link when `isFile` knows the file; clicking it calls `onLocation`.
  */
 export function createConsole(
-  { onCommand, onInterrupt, onClear, isFile, onLocation }: {
+  { onCommand, onInterrupt, onClear, isFile, onLocation, cwd = () => "/" }: {
     onCommand: (line: string) => Promise<void>;
+    /** The shell's folder, shown in the prompt. */
+    cwd?: () => string;
     onInterrupt: () => void;
     onClear: () => void;
     /** Whether `path` is a project file (only those locations are links). */
@@ -105,13 +109,13 @@ export function createConsole(
   };
   const promptLine = () => {
     const back = [...input.slice(cursor)].length;
-    return "\r\x1b[2K" + PROMPT + input + (back ? `\x1b[${back}D` : "");
+    return "\r\x1b[2K" + promptFor(cwd()) + input + (back ? `\x1b[${back}D` : "");
   };
   const redraw = () => !busy && term?.write(promptLine());
 
   async function enter() {
     const line = input.trim();
-    term?.write("\r\x1b[2K" + PROMPT + input + "\r\n");
+    term?.write("\r\x1b[2K" + promptFor(cwd()) + input + "\r\n");
     input = "";
     cursor = 0;
     if (line && history.at(-1) !== line) history.push(line);

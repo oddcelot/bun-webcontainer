@@ -1,0 +1,17 @@
+$schema: 'https://moonrepo.dev/schemas/project.json'
+
+# Bun's shell grammar (bun/src/shell_parser): a script (a console line, or a Bun.$ template) to its AST as JSON, the
+# shape `shellInternals.parse` prints. The playground's interpreter (apps/playground/src/shell/) runs the AST.
+language: 'rust'
+tags: ['wasm64']
+
+tasks:
+  build:
+    outputs:
+      - '/target/wasm64-unknown-unknown/release/bun_shell_wasm.wasm'
+  test:
+    # Bun's own parser tests (bun/test/js/bun/shell/parse.test.ts) with shims for bun:test and friends.
+    inputs:
+      - 'shims/*.ts'
+      - '/bun/test/js/bun/shell/parse.test.ts'
+      - '/apps/playground/src/shell/parse.ts'
