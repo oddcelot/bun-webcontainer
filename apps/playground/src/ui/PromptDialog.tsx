@@ -20,8 +20,6 @@ export function PromptDialog(props: {
   submit: string;
   onSubmit: (value: string) => void;
   check?: (value: string) => string | undefined;
-  /** Each change to the field (a list under it filters by it). */
-  onInput?: (value: string) => void;
   returnFocus?: () => HTMLElement | undefined | null;
   children?: JSX.Element;
 }) {
@@ -82,10 +80,7 @@ function PromptForm(props: Parameters<typeof PromptDialog>[0]) {
         autocomplete="off"
         aria-invalid={problem() ? "true" : undefined}
         aria-describedby={problem() ? `${id}-problem` : undefined}
-        onInput={(e) => {
-          setProblem();
-          props.onInput?.(e.currentTarget.value);
-        }}
+        onInput={() => setProblem()}
       />
       <Show when={problem()}>
         <p class="dialog-error" id={`${id}-problem`} role="alert">

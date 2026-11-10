@@ -2142,6 +2142,10 @@ body:has(#req-handle[data-dragging]) * {
       color: var(--accent);
     }
   }
+  .repo-search {
+    width: 100%;
+    margin-bottom: 6px;
+  }
   ul {
     max-height: 220px;
     margin: 0;

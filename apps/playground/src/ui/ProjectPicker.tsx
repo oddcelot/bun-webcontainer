@@ -28,7 +28,6 @@ export function ProjectPicker() {
   // The mode the dialog was opened with, kept while it closes (the title doesn't flip during the fade).
   let last: RepoMode = "files";
   const mode = () => (last = askingRepo() ?? last);
-  const [typed, setTyped] = createSignal("");
   let trigger!: HTMLButtonElement;
   let folderInput!: HTMLInputElement;
   let zipInput!: HTMLInputElement;
@@ -103,7 +102,6 @@ export function ProjectPicker() {
         onOpenChange={(o) => {
           if (o) return;
           setAskingRepo(null);
-          setTyped("");
         }}
         title={mode() === "git" ? "Clone a repository" : "Open a repository"}
         description={
@@ -114,7 +112,6 @@ export function ProjectPicker() {
         label="Repository"
         initial={app.repoParam || "oddcelot/bun-elysia-demo"}
         submit={mode() === "git" ? "Clone" : "Open"}
-        onInput={setTyped}
         check={(input) => {
           if (mode() !== "git") return;
           const r = gitUrl(input);
@@ -143,7 +140,6 @@ export function ProjectPicker() {
           {/* Sign-in is the playground's (runbun.dev's cookies); an embed has no gallery. */}
           <Show when={mode() === "git" && !app.features}>
             <RepoList
-              filter={typed()}
               onPick={(name) => {
                 setAskingRepo(null);
                 picked = true;
