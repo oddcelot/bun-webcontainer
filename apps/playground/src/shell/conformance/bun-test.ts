@@ -88,14 +88,20 @@ function matchers(actual: any, not: boolean) {
     toThrow: (e?: unknown) => {
       let threw: unknown;
       let did = false;
+      let result: unknown;
       try {
-        actual();
+        result = actual();
       } catch (x) {
         did = true;
         threw = x;
       }
+      if (!did && typeof result === "object" && typeof (result as Promise<unknown>)?.then === "function") {
+        (result as Promise<unknown>).catch(() => {});
+        throw new SkipError("toThrow on an async function (Bun checks the promise synchronously)");
+      }
       const msg = (threw as Error)?.message ?? String(threw);
-      const ok = did && (e === undefined || (typeof e === "string" ? msg.includes(e) : e instanceof RegExp ? e.test(msg) : typeof e === "function" ? threw instanceof (e as any) : true));
+      const contains = e && typeof e === "object" && "__contains" in e ? (e as { __contains: Record<string, unknown> }).__contains : undefined;
+      const ok = did && (e === undefined || (typeof e === "string" ? msg.includes(e) : e instanceof RegExp ? e.test(msg) : typeof e === "function" ? threw instanceof (e as any) : contains ? Object.entries(contains).every(([k, v]) => isDeepStrictEqual((threw as any)?.[k], v)) : true));
       check(ok, () => `expected a throw${e ? ` matching ${e}` : ""}, got ${did ? msg : "none"}`);
     },
     toMatchInlineSnapshot: (e?: string) => {
@@ -131,3 +137,4 @@ export function expect(actual: unknown) {
 }
 expect.assertions = () => {};
 expect.anything = () => true;
+expect.objectContaining = (obj: Record<string, unknown>) => ({ __contains: obj });

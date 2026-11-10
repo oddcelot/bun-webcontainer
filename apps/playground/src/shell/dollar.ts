@@ -20,6 +20,11 @@ export type DollarHost = {
   home?: string;
 };
 
+/** Bun refuses NUL in a cwd or env string (the C side would cut it there). */
+function noNul(what: string, value: string) {
+  if (value.includes("\0")) throw Object.assign(new TypeError(`The ${what} must be a string without null bytes. Received ${JSON.stringify(value)}`), { code: "ERR_INVALID_ARG_VALUE" });
+}
+
 type Parsed = { source: Source; cwd?: string; env?: Record<string, string | undefined>; quiet: boolean };
 
 /** Writes to both: what a command prints goes to the terminal and into the output `Bun.$` resolves with. */
@@ -38,9 +43,14 @@ export function createDollar(host: DollarHost) {
     return {
       parsed,
       setCwd(cwd: string) {
+        noNul("cwd", String(cwd));
         parsed.cwd = cwd;
       },
       setEnv(env: Record<string, string | undefined>) {
+        for (const [k, v] of Object.entries(env)) {
+          noNul("environment variable name", k);
+          if (v !== undefined) noNul("environment variable value", String(v));
+        }
         parsed.env = env;
       },
       setQuiet(quiet: boolean) {
@@ -63,7 +73,7 @@ export function createDollar(host: DollarHost) {
         const shell = new Interpreter({ fs: host.fs, wasm: host.wasm, builtins: host.builtins, commands: host.commands, home: host.home });
         // Not awaited inside run(): `then` starts it and the promise settles when it ends.
         void (async () => {
-          if (!host.fs.stat(dir)?.dir) throw new Error(`ENOENT: no such file or directory, chdir '${dir}'`);
+          if (!host.fs.stat(dir)?.dir) throw Object.assign(new Error(`ENOENT: No such file or directory: ${dir}`), { code: "ENOENT", path: dir });
           const script = host.wasm.parse(source);
           const code = await shell.run(script, { stdin: EMPTY, stdout: quiet ? out : tee(out, host.stdout), stderr: quiet ? err : tee(err, host.stderr) }, shellEnv, source.objs);
           resolve(code, host.buffer(out.bytes()), host.buffer(err.bytes()));
@@ -373,6 +383,8 @@ export function createDollar(host: DollarHost) {
 
 /** `$.escape`: a string as one shell word (Bun's escape_bun_str with quotes, when it needs any). */
 export function escape(input: string): string {
+  // Bun converts as JS's ToString does, which refuses a symbol (with JSC's wording).
+  if (typeof input === "symbol") throw new TypeError("Cannot convert a symbol to a string");
   const s = String(input);
   if (!/[~[\]#;\n\t\r*?{,}`$=()0-9|><&'" \\\b]/.test(s) && s !== "") return s;
   let out = '"';

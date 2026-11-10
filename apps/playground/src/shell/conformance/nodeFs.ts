@@ -2,7 +2,8 @@
 import * as fs from "node:fs";
 import type { ShellFs } from "../interp";
 
-export const nodeFs: ShellFs = {
+// Paths arrive as String objects too (the harness's tempDir), which node's fs refuses.
+const raw: ShellFs = {
   stat(path) {
     try {
       const st = fs.statSync(path);
@@ -24,3 +25,7 @@ export const nodeFs: ShellFs = {
   rename: (from, to) => fs.renameSync(from, to),
   touch: (path, time) => fs.utimesSync(path, time / 1000, time / 1000),
 };
+
+export const nodeFs: ShellFs = Object.fromEntries(
+  Object.entries(raw).map(([k, fn]) => [k, (...a: unknown[]) => (fn as (...x: unknown[]) => unknown)(...a.map((x) => (x instanceof String ? String(x) : x)))]),
+) as unknown as ShellFs;

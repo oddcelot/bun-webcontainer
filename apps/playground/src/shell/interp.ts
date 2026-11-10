@@ -19,8 +19,10 @@ export interface Reader {
 }
 
 export interface Writer {
-  /** False once nobody reads any more (EPIPE): a command stops writing then. */
+  /** False once nobody reads any more (EPIPE) or the target is full: a command stops writing then. */
   write(chunk: Uint8Array | string): Promise<boolean>;
+  /** Why the last write failed, when it did for a reason a command reports (`ENOSPC`: a full buffer). */
+  error?: string;
 }
 
 export const EMPTY: Reader = { read: async () => null, close() {} };
@@ -44,6 +46,37 @@ export class Collect implements Writer {
   }
   text() {
     return dec.decode(this.bytes());
+  }
+}
+
+/** A template buffer as a redirect target (`> ${buf}`): written as output arrives, up to its length as it is now. */
+export class BufferSink implements Writer {
+  private at = 0;
+  error?: string;
+  private view: () => Uint8Array;
+  constructor(view: () => Uint8Array) {
+    this.view = view;
+  }
+  async write(chunk: Uint8Array | string) {
+    const c = typeof chunk === "string" ? enc.encode(chunk) : chunk;
+    const v = this.view();
+    const n = Math.max(0, Math.min(c.length, v.length - this.at));
+    v.set(c.subarray(0, n), this.at);
+    this.at += n;
+    if (n < c.length) {
+      this.error = "ENOSPC";
+      return false;
+    }
+    return true;
+  }
+}
+
+/** A buffer-like template value's bytes, as they are now (a resized or detached buffer: fewer, or none). */
+export function viewOf(value: ArrayBufferLike | ArrayBufferView): Uint8Array {
+  try {
+    return ArrayBuffer.isView(value) ? new Uint8Array(value.buffer, value.byteOffset, value.byteLength) : new Uint8Array(value);
+  } catch {
+    return new Uint8Array();
   }
 }
 
@@ -169,6 +202,8 @@ export class ShellEnv {
     this.argv = argv;
   }
   get(name: string): string | undefined {
+    // $PWD is the shell's folder, whatever the process's env said.
+    if (name === "PWD") return this.cwd;
     return this.vars.get(name) ?? this.exported.get(name);
   }
   copy() {
@@ -429,7 +464,7 @@ export class Shell {
   }
 
   /** The command's redirect applied to its streams; `done` writes a file it filled. A number: it failed (stderr said why). */
-  private async redirect(flags: RedirectFlags, target: Redirect | null, io: Io, env: ShellEnv, objs: unknown[]): Promise<{ io: Io; done(): Promise<void> } | number> {
+  private async redirect(flags: RedirectFlags, target: Redirect | null, io: Io, env: ShellEnv, objs: unknown[], name = ""): Promise<{ io: Io; done(): Promise<void> } | number> {
     const out = { ...io };
     if (!target) {
       // `2>&1` (stdout + duplicate): stderr goes where stdout does; `1>&2` the other way.
@@ -445,21 +480,14 @@ export class Shell {
         out.stdin = readerOf(await bytesOf(value));
         return { io: out, done: async () => {} };
       }
-      if (!(value instanceof ArrayBuffer || ArrayBuffer.isView(value))) {
+      if (!isBufferLike(value)) {
         await io.stderr.write("bun: redirecting output to this kind of value is not supported\n");
         return 1;
       }
-      const sink = new Collect();
+      const sink = new BufferSink(() => viewOf(value as ArrayBufferLike | ArrayBufferView));
       if (flags.stdout) out.stdout = sink;
       if (flags.stderr) out.stderr = sink;
-      return {
-        io: out,
-        done: async () => {
-          const view = value instanceof ArrayBuffer ? new Uint8Array(value) : new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
-          const bytes = sink.bytes();
-          view.set(bytes.subarray(0, view.length));
-        },
-      };
+      return { io: out, done: async () => {} };
     }
     let words: string[];
     try {
@@ -468,7 +496,8 @@ export class Shell {
       return this.fail(io, e);
     }
     if (words.length !== 1) {
-      await io.stderr.write(`bun: ambiguous redirect: at \`${words.join(" ")}\`\n`);
+      // Bun names the command, not the words.
+      await io.stderr.write(`bun: ambiguous redirect: at \`${name}\`\n`);
       return 1;
     }
     const file = resolvePath(env.cwd, words[0]!);
@@ -513,7 +542,10 @@ export class Shell {
     try {
       for (const a of node.assigns) local[a.label] = (await this.expand(a.value, io, env, objs, true)).words.join(" ");
       for (const [i, atom] of node.name_and_args.entries()) {
-        const r = await this.expand(atom, io, env, objs);
+        // `export NAME=$(…)`: a literal `NAME=` word expands as an assignment does (no field splitting).
+        const first = "simple" in atom ? atom.simple : atom.compound.atoms[0];
+        const assignWord = i > 0 && argv[0] === "export" && !!first && "Text" in first && /^[A-Za-z_][A-Za-z0-9_]*=/.test(first.Text);
+        const r = await this.expand(atom, io, env, objs, assignWord);
         if (i === 0 && r.exitCode) substExit = r.exitCode;
         argv.push(...r.words);
       }
@@ -522,9 +554,9 @@ export class Shell {
     }
     // `$(false)` as the whole command: its exit code.
     if (!argv.length) return substExit ?? 0;
-    const redirected = await this.redirect(node.redirect, node.redirect_file, io, env, objs);
-    if (typeof redirected === "number") return redirected;
     const name = argv[0]!;
+    const redirected = await this.redirect(node.redirect, node.redirect_file, io, env, objs, name);
+    if (typeof redirected === "number") return redirected;
     const run = this.opts.builtins[name] ?? this.opts.commands?.[name];
     try {
       if (!run) {
@@ -567,6 +599,8 @@ export class Shell {
       meta = new Set();
     };
     const leadingTilde = atoms.length > 1 && "tilde" in atoms[0]!;
+    // ~ is $HOME as the shell has it now (empty when it's empty).
+    const home = env.get("HOME") ?? this.opts.home ?? "";
     for (const [i, a] of atoms.entries()) {
       if (i === 0 && leadingTilde) continue;
       if ("Text" in a) cur += a.Text;
@@ -578,7 +612,7 @@ export class Shell {
       else if ("brace_begin" in a) meta.add(cur.length), (cur += "{");
       else if ("brace_end" in a) meta.add(cur.length), (cur += "}");
       else if ("comma" in a) meta.add(cur.length), (cur += ",");
-      else if ("tilde" in a) cur += this.opts.home ?? "/";
+      else if ("tilde" in a) cur += home;
       else if ("cmd_subst" in a) {
         const sink = new Collect();
         const code = await this.run(a.cmd_subst.script, { stdin: io.stdin, stdout: sink, stderr: io.stderr }, env.copy(), objs);
@@ -598,7 +632,6 @@ export class Shell {
       }
     }
     if (leadingTilde) {
-      const home = this.opts.home ?? "/";
       if (cur.startsWith("/")) {
         cur = home + cur;
         meta = new Set([...meta].map((m) => m + home.length));
@@ -641,10 +674,12 @@ export class Shell {
   }
 }
 
-/** A template value redirected into stdin (`< ${x}`): its bytes. */
+export const isBufferLike = (v: unknown): v is ArrayBufferLike | ArrayBufferView =>
+  v instanceof ArrayBuffer || ArrayBuffer.isView(v) || (typeof SharedArrayBuffer !== "undefined" && v instanceof SharedArrayBuffer);
+
+/** A template value redirected into stdin (`< ${x}`): a copy of its bytes, as they are when the command starts. */
 async function bytesOf(value: unknown): Promise<Uint8Array> {
-  if (value instanceof ArrayBuffer) return new Uint8Array(value);
-  if (ArrayBuffer.isView(value)) return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  if (isBufferLike(value)) return viewOf(value).slice();
   if (typeof Blob !== "undefined" && value instanceof Blob) return new Uint8Array(await value.arrayBuffer());
   if (typeof Response !== "undefined" && value instanceof Response) return new Uint8Array(await value.arrayBuffer());
   return enc.encode(String(value));

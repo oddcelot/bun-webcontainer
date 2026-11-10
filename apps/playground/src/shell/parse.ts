@@ -80,7 +80,7 @@ const SPECIAL = new Set("~[]#;\n\t\r*?{,}`$=()0123456789|><&'\" \\\b");
 const KEYWORDS = new Set(["if", "else", "elif", "then", "fi"]);
 const needsEscape = (s: string) => s === "" || [...s].some((c) => SPECIAL.has(c)) || KEYWORDS.has(s);
 
-const isBufferLike = (v: unknown) => v instanceof ArrayBuffer || ArrayBuffer.isView(v);
+const isBufferLike = (v: unknown) => v instanceof ArrayBuffer || ArrayBuffer.isView(v) || (typeof SharedArrayBuffer !== "undefined" && v instanceof SharedArrayBuffer);
 
 /** `$\`…\``'s script: the template's raw strings as written, its values escaped or referenced as Bun does. */
 export function templateSource(raw: readonly string[], values: readonly unknown[]): Source {

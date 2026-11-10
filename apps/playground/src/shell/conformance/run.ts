@@ -2,7 +2,7 @@
 // playground's shell under node: Bun.$ is src/shell/dollar.ts over real temp dirs (nodeFs.ts), and bun:test,
 // harness and friends are the shims next to this file. Tests that spawn a native Bun or need its internals are
 // skipped. Usage: node src/shell/conformance/run.ts [test file names...] [-v]
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { registerHooks } from "node:module";
 import { join } from "node:path";
 import * as bunTest from "./bun-test.ts";
@@ -29,6 +29,12 @@ registerHooks({
     }
     return next(specifier, context);
   },
+  // Bun's import.meta.path is node's import.meta.filename.
+  load(url, context, next) {
+    const r = next(url, context);
+    if (url.includes("/bun/test/") && r.source) r.source = String(r.source).replaceAll("import.meta.path", "import.meta.filename");
+    return r;
+  },
 });
 
 // After the hook: the playground's modules import without `.ts`.
@@ -47,11 +53,15 @@ const $ = createDollar({
   fs: nodeFs,
   wasm,
   builtins,
-  commands: {
-    "/__native_bun__": async () => {
-      throw new bunTest.SkipError("spawns a native Bun");
-    },
-  },
+  // Native programs the tests call: the browser has no processes, so those tests are skipped.
+  commands: Object.fromEntries(
+    ["/__native_bun__", "bun", "bash", "sh", "grep", "sed", "awk", "head", "tail", "wc", "sort", "uniq", "tr", "env", "printf", "node", "sleep", "onlyintool", "test", "["].map((name) => [
+      name,
+      async () => {
+        throw new bunTest.SkipError(`runs the native ${name}`);
+      },
+    ]),
+  ),
   stdout: DISCARD,
   stderr: DISCARD,
   cwd: () => process.cwd(),
@@ -62,7 +72,20 @@ const $ = createDollar({
 (globalThis as any).Bun = {
   $,
   jest: () => bunTest,
-  file: (p: string) => ({ text: async () => readFileSync(p, "utf8"), exists: async () => nodeFs.stat(p) !== undefined, name: p }),
+  file: (p: string) => ({
+    name: p,
+    text: async () => readFileSync(p, "utf8"),
+    arrayBuffer: async () => new Uint8Array(readFileSync(p)).buffer,
+    exists: async () => nodeFs.stat(p) !== undefined,
+    writer: () => {
+      const chunks: (string | Uint8Array)[] = [];
+      return {
+        write: (c: string | Uint8Array) => void chunks.push(c),
+        flush: () => {},
+        end: () => writeFileSync(p, Buffer.concat(chunks.map((c) => (typeof c === "string" ? Buffer.from(c) : c)))),
+      };
+    },
+  }),
   sleep: (ms: number) => new Promise((r) => setTimeout(r, ms)),
   spawn: skip,
   spawnSync: skip,
@@ -125,7 +148,7 @@ for (const file of files) {
       for (const h of bunTest.hooks.afterEach) await h();
       r.passed++;
     } catch (e) {
-      if (e instanceof bunTest.SkipError || /spawns a native|native Bun/.test(String((e as Error)?.message))) r.skipped++;
+      if (e instanceof bunTest.SkipError || /spawns a native|runs the native|native Bun/.test(String((e as Error)?.message))) r.skipped++;
       else {
         r.failed++;
         fails.push(`  FAIL ${c.name}\n    ${String((e as Error)?.message ?? e).split("\n").slice(0, 6).join("\n    ")}`);
