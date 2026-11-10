@@ -78,7 +78,9 @@ try {
   assert.ok(Math.abs(Date.now() / 1000 - log[0].time) < 120);
 
   // synthetic forms of the header
-  assert.deepEqual(parseStatus("## main...origin/main [ahead 1, behind 2]\0 M x\0"), { branch: "main", unborn: false, upstream: "origin/main", entries: [{ x: " ", y: "M", path: "x" }] });
+  assert.deepEqual(parseStatus("## main...origin/main [ahead 1, behind 2]\0 M x\0"), { branch: "main", unborn: false, upstream: "origin/main", ahead: 1, behind: 2, gone: false, entries: [{ x: " ", y: "M", path: "x" }] });
+  assert.deepEqual(parseStatus("## feat...origin/feat [gone]\0"), { branch: "feat", unborn: false, upstream: "origin/feat", ahead: 0, behind: 0, gone: true, entries: [] });
+  assert.deepEqual(parseStatus("## main...origin/main\0"), { branch: "main", unborn: false, upstream: "origin/main", ahead: 0, behind: 0, gone: false, entries: [] });
   assert.equal(parseStatus("## Initial commit on dev\0").branch, "dev");
   assert.deepEqual(worktreeChanges(parseStatus("## main\0UU z\0").entries), [{ path: "z", code: "!" }]);
   console.log("ok   git parsers vs native git");

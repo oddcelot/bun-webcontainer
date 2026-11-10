@@ -135,6 +135,12 @@ export function GitPanel() {
       run: () => void git.discard(list),
     });
   }
+  const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
+  // A remote answered 401/403: GitHub wants the signed-in user's token (git/http.ts adds it through the proxy).
+  const wantsSignIn = () => !app.features && signInAvailable() && account() === null && /HTTP 40[13]|authentication required|access denied|[Ss]ign in with GitHub/.test(s.error ?? "");
+  const pushTip = () => (s.ahead ? `Push ${plural(s.ahead, "commit")} to ${s.upstream}` : `Push to ${s.upstream} (nothing new since the last fetch)`);
+  const pullTip = () => (s.behind ? `Pull ${plural(s.behind, "commit")} from ${s.upstream}` : `Pull from ${s.upstream} (fetches, then fast-forwards)`);
+
   async function showCommit(commit: Commit) {
     setShowing({ commit, text: "Reading the commit…" });
     setShowing({ commit, text: await git.show(commit.hash) });
@@ -213,12 +219,56 @@ export function GitPanel() {
               </MenuGroup>
             </Show>
           </Menu>
+          <Show
+            when={s.upstream && !s.gone}
+            fallback={
+              <Show when={s.branch && s.hasHead && git.pushRemote()}>
+                {(remote) => (
+                  <Tip
+                    class="git-act git-count"
+                    tip={`Publish ${s.branch} to ${remote()}: push it and track ${remote()}/${s.branch}`}
+                    aria-label={`Publish ${s.branch} to ${remote()}`}
+                    disabled={s.busy}
+                    onClick={() => void git.push()}
+                  >
+                    <i class="i-lucide-cloud-upload" aria-hidden="true" />
+                  </Tip>
+                )}
+              </Show>
+            }
+          >
+            <Tip class="git-act git-count" tip={pullTip()} aria-label={pullTip()} disabled={s.busy} onClick={() => void git.pull()}>
+              <i class="i-lucide-arrow-down" aria-hidden="true" />
+              <Show when={s.behind}>
+                <span>{s.behind}</span>
+              </Show>
+            </Tip>
+            <Tip class="git-act git-count" tip={pushTip()} aria-label={pushTip()} disabled={s.busy} onClick={() => void git.push()}>
+              <i class="i-lucide-arrow-up" aria-hidden="true" />
+              <Show when={s.ahead}>
+                <span>{s.ahead}</span>
+              </Show>
+            </Tip>
+          </Show>
           <Act icon="i-lucide-refresh-cw" tip="Read the repository again" onClick={() => void git.refresh()} />
         </div>
+        <Show when={s.syncing}>
+          {(kind) => (
+            <p class="git-progress" role="status">
+              <i class="i-lucide-loader-circle" aria-hidden="true" />
+              {s.progress || { fetch: "Fetching…", pull: "Pulling…", push: "Pushing…" }[kind()]}
+            </p>
+          )}
+        </Show>
         <Show when={s.error}>
           {(error) => (
             <div class="git-error" role="alert">
-              <pre>{error()}</pre>
+              <div class="body">
+                <pre>{error()}</pre>
+                <Show when={wantsSignIn()}>
+                  <Button onClick={() => void signIn()}>Sign in with GitHub</Button>
+                </Show>
+              </div>
               <Act icon="i-lucide-x" tip="Dismiss" onClick={() => git.dismissError()} />
             </div>
           )}
@@ -255,6 +305,12 @@ export function GitPanel() {
             >
               <MenuItem icon="i-lucide-pencil" label={amending() ? "Amending the last commit" : "Amend last commit"} disabled={!s.hasHead || amending()} onSelect={startAmend} />
               <MenuItem icon="i-lucide-undo-2" label="Undo last commit…" disabled={!s.hasHead} onSelect={() => later(undoCommit)} />
+              <Show when={s.remotes.length}>
+                <MenuSeparator />
+                <MenuItem icon="i-lucide-refresh-ccw" label="Fetch" disabled={s.busy} onSelect={() => void git.fetch()} />
+                <MenuItem icon="i-lucide-arrow-down" label="Pull" disabled={s.busy || !s.upstream || s.gone} onSelect={() => void git.pull()} />
+                <MenuItem icon="i-lucide-arrow-up" label={s.upstream && !s.gone ? "Push" : "Publish branch"} disabled={s.busy || !s.hasHead || (!(s.upstream && !s.gone) && !git.pushRemote())} onSelect={() => void git.push()} />
+              </Show>
               <Show when={!app.features && signInAvailable() && account() !== undefined}>
                 <MenuSeparator />
                 <Show

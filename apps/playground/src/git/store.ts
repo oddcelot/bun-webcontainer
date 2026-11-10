@@ -2,7 +2,7 @@ import { createSignal, createStore, reconcile } from "solid-js";
 import type { GitStatus, GitStatusEntry } from "@pierre/trees";
 import type { VFS } from "@runbun/vfs";
 import { contents, setHeadBaseline, snapshot, type Baseline } from "../changes";
-import { git, type GitResult } from "./git";
+import { git, type GitProgress, type GitResult } from "./git";
 import { LOG_FORMAT, parseBranches, parseLog, parseStatus, stagedChanges, worktreeChanges, type Commit, type FileChange, type StatusEntry } from "./parse";
 
 /** How long after the last change to the project's files the status is read again. */
@@ -46,6 +46,17 @@ export function createGit(vfs: VFS, opts: { enabled: () => boolean; log: (level:
     changes: [] as FileChange[],
     commits: [] as Commit[],
     branches: [] as string[],
+    /** The branch's upstream (`origin/main`), and how far the two have moved apart. */
+    upstream: null as string | null,
+    ahead: 0,
+    behind: 0,
+    /** The upstream's ref is missing: deleted on the remote, or never fetched. */
+    gone: false,
+    /** The repository's remotes (`origin`). */
+    remotes: [] as string[],
+    /** The network command running from the panel, and what it says it is doing. */
+    syncing: null as "fetch" | "pull" | "push" | null,
+    progress: "",
     /** A panel action is running. */
     busy: false,
     /** What git said when the last action failed; the panel shows it until dismissed. */
@@ -81,6 +92,10 @@ export function createGit(vfs: VFS, opts: { enabled: () => boolean; log: (level:
         s.changes = [];
         s.commits = [];
         s.branches = [];
+        s.upstream = null;
+        s.ahead = s.behind = 0;
+        s.gone = false;
+        s.remotes = [];
       });
       setStatuses([]);
       return;
@@ -96,6 +111,7 @@ export function createGit(vfs: VFS, opts: { enabled: () => boolean; log: (level:
     let oid = "";
     let commits: Commit[] | undefined;
     let branches: string[] | undefined;
+    let remotes: string[] | undefined;
     if (hasHead) oid = (await run(["rev-parse", "--verify", "-q", "HEAD"])).stdout.trim();
     if (panel) {
       if (hasHead) {
@@ -104,6 +120,8 @@ export function createGit(vfs: VFS, opts: { enabled: () => boolean; log: (level:
         const list = await run(["branch", "--format=%(refname:short)"]);
         if (!list.exitCode) branches = parseBranches(list.stdout);
       } else branches = status.branch ? [status.branch] : [];
+      const list = await run(["remote"]);
+      if (!list.exitCode) remotes = list.stdout.split("\n").filter(Boolean);
     }
     const staged = stagedChanges(status.entries);
     const changes = worktreeChanges(status.entries);
@@ -117,6 +135,11 @@ export function createGit(vfs: VFS, opts: { enabled: () => boolean; log: (level:
       if (commits) reconcile(commits, "hash")(s.commits);
       else if (!hasHead) s.commits = [];
       if (branches) s.branches = branches;
+      if (remotes) s.remotes = remotes;
+      s.upstream = status.upstream ?? null;
+      s.ahead = status.ahead;
+      s.behind = status.behind;
+      s.gone = status.gone;
     });
     const tree: GitStatusEntry[] = [];
     for (const e of status.entries) tree.push({ path: e.path, status: TREE_STATUS[e.y !== " " && e.x !== "?" ? e.y : e.x] ?? "modified" });
@@ -221,6 +244,27 @@ export function createGit(vfs: VFS, opts: { enabled: () => boolean; log: (level:
   }
   const ok = (r: GitResult | undefined) => !!r && r.exitCode === 0;
 
+  /** A network command from the panel, its progress line shown while it runs. */
+  const sync = (kind: "fetch" | "pull" | "push", args: string[]) =>
+    act(async () => {
+      setState((s) => {
+        s.syncing = kind;
+        s.progress = "";
+      });
+      const shown = (p: GitProgress) => setState((s) => void (s.progress = (p.text ?? "") + (p.bytes >= 1024 ? ` (${Math.round(p.bytes / 1024)} KiB)` : "")));
+      try {
+        return await git(vfs, args, { colors: false, onProgress: shown });
+      } finally {
+        setState((s) => {
+          s.syncing = null;
+          s.progress = "";
+        });
+      }
+    }).then(ok);
+
+  /** Where a branch without an upstream is pushed to: `origin`, else the only remote. */
+  const pushRemote = () => (state.remotes.includes("origin") ? "origin" : state.remotes.length === 1 ? state.remotes[0] : null);
+
   return {
     state,
     enabled,
@@ -272,6 +316,16 @@ export function createGit(vfs: VFS, opts: { enabled: () => boolean; log: (level:
     createBranch: (name: string) => act(["switch", "-c", name]).then(ok),
     /** `force`: `-D`, for a branch whose commits are on no other branch (they're lost). */
     deleteBranch: (name: string, force = false) => act(["branch", force ? "-D" : "-d", name]).then(ok),
+    fetch: () => sync("fetch", ["fetch"]),
+    /** Fast-forward only (all the playground's git does). */
+    pull: () => sync("pull", ["pull"]),
+    /** To the upstream; a branch without one (or whose upstream is gone) is published to `pushRemote` and tracks it. */
+    push() {
+      const remote = state.upstream && !state.gone ? null : pushRemote();
+      return sync("push", remote && state.branch ? ["push", "-u", remote, state.branch] : ["push"]);
+    },
+    /** The remote a branch without an upstream would be published to, if there is one. */
+    pushRemote,
     /** What `git show` prints for a commit. */
     async show(hash: string) {
       const r = await run(["show", hash]);

@@ -1110,6 +1110,7 @@ main [data-kb-resizable-root] { height: 100%; }
     }
   }
 }
+@keyframes git-spin { to { rotate: 360deg; } }
 /* The Git view (GitPanel.tsx): branch, commit box, then the lists in one scrolling column. */
 .git-panel {
   display: flex;
@@ -1138,6 +1139,39 @@ main [data-kb-resizable-root] { height: 100%; }
     }
     i {
       font-size: 14px;
+    }
+    /* Pull and push with how many commits each would move. */
+    &.git-count {
+      display: inline-flex;
+      gap: 2px;
+      width: auto;
+      min-width: 20px;
+      padding: 0 3px;
+      font-variant-numeric: tabular-nums;
+    }
+    &:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+  }
+  .git-progress {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 6px;
+    margin: 0 var(--pad) 4px;
+    overflow: hidden;
+    color: var(--muted);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    i {
+      flex: none;
+      animation: git-spin 1s linear infinite;
+
+      @media (prefers-reduced-motion: reduce) {
+        animation: none;
+      }
     }
   }
   .git-start {
@@ -1216,9 +1250,16 @@ main [data-kb-resizable-root] { height: 100%; }
     border-radius: var(--inner-radius);
     background: color-mix(in srgb, var(--error) 14%, var(--panel));
 
-    pre {
+    .body {
+      display: flex;
       flex: 1;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 6px;
       min-width: 0;
+    }
+    pre {
+      align-self: stretch;
       max-height: 9em;
       margin: 0;
       overflow: auto;
