@@ -2,7 +2,7 @@
 title: "Hono on Bun example: a Hono app in your browser"
 description: "A Hono app on Bun with routes, path parameters, JSON and middleware, served with export default, installed from npm and running in your browser."
 sidebar:
-  order: 8
+  order: 9
   label: Hono
 ---
 

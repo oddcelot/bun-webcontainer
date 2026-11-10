@@ -2,7 +2,7 @@
 title: "Elysia playground: run an Elysia app in your browser"
 description: "An Elysia server with typed path parameters, a JSON body and validation, installed from npm and running on Bun in your browser."
 sidebar:
-  order: 7
+  order: 8
   label: Elysia
 ---
 

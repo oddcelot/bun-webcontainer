@@ -1,6 +1,6 @@
 ---
 title: "Bun examples you can run in your browser"
-description: "Runnable Bun examples: Bun.serve, routes, WebSockets, bun:sqlite, Bun.file, Bun.password, Elysia and Hono. Press Run and they execute in your browser tab."
+description: "Runnable Bun examples: Bun.serve, routes, WebSockets, bun:sqlite, Bun.file, Bun.password, Bun.$, Elysia and Hono. Press Run and they execute in your browser tab."
 sidebar:
   order: 0
   label: All examples
@@ -19,6 +19,7 @@ Each page has a short program and what it shows. Press **Run** and it executes r
 - [bun:sqlite](/examples/bun-sqlite/): an in-memory SQLite database with prepared statements
 - [Bun.file and Bun.write](/examples/bun-file/): read and write text and JSON files
 - [Bun.password](/examples/bun-password/): hash and verify passwords with argon2 or bcrypt
+- [Bun.$ shell](/examples/bun-shell/): pipes, redirects, globs and `ShellError` from TypeScript
 
 ## Frameworks
 
