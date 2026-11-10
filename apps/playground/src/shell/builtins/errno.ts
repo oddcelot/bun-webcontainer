@@ -3,51 +3,57 @@
 import type { CommandCtx, ShellFs } from "../interp";
 import { err } from "./util";
 
-/** The coreutils (glibc strerror) texts Bun prints, for the errnos the shell's files can produce. */
-const MESSAGES: Record<string, string> = {
-  EPERM: "Operation not permitted",
-  ENOENT: "No such file or directory",
-  EIO: "Input/output error",
-  EBADF: "Bad file descriptor",
-  EACCES: "Permission denied",
-  EBUSY: "Device or resource busy",
-  EEXIST: "File exists",
-  EXDEV: "Invalid cross-device link",
-  ENOTDIR: "Not a directory",
-  EISDIR: "Is a directory",
-  EINVAL: "Invalid argument",
-  EMFILE: "Too many open files",
-  EFBIG: "File too large",
-  ENOSPC: "No space left on device",
-  EROFS: "Read-only file system",
-  EPIPE: "Broken pipe",
-  ENAMETOOLONG: "File name too long",
-  ENOTEMPTY: "Directory not empty",
-  ELOOP: "Too many levels of symbolic links",
-};
+/**
+ * The errnos the shell's files can produce: Linux numbers (bun_sys's table on wasm; what `cat` and `mv` exit with)
+ * and the coreutils (glibc strerror) texts Bun prints.
+ */
+const ERRNOS = {
+  EPERM: [1, "Operation not permitted"],
+  ENOENT: [2, "No such file or directory"],
+  EIO: [5, "Input/output error"],
+  EBADF: [9, "Bad file descriptor"],
+  EACCES: [13, "Permission denied"],
+  EBUSY: [16, "Device or resource busy"],
+  EEXIST: [17, "File exists"],
+  EXDEV: [18, "Invalid cross-device link"],
+  ENOTDIR: [20, "Not a directory"],
+  EISDIR: [21, "Is a directory"],
+  EINVAL: [22, "Invalid argument"],
+  EMFILE: [24, "Too many open files"],
+  EFBIG: [27, "File too large"],
+  ENOSPC: [28, "No space left on device"],
+  EROFS: [30, "Read-only file system"],
+  EPIPE: [32, "Broken pipe"],
+  ENAMETOOLONG: [36, "File name too long"],
+  ENOTEMPTY: [39, "Directory not empty"],
+  ELOOP: [40, "Too many levels of symbolic links"],
+} as const;
 
-/** Linux errno numbers: what `cat` exits with when a read fails. */
-export const ERRNO: Record<string, number> = {
-  EPERM: 1,
-  ENOENT: 2,
-  EIO: 5,
-  EBADF: 9,
-  EACCES: 13,
-  EBUSY: 16,
-  EEXIST: 17,
-  EXDEV: 18,
-  ENOTDIR: 20,
-  EISDIR: 21,
-  EINVAL: 22,
-  EMFILE: 24,
-  EFBIG: 27,
-  ENOSPC: 28,
-  EROFS: 30,
-  EPIPE: 32,
-  ENAMETOOLONG: 36,
-  ENOTEMPTY: 39,
-  ELOOP: 40,
-};
+export type Errno = keyof typeof ERRNOS;
+
+const MESSAGES: Record<string, string> = Object.fromEntries(Object.entries(ERRNOS).map(([k, [, m]]) => [k, m]));
+export const ERRNO: Record<string, number> = Object.fromEntries(Object.entries(ERRNOS).map(([k, [n]]) => [k, n]));
+
+/** A system error on a path, as rm, mv and cp carry them until they print. */
+export class SysError extends Error {
+  code: Errno;
+  path: string;
+  constructor(code: Errno, path: string) {
+    super(ERRNOS[code][1]);
+    this.code = code;
+    this.path = path;
+  }
+  get errno(): number {
+    return ERRNOS[this.code][0];
+  }
+}
+
+/** An error the files threw (node's fs carries `code`), as a SysError on `path`. */
+export function toSysError(e: unknown, path: string): SysError {
+  if (e instanceof SysError) return e;
+  const code = errnoOf(e);
+  return new SysError(code in ERRNOS ? (code as Errno) : "EIO", path);
+}
 
 /** `{kind}: {path}: {message}\n`, or `{kind}: {message}\n` without a path. */
 export function sysErrorText(kind: string, code: string, path?: string): string {
@@ -135,4 +141,9 @@ export async function failParse(ctx: CommandCtx, kind: string, usage: string, e:
   else if ("illegal" in e) await err(ctx, `${kind}: illegal option -- ${e.illegal}\n`);
   else await err(ctx, `${kind}: unsupported option, please open a GitHub issue -- ${e.unsupported}\n`);
   return 1;
+}
+
+/** Why `path` (absolute) can't be reached, or undefined when it exists. */
+export function missing(ctx: CommandCtx, path: string): Errno | undefined {
+  return ctx.fs.stat(path) ? undefined : (missingErrno(ctx.fs, path) as Errno);
 }

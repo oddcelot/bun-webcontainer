@@ -1,6 +1,7 @@
 // `rm`: bun/src/runtime/shell/builtin/rm.rs
 import type { Command, CommandCtx } from "../interp";
-import { basename, missing, normalizeKeepSlash, SysError, toSysError } from "./syserr";
+import { missing, SysError, toSysError } from "./errno";
+import { basename, normalizeKeepSlash } from "./paths";
 import { err, out } from "./util";
 
 const USAGE = "usage: rm [-f | -i] [-dIPRrvWx] file ...\n       unlink [--] file\n";
