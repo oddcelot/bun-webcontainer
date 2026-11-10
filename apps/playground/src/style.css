@@ -1084,6 +1084,362 @@ main [data-kb-resizable-root] { height: 100%; }
   }
 }
 /*
+ * The explorer pane (Explorer.tsx): a Files | Git switch over the file tree or the Git view. The tree stays mounted
+ * beneath (hidden), so #newfile still sits at the end of its search row.
+ */
+.explorer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+
+  .explorer-switch {
+    flex: none;
+    padding: var(--pad) var(--pad) 0;
+  }
+  .explorer-body {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+  }
+  .explorer-pane {
+    position: relative;
+    height: 100%;
+
+    &[hidden] {
+      display: none;
+    }
+  }
+}
+/* The Git view (GitPanel.tsx): branch, commit box, then the lists in one scrolling column. */
+.git-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  font-size: 12px;
+
+  .git-act {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 0;
+    border-radius: 4px;
+    background: none;
+    color: inherit;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--control-hover);
+    }
+    &:focus-visible {
+      outline: 1px solid var(--accent);
+    }
+    i {
+      font-size: 14px;
+    }
+  }
+  .git-start {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px var(--pad);
+
+    p {
+      margin: 0;
+      line-height: 1.45;
+    }
+    .hint {
+      color: var(--muted);
+    }
+  }
+  .git-head {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 4px;
+    padding: var(--pad) var(--pad) 4px;
+  }
+  .git-branch {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    height: var(--control-height);
+    padding: 0 8px;
+    border: 1px solid var(--control-border);
+    border-radius: var(--inner-radius);
+    background: var(--control);
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--control-hover);
+    }
+    .name {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-align: start;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+  .git-error {
+    display: flex;
+    flex: none;
+    align-items: flex-start;
+    gap: 4px;
+    margin: 0 var(--pad) 4px;
+    padding: 6px 4px 6px 8px;
+    border: 1px solid color-mix(in srgb, var(--error) 55%, var(--panel));
+    border-radius: var(--inner-radius);
+    background: color-mix(in srgb, var(--error) 14%, var(--panel));
+
+    pre {
+      flex: 1;
+      min-width: 0;
+      max-height: 9em;
+      margin: 0;
+      overflow: auto;
+      font: inherit;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+  }
+  .git-commit {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    gap: 6px;
+    padding: 4px var(--pad) var(--pad);
+
+    .git-message {
+      height: auto;
+      min-height: 3.6em;
+      padding: 6px 8px;
+      font-family: var(--font-ui);
+      resize: vertical;
+    }
+    .git-commit-row {
+      display: flex;
+      gap: 4px;
+    }
+    .git-do {
+      display: inline-flex;
+      flex: 1;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      min-width: 0;
+    }
+    .git-more {
+      display: grid;
+      place-items: center;
+      padding: 0;
+      width: var(--control-height);
+    }
+    .git-amending {
+      padding: 0;
+      border: 0;
+      background: none;
+      color: var(--muted);
+      font: inherit;
+      text-align: start;
+      text-decoration: underline;
+      cursor: pointer;
+    }
+  }
+  .git-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    scrollbar-width: thin;
+    padding-bottom: var(--pad);
+  }
+  .git-section {
+    > header {
+      display: flex;
+      align-items: center;
+      padding: 0 var(--pad) 0 4px;
+
+      &:hover .git-acts,
+      &:focus-within .git-acts {
+        display: flex;
+      }
+    }
+    ul {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+  }
+  .git-toggle {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    height: 24px;
+    padding: 0 4px;
+    border: 0;
+    border-radius: 4px;
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.03em;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--control-hover);
+    }
+    i {
+      transition: transform 0.1s;
+    }
+    &[aria-expanded="true"] i {
+      transform: rotate(90deg);
+    }
+    .title {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .count {
+      padding: 0 6px;
+      border-radius: 999px;
+      background: var(--control);
+      color: var(--muted);
+      font-weight: 500;
+    }
+  }
+  .git-acts {
+    display: none;
+    flex: none;
+    align-items: center;
+    gap: 1px;
+  }
+  .git-row {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    min-height: 24px;
+    padding: 0 var(--pad) 0 8px;
+
+    &:hover {
+      background: var(--control-hover);
+    }
+    &:hover .git-acts,
+    &:focus-within .git-acts {
+      display: flex;
+    }
+  }
+  .git-file,
+  .git-commit-item {
+    display: flex;
+    flex: 1;
+    align-items: baseline;
+    gap: 6px;
+    min-width: 0;
+    padding: 3px 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+
+    &:focus-visible {
+      outline: 1px solid var(--accent);
+      outline-offset: 1px;
+    }
+    .name,
+    .subject {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .dir {
+      min-width: 0;
+      overflow: hidden;
+      color: var(--muted);
+      font-size: 11px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+  .git-file .name {
+    flex: none;
+    max-width: 70%;
+  }
+  .git-commit-item {
+    flex-direction: column;
+    gap: 0;
+    align-items: stretch;
+
+    .meta {
+      overflow: hidden;
+      color: var(--muted);
+      font-size: 11px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    code {
+      font: inherit;
+      color: var(--accent);
+    }
+  }
+  .code {
+    flex: none;
+    width: 14px;
+    font-weight: 600;
+    text-align: center;
+
+    &[data-code="M"],
+    &[data-code="T"] {
+      color: var(--warn);
+    }
+    &[data-code="A"],
+    &[data-code="U"],
+    &[data-code="C"] {
+      color: var(--ok);
+    }
+    &[data-code="D"],
+    &[data-code="!"] {
+      color: var(--error);
+    }
+    &[data-code="R"] {
+      color: var(--accent);
+    }
+  }
+  .git-none {
+    padding: 3px var(--pad) 3px 24px;
+    color: var(--muted);
+  }
+}
+/* A commit's `git show` (GitPanel.tsx). */
+.git-show {
+  width: min(90vw, 760px);
+
+  .git-show-text {
+    max-height: 55vh;
+    margin: 8px 0;
+    padding: 8px;
+    overflow: auto;
+    border: 1px solid var(--control-border);
+    border-radius: var(--inner-radius);
+    background: var(--bg);
+    font: 12px var(--font-mono);
+    white-space: pre;
+  }
+}
+/*
  * Draggable borders between the panes: a 1px line with a wider hit area that overlaps its neighbours (negative
  * margins, net zero), so the handles take no room from the panels' fractional sizes. The accent shows while hovered or dragged.
  */

@@ -16,6 +16,7 @@ import { commandOf, createShell, entryOf, type Command } from "./shell";
 import { checkSupport } from "./support";
 import { createPreviews } from "./ui/previews";
 import { createSession, type Status } from "./ui/session";
+import { createGit } from "./git/store";
 import { createWorkspace } from "./ui/workspace";
 import { VFS } from "@runbun/vfs";
 
@@ -63,6 +64,8 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
   const [localInfo, setLocalInfo] = createSignal<{ bun: string; sandbox: string }>();
   const vfs = new VFS();
   attachStore(vfs);
+  // The Git panel's state; git.wasm loads when it first has something to read (git/store.ts).
+  const gitStore = createRoot(() => createGit(vfs, { enabled: git ?? (() => true), log: (level, text) => log(level, text), beforeRun: () => workspace.saveAll() }));
   let runner: Runner | RemoteRunner | undefined;
   /** Both runners, once used: switching between them keeps each (its cookies, the runner's node_modules). */
   let browserRunner: Runner | undefined;
@@ -485,13 +488,15 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
         await switchRuntime("local");
       });
     }
-    exec = createShell({ vfs, log, run, install, test, stop, clear: clearConsole, reset, git, cookies: runner && { list: () => runner!.listCookies(), clear: () => runner!.clearCookies() } });
+    exec = createShell({ vfs, log, run, install, test, stop, clear: clearConsole, reset, git, gitRan: () => gitStore.commandRan(), cookies: runner && { list: () => runner!.listCookies(), clear: () => runner!.clearCookies() } });
     session.markReady();
   }
 
   return {
     support,
     canRun,
+    /** The Git panel's state over the project's files. */
+    git: gitStore,
     /** Where runs go, and the runner on this machine (localBun.ts) to switch to. */
     runtime: {
       current: runtime,

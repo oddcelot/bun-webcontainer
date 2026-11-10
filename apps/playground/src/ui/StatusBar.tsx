@@ -162,13 +162,17 @@ export function StatusBar(props: { treeShown: boolean; toggleTree(): void; previ
 
 /** How many files differ from the project's source; opens the Changes tab. No count until a repo's source is fetched. */
 function Changed() {
-  const { vfs, workspace: ws } = useContext(AppContext);
+  const { vfs, workspace: ws, git } = useContext(AppContext);
   const [count, setCount] = createSignal<number | null>(null);
   onSettled(() => trackChanges(vfs, (list) => setCount(list?.length ?? null), false));
+  // With a commit in the repository the files are compared with it (git/store.ts), not with where the project came from.
   const tip = () => {
     const n = count();
-    if (n === null) return "Compare the files with the project's source";
-    return n ? `${n} ${n === 1 ? "file differs" : "files differ"} from the project's source: show the changes` : "No changes from the project's source";
+    const head = git.state.hasHead;
+    if (n === null) return head ? "Compare the files with the last commit" : "Compare the files with the project's source";
+    if (!n) return head ? "No changes since the last commit" : "No changes from the project's source";
+    const files = `${n} ${n === 1 ? "file" : "files"}`;
+    return head ? `${files} changed since the last commit: show the changes` : `${files} ${n === 1 ? "differs" : "differ"} from the project's source: show the changes`;
   };
   return (
     <Tip tip={tip()} type="button" class="changed" aria-pressed={ws.state.changesShown ? "true" : "false"} onClick={() => ws.showChanges()}>

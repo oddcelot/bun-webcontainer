@@ -296,6 +296,13 @@ export function FileTree() {
       else for (const p of tree.getSelectedPaths()) tree.getItem(p)?.deselect();
     }),
   );
+  // The repository's status, as badges and colors on the rows (the Git view's lists, in the tree).
+  createEffect(
+    () => app.git.statuses(),
+    guarded("file tree", (entries) => {
+      tree.setGitStatus(entries.length ? entries : undefined);
+    }),
+  );
   createEffect(
     () => ws.state.treeVersion,
     guarded("file tree", () => {

@@ -24,6 +24,8 @@ export interface ShellHost {
   reset(): Promise<void>;
   /** Whether `git` is on (an embed's `git` feature); absent: always, as on the full playground. */
   git?: () => boolean;
+  /** A `git` command ran: the Git panel reads the repository again. */
+  gitRan?: () => void;
   /** The preview servers' cookies (absent when this browser can't run code). */
   cookies?: { list(): Promise<Readonly<Cookie>[]>; clear(): Promise<void> };
 }
@@ -327,9 +329,10 @@ export function createShell(host: ShellHost) {
   /** `git …`: gitoxide over the project's files; see git/git.ts. */
   async function git(args: string[]) {
     const r = await runGit(vfs, args);
+    host.gitRan?.();
     if (r.stdout) log("log", asConsoleEntry(r.stdout));
-    // git writes hints and progress to stderr too: an error only when it failed.
-    if (r.stderr) log(r.exitCode ? "error" : "warn", asConsoleEntry(r.stderr));
+    // git writes hints and progress ("Switched to branch 'main'") to stderr too: an error only when it failed.
+    if (r.stderr) log(r.exitCode ? "error" : "log", asConsoleEntry(r.stderr));
   }
 
   return async function exec(line: string) {

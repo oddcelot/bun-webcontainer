@@ -6,7 +6,8 @@ import { pref } from "../prefs";
 import { AppContext } from "./context";
 import { Console } from "./Console";
 import { EditorPane } from "./EditorPane";
-import { FileTree } from "./FileTree";
+import { Explorer, toggleGit } from "./Explorer";
+import { inCommitBox } from "../git/store";
 import { Header } from "./Header";
 import { StatusToast } from "./Status";
 import { StatusBar, statusDisplay } from "./StatusBar";
@@ -116,10 +117,14 @@ export function App() {
     const onKey = (e: KeyboardEvent) => {
       const s = app.session;
       if (recordingKeys()) return;
+      // Mod+Enter in the commit message box commits (GitPanel.tsx), it doesn't run the project.
+      if (inCommitBox(e) && matches("run", e)) return;
       if (matches("run", e)) s.canRun && !s.busy.run && s.ready() && app.run();
       else if (matches("stop", e)) app.stop();
       else if (matches("toggleExplorer", e)) toggleColumn(0);
-      else if (matches("togglePreview", e)) toggle(0);
+      else if (matches("toggleGit", e)) {
+        if (!toggleGit(app, columnSizes()[0] > 0, () => toggleColumn(0))) return;
+      } else if (matches("togglePreview", e)) toggle(0);
       else if (matches("toggleConsole", e)) toggle(1);
       else return;
       e.preventDefault();
@@ -157,7 +162,7 @@ export function App() {
                 <Resizable.Panel panelId="tree-panel" initialSize={columns[0]} minSize="120px" data-hidden={columnSizes()[0] > 0 ? undefined : ""}>
                   {() => (
                     <nav id="tree">
-                      <FileTree />
+                      <Explorer />
                     </nav>
                   )}
                 </Resizable.Panel>

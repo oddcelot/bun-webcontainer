@@ -21,6 +21,8 @@ export function createWorkspace() {
     /** The Changes tab is open (after the file tabs), and shown instead of the active file. */
     changes: false,
     changesShown: false,
+    /** The file the Changes tab scrolls to (`n` counts the requests, so asking again for the same file scrolls again). */
+    changesFocus: { path: "", n: 0 },
   });
   /** Save edits shortly after typing stops; off, they wait for Ctrl/Cmd+S, Run, Install or Share. Shared by all tabs. */
   // An embed keeps it in memory: it shares runbun.dev's storage (see theme.ts).
@@ -122,6 +124,14 @@ export function createWorkspace() {
       setState((s) => {
         s.changes = true;
         s.changesShown = true;
+      });
+    },
+    /** Opens the Changes tab scrolled to one file's diff. */
+    showChange(path: string) {
+      setState((s) => {
+        s.changes = true;
+        s.changesShown = true;
+        s.changesFocus = { path, n: s.changesFocus.n + 1 };
       });
     },
     closeChanges() {
