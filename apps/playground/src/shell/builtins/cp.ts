@@ -1,6 +1,7 @@
 // `cp`: bun/src/runtime/shell/builtin/cp.rs
 import type { Command, CommandCtx } from "../interp";
-import { basename, missing, resolveOperand, SysError, toSysError } from "./syserr";
+import { missing, SysError, toSysError } from "./errno";
+import { basename, resolveOperand } from "./paths";
 import { err, out } from "./util";
 
 const USAGE =

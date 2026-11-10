@@ -1,6 +1,7 @@
 // `mv`: bun/src/runtime/shell/builtin/mv.rs
 import type { Command, CommandCtx } from "../interp";
-import { basename, missing, normalizeKeepSlash, SysError, toSysError } from "./syserr";
+import { missing, SysError, toSysError } from "./errno";
+import { basename, normalizeKeepSlash } from "./paths";
 import { err } from "./util";
 
 const USAGE = "usage: mv [-f | -i | -n] [-hv] source target\n       mv [-f | -i | -n] [-v] source ... directory\n";
