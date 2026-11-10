@@ -1003,7 +1003,8 @@ html[data-booting] #app > header > * { visibility: hidden; animation: boot-fallb
 #statusbar {
   /* A narrow bar keeps what it showed before these items: the links on the right stay in view. */
   @media (max-width: 560px) {
-    .ports {
+    .ports,
+    .format-on-save {
       display: none;
     }
   }

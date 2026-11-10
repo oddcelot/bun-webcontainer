@@ -88,20 +88,36 @@ export function EditorPane() {
   });
   ws.onFormat(() => void formatOpenFile());
 
-  async function formatOpenFile() {
+  /** `quiet` (format on save): a file `bun fmt` can't format, or one that doesn't parse, saves as it is, unremarked. */
+  async function formatOpenFile(quiet = false) {
     const path = current;
     if (!path || !editor || !has("format") || ws.readOnlyText(path) !== undefined) return;
     try {
       const r = await fmt(vfs, path, editor.getText());
       if (path !== current) return;
       if (r.exitCode === 0) return editor.replace(r.stdout);
+      if (quiet) return;
       log("error", asConsoleEntry(r.stderr));
       // JS and TS errors are already marked as you type; mark where other files stop parsing, until the next edit.
       const at = errorLocation(r.stderr);
       if (at && !CHECKED.test(path)) editor.setDiagnostics([{ severity: "error", message: at.message, line: at.line, column: at.column, length: 0, source: "bun fmt" }]);
     } catch (e) {
-      log("error", `[fmt] ${e}`);
+      if (!quiet) log("error", `[fmt] ${e}`);
     }
+  }
+
+  /** Ctrl/Cmd+S: formats the open file first with format on save on, then writes it. */
+  async function saveOpenFile() {
+    const path = current;
+    if (!path) return;
+    if (ws.formatOnSave() && has("format")) {
+      await formatOpenFile(true);
+      if (path !== current || !editor) return;
+      // What the formatter wrote is what gets saved, whether or not the editor has reported the edit yet.
+      const text = editor.getText();
+      if (text !== (pending.get(path) ?? vfs.textOf(path))) pending.set(path, text);
+    }
+    if (save(path)) ws.markSaved();
   }
 
 
@@ -231,7 +247,7 @@ export function EditorPane() {
       }
       if (!matches("save", e)) return;
       e.preventDefault();
-      if (current && save(current)) ws.markSaved();
+      void saveOpenFile();
     };
     // Pending auto-saves go to the VFS before the page goes (persistence writes on pagehide); with auto-save off,
     // unsaved edits make the browser ask first, as editors do.

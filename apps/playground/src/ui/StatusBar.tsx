@@ -139,6 +139,19 @@ export function StatusBar(props: { treeShown: boolean; toggleFiles(): void; togg
           </>
         )}
       </Show>
+      <Show when={app.features?.has("format") ?? true}>
+        <Tip
+          type="button"
+          class="format-on-save"
+          aria-pressed={ws.formatOnSave() ? "true" : "false"}
+          keys={keys("save")}
+          tip={ws.formatOnSave() ? "Format on save: saving with the shortcut formats the file with bun fmt first. Saves as you type don't." : "Format on save is off: saving with the shortcut keeps the file as it is. Click to format it with bun fmt first."}
+          onClick={() => ws.setFormatOnSave(!ws.formatOnSave())}
+        >
+          <i class="i-lucide-wand-sparkles" aria-hidden="true" />
+          <span class="sr-only">Format on save</span>
+        </Tip>
+      </Show>
       <Tip
         as="a"
         href={`${DOCS}compatibility/bun/`}
