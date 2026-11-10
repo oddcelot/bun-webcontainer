@@ -1,7 +1,7 @@
 import { isLazy } from "@runbun/vfs";
 import { Show, createEffect, onSettled, useContext } from "solid-js";
 import { CHECKED, mountDiagnostics } from "../diagnostics";
-import { JSON_FILE, jsonComplete, jsonCompletionDetails, jsonHover } from "../jsonLanguage";
+import { JSON_FILE, connectJsonFiles, jsonComplete, jsonCompletionDetails, jsonHover } from "../jsonLanguage";
 import { createPierre } from "../editors/pierre";
 import { chordKeys, keysFor, matches } from "../keymap";
 import type { CodeEditor, EditorLocation } from "../editors/types";
@@ -181,6 +181,9 @@ export function EditorPane() {
       if (!installing && current && editor) check?.(current, editor.getText());
     },
   );
+
+  // A .json file's relative `$schema` (and its `$ref`s) is read from the project (jsonLanguage.ts).
+  onSettled(() => connectJsonFiles(vfs));
 
   onSettled(() => {
     // The open file changed outside the editor (e.g. `Bun.write`); unsaved edits win over that.

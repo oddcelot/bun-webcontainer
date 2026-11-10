@@ -1,10 +1,12 @@
 // Completions, hovers and errors for .json files in the editor, from a JSON schema: vscode-json-languageservice (what
 // VS Code's JSON support runs on), loaded on first use. runbun.json gets its schema (src/schema/runbun.json) bundled,
-// whether or not it says `$schema`; another file's own `$schema` URL is fetched (https, or this page's origin). JSONC (comments, trailing
-// commas) for runbun.json and tsconfig/jsconfig, strict JSON elsewhere.
+// whether or not it says `$schema`; another file's own `$schema` is read from the project when it's a path (relative
+// to the file), else fetched (https, or this page's origin). JSONC (comments, trailing commas) for runbun.json and
+// tsconfig/jsconfig, strict JSON elsewhere.
 import type { EditorCompletion, EditorCompletionDetails, EditorCompletions, EditorDiagnostic, EditorHover, CompletionKind } from "./editors/types";
 import runbunSchema from "./schema/runbun.json";
 import { CONFIG_FILE } from "./projectConfig";
+import type { VFS } from "@runbun/vfs";
 
 export const JSON_FILE = /\.json$/;
 const RUNBUN_SCHEMA = "https://runbun.dev/schema/runbun.json";
@@ -14,7 +16,35 @@ const RUNBUN_SCHEMA_URL = /^https?:\/\/[^?#]*\/schema\/runbun\.json(?:[?#].*)?$/
 const JSONC = /(^|\/)(runbun|tsconfig(\.[\w-]+)?|jsconfig)\.json$/;
 
 type Service = typeof import("vscode-json-languageservice");
-let loading: Promise<{ m: Service; ls: ReturnType<Service["getLanguageService"]> }> | undefined;
+type Loaded = { m: Service; ls: ReturnType<Service["getLanguageService"]> };
+let loading: Promise<Loaded> | undefined;
+let loaded: Loaded | undefined;
+/** The open project: a relative `$schema` (`./config.schema.json`, `../node_modules/tool/schema.json`) and a schema's
+ * relative `$ref`s are read from it. */
+let files: VFS | undefined;
+
+/** Reads schemas from `vfs` (see `files`) and forgets one when its file changes; returns the disconnect. */
+export function connectJsonFiles(vfs: VFS): () => void {
+  files = vfs;
+  const off = vfs.onChange(({ path }) => {
+    if (JSON_FILE.test(path)) loaded?.ls.resetSchema(`file:///${path}`);
+  });
+  return () => {
+    off();
+    if (files === vfs) files = undefined;
+  };
+}
+
+/** A schema of the project's: `file:///<path>` as `documentOf` names its files. */
+async function projectSchema(uri: string): Promise<string> {
+  const path = decodeURIComponent(uri.slice("file:///".length));
+  if (!files) throw new Error(`no project to read ${path} from`);
+  // A large installed file is kept out of memory until something reads it.
+  await files.ensure([path]).catch(() => {});
+  const text = files.textOf(path);
+  if (typeof text !== "string") throw new Error(`no such file in the project: ${path}`);
+  return text;
+}
 
 function service() {
   // A failed load (offline, a dev server that re-optimized) isn't kept: the next hover or keystroke tries again.
@@ -27,6 +57,7 @@ function service() {
       // bundled one; others are fetched, over https or from this page's own origin.
       schemaRequestService: async (uri) => {
         if (RUNBUN_SCHEMA_URL.test(uri)) return JSON.stringify(runbunSchema);
+        if (uri.startsWith("file:///")) return projectSchema(uri);
         const url = new URL(uri);
         if (url.protocol !== "https:" && url.origin !== location.origin) throw new Error(`only https schemas are fetched, not ${uri}`);
         const res = await fetch(uri);
@@ -34,9 +65,11 @@ function service() {
         return res.text();
       },
       clientCapabilities: m.ClientCapabilities.LATEST,
+      // Relative to the file that names it (a $schema, or a schema's $ref): file:///<its path>, or its URL.
+      workspaceContext: { resolveRelativePath: (relative, resource) => new URL(relative, resource).href },
     });
     ls.configure({ validate: true, allowComments: true, schemas: [{ uri: RUNBUN_SCHEMA, fileMatch: [`**/${CONFIG_FILE}`], schema: runbunSchema }] });
-    return { m, ls };
+    return (loaded = { m, ls });
   }));
 }
 
