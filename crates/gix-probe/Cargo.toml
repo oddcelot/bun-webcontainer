@@ -1,0 +1,18 @@
+[package]
+name = "gix-probe"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+gix = { version = "0.90", default-features = false, features = ["sha1", "basic", "status", "dirwalk", "blame", "merge"] }
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = true
+
+[patch.crates-io]
+gix-tempfile = { path = "patched/gix-tempfile" }
+memmap2 = { path = "patched/memmap2" }
+filetime = { path = "patched/filetime" }
