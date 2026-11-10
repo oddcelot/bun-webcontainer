@@ -87,7 +87,7 @@ A share link's `#code=…` hash works too: `https://runbun.dev/embed?mode=code#c
 | `code` | The editor and a console below it. | wasm for the transpiler and resolver (about 4 MB, once per site) | fits the code |
 | `console` | The editor beside the console, which takes `bun test` and other commands. | same | 360px |
 | `preview` | The editor with file tabs beside the preview. Installs missing packages. | same, plus the packages | 420px |
-| `full` | The whole playground: file tree, tabs, preview over console, Format, Install. Waits for Run. | same, plus the formatter (7 MB) once used | 600px |
+| `full` | The whole playground: file tree, tabs, preview over console, Format, Install, Git. Waits for Run. | same, plus the formatter (7 MB) and Git (1 MB) once used | 600px |
 | `result` | Only the preview, with an Edit button that switches to `preview`. | same | 420px |
 
 Every mode except `full` runs the code once it has loaded; `autorun="false"` waits for Run. While the program runs, saving an edit restarts it, like `bun --watch` (`features="-watch"` turns that off). Each restart clears the console. A crash doesn't stop the watching: the next save runs it again. A save that leaves an open file with a syntax error (half-typed, as auto-save saves it) keeps the program running as it was until a save parses.
@@ -160,11 +160,11 @@ npx @runbun/embed pack ./examples --out public/runbun/examples.json
 <bun-playground mode="code" features="types,-open"></bun-playground>
 ```
 
-Readers get a **⋯** menu to show or hide the file tree, tabs, console and preview, and to turn on type hints, formatting, restart on save and the Auto-save switch. It only offers what you haven't locked. With `format` or `install` on, the menu also has **Format file** and **bun install**; **Reset** loads the original files again. **Open in runbun.dev** opens the current files as a share link. The feature list is in the [reference](/reference/embed-api/#features).
+Readers get a **⋯** menu to show or hide the file tree, tabs, console and preview, and to turn on type hints, formatting, Git, restart on save and the Auto-save switch. It only offers what you haven't locked. With `format` or `install` on, the menu also has **Format file** and **bun install**; **Reset** loads the original files again. **Open in runbun.dev** opens the current files as a share link. The feature list is in the [reference](/reference/embed-api/#features).
 
 Readers can drag the borders between panes (or focus one and use the arrow keys) to resize them; a double click goes back to the default. Sizes are kept for the browser tab.
 
-Type checking downloads 10 MB the first time it's used, and format 7 MB. They are off until someone turns them on.
+Type checking downloads 10 MB the first time it's used, format 7 MB and Git 1 MB. They are off until someone turns them on.
 
 Edits are lost on reload. Set `persist="some-key"` to keep them in the reader's browser, or `readonly` to stop editing (Run still works).
 

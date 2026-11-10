@@ -22,6 +22,8 @@ export interface ShellHost {
   clear(): void;
   /** Forget this project's saved files and reload it from its source. */
   reset(): Promise<void>;
+  /** Whether `git` is on (an embed's `git` feature); absent: always, as on the full playground. */
+  git?: () => boolean;
   /** The preview servers' cookies (absent when this browser can't run code). */
   cookies?: { list(): Promise<Readonly<Cookie>[]>; clear(): Promise<void> };
 }
@@ -339,7 +341,7 @@ export function createShell(host: ShellHost) {
       if (cmd === "clear") return host.clear();
       if (cmd === "ls") return ls(args[0]);
       if (cmd === "cat") return await cat(args[0]);
-      if (cmd === "git") return await git(args);
+      if (cmd === "git") return host.git?.() === false ? fail("git: off in this embed (turn on Git in the ⋯ menu)") : await git(args);
       if (cmd !== "bun") return fail(`${cmd}: command not found (try "help")`);
       const [sub, ...rest] = args;
       if (!sub || sub === "help" || sub === "--help") return log("log", HELP);

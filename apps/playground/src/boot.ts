@@ -34,7 +34,7 @@ const RUNTIME_KEY = "runbun:runtime";
 /** How long startup waits for the runner before running in the browser (see `start`). */
 const LOCAL_WAIT_MS = 1500;
 
-export function createPlayground({ watch, localUrl }: { watch?: () => boolean; localUrl?: string } = {}) {
+export function createPlayground({ watch, localUrl, git }: { watch?: () => boolean; localUrl?: string; git?: () => boolean } = {}) {
   const support = checkSupport();
   /** True when this browser can run the program itself (the in-browser runtime). */
   const browserOk = support.every((c) => c.ok);
@@ -485,7 +485,7 @@ export function createPlayground({ watch, localUrl }: { watch?: () => boolean; l
         await switchRuntime("local");
       });
     }
-    exec = createShell({ vfs, log, run, install, test, stop, clear: clearConsole, reset, cookies: runner && { list: () => runner!.listCookies(), clear: () => runner!.clearCookies() } });
+    exec = createShell({ vfs, log, run, install, test, stop, clear: clearConsole, reset, git, cookies: runner && { list: () => runner!.listCookies(), clear: () => runner!.clearCookies() } });
     session.markReady();
   }
 

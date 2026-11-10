@@ -226,6 +226,7 @@ const PANES: [Feature, string][] = [
 const TOOLS: [Feature, string][] = [
   ["types", "Type hints"],
   ["format", "Formatting"],
+  ["git", "Git"],
   ["watch", "Restart on save"],
   ["autosave", "Auto-save switch"],
 ];
