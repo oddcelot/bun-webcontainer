@@ -5,6 +5,7 @@ import { clearPkgCache, pkgCacheInfo } from "./pkgCache";
 import { clearStore, storeInfo } from "./pkgStore";
 import type { VFS } from "@runbun/vfs";
 import { readConfig } from "./projectConfig";
+import { git as runGit } from "./git/git";
 
 type Log = (level: string, text: string) => void;
 
@@ -91,6 +92,33 @@ export function entryOf(has: Has, read: Read): string {
   return ["index.html", "package.json"].find(has) ?? entry;
 }
 
+/** A command line's words: split at whitespace; `"…"` and `'…'` keep spaces, a backslash escapes the next character. */
+export function words(line: string): string[] {
+  const out: string[] = [];
+  let word: string | undefined; // undefined between words, so `""` still makes an (empty) word
+  let quote: string | undefined;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i]!;
+    if (quote) {
+      if (c === quote) quote = undefined;
+      else if (c === "\\" && quote === '"' && i + 1 < line.length) word += line[++i];
+      else word += c;
+    } else if (c === '"' || c === "'") {
+      quote = c;
+      word ??= "";
+    } else if (c === "\\" && i + 1 < line.length) {
+      word = (word ?? "") + line[++i];
+    } else if (/\s/.test(c)) {
+      if (word !== undefined) out.push(word);
+      word = undefined;
+    } else {
+      word = (word ?? "") + c;
+    }
+  }
+  if (word !== undefined) out.push(word);
+  return out;
+}
+
 /** Files `bun test` picks up: `*.test.*`, `*_test.*`, `*.spec.*`, `*_spec.*`, outside node_modules. */
 export const isTestFile = (path: string) => /(^|\/)[^/]+[._](test|spec)\.[cm]?[jt]sx?$/.test(path) && !/(^|\/)node_modules\//.test(path);
 
@@ -103,6 +131,7 @@ bun remove <pkg>       remove dependencies
 bun pm cache [rm]      show (or clear) the package cache, shared by all projects
 bun fmt [-c] [path...]  format (or --check) files like Prettier, with the project's configs
 bun check [path...]    type check with Bun's TypeScript 7 checker (tsconfig.json, @types)
+git <command>          init, status, add, commit, log, diff… (git help: all of them)
 ls [dir]  cat <file>  clear  help
 reset                  discard saved files, reload from source
 cookies [clear]        list (or delete) the preview's cookies
@@ -293,8 +322,16 @@ export function createShell(host: ShellHost) {
     for (const line of text.replace(/\n$/, "").split("\n")) log("log", line);
   }
 
+  /** `git …`: gitoxide over the project's files; see git/git.ts. */
+  async function git(args: string[]) {
+    const r = await runGit(vfs, args);
+    if (r.stdout) log("log", asConsoleEntry(r.stdout));
+    // git writes hints and progress to stderr too: an error only when it failed.
+    if (r.stderr) log(r.exitCode ? "error" : "warn", asConsoleEntry(r.stderr));
+  }
+
   return async function exec(line: string) {
-    const [cmd, ...args] = line.split(/\s+/);
+    const [cmd = "", ...args] = words(line);
     try {
       if (cmd === "help") return log("log", HELP);
       if (cmd === "reset") return await host.reset();
@@ -302,6 +339,7 @@ export function createShell(host: ShellHost) {
       if (cmd === "clear") return host.clear();
       if (cmd === "ls") return ls(args[0]);
       if (cmd === "cat") return await cat(args[0]);
+      if (cmd === "git") return await git(args);
       if (cmd !== "bun") return fail(`${cmd}: command not found (try "help")`);
       const [sub, ...rest] = args;
       if (!sub || sub === "help" || sub === "--help") return log("log", HELP);

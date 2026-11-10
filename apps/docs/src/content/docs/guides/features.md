@@ -64,12 +64,19 @@ A terminal with colors, clickable links, history (<kbd>↑</kbd>/<kbd>↓</kbd>)
 | `bun pm cache [rm]` | Show or clear the package cache |
 | `bun fmt [-c] [path…]` | Format files like Prettier, or only check them (`-c`) |
 | `bun check [path…]` | Type check with Bun's own checker, as [`bun check`](/compatibility/toolchain/#bun-check) does |
+| `git <command>` | Version control for the project: `init`, `status`, `add`, `commit`, `log`, `diff`, `show`, `branch`, `rm`, `restore --staged`, `reset` (see [Git](#git)) |
 | `ls [dir]`, `cat <file>` | List a folder, print a file |
 | `cookies [clear]` | List or clear the preview's cookies |
 | `reset` | Throw away your changes and reload the project from its source |
 | `clear`, `help` | |
 
-The console is not a full shell: no quotes, pipes, `&&`, `bunx`, or file commands like `mkdir` and `mv`.
+The console is not a full shell: no pipes, `&&`, `bunx`, or file commands like `mkdir` and `mv`. Quotes keep spaces in one argument (`git commit -m "first draft"`).
+
+### Git
+
+`git` runs [gitoxide](https://github.com/GitoxideLabs/gitoxide), a Git written in Rust, compiled to WebAssembly, on the project's files. `git init` makes a repository in `.git/`. It leaves `node_modules/` out (through `.git/info/exclude`) and ignores executable bits, which the browser's files don't have. The repository is kept with the project in this browser and survives a reload, but it is not part of share links, downloads or a folder opened from disk, and the file tree doesn't list `.git/`. `reset` (the console command) throws it away with your other changes.
+
+What works: `status` (and `-s`), `add` (paths, `.`, `-A`, `-u`), `commit` (`-m`, `-a`, `--allow-empty`), `log` (`--oneline`, `-n`), `diff` (and `--cached`), `show`, `branch` (list, create), `rm` (`--cached`), `restore --staged`, `reset [path]` and `rev-parse`. Paths are files or folders, not globs. Commits are signed `Playground <playground@runbun.dev>` (no `git config` yet). There is no checkout, switch or merge yet, and no network: no `clone`, `fetch` or `push`.
 
 ## Running code
 

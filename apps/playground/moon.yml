@@ -91,6 +91,7 @@ tasks:
       - 'fmt-wasm:build'
       - 'check-wasm:build'
       - 'tsrs-ls-wasm:build'
+      - 'git-wasm:build'
     inputs:
       - '@group(sources)'
     outputs:
@@ -107,6 +108,7 @@ tasks:
       - 'fmt-wasm:build'
       - 'check-wasm:build'
       - 'tsrs-ls-wasm:build'
+      - 'git-wasm:build'
   deploy-canary:
     # canary.runbun.dev (wrangler.jsonc env.canary): a production build into dist-canary/ that links docs-canary, so
     # moon's cached dist/ stays the runbun.dev build. noindex keeps it out of search results.
@@ -129,6 +131,7 @@ tasks:
       - 'fmt-wasm:build'
       - 'check-wasm:build'
       - 'tsrs-ls-wasm:build'
+      - 'git-wasm:build'
     options:
       cache: false
       runInCI: false
