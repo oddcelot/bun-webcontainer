@@ -1154,6 +1154,22 @@ main [data-kb-resizable-root] { height: 100%; }
     .hint {
       color: var(--muted);
     }
+    .git-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0;
+      border: 0;
+      background: none;
+      color: var(--muted);
+      font: inherit;
+      cursor: pointer;
+
+      &:hover {
+        color: var(--fg);
+        text-decoration: underline;
+      }
+    }
   }
   .git-head {
     display: flex;

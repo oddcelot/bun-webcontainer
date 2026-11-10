@@ -74,12 +74,6 @@ export function StatusBar(props: { treeShown: boolean; toggleFiles(): void; togg
         <i class="i-lucide-panel-left" aria-hidden="true" />
         <span class="sr-only">File tree</span>
       </Tip>
-      <Show when={gitOn()}>
-        <Tip tip="Show or hide Git: changes, commits and branches" keys={keys("toggleGit")} type="button" aria-pressed={shows("git") ? "true" : "false"} onClick={props.toggleGit}>
-          <i class="i-lucide-git-branch" aria-hidden="true" />
-          <span class="sr-only">Git</span>
-        </Tip>
-      </Show>
       <Tip tip="Show or hide the preview" keys={keys("togglePreview")} type="button" aria-pressed={props.previewShown ? "true" : "false"} onClick={() => props.toggle(0)}>
         <i class="i-lucide-app-window" aria-hidden="true" />
         <span class="sr-only">Preview</span>
@@ -92,7 +86,7 @@ export function StatusBar(props: { treeShown: boolean; toggleFiles(): void; togg
         <StatusPill role="status" status={s.status()} title={s.status().text} />
       </Show>
       <span class="spacer" />
-      <Changed />
+      <Changed git={gitOn()} gitShown={shows("git")} toggleGit={props.toggleGit} />
       <Show when={!ws.state.changesShown && ws.state.active}>
         {(path) => (
           <>
@@ -171,23 +165,32 @@ export function StatusBar(props: { treeShown: boolean; toggleFiles(): void; togg
 }
 
 /** How many files differ from the project's source; opens the Changes tab. No count until a repo's source is fetched. */
-function Changed() {
+function Changed(props: { git: boolean; gitShown: boolean; toggleGit(): void }) {
   const { vfs, workspace: ws, git } = useContext(AppContext);
   const [count, setCount] = createSignal<number | null>(null);
   onSettled(() => trackChanges(vfs, (list) => setCount(list?.length ?? null), false));
   // With a commit in the repository the files are compared with it (git/store.ts), not with where the project came from.
+  // With git on, a click shows or hides the Git view (whose Changes header opens the Changes tab); off, it opens the tab.
   const tip = () => {
     const n = count();
     const head = git.state.hasHead;
-    if (n === null) return head ? "Compare the files with the last commit" : "Compare the files with the project's source";
-    if (!n) return head ? "No changes since the last commit" : "No changes from the project's source";
+    const action = props.git ? "show or hide Git" : "show the changes";
+    if (n === null) return props.git ? "Show or hide Git: changes, commits and branches" : head ? "Compare the files with the last commit" : "Compare the files with the project's source";
+    if (!n) return `${head ? "No changes since the last commit" : "No changes from the project's source"}: ${action}`;
     const files = `${n} ${n === 1 ? "file" : "files"}`;
-    return head ? `${files} changed since the last commit: show the changes` : `${files} ${n === 1 ? "differs" : "differ"} from the project's source: show the changes`;
+    return head ? `${files} changed since the last commit: ${action}` : `${files} ${n === 1 ? "differs" : "differ"} from the project's source: ${action}`;
   };
   return (
-    <Tip tip={tip()} type="button" class="changed" aria-pressed={ws.state.changesShown ? "true" : "false"} onClick={() => ws.showChanges()}>
+    <Tip
+      tip={tip()}
+      keys={props.git ? keys("toggleGit") : undefined}
+      type="button"
+      class="changed"
+      aria-pressed={(props.git ? props.gitShown : ws.state.changesShown) ? "true" : "false"}
+      onClick={() => (props.git ? props.toggleGit() : ws.showChanges())}
+    >
       <i class="i-lucide-git-compare" aria-hidden="true" /> {count() ?? ""}
-      <span class="sr-only">Changes</span>
+      <span class="sr-only">{props.git ? "Git" : "Changes"}</span>
     </Tip>
   );
 }

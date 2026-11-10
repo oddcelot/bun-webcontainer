@@ -276,10 +276,15 @@ export function GitPanel() {
             open={open().changes}
             onToggle={() => toggle("changes")}
             actions={
-              <Show when={s.changes.length}>
-                <Act icon="i-lucide-undo-2" tip="Discard all changes" onClick={() => discard(s.changes.filter((c) => c.code !== "!"), true)} />
-                <Act icon="i-lucide-plus" tip="Stage all changes" onClick={() => void git.stageAll()} />
-              </Show>
+              <>
+                <Show when={s.changes.length || s.staged.length}>
+                  <Act icon="i-lucide-git-compare" tip="Show all changes" onClick={() => ws.showChanges()} />
+                </Show>
+                <Show when={s.changes.length}>
+                  <Act icon="i-lucide-undo-2" tip="Discard all changes" onClick={() => discard(s.changes.filter((c) => c.code !== "!"), true)} />
+                  <Act icon="i-lucide-plus" tip="Stage all changes" onClick={() => void git.stageAll()} />
+                </Show>
+              </>
             }
           >
             <For each={s.changes} fallback={<li class="git-none">{s.staged.length ? "Nothing else changed." : "No changes."}</li>}>
@@ -360,7 +365,7 @@ export function GitPanel() {
 
 /** No repository yet: what the panel does, and the button that makes one. */
 function Start() {
-  const { git } = useContext(AppContext);
+  const { git, workspace: ws } = useContext(AppContext);
   return (
     <div class="git-start">
       <Show when={git.state.loaded} fallback={<p>Reading the repository…</p>}>
@@ -369,6 +374,9 @@ function Start() {
           <i class="i-lucide-git-branch" aria-hidden="true" /> Initialize repository
         </Button>
         <p class="hint">The repository stays in this browser; it isn't part of a share link or a zip.</p>
+        <button type="button" class="git-link" onClick={() => ws.showChanges()}>
+          <i class="i-lucide-git-compare" aria-hidden="true" /> Compare with the project's source
+        </button>
       </Show>
     </div>
   );
