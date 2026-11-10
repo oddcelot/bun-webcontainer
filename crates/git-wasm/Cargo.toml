@@ -9,7 +9,9 @@ name = "git"
 path = "src/main.rs"
 
 [dependencies]
-gix = { version = "0.90", default-features = false, features = ["sha1", "basic", "status", "dirwalk"] }
+gix = { version = "0.90", default-features = false, features = ["sha1", "basic", "status", "dirwalk", "blocking-network-client"] }
+gix-transport = { version = "0.62", default-features = false, features = ["http-client"] }
+gix-error = "0.5"
 
 [profile.release]
 panic = "abort"
@@ -22,3 +24,5 @@ strip = true
 gix-tempfile = { path = "patched/gix-tempfile" }
 memmap2 = { path = "patched/memmap2" }
 filetime = { path = "patched/filetime" }
+gix-pack = { path = "patched/gix-pack" }
+gix-transport = { path = "patched/gix-transport" }

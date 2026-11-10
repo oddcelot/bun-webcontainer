@@ -5,11 +5,11 @@ use gix::config::{File, Source};
 
 const PATH: &str = "/.git/config";
 
-fn load() -> Result<File, Exit> {
+pub fn load() -> Result<File, Exit> {
     Ok(File::from_path_no_includes(PATH.into(), Source::Local)?)
 }
 
-fn save(f: &File) -> Result<(), Exit> {
+pub fn save(f: &File) -> Result<(), Exit> {
     std::fs::write(PATH, f.to_bstring())?;
     Ok(())
 }

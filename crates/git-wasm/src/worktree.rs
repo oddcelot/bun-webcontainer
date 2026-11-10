@@ -218,7 +218,7 @@ fn switch_tree(ctx: &Ctx, t: &Flat) -> Result<(), Exit> {
 }
 
 /// Make the index (and with `worktree` the tracked files) equal to `t`, discarding changes. Untracked files stay.
-fn hard_reset(ctx: &Ctx, t: &Flat, worktree: bool) -> Result<(), Exit> {
+pub fn hard_reset(ctx: &Ctx, t: &Flat, worktree: bool) -> Result<(), Exit> {
     let idx = flat_index(&load_index(ctx)?);
     let paths: BTreeSet<&BString> = idx.keys().chain(t.keys()).collect();
     let (mut drop, mut add) = (HashSet::new(), Vec::new());
@@ -278,7 +278,7 @@ fn parse(args: &[String], checkout: bool) -> Result<Opts, Exit> {
     Ok(o)
 }
 
-fn move_to(ctx: &Ctx, target: &gix::Commit<'_>, force: bool) -> Result<(), Exit> {
+pub fn move_to(ctx: &Ctx, target: &gix::Commit<'_>, force: bool) -> Result<(), Exit> {
     let t = commit_flat(ctx, target)?;
     if force { hard_reset(ctx, &t, true) } else { switch_tree(ctx, &t) }
 }
