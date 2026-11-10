@@ -89,6 +89,7 @@ W="-Zbuild-std=std,panic_abort --target wasm64-unknown-unknown --release"
 (cd crates/resolve-wasm && cargo build $W && node test.ts)     # bun_resolver over the VFS vs bun (node >= 24); the playground resolves with it
 (cd crates/tsrs-ls-wasm && cargo build --release --target wasm32-wasip1 && node test.ts)  # TS7 language service (tsrs); own Rust pin
 (cd crates/fmt-wasm && cargo build $W && node test.ts)         # `bun fmt` (bun_format) vs native bun fmt on the repo's files (node >= 24)
+moon run git-wasm:test playground:test-git                       # `git` (gix, wasm32-wasip1, own nightly pin) vs native git; then over the VFS's WASI host
 (cd crates/shim-test && cargo +$(bun ../../scripts/bun-pins.ts TOOLCHAIN) test)  # pin from scripts/bun-pins.ts
 bun install                                # root bun workspace (playground, docs, packages/*): one bun.lock, isolated
                                            # node_modules per package; shared versions in package.json's catalog
