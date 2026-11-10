@@ -102,7 +102,7 @@ fn report(url: &BStr, outcome: &gix::remote::fetch::Outcome) {
 }
 
 /// `github.com` of `https://github.com/a/b`.
-fn host_of(url: &str) -> &str {
+pub fn host_of(url: &str) -> &str {
     let rest = url.split_once("://").map(|(_, r)| r).unwrap_or(url);
     rest.split(['/', ':']).next().unwrap_or(rest)
 }
@@ -168,7 +168,7 @@ pub fn clone(args: &[String]) -> Res {
 }
 
 /// The remote a command names, or the current branch's, or `origin`.
-fn remote_name(ctx: &Ctx, named: Option<&String>) -> String {
+pub fn remote_name(ctx: &Ctx, named: Option<&String>) -> String {
     if let Some(n) = named {
         return n.clone();
     }

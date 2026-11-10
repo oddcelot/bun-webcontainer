@@ -41,7 +41,7 @@ Your IP address is used to limit how much feedback can be sent a minute; it isn'
 
 ## Sign in with GitHub
 
-Signing in (in the Git view's menu, or **Clone a repository**) lets the playground clone your private repositories and list the ones you choose. It goes through the **runbun.dev** GitHub App, where you pick which repositories it may use; you can change that or remove it at any time in GitHub's [installed apps](https://github.com/settings/installations).
+Signing in (in the Git view's menu, or **Clone a repository**) lets the playground clone your private repositories, push to the ones you choose, and list them. It goes through the **runbun.dev** GitHub App, where you pick which repositories it may use; you can change that or remove it at any time in GitHub's [installed apps](https://github.com/settings/installations).
 
 - **Stored**: your GitHub name, email address and picture, and the app's GitHub token for you, in encrypted, HttpOnly cookies for runbun.dev. They stay in your browser: runbun.dev keeps no account, no database and no copy of the token. Page scripts can't read them, and your projects' code runs on run.runbun.dev, which never receives them.
 - **Used for**: runbun.dev's server reads the token from the cookie only to pass your own git requests and repository list on to GitHub.

@@ -157,6 +157,15 @@ impl Write for Body {
     }
 }
 
+/// One whole request outside gix (push's receive-pack exchange): the body of a 2xx response, read to its end.
+pub fn request(method: &str, url: &str, headers: &[&str], body: Vec<u8>) -> std::io::Result<Vec<u8>> {
+    let ex = exchange(method, url, headers);
+    ex.lock().expect("one thread").body = body;
+    let mut out = Vec::new();
+    Part::new(&ex, false).read_to_end(&mut out)?;
+    Ok(out)
+}
+
 /// gix's HTTP backend over the host's requests.
 #[derive(Default)]
 pub struct Remote;
