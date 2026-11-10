@@ -144,6 +144,7 @@ console.log(db.query("select * from todos where done = ?").all(0));
 - ✅ `mock()`, `spyOn()`, `jest.fn`, `jest.spyOn`
 - ✅ `expect` with `.not`, `.resolves`, `.rejects`, asymmetric matchers (`anything`, `any`, `objectContaining`, `arrayContaining`, `stringContaining`, `stringMatching`) and the common matchers (`toBe`, `toEqual`, `toStrictEqual`, `toThrow`, `toMatchObject`, `toHaveProperty`, `toHaveBeenCalledWith`, …), plus Bun's extras (`toBeEmpty`, `toBeOneOf`, `toSatisfy`, `toStartWith`, `toEndWith`, `toInclude`, `toBeArray`, `toBeString`, `toBeNumber`, `toBeFunction`, `toHaveReturned*`, …)
 - ❌ Snapshots, fake timers, `setSystemTime`, `mock.module`, `jest.mock`, `expect.extend`, `expect.assertions`, coverage, `test.concurrent`, `test.failing`
+- An uncaught error or unhandled rejection fails the test running at the time (whichever test's code threw it), as in Bun, and the run goes on.
 - Unknown matchers throw "is not supported here".
 - `bun test` takes name filters but no flags.
 

@@ -30,7 +30,7 @@ import { flushDatabases } from "./node/sqlite";
 import nodePath from "./node/path";
 import process, { env } from "./node/process";
 import { isDeepStrictEqual } from "./node/util";
-import { runTestFiles } from "./node/test";
+import { failRunning, runTestFiles } from "./node/test";
 import { BUN_REVISION, BUN_VERSION } from "./bunVersion";
 import * as fflate from "fflate";
 import { createDollar } from "../shell/dollar";
@@ -624,7 +624,7 @@ const versionLine = () => `Bun v${(g.Bun as { version: string }).version} (${PLA
 /** An uncaught error as Bun prints it when it isn't ending the program (`bun test`): the error, then Bun's version line. */
 const reportUncaught = (v: unknown) => post({ type: "console", level: "error", text: `${uncaughtText(v)}\n${versionLine()}` });
 
-/** True while `bun test` runs: an uncaught error is reported, and the run goes on. */
+/** True while `bun test` runs: an uncaught error fails the test running now (or is reported), and the run goes on. */
 let testing = false;
 /** The `exit` listeners ran; the worker is waiting to be terminated. */
 let exitEmitted = false;
@@ -680,7 +680,7 @@ const EXIT = Symbol("exit");
  */
 function uncaught(v: unknown, kind: "uncaughtException" | "unhandledRejection", detail: unknown = kind) {
   if (v === EXIT || halted) return;
-  if (testing) return reportUncaught(v);
+  if (testing) return void (failRunning(v) || reportUncaught(v));
   if (process.listenerCount(kind) > 0) {
     try {
       process.emit(kind, v, detail);
