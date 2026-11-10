@@ -632,11 +632,11 @@ let halted = false;
 
 const printError = (err: unknown) => post({ type: "console", level: "error", text: uncaughtText(err).replace(/\n$/, "") });
 
-/** Runs the `exit` listeners, once, with `code` as `process.exitCode`. */
-function emitExit(code: number) {
+/** Runs the `exit` listeners, once, with `code` (as `process.exitCode` too, unless `setCode` is false). */
+function emitExit(code: number, setCode = true) {
   if (exitEmitted) return;
   exitEmitted = true;
-  process.exitCode = code;
+  if (setCode) process.exitCode = code;
   try {
     process.emit("exit", code);
   } catch (err) {
@@ -692,7 +692,9 @@ function uncaught(v: unknown, kind: "uncaughtException" | "unhandledRejection", 
     }
   }
   printError(v);
-  emitExit(1);
+  // Bun's `exit` listeners get 1 for an uncaught error, but `process.exitCode` (0 when unset) for a rejection.
+  if (kind === "unhandledRejection") emitExit(Number(process.exitCode ?? 0) | 0, false);
+  else emitExit(1);
   post({ type: "console", level: "error", text: `\n${versionLine()}` });
   halt(1);
 }
