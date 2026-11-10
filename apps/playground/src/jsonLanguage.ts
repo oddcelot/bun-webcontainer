@@ -15,7 +15,11 @@ type Service = typeof import("vscode-json-languageservice");
 let loading: Promise<{ m: Service; ls: ReturnType<Service["getLanguageService"]> }> | undefined;
 
 function service() {
-  return (loading ??= import("vscode-json-languageservice").then((m) => {
+  // A failed load (offline, a dev server that re-optimized) isn't kept: the next hover or keystroke tries again.
+  return (loading ??= import("vscode-json-languageservice").catch((e) => {
+    loading = undefined;
+    throw e;
+  }).then((m) => {
     const ls = m.getLanguageService({
       // A schema a file names by URL. Ours is bundled (below), so this only runs for other ones.
       schemaRequestService: async (uri) => {
