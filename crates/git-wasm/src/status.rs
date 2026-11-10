@@ -101,6 +101,10 @@ pub struct Status {
 }
 
 pub fn compute(ctx: &Ctx) -> Result<Status, crate::Exit> {
+    compute_with(ctx, gix::status::UntrackedFiles::Collapsed)
+}
+
+pub fn compute_with(ctx: &Ctx, mode: gix::status::UntrackedFiles) -> Result<Status, crate::Exit> {
     let index = load_index(ctx)?;
     let (head, idx) = (flat_head(ctx)?, flat_index(&index));
     let mut staged = Vec::new();
@@ -121,7 +125,7 @@ pub fn compute(ctx: &Ctx) -> Result<Status, crate::Exit> {
     }
     staged.sort();
     let (mut unstaged, mut untracked) = (Vec::new(), Vec::new());
-    for w in worktree_changes(ctx, gix::status::UntrackedFiles::Collapsed)? {
+    for w in worktree_changes(ctx, mode)? {
         let p = path_str(&w.path);
         match w.kind {
             Kind::Modified => unstaged.push((p, 'M')),
@@ -171,7 +175,7 @@ pub fn long(ctx: &Ctx, st: &Status) -> Result<String, crate::Exit> {
             "  (use \"git restore --staged <file>...\" to unstage)\n".to_string()
         };
         for (p, c) in &st.staged {
-            s += &ctx.paint("32", &format!("\t{}{p}", label(*c)));
+            s += &ctx.paint("32", &format!("\t{}{}", label(*c), quote_path(p, false)));
             s += "\n";
         }
     }
@@ -179,7 +183,7 @@ pub fn long(ctx: &Ctx, st: &Status) -> Result<String, crate::Exit> {
         s += "\nChanges not staged for commit:\n";
         s += "  (use \"git add/rm <file>...\" to update what will be committed)\n";
         for (p, c) in &st.unstaged {
-            s += &ctx.paint("31", &format!("\t{}{p}", label(*c)));
+            s += &ctx.paint("31", &format!("\t{}{}", label(*c), quote_path(p, false)));
             s += "\n";
         }
     }
@@ -187,7 +191,7 @@ pub fn long(ctx: &Ctx, st: &Status) -> Result<String, crate::Exit> {
         s += "\nUntracked files:\n";
         s += "  (use \"git add <file>...\" to include in what will be committed)\n";
         for p in &st.untracked {
-            s += &ctx.paint("31", &format!("\t{p}"));
+            s += &ctx.paint("31", &format!("\t{}", quote_path(p, false)));
             s += "\n";
         }
     }
@@ -210,9 +214,82 @@ pub fn long(ctx: &Ctx, st: &Status) -> Result<String, crate::Exit> {
     Ok(s)
 }
 
+/// git's `quote_path`: C-style quoting of control characters, `"`, `\` and non-ASCII bytes (`core.quotePath`);
+/// `sp` also quotes spaces, as the short format does.
+pub fn quote_path(p: &str, sp: bool) -> String {
+    let needs = |b: u8| b < 0x20 || b == b'"' || b == b'\\' || b >= 0x7f || (sp && b == b' ');
+    if !p.bytes().any(needs) {
+        return p.to_string();
+    }
+    let mut s = String::from("\"");
+    for b in p.bytes() {
+        match b {
+            b'"' => s += "\\\"",
+            b'\\' => s += "\\\\",
+            7 => s += "\\a",
+            8 => s += "\\b",
+            9 => s += "\\t",
+            10 => s += "\\n",
+            11 => s += "\\v",
+            12 => s += "\\f",
+            13 => s += "\\r",
+            b if b < 0x20 || b >= 0x7f => s += &format!("\\{b:03o}"),
+            b => s.push(b as char),
+        }
+    }
+    s.push('"');
+    s
+}
+
+/// `## main`, `## No commits yet on main`, `## HEAD (no branch)`.
+fn branch_header(ctx: &Ctx) -> Result<String, crate::Exit> {
+    Ok(match ctx.repo.head_name()? {
+        Some(n) => {
+            let n = n.shorten().to_str_lossy().into_owned();
+            if ctx.repo.head_id().is_err() { format!("No commits yet on {n}") } else { n }
+        }
+        None => "HEAD (no branch)".into(),
+    })
+}
+
 pub fn status(ctx: &Ctx, args: &[String]) -> Res {
-    let st = compute(ctx)?;
-    if args.iter().any(|a| a == "-s" || a == "--short") {
+    use gix::status::UntrackedFiles as U;
+    let (mut short, mut porcelain, mut z, mut branch) = (false, false, false, false);
+    let mut untracked = U::Collapsed;
+    for a in args {
+        match a.as_str() {
+            "-s" | "--short" => short = true,
+            "--porcelain" | "--porcelain=v1" | "--porcelain=1" => porcelain = true,
+            "-z" => z = true,
+            "-b" | "--branch" => branch = true,
+            "-u" | "-uall" | "--untracked-files" | "--untracked-files=all" => untracked = U::Files,
+            "-unormal" | "--untracked-files=normal" => untracked = U::Collapsed,
+            "-uno" | "--untracked-files=no" => untracked = U::None,
+            "--" => break,
+            // combined short flags: -sb, -sz, -sbz
+            a if a.len() > 2 && !a.starts_with("--") && a.starts_with('-') && !a.starts_with("-u") => {
+                for c in a[1..].chars() {
+                    match c {
+                        's' => short = true,
+                        'b' => branch = true,
+                        'z' => z = true,
+                        _ => {}
+                    }
+                }
+            }
+            a if a.starts_with("--porcelain=") => return crate::fatal(format!("unsupported porcelain version '{}'", &a[12..])),
+            _ => {}
+        }
+    }
+    let st = compute_with(ctx, untracked)?;
+    if short || porcelain || z {
+        // porcelain and -z are plain (no color); the short format quotes odd paths, -z never does
+        let paint = |c: &str, s: &str| if porcelain || z { s.to_string() } else { ctx.paint(c, s) };
+        let (eol, quote) = if z { ('\0', false) } else { ('\n', true) };
+        let mut o = String::new();
+        if branch {
+            o += &format!("## {}{eol}", branch_header(ctx)?);
+        }
         let mut map: BTreeMap<&str, (char, char)> = BTreeMap::new();
         for (p, c) in &st.staged {
             map.entry(p).or_insert((' ', ' ')).0 = *c;
@@ -220,16 +297,16 @@ pub fn status(ctx: &Ctx, args: &[String]) -> Res {
         for (p, c) in &st.unstaged {
             map.entry(p).or_insert((' ', ' ')).1 = *c;
         }
+        let q = |p: &str| if quote { quote_path(p, true) } else { p.to_string() };
         for (p, (x, y)) in map {
-            let xs = ctx.paint("32", &x.to_string());
-            let ys = ctx.paint("31", &y.to_string());
-            let xs = if x == ' ' { " ".into() } else { xs };
-            let ys = if y == ' ' { " ".into() } else { ys };
-            crate::out(&format!("{xs}{ys} {p}\n"));
+            let xs = if x == ' ' { " ".into() } else { paint("32", &x.to_string()) };
+            let ys = if y == ' ' { " ".into() } else { paint("31", &y.to_string()) };
+            o += &format!("{xs}{ys} {}{eol}", q(p));
         }
         for p in &st.untracked {
-            crate::out(&format!("{} {p}\n", ctx.paint("31", "??")));
+            o += &format!("{} {}{eol}", paint("31", "??"), q(p));
         }
+        crate::out(&o);
         return Ok(0);
     }
     crate::out(&long(ctx, &st)?);

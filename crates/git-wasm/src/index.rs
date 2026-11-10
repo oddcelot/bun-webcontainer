@@ -1,5 +1,5 @@
 // Index writers: add, rm, reset, restore --staged. gix has no high-level `add`, so this drives the index API directly.
-use crate::status::{Kind, flat_head, load_index, worktree_changes};
+use crate::status::{Kind, load_index, worktree_changes};
 use crate::{Ctx, Res, Specs, fatal, path_str, positional};
 use gix::bstr::{BStr, BString, ByteSlice};
 use gix::index::entry::{Flags, Mode, Stat};
@@ -60,47 +60,6 @@ pub fn add(ctx: &Ctx, args: &[String]) -> Res {
     if n == 0 {
         specs.check_all_matched()?;
     }
-    Ok(0)
-}
-
-fn apply_head(ctx: &Ctx, specs: &Specs) -> Result<(), crate::Exit> {
-    let mut index = load_index(ctx)?;
-    let head = flat_head(ctx)?;
-    let mut paths: HashSet<BString> = head.keys().cloned().collect();
-    paths.extend(index.entries().iter().map(|e| e.path(&index).to_owned()));
-    paths.retain(|p| specs.matches(&path_str(p)));
-    specs.check_all_matched()?;
-    index.remove_entries(|_, p, _| paths.contains(p));
-    for p in &paths {
-        if let Some((mode, id)) = head.get(p) {
-            let mode = Mode::from_bits(*mode).unwrap_or(Mode::FILE);
-            index.dangerously_push_entry(Stat::default(), *id, Flags::empty(), mode, p.as_ref());
-        }
-    }
-    index.sort_entries();
-    index.write(Default::default())?;
-    Ok(())
-}
-
-pub fn reset(ctx: &Ctx, args: &[String]) -> Res {
-    if args.iter().any(|a| a == "--hard" || a == "--soft" || a == "--merge" || a == "--keep") {
-        eprintln!("git: 'reset' only resets the index in the playground (git reset [--] [<pathspec>...])");
-        return Ok(1);
-    }
-    apply_head(ctx, &Specs::new(&positional(args)))?;
-    Ok(0)
-}
-
-pub fn restore(ctx: &Ctx, args: &[String]) -> Res {
-    if !args.iter().any(|a| a == "--staged" || a == "-S") || args.iter().any(|a| a == "--worktree" || a == "-W") {
-        eprintln!("git: 'restore' only supports --staged in the playground yet");
-        return Ok(1);
-    }
-    let paths = positional(args);
-    if paths.is_empty() {
-        return fatal("you must specify path(s) to restore");
-    }
-    apply_head(ctx, &Specs::new(&paths))?;
     Ok(0)
 }
 

@@ -1,9 +1,12 @@
 // A small `git` on gitoxide for the playground: a WASI command module (`_start`, argv via WASI args). The project root
 // is the preopen `/`, which is also the cwd. No network, no threads, no child processes.
+mod config;
 mod diff;
 mod history;
 mod index;
+mod refs;
 mod status;
+mod worktree;
 
 use gix::bstr::{BString, ByteSlice};
 use std::io::Write;
@@ -45,6 +48,10 @@ pub fn out(s: &str) {
     let _ = std::io::stdout().write_all(s.as_bytes());
 }
 
+pub fn out_bytes(b: &[u8]) {
+    let _ = std::io::stdout().write_all(b);
+}
+
 pub fn use_color() -> bool {
     std::env::var("GIT_COLOR").is_ok_and(|v| v == "1")
 }
@@ -78,17 +85,21 @@ const USAGE: &str = "usage: git <command> [<args>]
 
 Supported in the playground:
    init       Create an empty Git repository
-   status     Show the working tree status (-s, --short)
+   status     Show the working tree status (-s, --porcelain [-z] [-b], -u<mode>)
    add        Add file contents to the index (<pathspec>..., ., -A, -u)
    rm         Remove files from the index and the working tree (--cached)
-   restore    Unstage with --staged <pathspec>...
-   reset      Reset index entries to HEAD [<pathspec>...]
-   commit     Record changes (-m <msg>, -a, --allow-empty)
-   log        Show commit logs (--oneline, -n <N>, -<N>)
+   restore    Restore files (--staged, --worktree, --source=<rev>, <pathspec>...)
+   reset      Move HEAD and reset the index or files (--soft, --mixed, --hard, [<rev>] [--] [<pathspec>...])
+   commit     Record changes (-m <msg>, -a, --amend, --no-edit, --allow-empty)
+   log        Show commit logs (--oneline, --format=<fmt>, -n <N>, --skip, --all, <rev>, -- <path>)
    diff       Show changes (--cached, --staged)
-   show       Show a commit [<rev>]
-   branch     List branches, or create one at HEAD
-   rev-parse  Print the object id of a revision
+   show       Show a commit, or a file: <rev>:<path>, :<path>
+   branch     List, create, delete (-d, -D), rename (-m) branches, --show-current, --format
+   switch     Switch branches (<branch>, -c <new> [<start>], --detach, -f)
+   checkout   Switch branches or restore files (<branch>, -b <new>, <rev> -- <path>...)
+   clean      Remove untracked files (-n, -f, -d)
+   config     Get and set options in the repository config (--get, --unset, --list)
+   rev-parse  Print the object id of a revision (--verify, --abbrev-ref)
 ";
 
 fn run(args: &[String]) -> Res {
@@ -106,15 +117,19 @@ fn run(args: &[String]) -> Res {
         "status" => status::status(&open()?, rest),
         "add" => index::add(&open()?, rest),
         "rm" => index::rm(&open()?, rest),
-        "reset" => index::reset(&open()?, rest),
-        "restore" => index::restore(&open()?, rest),
+        "reset" => worktree::reset(&open()?, rest),
+        "restore" => worktree::restore(&open()?, rest),
+        "switch" => worktree::switch(&open()?, rest),
+        "checkout" => worktree::checkout(&open()?, rest),
+        "clean" => worktree::clean(&open()?, rest),
+        "config" => config::config(rest),
         "commit" => history::commit(&open()?, rest),
         "log" => history::log(&open()?, rest),
         "diff" => diff::diff(&open()?, rest),
-        "show" => history::show(&open()?, rest),
-        "branch" => history::branch(&open()?, rest),
-        "rev-parse" => history::rev_parse(&open()?, rest),
-        "checkout" | "switch" | "merge" | "rebase" | "stash" | "tag" | "clone" | "fetch" | "pull" | "push" | "remote" => {
+        "show" => refs::show(&open()?, rest),
+        "branch" => refs::branch(&open()?, rest),
+        "rev-parse" => refs::rev_parse(&open()?, rest),
+        "merge" | "rebase" | "stash" | "tag" | "clone" | "fetch" | "pull" | "push" | "remote" => {
             eprintln!("git: '{cmd}' is not supported in the playground yet");
             Ok(1)
         }
@@ -177,6 +192,11 @@ impl Specs {
             }
         }
         any
+    }
+
+    /// The first spec nothing matched.
+    pub fn unmatched(&self) -> Option<&str> {
+        self.hit.borrow().iter().position(|h| !h).map(|i| self.specs[i].as_str()).filter(|s| !s.is_empty())
     }
 
     /// `fatal: pathspec 'x' did not match any files` for the first spec nothing matched.
