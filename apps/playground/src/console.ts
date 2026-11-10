@@ -71,6 +71,16 @@ const format = (level: string, text: string) =>
 const LOCATION = /(?<=^|[\s(])(\/?[\w.@\-/]*\.(?:[cm]?[jt]sx?|json|css|html|md)):(\d+)(?::(\d+))?/g;
 
 const PROMPT = "\x1b[32m❯\x1b[0m ";
+/** Columns a string takes in the terminal: escape sequences none, wide (CJK, emoji) characters two. */
+function width(s: string): number {
+  let n = 0;
+  for (const ch of s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "")) {
+    const c = ch.codePointAt(0)!;
+    n += (c >= 0x1100 && c <= 0x115f) || (c >= 0x2e80 && c <= 0xa4cf) || (c >= 0xac00 && c <= 0xd7a3) || (c >= 0xf900 && c <= 0xfaff) || (c >= 0xfe30 && c <= 0xfe4f) || (c >= 0xff00 && c <= 0xff60) || (c >= 0xffe0 && c <= 0xffe6) || (c >= 0x1f300 && c <= 0x1faff) || (c >= 0x20000 && c <= 0x3fffd) ? 2 : 1;
+  }
+  return n;
+}
+
 /** The prompt, with the shell's folder before it once it isn't the project's root (`src ❯`). */
 const promptFor = (cwd: string) => (cwd === "/" ? PROMPT : `\x1b[34m${cwd.slice(1)}\x1b[0m ${PROMPT}`);
 // One input unit: an escape sequence (arrows, Home/End, Delete) or a single character.
@@ -107,15 +117,35 @@ export function createConsole(
     lines.push(line);
     if (lines.length > MAX_LINES) lines.splice(0, lines.length - MAX_LINES);
   };
+  /** The row of the drawn prompt the cursor is on: a long line wraps, and redrawing starts from its first row. */
+  let drawnRow = 0;
+  /** Back to the prompt's first row, and everything from there down cleared. */
+  const erase = () => {
+    const up = drawnRow;
+    drawnRow = 0;
+    return (up ? `\x1b[${up}A` : "") + "\r\x1b[J";
+  };
+  /** The prompt and the line typed so far, with the cursor where it is in the line (on whichever row that is). */
   const promptLine = () => {
-    const back = [...input.slice(cursor)].length;
-    return "\r\x1b[2K" + promptFor(cwd()) + input + (back ? `\x1b[${back}D` : "");
+    const prompt = promptFor(cwd());
+    const cols = term?.cols ?? 80;
+    const total = width(prompt) + width(input);
+    const at = width(prompt) + width(input.slice(0, cursor));
+    // A line ending exactly at the edge leaves xterm's cursor waiting to wrap: a space then a backspace puts it on the next row.
+    let out = erase() + prompt + input + (total && total % cols === 0 ? " \b" : "");
+    const endRow = Math.floor(total / cols);
+    const row = Math.floor(at / cols);
+    const col = at % cols;
+    if (endRow > row) out += `\x1b[${endRow - row}A`;
+    out += "\r" + (col ? `\x1b[${col}C` : "");
+    drawnRow = row;
+    return out;
   };
   const redraw = () => !busy && term?.write(promptLine());
 
   async function enter() {
     const line = input.trim();
-    term?.write("\r\x1b[2K" + promptFor(cwd()) + input + "\r\n");
+    term?.write(erase() + promptFor(cwd()) + input + "\r\n");
     input = "";
     cursor = 0;
     if (line && history.at(-1) !== line) history.push(line);
@@ -170,7 +200,7 @@ export function createConsole(
         break;
       case "\x03": // Ctrl+C
         if (!input) onInterrupt();
-        term?.write(promptLine() + "^C\r\n");
+        term?.write(erase() + promptFor(cwd()) + input + "^C\r\n");
         input = "";
         cursor = 0;
         break;
@@ -242,6 +272,7 @@ export function createConsole(
     // was replaced) isn't lost.
     if (lines.length) next.write(lines.join(""));
     term = next;
+    drawnRow = 0;
     redraw();
     return next;
   }
@@ -280,13 +311,14 @@ export function createConsole(
       push(line);
       if (!term) return;
       // Above the prompt: clear its row, print, draw it again.
-      term?.write((busy ? "" : "\r\x1b[2K") + line);
+      term?.write((busy ? "" : erase()) + line);
       redraw();
     },
     clear() {
       lines.length = 0;
       term?.clear();
       term?.write("\x1b[2J\x1b[H");
+      drawnRow = 0;
       redraw();
     },
     focus: () => term?.focus(),
