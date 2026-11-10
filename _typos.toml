@@ -1,10 +1,13 @@
 # typos (Brewfile: typos-cli); `moon run root:typos`.
 [files]
 # Upstream Bun's code and git hashes, applied as-is.
-extend-exclude = ["patches/bun/", "apps/playground/scripts/data-apis/"]
+# crates/git-wasm/patched/: crates.io sources with WASI fixes, kept as published.
+extend-exclude = ["patches/bun/", "apps/playground/scripts/data-apis/", "crates/git-wasm/patched/"]
 
 [default.extend-words]
 WRONLY = "WRONLY"  # O_WRONLY
 Flate = "Flate"    # fflate's FlateStreamHandler
 lits = "lits"      # literals
+ACCES = "ACCES"    # EACCES, the WASI errno (apps/playground/src/git/wasi.ts)
+rela = "rela"      # gix's rela_path
 styl = "styl"      # Stylus, a language in Expressive Code's groups (packages/astro/src/remark.ts)

@@ -21,7 +21,7 @@ import { VFS } from "@runbun/vfs";
 // parameters (embed/config.ts) pick the mode, features and project; with `?init=1` the host sends the files first.
 
 const params = new URLSearchParams(location.search);
-const pg = createPlayground({ watch: () => embed.has("watch") });
+const pg = createPlayground({ watch: () => embed.has("watch"), git: () => embed.has("git") });
 const { vfs, session, workspace, log } = pg;
 
 // --- Messages. Only the embedding window talks to us; once it has, replies and events go to its origin alone.

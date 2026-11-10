@@ -50,6 +50,17 @@ tasks:
       - 'src/embed/requests.ts'
       - 'scripts/request-fields.ts'
       - 'src/request.ts'
+  test-git:
+    # The WASI host over the VFS (src/git/wasi.ts): its edge cases, then crates/git-wasm's git.wasm committing into a
+    # VFS whose .git native git then checks (fsck, log, status); then the Git panel's parsers (parse.ts) on native git's
+    # output.
+    script: 'node src/git/wasi.test.ts && node src/git/parse.test.ts'
+    toolchains: ['node']
+    deps:
+      - 'git-wasm:build'
+    inputs:
+      - 'src/git/**/*'
+      - '/crates/git-wasm/target/wasm32-wasip1/release/git.wasm'
   check-examples:
     # Every project of the examples submodule opened in the playground in headless Chrome: it installs and runs
     # (scripts/check-examples.ts). Before moving the submodule to a new commit, and after a Bun upgrade.
@@ -81,6 +92,7 @@ tasks:
       - 'fmt-wasm:build'
       - 'check-wasm:build'
       - 'tsrs-ls-wasm:build'
+      - 'git-wasm:build'
     inputs:
       - '@group(sources)'
     outputs:
@@ -97,6 +109,7 @@ tasks:
       - 'fmt-wasm:build'
       - 'check-wasm:build'
       - 'tsrs-ls-wasm:build'
+      - 'git-wasm:build'
   deploy-canary:
     # canary.runbun.dev (wrangler.jsonc env.canary): a production build into dist-canary/ that links docs-canary, so
     # moon's cached dist/ stays the runbun.dev build. noindex keeps it out of search results.
@@ -119,6 +132,7 @@ tasks:
       - 'fmt-wasm:build'
       - 'check-wasm:build'
       - 'tsrs-ls-wasm:build'
+      - 'git-wasm:build'
     options:
       cache: false
       runInCI: false

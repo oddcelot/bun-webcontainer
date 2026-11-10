@@ -16,7 +16,7 @@ members = [
   "crates/shim-test",
 ]
 # bun/ is upstream's own workspace (the members depend on its crates by path); tsrs-ls-wasm has its own Rust pin.
-exclude = ["bun", "crates/tsrs-ls-wasm"]
+exclude = ["bun", "crates/tsrs-ls-wasm", "crates/git-wasm"]
 
 [profile.release]
 panic = "abort"

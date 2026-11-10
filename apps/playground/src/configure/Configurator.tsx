@@ -61,6 +61,7 @@ const FEATURE_INFO: Record<Feature, string> = {
   watch: "Restart the program when an edit is saved",
   autosave: "An Auto-save switch over the editor",
   close: "Close buttons on the tabs (on in full mode)",
+  git: "Git panel beside the file tree, and git in the terminal (1 MB on first use)",
 };
 
 type Option = { value: string; label: string; swatch?: string };

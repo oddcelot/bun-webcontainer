@@ -1,5 +1,5 @@
 import { CodeView, parseDiffFromFile, type CodeViewItem } from "@pierre/diffs";
-import { Show, createSignal, onSettled, useContext } from "solid-js";
+import { Show, createEffect, createSignal, onSettled, useContext } from "solid-js";
 import { trackChanges, type Change } from "../changes";
 import { onTheme, themeName } from "../theme";
 import { AppContext } from "./context";
@@ -18,8 +18,11 @@ function toItem(c: Change, version: number): CodeViewItem<undefined> {
  * repo, the folder as opened), as diffs in one scrolling CodeView that follows edits as they're saved.
  */
 export function ChangesView(props: { shown: boolean }) {
-  const { vfs, workspace: ws } = useContext(AppContext);
+  const { vfs, workspace: ws, git } = useContext(AppContext);
   let el!: HTMLDivElement;
+  let view: CodeView<undefined> | undefined;
+  /** What the tab compares with: the repository's last commit once it has one, else where the project came from. */
+  const against = () => (git.state.hasHead ? "the last commit" : "the project's source");
   const [list, setList] = createSignal<Change[] | null>(null);
   const [missing, setMissing] = createSignal(false);
 
@@ -42,13 +45,15 @@ export function ChangesView(props: { shown: boolean }) {
         return b;
       },
     });
-    const view = new CodeView<undefined>(options());
-    view.setup(el);
+    const codeView = new CodeView<undefined>(options());
+    view = codeView;
+    codeView.setup(el);
     // Last contents per path, to keep an unchanged file's version (and its rendering).
     const seen = new Map<string, { before: string | null; after: string | null; version: number }>();
     const stop = trackChanges(vfs, (next, gone) => {
       setList(next);
       setMissing(gone);
+      latest = next ?? latest;
       if (!next) return;
       const items = next.map((c) => {
         const was = seen.get(c.path);
@@ -57,28 +62,46 @@ export function ChangesView(props: { shown: boolean }) {
         return toItem(c, version);
       });
       for (const path of [...seen.keys()]) if (!next.some((c) => c.path === path)) seen.delete(path);
-      view.setItems(items);
+      codeView.setItems(items);
+      scrollToPending();
     });
     const offTheme = onTheme((next) => {
       if (next === theme) return;
       theme = next;
-      view.setOptions(options());
+      codeView.setOptions(options());
     });
     return () => {
       stop();
       offTheme();
-      view.cleanUp();
+      codeView.cleanUp();
+      view = undefined;
     };
   });
-
+  // The Git view's click on a file: its diff at the top (a folder of untracked files: the first one in it). Asked before
+  // the list is in, it scrolls once it is.
+  let latest: Change[] | null = null;
+  let pending = "";
+  const scrollToPending = () => {
+    if (!pending || !latest || !view) return;
+    const hit = latest.find((c) => c.path === pending) ?? latest.find((c) => pending.endsWith("/") && c.path.startsWith(pending));
+    pending = "";
+    if (hit) view.scrollTo({ type: "item", id: hit.path, align: "start" });
+  };
+  createEffect(
+    () => ws.state.changesFocus,
+    ({ path }) => {
+      pending = path;
+      scrollToPending();
+    },
+  );
   const count = () => list()?.length ?? 0;
   return (
     <div class="changes" hidden={!props.shown}>
       <div class="changes-head" aria-live="polite">
-        <Show when={list()} fallback={<span>{missing() ? "The project's source couldn't be loaded to compare against." : "Loading the project's source…"}</span>}>
+        <Show when={list()} fallback={<span>{missing() ? `${against()[0].toUpperCase()}${against().slice(1)} couldn't be loaded to compare against.` : `Loading ${against()}…`}</span>}>
           {(l) => (
             <span>
-              {count() ? `${count()} ${count() === 1 ? "file differs" : "files differ"} from the project's source` : "No changes: the files are as the project's source has them."}
+              {count() ? `${count()} ${count() === 1 ? "file differs" : "files differ"} from ${against()}` : git.state.hasHead ? "No changes: the files are as the last commit has them." : "No changes: the files are as the project's source has them."}
               <Show when={l().length}>
                 <span class="changes-kinds">
                   <Kinds list={l()} />

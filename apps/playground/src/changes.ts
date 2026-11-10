@@ -18,7 +18,7 @@ export type Change = {
 const strict = new TextDecoder("utf-8", { fatal: true });
 
 /** A file's text, or its bytes when they aren't UTF-8. Lazy files (installed packages only) are skipped by SKIP. */
-function contents(d: FileData): string | Uint8Array {
+export function contents(d: FileData): string | Uint8Array {
   if (typeof d === "string") return d;
   if (isLazy(d)) return new Uint8Array(0);
   try {
@@ -62,17 +62,20 @@ export function changes(vfs: VFS, base: Baseline): Change[] {
 }
 
 let load: (() => Promise<Baseline | null>) | null = null;
+/** The repository's HEAD, once the project has a commit (git/store.ts): what the files are compared with instead of `load`. */
+let head: (() => Promise<Baseline | null>) | null = null;
 let current: Promise<Baseline | null> | null = null;
 /** Rebuilding the baseline costs network requests (a GitHub repo): only when the Changes tab asks. */
 let costly = false;
-const listeners = new Set<() => void>();
+const listeners = new Set<(quiet: boolean) => void>();
 /** Trackers waiting for a costly baseline someone else loads. */
-const waiting = new Set<() => void>();
+const waiting = new Set<(quiet?: boolean) => void>();
 
 /** The project's baseline, loading it the first time; null when its source can't be loaded (a repo offline). */
 export function baseline(): Promise<Baseline | null> {
   if (!current) {
-    current = load ? load().catch(() => null) : Promise.resolve(null);
+    const source = head ?? load;
+    current = source ? source().catch(() => null) : Promise.resolve(null);
     void current.then(() => {
       for (const fn of [...waiting]) fn();
     });
@@ -81,7 +84,7 @@ export function baseline(): Promise<Baseline | null> {
 }
 
 /** True when `baseline()` is loaded, or cheap to load (not a repo to fetch again). */
-const baselineCheap = () => current !== null || !costly;
+const baselineCheap = () => current !== null || !costly || head !== null;
 
 /** Sets the baseline to the files `vfs` holds now (a project just loaded, or a folder just opened). */
 export function setBaseline(vfs: VFS) {
@@ -89,7 +92,17 @@ export function setBaseline(vfs: VFS) {
   load = null;
   costly = false;
   current = Promise.resolve(base);
-  for (const fn of listeners) fn();
+  for (const fn of listeners) fn(false);
+}
+
+/**
+ * Compares with the repository's last commit instead of the project's source (`null`: back to the source). The
+ * listeners reload without blanking what they show: the lists change a little, they don't start over.
+ */
+export function setHeadBaseline(build: (() => Promise<Baseline | null>) | null) {
+  head = build;
+  current = null;
+  for (const fn of listeners) fn(true);
 }
 
 /**
@@ -104,11 +117,11 @@ export function setBaselineSource(fill: (scratch: VFS) => Promise<unknown> | unk
     return snapshot(scratch);
   };
   current = null;
-  for (const fn of listeners) fn();
+  for (const fn of listeners) fn(false);
 }
 
-/** Calls `fn` when the baseline is replaced (another project or folder opened); returns the unsubscribe. */
-export function onBaseline(fn: () => void) {
+/** Calls `fn` when the baseline is replaced (another project or folder opened, or the last commit changed); returns the unsubscribe. */
+export function onBaseline(fn: (quiet: boolean) => void) {
   listeners.add(fn);
   return () => void listeners.delete(fn);
 }
@@ -122,16 +135,21 @@ export function trackChanges(vfs: VFS, fn: (list: Change[] | null, missing: bool
   let base: Baseline | null | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let gone = false;
+  let latest = 0;
   const refresh = () => {
     if (base) fn(changes(vfs, base), false);
   };
-  const load = () => {
-    base = undefined;
-    fn(null, false);
+  // `quiet`: the baseline moved to the last commit; the lists stay as they are until the new one is in.
+  const load = (quiet = false) => {
+    if (!quiet) {
+      base = undefined;
+      fn(null, false);
+    }
     if (!eager && !baselineCheap()) return void waiting.add(load);
     waiting.delete(load);
+    const mine = ++latest;
     void baseline().then((b) => {
-      if (gone) return;
+      if (gone || mine !== latest) return;
       base = b;
       if (b) refresh();
       else fn(null, true);

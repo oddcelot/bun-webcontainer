@@ -4,8 +4,13 @@ import type { FileContents as FileData, VFS } from "@runbun/vfs";
 type Log = (level: string, text: string) => void;
 type Dir = FileSystemDirectoryHandle;
 
-/** Paths that are never saved: they come back from `bun install` or the source. */
+/** Paths left out of shares, zips and folders on disk: they come back from `bun install` or the source. */
 export const SKIP = /(^|\/)(node_modules|\.git)(\/|$)/;
+/**
+ * What the playground's own store leaves out: node_modules only. A repository the `git` command made lives in .git/
+ * and nowhere else, so OPFS keeps it; a folder on disk never gets ours (it may hold a real one).
+ */
+const SKIP_SAVED = /(^|\/)node_modules(\/|$)/;
 const DEBOUNCE = 300;
 
 /**
@@ -74,10 +79,10 @@ async function projectDir(id: string, create: boolean): Promise<Dir | null> {
   }
 }
 
-async function walk(dir: Dir, prefix: string, out: [string, File][]) {
+async function walk(dir: Dir, prefix: string, out: [string, File][], skip: RegExp) {
   for await (const [name, h] of dir as unknown as AsyncIterable<[string, FileSystemHandle]>) {
-    if (SKIP.test(prefix + name)) continue;
-    if (h.kind === "directory") await walk(h as Dir, `${prefix}${name}/`, out);
+    if (skip.test(prefix + name)) continue;
+    if (h.kind === "directory") await walk(h as Dir, `${prefix}${name}/`, out, skip);
     else out.push([prefix + name, await (h as FileSystemFileHandle).getFile()]);
   }
 }
@@ -93,10 +98,10 @@ async function contents(file: File): Promise<FileData> {
   }
 }
 
-/** Every file below `dir` but node_modules and .git, as text where it decodes as UTF-8, else bytes. */
-export async function readDir(dir: Dir, prefix = ""): Promise<[string, FileData][]> {
+/** Every file below `dir` but `skip` (node_modules and .git), as text where it decodes as UTF-8, else bytes. */
+export async function readDir(dir: Dir, prefix = "", skip = SKIP): Promise<[string, FileData][]> {
   const found: [string, File][] = [];
-  await walk(dir, prefix, found);
+  await walk(dir, prefix, found, skip);
   return Promise.all(found.map(async ([path, file]): Promise<[string, FileData]> => [path, await contents(file)]));
 }
 
@@ -109,7 +114,7 @@ export async function restore(id: string, vfs: VFS, log: Log): Promise<number> {
   try {
     const dir = await projectDir(id, false);
     if (!dir) return 0;
-    const files = await readDir(dir);
+    const files = await readDir(dir, "", SKIP_SAVED);
     for (const [path, data] of files) vfs.write(path, data);
     return files.length;
   } catch (e) {
@@ -200,6 +205,7 @@ export async function attach(id: string, vfs: VFS, log: Log, all: boolean): Prom
       all,
       stash: stashKey(id),
       tag: "[storage]",
+      skip: SKIP_SAVED,
       // Asked on the first save, not on every visit.
       onFirstFlush: () => void projects().then((b) => b.persist()).catch(() => {}),
     });
@@ -230,6 +236,8 @@ type MirrorOptions = {
   onFirstFlush?: () => void;
   /** Also bring changes made to `dir` from outside (another editor) into the VFS, where FileSystemObserver exists. */
   watch?: boolean;
+  /** Paths left alone (default `SKIP`: node_modules and .git). */
+  skip?: RegExp;
 };
 
 /** FileSystemObserver (Chromium 129+), not in TypeScript's DOM types yet. */
@@ -243,10 +251,10 @@ type ObserverClass = new (callback: (records: ChangeRecord[]) => void) => Observ
 
 /**
  * Writes VFS changes into `dir` (OPFS or a folder on disk), write-behind: changes are collected and flushed after a
- * short pause, and on pagehide. node_modules and .git are left alone. Returns a function that stops writing and
+ * short pause, and on pagehide. `skip` (node_modules and .git) is left alone. Returns a function that stops writing and
  * settles once a flush in progress is done.
  */
-export function mirror(dir: Dir, vfs: VFS, log: Log, { all, stash: stashAt, tag, onFirstFlush, watch }: MirrorOptions): StopSaving {
+export function mirror(dir: Dir, vfs: VFS, log: Log, { all, stash: stashAt, tag, onFirstFlush, watch, skip = SKIP }: MirrorOptions): StopSaving {
   let stopped = false;
   const dirty = new Set<string>();
   /** What `dir` is known to hold per path (null: nothing), from our writes and from outside changes read back. */
@@ -346,7 +354,7 @@ export function mirror(dir: Dir, vfs: VFS, log: Log, { all, stash: stashAt, tag,
   }
 
   const unsub = vfs.onChange(({ path }) => {
-    if (stopped || SKIP.test(path)) return;
+    if (stopped || skip.test(path)) return;
     // Already what the folder holds: an outside change just read in, or an edit undone.
     const known = onDisk.get(path);
     if (known !== undefined && same(known, vfs.data(path) ?? null)) return;
@@ -358,6 +366,8 @@ export function mirror(dir: Dir, vfs: VFS, log: Log, { all, stash: stashAt, tag,
     if (stashAt) {
       const stash: Record<string, string | null> = {};
       for (const path of [...writing, ...dirty]) {
+        // Not .git: its objects are binary (never stashed), so a stashed ref could name an object that is gone.
+        if (SKIP.test(path)) continue;
         const data = vfs.data(path);
         if (data === undefined) stash[path] = null;
         else if (typeof data === "string") stash[path] = data;
@@ -373,7 +383,7 @@ export function mirror(dir: Dir, vfs: VFS, log: Log, { all, stash: stashAt, tag,
   document.addEventListener("visibilitychange", onHide);
   addEventListener("pagehide", onHide);
   if (all) {
-    for (const p of vfs.files.keys()) if (!SKIP.test(p)) dirty.add(p);
+    for (const p of vfs.files.keys()) if (!skip.test(p)) dirty.add(p);
     schedule();
   }
   const unwatch = watch ? observe() : undefined;
@@ -390,7 +400,7 @@ export function mirror(dir: Dir, vfs: VFS, log: Log, { all, stash: stashAt, tag,
     let queue = Promise.resolve();
     const local = (path: string) => dirty.has(path) || writing.has(path);
     const take = (path: string, data: FileData | null) => {
-      if (SKIP.test(path) || TEMP.test(path) || local(path)) return;
+      if (skip.test(path) || TEMP.test(path) || local(path)) return;
       const known = onDisk.get(path);
       if (same(data, vfs.data(path) ?? null) || (known !== undefined && same(data, known))) return;
       onDisk.set(path, data);
@@ -400,7 +410,7 @@ export function mirror(dir: Dir, vfs: VFS, log: Log, { all, stash: stashAt, tag,
     /** Everything at `path` (a file, a folder, or nothing) as it is on disk now. */
     const sync = async (parts: string[]) => {
       const path = parts.join("/");
-      if (SKIP.test(path) || TEMP.test(path)) return;
+      if (skip.test(path) || TEMP.test(path)) return;
       let handle: FileSystemHandle | null = dir;
       try {
         for (const [i, p] of parts.entries()) {
@@ -413,7 +423,7 @@ export function mirror(dir: Dir, vfs: VFS, log: Log, { all, stash: stashAt, tag,
       }
       if (handle?.kind === "file") return take(path, await contents(await (handle as FileSystemFileHandle).getFile()));
       // A folder (or nothing): bring in what it holds, drop the VFS files below it that are gone.
-      const found = handle ? await readDir(handle as Dir, path ? path + "/" : "") : [];
+      const found = handle ? await readDir(handle as Dir, path ? path + "/" : "", skip) : [];
       const seen = new Set(found.map(([p]) => p));
       for (const [p, data] of found) take(p, data);
       const below = path ? path + "/" : "";

@@ -15,6 +15,11 @@ import { AppContext } from "./context";
 import { guarded } from "./guarded";
 import { PromptDialog } from "./PromptDialog";
 import { Tip } from "@runbun/ui/solid/Tip";
+import type { VFS } from "@runbun/vfs";
+
+// `git` keeps its repository in .git/ (thousands of objects); like git's own tools, the tree doesn't list it.
+const inGitDir = (path: string) => /(^|\/)\.git(\/|$)/.test(path);
+const treePaths = (vfs: VFS) => [...vfs.files.keys()].filter((p) => !inGitDir(p));
 
 const TREE_VARS_KEY = "tree-vars";
 /** How long a rename or delete stays undoable (ms). */
@@ -142,7 +147,7 @@ export function FileTree() {
   const tree = new PierreTree({
     // A dot on files open in a tab.
     renderRowDecoration: ({ item }) => (item.kind === "file" && open.has(item.path) ? { text: "●", title: "Open in a tab" } : null),
-    paths: [...vfs.files.keys()],
+    paths: treePaths(vfs),
     initialExpansion: "closed",
     search: true,
     ...TREE_LOOK,
@@ -253,14 +258,14 @@ export function FileTree() {
       pending.set(op.path, op);
     };
     const unsubscribe = vfs.onChange(({ path, created, removed }) => {
-      if (created || removed) queue({ type: removed ? "remove" : "add", path });
+      if ((created || removed) && !inGitDir(path)) queue({ type: removed ? "remove" : "add", path });
     });
     // The tree keeps a folder whose files are gone; a removed directory takes its row (and anything left in it).
     const unsubscribeDirs = vfs.onDir((path, removed) => {
-      if (removed) queue({ type: "remove", path: `${path}/`, recursive: true });
+      if (removed && !inGitDir(path)) queue({ type: "remove", path: `${path}/`, recursive: true });
     });
     // Files written between creating the tree and subscribing.
-    tree.resetPaths([...vfs.files.keys()]);
+    tree.resetPaths(treePaths(vfs));
     return () => {
       unsubscribe();
       unsubscribeDirs();
@@ -291,10 +296,17 @@ export function FileTree() {
       else for (const p of tree.getSelectedPaths()) tree.getItem(p)?.deselect();
     }),
   );
+  // The repository's status, as badges and colors on the rows (the Git view's lists, in the tree).
+  createEffect(
+    () => app.git.statuses(),
+    guarded("file tree", (entries) => {
+      tree.setGitStatus(entries.length ? entries : undefined);
+    }),
+  );
   createEffect(
     () => ws.state.treeVersion,
     guarded("file tree", () => {
-      tree.resetPaths([...vfs.files.keys()]);
+      tree.resetPaths(treePaths(vfs));
     }),
     { defer: true },
   );

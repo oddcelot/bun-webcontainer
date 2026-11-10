@@ -11,7 +11,8 @@ import { AppContext } from "./context";
 import { Console } from "./Console";
 import { EditorPane } from "./EditorPane";
 import { Splits, createSizes, type Split } from "./EmbedSplit";
-import { FileTree } from "./FileTree";
+import { Explorer, toggleGit } from "./Explorer";
+import { inCommitBox } from "../git/store";
 import { Gallery } from "./Gallery";
 import { Preview } from "./Preview";
 import { StatusPill, StatusToast } from "./Status";
@@ -65,7 +66,10 @@ export function EmbedApp() {
     const onKey = (ev: KeyboardEvent) => {
       const s = app.session;
       const pane = panes.find(([c, f]) => matches(c, ev) && !e.locked.has(f))?.[1];
-      if (matches("run", ev)) s.canRun && !s.busy.run && s.ready() && e.run();
+      if (inCommitBox(ev) && matches("run", ev)) return;
+      if (matches("toggleGit", ev)) {
+        if (!toggleGit(app, tree())) return;
+      } else if (matches("run", ev)) s.canRun && !s.busy.run && s.ready() && e.run();
       else if (matches("stop", ev)) e.stop();
       else if (pane) e.setFeatures({ [pane]: !e.has(pane) }, true);
       else return;
@@ -104,7 +108,7 @@ export function EmbedApp() {
       <div id="embed-main" style={sizes.vars()}>
         <Show when={showTree()}>
           <nav id="tree" class="pane" hidden={!tree()}>
-            <FileTree />
+            <Explorer switcher />
           </nav>
         </Show>
         <section id="editor-pane" class="pane" hidden={!editor()}>
@@ -226,6 +230,7 @@ const PANES: [Feature, string][] = [
 const TOOLS: [Feature, string][] = [
   ["types", "Type hints"],
   ["format", "Formatting"],
+  ["git", "Git"],
   ["watch", "Restart on save"],
   ["autosave", "Auto-save switch"],
 ];

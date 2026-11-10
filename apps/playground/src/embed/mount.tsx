@@ -16,6 +16,7 @@ export function mountEmbed(pg: Playground, embed: Embed) {
     terminal: pg.terminal,
     clearConsole: pg.clearConsole,
     vfs: pg.vfs,
+    git: pg.git,
     log: pg.log,
     run: () => void pg.run(),
     stop: pg.stop,

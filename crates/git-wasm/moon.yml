@@ -1,0 +1,27 @@
+$schema: 'https://moonrepo.dev/schemas/project.json'
+
+# `git` on gitoxide as a WASI command module (wasm32-wasip1), run by the playground over its VFS. Own Rust pin.
+language: 'rust'
+
+fileGroups:
+  sources:
+    - 'src/**/*'
+    - 'patched/**/*'
+    - 'Cargo.toml'
+    - 'Cargo.lock'
+    - 'rust-toolchain.toml'
+
+tasks:
+  build:
+    command: 'cargo build --release --target wasm32-wasip1'
+    inputs:
+      - '@group(sources)'
+    outputs:
+      - 'target/wasm32-wasip1/release/git.wasm'
+  test:
+    command: 'node test.ts'
+    toolchains: ['node']
+    deps: ['~:build']
+    inputs:
+      - '*.ts'
+      - '@group(sources)'

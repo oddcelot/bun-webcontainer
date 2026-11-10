@@ -19,6 +19,7 @@ export const COMMANDS = {
   signatureHelp: { label: "Show the parameters of the call", keys: ["Mod+Shift+Space"] },
   closeTab: { label: "Close the focused tab", keys: ["Mod+W", "Delete"] },
   toggleExplorer: { label: "Show or hide the file tree", keys: ["Mod+B"] },
+  toggleGit: { label: "Show or hide Git (source control)", keys: ["Mod+Shift+G"] },
   toggleConsole: { label: "Show or hide the console", keys: ["Mod+J"] },
   togglePreview: { label: "Show or hide the preview", keys: ["Mod+K"] },
   exitFullscreen: { label: "Leave the expanded preview", keys: ["Escape"] },
@@ -120,7 +121,7 @@ export function matches(command: Command, e: KeyboardEvent): boolean {
  * to keep from its page (contentProtocol.ts OwnedChord).
  */
 export function windowChords(): { key: string; ctrl: boolean; alt: boolean; shift: boolean; meta: boolean }[] {
-  return (["run", "stop", "send", "toggleExplorer", "togglePreview", "toggleConsole"] as Command[]).flatMap(chords);
+  return (["run", "stop", "send", "toggleExplorer", "toggleGit", "togglePreview", "toggleConsole"] as Command[]).flatMap(chords);
 }
 
 /** The overrides in effect. */

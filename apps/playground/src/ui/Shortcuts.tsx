@@ -29,7 +29,7 @@ const GROUPS: { title: string; commands: Command[] }[] = [
   { title: "Run", commands: ["run", "stop"] },
   { title: "Files", commands: ["save", "format", "closeTab"] },
   { title: "Code", commands: ["goToDefinition", "showHover", "suggest", "signatureHelp"] },
-  { title: "Layout", commands: ["toggleExplorer", "toggleConsole", "togglePreview", "exitFullscreen"] },
+  { title: "Layout", commands: ["toggleExplorer", "toggleGit", "toggleConsole", "togglePreview", "exitFullscreen"] },
 ];
 
 // Inside Dialog.Content so each opening reads the keymap afresh (the content unmounts on close).

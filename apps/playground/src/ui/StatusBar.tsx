@@ -49,7 +49,7 @@ export const [statusDisplay, setStatusDisplay] = pref<"bar" | "toast">("runbun:s
  * The bar along the bottom, as in VS Code or Zed: panel toggles and the program's status on the left, the open
  * file's problems, cursor and language, the Bun release, Feedback and the privacy link on the right.
  */
-export function StatusBar(props: { treeShown: boolean; toggleTree(): void; previewShown: boolean; consoleShown: boolean; toggle(i: number): void }) {
+export function StatusBar(props: { treeShown: boolean; toggleFiles(): void; toggleGit(): void; previewShown: boolean; consoleShown: boolean; toggle(i: number): void }) {
   const app = useContext(AppContext);
   const s = app.session;
   const ws = app.workspace;
@@ -64,9 +64,13 @@ export function StatusBar(props: { treeShown: boolean; toggleTree(): void; previ
     ws.reveal(d.line, d.column);
   };
 
+  // The explorer pane shows the files or Git; with git off (an embed's feature), just the files.
+  const gitOn = () => app.features?.has("git") ?? true;
+  const shows = (view: "files" | "git") => props.treeShown && (gitOn() ? app.git.state.view : "files") === view;
+
   return (
     <footer id="statusbar">
-      <Tip tip="Show or hide the file tree" keys={keys("toggleExplorer")} type="button" aria-pressed={props.treeShown ? "true" : "false"} onClick={props.toggleTree}>
+      <Tip tip="Show or hide the file tree" keys={keys("toggleExplorer")} type="button" aria-pressed={shows("files") ? "true" : "false"} onClick={props.toggleFiles}>
         <i class="i-lucide-panel-left" aria-hidden="true" />
         <span class="sr-only">File tree</span>
       </Tip>
@@ -82,7 +86,7 @@ export function StatusBar(props: { treeShown: boolean; toggleTree(): void; previ
         <StatusPill role="status" status={s.status()} title={s.status().text} />
       </Show>
       <span class="spacer" />
-      <Changed />
+      <Changed git={gitOn()} gitShown={shows("git")} toggleGit={props.toggleGit} />
       <Show when={!ws.state.changesShown && ws.state.active}>
         {(path) => (
           <>
@@ -161,19 +165,32 @@ export function StatusBar(props: { treeShown: boolean; toggleTree(): void; previ
 }
 
 /** How many files differ from the project's source; opens the Changes tab. No count until a repo's source is fetched. */
-function Changed() {
-  const { vfs, workspace: ws } = useContext(AppContext);
+function Changed(props: { git: boolean; gitShown: boolean; toggleGit(): void }) {
+  const { vfs, workspace: ws, git } = useContext(AppContext);
   const [count, setCount] = createSignal<number | null>(null);
   onSettled(() => trackChanges(vfs, (list) => setCount(list?.length ?? null), false));
+  // With a commit in the repository the files are compared with it (git/store.ts), not with where the project came from.
+  // With git on, a click shows or hides the Git view (whose Changes header opens the Changes tab); off, it opens the tab.
   const tip = () => {
     const n = count();
-    if (n === null) return "Compare the files with the project's source";
-    return n ? `${n} ${n === 1 ? "file differs" : "files differ"} from the project's source: show the changes` : "No changes from the project's source";
+    const head = git.state.hasHead;
+    const action = props.git ? "show or hide Git" : "show the changes";
+    if (n === null) return props.git ? "Show or hide Git: changes, commits and branches" : head ? "Compare the files with the last commit" : "Compare the files with the project's source";
+    if (!n) return `${head ? "No changes since the last commit" : "No changes from the project's source"}: ${action}`;
+    const files = `${n} ${n === 1 ? "file" : "files"}`;
+    return head ? `${files} changed since the last commit: ${action}` : `${files} ${n === 1 ? "differs" : "differ"} from the project's source: ${action}`;
   };
   return (
-    <Tip tip={tip()} type="button" class="changed" aria-pressed={ws.state.changesShown ? "true" : "false"} onClick={() => ws.showChanges()}>
+    <Tip
+      tip={tip()}
+      keys={props.git ? keys("toggleGit") : undefined}
+      type="button"
+      class="changed"
+      aria-pressed={(props.git ? props.gitShown : ws.state.changesShown) ? "true" : "false"}
+      onClick={() => (props.git ? props.toggleGit() : ws.showChanges())}
+    >
       <i class="i-lucide-git-compare" aria-hidden="true" /> {count() ?? ""}
-      <span class="sr-only">Changes</span>
+      <span class="sr-only">{props.git ? "Git" : "Changes"}</span>
     </Tip>
   );
 }

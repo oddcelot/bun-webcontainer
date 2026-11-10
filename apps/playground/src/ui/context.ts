@@ -4,6 +4,7 @@ import type { Playground } from "../boot";
 import type { LogFn } from "../runner";
 import type { Check } from "../support";
 import type { VFS } from "@runbun/vfs";
+import type { Git } from "../git/store";
 import type { Previews } from "./previews";
 import type { Session } from "./session";
 import type { Workspace } from "./workspace";
@@ -21,6 +22,8 @@ export type App = {
   terminal: ReturnType<typeof createConsole>;
   clearConsole(): void;
   vfs: VFS;
+  /** The Git panel's state: the explorer's second view, and the tree's status badges. */
+  git: Git;
   log: LogFn;
   run(): void;
   /** Stops the running server, if any. */
@@ -53,7 +56,7 @@ export type App = {
   /** The `?repo=` the page was opened with, as the repo prompt's default. */
   repoParam: string;
   /** What an embed has turned on (embed/config.ts); absent on the full playground, which has everything. */
-  features?: { has(name: "types" | "format" | "tabs" | "autosave" | "edit" | "close"): boolean };
+  features?: { has(name: "types" | "format" | "tabs" | "autosave" | "edit" | "close" | "git"): boolean };
 };
 
 export const AppContext = createContext<App>();
