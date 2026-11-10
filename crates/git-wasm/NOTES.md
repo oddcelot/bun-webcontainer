@@ -1,21 +1,35 @@
-# gix-probe (bwc-vm5)
+# git-wasm (from the gix-probe, bwc-vm5)
 
-Can gitoxide (`gix` 0.90, network off) run as wasm over a filesystem we provide? Yes, as `wasm32-wasip1`.
+A small `git` on gitoxide (`gix` 0.90, network off), built as `wasm32-wasip1` and run by the playground as a WASI
+command module over its VFS.
 
 ```sh
-cargo build --release --target wasm32-wasip1   # nightly from rust-toolchain.toml; rustup target add wasm32-wasip1
-node run.ts                                    # init, 2 commits, index, status, tree diff, log in a temp dir; then native git log/status/fsck
-PROBE_OPEN=/path/to/clone node run.ts          # read an existing (packed) repo: log, HEAD tree, status
+moon run git-wasm:build git-wasm:test          # or: cargo build --release --target wasm32-wasip1 && node test.ts
+# -> target/wasm32-wasip1/release/git.wasm (nightly + target from rust-toolchain.toml)
 ```
+
+## CLI
+
+Host contract: argv via WASI args (`git status -s`); the project root is the preopen `/` and the cwd; env
+`GIT_COLOR=1` (ANSI colors), `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`; stdin unused. Exit 0, 1 (error), 128 (fatal).
+Opens with `core.fileMode=false` (no exec bits on the host FS). `init` writes that into `.git/config` and
+`node_modules/` into `.git/info/exclude`. Identity: `user.name`/`user.email`, else the env, else
+`Playground <playground@runbun.dev>`.
+
+Supported: `init`, `status [-s]`, `add <pathspec>|.|-A|-u`, `rm [--cached]`, `restore --staged`, `reset [<path>]`,
+`commit [-a] -m`, `log [--oneline] [-n N|-N]`, `diff [--cached]`, `show [<rev>]`, `branch [<name>]`, `rev-parse`.
+Pathspecs are plain paths or directory prefixes (no globs). Not supported: checkout/switch/restore of the worktree,
+merge, rebase, stash, tag, network commands (they print `git: '<cmd>' is not supported in the playground yet`).
+`test.ts` runs a scripted session under node's WASI and compares status, diff, log and show with native git.
 
 ## Results
 
-- Features: `sha1 basic status dirwalk blame merge` (no network, no `worktree-mutation`).
+- Features: `sha1 basic status dirwalk` (no network, no `worktree-mutation`).
 - Writes match native gix byte for byte (same commit ids); `git fsck --full` is clean; status, tree diff and log
   match native output.
 - Packed clones read fine. This repo (933 commits, 3.4 MiB pack, 578 files): full log walk, HEAD tree and status in
   ~65 ms under node's WASI (native `git status`: 33 ms).
-- Size: 2.5 MB stripped, 0.74 MB brotli.
+- Size (the CLI): 2.8 MB stripped, 0.82 MB brotli.
 - WASI surface: 25 `wasi_snapshot_preview1` imports (`path_open`, `fd_read`/`fd_write`/`fd_seek`, `fd_readdir`,
   `path_filestat_get`, `path_rename`, `path_unlink_file`, `path_create_directory`, …). A browser build needs those
   over the VFS; tsrs-ls-wasm only stubs WASI today.

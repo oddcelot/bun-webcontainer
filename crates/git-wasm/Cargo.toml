@@ -1,17 +1,23 @@
 [package]
-name = "gix-probe"
+name = "git-wasm"
 version = "0.0.0"
 edition = "2024"
 publish = false
 
+[[bin]]
+name = "git"
+path = "src/main.rs"
+
 [dependencies]
-gix = { version = "0.90", default-features = false, features = ["sha1", "basic", "status", "dirwalk", "blame", "merge"] }
+gix = { version = "0.90", default-features = false, features = ["sha1", "basic", "status", "dirwalk"] }
 
 [profile.release]
 panic = "abort"
 opt-level = "s"
 lto = true
+strip = true
 
+# WASI patches, see NOTES.md.
 [patch.crates-io]
 gix-tempfile = { path = "patched/gix-tempfile" }
 memmap2 = { path = "patched/memmap2" }

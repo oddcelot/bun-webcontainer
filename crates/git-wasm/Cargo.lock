@@ -243,6 +243,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "git-wasm"
+version = "0.0.0"
+dependencies = [
+ "gix",
+]
+
+[[package]]
 name = "gix"
 version = "0.90.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -250,7 +257,6 @@ checksum = "b92b20c1560511a9014b16e29db2f3c6f0580d4fe289b70f41131277b065a3b0"
 dependencies = [
  "gix-actor",
  "gix-attributes",
- "gix-blame",
  "gix-command",
  "gix-commitgraph",
  "gix-config",
@@ -267,7 +273,6 @@ dependencies = [
  "gix-ignore",
  "gix-index",
  "gix-lock",
- "gix-merge",
  "gix-note",
  "gix-object",
  "gix-odb",
@@ -333,25 +338,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "422cd23418fd80e9e965595323975d72abd6364a66ff8f0daade5c105a7f35d2"
 dependencies = [
  "gix-error",
-]
-
-[[package]]
-name = "gix-blame"
-version = "0.20.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00c06a8539007ed1cf6271d7c25a61fa5b7abaf9aa06d9c3d9a129abf4cab9d8"
-dependencies = [
- "gix-commitgraph",
- "gix-date",
- "gix-diff",
- "gix-error",
- "gix-hash",
- "gix-object",
- "gix-revwalk",
- "gix-trace",
- "gix-traverse",
- "gix-worktree",
- "smallvec",
 ]
 
 [[package]]
@@ -653,32 +639,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gix-merge"
-version = "0.23.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0cf6d8a0724d529adb7f4b1db8cb8408b829298a1e5f7ea167be4e36d113059b"
-dependencies = [
- "bstr",
- "gix-command",
- "gix-diff",
- "gix-error",
- "gix-filter",
- "gix-fs",
- "gix-hash",
- "gix-imara-diff",
- "gix-index",
- "gix-object",
- "gix-path",
- "gix-quote",
- "gix-revision",
- "gix-revwalk",
- "gix-tempfile",
- "gix-trace",
- "gix-worktree",
- "nonempty",
-]
-
-[[package]]
 name = "gix-note"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -806,13 +766,6 @@ dependencies = [
  "gix-error",
  "gix-glob",
  "gix-path",
-]
-
-[[package]]
-name = "gix-probe"
-version = "0.0.0"
-dependencies = [
- "gix",
 ]
 
 [[package]]
