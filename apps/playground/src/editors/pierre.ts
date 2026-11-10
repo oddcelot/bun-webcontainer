@@ -281,6 +281,10 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
   };
   const onMove = () => requestAnimationFrame(reportCursor);
   for (const type of ["keyup", "pointerup", "focusin"]) host.addEventListener(type, onMove);
+  // The editor takes a click's position from the document's selectionchange, which can come after pointerup (a quick
+  // click): read it again then, or the cursor stays one click behind (none at all after the first click into a file).
+  const onSelection = () => host.contains(document.activeElement) && onMove();
+  document.addEventListener("selectionchange", onSelection);
 
   // Type information for the token under the pointer (events.hover), in a popup fixed over the page, above the token
   // (below when there's no room). Pointing into the popup keeps it open, so its text can be selected. It sits beside
@@ -864,6 +868,7 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
       virtualizer.cleanUp();
       removeEventListener("keydown", onModKey);
       removeEventListener("keyup", onModKey);
+      document.removeEventListener("selectionchange", onSelection);
       host.remove();
       tip.remove();
       suggestBox.remove();
