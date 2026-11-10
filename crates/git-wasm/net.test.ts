@@ -229,6 +229,62 @@ try {
   r = await git(a, "remote", "remove", "up");
   check("remote remove", r.code === 0 && !native(a, "remote").includes("up") && spawnSync("git", ["-C", a, "rev-parse", "-q", "--verify", "up/main"], { env }).status !== 0, JSON.stringify(r));
 
+  // push (http-backend refuses anonymous pushes unless http.receivepack is set)
+  const bare = join(root, "repo.git");
+  const remoteRef = (ref: string) => spawnSync("git", ["-C", bare, "rev-parse", "-q", "--verify", ref], { encoding: "utf8", env }).stdout.trim();
+  native(bare, "config", "http.receivepack", "true");
+  const upstreamMain = remoteRef("main");
+  r = await git(a, "push");
+  check("push diverged: rejected", r.code === 1 && /! \[rejected\]\s+main -> main \(non-fast-forward\)/.test(r.err) && r.err.includes("failed to push"), JSON.stringify(r));
+  check("push diverged: remote kept", remoteRef("main") === upstreamMain);
+
+  native(a, "switch", "-q", "-c", "feat");
+  write(a, "feat/x.txt", "x\n");
+  native(a, "add", "-A");
+  native(a, "commit", "-q", "-m", "feat");
+  requests = [];
+  r = await git(a, "push", "-u", "origin", "feat");
+  check("push new branch", r.code === 0 && /\* \[new branch\]\s+feat -> feat/.test(r.err), JSON.stringify(r));
+  check("push used receive-pack", requests.includes("GET /repo.git/info/refs?service=git-receive-pack") && requests.includes("POST /repo.git/git-receive-pack"), requests.join("\n"));
+  check("push new branch: remote has it", remoteRef("feat") === native(a, "rev-parse", "feat").trim());
+  check("push -u: upstream", native(a, "config", "branch.feat.merge").trim() === "refs/heads/feat" && r.out.includes("branch 'feat' set up to track 'origin/feat'."), JSON.stringify(r));
+  check("push: tracking ref", native(a, "rev-parse", "origin/feat").trim() === remoteRef("feat"));
+  native(bare, "fsck", "--full", "--strict");
+  check("push: remote fsck", true);
+
+  write(a, "feat/x.txt", "x2\n");
+  native(a, "commit", "-q", "-am", "feat 2");
+  r = await git(a, "push");
+  check("push fast-forward", r.code === 0 && /[0-9a-f]{7}\.\.[0-9a-f]{7}\s+feat -> feat/.test(r.err) && remoteRef("feat") === native(a, "rev-parse", "feat").trim(), JSON.stringify(r));
+  r = await git(a, "push");
+  check("push again: up to date", r.code === 0 && r.err.includes("Everything up-to-date"), JSON.stringify(r));
+
+  r = await git(a, "push", "-f", "origin", "main");
+  check("push --force", r.code === 0 && /\+ [0-9a-f]{7}\.\.\.[0-9a-f]{7}\s+main -> main \(forced update\)/.test(r.err) && remoteRef("main") === native(a, "rev-parse", "main").trim(), JSON.stringify(r));
+  native(bare, "fsck", "--full", "--strict");
+
+  r = await git(a, "push", "origin", "--delete", "feat");
+  check("push --delete", r.code === 0 && /- \[deleted\]\s+feat/.test(r.err) && remoteRef("feat") === "", JSON.stringify(r));
+  check("push --delete: tracking ref gone", spawnSync("git", ["-C", a, "rev-parse", "-q", "--verify", "origin/feat"], { env }).status !== 0);
+  native(a, "switch", "-q", "main");
+
+  // from the shallow clone: only the new commit goes
+  write(b, "dev.txt", "dev 2\n");
+  native(b, "commit", "-q", "-am", "dev 2");
+  r = await git(b, "push", "origin", "dev");
+  check("push from a shallow clone", r.code === 0 && remoteRef("dev") === native(b, "rev-parse", "dev").trim(), JSON.stringify(r));
+  native(bare, "fsck", "--full", "--strict");
+
+  // into an empty repository: everything goes
+  execFileSync("git", ["init", "--bare", "-q", join(root, "empty.git")], { env });
+  native(join(root, "empty.git"), "config", "http.receivepack", "true");
+  r = await git(a, "remote", "add", "empty", `${base}/empty.git`);
+  r = await git(a, "push", "empty", "main");
+  check("push into an empty repo", r.code === 0 && /\[new branch\]\s+main -> main/.test(r.err), JSON.stringify(r));
+  native(join(root, "empty.git"), "fsck", "--full", "--strict");
+  check("push into an empty repo: same history", native(join(root, "empty.git"), "rev-list", "--count", "main").trim() === native(a, "rev-list", "--count", "main").trim());
+  native(a, "remote", "remove", "empty");
+
   // refusals
   r = await git(a, "clone", url);
   check("clone into a project with files", r.code === 128 && r.err.includes("already exists and is not an empty directory"), JSON.stringify(r));
@@ -239,7 +295,7 @@ try {
   check("clone a missing repo fails", r.code === 128 && /not found|404/i.test(r.err), JSON.stringify(r));
   check("failed clone leaves no .git, keeps node_modules", !existsSync(join(c, ".git")) && existsSync(join(c, "node_modules/x/i.js")));
   r = await git(c, "clone", url);
-  check("clone next to node_modules", r.code === 0 && native(c, "log", "-1", "--format=%s").trim() === "c4", JSON.stringify(r));
+  check("clone next to node_modules", r.code === 0 && native(c, "rev-parse", "HEAD").trim() === remoteRef("main"), JSON.stringify(r));
 } finally {
   server.kill();
   rmSync(tmp, { recursive: true, force: true });

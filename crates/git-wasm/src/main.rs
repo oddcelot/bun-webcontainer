@@ -6,6 +6,7 @@ mod history;
 mod http;
 mod index;
 mod net;
+mod push;
 mod refs;
 mod status;
 mod worktree;
@@ -115,6 +116,7 @@ Supported in the playground:
    clone      Clone a repository into the (empty) project (<url> [.], --depth <n>, -b <branch>)
    fetch      Download objects and refs from a remote ([<remote>], --depth <n>)
    pull       Fetch, then fast-forward the current branch ([<remote> [<branch>]])
+   push       Update a remote branch ([<remote> [[+]<src>[:<dst>]...]], -f, -u, -d, -n)
    remote     Manage remotes (-v, add <name> <url>, remove, get-url, set-url)
 ";
 
@@ -149,7 +151,8 @@ fn run(args: &[String]) -> Res {
         "fetch" => net::fetch(&open()?, rest),
         "pull" => net::pull(&open()?, rest),
         "remote" => net::remote(&open()?, rest),
-        "merge" | "rebase" | "stash" | "tag" | "push" => {
+        "push" => push::push(&open()?, rest),
+        "merge" | "rebase" | "stash" | "tag" => {
             eprintln!("git: '{cmd}' is not supported in the playground yet");
             Ok(1)
         }

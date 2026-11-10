@@ -17,8 +17,8 @@ Opens with `core.fileMode=false` (no exec bits on the host FS). `init` writes th
 `Playground <playground@runbun.dev>`.
 
 Supported: `init`, `status`, `add`, `rm [--cached]`, `restore`, `reset`, `commit`, `log`, `diff [--cached]`, `show`,
-`branch`, `switch`, `checkout`, `clean`, `config`, `rev-parse`, `clone`, `fetch`, `pull`, `remote`. `git help` lists the
-flags. Pathspecs are plain paths or directory prefixes (no globs). Not supported: merge, rebase, stash, tag, push (they
+`branch`, `switch`, `checkout`, `clean`, `config`, `rev-parse`, `clone`, `fetch`, `pull`, `push`, `remote`. `git help` lists the
+flags. Pathspecs are plain paths or directory prefixes (no globs). Not supported: merge, rebase, stash, tag (they
 print `git: '<cmd>' is not supported in the playground yet`).
 
 Output the panel parses (byte-identical to native git, checked by `test.ts`):
@@ -80,10 +80,16 @@ response (gix writes a POST body after `post` returns). Status
   writes them. A failed clone removes the `.git` it made. Writes `core.fileMode=false` and the `node_modules/` exclude.
 - `fetch [<remote>] [--depth <n>]`, `pull [<remote> [<branch>]]` (fetch, then fast-forward only: our commit must be in
   the upstream's history; switching uses the two-way merge of `switch`), `remote [-v]`, `remote add|remove|get-url|set-url`.
-- No push: gix doesn't implement it (receive-pack). Planned by hand: gix-pack can write packs.
+- `push [<remote> [[+]<src>[:<dst>]...]] [-f] [-u] [-d] [-n]` (`push.rs`, by hand: gix has no receive-pack client).
+  Protocol v0: the `git-receive-pack` advertisement, then one POST with the commands and a pack; `report-status` and
+  `side-band-64k` (band 2 printed as `remote:` lines). The pack has whole objects only (no deltas): the commits not
+  reachable from the remote's refs, with the trees and blobs not already in the trees of the commits they build on.
+  Without a refspec: the current branch to its upstream on that remote, else to the branch of the same name (like
+  `push.default=current`). Refuses non-fast-forwards (`fetch first` when the remote's commit isn't here) unless forced;
+  updates the tracking refs; `-u` sets the upstream. Output as git's (`To <url>`, ` * [new branch]  main -> main`).
 
 `net.test.ts` runs these against native `git http-backend` (a CGI server in a child process), with curl serving the
-imports synchronously, and checks the results with native git (33 checks).
+imports synchronously, and checks the results with native git (50 checks; the push checks set `http.receivepack` on the server's repositories).
 
 ## Results
 
@@ -114,5 +120,4 @@ The first four are small and upstreamable; the hook would need an upstream desig
 - gix `worktree-mutation`: `io-close` has no WASI impl. Not needed (see above); a stub (close = flush + drop) would do.
 - No exec bits on WASI: set `core.fileMode=false`, or every 100755 file shows as modified.
 - `wasm64-unknown-unknown`: `std::fs` does nothing there, and `gix-sec` assumes non-Windows means Unix. Use wasip1.
-- Push: gix has no receive-pack client. github.com's smart HTTP doesn't send CORS headers, so the playground goes
-  through a proxy (bwc-lxg).
+- Push sends packs without deltas: fine for a playground's commits, larger than git's for big edits to big files.
