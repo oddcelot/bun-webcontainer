@@ -1,6 +1,6 @@
 // Completions, hovers and errors for .json files in the editor, from a JSON schema: vscode-json-languageservice (what
 // VS Code's JSON support runs on), loaded on first use. runbun.json gets its schema (src/schema/runbun.json) bundled,
-// whether or not it says `$schema`; another file's own `$schema` URL is fetched (https only). JSONC (comments, trailing
+// whether or not it says `$schema`; another file's own `$schema` URL is fetched (https, or this page's origin). JSONC (comments, trailing
 // commas) for runbun.json and tsconfig/jsconfig, strict JSON elsewhere.
 import type { EditorCompletion, EditorCompletionDetails, EditorCompletions, EditorDiagnostic, EditorHover, CompletionKind } from "./editors/types";
 import runbunSchema from "./schema/runbun.json";
@@ -8,6 +8,8 @@ import { CONFIG_FILE } from "./projectConfig";
 
 export const JSON_FILE = /\.json$/;
 const RUNBUN_SCHEMA = "https://runbun.dev/schema/runbun.json";
+/** Any URL of runbun.json's schema: the bundled copy answers for it. */
+const RUNBUN_SCHEMA_URL = /^https?:\/\/[^?#]*\/schema\/runbun\.json(?:[?#].*)?$/;
 /** Files whose readers allow comments and trailing commas. */
 const JSONC = /(^|\/)(runbun|tsconfig(\.[\w-]+)?|jsconfig)\.json$/;
 
@@ -21,9 +23,12 @@ function service() {
     throw e;
   }).then((m) => {
     const ls = m.getLanguageService({
-      // A schema a file names by URL. Ours is bundled (below), so this only runs for other ones.
+      // A schema a file names by URL. Ours, wherever it's served from (runbun.dev, the canary, a dev server), is the
+      // bundled one; others are fetched, over https or from this page's own origin.
       schemaRequestService: async (uri) => {
-        if (!uri.startsWith("https://")) throw new Error(`not fetched: ${uri}`);
+        if (RUNBUN_SCHEMA_URL.test(uri)) return JSON.stringify(runbunSchema);
+        const url = new URL(uri);
+        if (url.protocol !== "https:" && url.origin !== location.origin) throw new Error(`only https schemas are fetched, not ${uri}`);
         const res = await fetch(uri);
         if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
         return res.text();
