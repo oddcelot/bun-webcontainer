@@ -1,3 +1,6 @@
+import { createAuth, githubRepos, githubToken, withCookies, type Auth } from "./auth";
+import { GIT_PROXY, gitProxy } from "./gitProxy";
+
 // Feedback: POST /api/feedback (from the playground's Feedback dialog and the docs' page rating) stores one row in the
 // FEEDBACK D1 database (worker/migrations/), not with the links; see feedback() below and scripts/feedback.ts to read them.
 //
@@ -5,6 +8,10 @@
 // derived from its content, so sharing the same project twice gives the same link and costs no second write.
 // GET /s/<id> redirects to /#code=<payload>, which the playground already knows how to open. GET /about is the home
 // page (index.html), which shows its landing page there. Everything else is the static site.
+//
+// GET/POST /git-proxy/<host>/<repo>/... forwards git's smart-HTTP requests to a few git hosts (gitProxy.ts), for `git
+// clone` and `fetch` in the playground. /api/auth/* is sign-in with GitHub (Better Auth, no database: auth.ts), and
+// GET /api/github/repos lists the signed-in user's repositories.
 //
 // Links are kept until someone asks for one to be removed (docs: /privacy/). Each key's metadata records the day it was
 // created and the day it was last opened, for a later cleanup of links nobody uses; reading it costs nothing extra.
@@ -21,7 +28,18 @@ interface Env {
   CONTENT_HOST: string;
   /** The editor origin the content host sends visitors to. */
   EDITOR_ORIGIN: string;
+  /** Sign in with GitHub (auth.ts): the runbun-dev org's GitHub App, and Better Auth's cookie key. Secrets. */
+  GITHUB_CLIENT_ID?: string;
+  GITHUB_CLIENT_SECRET?: string;
+  BETTER_AUTH_SECRET?: string;
 }
+
+/** Better Auth per editor origin (runbun.dev, canary, a preview URL), made on first use. */
+const auths = new Map<string, Auth | null>();
+const authFor = (env: Env, origin: string) => {
+  if (!auths.has(origin)) auths.set(origin, createAuth(env, origin));
+  return auths.get(origin)!;
+};
 
 /** The longest payload kept: about 64 KB of compressed project, as base64url. */
 const MAX_PAYLOAD = Math.ceil((64 * 1024 * 4) / 3);
@@ -193,7 +211,7 @@ const EDITOR_PAGES = new Set(["/", "/index.html", "/about", "/embed", "/embed.ht
  */
 function contentHost(req: Request, env: Env, url: URL): Promise<Response> | Response {
   const { pathname } = url;
-  if (pathname.startsWith("/api/") || pathname.startsWith("/s/")) return json(404, { error: "not found" });
+  if (pathname.startsWith("/api/") || pathname.startsWith("/s/") || pathname.startsWith(GIT_PROXY)) return json(404, { error: "not found" });
   // Crawlers may fetch pages here and see their noindex (a blocked URL can still be listed); nothing lists the host.
   if (pathname === "/robots.txt") return new Response("User-agent: *\nAllow: /\n", { headers: { "content-type": "text/plain; charset=utf-8" } });
   if (pathname === "/sitemap.xml") return new Response("Not found", { status: 404 });
@@ -208,6 +226,15 @@ export default {
     if (url.pathname === "/api/short" && req.method === "POST") return create(req, env, url);
     if (url.pathname === "/api/feedback" && (req.method === "POST" || req.method === "OPTIONS")) return feedback(req, env, url);
     if (url.pathname.startsWith("/s/")) return open(url.pathname.slice(3), env, url, ctx);
+    if (url.pathname.startsWith("/api/auth/")) {
+      const auth = authFor(env, url.origin);
+      return auth ? auth.handler(req) : json(503, { error: "sign-in isn't set up here" });
+    }
+    if (url.pathname === "/api/github/repos" && req.method === "GET") return githubRepos(authFor(env, url.origin), req);
+    if (url.pathname.startsWith(GIT_PROXY)) {
+      const signedIn = await githubToken(authFor(env, url.origin), req);
+      return withCookies(await gitProxy(req, url.pathname.slice(GIT_PROXY.length), signedIn?.token), signedIn?.cookies ?? []);
+    }
     if (url.pathname.startsWith("/api/")) return json(404, { error: "not found" });
     // The landing page again, for visitors the home page now takes straight to the playground (index.html reads the path).
     if (url.pathname === "/about") return env.ASSETS.fetch(new Request(new URL("/", url), req));

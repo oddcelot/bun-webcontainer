@@ -34,3 +34,11 @@ node_modules/
 # moon (cache and generated files)
 /.moon/cache/
 /.moon/docker/
+
+# Local secrets (the GitHub App and Better Auth): apps/playground/.dev.vars, read by the dev server and pushed to the
+# Worker with `wrangler secret bulk`. Never committed.
+.dev.vars
+.dev.vars.*
+.env
+.env.*
+!.env.example

@@ -1,9 +1,11 @@
 // A small `git` on gitoxide for the playground: a WASI command module (`_start`, argv via WASI args). The project root
-// is the preopen `/`, which is also the cwd. No network, no threads, no child processes.
+// is the preopen `/`, which is also the cwd. HTTP goes through the host (http.rs); no threads, no child processes.
 mod config;
 mod diff;
 mod history;
+mod http;
 mod index;
+mod net;
 mod refs;
 mod status;
 mod worktree;
@@ -19,7 +21,17 @@ pub struct Exit {
 
 impl<E: std::error::Error> From<E> for Exit {
     fn from(e: E) -> Self {
-        Exit { code: 128, msg: format!("fatal: {e}") }
+        // With its causes, as git prints them: the outermost alone rarely says what went wrong.
+        let mut msg = format!("fatal: {e:#}");
+        let mut cause = e.source();
+        while let Some(c) = cause {
+            let text = c.to_string();
+            if !msg.ends_with(&text) {
+                msg.push_str(&format!(": {text}"));
+            }
+            cause = c.source();
+        }
+        Exit { code: 128, msg }
     }
 }
 
@@ -100,6 +112,10 @@ Supported in the playground:
    clean      Remove untracked files (-n, -f, -d)
    config     Get and set options in the repository config (--get, --unset, --list)
    rev-parse  Print the object id of a revision (--verify, --abbrev-ref)
+   clone      Clone a repository into the (empty) project (<url> [.], --depth <n>, -b <branch>)
+   fetch      Download objects and refs from a remote ([<remote>], --depth <n>)
+   pull       Fetch, then fast-forward the current branch ([<remote> [<branch>]])
+   remote     Manage remotes (-v, add <name> <url>, remove, get-url, set-url)
 ";
 
 fn run(args: &[String]) -> Res {
@@ -129,7 +145,11 @@ fn run(args: &[String]) -> Res {
         "show" => refs::show(&open()?, rest),
         "branch" => refs::branch(&open()?, rest),
         "rev-parse" => refs::rev_parse(&open()?, rest),
-        "merge" | "rebase" | "stash" | "tag" | "clone" | "fetch" | "pull" | "push" | "remote" => {
+        "clone" => net::clone(rest),
+        "fetch" => net::fetch(&open()?, rest),
+        "pull" => net::pull(&open()?, rest),
+        "remote" => net::remote(&open()?, rest),
+        "merge" | "rebase" | "stash" | "tag" | "push" => {
             eprintln!("git: '{cmd}' is not supported in the playground yet");
             Ok(1)
         }
@@ -141,6 +161,7 @@ fn run(args: &[String]) -> Res {
 }
 
 fn main() {
+    http::install();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let code = match run(&args) {
         Ok(code) => code,

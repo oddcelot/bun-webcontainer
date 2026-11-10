@@ -72,6 +72,8 @@ type Opts = {
   stdout: (bytes: Uint8Array) => void;
   stderr: (bytes: Uint8Array) => void;
   stdin?: Uint8Array;
+  /** More import modules beside WASI's (git.wasm's `runbun` HTTP calls), given the instance's memory. */
+  modules?: (memory: () => WebAssembly.Memory) => Record<string, Record<string, (...args: number[]) => number | void>>;
 };
 
 /**
@@ -673,6 +675,7 @@ export function createWasi(vfs: VFS, opts: Opts, getMemory: () => WebAssembly.Me
   }
   // An import the table lacks (a newer WASI call) is ENOSYS rather than a failed instantiation.
   const ns = new Proxy(guarded, { get: (t, k) => (typeof k === "string" ? (t[k] ?? (() => E.NOSYS)) : undefined), has: () => true });
-  const imports = new Proxy({}, { get: (_t, k) => (k === "wasi_snapshot_preview1" ? ns : new Proxy({}, { get: () => () => E.NOSYS })), has: () => true });
+  const extra = opts.modules?.(getMemory) ?? {};
+  const imports = new Proxy({}, { get: (_t, k) => (k === "wasi_snapshot_preview1" ? ns : typeof k === "string" && extra[k] ? extra[k] : new Proxy({}, { get: () => () => E.NOSYS })), has: () => true });
   return { imports, wasi: guarded, flushAll: () => nodes.forEach((n) => flush(n)) };
 }

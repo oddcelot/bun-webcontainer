@@ -20,7 +20,7 @@ function matches(e: CatalogEntry, words: string[], tags: string[]) {
   return words.every((w) => text.includes(w)) && tags.every((t) => e.tags.includes(t));
 }
 
-/** The playground's Open section: a local folder (or the last one again), a zip, any GitHub repo. */
+/** The playground's Open section: a local folder (or the last one again), a zip, a repository (its files, or a clone). */
 export type GalleryOpens = { reopen?: string; onFolder: () => void; onZip: () => void; onRepo: () => void; onReopen: () => void };
 
 /**
@@ -125,7 +125,7 @@ export function Gallery(props: {
                     <i class="i-lucide-file-archive" aria-hidden="true" /> Zip file…
                   </button>
                   <button type="button" onClick={() => o().onRepo()}>
-                    <i class="i-lucide-github" aria-hidden="true" /> GitHub repo…
+                    <i class="i-lucide-github" aria-hidden="true" /> Repository…
                   </button>
                 </div>
               )}

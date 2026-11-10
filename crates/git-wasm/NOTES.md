@@ -1,6 +1,6 @@
 # git-wasm (from the gix-probe, bwc-vm5)
 
-A small `git` on gitoxide (`gix` 0.90, network off), built as `wasm32-wasip1` and run by the playground as a WASI
+A small `git` on gitoxide (`gix` 0.90, HTTP through the host), built as `wasm32-wasip1` and run by the playground as a WASI
 command module over its VFS.
 
 ```sh
@@ -17,9 +17,9 @@ Opens with `core.fileMode=false` (no exec bits on the host FS). `init` writes th
 `Playground <playground@runbun.dev>`.
 
 Supported: `init`, `status`, `add`, `rm [--cached]`, `restore`, `reset`, `commit`, `log`, `diff [--cached]`, `show`,
-`branch`, `switch`, `checkout`, `clean`, `config`, `rev-parse`. `git help` lists the flags. Pathspecs are plain paths or
-directory prefixes (no globs). Not supported: merge, rebase, stash, tag, network commands (they print
-`git: '<cmd>' is not supported in the playground yet`).
+`branch`, `switch`, `checkout`, `clean`, `config`, `rev-parse`, `clone`, `fetch`, `pull`, `remote`. `git help` lists the
+flags. Pathspecs are plain paths or directory prefixes (no globs). Not supported: merge, rebase, stash, tag, push (they
+print `git: '<cmd>' is not supported in the playground yet`).
 
 Output the panel parses (byte-identical to native git, checked by `test.ts`):
 
@@ -53,14 +53,46 @@ written from blobs without filters (no autocrlf, symlinks become plain files), s
 git: "twin" runs execute the same command on two copies of a project (ours vs native) and compare `status`, `ls-files -s`,
 HEAD and every file, then `fsck`.
 
+## Network (`http.rs`, `net.rs`)
+
+`http(s)://` remotes only (gix's smart-HTTP client, protocol v2). gix has no HTTP backend without curl or reqwest, so
+the program provides one: `http.rs` implements gix-transport's `Http` trait over two host imports, and the patched
+gix-transport's `HTTP_CONNECT` hook (below) makes `connect` (and with it gix's clone and fetch) use it.
+
+```
+(import "runbun" "http_request" (head_ptr head_len body_ptr body_len out_ptr) -> i32)
+  head: "METHOD URL\n" then "Name: value\n" per header. Waits for the status and headers.
+  out = [status, headers_len, handle]; nonzero: the request failed, headers_len is then a message's length.
+(import "runbun" "http_headers" (handle buf_ptr) -> i32)    the headers ("Name: value\n" lines), or the message
+(import "runbun" "http_body" (handle buf_ptr len) -> i32)   up to len bytes, waiting for one; 0 at the end, < 0 failed
+(import "runbun" "http_close" (handle))                     done with it (the body may be left unread)
+(import "runbun" "progress" (text_ptr text_len))             "Connecting to github.com", "Checking out 609 files"
+```
+
+The host blocks until it has the status and headers, then hands the body over as it arrives, so gix indexes a pack
+while it downloads (the playground's git worker: a streaming `fetch` on the page passing chunks through shared memory,
+or one synchronous `XMLHttpRequest` without cross-origin isolation). A request is sent on the first read of its
+response (gix writes a POST body after `post` returns). Status
+401/403/404 become `PermissionDenied`/`NotFound` errors with the status in the message.
+
+- `clone <url> [.] [--depth <n>] [-b <branch>] [-o <name>]`: into the project itself, which must be empty but for
+  `node_modules`; gix's clone (HEAD selection, single-branch shallow), then the files from blobs as `reset --hard`
+  writes them. A failed clone removes the `.git` it made. Writes `core.fileMode=false` and the `node_modules/` exclude.
+- `fetch [<remote>] [--depth <n>]`, `pull [<remote> [<branch>]]` (fetch, then fast-forward only: our commit must be in
+  the upstream's history; switching uses the two-way merge of `switch`), `remote [-v]`, `remote add|remove|get-url|set-url`.
+- No push: gix doesn't implement it (receive-pack). Planned by hand: gix-pack can write packs.
+
+`net.test.ts` runs these against native `git http-backend` (a CGI server in a child process), with curl serving the
+imports synchronously, and checks the results with native git (33 checks).
+
 ## Results
 
-- Features: `sha1 basic status dirwalk` (no network, no `worktree-mutation`).
+- Features: `sha1 basic status dirwalk blocking-network-client` (no `worktree-mutation`), and gix-transport `http-client`.
 - Writes match native gix byte for byte (same commit ids); `git fsck --full` is clean; status, tree diff and log
   match native output.
 - Packed clones read fine. This repo (933 commits, 3.4 MiB pack, 578 files): full log walk, HEAD tree and status in
   ~65 ms under node's WASI (native `git status`: 33 ms).
-- Size (the CLI): 2.97 MB stripped, 0.86 MB brotli.
+- Size (the CLI): 3.5 MB stripped, 1.0 MB brotli (2.97 MB and 0.86 MB before the network commands).
 - WASI surface: 25 `wasi_snapshot_preview1` imports (`path_open`, `fd_read`/`fd_write`/`fd_seek`, `fd_readdir`,
   `path_filestat_get`, `path_rename`, `path_unlink_file`, `path_create_directory`, …). A browser build needs those
   over the VFS; tsrs-ls-wasm only stubs WASI today.
@@ -72,13 +104,15 @@ HEAD and every file, then `fsck`.
 | `gix-tempfile` 26.0.1 | `std::process::id()` panics (lock files) | pid 0 on WASI |
 | `memmap2` 0.9.12 | stub returns `Unsupported`; gix maps objects, packs, the index | read a copy of the range; restore the file position (gix-index hashes the same handle afterwards) |
 | `filetime` 0.2.29 | wasm backend is `unimplemented!()` | times from `std::fs::Metadata` |
+| `gix-pack` 0.77.0 | `streaming-input` uses `gix-tempfile`, which is a dependency only off wasm32: the build fails | the dependency on every target |
+| `gix-transport` 0.62.0 | no HTTP backend without curl/reqwest (neither builds for WASI) | `blocking_io::HTTP_CONNECT`, a hook `connect` uses for `http(s)://` |
 
-All three are small and upstreamable.
+The first four are small and upstreamable; the hook would need an upstream design (a pluggable HTTP backend).
 
 ## Not working / open
 
 - gix `worktree-mutation`: `io-close` has no WASI impl. Not needed (see above); a stub (close = flush + drop) would do.
 - No exec bits on WASI: set `core.fileMode=false`, or every 100755 file shows as modified.
 - `wasm64-unknown-unknown`: `std::fs` does nothing there, and `gix-sec` assumes non-Windows means Unix. Use wasip1.
-- Network (clone/fetch/push): not tried. gix's HTTP transport is pluggable, but github.com's smart HTTP doesn't send
-  CORS headers, so a proxy is needed regardless.
+- Push: gix has no receive-pack client. github.com's smart HTTP doesn't send CORS headers, so the playground goes
+  through a proxy (bwc-lxg).

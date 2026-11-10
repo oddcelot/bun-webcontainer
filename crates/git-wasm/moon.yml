@@ -19,7 +19,7 @@ tasks:
     outputs:
       - 'target/wasm32-wasip1/release/git.wasm'
   test:
-    command: 'node test.ts'
+    script: 'node test.ts && node net.test.ts'
     toolchains: ['node']
     deps: ['~:build']
     inputs:

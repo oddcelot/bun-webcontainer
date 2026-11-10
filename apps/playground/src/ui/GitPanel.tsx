@@ -7,6 +7,8 @@ import { Menu, MenuGroup, MenuItem, MenuSeparator, MenuTrigger } from "@runbun/u
 import { Tip } from "@runbun/ui/solid/Tip";
 import { isMac } from "../keymap";
 import type { Commit, FileChange } from "../git/parse";
+import { askRepo } from "./ProjectPicker";
+import { account, loadAccount, signIn, signInAvailable, signOut } from "../account";
 import { AppContext } from "./context";
 import { PromptDialog } from "./PromptDialog";
 
@@ -72,7 +74,10 @@ function Section(props: { title: string; count: number; open: boolean; onToggle:
  * `git` command (git/store.ts), so the console shows the same repository.
  */
 export function GitPanel() {
-  const { git, workspace: ws } = useContext(AppContext);
+  const app = useContext(AppContext);
+  const { git, workspace: ws } = app;
+  // Signed in with GitHub (the playground's; an embed can't have runbun.dev's cookies): for the menu below.
+  if (!app.features) void loadAccount();
   const s = git.state;
   const [message, setMessage] = createSignal("");
   const [amending, setAmending] = createSignal(false);
@@ -243,13 +248,22 @@ export function GitPanel() {
             <Menu
               placement="bottom-end"
               trigger={
-                <Tip as={MenuTrigger} class="button git-more" tip="More commit actions" aria-label="More commit actions">
+                <Tip as={MenuTrigger} class="button git-more" tip="More actions" aria-label="More actions">
                   <i class="i-lucide-ellipsis" aria-hidden="true" />
                 </Tip>
               }
             >
               <MenuItem icon="i-lucide-pencil" label={amending() ? "Amending the last commit" : "Amend last commit"} disabled={!s.hasHead || amending()} onSelect={startAmend} />
               <MenuItem icon="i-lucide-undo-2" label="Undo last commit…" disabled={!s.hasHead} onSelect={() => later(undoCommit)} />
+              <Show when={!app.features && signInAvailable() && account() !== undefined}>
+                <MenuSeparator />
+                <Show
+                  when={account()}
+                  fallback={<MenuItem icon="i-lucide-github" label="Sign in with GitHub…" onSelect={() => void signIn()} />}
+                >
+                  {(a) => <MenuItem icon="i-lucide-log-out" label={`Sign out of GitHub (${a().name})`} onSelect={() => void signOut()} />}
+                </Show>
+              </Show>
             </Menu>
           </div>
           <Show when={amending()}>
@@ -365,7 +379,8 @@ export function GitPanel() {
 
 /** No repository yet: what the panel does, and the button that makes one. */
 function Start() {
-  const { git, workspace: ws } = useContext(AppContext);
+  const app = useContext(AppContext);
+  const { git, workspace: ws } = app;
   return (
     <div class="git-start">
       <Show when={git.state.loaded} fallback={<p>Reading the repository…</p>}>
@@ -374,6 +389,12 @@ function Start() {
           <i class="i-lucide-git-branch" aria-hidden="true" /> Initialize repository
         </Button>
         <p class="hint">The repository stays in this browser; it isn't part of a share link or a zip.</p>
+        {/* The playground's gallery opens it (an embed has no gallery, nor `features` unset). */}
+        <Show when={!app.features}>
+          <Button onClick={() => askRepo("git")}>
+            <i class="i-lucide-download" aria-hidden="true" /> Clone a repository…
+          </Button>
+        </Show>
         <button type="button" class="git-link" onClick={() => ws.showChanges()}>
           <i class="i-lucide-git-compare" aria-hidden="true" /> Compare with the project's source
         </button>

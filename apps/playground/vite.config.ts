@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, relative } from "node:path";
@@ -6,8 +7,9 @@ import { fileURLToPath } from "node:url";
 import solid from "@solidjs/vite-plugin";
 import UnoCSS from "unocss/vite";
 import { rolldown } from "rolldown";
-import { defaultClientConditions, defineConfig, type Plugin } from "vite";
+import { defaultClientConditions, defineConfig, runnerImport, type Plugin } from "vite";
 import { BUN_VERSION } from "./src/worker/bunVersion";
+import type { AuthEnv } from "./worker/auth";
 
 const isolation = {
   "Cross-Origin-Opener-Policy": "same-origin",
@@ -193,6 +195,86 @@ function serviceWorker(): Plugin {
 }
 
 /**
+ * The Worker's git proxy and sign-in (worker/gitProxy.ts, worker/auth.ts) in the dev and preview servers, as the Worker
+ * answers them on runbun.dev. The secrets come from apps/playground/.dev.vars (gitignored); without it, sign-in answers
+ * 503 and the proxy works for public repositories.
+ *
+ * The modules are loaded per request through Vite (dev: ssrLoadModule, which picks up edits), not imported here: a
+ * module this config imports restarts the dev server when it changes.
+ */
+type WorkerRoutes = typeof import("./worker/gitProxy") & typeof import("./worker/auth");
+function workerRoutesDev(): Plugin {
+  const vars: AuthEnv = {};
+  const file = fileURLToPath(new URL("./.dev.vars", import.meta.url));
+  if (existsSync(file))
+    for (const line of readFileSync(file, "utf8").split("\n")) {
+      const m = /^\s*([A-Z_][A-Z0-9_]*)\s*=\s*(.*?)\s*$/.exec(line);
+      if (m) (vars as Record<string, string>)[m[1]] = m[2].replace(/^(["'])(.*)\1$/, "$2");
+    }
+  // One auth per origin, made again when worker/auth.ts changed (a new module).
+  const auths = new WeakMap<object, Map<string, ReturnType<WorkerRoutes["createAuth"]>>>();
+  const authFor = (m: WorkerRoutes, origin: string) => {
+    const made = auths.get(m.createAuth) ?? new Map();
+    auths.set(m.createAuth, made);
+    if (!made.has(origin)) made.set(origin, m.createAuth(vars, origin));
+    return made.get(origin)!;
+  };
+  const handle = (base: string, load: () => Promise<WorkerRoutes>) => async (req: IncomingMessage, res: ServerResponse, next: () => void) => {
+    const path = (req.url ?? "").split("?")[0];
+    const root = base.replace(/\/$/, "");
+    const proxy = root + "/git-proxy/"; // GIT_PROXY
+    const isAuth = path.startsWith(`${root}/api/auth/`);
+    const isRepos = path === `${root}/api/github/repos`;
+    if (!path.startsWith(proxy) && !isAuth && !isRepos) return next();
+    const m = await load();
+    const origin = `http://${req.headers.host ?? "localhost"}`;
+    const body: Buffer[] = [];
+    for await (const chunk of req) body.push(chunk as Buffer);
+    const headers = new Headers();
+    for (const [k, v] of Object.entries(req.headers)) if (typeof v === "string") headers.set(k, v);
+    const request = new Request(new URL((req.url ?? "/").slice(root.length) || "/", origin), {
+      method: req.method,
+      headers,
+      body: req.method === "POST" ? Buffer.concat(body) : undefined,
+    });
+    const auth = authFor(m, origin);
+    let out: Response;
+    if (isAuth) out = auth ? await auth.handler(request) : new Response(JSON.stringify({ error: "sign-in isn't set up: add apps/playground/.dev.vars" }), { status: 503 });
+    else if (isRepos) out = await m.githubRepos(auth, request);
+    else {
+      const signedIn = await m.githubToken(auth, request);
+      out = m.withCookies(await m.gitProxy(request, path.slice(proxy.length), signedIn?.token), signedIn?.cookies ?? []);
+    }
+    res.statusCode = out.status;
+    out.headers.forEach((v, k) => k !== "set-cookie" && res.setHeader(k, v));
+    const cookies = out.headers.getSetCookie();
+    if (cookies.length) res.setHeader("set-cookie", cookies);
+    // Streamed, as the Worker answers: a pack arrives (and its progress shows) while it downloads.
+    if (!out.body) return void res.end();
+    const reader = out.body.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      res.write(value);
+    }
+    res.end();
+  };
+  return {
+    name: "worker-routes",
+    configureServer: (server) => {
+      const load = async () => ({ ...(await server.ssrLoadModule("/worker/gitProxy.ts")), ...(await server.ssrLoadModule("/worker/auth.ts")) }) as WorkerRoutes;
+      server.middlewares.use(handle(server.config.base, load));
+    },
+    configurePreviewServer: (server) => {
+      let loaded: Promise<WorkerRoutes> | undefined;
+      const load = () =>
+        (loaded ??= Promise.all([runnerImport<WorkerRoutes>("./worker/gitProxy.ts", { configFile: false }), runnerImport<WorkerRoutes>("./worker/auth.ts", { configFile: false })]).then(([a, b]) => ({ ...a.module, ...b.module })));
+      server.middlewares.use(handle(server.config.base, load));
+    },
+  };
+}
+
+/**
  * The gallery's projects come from the examples submodule (src/examples.ts). In a checkout without it the glob finds
  * nothing and the build would ship an empty gallery: stop with the command that fetches it.
  */
@@ -235,7 +317,7 @@ export default defineConfig(({ mode }) => ({
     // CANARY=1 (playground:deploy-canary) shows the canary badge (src/canary.ts).
     "import.meta.env.CANARY": JSON.stringify(process.env.CANARY === "1"),
   },
-  plugins: [examplesSubmodule(), configSchema(), UnoCSS(), solid(), hostPackageNames(), emnapiNotNode(), docsLink(docsUrl(mode)), embedRoutes(), originHeaders(), serviceWorker()],
+  plugins: [examplesSubmodule(), configSchema(), UnoCSS(), solid(), hostPackageNames(), emnapiNotNode(), docsLink(docsUrl(mode)), embedRoutes(), originHeaders(), serviceWorker(), workerRoutesDev()],
   build: {
     target: "esnext",
     rollupOptions: {

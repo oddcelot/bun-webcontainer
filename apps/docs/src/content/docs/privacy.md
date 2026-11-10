@@ -3,7 +3,7 @@ title: Privacy
 description: What runbun.dev and docs.runbun.dev store, send and keep.
 ---
 
-The playground (runbun.dev) and these docs (docs.runbun.dev) set **no cookies** of their own and run **no analytics or tracking**. Cookies that an app you run in the playground sets are the app's: they stay in your browser, on run.runbun.dev, the separate origin your project code runs on (see [below](#in-your-browser)).
+The playground (runbun.dev) and these docs (docs.runbun.dev) run **no analytics or tracking**, and set **no cookies** of their own unless you sign in with GitHub (see [below](#sign-in-with-github)). Cookies that an app you run in the playground sets are the app's: they stay in your browser, on run.runbun.dev, the separate origin your project code runs on (see [below](#in-your-browser)).
 
 ## In your browser
 
@@ -39,13 +39,23 @@ Short links are kept until they're removed. To have one removed, email [privacy@
 
 Your IP address is used to limit how much feedback can be sent a minute; it isn't stored. Feedback is kept until we've dealt with it. To have something you sent removed, email [privacy@runbun.dev](mailto:privacy@runbun.dev).
 
+## Sign in with GitHub
+
+Signing in (in the Git view's menu, or **Clone a repository**) lets the playground clone your private repositories and list the ones you choose. It goes through the **runbun.dev** GitHub App, where you pick which repositories it may use; you can change that or remove it at any time in GitHub's [installed apps](https://github.com/settings/installations).
+
+- **Stored**: your GitHub name, email address and picture, and the app's GitHub token for you, in encrypted, HttpOnly cookies for runbun.dev. They stay in your browser: runbun.dev keeps no account, no database and no copy of the token. Page scripts can't read them, and your projects' code runs on run.runbun.dev, which never receives them.
+- **Used for**: runbun.dev's server reads the token from the cookie only to pass your own git requests and repository list on to GitHub.
+- **How long**: 7 days after your last visit, or until you sign out (the Git view's menu), which deletes the cookies. GitHub's token itself expires after 8 hours and is renewed as you use it.
+
 ## Requests from your browser
 
 - **runbun.dev / docs.runbun.dev** are hosted on Cloudflare, which processes requests (including your IP address) to serve and protect the sites; see [Cloudflare's privacy policy](https://www.cloudflare.com/privacypolicy/). When you make a short link, your IP address is used to limit how many you can make a minute; it isn't stored.
 - **npm**: installing packages fetches them from `registry.npmjs.org` ([npm's privacy policy](https://docs.npmjs.com/policies/privacy)).
 - **GitHub**: opening a repository fetches it from `api.github.com` and `raw.githubusercontent.com` ([GitHub's privacy statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement)).
 
-These requests go straight from your browser to those services, and only when you install or import something.
+- **Git hosts**: `git clone`, `fetch` and `pull` in the console reach GitHub, GitLab, Codeberg or Bitbucket through runbun.dev's git proxy, because those hosts don't accept requests from other sites' pages. The proxy passes git's requests on and the answers back without keeping them; the git host sees runbun.dev's Cloudflare address, not yours. Nothing is sent unless you run one of those commands.
+
+Apart from the git proxy, these requests go straight from your browser to those services, and only when you install, import or fetch something.
 
 ## Changes
 

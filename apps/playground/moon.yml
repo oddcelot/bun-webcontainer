@@ -52,9 +52,9 @@ tasks:
       - 'src/request.ts'
   test-git:
     # The WASI host over the VFS (src/git/wasi.ts): its edge cases, then crates/git-wasm's git.wasm committing into a
-    # VFS whose .git native git then checks (fsck, log, status); then the Git panel's parsers (parse.ts) on native git's
-    # output.
-    script: 'node src/git/wasi.test.ts && node src/git/parse.test.ts'
+    # VFS whose .git native git then checks (fsck, log, status); the git worker's copy of the project (mirror.ts) staying
+    # equal to the page's through git commands; then the Git panel's parsers (parse.ts) on native git's output.
+    script: 'node src/git/wasi.test.ts && node src/git/mirror.test.ts && node src/git/parse.test.ts'
     toolchains: ['node']
     deps:
       - 'git-wasm:build'
@@ -110,6 +110,13 @@ tasks:
       - 'check-wasm:build'
       - 'tsrs-ls-wasm:build'
       - 'git-wasm:build'
+  secrets:
+    # Sign in with GitHub (worker/auth.ts): pushes apps/playground/.dev.vars (GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET,
+    # BETTER_AUTH_SECRET; gitignored) to the runbun.dev and canary Workers as secrets. Again when a value changes.
+    script: 'bunx wrangler secret bulk .dev.vars && bunx wrangler secret bulk .dev.vars --env canary'
+    options:
+      cache: false
+      runInCI: false
   deploy-canary:
     # canary.runbun.dev (wrangler.jsonc env.canary): a production build into dist-canary/ that links docs-canary, so
     # moon's cached dist/ stays the runbun.dev build. noindex keeps it out of search results.

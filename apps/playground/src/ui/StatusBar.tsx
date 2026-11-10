@@ -157,7 +157,7 @@ export function StatusBar(props: { treeShown: boolean; toggleFiles(): void; togg
       <Tip as="a" href={`${import.meta.env.BASE_URL}about`} target="_blank" rel="noopener" placement="top-end" tip="What runbun.dev is and how it runs Bun">
         About
       </Tip>
-      <Tip as="a" href={`${DOCS}privacy/`} target="_blank" rel="noopener" placement="top-end" tip="No cookies or tracking; what is stored, and where">
+      <Tip as="a" href={`${DOCS}privacy/`} target="_blank" rel="noopener" placement="top-end" tip="No tracking; cookies only if you sign in with GitHub; what is stored, and where">
         Privacy
       </Tip>
     </footer>
