@@ -185,6 +185,8 @@ export type CommandCtx = Io & {
   fs: ShellFs;
   /** A path resolved against the cwd: absolute and normalized. */
   path(p: string): string;
+  /** Whether a name is a builtin, or one of the host's commands (the console's bun and git): `which`. */
+  known(name: string): "builtin" | "command" | undefined;
   signal: AbortSignal;
 };
 
@@ -536,6 +538,7 @@ export class Shell {
         env: { ...Object.fromEntries(env.exported), ...local },
         fs: this.opts.fs,
         path: (p) => resolvePath(env.cwd, p),
+        known: (n) => (Object.hasOwn(this.opts.builtins, n) ? "builtin" : this.opts.commands && Object.hasOwn(this.opts.commands, n) ? "command" : undefined),
         signal: this.signal,
       };
       return await run(ctx);
