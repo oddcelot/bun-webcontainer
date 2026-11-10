@@ -20,7 +20,7 @@ export type GitResult = {
 /** Whether git was started yet: nothing git-related loads until a command or the Git panel needs it. */
 export let gitLoaded = false;
 
-type Client = { worker: Worker; flush: () => void; pending: Map<number, (r: FromWorker) => void>; running: number; touched: Set<string> };
+type Client = { worker: Worker; flush: () => void; stop: () => void; pending: Map<number, (r: FromWorker) => void>; running: number; touched: Set<string> };
 const clients = new WeakMap<VFS, Client>();
 let ids = 0;
 
@@ -31,7 +31,7 @@ function client(vfs: VFS): Client {
   const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module", name: "git" });
   const post = (m: ToWorker) => worker.postMessage(m);
   let applying = false;
-  const self: Client = { worker, flush: () => {}, pending: new Map(), running: 0, touched: new Set() };
+  const self: Client = { worker, flush: () => {}, stop: () => {}, pending: new Map(), running: 0, touched: new Set() };
   worker.onmessage = (e: MessageEvent<FromWorker>) => {
     const r = e.data;
     if ("changes" in r) {
@@ -52,16 +52,34 @@ function client(vfs: VFS): Client {
     self.pending.delete(r.id);
   };
   post({ ops: snapshot(vfs) });
-  self.flush = follow(
+  const following = follow(
     vfs,
     (ops) => {
       if (self.running) for (const op of ops) if ("write" in op) self.touched.add(op.write.path);
       post({ ops });
     },
     () => applying,
-  ).flush;
+  );
+  self.flush = following.flush;
+  self.stop = following.stop;
   clients.set(vfs, (c = self));
   return c;
+}
+
+/**
+ * Ends `vfs`'s worker once the commands queued so far are done (a project cloned aside, before it takes the open one's
+ * place). A later command starts a new one.
+ */
+export function release(vfs: VFS): Promise<void> {
+  const done = tail.then(() => {
+    const c = clients.get(vfs);
+    if (!c) return;
+    clients.delete(vfs);
+    c.stop();
+    c.worker.terminate();
+  });
+  tail = done.catch(() => {});
+  return done;
 }
 
 const text = (chunks: Uint8Array[]) => chunks.map((c) => dec.decode(c, { stream: true })).join("") + dec.decode();

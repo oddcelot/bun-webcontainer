@@ -7,6 +7,7 @@ import { Menu, MenuGroup, MenuItem, MenuSeparator, MenuTrigger } from "@runbun/u
 import { Tip } from "@runbun/ui/solid/Tip";
 import { isMac } from "../keymap";
 import type { Commit, FileChange } from "../git/parse";
+import { askRepo } from "./ProjectPicker";
 import { AppContext } from "./context";
 import { PromptDialog } from "./PromptDialog";
 
@@ -365,7 +366,8 @@ export function GitPanel() {
 
 /** No repository yet: what the panel does, and the button that makes one. */
 function Start() {
-  const { git, workspace: ws } = useContext(AppContext);
+  const app = useContext(AppContext);
+  const { git, workspace: ws } = app;
   return (
     <div class="git-start">
       <Show when={git.state.loaded} fallback={<p>Reading the repository…</p>}>
@@ -374,6 +376,12 @@ function Start() {
           <i class="i-lucide-git-branch" aria-hidden="true" /> Initialize repository
         </Button>
         <p class="hint">The repository stays in this browser; it isn't part of a share link or a zip.</p>
+        {/* The playground's gallery opens it (an embed has no gallery, nor `features` unset). */}
+        <Show when={!app.features}>
+          <Button onClick={() => askRepo("git")}>
+            <i class="i-lucide-download" aria-hidden="true" /> Clone a repository…
+          </Button>
+        </Show>
         <button type="button" class="git-link" onClick={() => ws.showChanges()}>
           <i class="i-lucide-git-compare" aria-hidden="true" /> Compare with the project's source
         </button>

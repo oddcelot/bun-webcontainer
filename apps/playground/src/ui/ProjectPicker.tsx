@@ -5,6 +5,15 @@ import { Gallery } from "./Gallery";
 import { PromptDialog } from "./PromptDialog";
 import { Dialog } from "@runbun/ui/solid/Dialog";
 import { Tip } from "@runbun/ui/solid/Tip";
+import { Segmented } from "@runbun/ui/solid/Segmented";
+import { gitUrl } from "../git/remoteUrl";
+
+/** How "Open a repository" opens one: its files (GitHub's API), or a clone with its history (git, through the proxy). */
+type RepoMode = "files" | "git";
+const [askingRepo, setAskingRepo] = createSignal<RepoMode | null>(null);
+
+/** Opens "Open a repository", set to `mode` (the Git panel's "Clone a repository" asks for a clone). */
+export const askRepo = (mode: RepoMode) => setAskingRepo(mode);
 
 /**
  * The project switcher: a button naming the open project, which opens the gallery of starters, examples and GitHub
@@ -14,7 +23,10 @@ export function ProjectPicker() {
   const app = useContext(AppContext);
   const s = app.session;
   const [open, setOpen] = createSignal(false);
-  const [askingRepo, setAskingRepo] = createSignal(false);
+  const gitOn = () => app.features?.has("git") ?? true;
+  // The mode the dialog was opened with, kept while it closes (the title doesn't flip during the fade).
+  let last: RepoMode = "files";
+  const mode = () => (last = askingRepo() ?? last);
   let trigger!: HTMLButtonElement;
   let folderInput!: HTMLInputElement;
   let zipInput!: HTMLInputElement;
@@ -79,22 +91,53 @@ export function ProjectPicker() {
             reopen: reopen(),
             onFolder: () => then(() => ("showDirectoryPicker" in window ? app.openDirectory() : folderInput.click())),
             onZip: () => then(() => zipInput.click()),
-            onRepo: () => then(() => setAskingRepo(true)),
+            onRepo: () => then(() => setAskingRepo("files")),
             onReopen: () => then(() => app.reopenFolder()),
           }}
         />
       </Dialog>
       <PromptDialog
-        open={askingRepo()}
-        onOpenChange={setAskingRepo}
-        title="Open a GitHub repo"
-        description="owner/repo, owner/repo@ref or a github.com URL"
+        open={askingRepo() !== null}
+        onOpenChange={(o) => {
+          if (o) return;
+          setAskingRepo(null);
+        }}
+        title={mode() === "git" ? "Clone a repository" : "Open a repository"}
+        description={
+          mode() === "git"
+            ? "owner/repo, or an https:// URL on GitHub, GitLab, Codeberg or Bitbucket. Brings the last 50 commits: commit, branch, fetch and pull in the Git view."
+            : "owner/repo, owner/repo@ref or a github.com URL. Opens its files from GitHub, without their history."
+        }
         label="Repository"
         initial={app.repoParam || "oddcelot/bun-elysia-demo"}
-        submit="Open"
-        onSubmit={(input) => app.openProject(`repo:${input}`)}
+        submit={mode() === "git" ? "Clone" : "Open"}
+        check={(input) => {
+          if (mode() !== "git") return;
+          const r = gitUrl(input);
+          return "error" in r ? `Can't clone that: ${r.error}.` : undefined;
+        }}
+        onSubmit={(input) => {
+          if (mode() === "git") {
+            const r = gitUrl(input);
+            if ("url" in r) app.openProject(`git:${r.url}`);
+          } else app.openProject(`repo:${input}`);
+        }}
         returnFocus={() => trigger}
-      />
+      >
+        <Show when={gitOn()}>
+          <div class="dialog-choice">
+            <Segmented
+              label="How to open it"
+              value={mode()}
+              options={[
+                ["files", "Files", "i-lucide-files", "Its files from GitHub, without their history: quick"],
+                ["git", "With Git history", "i-lucide-git-branch", "A clone with its last commits: commit, branch, fetch and pull"],
+              ]}
+              onChange={(v) => setAskingRepo(v === "git" ? "git" : "files")}
+            />
+          </div>
+        </Show>
+      </PromptDialog>
       <input
         ref={folderInput}
         id="folderinput"

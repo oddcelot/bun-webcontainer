@@ -4,6 +4,7 @@ import { Button } from "@runbun/ui/solid/Button";
 import { Tip } from "@runbun/ui/solid/Tip";
 import { examples, repoExamples } from "../examples";
 import { parseRepo, repoQuery } from "../github";
+import { gitName } from "../git/remoteUrl";
 import { heldProjects, listProjects, projectsKept, type SavedProject } from "../persist";
 import { clearPkgCache, pkgCacheInfo } from "../pkgCache";
 import { clearStore, storeInfo } from "../pkgStore";
@@ -43,13 +44,14 @@ const repoLabels = new Map(
   }),
 );
 
-/** A saved project's name, from its id (persist.ts: `demo`, `example:<name>`, `repo:<query>`, `share:<hash>`). */
+/** A saved project's name, from its id (persist.ts: `demo`, `example:<name>`, `repo:<query>`, `git:<url>`, `share:<hash>`). */
 function label(id: string): { name: string; detail?: string } {
   if (id === "demo") return { name: "Confetti demo" };
   const [kind, rest] = [id.slice(0, id.indexOf(":")), id.slice(id.indexOf(":") + 1)];
   if (kind === "example") return { name: examples[rest] ?? rest, detail: rest.startsWith("starter-") ? "starter" : "example" };
   if (kind === "repo") return { name: repoLabels.get(rest) ?? rest, detail: "GitHub" };
   if (kind === "share") return { name: "Shared project", detail: `link ${rest.slice(0, 8)}` };
+  if (kind === "git") return { name: gitName(rest), detail: "Git clone" };
   return { name: id };
 }
 

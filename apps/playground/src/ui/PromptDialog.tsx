@@ -1,4 +1,4 @@
-import { Show, createUniqueId } from "solid-js";
+import { Show, createSignal, createUniqueId } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { Dialog, DialogActions, DialogClose, DialogDescription, DialogTitle } from "@runbun/ui/solid/Dialog";
 import { Button } from "@runbun/ui/solid/Button";
@@ -7,7 +7,8 @@ import { Input } from "@runbun/ui/solid/Input";
 /**
  * A modal that asks for one line of text (the accessible stand-in for `prompt()`): a labelled input, preselected,
  * Enter submits, Esc cancels. The caller owns `open`; `onSubmit` gets the trimmed text (never empty), and the dialog
- * closes itself. Closing hands focus to `returnFocus` (there's no Dialog.Trigger to return it to).
+ * closes itself. Closing hands focus to `returnFocus` (there's no Dialog.Trigger to return it to). `children` go under
+ * the field (more choices); `check` refuses a value with a message shown there, keeping the dialog open.
  */
 export function PromptDialog(props: {
   open: boolean;
@@ -18,7 +19,9 @@ export function PromptDialog(props: {
   initial: string;
   submit: string;
   onSubmit: (value: string) => void;
+  check?: (value: string) => string | undefined;
   returnFocus?: () => HTMLElement | undefined | null;
+  children?: JSX.Element;
 }) {
   return (
     <Dialog
@@ -47,6 +50,7 @@ export function PromptDialog(props: {
 // Inside Dialog.Content so each opening starts from `initial` (the content unmounts on close).
 function PromptForm(props: Parameters<typeof PromptDialog>[0]) {
   const id = createUniqueId();
+  const [problem, setProblem] = createSignal<string | undefined>();
   let input!: HTMLInputElement;
   return (
     <form
@@ -54,6 +58,9 @@ function PromptForm(props: Parameters<typeof PromptDialog>[0]) {
         e.preventDefault();
         const value = input.value.trim();
         if (!value) return;
+        const refused = props.check?.(value);
+        setProblem(refused);
+        if (refused) return input.focus();
         props.onOpenChange(false);
         props.onSubmit(value);
       }}
@@ -65,7 +72,13 @@ function PromptForm(props: Parameters<typeof PromptDialog>[0]) {
       <label class="dialog-label" for={id}>
         {props.label}
       </label>
-      <Input ref={input} id={id} value={props.initial} spellcheck={false} autocomplete="off" />
+      <Input ref={input} id={id} value={props.initial} spellcheck={false} autocomplete="off" aria-invalid={problem() ? "true" : undefined} aria-describedby={problem() ? `${id}-problem` : undefined} onInput={() => setProblem()} />
+      <Show when={problem()}>
+        <p class="dialog-error" id={`${id}-problem`} role="alert">
+          {problem()}
+        </p>
+      </Show>
+      {props.children}
       <DialogActions>
         <DialogClose>Cancel</DialogClose>
         <Button primary type="submit">

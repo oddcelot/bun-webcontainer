@@ -18,6 +18,8 @@ import { showCanaryBadge } from "./canary";
 import { setBaseline, setBaselineSource } from "./changes";
 import { parseRequests } from "./embed/requests";
 import { readConfig, type ProjectConfig } from "./projectConfig";
+import { git, release } from "./git/git";
+import { gitName, gitUrl } from "./git/remoteUrl";
 
 showCanaryBadge();
 
@@ -38,27 +40,43 @@ const params = new URLSearchParams(location.search);
 // ?vars= sets the overlay for this visit (theme.ts allows only that); not saved, and Share links drop it.
 if (params.has("vars")) setThemeVars(urlVars(params.get("vars")));
 
-/** The project a URL names: `?repo=`, else `?example=` (none: the demo); a share link in its hash wins over both. */
+/**
+ * The project a URL names: `?git=` (a repository cloned with its history), else `?repo=` (a GitHub repo's files), else
+ * `?example=` (none: the demo); a share link in its hash wins over all of them.
+ */
 function sourceOf(url: URL) {
   const repoParam = url.searchParams.get("repo") ?? "";
+  const gitParam = url.searchParams.get("git") ?? "";
+  const cloned = gitParam ? gitUrl(gitParam) : null;
   const share = isShareLink(url.hash) ? url.hash : "";
-  return { exampleName: url.searchParams.get("example") ?? "", repoParam, repo: repoParam ? parseRepo(repoParam) : null, share };
+  return {
+    exampleName: url.searchParams.get("example") ?? "",
+    repoParam,
+    repo: repoParam ? parseRepo(repoParam) : null,
+    gitParam,
+    gitRemote: cloned && "url" in cloned ? cloned.url : null,
+    share,
+  };
 }
 type Source = ReturnType<typeof sourceOf>;
 /** Which project a URL opens, to tell whether Back or Forward lands on another one. */
 const keyOf = (url: URL) => {
-  const { exampleName, repoParam, share } = sourceOf(url);
-  return JSON.stringify([exampleName, repoParam, share, url.searchParams.get("folder")]);
+  const { exampleName, repoParam, gitParam, share } = sourceOf(url);
+  return JSON.stringify([exampleName, repoParam, gitParam, share, url.searchParams.get("folder")]);
 };
 
 /** Selects the project in the gallery (`shared`: it came from a share link). */
-function showProject({ exampleName, repoParam }: Source, shared: boolean) {
-  const selected = repoParam ? `repo:${repoParam}` : exampleName;
+function showProject({ exampleName, repoParam, gitRemote }: Source, shared: boolean) {
+  const selected = gitRemote ? `git:${gitRemote}` : repoParam ? `repo:${repoParam}` : exampleName;
   const extra: [string, string][] = [];
-  if (repoParam && !(repoParam in repoExamples)) extra.push([`GitHub: ${repoParam}`, selected]);
+  if (gitRemote) extra.push([`Git: ${gitName(gitRemote)}`, selected]);
+  else if (repoParam && !(repoParam in repoExamples)) extra.push([`GitHub: ${repoParam}`, selected]);
   if (shared) extra.push(["Shared project", "#shared"]);
-  session.setProject({ ...session.project(), selected: shared ? "#shared" : repoParam || exampleName in examples ? selected : "", extra });
+  session.setProject({ ...session.project(), selected: shared ? "#shared" : gitRemote || repoParam || exampleName in examples ? selected : "", extra });
 }
+
+/** How many commits a clone brings (more with `git fetch --depth`). */
+const CLONE_DEPTH = 50;
 
 let stopSaving: StopSaving = async () => {};
 
@@ -72,13 +90,22 @@ type Loaded = { id: string | null; save: boolean; fresh: boolean; from?: string;
  */
 async function loadProject(url: URL, into: VFS): Promise<Loaded> {
   const src = sourceOf(url);
-  const { exampleName, repoParam, repo, share } = src;
+  const { exampleName, repoParam, repo, gitParam, gitRemote, share } = src;
   if (repoParam && !repo) log("error", `[github] not a GitHub repo: ${repoParam}`);
+  if (gitParam && !gitRemote) log("error", `[git] can't clone ${gitParam}: ${(gitUrl(gitParam) as { error: string }).error}`);
   // Right away: a repo can take a while to fetch, and the gallery shouldn't name the last project meanwhile.
   showProject(src, !!share);
 
   // Where the project is saved in OPFS (null: a bad ?repo=, which opens the demo unsaved).
-  const id = share ? await shareProjectId(share) : repoParam ? (repo ? `repo:${repoQuery(repo)}` : null) : exampleName ? `example:${exampleName}` : "demo";
+  const id = share
+    ? await shareProjectId(share)
+    : gitParam
+      ? gitRemote && `git:${gitRemote}`
+      : repoParam
+        ? repo && `repo:${repoQuery(repo)}`
+        : exampleName
+          ? `example:${exampleName}`
+          : "demo";
   // Saved files win over the source; without rememberSource, Share packs them.
   const restored = id ? await restore(id, into, log) : 0;
   if (restored) log("sys", `[storage] restored ${restored} saved files`);
@@ -101,10 +128,13 @@ async function loadProject(url: URL, into: VFS): Promise<Loaded> {
   }
   if (!shared && !restored) {
     // While these files stay unchanged, Share links to where they came from instead of packing them.
-    if (repo && (await loadRepo(into, repo, log))) {
+    if (gitRemote && (await cloneInto(into, gitRemote))) {
+      settle.push(() => rememberSource(vfs, `?git=${encodeURIComponent(gitRemote)}`, `${gitName(gitRemote)} (Git)`));
+      loaded = true;
+    } else if (!gitParam && repo && (await loadRepo(into, repo, log))) {
       settle.push(() => rememberSource(vfs, `?repo=${repoQuery(repo)}`, `${repoQuery(repo)} on GitHub`));
       loaded = true;
-    } else if (!repo && exampleName && (await loadExample(into, exampleName))) {
+    } else if (!gitParam && !repo && exampleName && (await loadExample(into, exampleName))) {
       settle.push(() => rememberSource(vfs, `?example=${exampleName}`, `the ${examples[exampleName] ?? exampleName} example`));
       loaded = true;
     } else {
@@ -117,6 +147,8 @@ async function loadProject(url: URL, into: VFS): Promise<Loaded> {
   settle.push(() => {
     if (!restored) setBaseline(vfs);
     else if (share) setBaselineSource((scratch) => loadShareLink(scratch, share));
+    // A clone compares with its last commit (git/store.ts) once git has read it; nothing to rebuild before that.
+    else if (gitRemote) setBaseline(vfs);
     else if (repo) setBaselineSource((scratch) => loadRepo(scratch, repo, log), { costly: true });
     else if (exampleName) setBaselineSource((scratch) => loadExample(scratch, exampleName));
     else setBaselineSource(seedDemo);
@@ -124,7 +156,7 @@ async function loadProject(url: URL, into: VFS): Promise<Loaded> {
   // A damaged share link fell back to the demo.
   if (share && !shared) showProject(src, false);
   // Someone else's code: native Bun on this machine runs it only once the reader agrees (boot.ts, mayRunNative).
-  const from = share ? "this shared project" : repo ? `${repoQuery(repo)} from GitHub` : undefined;
+  const from = share ? "this shared project" : gitRemote ? gitName(gitRemote) : repo ? `${repoQuery(repo)} from GitHub` : undefined;
   return { id, save: !!restored || loaded, fresh: !restored, from, settle };
 }
 
@@ -144,14 +176,37 @@ let from = first.from;
 let openKey = keyOf(new URL(location.href));
 firstLoaded();
 
+/**
+ * Clones `remote` (an https URL, git/remoteUrl.ts) into the empty `into`, with the last commits of its default branch,
+ * through the git worker and proxy. False (logged) when it fails.
+ */
+async function cloneInto(into: VFS, remote: string): Promise<boolean> {
+  log("sys", `[git] cloning ${gitName(remote)}…`);
+  try {
+    const r = await git(into, ["clone", "--depth", String(CLONE_DEPTH), remote], { colors: false });
+    for (const line of r.stderr.split("\n").filter((l) => l && !l.startsWith("Cloning into"))) log(r.exitCode ? "error" : "log", `[git] ${line}`);
+    if (r.exitCode) return false;
+    log("sys", `[git] cloned ${gitName(remote)} (the last ${CLONE_DEPTH} commits; git fetch --depth <n> brings more)`);
+    return true;
+  } catch (e) {
+    log("error", `[git] ${e instanceof Error ? e.message : e}`);
+    return false;
+  } finally {
+    // The worker cloned into this VFS; the open project's own starts when git is next used.
+    if (into !== vfs) await release(into);
+  }
+}
+
 /** Opens a project from the gallery (`repo:<query>` for a repo, `""` the demo) in place of this one, with its URL. */
 function openProject(value: string) {
   const url = new URL(location.href);
   url.hash = "";
   url.searchParams.delete("example");
   url.searchParams.delete("repo");
+  url.searchParams.delete("git");
   url.searchParams.delete("folder");
   if (value.startsWith("repo:")) url.searchParams.set("repo", value.slice(5));
+  else if (value.startsWith("git:")) url.searchParams.set("git", value.slice(4));
   else if (value) url.searchParams.set("example", value);
   history.pushState(null, "", url);
   void switchTo(url);
