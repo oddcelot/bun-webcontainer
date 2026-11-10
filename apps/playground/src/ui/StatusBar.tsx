@@ -85,6 +85,7 @@ export function StatusBar(props: { treeShown: boolean; toggleFiles(): void; togg
       <Show when={statusDisplay() === "bar"}>
         <StatusPill role="status" status={s.status()} title={s.status().text} />
       </Show>
+      <Ports previewShown={props.previewShown} showPreview={() => props.toggle(0)} />
       <span class="spacer" />
       <Changed git={gitOn()} gitShown={shows("git")} toggleGit={props.toggleGit} />
       <Show when={!ws.state.changesShown && ws.state.active}>
@@ -192,5 +193,23 @@ function Changed(props: { git: boolean; gitShown: boolean; toggleGit(): void }) 
       <i class="i-lucide-git-compare" aria-hidden="true" /> {count() ?? ""}
       <span class="sr-only">{props.git ? "Git" : "Changes"}</span>
     </Tip>
+  );
+}
+
+/** The ports the running program serves (`Bun.serve`, `http.Server#listen`); a click shows the preview if it's hidden. */
+function Ports(props: { previewShown: boolean; showPreview(): void }) {
+  const { session } = useContext(AppContext);
+  const tip = () => {
+    const [first, ...rest] = session.ports();
+    const serving = rest.length ? `Serving on ports ${[first, ...rest].join(", ")}; the preview shows ${first}` : `Serving on port ${first}; the preview shows it`;
+    return props.previewShown ? serving : `${serving}. Click to show the preview.`;
+  };
+  return (
+    <Show when={session.ports().length}>
+      <Tip type="button" class="ports" aria-disabled={props.previewShown ? "true" : undefined} tip={tip()} onClick={() => !props.previewShown && props.showPreview()}>
+        <i class="i-lucide-radio" aria-hidden="true" />:{session.ports()[0]}
+        {session.ports().length > 1 ? ` +${session.ports().length - 1}` : ""}
+      </Tip>
+    </Show>
   );
 }

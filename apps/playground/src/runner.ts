@@ -50,6 +50,10 @@ export class Runner {
   exitCode: number | undefined;
   /** Called when a program that had started ends itself (one that ends while starting sets `exitCode` instead). */
   onExit?: (code: number) => void;
+  /** Called with the ports the program answering previews serves, whenever they change (none once it stops). */
+  onPorts?: (ports: number[]) => void;
+  /** Each program's ports as it last reported them: a restart's new program reports before it takes over. */
+  private ports = new WeakMap<Worker, number[]>();
 
   constructor(
     private vfs: VFS,
@@ -284,6 +288,7 @@ export class Runner {
     const worker = this.worker;
     this.worker = undefined;
     if (!worker) return;
+    this.onPorts?.([]);
     this.endPending(worker);
     this.dropSockets();
     if (flush) await this.flush(worker);
@@ -354,6 +359,7 @@ export class Runner {
     if (o.kind === "ready" || (o.kind === "exit" && o.code === 0)) {
       const old = this.worker;
       this.worker = worker;
+      this.onPorts?.(this.ports.get(worker) ?? []);
       this.exitCode = undefined;
       if (old) this.drain(old);
       if (o.kind === "exit") {
@@ -406,6 +412,10 @@ export class Runner {
       if (m.type === "console") this.log(m.level, previous() ? PREVIOUS + m.text : m.text);
       // A WebSocket upgrade's Set-Cookie headers (an HTTP response's are read off its head in onSw).
       else if (m.type === "cookies") this.storeCookies(m.path, m.setCookies);
+      else if (m.type === "ports") {
+        this.ports.set(worker, m.ports);
+        if (this.worker === worker) this.onPorts?.(m.ports);
+      }
       else if (m.type === "ready") {
         this.failed = m.failed ?? 0;
         done({ kind: "ready" });

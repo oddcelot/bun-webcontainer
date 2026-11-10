@@ -406,6 +406,7 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
     runner = next;
     runner.attach();
     runner.onExit = (code) => session.setStatus(exited(code));
+    runner.onPorts = (ports) => session.setPorts(ports);
     setRuntime(kind);
     if (previous) {
       if (session.settled().state === "running") session.setStatus({ state: "idle", text: "Stopped" });
