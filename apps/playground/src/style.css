@@ -1009,7 +1009,8 @@ html[data-booting] #app > header > * { visibility: hidden; animation: boot-fallb
   }
   /* Install state and save state keep their icons when the bar is narrow; their words go. */
   @media (max-width: 640px) {
-    .install .label {
+    .install .label,
+    .saved .label {
       display: none;
     }
   }
@@ -1017,7 +1018,8 @@ html[data-booting] #app > header > * { visibility: hidden; animation: boot-fallb
   @media (max-width: 560px) {
     .ports,
     .format-on-save,
-    .install {
+    .install,
+    .saved {
       display: none;
     }
   }

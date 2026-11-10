@@ -371,7 +371,7 @@ async function openDirectory(dir?: FileSystemDirectoryHandle) {
   for (const [path, data] of files) vfs.write(path, data);
   setBaseline(vfs);
   // After the load: the files just read are on disk already.
-  stopSaving = mirror(dir, vfs, log, { all: false, tag: "[folder]", watch: true });
+  stopSaving = mirror(dir, vfs, log, { all: false, tag: "[folder]", where: "folder", watch: true });
   workspace.reloadTree();
   log("sys", `[open] ${dir.name}: ${files.length} files; changes are saved to the folder (node_modules stays in the browser)`);
   applyConfig();

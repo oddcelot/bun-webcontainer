@@ -1,5 +1,6 @@
 import { Show, createSignal, onSettled, useContext } from "solid-js";
 import { installState, type InstallState } from "../installState";
+import { onSaveState, type SaveState } from "../persist";
 import { trackChanges } from "../changes";
 import { DOCS } from "../base";
 import { chordKeys, keysFor, type Command } from "../keymap";
@@ -154,6 +155,7 @@ export function StatusBar(props: { treeShown: boolean; toggleFiles(): void; togg
         </Tip>
       </Show>
       <Install />
+      <Saved />
       <Tip
         as="a"
         href={`${DOCS}compatibility/bun/`}
@@ -295,5 +297,25 @@ function Install() {
         </Tip>
       )}
     </Show>
+  );
+}
+
+/** Where edits go and whether they're there yet (persist.ts): this browser's storage, a folder on disk, or nowhere. */
+function Saved() {
+  const [state, setState] = createSignal<SaveState>({ where: "nowhere", pending: false });
+  onSettled(() => onSaveState(setState));
+  const view = () => {
+    const st = state();
+    if (st.failed) return { icon: "i-lucide-triangle-alert", label: "Not saved", tip: `The last save failed (${st.failed}); the next edit tries again` };
+    if (st.where === "nowhere") return { icon: "i-lucide-circle-slash", label: "Not saved", tip: `${st.why ?? "Edits aren't kept"}: a reload loses them` };
+    const place = st.where === "folder" ? `the folder ${st.name} on disk` : "this browser (Storage lists what it keeps)";
+    if (st.pending) return { icon: "i-lucide-loader-circle spin", label: "Saving…", tip: `Writing edits to ${place}` };
+    return { icon: st.where === "folder" ? "i-lucide-folder-check" : "i-lucide-check", label: "Saved", tip: `Edits are saved to ${place}` };
+  };
+  return (
+    <Tip as="span" class="saved" tip={view().tip}>
+      <i class={view().icon} aria-hidden="true" />
+      <span class="label">{view().label}</span>
+    </Tip>
   );
 }
