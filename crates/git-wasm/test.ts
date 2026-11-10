@@ -27,7 +27,7 @@ async function git(dir: string, args: string[], env: Record<string, string> = {}
   try {
     const wasi = new WASI({ version: "preview1", args: ["git", ...args], env, preopens: { "/": dir }, stdout: outFd, stderr: errFd, returnOnExit: true });
     // No network here (net.test.ts has it): a request fails.
-    const runbun = { http_request: () => 1, http_read: () => 0 };
+    const runbun = { http_request: () => 1, http_headers: () => 0, http_body: () => -1, http_close: () => {}, progress: () => {} };
     const instance = await WebAssembly.instantiate(wasm, { ...(wasi.getImportObject() as WebAssembly.Imports), runbun });
     const code = wasi.start(instance) as number;
     return { code, out: readFileSync(outPath, "utf8"), err: readFileSync(errPath, "utf8") };

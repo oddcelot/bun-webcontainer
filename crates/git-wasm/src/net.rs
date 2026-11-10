@@ -101,6 +101,12 @@ fn report(url: &BStr, outcome: &gix::remote::fetch::Outcome) {
     }
 }
 
+/// `github.com` of `https://github.com/a/b`.
+fn host_of(url: &str) -> &str {
+    let rest = url.split_once("://").map(|(_, r)| r).unwrap_or(url);
+    rest.split(['/', ':']).next().unwrap_or(rest)
+}
+
 /// The project's files but node_modules (which git never sees here): what `clone` must find empty.
 fn worktree_empty() -> bool {
     std::fs::read_dir("/").map(|d| d.flatten().all(|e| e.file_name() == "node_modules")).unwrap_or(true)
@@ -118,6 +124,7 @@ pub fn clone(args: &[String]) -> Res {
         return fatal("destination path '.' already exists and is not an empty directory.");
     }
     eprintln!("Cloning into '.'...");
+    crate::http::report(&format!("Connecting to {}", host_of(url)));
     let mut prepare = gix::clone::PrepareFetch::new(
         url.as_str(),
         "/",
@@ -150,7 +157,11 @@ pub fn clone(args: &[String]) -> Res {
     std::fs::write("/.git/info/exclude", "node_modules/\n")?;
     let ctx = Ctx { repo: gix::open_opts("/", gix::open::Options::default().config_overrides(["core.fileMode=false"]))?, color: use_color() };
     match ctx.repo.head_commit() {
-        Ok(c) => hard_reset(&ctx, &commit_flat(&ctx, &c)?, true)?,
+        Ok(c) => {
+            let files = commit_flat(&ctx, &c)?;
+            crate::http::report(&format!("Checking out {} files", files.len()));
+            hard_reset(&ctx, &files, true)?
+        }
         Err(_) => eprintln!("warning: You appear to have cloned an empty repository."),
     }
     Ok(0)
@@ -175,6 +186,7 @@ fn fetch_from(ctx: &Ctx, name: &str, args: &[String]) -> Result<gix::remote::fet
         Err(_) => return fatal(format!("'{name}' does not appear to be a git repository")),
     };
     let url = remote.url(gix::remote::Direction::Fetch).map(|u| u.to_bstring()).unwrap_or_default();
+    crate::http::report(&format!("Connecting to {}", host_of(&url.to_str_lossy())));
     let mut prepare = remote
         .connect(gix::remote::Direction::Fetch)
         .and_then(|c| c.prepare_fetch(gix::progress::Discard, Default::default()))
@@ -225,6 +237,7 @@ pub fn pull(ctx: &Ctx, args: &[String]) -> Res {
             return error("Not possible to fast-forward, aborting. (merge and rebase aren't supported in the playground yet)");
         }
     }
+    crate::http::report("Updating files");
     move_to(ctx, &target, false)?;
     move_head(ctx, target.id, &format!("pull: Fast-forward"))?;
     out(&format!("Updating {}..{}\nFast-forward\n", head.map(|h| h.to_hex_with_len(7).to_string()).unwrap_or_default(), target.id.to_hex_with_len(7)));

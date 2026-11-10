@@ -40,6 +40,7 @@ function files(dir: string, rel = ""): string[] {
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 let requests: string[] = [];
+let progress: string[] = [];
 function request(head: string, body: Uint8Array): { status: number; headers: Uint8Array; body: Uint8Array } | string {
   const [first, ...lines] = head.split("\n").filter(Boolean);
   const [method, url] = first.split(" ");
@@ -61,7 +62,8 @@ async function git(dir: string, ...args: string[]): Promise<Run> {
   try {
     const wasi = new WASI({ version: "preview1", args: ["git", ...args], env: {}, preopens: { "/": dir }, stdout: outFd, stderr: errFd, returnOnExit: true });
     let memory!: WebAssembly.Memory;
-    const pending = new Map<number, { headers: Uint8Array; body: Uint8Array }>();
+    // As the playground's worker serves them: headers first, then the body in small chunks (so reads span several).
+    const open = new Map<number, { headers: Uint8Array; body: Uint8Array; at: number }>();
     let handles = 0;
     const runbun = {
       http_request(head: number, headLen: number, body: number, bodyLen: number, out: number) {
@@ -69,26 +71,33 @@ async function git(dir: string, ...args: string[]): Promise<Run> {
         const r = request(dec.decode(m.slice(head, head + headLen)), m.slice(body, body + bodyLen));
         const dv = new DataView(memory.buffer);
         const h = ++handles;
+        dv.setUint32(out + 8, h, true);
         if (typeof r === "string") {
-          pending.set(h, { headers: enc.encode(r), body: new Uint8Array() });
-          dv.setUint32(out, enc.encode(r).length, true);
-          dv.setUint32(out + 12, h, true);
+          open.set(h, { headers: enc.encode(r), body: new Uint8Array(), at: 0 });
+          dv.setUint32(out + 4, enc.encode(r).length, true);
           return 1;
         }
-        pending.set(h, r);
+        open.set(h, { ...r, at: 0 });
         dv.setUint32(out, r.status, true);
         dv.setUint32(out + 4, r.headers.length, true);
-        dv.setUint32(out + 8, r.body.length, true);
-        dv.setUint32(out + 12, h, true);
         return 0;
       },
-      http_read(h: number, headers: number, body: number) {
-        const r = pending.get(h)!;
-        pending.delete(h);
-        const m = new Uint8Array(memory.buffer);
-        m.set(r.headers, headers);
-        m.set(r.body, body);
+      http_headers(h: number, buf: number) {
+        new Uint8Array(memory.buffer).set(open.get(h)!.headers, buf);
         return 0;
+      },
+      http_body(h: number, buf: number, len: number) {
+        const r = open.get(h)!;
+        const n = Math.min(len, 4096, r.body.length - r.at);
+        new Uint8Array(memory.buffer).set(r.body.subarray(r.at, r.at + n), buf);
+        r.at += n;
+        return n;
+      },
+      http_close(h: number) {
+        open.delete(h);
+      },
+      progress(text: number, len: number) {
+        progress.push(dec.decode(new Uint8Array(memory.buffer).slice(text, text + len)));
       },
     };
     const instance = await WebAssembly.instantiate(wasm, { ...(wasi.getImportObject() as WebAssembly.Imports), runbun });
@@ -154,8 +163,10 @@ try {
   // clone
   const a = join(tmp, "a");
   mkdirSync(a);
+  progress = [];
   let r = await git(a, "clone", url);
   check("clone exits 0", r.code === 0, JSON.stringify(r));
+  check("clone reports progress", progress.includes("Connecting to 127.0.0.1") && progress.includes("Checking out 3 files"), progress.join("\n"));
   check("clone used smart HTTP (protocol v2 POST)", requests.some((q) => q.startsWith("POST /repo.git/git-upload-pack")), requests.join("\n"));
   check("clone files", JSON.stringify(files(a)) === JSON.stringify(files(work)), `${files(a)}\n${files(work)}`);
   check("clone HEAD on main", native(a, "symbolic-ref", "HEAD").trim() === "refs/heads/main");

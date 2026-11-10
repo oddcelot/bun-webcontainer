@@ -1,6 +1,7 @@
-// HTTP for gix's smart-HTTP transport, through the host: two imports (module `runbun`) that make a request and hand
-// back the response. The host blocks until it has the whole response (in the playground: a synchronous
-// XMLHttpRequest in the git worker, through the playground's git proxy), so this side is plain blocking code.
+// HTTP for gix's smart-HTTP transport, through the host (import module `runbun`, NOTES.md "Network"). The host blocks
+// until it has the response's status and headers, then hands the body over in chunks as it arrives (the playground: a
+// streaming fetch on the page passing chunks to the git worker through shared memory, or one synchronous
+// XMLHttpRequest where there is none), so this side is plain blocking code that reads a pack while it downloads.
 //
 // gix writes a POST's body after `post` returns and reads the response headers only once it has (HeadersThenBody in
 // gix-transport), so a request is sent on the first read of its headers or body, with everything written by then.
@@ -10,32 +11,48 @@ use std::sync::{Arc, Mutex};
 
 #[link(wasm_import_module = "runbun")]
 unsafe extern "C" {
-    /// Makes a request. `head` is `METHOD URL\n` then one `Name: value\n` per header; `body` may be empty.
-    /// On success (0) `out` holds the status, the response headers' length (the same `Name: value\n` lines), the body's
-    /// length and a handle for `http_read`. Nonzero: the request failed (`out[0]` is the length of a message `http_read`
-    /// gives as its headers).
+    /// Sends a request and waits for its status and headers. `head` is `METHOD URL\n` then one `Name: value\n` per
+    /// header; `body` may be empty. `out` gets [status, length of the headers (`Name: value\n` lines), handle].
+    /// Nonzero: the request failed; `out[1]` is then the length of a message `http_headers` gives instead.
     fn http_request(head: *const u8, head_len: usize, body: *const u8, body_len: usize, out: *mut u32) -> u32;
-    /// Copies a response's headers and body out (buffers of the lengths `http_request` gave) and frees it.
-    fn http_read(handle: u32, headers: *mut u8, body: *mut u8) -> u32;
+    /// Copies the headers (or the failure message) out, into a buffer of the length `http_request` gave.
+    fn http_headers(handle: u32, buf: *mut u8) -> u32;
+    /// Reads up to `len` bytes of the body, waiting for at least one: the count, 0 at its end, negative when the
+    /// download failed.
+    fn http_body(handle: u32, buf: *mut u8, len: usize) -> i32;
+    /// Done with a request (its body need not have been read to the end).
+    fn http_close(handle: u32);
+    /// A line saying what the command is doing (`Connecting to github.com`), for a progress display.
+    fn progress(text: *const u8, len: usize);
+}
+
+/// Tells the host what the command is doing now.
+pub fn report(text: &str) {
+    unsafe { progress(text.as_ptr(), text.len()) }
 }
 
 struct Response {
     status: u32,
     headers: Vec<u8>,
-    body: Vec<u8>,
+    handle: u32,
+}
+
+impl Drop for Response {
+    fn drop(&mut self) {
+        unsafe { http_close(self.handle) }
+    }
 }
 
 fn send(head: &str, body: &[u8]) -> std::io::Result<Response> {
-    let mut out = [0u32; 4];
+    let mut out = [0u32; 3];
     let failed = unsafe { http_request(head.as_ptr(), head.len(), body.as_ptr(), body.len(), out.as_mut_ptr()) };
-    let (headers_len, body_len) = if failed != 0 { (out[0] as usize, 0) } else { (out[1] as usize, out[2] as usize) };
-    let mut headers = vec![0u8; headers_len];
-    let mut data = vec![0u8; body_len];
-    unsafe { http_read(out[3], headers.as_mut_ptr(), data.as_mut_ptr()) };
+    let mut headers = vec![0u8; out[1] as usize];
+    unsafe { http_headers(out[2], headers.as_mut_ptr()) };
+    let r = Response { status: out[0], headers, handle: out[2] };
     if failed != 0 {
-        return Err(std::io::Error::other(String::from_utf8_lossy(&headers).into_owned()));
+        return Err(std::io::Error::other(String::from_utf8_lossy(&r.headers).into_owned()));
     }
-    Ok(Response { status: out[0], headers, body: data })
+    Ok(r)
 }
 
 /// One request: written to until the first read, then sent once.
@@ -68,35 +85,49 @@ impl Exchange {
 // Shared between the request's parts: gix's boxed transports must be Send (one thread here, so the lock never waits).
 type Shared = Arc<Mutex<Exchange>>;
 
-/// The response's headers or body: sends the exchange on the first read, then reads its own copy.
+/// The response's headers (all at once) or body (chunk by chunk from the host), sending the exchange on first read.
 pub struct Part {
     ex: Shared,
     headers: bool,
-    data: Option<Vec<u8>>,
+    buf: Vec<u8>,
     at: usize,
+    /// The headers were copied, or the body's end was reached.
+    done: bool,
 }
+
+const CHUNK: usize = 256 * 1024;
 
 impl Part {
     fn new(ex: &Shared, headers: bool) -> Self {
-        Part { ex: ex.clone(), headers, data: None, at: 0 }
+        Part { ex: ex.clone(), headers, buf: Vec::new(), at: 0, done: false }
     }
-    fn bytes(&mut self) -> std::io::Result<&[u8]> {
-        if self.data.is_none() {
+    /// What's left of the buffer, refilled from the response when used up.
+    fn fill(&mut self) -> std::io::Result<&[u8]> {
+        if self.at >= self.buf.len() && !self.done {
             let mut ex = self.ex.lock().expect("one thread");
-            let headers = self.headers;
-            ex.response()?;
-            let r = ex.response.as_mut().expect("sent").as_mut().expect("ok");
-            // The headers are read once (gix checks the content type); the body is read once, by gix's packet reader.
-            self.data = Some(if headers { r.headers.clone() } else { std::mem::take(&mut r.body) });
+            let r = ex.response()?;
+            self.at = 0;
+            if self.headers {
+                self.buf = r.headers.clone();
+                self.done = true;
+            } else {
+                self.buf.resize(CHUNK, 0);
+                let n = unsafe { http_body(r.handle, self.buf.as_mut_ptr(), CHUNK) };
+                if n < 0 {
+                    self.buf.clear();
+                    return Err(std::io::Error::other("the download broke off"));
+                }
+                self.buf.truncate(n as usize);
+                self.done = n == 0;
+            }
         }
-        let data = self.data.as_deref().expect("set above");
-        Ok(&data[self.at.min(data.len())..])
+        Ok(&self.buf[self.at.min(self.buf.len())..])
     }
 }
 
 impl Read for Part {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        let rest = self.bytes()?;
+        let rest = self.fill()?;
         let n = rest.len().min(buf.len());
         buf[..n].copy_from_slice(&rest[..n]);
         self.at += n;
@@ -106,7 +137,7 @@ impl Read for Part {
 
 impl BufRead for Part {
     fn fill_buf(&mut self) -> std::io::Result<&[u8]> {
-        self.bytes()
+        self.fill()
     }
     fn consume(&mut self, n: usize) {
         self.at += n;

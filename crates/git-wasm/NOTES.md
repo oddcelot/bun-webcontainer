@@ -61,14 +61,18 @@ gix-transport's `HTTP_CONNECT` hook (below) makes `connect` (and with it gix's c
 
 ```
 (import "runbun" "http_request" (head_ptr head_len body_ptr body_len out_ptr) -> i32)
-  head: "METHOD URL\n" then "Name: value\n" per header. 0: out = [status, headers_len, body_len, handle];
-  nonzero: the request failed, out[0] = length of a message, out[3] = handle.
-(import "runbun" "http_read" (handle headers_ptr body_ptr) -> i32)
-  copies the response headers ("Name: value\n" lines; the message on failure) and body out, frees the handle.
+  head: "METHOD URL\n" then "Name: value\n" per header. Waits for the status and headers.
+  out = [status, headers_len, handle]; nonzero: the request failed, headers_len is then a message's length.
+(import "runbun" "http_headers" (handle buf_ptr) -> i32)    the headers ("Name: value\n" lines), or the message
+(import "runbun" "http_body" (handle buf_ptr len) -> i32)   up to len bytes, waiting for one; 0 at the end, < 0 failed
+(import "runbun" "http_close" (handle))                     done with it (the body may be left unread)
+(import "runbun" "progress" (text_ptr text_len))             "Connecting to github.com", "Checking out 609 files"
 ```
 
-The host blocks until it has the whole response (the playground's git worker: a synchronous `XMLHttpRequest` to its
-git proxy). A request is sent on the first read of its response (gix writes a POST body after `post` returns). Status
+The host blocks until it has the status and headers, then hands the body over as it arrives, so gix indexes a pack
+while it downloads (the playground's git worker: a streaming `fetch` on the page passing chunks through shared memory,
+or one synchronous `XMLHttpRequest` without cross-origin isolation). A request is sent on the first read of its
+response (gix writes a POST body after `post` returns). Status
 401/403/404 become `PermissionDenied`/`NotFound` errors with the status in the message.
 
 - `clone <url> [.] [--depth <n>] [-b <branch>] [-o <name>]`: into the project itself, which must be empty but for
