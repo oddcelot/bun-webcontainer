@@ -39,8 +39,6 @@ export function createGit(vfs: VFS, opts: { enabled: () => boolean; log: (level:
     repo: false,
     /** The first status is in. */
     loaded: false,
-    /** The Git view was opened: its branches and history are read too. */
-    panel: savedView() === "git",
     branch: null as string | null,
     /** HEAD has a commit; false right after `git init`. */
     hasHead: false,
@@ -56,6 +54,11 @@ export function createGit(vfs: VFS, opts: { enabled: () => boolean; log: (level:
   const [statuses, setStatuses] = createSignal<GitStatusEntry[]>([]);
   const enabled = () => opts.enabled();
 
+  /**
+   * The Git view was opened: its branches and history are read too. Not in the store: a store write shows only after
+   * the next flush, so the refresh right after it would still read false (and skip, leaving "Reading the repository…").
+   */
+  let panel = savedView() === "git";
   let timer: ReturnType<typeof setTimeout> | undefined;
   let running: Promise<void> | undefined;
   let again = false;
@@ -85,7 +88,7 @@ export function createGit(vfs: VFS, opts: { enabled: () => boolean; log: (level:
     const st = await run(["status", "--porcelain", "-b", "-z", "-uall"]);
     if (st.exitCode) {
       // Mid-restore or a repository git can't read: say so only where the reader is looking.
-      if (state.panel) setState((s) => void (s.error = message(st)));
+      if (panel) setState((s) => void (s.error = message(st)));
       return;
     }
     const status = parseStatus(st.stdout);
@@ -94,7 +97,7 @@ export function createGit(vfs: VFS, opts: { enabled: () => boolean; log: (level:
     let commits: Commit[] | undefined;
     let branches: string[] | undefined;
     if (hasHead) oid = (await run(["rev-parse", "--verify", "-q", "HEAD"])).stdout.trim();
-    if (state.panel) {
+    if (panel) {
       if (hasHead) {
         const log = await run(["log", `--format=${LOG_FORMAT}`, "-n", "50"]);
         if (!log.exitCode) commits = parseLog(log.stdout);
@@ -150,7 +153,7 @@ export function createGit(vfs: VFS, opts: { enabled: () => boolean; log: (level:
   /** Reads the status (and, with the panel open, the branches and history) again; calls that overlap run once more after. */
   function refresh(): Promise<void> {
     if (!enabled()) return Promise.resolve();
-    if (!state.repo && !state.panel && !vfs.files.has(".git/HEAD")) return Promise.resolve();
+    if (!state.repo && !panel && !vfs.files.has(".git/HEAD")) return Promise.resolve();
     if (running) {
       again = true;
       return running;
@@ -182,7 +185,7 @@ export function createGit(vfs: VFS, opts: { enabled: () => boolean; log: (level:
       if (path === ".git/HEAD" && (created || removed)) schedule();
       return;
     }
-    if (state.repo || state.panel) schedule();
+    if (state.repo || panel) schedule();
   });
   vfs.onClear(() => {
     setHeadBaseline(null);
@@ -194,10 +197,10 @@ export function createGit(vfs: VFS, opts: { enabled: () => boolean; log: (level:
   async function act(args: string[] | (() => Promise<GitResult | void>)): Promise<GitResult | undefined> {
     if (!enabled()) return;
     opts.beforeRun();
+    panel = true;
     setState((s) => {
       s.busy = true;
       s.error = null;
-      s.panel = true;
     });
     let result: GitResult | undefined;
     try {
@@ -236,10 +239,8 @@ export function createGit(vfs: VFS, opts: { enabled: () => boolean; log: (level:
       try {
         sessionStorage.setItem(VIEW_KEY, view);
       } catch {}
-      setState((s) => {
-        s.view = view;
-        if (view === "git") s.panel = true;
-      });
+      if (view === "git") panel = true;
+      setState((s) => void (s.view = view));
       if (view === "git") void refresh();
     },
     dismissError() {
