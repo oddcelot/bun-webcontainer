@@ -34,7 +34,7 @@ import { BUN_REVISION, BUN_VERSION } from "./bunVersion";
 import * as fflate from "fflate";
 import { createDollar } from "../shell/dollar";
 import { builtins as shellBuiltins } from "../shell/builtins";
-import { vfsFs } from "../shell/interp";
+import { nodeFs as shellFs } from "../shell/nodeFs";
 import { loadShellWasm } from "../shell/load";
 import { FILE_PATH } from "../shell/parse";
 import { Buffer } from "./node/buffer";
@@ -1053,7 +1053,8 @@ async function main() {
     CookieMap,
     // Bun's shell with its builtins over the project's files; other commands need processes, which the browser lacks.
     $: createDollar({
-      fs: vfsFs(vfs),
+      // Through node:fs, whose writes reach the page's copy of the project (and its file tree).
+      fs: shellFs(builtins.fs as never),
       wasm: shellWasm,
       builtins: shellBuiltins,
       stdout: { write: async (c) => (process.stdout.write(c), true) },

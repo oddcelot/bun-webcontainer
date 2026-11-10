@@ -43,7 +43,8 @@ const { createDollar } = await import("../dollar.ts");
 const { shellWasm } = await import("../parse.ts");
 const { builtins } = await import("../builtins/index.ts");
 const { DISCARD } = await import("../interp.ts");
-const { nodeFs } = await import("./nodeFs.ts");
+const fs = await import("node:fs");
+const nodeFs = (await import("../nodeFs.ts")).nodeFs(fs as never);
 
 const wasm = shellWasm(new WebAssembly.Module(readFileSync(join(repo, "target/wasm64-unknown-unknown/release/bun_shell_wasm.wasm"))));
 (globalThis as any).__shellWasm = wasm;

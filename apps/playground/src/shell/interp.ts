@@ -501,6 +501,16 @@ export class Shell {
       return 1;
     }
     const file = resolvePath(env.cwd, words[0]!);
+    // The devices a shell script expects, which the project's files don't have.
+    const device = { "/dev/null": DISCARD, "/dev/stdout": io.stdout, "/dev/stderr": io.stderr }[file];
+    if (device) {
+      if (flags.stdin) out.stdin = file === "/dev/null" ? EMPTY : io.stdin;
+      else {
+        if (flags.stdout) out.stdout = device;
+        if (flags.stderr) out.stderr = device;
+      }
+      return { io: out, done: async () => {} };
+    }
     const { fs } = this.opts;
     const st = fs.stat(file);
     if (flags.stdin) {
