@@ -488,7 +488,20 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
         await switchRuntime("local");
       });
     }
-    exec = createShell({ vfs, log, run, install, test, stop, clear: clearConsole, reset, git, gitRan: () => gitStore.commandRan(), cookies: runner && { list: () => runner!.listCookies(), clear: () => runner!.clearCookies() } });
+    exec = createShell({ vfs, log, run, install, test, stop, clear: clearConsole, reset, git, gitRan: () => gitStore.commandRan(),
+      gitProgress: (() => {
+        // The status pill says what `git fetch` is doing, then goes back to what it said before.
+        let before: ReturnType<typeof session.settled> | undefined;
+        return (text: string | null) => {
+          if (text === null) {
+            if (before) session.setStatus(before);
+            before = undefined;
+            return;
+          }
+          before ??= session.settled();
+          session.setStatus({ state: "busy", text: `git · ${text}` });
+        };
+      })(), cookies: runner && { list: () => runner!.listCookies(), clear: () => runner!.clearCookies() } });
     session.markReady();
   }
 

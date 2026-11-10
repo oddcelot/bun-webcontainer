@@ -26,6 +26,8 @@ export interface ShellHost {
   git?: () => boolean;
   /** A `git` command ran: the Git panel reads the repository again. */
   gitRan?: () => void;
+  /** What a network git command is doing (`Connecting to github.com`, `1.2 MB received`); null once it's done. */
+  gitProgress?: (text: string | null) => void;
   /** The preview servers' cookies (absent when this browser can't run code). */
   cookies?: { list(): Promise<Readonly<Cookie>[]>; clear(): Promise<void> };
 }
@@ -328,7 +330,14 @@ export function createShell(host: ShellHost) {
 
   /** `git …`: gitoxide over the project's files; see git/git.ts. */
   async function git(args: string[]) {
-    const r = await runGit(vfs, args);
+    let shown = false;
+    const r = await runGit(vfs, args, {
+      // clone, fetch, pull: what git is doing, in the status bar (git/git.ts GitProgress).
+      onProgress: (p) => {
+        shown = true;
+        host.gitProgress?.(p.bytes && !p.text?.startsWith("Checking") && p.text !== "Updating files" ? `${(p.bytes / 1024 / 1024).toFixed(1)} MB received` : (p.text ?? ""));
+      },
+    }).finally(() => shown && host.gitProgress?.(null));
     host.gitRan?.();
     if (r.stdout) log("log", asConsoleEntry(r.stdout));
     // git writes hints and progress ("Switched to branch 'main'") to stderr too: an error only when it failed.

@@ -242,7 +242,15 @@ function workerRoutesDev(): Plugin {
     out.headers.forEach((v, k) => k !== "set-cookie" && res.setHeader(k, v));
     const cookies = out.headers.getSetCookie();
     if (cookies.length) res.setHeader("set-cookie", cookies);
-    res.end(Buffer.from(await out.arrayBuffer()));
+    // Streamed, as the Worker answers: a pack arrives (and its progress shows) while it downloads.
+    if (!out.body) return void res.end();
+    const reader = out.body.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      res.write(value);
+    }
+    res.end();
   };
   return {
     name: "worker-routes",

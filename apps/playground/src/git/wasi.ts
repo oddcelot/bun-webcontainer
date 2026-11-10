@@ -73,7 +73,7 @@ type Opts = {
   stderr: (bytes: Uint8Array) => void;
   stdin?: Uint8Array;
   /** More import modules beside WASI's (git.wasm's `runbun` HTTP calls), given the instance's memory. */
-  modules?: (memory: () => WebAssembly.Memory) => Record<string, Record<string, (...args: number[]) => number>>;
+  modules?: (memory: () => WebAssembly.Memory) => Record<string, Record<string, (...args: number[]) => number | void>>;
 };
 
 /**

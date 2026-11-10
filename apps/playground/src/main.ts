@@ -75,6 +75,9 @@ function showProject({ exampleName, repoParam, gitRemote }: Source, shared: bool
   session.setProject({ ...session.project(), selected: shared ? "#shared" : gitRemote || repoParam || exampleName in examples ? selected : "", extra });
 }
 
+/** "1.2 MB" (or "340 KB"). */
+const megabytes = (n: number) => (n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
+
 /** How many commits a clone brings (more with `git fetch --depth`). */
 const CLONE_DEPTH = 50;
 
@@ -183,7 +186,14 @@ firstLoaded();
 async function cloneInto(into: VFS, remote: string): Promise<boolean> {
   log("sys", `[git] cloning ${gitName(remote)}…`);
   try {
-    const r = await git(into, ["clone", "--depth", String(CLONE_DEPTH), remote], { colors: false });
+    const name = gitName(remote);
+    const show = (what: string) => session.setStatus({ state: "busy", text: `Cloning ${name} · ${what}` });
+    show("connecting");
+    const r = await git(into, ["clone", "--depth", String(CLONE_DEPTH), remote], {
+      colors: false,
+      // git's line until the pack is coming in, then how much of it, then git's line again (checking out).
+      onProgress: (p) => show(p.text?.startsWith("Checking out") || !p.bytes ? (p.text ?? "connecting").replace(/^Connecting/, "connecting").replace(/^Checking/, "checking") : `${megabytes(p.bytes)} received`),
+    });
     for (const line of r.stderr.split("\n").filter((l) => l && !l.startsWith("Cloning into"))) log(r.exitCode ? "error" : "log", `[git] ${line}`);
     if (r.exitCode) return false;
     log("sys", `[git] cloned ${gitName(remote)} (the last ${CLONE_DEPTH} commits; git fetch --depth <n> brings more)`);
