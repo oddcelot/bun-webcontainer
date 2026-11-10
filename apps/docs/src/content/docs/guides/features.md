@@ -66,12 +66,12 @@ A terminal with colors, clickable links, history (<kbd>↑</kbd>/<kbd>↓</kbd>)
 | `bun fmt [-c] [path…]` | Format files like Prettier, or only check them (`-c`) |
 | `bun check [path…]` | Type check with Bun's own checker, as [`bun check`](/compatibility/toolchain/#bun-check) does |
 | `git <command>` | Version control for the project: `init`, `status`, `add`, `commit`, `log`, `diff`, `show`, `branch`, `switch`, `restore`, `reset`, `config`… (see [Git](#git)) |
-| `ls [dir]`, `cat <file>` | List a folder, print a file |
+| `echo`, `cd`, `pwd`, `ls`, `cat`, `touch`, `mkdir`, `rm`, `mv`, `cp`, `which`, `export`, `seq`, `yes`, `dirname`, `basename`, `true`, `false`, `exit` | Bun's shell builtins, over the project's files |
 | `cookies [clear]` | List or clear the preview's cookies |
 | `reset` | Throw away your changes and reload the project from its source |
 | `clear`, `help` | |
 
-The console is not a full shell: no pipes, `&&`, `bunx`, or file commands like `mkdir` and `mv`. Quotes keep spaces in one argument (`git commit -m "first draft"`).
+The console is Bun's shell, the one [`Bun.$`](/compatibility/bun/) runs: quotes, pipes (`ls | cat`), `&&`, `||` and `;`, redirects (`echo hi > notes.txt`, `2>&1`), variables (`x=1`, `export`, `$x`), `$(…)`, globs (`ls src/*.ts`), `{a,b}` and subshells. `cd` changes the folder the next commands run in (the prompt shows it; `/` is the project). The console's own commands (`bun`, `git`, `cookies`…) take part too, though only their messages follow a pipe, not a running program's output. Commands outside this list aren't found: there are no processes to run them, so no `bunx`, `grep` or `node`.
 
 ### Git
 
