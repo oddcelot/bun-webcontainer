@@ -61,6 +61,9 @@ export function withCookies(res: Response, cookies: string[]): Response {
 
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
 
+/** At 100 a page, the 500 most recently pushed. */
+const MAX_REPO_PAGES = 5;
+
 /**
  * GET /api/github/repos: the repositories the signed-in user gave the app, most recently pushed first, for the "Open
  * a repository" dialog. 401 when nobody is signed in.
@@ -69,11 +72,17 @@ export async function githubRepos(auth: Auth | null, req: Request, fetchFn: type
   if (req.headers.get("sec-fetch-site") && req.headers.get("sec-fetch-site") !== "same-origin") return json(403, { error: "forbidden" });
   const t = await githubToken(auth, req);
   if (!t) return json(401, { error: "not signed in" });
-  const res = await fetchFn("https://api.github.com/user/repos?per_page=100&sort=pushed", {
-    headers: { authorization: `Bearer ${t.token}`, accept: "application/vnd.github+json", "user-agent": "runbun.dev", "x-github-api-version": "2022-11-28" },
-  });
-  if (!res.ok) return withCookies(json(res.status === 401 ? 401 : 502, { error: `GitHub answered ${res.status}` }), t.cookies);
-  const repos = (await res.json()) as { full_name: string; private: boolean; description: string | null; pushed_at: string; html_url: string }[];
+  type Repo = { full_name: string; private: boolean; description: string | null; pushed_at: string; html_url: string };
+  const repos: Repo[] = [];
+  for (let page = 1; page <= MAX_REPO_PAGES; page++) {
+    const res = await fetchFn(`https://api.github.com/user/repos?per_page=100&sort=pushed&page=${page}`, {
+      headers: { authorization: `Bearer ${t.token}`, accept: "application/vnd.github+json", "user-agent": "runbun.dev", "x-github-api-version": "2022-11-28" },
+    });
+    if (!res.ok) return withCookies(json(res.status === 401 ? 401 : 502, { error: `GitHub answered ${res.status}` }), t.cookies);
+    const batch = (await res.json()) as Repo[];
+    repos.push(...batch);
+    if (batch.length < 100 || !/rel="next"/.test(res.headers.get("link") ?? "")) break;
+  }
   return withCookies(
     json(
       200,
