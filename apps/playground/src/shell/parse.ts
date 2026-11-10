@@ -8,6 +8,7 @@ type Exports = {
   alloc(len: bigint): bigint;
   dealloc(ptr: bigint, len: bigint): void;
   shell_parse(src: bigint, srcLen: bigint, strings: bigint, stringsLen: bigint, jsobjs: number): number;
+  shell_braces(word: bigint, len: bigint): number;
   result_ptr(): bigint;
   result_len(): bigint;
 };
@@ -21,7 +22,11 @@ export type Source = {
   objs: unknown[];
 };
 
-export type ShellParser = (src: Source | string) => Script;
+export type ShellWasm = {
+  parse(src: Source | string): Script;
+  /** Brace expansion, `{a,b}c` to `ac bc` (`$.braces`); a word without a group comes back as is. */
+  braces(word: string): string[];
+};
 
 export class ShellSyntaxError extends Error {
   override name = "ShellError";
@@ -30,8 +35,8 @@ export class ShellSyntaxError extends Error {
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
-/** A parser over the module's bytes (the wasm, `bun_shell_wasm.wasm`). */
-export function shellParser(module: WebAssembly.Module): ShellParser {
+/** The parser over the compiled module (`bun_shell_wasm.wasm`). */
+export function shellWasm(module: WebAssembly.Module): ShellWasm {
   const w = new WebAssembly.Instance(module, {}).exports as unknown as Exports;
   const put = (bytes: Uint8Array) => {
     const len = BigInt(bytes.length);
@@ -39,20 +44,34 @@ export function shellParser(module: WebAssembly.Module): ShellParser {
     new Uint8Array(w.memory.buffer, Number(ptr), bytes.length).set(bytes);
     return [ptr, len] as const;
   };
-  return (src) => {
-    const { script, strings, objs } = typeof src === "string" ? { script: src, strings: [], objs: [] } : src;
-    const [sp, sl] = put(enc.encode(script));
-    const [tp, tl] = put(enc.encode(strings.join("\0")));
-    try {
-      w.shell_parse(sp, sl, tp, tl, objs.length);
-      const out = new Uint8Array(w.memory.buffer, Number(w.result_ptr()), Number(w.result_len()));
-      const text = dec.decode(out.subarray(1));
-      if (out[0] !== 0) throw new ShellSyntaxError(text);
-      return JSON.parse(text) as Script;
-    } finally {
-      w.dealloc(sp, sl);
-      w.dealloc(tp, tl);
-    }
+  const result = () => {
+    const out = new Uint8Array(w.memory.buffer, Number(w.result_ptr()), Number(w.result_len()));
+    const text = dec.decode(out.subarray(1));
+    if (out[0] !== 0) throw new ShellSyntaxError(text);
+    return text;
+  };
+  return {
+    parse(src) {
+      const { script, strings, objs } = typeof src === "string" ? { script: src, strings: [], objs: [] } : src;
+      const [sp, sl] = put(enc.encode(script));
+      const [tp, tl] = put(enc.encode(strings.join("\0")));
+      try {
+        w.shell_parse(sp, sl, tp, tl, objs.length);
+        return JSON.parse(result()) as Script;
+      } finally {
+        w.dealloc(sp, sl);
+        w.dealloc(tp, tl);
+      }
+    },
+    braces(word) {
+      const [p, l] = put(enc.encode(word));
+      try {
+        w.shell_braces(p, l);
+        return result().split("\0");
+      } finally {
+        w.dealloc(p, l);
+      }
+    },
   };
 }
 

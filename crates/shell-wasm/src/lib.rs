@@ -106,3 +106,50 @@ pub unsafe extern "C" fn shell_parse(src: *const u8, src_len: usize, strings: *c
     });
     status as u32
 }
+
+fn braces(word: &[u8]) -> Result<Vec<Vec<u8>>, String> {
+    use bun_shell_parser::braces;
+    let mut lexed = if word.is_ascii() {
+        braces::Lexer::tokenize(word)
+    } else {
+        braces::NewLexer::<{ braces::StringEncoding::Wtf8 }>::tokenize(word)
+    }
+    .map_err(|e| format!("failed to tokenize braces: {e:?}"))?;
+    let count = braces::calculate_expanded_amount(&lexed.tokens[..]);
+    if count == 0 {
+        return Ok(vec![word.to_vec()]);
+    }
+    const MAX_BRACE_EXPANSIONS: u32 = 65536;
+    if count > MAX_BRACE_EXPANSIONS {
+        return Err(format!("too many brace expansions ({count} > {MAX_BRACE_EXPANSIONS})"));
+    }
+    let mut out: Vec<Vec<u8>> = (0..count).map(|_| Vec::new()).collect();
+    let arena = bun_alloc::Arena::new();
+    braces::expand(&arena, &mut lexed.tokens[..], &mut out[..], lexed.contains_nested).map_err(|e| match e {
+        braces::ParserError::TooManyBraces => "too many braces in brace expansion".to_string(),
+        braces::ParserError::UnexpectedToken => "unexpected token while expanding braces".to_string(),
+        braces::ParserError::OutOfMemory => "out of memory".to_string(),
+    })?;
+    Ok(out)
+}
+
+/// Brace expansion (`Bun.$.braces`, and the interpreter's `{a,b}` words): 0 then the words NUL-separated, or 1 then
+/// the message. Characters that must stay literal come backslash-escaped, as `Expansion::do_brace_expand` passes them.
+///
+/// # Safety
+/// The range must be readable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn shell_braces(word: *const u8, word_len: usize) -> u32 {
+    let word = unsafe { bytes(word, word_len) };
+    let (status, body) = match braces(word) {
+        Ok(words) => (0u8, words.join(&0u8)),
+        Err(msg) => (1u8, msg.into_bytes()),
+    };
+    RESULT.with(|r| {
+        let mut r = r.borrow_mut();
+        r.clear();
+        r.push(status);
+        r.extend_from_slice(&body);
+    });
+    status as u32
+}

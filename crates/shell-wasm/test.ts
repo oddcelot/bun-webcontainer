@@ -2,7 +2,7 @@
 // `bun:internal-for-testing`, `harness` and `./util` are the shims in shims/. Tests that need a native Bun are skipped.
 import { readFileSync } from "node:fs";
 import { registerHooks } from "node:module";
-import { shellParser } from "../../apps/playground/src/shell/parse.ts";
+import { shellWasm } from "../../apps/playground/src/shell/parse.ts";
 
 const here = new URL("./", import.meta.url);
 const shims: Record<string, string> = {
@@ -19,7 +19,8 @@ registerHooks({
 });
 
 const wasm = new URL("../../target/wasm64-unknown-unknown/release/bun_shell_wasm.wasm", import.meta.url);
-(globalThis as any).__shellParse = shellParser(new WebAssembly.Module(readFileSync(wasm)));
+const shell = shellWasm(new WebAssembly.Module(readFileSync(wasm)));
+(globalThis as any).__shellParse = shell.parse;
 
 const { SkipError } = await import("./shims/harness.ts");
 const bunTest = await import("./shims/bun-test.ts");
@@ -53,6 +54,20 @@ try {
 } catch (e) {
   if ((e as Error).message === "Nesting depth exceeded") passed++;
   else failed.push(`nesting depth: ${(e as Error).message}`);
+}
+
+// Brace expansion, as Bun.$.braces documents it.
+const braces: [string, string[]][] = [
+  ["echo {a,b,c}", ["echo a", "echo b", "echo c"]],
+  ["{a,b}{1,2}", ["a1", "a2", "b1", "b2"]],
+  ["x{a,{b,c}}y", ["xay", "xby", "xcy"]],
+  ["plain", ["plain"]],
+  ["\\{a,b\\}", ["\\{a,b\\}"]],
+];
+for (const [word, want] of braces) {
+  const got = shell.braces(word);
+  if (JSON.stringify(got) === JSON.stringify(want)) passed++;
+  else failed.push(`braces ${word}: ${JSON.stringify(got)}`);
 }
 
 for (const f of failed) console.log(`FAIL ${f}`);
