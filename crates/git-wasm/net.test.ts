@@ -265,6 +265,9 @@ try {
   write(a, "feat/x.txt", "x2\n");
   native(a, "commit", "-q", "-am", "feat 2");
   await header(a, "status -b: ahead 1");
+  const before = native(a, "rev-parse", "HEAD").trim();
+  r = await git(a, "pull");
+  check("pull while only ahead: up to date", r.code === 0 && r.out.includes("Already up to date.") && native(a, "rev-parse", "HEAD").trim() === before, JSON.stringify(r));
   r = await git(a, "push");
   check("push fast-forward", r.code === 0 && /[0-9a-f]{7}\.\.[0-9a-f]{7}\s+feat -> feat/.test(r.err) && remoteRef("feat") === native(a, "rev-parse", "feat").trim(), JSON.stringify(r));
   r = await git(a, "push");

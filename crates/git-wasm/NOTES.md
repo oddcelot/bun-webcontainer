@@ -89,7 +89,7 @@ response (gix writes a POST body after `post` returns). Status
   updates the tracking refs; `-u` sets the upstream. Output as git's (`To <url>`, ` * [new branch]  main -> main`).
 
 `net.test.ts` runs these against native `git http-backend` (a CGI server in a child process), with curl serving the
-imports synchronously, and checks the results with native git (55 checks; the push checks set `http.receivepack` on the server's repositories).
+imports synchronously, and checks the results with native git (56 checks; the push checks set `http.receivepack` on the server's repositories).
 
 ## Results
 
