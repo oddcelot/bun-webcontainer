@@ -1,4 +1,4 @@
-import { Show, createSignal, useContext } from "solid-js";
+import { Show, createSignal, untrack, useContext } from "solid-js";
 import { DOCS } from "../base";
 import { chordKeys, keysFor } from "../keymap";
 import logo from "../bun-logo.svg";
@@ -24,7 +24,8 @@ const CANT_RUN = "This browser can't run code here";
  * one (or once it stopped), a click opens LocalBunSetup: how to start it.
  */
 function LocalBunToggle(props: { rt: NonNullable<App["runtime"]> }) {
-  const rt = props.rt;
+  // The same runtime object for as long as the <Show> around this renders it: read once.
+  const rt = untrack(() => props.rt);
   const on = () => rt.current() === "local";
   /** The setup dialog, for a click with no runner connected. */
   const [setup, setSetup] = createSignal(false);
