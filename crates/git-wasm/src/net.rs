@@ -231,6 +231,11 @@ pub fn pull(ctx: &Ctx, args: &[String]) -> Res {
         return Ok(0);
     }
     if let Some(head) = head {
+        // The upstream is already in our history (we're only ahead): nothing to bring in.
+        if ctx.repo.rev_walk([head]).all()?.filter_map(Result::ok).any(|i| i.id == target.id) {
+            out("Already up to date.\n");
+            return Ok(0);
+        }
         // Fast-forward only: our commit must be in the upstream's history.
         let ancestor = ctx.repo.rev_walk([target.id]).all()?.filter_map(Result::ok).any(|i| i.id == head);
         if !ancestor {

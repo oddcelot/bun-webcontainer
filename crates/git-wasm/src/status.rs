@@ -241,15 +241,46 @@ pub fn quote_path(p: &str, sp: bool) -> String {
     s
 }
 
-/// `## main`, `## No commits yet on main`, `## HEAD (no branch)`.
+/// `## main`, `## main...origin/main [ahead 1, behind 2]`, `## main...origin/main [gone]`, `## No commits yet on main`,
+/// `## HEAD (no branch)`.
 fn branch_header(ctx: &Ctx) -> Result<String, crate::Exit> {
     Ok(match ctx.repo.head_name()? {
         Some(n) => {
             let n = n.shorten().to_str_lossy().into_owned();
-            if ctx.repo.head_id().is_err() { format!("No commits yet on {n}") } else { n }
+            match ctx.repo.head_id() {
+                Err(_) => format!("No commits yet on {n}"),
+                Ok(head) => match upstream(ctx, &n) {
+                    Some((short, full)) => format!("{n}...{short}{}", ahead_behind(ctx, head.detach(), &full)),
+                    None => n,
+                },
+            }
         }
         None => "HEAD (no branch)".into(),
     })
+}
+
+/// The branch's upstream from `branch.<b>.remote` and `.merge`: its short name (`origin/main`) and full ref.
+pub fn upstream(ctx: &Ctx, branch: &str) -> Option<(String, String)> {
+    let config = ctx.repo.config_snapshot();
+    let remote = config.string(format!("branch.{branch}.remote").as_str())?.to_string();
+    let merge = config.string(format!("branch.{branch}.merge").as_str())?.to_string();
+    let name = merge.strip_prefix("refs/heads/")?;
+    Some(if remote == "." { (name.to_string(), merge.clone()) } else { (format!("{remote}/{name}"), format!("refs/remotes/{remote}/{name}")) })
+}
+
+/// ` [ahead 1, behind 2]`, ` [gone]` when the upstream's ref is missing, or nothing when the two are the same commit.
+fn ahead_behind(ctx: &Ctx, head: ObjectId, upstream: &str) -> String {
+    let Some(theirs) = ctx.repo.find_reference(upstream).ok().and_then(|mut r| r.peel_to_id().ok()).map(|id| id.detach()) else {
+        return " [gone]".into();
+    };
+    let count = |from: ObjectId, hide: ObjectId| ctx.repo.rev_walk([from]).with_hidden([hide]).all().map(|w| w.filter(|i| i.is_ok()).count()).unwrap_or(0);
+    let (ahead, behind) = (count(head, theirs), count(theirs, head));
+    match (ahead, behind) {
+        (0, 0) => String::new(),
+        (a, 0) => format!(" [ahead {a}]"),
+        (0, b) => format!(" [behind {b}]"),
+        (a, b) => format!(" [ahead {a}, behind {b}]"),
+    }
 }
 
 pub fn status(ctx: &Ctx, args: &[String]) -> Res {

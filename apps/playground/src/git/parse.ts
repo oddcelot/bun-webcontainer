@@ -16,13 +16,18 @@ export type Status = {
   /** The branch has no commit yet. */
   unborn: boolean;
   upstream?: string;
+  /** Commits the branch has that its upstream hasn't, and the other way round. */
+  ahead: number;
+  behind: number;
+  /** The upstream is configured but its ref is missing (deleted on the remote, or never fetched). */
+  gone: boolean;
   entries: StatusEntry[];
 };
 
 /** `git status --porcelain -b -z` (v1). Untracked directories end with `/` unless `-uall` listed their files. */
 export function parseStatus(out: string): Status {
   const parts = out.split("\0");
-  const status: Status = { branch: null, unborn: false, entries: [] };
+  const status: Status = { branch: null, unborn: false, ahead: 0, behind: 0, gone: false, entries: [] };
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i];
     if (!part) continue;
@@ -34,9 +39,12 @@ export function parseStatus(out: string): Status {
         status.branch = fresh[1];
       } else if (head.startsWith("HEAD (no branch)")) status.branch = null;
       else {
-        const [, branch, upstream] = /^(.*?)(?:\.\.\.(\S+))?(?: \[.*\])?$/.exec(head)!;
+        const [, branch, upstream, track = ""] = /^(.*?)(?:\.\.\.(\S+))?(?: \[(.*)\])?$/.exec(head)!;
         status.branch = branch;
         status.upstream = upstream;
+        status.ahead = Number(/ahead (\d+)/.exec(track)?.[1] ?? 0);
+        status.behind = Number(/behind (\d+)/.exec(track)?.[1] ?? 0);
+        status.gone = track === "gone";
       }
       continue;
     }
