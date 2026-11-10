@@ -2129,3 +2129,54 @@ body:has(#req-handle[data-dragging]) * {
 .dialog-choice {
   margin-top: 12px;
 }
+/* The signed-in user's repositories under "Clone a repository" (RepoList.tsx): a click clones one. */
+.repo-list {
+  margin-top: 12px;
+
+  .hint {
+    margin: 0 0 8px;
+    font-size: 12px;
+    color: var(--muted);
+
+    a {
+      color: var(--accent);
+    }
+  }
+  ul {
+    max-height: 220px;
+    margin: 0;
+    padding: 2px;
+    overflow: auto;
+    list-style: none;
+    border: 1px solid var(--border);
+    border-radius: var(--inner-radius);
+  }
+  li > button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 5px 8px;
+    border: 0;
+    border-radius: var(--inner-radius);
+    background: none;
+    color: var(--fg);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+
+    &:hover,
+    &:focus-visible {
+      background: var(--control-hover);
+    }
+    > i {
+      flex: none;
+      color: var(--muted);
+    }
+    .name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+}
