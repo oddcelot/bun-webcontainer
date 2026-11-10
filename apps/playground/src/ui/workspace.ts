@@ -6,6 +6,7 @@ import { EMBEDDED } from "../theme";
 
 const AUTOSAVE_KEY = "runbun:autosave";
 const WATCH_KEY = "runbun:watch";
+const FORMAT_ON_SAVE_KEY = "runbun:format-on-save";
 
 /**
  * Which files are open in tabs, which one is active, and which have edits not yet written to the VFS. Writes go
@@ -33,6 +34,10 @@ export function createWorkspace() {
   const [watch, setWatch] = EMBEDDED
     ? createSignal(true)
     : pref(WATCH_KEY, true, { serialize: (on) => (on ? "on" : "off"), deserialize: (s) => s !== "off" });
+  /** Ctrl/Cmd+S formats the file with `bun fmt` before saving it (saves as you type don't: they'd move text under the cursor). */
+  const [formatOnSave, setFormatOnSave] = EMBEDDED
+    ? createSignal(false)
+    : pref(FORMAT_ON_SAVE_KEY, false, { serialize: (on) => (on ? "on" : "off"), deserialize: (s) => s === "on" });
   const saved = new Set<() => void>();
   // Read-only declaration files a definition opened (TypeScript's libs, Bun's bundled types), by their checker path:
   // not the VFS's, which has no leading "/" or scheme. Kept out of the store: lib.dom.d.ts is megabytes.
@@ -61,6 +66,8 @@ export function createWorkspace() {
     setAutosave,
     watch,
     setWatch,
+    formatOnSave,
+    setFormatOnSave,
     /** Calls `fn` after each save the reader made (as they type, or Ctrl/Cmd+S), not those before Run; returns the unsubscribe. */
     onSaved(fn: () => void) {
       saved.add(fn);

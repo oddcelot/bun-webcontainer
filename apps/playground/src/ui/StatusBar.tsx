@@ -1,4 +1,6 @@
 import { Show, createSignal, onSettled, useContext } from "solid-js";
+import { installState, type InstallState } from "../installState";
+import { onSaveState, type SaveState } from "../persist";
 import { trackChanges } from "../changes";
 import { DOCS } from "../base";
 import { chordKeys, keysFor, type Command } from "../keymap";
@@ -85,6 +87,7 @@ export function StatusBar(props: { treeShown: boolean; toggleFiles(): void; togg
       <Show when={statusDisplay() === "bar"}>
         <StatusPill role="status" status={s.status()} title={s.status().text} />
       </Show>
+      <Ports previewShown={props.previewShown} showPreview={() => props.toggle(0)} />
       <span class="spacer" />
       <Changed git={gitOn()} gitShown={shows("git")} toggleGit={props.toggleGit} />
       <Show when={!ws.state.changesShown && ws.state.active}>
@@ -138,6 +141,21 @@ export function StatusBar(props: { treeShown: boolean; toggleFiles(): void; togg
           </>
         )}
       </Show>
+      <Show when={app.features?.has("format") ?? true}>
+        <Tip
+          type="button"
+          class="format-on-save"
+          aria-pressed={ws.formatOnSave() ? "true" : "false"}
+          keys={keys("save")}
+          tip={ws.formatOnSave() ? "Format on save: saving with the shortcut formats the file with bun fmt first. Saves as you type don't." : "Format on save is off: saving with the shortcut keeps the file as it is. Click to format it with bun fmt first."}
+          onClick={() => ws.setFormatOnSave(!ws.formatOnSave())}
+        >
+          <i class="i-lucide-wand-sparkles" aria-hidden="true" />
+          <span class="sr-only">Format on save</span>
+        </Tip>
+      </Show>
+      <Install />
+      <Saved />
       <Tip
         as="a"
         href={`${DOCS}compatibility/bun/`}
@@ -191,6 +209,113 @@ function Changed(props: { git: boolean; gitShown: boolean; toggleGit(): void }) 
     >
       <i class="i-lucide-git-compare" aria-hidden="true" /> {count() ?? ""}
       <span class="sr-only">{props.git ? "Git" : "Changes"}</span>
+    </Tip>
+  );
+}
+
+/** The ports the running program serves (`Bun.serve`, `http.Server#listen`); a click shows the preview if it's hidden. */
+function Ports(props: { previewShown: boolean; showPreview(): void }) {
+  const { session } = useContext(AppContext);
+  const tip = () => {
+    const [first, ...rest] = session.ports();
+    const serving = rest.length ? `Serving on ports ${[first, ...rest].join(", ")}; the preview shows ${first}` : `Serving on port ${first}; the preview shows it`;
+    return props.previewShown ? serving : `${serving}. Click to show the preview.`;
+  };
+  return (
+    <Show when={session.ports().length}>
+      <Tip type="button" class="ports" aria-disabled={props.previewShown ? "true" : undefined} tip={tip()} onClick={() => !props.previewShown && props.showPreview()}>
+        <i class="i-lucide-radio" aria-hidden="true" />:{session.ports()[0]}
+        {session.ports().length > 1 ? ` +${session.ports().length - 1}` : ""}
+      </Tip>
+    </Show>
+  );
+}
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+const listed = (names: string[]) => (names.length > 3 ? `${names.slice(0, 3).join(", ")} and ${names.length - 3} more` : names.join(", "));
+
+/**
+ * Whether the dependencies are installed (installState.ts). A click installs when some are missing (or again, when
+ * they're all there), and opens bun.lock or package.json when that's what is in the way. Nothing without dependencies.
+ */
+function Install() {
+  const { vfs, session, workspace: ws, install } = useContext(AppContext);
+  const [state, setState] = createSignal<InstallState>({ kind: "none" });
+  onSettled(() => {
+    setState(installState(vfs));
+    // An install writes thousands of files: look again once a burst of changes is over.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const off = vfs.onChange(({ path }) => {
+      if (path !== "package.json" && path !== "bun.lock" && !path.startsWith("node_modules/")) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => setState(installState(vfs)), 200);
+    });
+    return () => {
+      clearTimeout(timer);
+      off();
+    };
+  });
+  const busy = () => !!session.busy.install;
+  const view = () => {
+    const st = state();
+    if (busy()) return { icon: "i-lucide-loader-circle spin", label: "Installing…", tip: "bun install is running" };
+    switch (st.kind) {
+      case "none":
+        return undefined;
+      case "missing":
+        return { icon: "i-lucide-package-x", label: "Not installed", tip: `Not in node_modules: ${listed(st.names)}. Click to run bun install.` };
+      case "stale":
+        return {
+          icon: "i-lucide-package-minus",
+          label: "bun.lock out of date",
+          tip: `package.json changed ${listed(st.names)} since bun.lock was written, and an install here follows bun.lock. Delete bun.lock to install from package.json. Click to open it.`,
+        };
+      case "unreadable":
+        return { icon: "i-lucide-package-x", label: `${st.file} unreadable`, tip: `${st.file} doesn't parse, so nothing can be installed. Click to open it.` };
+      case "installed":
+        return {
+          icon: "i-lucide-package-check",
+          label: String(st.count),
+          tip: `${plural(st.count, "dependency")} installed${st.lock ? ", at the versions bun.lock pins" : " (no bun.lock: versions come from package.json)"}. Click to run bun install again.`,
+        };
+    }
+  };
+  const click = () => {
+    const st = state();
+    if (busy()) return;
+    if (st.kind === "stale") ws.open("bun.lock");
+    else if (st.kind === "unreadable") ws.open(st.file);
+    else install();
+  };
+  return (
+    <Show when={view()}>
+      {(v) => (
+        <Tip type="button" class="install" aria-disabled={busy() ? "true" : undefined} tip={v().tip} onClick={click}>
+          <i class={v().icon} aria-hidden="true" />
+          <span class="label">{v().label}</span>
+          <span class="sr-only">dependencies</span>
+        </Tip>
+      )}
+    </Show>
+  );
+}
+
+/** Where edits go and whether they're there yet (persist.ts): this browser's storage, a folder on disk, or nowhere. */
+function Saved() {
+  const [state, setState] = createSignal<SaveState>({ where: "nowhere", pending: false });
+  onSettled(() => onSaveState(setState));
+  const view = () => {
+    const st = state();
+    if (st.failed) return { icon: "i-lucide-triangle-alert", label: "Not saved", tip: `The last save failed (${st.failed}); the next edit tries again` };
+    if (st.where === "nowhere") return { icon: "i-lucide-circle-slash", label: "Not saved", tip: `${st.why ?? "Edits aren't kept"}: a reload loses them` };
+    const place = st.where === "folder" ? `the folder ${st.name} on disk` : "this browser (Storage lists what it keeps)";
+    if (st.pending) return { icon: "i-lucide-loader-circle spin", label: "Saving…", tip: `Writing edits to ${place}` };
+    return { icon: st.where === "folder" ? "i-lucide-folder-check" : "i-lucide-check", label: "Saved", tip: `Edits are saved to ${place}` };
+  };
+  return (
+    <Tip as="span" class="saved" tip={view().tip}>
+      <i class={view().icon} aria-hidden="true" />
+      <span class="label">{view().label}</span>
     </Tip>
   );
 }

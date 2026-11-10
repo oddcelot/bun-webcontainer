@@ -125,9 +125,12 @@ let onServer: (() => void) | undefined;
 let nextPort = 40001;
 /** What the preview shows: the first server on a fixed port. */
 const previewServer = () => servers.find((s) => !s.ephemeral) ?? servers[0];
+/** Tells the page which ports the program serves (the status bar shows them); helpers on port 0 aren't listed. */
+const postPorts = () => post({ type: "ports", ports: servers.filter((s) => !s.ephemeral).map((s) => s.port) });
 const stopServer = (inst: Instance) => {
   servers.splice(servers.indexOf(inst) >>> 0, 1);
   release(inst);
+  postPorts();
 };
 
 let nodeServer: Instance | undefined;
@@ -296,6 +299,7 @@ function createInstance(opts: ServeOptions): Instance {
   };
   servers.push(inst);
   hold(inst);
+  postPorts();
   onServer?.();
   return inst;
 }

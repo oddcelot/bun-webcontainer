@@ -14,6 +14,26 @@ const SKIP_SAVED = /(^|\/)node_modules(\/|$)/;
 const DEBOUNCE = 300;
 
 /**
+ * Where the open project's edits go, for the status bar: this browser's storage (OPFS), a folder on disk, or nowhere
+ * (`why` says why, when there is a reason). `pending`: changes not written yet; `failed`: the last write that failed.
+ */
+export type SaveState = { where: "browser" | "folder" | "nowhere"; name?: string; pending: boolean; failed?: string; why?: string };
+let saveState: SaveState = { where: "nowhere", pending: false };
+const saveListeners = new Set<(s: SaveState) => void>();
+/** Calls `fn` with the save state now and on each change; returns the unsubscribe. */
+export function onSaveState(fn: (s: SaveState) => void) {
+  fn(saveState);
+  saveListeners.add(fn);
+  return () => void saveListeners.delete(fn);
+}
+function setSaveState(s: SaveState) {
+  saveState = s;
+  for (const fn of saveListeners) fn(s);
+}
+/** The mirror whose state the status bar shows: a stopped one's last writes don't overwrite a newer one's state. */
+let current: object | undefined;
+
+/**
  * OPFS writes are async and don't finish before the page unloads, so unsaved files also go to sessionStorage on
  * pagehide (synchronous, kept across a reload in the same tab). `attach` replays them and saves them for real.
  * Values are file text, or null for a deleted file; binary files aren't stashed.
@@ -196,6 +216,7 @@ export async function attach(id: string, vfs: VFS, log: Log, all: boolean): Prom
       });
       if (!got) {
         log("warn", "[storage] project open in another tab; changes here won't be saved");
+        setSaveState({ where: "nowhere", pending: false, why: "It's open in another tab, which saves it" });
         return off;
       }
     }
@@ -205,6 +226,7 @@ export async function attach(id: string, vfs: VFS, log: Log, all: boolean): Prom
       all,
       stash: stashKey(id),
       tag: "[storage]",
+      where: "browser",
       skip: SKIP_SAVED,
       // Asked on the first save, not on every visit.
       onFirstFlush: () => void projects().then((b) => b.persist()).catch(() => {}),
@@ -216,6 +238,7 @@ export async function attach(id: string, vfs: VFS, log: Log, all: boolean): Prom
   } catch (e) {
     release();
     log("warn", `[storage] saving is unavailable (${e}); this project won't be kept across reloads`);
+    setSaveState({ where: "nowhere", pending: false, why: `This browser can't store it (${e})` });
     return off;
   }
 }
@@ -233,6 +256,8 @@ type MirrorOptions = {
   stash?: string;
   /** Log prefix. */
   tag: string;
+  /** What the status bar says it saves to (see SaveState): the browser's storage (OPFS), or the folder `dir` on disk. */
+  where: "browser" | "folder";
   onFirstFlush?: () => void;
   /** Also bring changes made to `dir` from outside (another editor) into the VFS, where FileSystemObserver exists. */
   watch?: boolean;
@@ -254,8 +279,15 @@ type ObserverClass = new (callback: (records: ChangeRecord[]) => void) => Observ
  * short pause, and on pagehide. `skip` (node_modules and .git) is left alone. Returns a function that stops writing and
  * settles once a flush in progress is done.
  */
-export function mirror(dir: Dir, vfs: VFS, log: Log, { all, stash: stashAt, tag, onFirstFlush, watch, skip = SKIP }: MirrorOptions): StopSaving {
+export function mirror(dir: Dir, vfs: VFS, log: Log, { all, stash: stashAt, tag, where, onFirstFlush, watch, skip = SKIP }: MirrorOptions): StopSaving {
   let stopped = false;
+  const self = {};
+  current = self;
+  let failed: string | undefined;
+  /** Reports whether changes are waiting to be written, while this is the mirror in use. */
+  const report = () => {
+    if (current === self) setSaveState({ where, name: dir.name, pending: !!(dirty.size || writing.size || timer !== undefined), failed });
+  };
   const dirty = new Set<string>();
   /** What `dir` is known to hold per path (null: nothing), from our writes and from outside changes read back. */
   const onDisk = new Map<string, FileData | null>();
@@ -314,6 +346,7 @@ export function mirror(dir: Dir, vfs: VFS, log: Log, { all, stash: stashAt, tag,
       }
       const paths = [...dirty];
       dirty.clear();
+      failed = undefined;
       for (const p of paths) writing.add(p);
       for (const path of paths) {
         if (stopped) return;
@@ -324,6 +357,7 @@ export function mirror(dir: Dir, vfs: VFS, log: Log, { all, stash: stashAt, tag,
             warned = true;
             log("warn", `${tag} can't save ${path}: ${e}`);
           }
+          failed = `${path}: ${e}`;
         }
         writing.delete(path);
       }
@@ -332,12 +366,14 @@ export function mirror(dir: Dir, vfs: VFS, log: Log, { all, stash: stashAt, tag,
           sessionStorage.removeItem(stashAt);
         } catch {}
       }
+      report();
     });
     return chain;
   };
   const schedule = () => {
     clearTimeout(timer);
     timer = setTimeout(flush, DEBOUNCE);
+    report();
   };
 
   // Edits a reload cut off last time: back into the VFS, then saved like any other change.
@@ -386,6 +422,7 @@ export function mirror(dir: Dir, vfs: VFS, log: Log, { all, stash: stashAt, tag,
     for (const p of vfs.files.keys()) if (!skip.test(p)) dirty.add(p);
     schedule();
   }
+  report();
   const unwatch = watch ? observe() : undefined;
 
   /**
@@ -469,6 +506,10 @@ export function mirror(dir: Dir, vfs: VFS, log: Log, { all, stash: stashAt, tag,
       await chain;
     }
     stopped = true;
+    if (current === self) {
+      current = undefined;
+      setSaveState({ where: "nowhere", pending: false });
+    }
     unwatch?.();
     unsub();
     clearTimeout(timer);

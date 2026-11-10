@@ -14,6 +14,8 @@ export function createSession(canRun: boolean) {
   let resolveStarted!: () => void;
   const started = new Promise<void>((r) => (resolveStarted = r));
   const [counts, setCounts] = createStore({ lines: 0, error: 0, warn: 0 });
+  // The ports the running program serves (Bun.serve, http.Server#listen), as the runner reports them.
+  const [ports, setPorts] = createSignal<number[]>([]);
   const [project, setProject] = createSignal<{ selected: string; extra: [label: string, value: string][]; reopen?: string }>({ selected: "", extra: [] });
 
   // Writes made in the action's frame are held until it settles, so `work` starts after that frame is flushed:
@@ -68,6 +70,9 @@ export function createSession(canRun: boolean) {
         c.lines = c.error = c.warn = 0;
       });
     },
+    /** The ports the running program serves; empty with no server (or a runner that doesn't say, Local Bun). */
+    ports,
+    setPorts,
     /** The project picker: which entry is selected, plus entries for the loaded repo or shared project. */
     project,
     setProject,
