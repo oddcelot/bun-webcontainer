@@ -80,6 +80,9 @@ const SPECIAL = new Set("~[]#;\n\t\r*?{,}`$=()0123456789|><&'\" \\\b");
 const KEYWORDS = new Set(["if", "else", "elif", "then", "fi"]);
 const needsEscape = (s: string) => s === "" || [...s].some((c) => SPECIAL.has(c)) || KEYWORDS.has(s);
 
+/** A `Bun.file()` has its path under this key: in a template it stands for the path, as in Bun. */
+export const FILE_PATH = Symbol.for("runbun.shell.filePath");
+
 const isBufferLike = (v: unknown) => v instanceof ArrayBuffer || ArrayBuffer.isView(v) || (typeof SharedArrayBuffer !== "undefined" && v instanceof SharedArrayBuffer);
 
 /** `$\`…\``'s script: the template's raw strings as written, its values escaped or referenced as Bun does. */
@@ -99,11 +102,9 @@ export function templateSource(raw: readonly string[], values: readonly unknown[
   };
   const value = (v: unknown, depth: number) => {
     if (isBufferLike(v)) return ref(v);
-    if (typeof Blob !== "undefined" && v instanceof Blob) {
-      // A file Blob (Bun.file) stands for its path.
-      const name = (v as { name?: unknown }).name;
-      return typeof name === "string" && (v as { __bunFile?: boolean }).__bunFile ? str(name) : ref(v);
-    }
+    const path = v !== null && typeof v === "object" ? (v as { [FILE_PATH]?: unknown })[FILE_PATH] : undefined;
+    if (typeof path === "string") return str(path);
+    if (typeof Blob !== "undefined" && v instanceof Blob) return ref(v);
     if (typeof ReadableStream !== "undefined" && v instanceof ReadableStream)
       throw new Error("ReadableStream is not supported as a shell redirect yet. Buffer it first, e.g. `< ${await new Response(stream).blob()}`, or use Bun.spawn({ stdin: stream })");
     if (typeof Response !== "undefined" && v instanceof Response) return ref(v);

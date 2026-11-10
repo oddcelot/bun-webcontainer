@@ -36,6 +36,7 @@ import { createDollar } from "../shell/dollar";
 import { builtins as shellBuiltins } from "../shell/builtins";
 import { vfsFs } from "../shell/interp";
 import { loadShellWasm } from "../shell/load";
+import { FILE_PATH } from "../shell/parse";
 import { Buffer } from "./node/buffer";
 
 type Handler = (req: Request, server: unknown) => Response | Promise<Response>;
@@ -723,6 +724,10 @@ const mimeOf = (path: string) => MIME[path.slice(path.lastIndexOf(".") + 1)] ?? 
  */
 class BunFile extends Blob {
   readonly name: string;
+  /** Its path, for Bun.$ (`> ${Bun.file("out.txt")}` writes the file). */
+  get [FILE_PATH]() {
+    return "/" + this.name;
+  }
   readonly #start: number;
   readonly #end: number | undefined;
   constructor(path: string, type?: string, start = 0, end?: number) {

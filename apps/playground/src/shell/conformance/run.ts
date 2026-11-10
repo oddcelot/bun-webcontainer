@@ -32,7 +32,7 @@ registerHooks({
   // Bun's import.meta.path is node's import.meta.filename.
   load(url, context, next) {
     const r = next(url, context);
-    if (url.includes("/bun/test/") && r.source) r.source = String(r.source).replaceAll("import.meta.path", "import.meta.filename");
+    if (url.includes("/bun/test/") && r.source) r.source = String(r.source).replaceAll("import.meta.path", "import.meta.filename").replaceAll("import.meta.dir", "import.meta.dirname");
     return r;
   },
 });
@@ -56,7 +56,7 @@ const $ = createDollar({
   // Native programs the tests call: the browser has no processes, so those tests are skipped.
   commands: Object.fromEntries(
     // test_builder.ts's own bunExe() is process.execPath (node here).
-    ["/__native_bun__", process.execPath, "bun", "bash", "sh", "grep", "sed", "awk", "head", "tail", "wc", "sort", "uniq", "tr", "env", "printf", "node", "sleep", "onlyintool", "test", "["].map((name) => [
+    ["/__native_bun__", process.execPath, "bun", "bash", "sh", "grep", "sed", "awk", "head", "tail", "wc", "sort", "uniq", "tr", "env", "printf", "node", "sleep", "onlyintool", "test", "[", "ln", "chmod", "chown"].map((name) => [
       name,
       async () => {
         throw new bunTest.SkipError(`runs the native ${name}`);
@@ -75,6 +75,7 @@ const $ = createDollar({
   jest: () => bunTest,
   file: (p: string) => ({
     name: p,
+    [Symbol.for("runbun.shell.filePath")]: p,
     text: async () => readFileSync(p, "utf8"),
     arrayBuffer: async () => new Uint8Array(readFileSync(p)).buffer,
     exists: async () => nodeFs.stat(p) !== undefined,
@@ -112,8 +113,20 @@ const all = ["bunshell.test.ts", ...readdirSync(join(shellTests, "commands")).fi
 // `ls` means commands/ls.test.ts (not false.test.ts).
 const files = wanted.length ? all.filter((f) => wanted.some((w) => f.split("/").pop()!.startsWith(w + "."))) : all;
 
+/** Failures the playground can't or shouldn't fix, and why. Any other failure fails the run. */
+const KNOWN: Record<string, string> = {
+  "bunshell > exit codes > echo hi > /dev/full": "device files: the browser's files have none",
+  "condexprs > -f character device": "device files",
+  "condexprs > -c": "device files",
+  "bunshell > glob expansion > glob over an unreadable directory reports the real error": "permissions: the playground's files have none",
+  "bunshell > cd & pwd > cd with EACCES fails with exit code 1 instead of hanging": "permissions",
+  "bunshell > unicode > escape unicode": "pins a Bun bug (non-ASCII in a template's .raw comes out as \\uXXXX)",
+  "redirect target buffer stays attached while a builtin command is running": "JS can't refuse to detach a buffer; Bun pins it natively",
+  "output redirect buffer for an external command stays attached until the command finishes": "the same, and no external commands",
+};
+
 const timeout = <T>(p: Promise<T>, ms: number) => Promise.race([p, new Promise<never>((_, rej) => setTimeout(() => rej(new Error(`timed out after ${ms} ms`)), ms))]);
-let total = { passed: 0, failed: 0, skipped: 0 };
+let total = { passed: 0, failed: 0, skipped: 0, known: 0 };
 for (const file of files) {
   bunTest.cases.length = 0;
   for (const k of Object.keys(bunTest.hooks) as (keyof typeof bunTest.hooks)[]) bunTest.hooks[k].length = 0;
@@ -125,7 +138,7 @@ for (const file of files) {
     total.failed++;
     continue;
   }
-  const r = { passed: 0, failed: 0, skipped: 0 };
+  const r = { passed: 0, failed: 0, skipped: 0, known: 0 };
   const fails: string[] = [];
   let setup: unknown;
   try {
@@ -150,6 +163,7 @@ for (const file of files) {
       r.passed++;
     } catch (e) {
       if (e instanceof bunTest.SkipError || /spawns a native|runs the native|native Bun/.test(String((e as Error)?.message))) r.skipped++;
+      else if (KNOWN[c.name]) r.known++;
       else {
         r.failed++;
         fails.push(`  FAIL ${c.name}\n    ${String((e as Error)?.message ?? e).split("\n").slice(0, 6).join("\n    ")}`);
@@ -157,10 +171,10 @@ for (const file of files) {
     }
   }
   for (const h of bunTest.hooks.afterAll) await Promise.resolve().then(h).catch(() => {});
-  console.log(`${file}: ${r.passed} passed, ${r.failed} failed, ${r.skipped} skipped`);
+  console.log(`${file}: ${r.passed} passed, ${r.failed} failed, ${r.skipped} skipped${r.known ? `, ${r.known} known failures` : ""}`);
   if (verbose) for (const f of fails) console.log(f);
-  total = { passed: total.passed + r.passed, failed: total.failed + r.failed, skipped: total.skipped + r.skipped };
+  total = { passed: total.passed + r.passed, failed: total.failed + r.failed, skipped: total.skipped + r.skipped, known: total.known + r.known };
 }
-console.log(`total: ${total.passed} passed, ${total.failed} failed, ${total.skipped} skipped`);
+console.log(`total: ${total.passed} passed, ${total.failed} failed, ${total.skipped} skipped, ${total.known} known failures (see KNOWN)`);
 // A test can leave a timer or a pending `$` behind; the run is over.
-process.exit(0);
+process.exit(total.failed ? 1 : 0);
