@@ -12,6 +12,7 @@ import { BUN_VERSION } from "../worker/bunVersion";
 import { isFeature, isMode, lockedFeatures, optionsFromUrl, resolveFeatures } from "./config";
 import { mountEmbed } from "./mount";
 import { parseRequests } from "./requests";
+import { readConfig, type ProjectConfig } from "../projectConfig";
 import { responseReserve } from "../preview";
 import { isMessage, TAG, VERSION, type Event, type Feature, type LibraryProject, type Mode, type Options, type Request } from "@runbun/embed/protocol";
 import { VFS } from "@runbun/vfs";
@@ -309,7 +310,7 @@ function switchProject(id: string, fresh = false): Promise<void> {
     for (const [path, data] of files.files) vfs.write(path, data);
     pg.previews.reset();
     workspace.reloadTree();
-    workspace.open(pg.entryFile());
+    projectConfig = applyConfig(false);
     if (key) stopSaving = await attach(key, vfs, log, !restored);
     embed.setProject(id);
     emit("project", { id });
@@ -322,10 +323,48 @@ function switchProject(id: string, fresh = false): Promise<void> {
 /** Installs what's missing and runs, as the options say (startup, and each project opened from the library). */
 async function begin() {
   if (!pg.canRun) return;
+  // The host's `autorun` wins; without one, the project's runbun.json may say not to.
+  const autorun = hostSet("autorun") ? options.autorun : (projectConfig.autorun ?? options.autorun);
   // Missing packages install before the first run whatever the mode; the `install` feature is the menu's action.
-  if ((embed.has("install") || options.autorun) && pg.missingDeps()) await pg.install();
-  if (options.autorun) await pg.run();
+  if ((embed.has("install") || autorun) && pg.missingDeps()) await pg.install();
+  if (autorun) await pg.run();
   else session.setStatus({ state: "idle", text: "Ready" });
+}
+
+/** Whether the host set option `name` (URL parameter or init), so it wins over the project's runbun.json. */
+const hostSet = (name: keyof Options) => params.has(name) || init?.options?.[name] !== undefined;
+
+/**
+ * Opens the tabs, sets the panes and points the preview for the project just loaded. The host's choices win: its
+ * inline files (`inline`) and `file` pick the tabs, and `mode`/`features`, `path`/`requests` and `autorun` are
+ * the host's when set; what's left comes from the project's runbun.json, else the defaults.
+ */
+function applyConfig(inline: boolean): ProjectConfig {
+  const problems: string[] = [];
+  const config = readConfig((path) => vfs.readText(path), problems);
+  for (const p of problems) log("warn", `[config] ${p}`);
+  const bare = (path: string) => path.replace(/^\.?\//, "");
+  // Hidden ones (generated, such as a package.json) stay in the project and the tree, out of the tabs.
+  const hidden = new Set([...(init?.hidden ?? []).map(bare), ...(config.hidden ?? [])]);
+  const listed = inline ? Object.keys(initFiles).map(bare) : (config.open ?? []);
+  const tabs = listed.filter((path) => vfs.files.has(path) && !hidden.has(path));
+  for (const path of tabs) workspace.open(path);
+  const file = options.file && vfs.files.has(options.file) && !hidden.has(options.file) ? options.file : (tabs[0] ?? pg.entryFile());
+  if (!hidden.has(file)) workspace.open(file);
+  // The panes: the host's mode and features, unless it set neither.
+  if (config.panels && !hostSet("mode") && !hostSet("features")) embed.setFeatures(config.panels);
+  // `path` picks where the preview's first tab points (default "/"); the next Run loads it there. `requests` wins over
+  // it: a tab per preset, the first sent by that Run, the others when first opened (previews.ts presets).
+  const host = hostSet("requests") || hostSet("path");
+  const presets = parseRequests(host ? options.requests : (config.preview?.requests ?? []).join("; "));
+  const path = host ? options.path : config.preview?.path;
+  if (presets.length) pg.previews.presets(presets);
+  else if (path) pg.previews.start(path);
+  for (const need of config.requires ?? []) {
+    if (need === "cross-origin-isolation" && !crossOriginIsolated) log("warn", "[config] this project needs cross-origin isolation (SharedArrayBuffer), which this embed doesn't have: open it on runbun.dev");
+    if (need === "local-bun") log("warn", "[config] this project needs Bun on this machine: open it on runbun.dev and press Local Bun");
+  }
+  return config;
 }
 
 /** The project as a runbun.dev link (the full playground, not this page). */
@@ -346,20 +385,7 @@ if (startKey) stopSaving = await attach(startKey, vfs, log, !restored);
 embed.setProject(startProject);
 await pg.start({ reset });
 
-// Inline files open in tabs, in their order; otherwise the entry file. `file` picks the one shown first. Hidden ones
-// (generated, such as a package.json) stay in the project and the tree, out of the tabs.
-const bare = (path: string) => path.replace(/^\.?\//, "");
-const hidden = new Set((init?.hidden ?? []).map(bare));
-const file = options.file && vfs.files.has(options.file) && !hidden.has(options.file) ? options.file : pg.entryFile();
-const first = hidden.has(file) ? undefined : file;
-if (startProject === null) for (const path of Object.keys(initFiles).map(bare)) if (!hidden.has(path)) workspace.open(path);
-if (first) workspace.open(first);
-
-// `path` picks where the preview's first tab points (default "/"); the next Run loads it there. `requests` wins over it:
-// a tab per preset, the first sent by that Run, the others when first opened (previews.ts presets).
-const presets = parseRequests(options.requests);
-if (presets.length) pg.previews.presets(presets);
-else if (options.path) pg.previews.start(options.path);
+let projectConfig = applyConfig(startProject === null);
 
 // --- Events
 

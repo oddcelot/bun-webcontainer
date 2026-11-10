@@ -4,6 +4,7 @@ import { asConsoleEntry, fmt as formatFile, walks } from "./fmt";
 import { clearPkgCache, pkgCacheInfo } from "./pkgCache";
 import { clearStore, storeInfo } from "./pkgStore";
 import type { VFS } from "@runbun/vfs";
+import { readConfig } from "./projectConfig";
 
 type Log = (level: string, text: string) => void;
 
@@ -69,6 +70,9 @@ export function binCommand(script: string | undefined, has: Has, read: Read): Co
  * an installed package's bin (`"dev": "vite"`), else a usual index file.
  */
 export function commandOf(has: Has, read: Read): Command {
+  // runbun.json's `run` names it outright, when that file exists.
+  const run = readConfig(read).run;
+  if (run && has(run.entry)) return { entry: run.entry, args: run.args };
   const pkg = parse<{ module?: string; main?: string; scripts?: Record<string, string> }>(read("package.json")) ?? {};
   for (const e of [pkg.module, pkg.main, scriptEntry(pkg.scripts?.dev), scriptEntry(pkg.scripts?.start)])
     if (e && has(e.replace(/^\.\//, ""))) return { entry: e.replace(/^\.\//, ""), args: [] };

@@ -1,6 +1,7 @@
 // The tsconfig.json lookup the transpiler's options come from: the module server's, the type checker's and the
 // worker's (CommonJS it loads at run time). Plain VFS reads, so the worker can import it.
 import { dirname, norm, type VFS } from "@runbun/vfs";
+import { parseJsonc } from "./projectConfig";
 import type { TsconfigFlags } from "./transpiler";
 
 /** The nearest tsconfig.json (or, in the same folder, jsconfig.json) above `path`, as Bun and TypeScript look for it. */
@@ -30,7 +31,7 @@ function compilerOptions(vfs: VFS, file: string, seen: Set<string>): TsconfigFla
   seen.add(file);
   let config: { extends?: unknown; compilerOptions?: TsconfigFlags };
   try {
-    config = JSON.parse(text.replace(/("(?:\\.|[^"\\])*")|\/\/[^\n]*|\/\*[\s\S]*?\*\//g, "$1").replace(/,(\s*[}\]])/g, "$1"));
+    config = parseJsonc(text) as typeof config;
   } catch {
     return {};
   }
