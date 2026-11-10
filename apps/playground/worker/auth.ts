@@ -31,6 +31,10 @@ export function createAuth(env: AuthEnv, origin: string) {
       cookieCache: { enabled: true, maxAge: WEEK, strategy: "jwe", refreshCache: true },
     },
     account: { storeStateStrategy: "cookie", storeAccountCookie: true },
+    // Rate limits per visitor: Cloudflare puts the client's address in cf-connecting-ip (and overwrites one a client
+    // sends). x-forwarded-for, Better Auth's default, isn't trustworthy there, and without an address every visitor
+    // shares one bucket.
+    advanced: { ipAddress: { ipAddressHeaders: ["cf-connecting-ip"] } },
   });
 }
 
