@@ -41,7 +41,20 @@ function originHeaders(): Plugin {
   return {
     name: "origin-headers",
     apply: () => contentOrigin,
-    configureServer: (server) => void server.middlewares.use(set),
+    configureServer: (server) => {
+      server.middlewares.use(set);
+      // A preview or module path its service worker didn't answer (opened on its own): worker/stranded.ts, as on Cloudflare.
+      server.middlewares.use(async (req, res, next) => {
+        const path = (req.url ?? "").split("?")[0];
+        if (req.headers.host !== host || !/^\/__(preview|vfs)\//.test(path)) return next();
+        const { stranded } = (await server.ssrLoadModule("/worker/stranded.ts")) as typeof import("./worker/stranded");
+        const editor = (process.env.VITE_EDITOR_ORIGINS ?? "http://localhost:5173").split(",")[0].trim();
+        const r = stranded(path, editor)!;
+        res.statusCode = r.status;
+        r.headers.forEach((v, k) => res.setHeader(k, v));
+        res.end(await r.text());
+      });
+    },
     configurePreviewServer: (server) => void server.middlewares.use(set),
   };
 }

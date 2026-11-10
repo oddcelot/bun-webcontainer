@@ -1,5 +1,6 @@
 import { createAuth, githubRepos, githubToken, withCookies, type Auth } from "./auth";
 import { GIT_PROXY, gitProxy } from "./gitProxy";
+import { stranded } from "./stranded";
 
 // Feedback: POST /api/feedback (from the playground's Feedback dialog and the docs' page rating) stores one row in the
 // FEEDBACK D1 database (worker/migrations/), not with the links; see feedback() below and scripts/feedback.ts to read them.
