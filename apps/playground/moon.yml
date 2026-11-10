@@ -52,9 +52,9 @@ tasks:
       - 'src/request.ts'
   test-git:
     # The WASI host over the VFS (src/git/wasi.ts): its edge cases, then crates/git-wasm's git.wasm committing into a
-    # VFS whose .git native git then checks (fsck, log, status); then the Git panel's parsers (parse.ts) on native git's
-    # output.
-    script: 'node src/git/wasi.test.ts && node src/git/parse.test.ts'
+    # VFS whose .git native git then checks (fsck, log, status); the git worker's copy of the project (mirror.ts) staying
+    # equal to the page's through git commands; then the Git panel's parsers (parse.ts) on native git's output.
+    script: 'node src/git/wasi.test.ts && node src/git/mirror.test.ts && node src/git/parse.test.ts'
     toolchains: ['node']
     deps:
       - 'git-wasm:build'
