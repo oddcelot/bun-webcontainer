@@ -77,7 +77,7 @@ async function exec(vfs: VFS, args: string[], colors: boolean): Promise<GitResul
   c.running++;
   const r = await new Promise<FromWorker>((resolve) => {
     c.pending.set(id, resolve);
-    c.worker.postMessage({ run: { id, args, env: colors ? { GIT_COLOR: "1" } : {}, wasm: new URL(`${BASE}git.wasm`, location.href).href } } satisfies ToWorker);
+    c.worker.postMessage({ run: { id, args, env: colors ? { GIT_COLOR: "1" } : {}, wasm: new URL(`${BASE}git.wasm`, location.href).href, proxy: new URL(`${BASE}git-proxy/`, location.href).href } } satisfies ToWorker);
   });
   if ("error" in r) throw new Error(r.error);
   const bytes = new Uint8Array(r.out.reduce((n, b) => n + b.length, 0));

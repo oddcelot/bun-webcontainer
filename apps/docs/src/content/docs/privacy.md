@@ -45,7 +45,9 @@ Your IP address is used to limit how much feedback can be sent a minute; it isn'
 - **npm**: installing packages fetches them from `registry.npmjs.org` ([npm's privacy policy](https://docs.npmjs.com/policies/privacy)).
 - **GitHub**: opening a repository fetches it from `api.github.com` and `raw.githubusercontent.com` ([GitHub's privacy statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement)).
 
-These requests go straight from your browser to those services, and only when you install or import something.
+- **Git hosts**: `git clone`, `fetch` and `pull` in the console reach GitHub, GitLab, Codeberg or Bitbucket through runbun.dev's git proxy, because those hosts don't accept requests from other sites' pages. The proxy passes git's requests on and the answers back without keeping them; the git host sees runbun.dev's Cloudflare address, not yours. Nothing is sent unless you run one of those commands.
+
+Apart from the git proxy, these requests go straight from your browser to those services, and only when you install, import or fetch something.
 
 ## Changes
 

@@ -4,7 +4,7 @@
 // API: the Worker redirects those to the editor on the content host and passes them through on the editor host. Patterns
 // can't tell hosts apart, and running first for everything would make every asset request a billed Worker invocation.
 // The Worker only handles opt-in short links (POST /api/short, GET /s/<id>; KV LINKS) and feedback (POST /api/feedback;
-// D1 FEEDBACK, schema in worker/migrations/); worker/index.ts.
+// D1 FEEDBACK, schema in worker/migrations/) and the git proxy (/git-proxy/*, worker/gitProxy.ts); worker/index.ts.
 {
   "name": "bun-playground",
   "compatibility_date": "2026-10-28",
@@ -12,7 +12,7 @@
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
-    "run_worker_first": ["/api/*", "/s/*", "/", "/index.html", "/about", "/embed", "/embed.html", "/configure", "/configure.html", "/robots.txt", "/sitemap.xml"]
+    "run_worker_first": ["/api/*", "/s/*", "/git-proxy/*", "/", "/index.html", "/about", "/embed", "/embed.html", "/configure", "/configure.html", "/robots.txt", "/sitemap.xml"]
   },
   "kv_namespaces": [{ "binding": "LINKS", "id": "af919e62d9334718b4e63cf62eb5bb28" }],
   // Feedback is other data than links, kept for another time, and wants queries (ratings per page): its own D1 database.
@@ -41,7 +41,7 @@
       "assets": {
         "directory": "./dist-canary",
         "binding": "ASSETS",
-        "run_worker_first": ["/api/*", "/s/*", "/", "/index.html", "/about", "/embed", "/embed.html", "/configure", "/configure.html", "/robots.txt", "/sitemap.xml"]
+        "run_worker_first": ["/api/*", "/s/*", "/git-proxy/*", "/", "/index.html", "/about", "/embed", "/embed.html", "/configure", "/configure.html", "/robots.txt", "/sitemap.xml"]
       },
       "kv_namespaces": [{ "binding": "LINKS", "id": "5823c967357a4e149e3fd4347898c0a2" }],
       "d1_databases": [

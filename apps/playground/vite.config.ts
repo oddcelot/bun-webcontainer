@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, relative } from "node:path";
@@ -8,6 +9,7 @@ import UnoCSS from "unocss/vite";
 import { rolldown } from "rolldown";
 import { defaultClientConditions, defineConfig, type Plugin } from "vite";
 import { BUN_VERSION } from "./src/worker/bunVersion";
+import { GIT_PROXY, gitProxy } from "./worker/gitProxy";
 
 const isolation = {
   "Cross-Origin-Opener-Policy": "same-origin",
@@ -192,6 +194,33 @@ function serviceWorker(): Plugin {
   };
 }
 
+/** The git proxy (worker/gitProxy.ts) in the dev and preview servers, as the Worker answers it on runbun.dev. */
+function gitProxyDev(): Plugin {
+  const handle = (base: string) => async (req: IncomingMessage, res: ServerResponse, next: () => void) => {
+    const path = (req.url ?? "").split("?")[0];
+    const prefix = base.replace(/\/$/, "") + GIT_PROXY;
+    if (!path.startsWith(prefix)) return next();
+    const body: Buffer[] = [];
+    for await (const chunk of req) body.push(chunk as Buffer);
+    const headers = new Headers();
+    for (const [k, v] of Object.entries(req.headers)) if (typeof v === "string") headers.set(k, v);
+    const request = new Request(new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`), {
+      method: req.method,
+      headers,
+      body: req.method === "POST" ? Buffer.concat(body) : undefined,
+    });
+    const out = await gitProxy(request, path.slice(prefix.length));
+    res.statusCode = out.status;
+    out.headers.forEach((v, k) => res.setHeader(k, v));
+    res.end(Buffer.from(await out.arrayBuffer()));
+  };
+  return {
+    name: "git-proxy",
+    configureServer: (server) => void server.middlewares.use(handle(server.config.base)),
+    configurePreviewServer: (server) => void server.middlewares.use(handle(server.config.base)),
+  };
+}
+
 /**
  * The gallery's projects come from the examples submodule (src/examples.ts). In a checkout without it the glob finds
  * nothing and the build would ship an empty gallery: stop with the command that fetches it.
@@ -235,7 +264,7 @@ export default defineConfig(({ mode }) => ({
     // CANARY=1 (playground:deploy-canary) shows the canary badge (src/canary.ts).
     "import.meta.env.CANARY": JSON.stringify(process.env.CANARY === "1"),
   },
-  plugins: [examplesSubmodule(), configSchema(), UnoCSS(), solid(), hostPackageNames(), emnapiNotNode(), docsLink(docsUrl(mode)), embedRoutes(), originHeaders(), serviceWorker()],
+  plugins: [examplesSubmodule(), configSchema(), UnoCSS(), solid(), hostPackageNames(), emnapiNotNode(), docsLink(docsUrl(mode)), embedRoutes(), originHeaders(), serviceWorker(), gitProxyDev()],
   build: {
     target: "esnext",
     rollupOptions: {
