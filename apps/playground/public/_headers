@@ -13,6 +13,11 @@
   Access-Control-Allow-Origin: *
   Cross-Origin-Resource-Policy: cross-origin
 
+# runbun.json's schema (vite.config.ts configSchema): editors and web IDEs on any site fetch it.
+/schema/*
+  Access-Control-Allow-Origin: *
+  Content-Type: application/schema+json
+
 # The content origin (src/contentOrigin.ts; worker/index.ts answers there too): it runs project code and is framed by the
 # editor under COEP, so CORP cross-origin; it never appears in search results. Absolute URLs match by host (Workers static
 # assets), so these rules only apply there; the canary's host is the second. Same as vite.config.ts's originHeaders().

@@ -2,6 +2,7 @@ import type { CodeEditor, EditorDiagnostic } from "./editors/types";
 import { tsconfigFor } from "./tsconfig";
 import { transpile, TranspileError } from "./transpiler";
 import { typecheck, TYPED } from "./typecheck";
+import { JSON_FILE, jsonDiagnostics } from "./jsonLanguage";
 import type { VFS } from "@runbun/vfs";
 
 /** Files whose parse (and type) errors the editor marks as you type. */
@@ -43,7 +44,8 @@ export async function diagnose(vfs: VFS, path: string, text: string, types = tru
 
 /**
  * Debounced parse- and type-error markers for the file in `editor`; call `check(path, text)` on open and on every
- * edit. Type errors only while `types()` (an embed without the type checker gets parse errors).
+ * edit. Type errors only while `types()` (an embed without the type checker gets parse errors). A .json file gets its
+ * syntax and schema errors (jsonLanguage.ts) while `types()`, as the hints it comes with.
  */
 export function mountDiagnostics(vfs: VFS, editor: CodeEditor, types: () => boolean = () => true) {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -51,9 +53,10 @@ export function mountDiagnostics(vfs: VFS, editor: CodeEditor, types: () => bool
   return (path: string | null, text: string | null) => {
     clearTimeout(timer);
     const mine = ++seq;
-    if (!path || text === null || !CHECKED.test(path) || text.length > MAX_BYTES) return editor.setDiagnostics([]);
+    const json = !!path && JSON_FILE.test(path);
+    if (!path || text === null || !(CHECKED.test(path) || (json && types())) || text.length > MAX_BYTES) return editor.setDiagnostics([]);
     timer = setTimeout(async () => {
-      const found = await diagnose(vfs, path, text, types());
+      const found = json ? await jsonDiagnostics(path, text).catch(() => []) : await diagnose(vfs, path, text, types());
       if (mine === seq) editor.setDiagnostics(found);
     }, DEBOUNCE_MS);
   };

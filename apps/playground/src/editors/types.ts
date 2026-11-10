@@ -47,6 +47,10 @@ export type EditorCompletion = {
   insert: string;
   /** 1-based UTF-16 column on the cursor's line where the replaced text starts, if not at the start of the word. */
   start?: number;
+  /** How many characters after the cursor it replaces too (a closing quote the editor added). */
+  after?: number;
+  /** Where in `insert` the cursor lands, if not at its end (inside the `{}` it inserts). */
+  cursor?: number;
   /** Ordering among equally good matches, and the text typing is matched against. */
   sort: string;
   filter: string;

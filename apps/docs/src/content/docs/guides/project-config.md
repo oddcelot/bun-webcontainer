@@ -37,7 +37,7 @@ A `runbun.json` beside `package.json` tells the playground how to open and run t
 }
 ```
 
-With the `$schema` line, editors that read JSON schemas (VS Code and most others) complete and check the fields.
+The playground's editor completes the fields, shows what each does when you hover it, and marks mistakes as you type. With the `$schema` line, other editors that read JSON schemas (VS Code and most others) do the same.
 
 | Field | What it does |
 |---|---|

@@ -54,6 +54,7 @@ example's `node_modules`), later ones a few milliseconds.
 - ✅ Completions: members after `.`, names in scope, keywords, and import paths, each with its type and documentation. Auto-imports offer what the project's other files, its installed packages and Bun's and Node's built-in modules (`bun:sqlite`, `node:fs`) export, and add the import
 - ✅ Parameter hints in calls: the signature, its overloads, and the current parameter's documentation
 - 🟡 Go to definition: <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+click a name, or <kbd>F12</kbd>; opens the file it's declared in, including `.d.ts` files in `node_modules`. Not into TypeScript's own libs or Bun's bundled types (a project without `@types/bun` installed)
+- ✅ JSON files from a JSON schema: completions for property names and values, hovers with each field's description, and errors and warnings as you type. [`runbun.json`](/guides/project-config/) gets its schema built in; another file gets the one its `$schema` names (fetched from that URL, https only). Comments and trailing commas are allowed in `runbun.json`, `tsconfig.json` and `jsconfig.json`, errors elsewhere
 - ✅ `bun check` in the console, Bun's own type checker (below)
 - ❌ No `tsc` command in the console
 

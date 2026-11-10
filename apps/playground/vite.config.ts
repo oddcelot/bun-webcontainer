@@ -206,13 +206,36 @@ function examplesSubmodule(): Plugin {
   };
 }
 
+/**
+ * runbun.json's schema (src/schema/runbun.json, which the editor bundles) at /schema/runbun.json, the `$schema` URL a
+ * project's file names: served in dev, emitted in builds. Code can't import from public/, hence not kept there.
+ */
+function configSchema(): Plugin {
+  const file = fileURLToPath(new URL("./src/schema/runbun.json", import.meta.url));
+  return {
+    name: "config-schema",
+    configureServer(server) {
+      const served = `${server.config.base.replace(/\/?$/, "/")}schema/runbun.json`;
+      server.middlewares.use((req, res, next) => {
+        if (req.url?.split("?")[0] !== served) return next();
+        res.setHeader("Content-Type", "application/schema+json");
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        res.end(readFileSync(file));
+      });
+    },
+    generateBundle() {
+      this.emitFile({ type: "asset", fileName: "schema/runbun.json", source: readFileSync(file, "utf8") });
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => ({
   define: {
     "import.meta.env.DOCS_URL": JSON.stringify(docsUrl(mode)),
     // CANARY=1 (playground:deploy-canary) shows the canary badge (src/canary.ts).
     "import.meta.env.CANARY": JSON.stringify(process.env.CANARY === "1"),
   },
-  plugins: [examplesSubmodule(), UnoCSS(), solid(), hostPackageNames(), emnapiNotNode(), docsLink(docsUrl(mode)), embedRoutes(), originHeaders(), serviceWorker()],
+  plugins: [examplesSubmodule(), configSchema(), UnoCSS(), solid(), hostPackageNames(), emnapiNotNode(), docsLink(docsUrl(mode)), embedRoutes(), originHeaders(), serviceWorker()],
   build: {
     target: "esnext",
     rollupOptions: {
@@ -228,7 +251,14 @@ export default defineConfig(({ mode }) => ({
   // them to loopback and try IPv4); Vite's Host check is told to accept those names.
   server: { headers: served, ...(contentOrigin && { host: "127.0.0.1", allowedHosts: ["localhost", ".localhost"] }) },
   preview: { headers: served },
-  optimizeDeps: { exclude: ["@rolldown/browser", "@napi-rs/wasm-runtime", "@emnapi/core", "@emnapi/runtime", "@emnapi/wasi-threads"] },
+  // A second dev server beside yours (scripts/check-examples.ts) gets its own: two servers optimizing into one cache
+  // folder invalidate each other's files (504 "Outdated Optimize Dep" on every load).
+  cacheDir: process.env.VITE_CACHE_DIR || undefined,
+  optimizeDeps: {
+    exclude: ["@rolldown/browser", "@napi-rs/wasm-runtime", "@emnapi/core", "@emnapi/runtime", "@emnapi/wasi-threads"],
+    // Imported on first use (a .json file opened, src/jsonLanguage.ts): found then, its optimizing would reload the page.
+    include: ["vscode-json-languageservice"],
+  },
   resolve: {
     // @runbun/embed publishes built files; `runbun-source` (no other package uses it) resolves its sources here.
     conditions: ["runbun-source", ...defaultClientConditions],
