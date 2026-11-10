@@ -1,7 +1,8 @@
 // The parts of Bun's test `harness` the shell tests use. Spawning a Bun (bunExe) skips the test.
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import path, { dirname, join } from "node:path";
+import { syncBuiltinESMExports } from "node:module";
 import { SkipError } from "./bun-test.ts";
 
 export const bunEnv: Record<string, string | undefined> = { ...process.env };
@@ -49,3 +50,10 @@ export const rss = () => process.memoryUsage.rss();
 export const runWithErrorPromise = () => {
   throw new SkipError("spawns a native Bun");
 };
+
+// Bun's path functions take tempDir's String object; node's want a primitive.
+for (const k of ["join", "resolve", "relative", "dirname", "basename"] as const) {
+  const fn = path[k] as (...a: unknown[]) => string;
+  (path as any)[k] = (...a: unknown[]) => fn(...a.map((x) => (x instanceof String ? String(x) : x)));
+}
+syncBuiltinESMExports();

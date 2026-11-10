@@ -55,7 +55,8 @@ const $ = createDollar({
   builtins,
   // Native programs the tests call: the browser has no processes, so those tests are skipped.
   commands: Object.fromEntries(
-    ["/__native_bun__", "bun", "bash", "sh", "grep", "sed", "awk", "head", "tail", "wc", "sort", "uniq", "tr", "env", "printf", "node", "sleep", "onlyintool", "test", "["].map((name) => [
+    // test_builder.ts's own bunExe() is process.execPath (node here).
+    ["/__native_bun__", process.execPath, "bun", "bash", "sh", "grep", "sed", "awk", "head", "tail", "wc", "sort", "uniq", "tr", "env", "printf", "node", "sleep", "onlyintool", "test", "["].map((name) => [
       name,
       async () => {
         throw new bunTest.SkipError(`runs the native ${name}`);
@@ -161,3 +162,5 @@ for (const file of files) {
   total = { passed: total.passed + r.passed, failed: total.failed + r.failed, skipped: total.skipped + r.skipped };
 }
 console.log(`total: ${total.passed} passed, ${total.failed} failed, ${total.skipped} skipped`);
+// A test can leave a timer or a pending `$` behind; the run is over.
+process.exit(0);
