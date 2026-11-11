@@ -61,6 +61,14 @@ tasks:
     inputs:
       - 'src/git/**/*'
       - '/crates/git-wasm/target/wasm32-wasip1/release/git.wasm'
+  test-lockfile:
+    # The bun.lock an install writes without one (src/lockfileWrite.ts) against native `bun install --lockfile-only` on
+    # scripts/lockfile-write/*, then `bun install --frozen-lockfile` on it, then an update after package.json changes.
+    # Fetches from registry.npmjs.org, so it isn't part of `test`; npm's latest versions move, so it isn't cached.
+    script: 'bun scripts/lockfile-write.ts'
+    toolchains: ['bun']
+    options:
+      cache: false
   test-shell:
     # Bun's own shell tests (bun/test/js/bun/shell: bunshell.test.ts and commands/*.test.ts) against src/shell under
     # node, on real temp dirs (src/shell/conformance/run.ts); tests that spawn a native Bun or tool are skipped.

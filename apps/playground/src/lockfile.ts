@@ -26,27 +26,32 @@ export function parseBunLock(text: string): BunLock {
 
 type BunLock = {
   lockfileVersion: number;
-  workspaces?: Record<string, { dependencies?: Record<string, string>; devDependencies?: Record<string, string> }>;
+  workspaces?: Record<string, Manifest>;
   packages: Record<string, unknown[]>;
 };
 
-type Manifest = { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+type Deps = Record<string, string>;
+type Manifest = { dependencies?: Deps; devDependencies?: Deps; optionalDependencies?: Deps; peerDependencies?: Deps };
 
-/** The dependencies whose range in package.json isn't the one bun.lock recorded (or that it lacks). */
+const allDeps = (m?: Manifest): Deps => ({ ...m?.peerDependencies, ...m?.devDependencies, ...m?.optionalDependencies, ...m?.dependencies });
+
+/** The dependencies whose range in package.json isn't the one bun.lock recorded: changed, added or removed. */
 export function staleInLock(lock: BunLock, pkg: Manifest): string[] {
-  const want = { ...pkg.devDependencies, ...pkg.dependencies };
-  const root = lock.workspaces?.[""];
-  const locked: Record<string, string> = { ...root?.devDependencies, ...root?.dependencies };
-  return Object.keys(want).filter((n) => locked[n] !== want[n]);
+  const want = allDeps(pkg);
+  const locked = allDeps(lock.workspaces?.[""]);
+  return [...new Set([...Object.keys(want), ...Object.keys(locked)])].filter((n) => locked[n] !== want[n]);
 }
 
 /** `"a/@s/b/c"` → `["a", "@s/b", "c"]`: lockfile keys join the install path's package names with `/`. */
-function splitKey(key: string): string[] {
+export function splitKey(key: string): string[] {
   const parts = key.split("/");
   const names: string[] = [];
   for (let i = 0; i < parts.length; i++) names.push(parts[i].startsWith("@") ? `${parts[i]}/${parts[++i]}` : parts[i]);
   return names;
 }
+
+/** `["a", "@s/b"]` → `"node_modules/a/node_modules/@s/b"`. */
+export const installPath = (names: string[]) => names.map((n) => `node_modules/${n}`).join("/");
 
 /** `cpu` of a wasm32 package: npm's `"wasm32"`, or `"none"` in bun.lock (no CPU Bun knows). */
 const WASM32 = new Set(["wasm32", "none"]);
@@ -58,8 +63,9 @@ const WASM32 = new Set(["wasm32", "none"]);
 export const platformRestricted = (m?: { os?: unknown; cpu?: unknown; libc?: unknown }): boolean =>
   !!m && !!(m.os || m.libc || (m.cpu && ![m.cpu].flat().every((c) => WASM32.has(String(c)))));
 
+/** `name@resolution`; the resolution can hold an `@` itself (a scoped package's tarball URL). */
 function parseIdent(ident: string): { name: string; version: string } | null {
-  const at = ident.lastIndexOf("@");
+  const at = ident.indexOf("@", 1);
   if (at <= 0) return null;
   return { name: ident.slice(0, at), version: ident.slice(at + 1) };
 }
@@ -116,7 +122,7 @@ export async function gunzip(bytes: Uint8Array): Promise<Uint8Array> {
 /**
  * Installs exactly what `bun.lock` lists: every package at its locked version and install path
  * (nested keys go to nested `node_modules`), each tarball checked against its integrity hash.
- * Only npm-registry packages; git/tarball/workspace/file entries are reported and skipped.
+ * npm packages, tarball URLs and `file:` folders or tarballs; git, workspace and link entries are reported and skipped.
  */
 export async function installFromBunLock(vfs: VFS, lockText: string, log: Log): Promise<number> {
   const lock = parseBunLock(lockText);
@@ -135,25 +141,48 @@ export async function installFromBunLock(vfs: VFS, lockText: string, log: Log): 
   let installed = 0;
   await Promise.all(
     Object.entries(lock.packages).map(async ([key, entry]) => {
-      const [ident, registry, meta, integrity] = entry as [string, string, Parameters<typeof platformRestricted>[0], string];
-      const id = typeof ident === "string" ? parseIdent(ident) : null;
-      if (!id || typeof registry !== "string" || typeof integrity !== "string" || !/^\d/.test(id.version)) {
-        log("error", `skip ${key}: only npm registry packages are supported (${String(ident)})`);
+      const id = typeof entry[0] === "string" ? parseIdent(entry[0]) : null;
+      if (!id) return log("error", `skip ${key}: unreadable entry`);
+      const meta = entry.find((e) => !!e && typeof e === "object" && !Array.isArray(e)) as Parameters<typeof platformRestricted>[0];
+      const res = id.version;
+      const kind = /^\d/.test(res) ? "npm" : /^https?:\/\//.test(res) ? "tarball" : res.startsWith("file:") ? "file" : undefined;
+      if (!kind) {
+        const what = res.startsWith("workspace:") ? "workspaces" : res.startsWith("link:") ? "link: dependencies" : res.startsWith("root:") ? undefined : "git dependencies";
+        if (what) log("error", `skip ${key}@${res}: ${what} are not supported in the browser`);
         return;
       }
       if (platformRestricted(meta) && optional.has(splitKey(key).at(-1)!)) {
-        log("log", `- ${key}@${id.version} (optional, unsupported platform)`);
+        log("log", `- ${key}@${res} (optional, unsupported platform)`);
         return;
       }
-      const dest = splitKey(key).map((n) => `node_modules/${n}`).join("/");
+      const dest = installPath(splitKey(key));
       try {
-        const base = (registry || NPM).replace(/\/$/, "");
-        const url = registry.endsWith(".tgz") ? registry : `${base}/${id.name}/-/${id.name.split("/").pop()}-${id.version}.tgz`;
-        const tgz = await fetchTarball(url, (bytes) => checkIntegrity(bytes, integrity));
-        // Kept as bytes, text included (see INSTALLED_AS_BYTES).
-        for (const { name, data } of packageFiles(await gunzip(tgz), url)) vfs.write(`${dest}/${name}`, data);
+        if (kind === "file" && !/\.t(ar\.)?gz$/.test(res)) {
+          // A folder in the project: its files, without its own node_modules.
+          const from = res.slice(5).replace(/^\.\//, "").replace(/\/$/, "");
+          const files = vfs.list(from).filter((p) => !p.slice(from.length + 1).split("/").includes("node_modules"));
+          if (!files.some((p) => p === `${from}/package.json`)) throw new Error(`no package.json in ${from || "."}`);
+          for (const p of files) vfs.write(`${dest}/${p.slice(from.length + 1)}`, vfs.read(p)!);
+        } else {
+          let tgz: Uint8Array, url: string;
+          if (kind === "file") {
+            url = res.slice(5).replace(/^\.\//, "");
+            const bytes = vfs.readBytes(url);
+            if (!bytes) throw new Error(`no file ${url}`);
+            tgz = bytes;
+          } else {
+            const integrity = kind === "npm" ? (entry[3] as string) : (entry[2] as string | undefined);
+            const verify = typeof integrity === "string" && integrity ? (b: Uint8Array<ArrayBuffer>) => checkIntegrity(b, integrity) : undefined;
+            const registry = typeof entry[1] === "string" ? entry[1] : "";
+            const base = (registry || NPM).replace(/\/$/, "");
+            url = kind === "tarball" ? res : registry.endsWith(".tgz") ? registry : `${base}/${id.name}/-/${id.name.split("/").pop()}-${res}.tgz`;
+            tgz = await fetchTarball(url, verify);
+          }
+          // Kept as bytes, text included (see INSTALLED_AS_BYTES).
+          for (const { name, data } of packageFiles(await gunzip(tgz), url)) vfs.write(`${dest}/${name}`, data);
+        }
         installed++;
-        log("log", `+ ${key}@${id.version}`);
+        log("log", `+ ${key}@${res}`);
       } catch (e) {
         log("error", `install ${key}: ${e instanceof Error ? e.message : e}`);
       }

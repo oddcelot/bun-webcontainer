@@ -65,6 +65,19 @@ export async function fetchPackument(name: string): Promise<unknown> {
   return JSON.parse(text);
 }
 
+/** One version's full registry document (it has `libc`, which packuments leave out); it never changes once published. */
+export async function fetchVersion(name: string, version: string): Promise<unknown> {
+  const url = `https://registry.npmjs.org/${name.replace("/", "%2f")}/${version}`;
+  const s = await open();
+  const hit = await s?.cache.match(url).catch(() => undefined);
+  if (hit) return hit.json();
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`registry ${res.status}`);
+  const text = await res.text();
+  if (s) save(s, url, text, { "content-type": "application/json" });
+  return JSON.parse(text);
+}
+
 /** What the cache holds: tarballs and packuments, and about how many bytes. */
 export async function pkgCacheInfo(): Promise<{ tarballs: number; packuments: number; bytes: number }> {
   const s = await open();

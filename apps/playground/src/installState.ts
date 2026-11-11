@@ -3,7 +3,7 @@ import { parseBunLock, staleInLock } from "./lockfile";
 
 /**
  * Whether the project's dependencies are installed, for the status bar: none declared; some missing from node_modules;
- * bun.lock behind package.json (an install would follow the lockfile, not the edit); or all there.
+ * bun.lock behind package.json (an install updates it); or all there.
  */
 export type InstallState =
   | { kind: "none" }

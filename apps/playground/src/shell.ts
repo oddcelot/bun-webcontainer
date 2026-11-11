@@ -1,7 +1,7 @@
 import type { Cookie } from "./cookieJar";
 import { check as typeCheck } from "./check";
 import { asConsoleEntry, fmt as formatFile, walks } from "./fmt";
-import { clearPkgCache, pkgCacheInfo } from "./pkgCache";
+import { clearPkgCache, fetchPackument, pkgCacheInfo } from "./pkgCache";
 import { clearStore, storeInfo } from "./pkgStore";
 import type { VFS } from "@runbun/vfs";
 import { readConfig } from "./projectConfig";
@@ -203,7 +203,6 @@ export function createShell(host: ShellHost) {
     const dev = args.some((a) => a === "-d" || a === "-D" || a === "--dev");
     const specs = args.filter((a) => !a.startsWith("-"));
     if (!specs.length) return fail("usage: bun add <pkg[@range]>...");
-    if (vfs.files.has("bun.lock")) return fail("error: bun add can't update bun.lock here; edit package.json and delete bun.lock first");
     const pkg = readPkg();
     if (!pkg) return;
     const field = dev ? "devDependencies" : "dependencies";
@@ -211,20 +210,25 @@ export function createShell(host: ShellHost) {
     for (const spec of specs) {
       const at = spec.indexOf("@", 1); // scoped names start with @
       const [name, range] = at > 0 ? [spec.slice(0, at), spec.slice(at + 1)] : [spec, "latest"];
-      ranges[name] = range;
+      // `latest` and other tags go into package.json as `^x.y.z` of the version they point at (as Bun does), before
+      // the install, so that bun.lock records the same range.
+      if (/^[a-z][\w.-]*$/i.test(range)) {
+        try {
+          const doc = (await fetchPackument(name)) as { "dist-tags"?: Record<string, string> };
+          const version = doc["dist-tags"]?.[range];
+          if (!version) return fail(`error: ${name} has no version tagged "${range}"`);
+          ranges[name] = `^${version}`;
+        } catch (e) {
+          return fail(`error: ${name}: ${e instanceof Error ? e.message : e}`);
+        }
+      } else ranges[name] = range;
     }
     writePkg({ ...pkg, [field]: { ...pkg[field], ...ranges } });
     await host.install();
-    // `latest` and other tags: record what was installed, as `^x.y.z` (as Bun does).
-    const after = readPkg();
-    if (!after) return;
-    for (const [name, range] of Object.entries(ranges)) {
+    for (const name of Object.keys(ranges)) {
       const version = JSON.parse(vfs.readText(`node_modules/${name}/package.json`) ?? "{}").version;
-      if (!version) continue;
-      if (!/^[\d^~<>=*]/.test(range)) after[field]![name] = `^${version}`;
-      log("log", `installed ${name}@${version}`);
+      if (version) log("log", `installed ${name}@${version}`);
     }
-    writePkg(after);
   }
 
   async function pm([sub, action]: string[]) {
@@ -237,7 +241,7 @@ export function createShell(host: ShellHost) {
     if (store.entries) log("log", `${store.entries} packages' large files unpacked, ${mb(store.bytes)} MB (read when a program needs them)`);
   }
 
-  function remove(names: string[]) {
+  async function remove(names: string[]) {
     if (!names.length) return fail("usage: bun remove <pkg>...");
     const pkg = readPkg();
     if (!pkg) return;
@@ -251,6 +255,8 @@ export function createShell(host: ShellHost) {
       log("log", `- ${name}`);
     }
     writePkg(pkg);
+    // Like Bun, the lockfile follows: the install drops what nothing needs any more from bun.lock.
+    if (vfs.files.has("bun.lock")) await host.install();
   }
 
   /**
