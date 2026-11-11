@@ -17,6 +17,8 @@ pub struct Stats {
     pub files: usize,
     pub ins: u32,
     pub del: u32,
+    /// (old path, new path, similarity %)
+    pub renames: Vec<(String, String, u64)>,
 }
 
 struct Render<'a> {
@@ -71,16 +73,31 @@ fn abbrev(id: Option<&Side>) -> String {
     id.map_or("0000000".into(), |s| s.id.to_hex_with_len(7).to_string())
 }
 
-/// One file's diff, or `None` when nothing differs.
-pub fn file_diff(ctx: &Ctx, path: &str, old: Option<&Side>, new: Option<&Side>, st: &mut Stats) -> Option<String> {
-    if let (Some(o), Some(n)) = (old, new) {
+/// One file's diff, or `None` when nothing differs. `renamed`: the old path and similarity (%) of a rename.
+pub fn file_diff(ctx: &Ctx, path: &str, old: Option<&Side>, new: Option<&Side>, st: &mut Stats, renamed: Option<(&str, u64)>) -> Option<String> {
+    if let (Some(o), Some(n), None) = (old, new, renamed) {
         if o.id == n.id && o.mode == n.mode {
             return None;
         }
     }
     let bold = |s: &str| ctx.paint("1", s);
-    let mut s = bold(&format!("diff --git a/{path} b/{path}")) + "\n";
+    let from = renamed.map_or(path, |r| r.0);
+    let mut s = bold(&format!("diff --git a/{from} b/{path}")) + "\n";
     match (old, new) {
+        (Some(o), Some(n)) if renamed.is_some() => {
+            if o.mode != n.mode {
+                s += &bold(&format!("old mode {:o}\nnew mode {:o}", o.mode, n.mode));
+                s += "\n";
+            }
+            let (_, pct) = renamed.expect("a rename");
+            s += &bold(&format!("similarity index {pct}%\nrename from {from}\nrename to {path}"));
+            s += "\n";
+            if o.id != n.id {
+                let tail = if o.mode == n.mode { format!(" {:o}", n.mode) } else { String::new() };
+                s += &bold(&format!("index {}..{}{tail}", abbrev(Some(o)), abbrev(Some(n))));
+                s += "\n";
+            }
+        }
         (None, Some(n)) => {
             s += &bold(&format!("new file mode {:o}", n.mode));
             s += &format!("\n{}\n", bold(&format!("index {}..{}", abbrev(None), abbrev(Some(n)))));
@@ -106,12 +123,12 @@ pub fn file_diff(ctx: &Ctx, path: &str, old: Option<&Side>, new: Option<&Side>, 
         return Some(s);
     }
     if is_binary(old_data) || is_binary(new_data) {
-        let a = if old.is_some() { format!("a/{path}") } else { "/dev/null".into() };
+        let a = if old.is_some() { format!("a/{from}") } else { "/dev/null".into() };
         let b = if new.is_some() { format!("b/{path}") } else { "/dev/null".into() };
         s += &format!("Binary files {a} and {b} differ\n");
         return Some(s);
     }
-    let a = if old.is_some() { format!("a/{path}") } else { "/dev/null".into() };
+    let a = if old.is_some() { format!("a/{from}") } else { "/dev/null".into() };
     let b = if new.is_some() { format!("b/{path}") } else { "/dev/null".into() };
     s += &bold(&format!("--- {a}"));
     s += "\n";
@@ -133,18 +150,29 @@ fn object_side(ctx: &Ctx, e: &(u32, ObjectId)) -> Result<Side, crate::Exit> {
     Ok(Side { mode: e.0, id: e.1, data })
 }
 
-/// Diff two flat trees/indexes, appending to `out`.
+/// Diff two flat trees/indexes, appending to `out`. Renames are found as git finds them (rename.rs); one shows where
+/// its new path sorts.
 pub fn diff_flats(ctx: &Ctx, old: &Flat, new: &Flat, out: &mut String, st: &mut Stats) -> Result<(), crate::Exit> {
-    let mut paths: Vec<&BString> = old.keys().chain(new.keys()).collect();
+    let deleted: Vec<_> = old.iter().filter(|(p, _)| !new.contains_key(*p)).map(|(p, e)| (p.clone(), *e)).collect();
+    let added: Vec<_> = new.iter().filter(|(p, _)| !old.contains_key(*p)).map(|(p, e)| (p.clone(), *e)).collect();
+    let renames = crate::rename::detect(ctx, &deleted, &added)?;
+    let from: std::collections::HashMap<&BString, &crate::rename::Rename> = renames.iter().map(|r| (&r.new, r)).collect();
+    let sources: std::collections::HashSet<&BString> = renames.iter().map(|r| &r.old).collect();
+    let mut paths: Vec<&BString> = old.keys().chain(new.keys()).filter(|p| !sources.contains(p)).collect();
     paths.sort();
     paths.dedup();
     for p in paths {
-        let (o, n) = (old.get(p), new.get(p));
-        if o == n {
+        let rename = from.get(p);
+        let (o, n) = (rename.map_or(old.get(p), |r| old.get(&r.old)), new.get(p));
+        if o == n && rename.is_none() {
             continue;
         }
         let (os, ns) = (o.map(|e| object_side(ctx, e)).transpose()?, n.map(|e| object_side(ctx, e)).transpose()?);
-        if let Some(d) = file_diff(ctx, &path_str(p), os.as_ref(), ns.as_ref(), st) {
+        let renamed = rename.map(|r| (path_str(&r.old), r.percent()));
+        if let Some((old_path, pct)) = &renamed {
+            st.renames.push((old_path.clone(), path_str(p), *pct));
+        }
+        if let Some(d) = file_diff(ctx, &path_str(p), os.as_ref(), ns.as_ref(), st, renamed.as_ref().map(|(o, pct)| (o.as_str(), *pct))) {
             out.push_str(&d);
         }
     }
@@ -168,7 +196,7 @@ pub fn diff(ctx: &Ctx, args: &[String]) -> Res {
                 let id = gix::objs::compute_hash(ctx.repo.object_hash(), gix::object::Kind::Blob, &data)?;
                 Some(Side { mode: entry.0, id, data })
             };
-            if let Some(d) = file_diff(ctx, &path_str(&w.path), Some(&old), new.as_ref(), &mut st) {
+            if let Some(d) = file_diff(ctx, &path_str(&w.path), Some(&old), new.as_ref(), &mut st, None) {
                 out.push_str(&d);
             }
         }

@@ -8,6 +8,7 @@ mod index;
 mod net;
 mod push;
 mod refs;
+mod rename;
 mod status;
 mod worktree;
 

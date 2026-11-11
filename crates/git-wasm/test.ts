@@ -153,6 +153,30 @@ try {
   same("native status", native(project, ["status", "--porcelain"]), "?? untracked.ts\n");
   fsck(project);
 
+  // renames, as git pairs them: an exact one into another folder, one with edits (git's similarity), and a deletion
+  // and an addition too different to pair
+  write(project, "src/long.ts", Array.from({ length: 20 }, (_, i) => `export const value${i} = ${i * 7};\n`).join(""));
+  await run(["add", "src/long.ts"]);
+  await run(["commit", "-m", "files to rename"]);
+  write(project, "lib/util.ts", readFileSync(join(project, "src/util.ts"), "utf8"));
+  rmSync(join(project, "src/util.ts"));
+  write(project, "src/longer.ts", readFileSync(join(project, "src/long.ts"), "utf8").replace("value3 = 21", "value3 = 22").replace("value9 =", "renamed9 ="));
+  rmSync(join(project, "src/long.ts"));
+  rmSync(join(project, "docs/a.md"));
+  write(project, "docs/c.md", "nothing like a\n");
+  await run(["add", "-A", "src", "lib", "docs"]);
+  same("status -s renames", (await run(["status", "-s"])).out, native(project, ["status", "-s"]));
+  same("status -z renames", (await run(["status", "-z"])).out, native(project, ["status", "-z"]));
+  same("status renames", (await run(["status"])).out, native(project, ["status"]));
+  same("diff --cached renames", (await run(["diff", "--cached"])).out, native(project, ["diff", "--cached", "--no-color"]));
+  write(project, "lib/util.ts", "export const a = 1;\nexport const b = 3;\n");
+  same("status -s rename then edit", (await run(["status", "-s"])).out, native(project, ["status", "-s"]));
+  await run(["add", "lib/util.ts"]);
+  r = await run(["commit", "-m", "renames"]);
+  same("commit summary renames", r.out.split("\n").slice(1).join("\n"), native(project, ["show", "--format=", "--shortstat", "--summary", "HEAD"]));
+  same("show renames", (await run(["show"])).out, native(project, ["show", "--no-color"]));
+  fsck(project);
+
   // log
   same("log --oneline", (await run(["log", "--oneline"])).out, native(project, ["log", "--oneline", "--no-decorate", "--abbrev=7"]));
   same("log -n 2", (await run(["log", "-n", "2", "--oneline"])).out, native(project, ["log", "-2", "--oneline", "--no-decorate", "--abbrev=7"]));
