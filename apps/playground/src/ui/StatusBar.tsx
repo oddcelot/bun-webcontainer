@@ -236,7 +236,7 @@ const listed = (names: string[]) => (names.length > 3 ? `${names.slice(0, 3).joi
 
 /**
  * Whether the dependencies are installed (installState.ts). A click installs when some are missing (or again, when
- * they're all there), and opens bun.lock or package.json when that's what is in the way. Nothing without dependencies.
+ * they're all there, or bun.lock is behind package.json), and opens the file that doesn't parse. Nothing without dependencies.
  */
 function Install() {
   const { vfs, session, workspace: ws, install } = useContext(AppContext);
@@ -268,7 +268,7 @@ function Install() {
         return {
           icon: "i-lucide-package-minus",
           label: "bun.lock out of date",
-          tip: `package.json changed ${listed(st.names)} since bun.lock was written, and an install here follows bun.lock. Delete bun.lock to install from package.json. Click to open it.`,
+          tip: `package.json changed ${listed(st.names)} since bun.lock was written. Click to run bun install, which updates bun.lock (the other dependencies keep their locked versions).`,
         };
       case "unreadable":
         return { icon: "i-lucide-package-x", label: `${st.file} unreadable`, tip: `${st.file} doesn't parse, so nothing can be installed. Click to open it.` };
@@ -283,8 +283,7 @@ function Install() {
   const click = () => {
     const st = state();
     if (busy()) return;
-    if (st.kind === "stale") ws.open("bun.lock");
-    else if (st.kind === "unreadable") ws.open(st.file);
+    if (st.kind === "unreadable") ws.open(st.file);
     else install();
   };
   return (

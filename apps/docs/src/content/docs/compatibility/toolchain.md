@@ -164,14 +164,15 @@ Runs in the console (`bun install`, `bun add`, `bun remove`) and automatically w
 
 - ✅ Packages from the npm registry, with Bun's semver
 - ✅ `dependencies`, `devDependencies`, `optionalDependencies` and required peer dependencies
-- ✅ `bun.lock` (text format): exact versions, nested `node_modules`, integrity checks. A stale lockfile logs a warning.
+- ✅ `bun.lock` (text format): exact versions, nested `node_modules`, integrity checks
+- ✅ Without a `bun.lock`, the install resolves versions and nests conflicting ones in `node_modules` as Bun does, and writes the `bun.lock` Bun would: native `bun install --frozen-lockfile` accepts it
+- ✅ When `package.json` changes (by hand, `bun add` or `bun remove`), the next install updates `bun.lock`: the other dependencies keep their locked versions
 - ✅ Optional packages limited to other platforms (native bindings) are skipped
-- ✅ A package with native bindings that leaves its `-wasm32-wasi` binding out of `optionalDependencies` (oxc-parser) gets it installed anyway, when one is published (not from a `bun.lock`)
+- ✅ A package with native bindings that leaves its `-wasm32-wasi` binding out of `optionalDependencies` (oxc-parser) gets it installed anyway, when one is published. It stays out of `bun.lock`, as native Bun doesn't install it
 - ✅ A package cache shared by all projects, kept across reloads: a downloaded tarball isn't downloaded again, and package metadata is reused for 5 minutes, as in Bun. `bun pm cache` shows its size, `bun pm cache rm` clears it.
-- 🟡 Without a lockfile, the install is flat: the first version seen wins
-- ❌ No `bun.lock` is written. `bun add` refuses to run when a `bun.lock` exists.
+- ✅ Tarball URLs, `file:` folders and `npm:` aliases
 - ❌ No lifecycle scripts (`postinstall`, …)
-- ❌ No git, tarball, `file:`, `workspace:` or `npm:` dependencies
+- ❌ No git, `link:` or `workspace:` dependencies (reported, and `bun.lock` isn't written then); no `file:` tarballs; no `overrides`, catalogs or `patchedDependencies`
 - ❌ Only `registry.npmjs.org`; `.npmrc` isn't read
 - ❌ Binary `bun.lockb`
 

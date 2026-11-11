@@ -1,0 +1,1 @@
+{ "name": "platform", "dependencies": { "esbuild": "0.25.0", "react-dom": "19.1.0", "ws": "8.18.0", "@napi-rs/wasm-runtime": "1.0.7" } }

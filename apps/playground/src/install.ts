@@ -1,32 +1,11 @@
 import type { Semver } from "./semver";
-import { gunzip, installFromBunLock, packageFiles, platformRestricted } from "./lockfile";
-import { fetchPackument, fetchTarball } from "./pkgCache";
+import { gunzip, installFromBunLock, installPath, packageFiles, parseBunLock, splitKey, staleInLock, untar } from "./lockfile";
+import { lockedPackages, resolveProject, writeBunLock, type Manifest, type ResolveHost } from "./lockfileWrite";
+import { fetchPackument, fetchTarball, fetchVersion } from "./pkgCache";
 import type { VFS } from "@runbun/vfs";
 
 type Log = (level: "log" | "error", text: string) => void;
-type Packument = {
-  "dist-tags"?: Record<string, string>;
-  versions: Record<string, {
-    dependencies?: Record<string, string>;
-    optionalDependencies?: Record<string, string>;
-    peerDependencies?: Record<string, string>;
-    peerDependenciesMeta?: Record<string, { optional?: boolean }>;
-    os?: unknown; cpu?: unknown; libc?: unknown; dist: { tarball: string } }>;
-};
-
-function pickVersion(doc: Packument, range: string, semver: Semver): string {
-  const tags = doc["dist-tags"] ?? {};
-  if (range in tags) return tags[range];
-  if (range === "" || range === "*") return tags.latest;
-  if (/^(npm|workspace|file|git|github|https?):/.test(range)) throw new Error(`unsupported range "${range}"`);
-  let best: string | undefined;
-  for (const v of Object.keys(doc.versions)) {
-    if (!semver.satisfies(v, range)) continue;
-    if (best === undefined || semver.order(v, best) > 0) best = v;
-  }
-  if (!best) throw new Error(`no version satisfies "${range}"`);
-  return best;
-}
+type Packument = { "dist-tags"?: Record<string, string>; versions: Record<string, Manifest> };
 
 /**
  * The wasm32-wasi binding a napi-rs package leaves out of its per-platform optionalDependencies (oxc-parser does, where
@@ -39,44 +18,81 @@ export function unlistedWasiBinding(optional: Record<string, string> | undefined
   return native ? [native.replace(/-(?:darwin|linux|win32)-.*$/, "-wasm32-wasi"), optional![native]] : undefined;
 }
 
-export async function bunInstall(vfs: VFS, semver: Semver, log: Log): Promise<number> {
-  const lock = vfs.readText("bun.lock");
-  if (lock !== undefined) {
-    log("log", "bun.lock found: installing locked versions");
-    return installFromBunLock(vfs, lock, log);
-  }
-  const text = vfs.readText("package.json");
-  if (!text) throw new Error("no package.json");
-  const pkg = JSON.parse(text) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
-  const seen = new Set<string>();
-  let installed = 0;
+function resolveHost(vfs: VFS, semver: Semver): ResolveHost {
+  return {
+    semver,
+    packument: async (name) => (await fetchPackument(name)) as Packument,
+    async tarball(url) {
+      const bytes = await fetchTarball(url);
+      for (const { name, data } of untar(await gunzip(bytes))) {
+        if (/^[^/]+\/package\.json$/.test(name)) return { bytes, manifest: JSON.parse(new TextDecoder().decode(data)) };
+      }
+      throw new Error("no package.json in the tarball");
+    },
+    folder: (path) => {
+      const text = vfs.readText(path ? `${path}/package.json` : "package.json");
+      return text === undefined ? undefined : (JSON.parse(text) as Manifest);
+    },
+    version: async (name, version) => (await fetchVersion(name, version)) as Manifest,
+  };
+}
 
-  /** `guessed`: a package that may not exist (unlistedWasiBinding), skipped without an error if it doesn't. */
-  async function add(name: string, range: string, optional = false, guessed = false): Promise<void> {
-    if (seen.has(name)) return;
-    seen.add(name);
-    if (vfs.files.has(`node_modules/${name}/package.json`)) return;
-    try {
-      const doc = (await fetchPackument(name)) as Packument;
-      const version = pickVersion(doc, range, semver);
-      const meta = doc.versions[version];
-      if (optional && platformRestricted(meta)) return void log("log", `- ${name}@${version} (optional, unsupported platform)`);
-      const tar = await fetchTarball(meta.dist.tarball);
-      // Kept as bytes, text included (see INSTALLED_AS_BYTES in lockfile.ts).
-      for (const { name: entry, data } of packageFiles(await gunzip(tar), meta.dist.tarball)) vfs.write(`node_modules/${name}/${entry}`, data);
-      installed++;
-      log("log", `+ ${name}@${version}`);
-      await Promise.all(Object.entries(meta.dependencies ?? {}).filter(([n]) => !meta.optionalDependencies?.[n]).map(([n, r]) => add(n, r)));
-      await Promise.all(Object.entries(meta.optionalDependencies ?? {}).map(([n, r]) => add(n, r, true)));
-      const wasi = unlistedWasiBinding(meta.optionalDependencies);
-      if (wasi) await add(...wasi, true, true);
-      // Like Bun, install required peers (Elysia 1.x needs @sinclair/typebox); a direct dependency wins via `seen`.
-      await Promise.all(Object.entries(meta.peerDependencies ?? {}).filter(([n]) => !meta.peerDependenciesMeta?.[n]?.optional).map(([n, r]) => add(n, r)));
-    } catch (e) {
-      if (!guessed) log("error", `install ${name}@${range}: ${e instanceof Error ? e.message : e}`);
+/**
+ * The binding each installed package leaves unlisted (see `unlistedWasiBinding`), next to that package. Not in
+ * bun.lock: native Bun doesn't install it, and doesn't need it.
+ */
+async function installWasiBindings(vfs: VFS, lockText: string, semver: Semver, log: Log): Promise<number> {
+  let installed = 0;
+  const lock = parseBunLock(lockText);
+  await Promise.all(
+    Object.entries(lock.packages).map(async ([key, entry]) => {
+      const info = entry.find((e) => e && typeof e === "object" && !Array.isArray(e)) as Manifest | undefined;
+      const wasi = unlistedWasiBinding(info?.optionalDependencies);
+      if (!wasi) return;
+      const [name, range] = wasi;
+      const dest = installPath([...splitKey(key).slice(0, -1), name]);
+      if (vfs.files.has(`${dest}/package.json`)) return;
+      try {
+        const doc = (await fetchPackument(name)) as Packument;
+        const version = Object.keys(doc.versions).filter((v) => semver.satisfies(v, range)).sort((a, b) => semver.order(b, a))[0];
+        if (!version) return;
+        const url = doc.versions[version].dist!.tarball;
+        for (const { name: file, data } of packageFiles(await gunzip(await fetchTarball(url)), url)) vfs.write(`${dest}/${file}`, data);
+        installed++;
+        log("log", `+ ${name}@${version} (the browser's binding)`);
+      } catch {
+        // A guessed name: the package may not publish one.
+      }
+    }),
+  );
+  return installed;
+}
+
+/**
+ * `bun install`. With a bun.lock that matches package.json, what it lists. Without one, or with one package.json has
+ * moved past, resolves package.json as Bun does (a dependency keeps its locked version while its range fits), writes
+ * the bun.lock Bun would (native `bun install` takes it as is), and installs from that.
+ */
+export async function bunInstall(vfs: VFS, semver: Semver, log: Log): Promise<number> {
+  let lock = vfs.readText("bun.lock");
+  const text = vfs.readText("package.json");
+  const pkg = text === undefined ? undefined : (JSON.parse(text) as Manifest);
+  const old = lock === undefined ? undefined : parseBunLock(lock);
+  const stale = old && pkg ? staleInLock(old, pkg) : [];
+  if (lock !== undefined && !stale.length) log("log", "bun.lock found: installing locked versions");
+  else {
+    if (!pkg) throw new Error("no package.json");
+    log("log", stale.length ? `Updating bun.lock: package.json changed ${stale.join(", ")}` : "Resolving dependencies");
+    const resolved = await resolveProject(pkg, resolveHost(vfs, semver), old ? lockedPackages(old.packages) : []);
+    for (const p of resolved.problems) log("error", p);
+    lock = writeBunLock(resolved);
+    // A bun.lock without some of the dependencies would be wrong for native Bun too.
+    if (resolved.problems.length) log("error", `bun.lock not ${old ? "updated" : "saved"}: some dependencies could not be resolved`);
+    else {
+      vfs.write("bun.lock", lock);
+      log("log", "Saved bun.lock");
     }
   }
-
-  await Promise.all(Object.entries({ ...pkg.devDependencies, ...pkg.dependencies }).map(([n, r]) => add(n, r)));
-  return installed;
+  const n = await installFromBunLock(vfs, lock, log);
+  return n + (await installWasiBindings(vfs, lock, semver, log));
 }
