@@ -11,17 +11,17 @@ publish = false
 crate-type = ["cdylib"]
 
 [dependencies]
-tsrs_core = { git = "https://github.com/oxc-project/tsrs", tag = "v0.20.1" }
-tsrs_ast = { git = "https://github.com/oxc-project/tsrs", tag = "v0.20.1" }
-tsrs_vfs = { git = "https://github.com/oxc-project/tsrs", tag = "v0.20.1" }
-tsrs_compiler = { git = "https://github.com/oxc-project/tsrs", tag = "v0.20.1" }
-tsrs_tsoptions = { git = "https://github.com/oxc-project/tsrs", tag = "v0.20.1" }
-tsrs_lsproto = { git = "https://github.com/oxc-project/tsrs", tag = "v0.20.1" }
-tsrs_ls = { git = "https://github.com/oxc-project/tsrs", tag = "v0.20.1" }
-tsrs_diagnostics = { git = "https://github.com/oxc-project/tsrs", tag = "v0.20.1" }
-tsrs_contentmapper = { git = "https://github.com/oxc-project/tsrs", tag = "v0.20.1" }
-tsrs_module = { git = "https://github.com/oxc-project/tsrs", tag = "v0.20.1" }
-tsrs_projectutil = { git = "https://github.com/oxc-project/tsrs", tag = "v0.20.1" }
+tsrs_core = { git = "https://github.com/oxc-project/tsrs", tag = "v0.24.0" }
+tsrs_ast = { git = "https://github.com/oxc-project/tsrs", tag = "v0.24.0" }
+tsrs_vfs = { git = "https://github.com/oxc-project/tsrs", tag = "v0.24.0" }
+tsrs_compiler = { git = "https://github.com/oxc-project/tsrs", tag = "v0.24.0" }
+tsrs_tsoptions = { git = "https://github.com/oxc-project/tsrs", tag = "v0.24.0" }
+tsrs_lsproto = { git = "https://github.com/oxc-project/tsrs", tag = "v0.24.0" }
+tsrs_ls = { git = "https://github.com/oxc-project/tsrs", tag = "v0.24.0" }
+tsrs_diagnostics = { git = "https://github.com/oxc-project/tsrs", tag = "v0.24.0" }
+tsrs_contentmapper = { git = "https://github.com/oxc-project/tsrs", tag = "v0.24.0" }
+tsrs_module = { git = "https://github.com/oxc-project/tsrs", tag = "v0.24.0" }
+tsrs_projectutil = { git = "https://github.com/oxc-project/tsrs", tag = "v0.24.0" }
 rustc-hash = "2"
 
 # tsrs's tools/wasm/build.sh settings (without its wasm-opt pass).
