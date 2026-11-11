@@ -66,10 +66,10 @@ the lines in question, then a summary. It loads the first time (~3.3 MB compress
 a small project.
 
 - ✅ `bun check` with the project's `tsconfig.json`, `bun check <file…>` without one, `-p <tsconfig>`, `--all`, `--no-pretty`, and compiler options as flags (`--strict`, `--noImplicitAny`)
+- ✅ `bun --check <file>` and `bun run --check <file or script>` (also in a `package.json` script): type-check the file and what it imports, print the errors as Bun does, and run the program only if there are none. The Run button doesn't check
 - ✅ Types from `node_modules`, as in Bun: without `@types/bun` installed, `Bun` and `console` are errors and the note says to run `bun add -d @types/bun` (the editor has Bun's types built in; `bun check` doesn't)
 - ✅ TypeScript's `lib.*.d.ts` files built in, those of the version Bun's checker is a port of
 - ❌ `--watch`, `--threads`, `--cwd`, and a `check` script in `package.json` (`bun check` always runs the checker)
-- ❌ `bun --check <file>` (check, then run)
 
 ## Formatter (`bun fmt`)
 
