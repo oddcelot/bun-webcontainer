@@ -1,0 +1,43 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Stefan Kopco <hey@oddcelot.dev>
+Date: Wed, 11 Nov 2026 22:36:21 +0100
+Subject: [PATCH] js_parser: leave the React compiler out of wasm builds
+
+No wasm build enables it, but the runtime option check kept the whole
+compiler linked: 1.25 MB of the transpiler wasm. A cfg! guard on the
+two entry points lets the linker drop it. wasm-only; native builds are
+unchanged.
+---
+ src/js_parser/parse/parse_entry.rs | 3 ++-
+ src/js_parser/visit/mod.rs         | 4 +++-
+ 2 files changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/src/js_parser/parse/parse_entry.rs b/src/js_parser/parse/parse_entry.rs
+index ea43556a..0cf29af9 100644
+--- a/src/js_parser/parse/parse_entry.rs
++++ b/src/js_parser/parse/parse_entry.rs
+@@ -1010,7 +1010,8 @@ impl<'a> Parser<'a> {
+         let mut visit_tracer = bun_core::perf::trace("JSParser::visit");
+         p.prepare_for_visit_pass()?;
+ 
+-        if p.options.features.react_compiler.is_enabled() {
++        // wasm-experiment: the browser builds never enable the React compiler; off, the linker drops it (~1.2 MB).
++        if cfg!(not(target_family = "wasm")) && p.options.features.react_compiler.is_enabled() {
+             let rc_options = bun_react_compiler::ReactCompilerOptions {
+                 enabled: true,
+                 is_dev: p.options.jsx.development,
+diff --git a/src/js_parser/visit/mod.rs b/src/js_parser/visit/mod.rs
+index b9acf860..00891095 100644
+--- a/src/js_parser/visit/mod.rs
++++ b/src/js_parser/visit/mod.rs
+@@ -1800,7 +1800,9 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
+         // if this fails it means that scope pushing/popping is not balanced
+         debug_assert!(p.current_scope == initial_scope);
+ 
+-        if let Some(pending) = rc_pending
++        // wasm-experiment: as in parse_entry, so the linker can drop the compiler.
++        if cfg!(not(target_family = "wasm"))
++            && let Some(pending) = rc_pending
+             && p.react_compiler_may_replace_body
+             && let Some(mut rc) = p.react_compiler.take()
+         {
