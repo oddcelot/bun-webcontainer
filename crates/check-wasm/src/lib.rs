@@ -141,6 +141,56 @@ pub fn check(options: &Options, colors: bool) -> Outcome {
     })
 }
 
+/// The extensions Bun type-checks before running a file (check_command.rs `has_types`: JavaScript-like loaders).
+fn has_types(path: &[u8]) -> bool {
+    let extension = path.rsplit(|&b| b == b'.').next().unwrap_or_default();
+    path.contains(&b'.') && matches!(extension, b"js" | b"jsx" | b"mjs" | b"cjs" | b"ts" | b"tsx" | b"mts" | b"cts")
+}
+
+/// `bun --check <file>`: type-checks the entry point and what it imports, as check_command.rs `check_before` does,
+/// before the program runs. Nothing is printed when there are no diagnostics; otherwise the errors and, if any is an
+/// error, the summary, all on stderr (stdout stays the program's). `path` is relative to the root.
+pub fn check_entry(path: &[u8], colors: bool) -> Outcome {
+    if !has_types(path) {
+        return Outcome { exit_code: 0, stdout: Vec::new(), stderr: Vec::new() };
+    }
+    bun_sema_driver::run_regions_inline_on_this_thread();
+    let paths = [path.to_vec()];
+    let request = Request {
+        cwd: CWD,
+        project: None,
+        listed_projects: None,
+        build: false,
+        errors: &[],
+        paths: &paths,
+        are_entry_points: true,
+        script_kinds: &[],
+        script_kinds_by_extension: &[],
+        conditions: &[],
+        compiler_options: &[],
+        threads: 1,
+        libs: bun_sema_driver::Libs::Bundled(libs::BUNDLED),
+        progress: None,
+        order: 1,
+        plan_options: PlanOptions::default(),
+        stops_like_tsc: true,
+        uses_typescript_wording: false,
+        after_file: None,
+    };
+    bun_sema_driver::check_provided_then(&request, Provided::default(), |report| {
+        let mut stderr = Vec::new();
+        if !(report.diagnostics.is_empty() && report.incomplete.is_empty()) {
+            let cwd = bun_sema_driver::host::from_native(CWD);
+            let style = style(&Options::default(), colors, &cwd, &report);
+            format::write_diagnostics(&mut stderr, &report, &style);
+            if !report.is_ok() {
+                format::write_summary(&mut stderr, &report, &style);
+            }
+        }
+        Outcome { exit_code: u8::from(!report.is_ok()), stdout: Vec::new(), stderr }
+    })
+}
+
 /// `bun check <args>`.
 pub fn run(args: &[&[u8]], colors: bool) -> Outcome {
     match parse(args) {
@@ -188,7 +238,20 @@ pub struct RunOutput {
 pub unsafe extern "C" fn run_c(args: *const u8, args_len: usize, colors: u32) -> *mut RunOutput {
     let args = unsafe { core::slice::from_raw_parts(args, args_len) };
     let args: Vec<&[u8]> = if args.is_empty() { Vec::new() } else { args.split(|&b| b == 0).collect() };
-    let outcome = run(&args, colors != 0);
+    output(run(&args, colors != 0))
+}
+
+/// `bun --check <path>` (see `check_entry`). Free the result with `run_output_free`.
+///
+/// # Safety
+/// The input range must be readable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn check_entry_c(path: *const u8, path_len: usize, colors: u32) -> *mut RunOutput {
+    let path = unsafe { core::slice::from_raw_parts(path, path_len) };
+    output(check_entry(path, colors != 0))
+}
+
+fn output(outcome: Outcome) -> *mut RunOutput {
     let leak = |v: Vec<u8>| {
         let b = Box::into_raw(v.into_boxed_slice());
         (b.cast::<u8>(), b.len())

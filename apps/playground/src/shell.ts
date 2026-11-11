@@ -1,5 +1,5 @@
 import type { Cookie } from "./cookieJar";
-import { check as typeCheck } from "./check";
+import { check as typeCheck, checkEntry } from "./check";
 import { asConsoleEntry, fmt as formatFile, walks } from "./fmt";
 import { clearPkgCache, fetchPackument, pkgCacheInfo } from "./pkgCache";
 import { clearStore, storeInfo } from "./pkgStore";
@@ -40,6 +40,9 @@ type Pkg = { scripts?: Record<string, string>; dependencies?: Record<string, str
 /** `"dev": "bun --watch src/dev.ts"`: the file a `bun [flags] <file>` script runs. */
 export const scriptEntry = (s?: string) =>
   s?.match(/^bun\s+(?:(?:run\s+)?--?[\w-]+(?:=\S+)?\s+)*(?:run\s+)?(\S+\.[cm]?[jt]sx?)\b/)?.[1]?.replace(/^\.\//, "");
+
+/** Whether a package.json script runs its file with `bun --check` (or `bun run --check`): type-checked first. */
+export const scriptChecks = (s?: string) => /\s--check\b/.test(s?.match(/^bun\s+(?:(?:run\s+)?--?[\w-]+(?:=\S+)?\s+)*/)?.[0].replace(/^bun/, " ") ?? "");
 
 /** A file to run and the arguments it sees in `process.argv` after its own path. */
 export type Command = { entry: string; args: string[] };
@@ -176,10 +179,19 @@ export function createShell(host: ShellHost) {
   }
   const writePkg = (pkg: Pkg) => vfs.write("package.json", JSON.stringify(pkg, null, 2) + "\n");
 
-  async function runTarget(target: string | undefined) {
+  /** `bun --check`: the type errors of `entry` and its imports, as Bun prints them; false if the program can't start. */
+  async function checkFirst(entry: string): Promise<boolean> {
+    const r = await checkEntry(vfs, entry);
+    if (r.stderr.trim()) log(r.exitCode ? "error" : "warn", asConsoleEntry(r.stderr));
+    if (r.exitCode) failed = true;
+    return !r.exitCode;
+  }
+
+  /** `bun [run] [--check] <file or script>`. */
+  async function runTarget(target: string | undefined, check = false) {
     if (!target) return host.run();
     const file = target.replace(/^\.\//, "");
-    if (vfs.files.has(file)) return host.run(file);
+    if (vfs.files.has(file)) return (!check || (await checkFirst(file))) && host.run(file);
     const script = readPkg()?.scripts?.[target];
     if (script === undefined) return fail(`error: Script not found "${target}"`);
     const entry = scriptEntry(script);
@@ -187,7 +199,8 @@ export function createShell(host: ShellHost) {
     const bin = entry && has(entry) ? undefined : binCommand(script, has, (path) => vfs.readText(path));
     if (!(entry && has(entry)) && !bin) return fail(`error: only "bun <file>" scripts and installed packages' bins can run here: "${script}"`);
     log("sys", `$ ${script}`);
-    return bin ? host.run(bin.entry, bin.args) : host.run(entry);
+    if (bin) return host.run(bin.entry, bin.args);
+    return (!(check || scriptChecks(script)) || (await checkFirst(entry!))) && host.run(entry!);
   }
 
   async function test(args: string[]) {
@@ -383,17 +396,21 @@ export function createShell(host: ShellHost) {
     cookies: command(([sub]) => cookies(sub)),
     clear: command(() => host.clear()),
     git: command((args) => (host.git?.() === false ? fail("git: off in this embed (turn on Git in the ⋯ menu)") : git(args))),
-    bun: command(async ([sub, ...rest], ctx) => {
+    bun: command(async (args, ctx) => {
+      // `bun --check <file>`, `bun run --check <file or script>`: type-check before running.
+      const withCheck = args[0] === "--check" || (args[0] === "run" && args[1] === "--check");
+      const [sub, ...rest] = args.filter((a, i) => !(a === "--check" && i <= 1));
+      if (withCheck && sub !== "run" && (!sub || !vfs.files.has(projectPath(ctx, sub)))) return fail(`error: bun --check needs a file to run${sub ? `: "${sub}" not found` : ""}`);
       if (!sub || sub === "help" || sub === "--help") return log("log", HELP);
       if (sub === "test") return await test(rest);
-      if (sub === "run") return await runTarget(rest[0] && vfs.files.has(projectPath(ctx, rest[0])) ? projectPath(ctx, rest[0]) : rest[0]);
+      if (sub === "run") return await runTarget(rest[0] && vfs.files.has(projectPath(ctx, rest[0])) ? projectPath(ctx, rest[0]) : rest[0], withCheck);
       if (sub === "install" || sub === "i") return await host.install();
       if (sub === "add" || sub === "a") return await add(rest);
       if (sub === "remove" || sub === "rm") return remove(rest);
       if (sub === "fmt") return await fmt(rest);
       if (sub === "check") return await check(rest);
       if (sub === "pm") return await pm(rest);
-      if (vfs.files.has(projectPath(ctx, sub))) return await runTarget(projectPath(ctx, sub));
+      if (vfs.files.has(projectPath(ctx, sub))) return await runTarget(projectPath(ctx, sub), withCheck);
       fail(`bun ${sub}: not available here (try "help")`);
     }),
   };
