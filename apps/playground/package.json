@@ -20,7 +20,7 @@
     "@napi-rs/wasm-runtime": "1.2.6",
     "@noble/hashes": "^2.4.0",
     "@pierre/diffs": "^1.6.4",
-    "@pierre/highlights": "0.3.0",
+    "@pierre/highlights": "0.5.1",
     "@pierre/theming": "1.0.2",
     "@pierre/trees": "^1.0.0",
     "@rolldown/browser": "1.2.19",
