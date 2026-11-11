@@ -140,15 +140,26 @@ pub fn commit(ctx: &Ctx, args: &[String]) -> Res {
         line += &format!(", {}", plural(st.del as usize, "deletion(-)", "deletions(-)"));
     }
     out(&format!("{line}\n"));
+    // git's summary (diff.c show_file_mode_name, show_rename_copy): creations, deletions and renames by path.
+    let renamed_to: std::collections::HashSet<String> = st.renames.iter().map(|r| r.1.clone()).collect();
+    let renamed_from: std::collections::HashSet<String> = st.renames.iter().map(|r| r.0.clone()).collect();
+    let mut lines: Vec<(String, String)> = Vec::new();
     for (p, (m, _)) in &flat {
-        if !base.contains_key(p) {
-            out(&format!(" create mode {m:o} {}\n", p.to_str_lossy()));
+        if !base.contains_key(p) && !renamed_to.contains(&p.to_str_lossy().into_owned()) {
+            lines.push((p.to_str_lossy().into_owned(), format!(" create mode {m:o} {}\n", p.to_str_lossy())));
         }
     }
     for (p, (m, _)) in &base {
-        if !flat.contains_key(p) {
-            out(&format!(" delete mode {m:o} {}\n", p.to_str_lossy()));
+        if !flat.contains_key(p) && !renamed_from.contains(&p.to_str_lossy().into_owned()) {
+            lines.push((p.to_str_lossy().into_owned(), format!(" delete mode {m:o} {}\n", p.to_str_lossy())));
         }
+    }
+    for (old, new, pct) in &st.renames {
+        lines.push((new.clone(), format!(" rename {} ({pct}%)\n", crate::rename::pprint(old, new))));
+    }
+    lines.sort_by(|a, b| a.0.cmp(&b.0));
+    for (_, l) in lines {
+        out(&l);
     }
     Ok(0)
 }

@@ -350,6 +350,8 @@ export function createShell(host: ShellHost) {
     if (r.stdout) log("log", asConsoleEntry(r.stdout));
     // git writes hints and progress ("Switched to branch 'main'") to stderr too: an error only when it failed.
     if (r.stderr) log(r.exitCode ? "error" : "log", asConsoleEntry(r.stderr));
+    // Its exit code is the command's, so `git commit … && git push` stops at a failed commit.
+    if (r.exitCode) failed = true;
   }
 
   /** The console's terminal: what a command writes there shows at once, a line at a time. */

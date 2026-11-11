@@ -94,8 +94,10 @@ pub fn worktree_changes(ctx: &Ctx, untracked: gix::status::UntrackedFiles) -> Re
 }
 
 pub struct Status {
-    /// (path, 'A' | 'M' | 'D' | 'T')
+    /// (path, 'A' | 'M' | 'D' | 'T' | 'R'); a rename under its new path
     pub staged: Vec<(String, char)>,
+    /// new path -> old path, for the staged renames
+    pub renamed_from: BTreeMap<String, String>,
     pub unstaged: Vec<(String, char)>,
     pub untracked: Vec<String>,
 }
@@ -123,6 +125,20 @@ pub fn compute_with(ctx: &Ctx, mode: gix::status::UntrackedFiles) -> Result<Stat
             staged.push((path_str(p), 'D'));
         }
     }
+    // A deleted and an added file that git pairs up are one rename.
+    let side = |flat: &Flat, p: &str| (BString::from(p), flat[&BString::from(p)]);
+    let deleted: Vec<_> = staged.iter().filter(|(_, c)| *c == 'D').map(|(p, _)| side(&head, p)).collect();
+    let mut added: Vec<_> = staged.iter().filter(|(_, c)| *c == 'A').map(|(p, _)| side(&idx, p)).collect();
+    added.sort();
+    let mut renamed_from = BTreeMap::new();
+    for r in crate::rename::detect(ctx, &{ let mut d = deleted; d.sort(); d }, &added)? {
+        let (old, new) = (path_str(&r.old), path_str(&r.new));
+        staged.retain(|(p, c)| !(*p == old && *c == 'D'));
+        if let Some(e) = staged.iter_mut().find(|(p, _)| *p == new) {
+            e.1 = 'R';
+        }
+        renamed_from.insert(new, old);
+    }
     staged.sort();
     let (mut unstaged, mut untracked) = (Vec::new(), Vec::new());
     for w in worktree_changes(ctx, mode)? {
@@ -133,7 +149,7 @@ pub fn compute_with(ctx: &Ctx, mode: gix::status::UntrackedFiles) -> Result<Stat
             Kind::Untracked => untracked.push(if w.is_dir { format!("{p}/") } else { p }),
         }
     }
-    Ok(Status { staged, unstaged, untracked })
+    Ok(Status { staged, renamed_from, unstaged, untracked })
 }
 
 pub fn branch_name(ctx: &Ctx) -> Result<String, crate::Exit> {
@@ -148,6 +164,7 @@ fn label(c: char) -> &'static str {
         'A' => "new file:   ",
         'D' => "deleted:    ",
         'T' => "typechange: ",
+        'R' => "renamed:    ",
         _ => "modified:   ",
     }
 }
@@ -165,52 +182,51 @@ pub fn long(ctx: &Ctx, st: &Status) -> Result<String, crate::Exit> {
     }
     let unborn = ctx.repo.head_id().is_err();
     if unborn {
-        s += "\nNo commits yet\n";
+        s += "\nNo commits yet\n\n";
     }
     if !st.staged.is_empty() {
-        s += "\nChanges to be committed:\n";
+        s += "Changes to be committed:\n";
         s += &if unborn {
             "  (use \"git rm --cached <file>...\" to unstage)\n".to_string()
         } else {
             "  (use \"git restore --staged <file>...\" to unstage)\n".to_string()
         };
         for (p, c) in &st.staged {
-            s += &ctx.paint("32", &format!("\t{}{}", label(*c), quote_path(p, false)));
+            let p = match st.renamed_from.get(p) {
+                Some(old) => format!("{} -> {}", quote_path(old, false), quote_path(p, false)),
+                None => quote_path(p, false),
+            };
+            s += &ctx.paint("32", &format!("\t{}{p}", label(*c)));
             s += "\n";
         }
+        s += "\n";
     }
     if !st.unstaged.is_empty() {
-        s += "\nChanges not staged for commit:\n";
+        s += "Changes not staged for commit:\n";
         s += "  (use \"git add/rm <file>...\" to update what will be committed)\n";
         for (p, c) in &st.unstaged {
             s += &ctx.paint("31", &format!("\t{}{}", label(*c), quote_path(p, false)));
             s += "\n";
         }
+        s += "\n";
     }
     if !st.untracked.is_empty() {
-        s += "\nUntracked files:\n";
+        s += "Untracked files:\n";
         s += "  (use \"git add <file>...\" to include in what will be committed)\n";
         for p in &st.untracked {
             s += &ctx.paint("31", &format!("\t{}", quote_path(p, false)));
             s += "\n";
         }
-    }
-    let clean = st.staged.is_empty() && st.unstaged.is_empty() && st.untracked.is_empty();
-    if !(clean && !unborn) {
         s += "\n";
     }
-    if !st.staged.is_empty() {
-        // git prints nothing more
-        s.pop();
-    } else if !st.unstaged.is_empty() {
-        s += "no changes added to commit (use \"git add\" and/or \"git commit -a\")\n";
-    } else if !st.untracked.is_empty() {
-        s += "nothing added to commit but untracked files present (use \"git add\" to track)\n";
-    } else if unborn {
-        s += "nothing to commit (create/copy files and use \"git add\" to track)\n";
-    } else {
-        s += "nothing to commit, working tree clean\n";
-    }
+    // Each section ends in a blank line; with something staged, git prints nothing more.
+    s += match () {
+        _ if !st.staged.is_empty() => "",
+        _ if !st.unstaged.is_empty() => "no changes added to commit (use \"git add\" and/or \"git commit -a\")\n",
+        _ if !st.untracked.is_empty() => "nothing added to commit but untracked files present (use \"git add\" to track)\n",
+        _ if unborn => "nothing to commit (create/copy files and use \"git add\" to track)\n",
+        _ => "nothing to commit, working tree clean\n",
+    };
     Ok(s)
 }
 
@@ -332,7 +348,12 @@ pub fn status(ctx: &Ctx, args: &[String]) -> Res {
         for (p, (x, y)) in map {
             let xs = if x == ' ' { " ".into() } else { paint("32", &x.to_string()) };
             let ys = if y == ' ' { " ".into() } else { paint("31", &y.to_string()) };
-            o += &format!("{xs}{ys} {}{eol}", q(p));
+            // A rename: `R  old -> new`, or with -z the new path, then the old one.
+            match st.renamed_from.get(p) {
+                Some(old) if z => o += &format!("{xs}{ys} {p}\0{old}\0"),
+                Some(old) => o += &format!("{xs}{ys} {} -> {}{eol}", q(old), q(p)),
+                None => o += &format!("{xs}{ys} {}{eol}", q(p)),
+            }
         }
         for p in &st.untracked {
             o += &format!("{} {}{eol}", paint("31", "??"), q(p));
