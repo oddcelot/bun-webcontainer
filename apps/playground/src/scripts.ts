@@ -14,8 +14,8 @@ export const scriptChecks = (s?: string) => /\s--check\b/.test(s?.match(/^bun\s+
 /** A file to run and the arguments it sees in `process.argv` after its own path. */
 export type Command = { entry: string; args: string[] };
 
-type Has = (path: string) => boolean;
-type Read = (path: string) => string | undefined;
+export type Has = (path: string) => boolean;
+export type Read = (path: string) => string | undefined;
 
 const parse = <T>(text: string | undefined): T | undefined => {
   try {
@@ -70,6 +70,13 @@ export function entryOf(has: Has, read: Read): string {
   if (has(entry) && !entry.startsWith("node_modules/")) return entry;
   return ["index.html", "package.json"].find(has) ?? entry;
 }
+
+/**
+ * What Run starts for a package.json script that is more than a file or a bin (`tsc && vite build`): Bun's shell
+ * runs the line, its commands as child processes (worker/processes.ts). Entry and arguments, as `sh -c <line>`.
+ */
+export const shellCommand = (script: string): Command => ({ entry: "sh", args: ["-c", script] });
+export const isShellCommand = (entry: string, args: string[]) => entry === "sh" && args[0] === "-c" && args.length >= 2;
 
 /** Files `bun test` picks up: `*.test.*`, `*_test.*`, `*.spec.*`, `*_spec.*`, outside node_modules. */
 export const isTestFile = (path: string) => /(^|\/)[^/]+[._](test|spec)\.[cm]?[jt]sx?$/.test(path) && !/(^|\/)node_modules\//.test(path);

@@ -71,7 +71,7 @@ A terminal with colors, clickable links, history (<kbd>↑</kbd>/<kbd>↓</kbd>)
 | `reset` | Throw away your changes and reload the project from its source |
 | `clear`, `help` | |
 
-The console is Bun's shell, the one [`Bun.$`](/compatibility/bun/) runs: quotes, pipes (`ls | cat`), `&&`, `||` and `;`, redirects (`echo hi > notes.txt`, `2>&1`), variables (`x=1`, `export`, `$x`), `$(…)`, globs (`ls src/*.ts`), `{a,b}` and subshells. `cd` changes the folder the next commands run in (the prompt shows it; `/` is the project). The console's own commands (`bun`, `git`, `cookies`…) take part too, though only their messages follow a pipe, not a running program's output. Commands outside this list aren't found: there are no processes to run them, so no `bunx`, `grep` or `node`.
+The console is Bun's shell, the one [`Bun.$`](/compatibility/bun/) runs: quotes, pipes (`ls | cat`), `&&`, `||` and `;`, redirects (`echo hi > notes.txt`, `2>&1`), variables (`x=1`, `export`, `$x`), `$(…)`, globs (`ls src/*.ts`), `{a,b}` and subshells. `cd` changes the folder the next commands run in (the prompt shows it; `/` is the project). The console's own commands (`bun`, `git`, `cookies`…) take part too, though only their messages follow a pipe, not a running program's output. Commands outside this list aren't found, so no `bunx`, `grep` or `node` here. `bun run` of a `package.json` script that is more than a file or a bin (`tsc && vite build`) runs the script line in Bun's shell as the program, each of its commands a child process, as a running program's [`Bun.spawn`](/compatibility/bun/) and `child_process` start them.
 
 ### Git
 

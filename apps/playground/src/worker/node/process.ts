@@ -9,6 +9,12 @@ export function setStdio(fn: Sink) {
   sink = fn;
 }
 
+/** A child process's stdout and stderr: bytes as written, to its parent (runtime.ts), instead of console lines. */
+let raw: ((fd: 1 | 2, data: Uint8Array) => void) | undefined;
+export function setRawStdio(fn: (fd: 1 | 2, data: Uint8Array) => void) {
+  raw = fn;
+}
+
 /** Ends the program with an exit code (runtime.ts); never returns. */
 let exitHook: (code: number) => never = (code) => {
   throw new Error(`process.exit(${code}) is not supported here`);
@@ -18,6 +24,7 @@ export function setExit(fn: (code: number) => never) {
 }
 
 const dec = new TextDecoder();
+const enc = new TextEncoder();
 
 function stdio(fd: number, level: "log" | "error") {
   return Object.assign(new EventEmitter(), {
@@ -26,10 +33,14 @@ function stdio(fd: number, level: "log" | "error") {
     writable: true,
     columns: 80,
     rows: 24,
-    write(chunk: string | Uint8Array, enc?: unknown, cb?: unknown) {
-      const text = typeof chunk === "string" ? chunk : dec.decode(chunk);
-      sink(level, text.endsWith("\n") ? text.slice(0, -1) : text);
-      if (typeof enc === "function") queueMicrotask(enc as () => void);
+    write(chunk: string | Uint8Array, encoding?: unknown, cb?: unknown) {
+      // A copy (a Buffer's slice is a view), which goes to the page as is.
+      if (raw) raw(fd as 1 | 2, typeof chunk === "string" ? enc.encode(chunk) : Uint8Array.prototype.slice.call(chunk));
+      else {
+        const text = typeof chunk === "string" ? chunk : dec.decode(chunk);
+        sink(level, text.endsWith("\n") ? text.slice(0, -1) : text);
+      }
+      if (typeof encoding === "function") queueMicrotask(encoding as () => void);
       else if (typeof cb === "function") queueMicrotask(cb as () => void);
       return true;
     },

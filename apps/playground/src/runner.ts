@@ -6,6 +6,11 @@ import { serveLazyRead } from "./pkgStore";
 import { CONTENT_ORIGIN } from "./contentOrigin";
 import { answerAsks, connectHost, notifyStopped, readContentCookies, spawnWorker, writeContentCookies } from "./contentHost";
 
+/** A program's child process (worker/processes.ts): its worker, and who started it under which id. */
+type Proc = { worker: Worker; parent: Worker; id: number; ended: boolean };
+type Host = Awaited<ReturnType<typeof connectHost>>;
+const enc = new TextEncoder();
+
 /** Tells preview pages (see previewWebSocket in swPage.ts) that their WebSockets' server is gone. */
 const previewChannel = new BroadcastChannel("bun-preview");
 /** A plain-text answer to a module request. */
@@ -59,6 +64,11 @@ export class Runner {
   onPorts?: (ports: number[]) => void;
   /** Each program's ports as it last reported them: a restart's new program reports before it takes over. */
   private ports = new WeakMap<Worker, number[]>();
+  /** Child processes by their worker, and each program's children by the id it gave them. */
+  private procs = new Map<Worker, Proc>();
+  private kids = new WeakMap<Worker, Map<number, Proc>>();
+  /** The content origin's host frame the programs run in, once a start connected it. */
+  private host?: Host;
 
   constructor(
     private vfs: VFS,
@@ -91,7 +101,7 @@ export class Runner {
 
   /** Hands a page VFS change to the running programs (both while a restart overlaps), except the one that made it. */
   private mirror(op: "write" | "mkdir" | "remove", path: string, data?: unknown) {
-    for (const w of [this.worker, this.next?.worker])
+    for (const w of [this.worker, this.next?.worker, ...this.procs.keys()])
       if (w && w !== this.applying) w.postMessage({ type: "vfs", op, path, data }); // cloned, not transferred: the page keeps its data
   }
 
@@ -283,7 +293,7 @@ export class Runner {
   async stop(flush = true) {
     this.epoch++;
     this.next?.cancel();
-    for (const w of this.draining) w.terminate();
+    for (const w of this.draining) this.end(w);
     this.draining.clear();
     this.endPending();
     await this.retire(flush);
@@ -305,7 +315,7 @@ export class Runner {
     this.endPending(worker);
     this.dropSockets();
     if (flush) await this.flush(worker);
-    worker.terminate();
+    this.end(worker);
     abort?.();
   }
 
@@ -400,7 +410,7 @@ export class Runner {
       }
       return { kind: "swapped" };
     }
-    worker.terminate();
+    this.end(worker);
     const reason =
       o.kind === "exit" ? `it exited with code ${o.code} while starting` : o.kind === "timeout" ? `it didn't start within ${START_TIMEOUT / 1000}s` : o.kind === "error" ? `its worker failed: ${o.message}` : "it was cancelled";
     return { kind: "failed", reason };
@@ -416,7 +426,7 @@ export class Runner {
       if (Date.now() < until && [...this.pending.values()].some((p) => p.owner === old)) return void setTimeout(check, 50);
       this.endPending(old);
       this.draining.delete(old);
-      old.terminate();
+      this.end(old);
     };
     check();
   }
@@ -425,8 +435,9 @@ export class Runner {
    * A new worker running `entry` (or the test files). `outcome` settles once it is up, ended itself, or failed to start;
    * after that its messages keep being handled: an "exit" of the program answering previews is its end (`onExit`).
    */
-  private boot(entry: string, tests: string[] | undefined, args: string[], content: Awaited<ReturnType<typeof connectHost>> | undefined) {
-    const worker = content ? spawnWorker(content) : new Worker(new URL("./worker/runtime.ts", import.meta.url), { type: "module" });
+  private boot(entry: string, tests: string[] | undefined, args: string[], content: Host | undefined) {
+    this.host = content;
+    const worker = this.newWorker();
     let settle!: (o: Outcome) => void;
     let settled = false;
     const outcome = new Promise<Outcome>((resolve) => (settle = resolve));
@@ -461,20 +472,7 @@ export class Runner {
         this.exitCode = m.code;
         void this.retire(false);
         this.onExit?.(m.code);
-      } else if (m.type === "lazy-read") {
-        void serveLazyRead(this.vfs, m);
-      } else if (m.type === "vfs") {
-        const [a, b] = m.args;
-        this.applying = worker;
-        try {
-          if (m.op === "write") this.vfs.write(a, b);
-          else if (m.op === "mkdir") this.vfs.mkdir(a);
-          else if (m.op === "remove") this.vfs.remove(a);
-          else if (m.op === "rename") this.vfs.rename(a, b);
-        } finally {
-          this.applying = undefined;
-        }
-      }
+      } else this.common(worker, m);
     };
     worker.onerror = (e) => {
       this.log("error", `worker error: ${e.message}`);
@@ -482,11 +480,90 @@ export class Runner {
     };
     worker.postMessage({ type: "start", entry, args, tests, files: this.vfs.files, dirs: this.vfs.dirs, vfsRoot: vfsRoot() });
     const cancel = () => {
-      worker.terminate();
+      this.end(worker);
       if (this.next?.worker === worker) this.next = undefined;
       done({ kind: "cancelled" });
     };
     return { worker, outcome, cancel };
+  }
+
+  private newWorker(): Worker {
+    return this.host ? spawnWorker(this.host) : new Worker(new URL("./worker/runtime.ts", import.meta.url), { type: "module" });
+  }
+
+  /** What any program's worker may ask, a child process's too: file changes, lazy reads, and its own children. */
+  private common(worker: Worker, m: { type: string; [k: string]: any }) {
+    if (m.type === "lazy-read") void serveLazyRead(this.vfs, m as never);
+    else if (m.type === "vfs") {
+      const [a, b] = m.args;
+      this.applying = worker;
+      try {
+        if (m.op === "write") this.vfs.write(a, b);
+        else if (m.op === "mkdir") this.vfs.mkdir(a);
+        else if (m.op === "remove") this.vfs.remove(a);
+        else if (m.op === "rename") this.vfs.rename(a, b);
+      } finally {
+        this.applying = undefined;
+      }
+    } else if (m.type === "spawn") this.spawn(worker, m as never);
+    else if (m.type === "proc-in" || m.type === "proc-kill") {
+      const kid = this.kids.get(worker)?.get(m.id);
+      if (!kid || kid.ended) return;
+      if (m.type === "proc-in") kid.worker.postMessage({ type: "stdin", data: m.data }, m.data ? [m.data.buffer] : []);
+      // SIGKILL can't be caught: the worker goes at once. Other signals are the program's to handle (or end by).
+      else if (m.signal === "SIGKILL") this.endChild(kid, 137, "SIGKILL");
+      else kid.worker.postMessage({ type: "signal", signal: m.signal });
+    }
+  }
+
+  /**
+   * A child process a program started (worker/processes.ts spawnChild): a worker of its own on the project's files as
+   * they are now, its stdout and stderr (console lines included) back to the parent as bytes, its exit as a report.
+   */
+  private spawn(parent: Worker, m: { id: number; launch: { entry?: string; script?: string; args: string[] }; cwd: string; env: Record<string, string> }) {
+    const ppid = this.procs.get(parent)?.id ?? 1;
+    const worker = this.newWorker();
+    const proc: Proc = { worker, parent, id: m.id, ended: false };
+    this.procs.set(worker, proc);
+    let kids = this.kids.get(parent);
+    if (!kids) this.kids.set(parent, (kids = new Map()));
+    kids.set(m.id, proc);
+    const out = (fd: 1 | 2, data: Uint8Array) => !proc.ended && parent.postMessage({ type: "proc", id: m.id, ev: "out", fd, data }, [data.buffer]);
+    worker.onmessage = (e) => {
+      const c = e.data;
+      if (c.type === "stdio") out(c.fd, c.data);
+      else if (c.type === "console") out(c.level === "error" || c.level === "warn" ? 2 : 1, enc.encode(`${c.text}\n`));
+      else if (c.type === "exit") this.endChild(proc, c.code, c.signal ?? null);
+      else this.common(worker, c);
+    };
+    worker.onerror = (e) => {
+      out(2, enc.encode(`worker error: ${e.message}\n`));
+      this.endChild(proc, 1, null);
+    };
+    const { entry, script, args } = m.launch;
+    worker.postMessage({ type: "start", entry, script, args, files: this.vfs.files, dirs: this.vfs.dirs, vfsRoot: vfsRoot(), proc: { pid: m.id, ppid, cwd: m.cwd, env: m.env } });
+  }
+
+  /** A child process ended (by itself, or a signal): its parent hears how, and it goes, with its own children. */
+  private endChild(proc: Proc, code: number, signal: string | null) {
+    if (proc.ended) return;
+    proc.ended = true;
+    proc.parent.postMessage({ type: "proc", id: proc.id, ev: "exit", code, signal });
+    this.end(proc.worker);
+  }
+
+  /** Ends a program's worker and every child process under it. */
+  private end(worker: Worker) {
+    worker.terminate();
+    const kids = this.kids.get(worker);
+    this.kids.delete(worker);
+    const self = this.procs.get(worker);
+    if (self) {
+      self.ended = true;
+      this.procs.delete(worker);
+      this.kids.get(self.parent)?.delete(self.id);
+    }
+    for (const kid of kids?.values() ?? []) if (!kid.ended) this.endChild(kid, 137, "SIGKILL");
   }
 }
 

@@ -8,7 +8,7 @@ import { git as runGit } from "./git/git";
 import { builtins } from "./shell/builtins";
 import { EMPTY, Shell, ShellEnv, vfsFs, type Command as ShellCommand, type CommandCtx, type Writer } from "./shell/interp";
 import { loadShellWasm } from "./shell/load";
-import { binCommand, isTestFile, scriptChecks, scriptEntry, type Pkg } from "./scripts";
+import { binCommand, isTestFile, scriptChecks, scriptEntry, shellCommand, type Pkg } from "./scripts";
 
 type Log = (level: string, text: string) => void;
 
@@ -125,8 +125,11 @@ export function createShell(host: ShellHost) {
     const entry = scriptEntry(script);
     const has = (path: string) => vfs.files.has(path);
     const bin = entry && has(entry) ? undefined : binCommand(script, has, (path) => vfs.readText(path));
-    if (!(entry && has(entry)) && !bin) return fail(`error: only "bun <file>" scripts and installed packages' bins can run here: "${script}"`);
     log("sys", `$ ${script}`);
+    if (!(entry && has(entry)) && !bin) {
+      const sh = shellCommand(script);
+      return host.run(sh.entry, sh.args);
+    }
     if (bin) return host.run(bin.entry, bin.args);
     return (!(check || scriptChecks(script)) || (await checkFirst(entry!))) && host.run(entry!);
   }
