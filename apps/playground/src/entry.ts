@@ -54,6 +54,32 @@ if (root.dataset.view === "app") {
   // The sky in the window on its wall.
   const sky = document.querySelector<HTMLCanvasElement>("#landing .sky");
   if (sky) void import("./landing/sky").then((m) => m.startSky(sky));
+  // The page's scheme (index.html's head script set it): its switch flips and keeps it; until then it follows the
+  // system's. The live example takes the same one.
+  const system = matchMedia("(prefers-color-scheme: dark)");
+  const toggle = document.querySelector<HTMLButtonElement>("#landing .scheme");
+  const demo = document.querySelector("#landing bun-playground.demo");
+  const setScheme = (scheme: string) => {
+    root.dataset.scheme = scheme;
+    demo?.setAttribute("theme", scheme);
+    toggle?.setAttribute("aria-label", scheme === "dark" ? "Switch to day" : "Switch to night");
+  };
+  setScheme(root.dataset.scheme === "dark" ? "dark" : "light");
+  system.addEventListener("change", () => {
+    try {
+      if (localStorage.getItem("landing.scheme")) return;
+    } catch {}
+    setScheme(system.matches ? "dark" : "light");
+  });
+  if (toggle) {
+    toggle.hidden = false;
+    toggle.addEventListener("click", () => {
+      setScheme(root.dataset.scheme === "dark" ? "light" : "dark");
+      try {
+        localStorage.setItem("landing.scheme", root.dataset.scheme!);
+      } catch {}
+    });
+  }
   let opening = false;
   async function openPlayground() {
     if (opening) return;

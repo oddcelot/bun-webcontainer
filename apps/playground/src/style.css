@@ -17,11 +17,15 @@ body { display: flex; flex-direction: column; }
  * window in #app. The landing page scrolls like a document.
  */
 html:not([data-view="app"]) {
-  /* The landing page follows the system's scheme, not the playground's theme: a kitchen by day, or by night. */
-  color-scheme: light dark;
+  /*
+   * The landing page has its own scheme, not the playground's theme: a kitchen by day, or by night (data-scheme, set by
+   * index.html's head script from the page's switch, else the system's scheme; without JavaScript, day).
+   */
+  color-scheme: light;
   scrollbar-color: #d9bf95 #fdeed3;
 
-  @media (prefers-color-scheme: dark) {
+  &[data-scheme="dark"] {
+    color-scheme: dark;
     scrollbar-color: #5a578c #2f2d50;
   }
 
@@ -36,9 +40,10 @@ html:not([data-view="app"]) {
     /* Under the landing page's kitchen (#landing's palette): a shade deeper than its wall. */
     background: #fdeed3;
 
-    @media (prefers-color-scheme: dark) {
-      background: #2f2d50;
-    }
+  }
+
+  &[data-scheme="dark"] body:has(> #landing) {
+    background: #2f2d50;
   }
 }
 html[data-view="app"] #landing {
@@ -75,7 +80,7 @@ html[data-view="opening"] {
 }
 /*
  * The landing page: a pixel-art kitchen, on its own palette (not the playground's theme): light by day, and by night
- * under a dark system scheme (the block at the end of #landing: the tokens, and each prop's `-night` twin). A wall with a
+ * (html[data-scheme="dark"]; the block at the end of #landing: the tokens, and each prop's `-night` twin). A wall with a
  * window (its sky is a dithered canvas, src/landing/sky.ts) and a shelf; a counter of props, the CRT among them; then
  * the page's sections as cards. The props are src/landing/art/*.png (scripts/landing-art.ts), shown at --art CSS pixels
  * per art pixel; the dumplings are dumplings.png, always at a whole multiple. Headings and buttons in Pixelify Sans,
@@ -254,6 +259,42 @@ html[data-view="opening"] {
 
       a {
         text-decoration: none;
+      }
+
+      /* The scheme switch: the moon by day, the sun by night (entry.ts). */
+      .scheme {
+        display: grid;
+        place-items: center;
+        /* The sun's size, the larger of the two, so the row doesn't move with the scheme. */
+        width: calc(13 * var(--px));
+        height: calc(13 * var(--px));
+        margin: -8px 0;
+        padding: 0;
+        border: 0;
+        background: none;
+        cursor: pointer;
+
+        &::before {
+          content: "";
+          width: calc(10 * var(--px));
+          height: calc(10 * var(--px));
+          background: url("./landing/art/moon.png") 0 0 / 100% 100% no-repeat;
+          image-rendering: pixelated;
+        }
+
+        /* Until entry.ts runs. */
+        &[hidden] {
+          display: none;
+        }
+
+        &:hover::before {
+          translate: 0 calc(-1 * var(--px));
+        }
+
+        &:focus-visible {
+          outline: var(--px) solid var(--accent);
+          outline-offset: var(--px);
+        }
       }
 
       @media (width < 640px) {
@@ -855,11 +896,11 @@ html[data-view="opening"] {
   }
 
   /*
-   * By night: the same kitchen under a dark system scheme. The tokens; the props' moonlit twins (landing-art.ts
+   * By night: the same kitchen in the dark scheme. The tokens; the props' moonlit twins (landing-art.ts
    * `night`, which also gives the painted parts' colors: `--night <hex>`); the sky is sky.ts's night one. The dumplings
    * and the monitor's screen keep their light.
    */
-  @media (prefers-color-scheme: dark) {
+  html[data-scheme="dark"] & {
     color-scheme: dark;
     --bg: #484872;
     --panel: #2c2a4b;
@@ -929,6 +970,12 @@ html[data-view="opening"] {
       &::before {
         background-image: url("./landing/art/tiles-night.png");
       }
+    }
+
+    .scheme::before {
+      width: calc(13 * var(--px));
+      height: calc(13 * var(--px));
+      background-image: url("./landing/art/sun.png");
     }
 
     /* The screen lights the counter around it. */

@@ -333,9 +333,9 @@ function shelf() {
   return s.outline();
 }
 
-/** A small mark drawn by hand, a row per string: `#` is the enamel pink, `o` its highlight, `d` its shade. */
-function mark(rows: string[]) {
-  const colors: Record<string, string> = { "#": ENAMEL[2]!, o: ENAMEL[4]!, d: ENAMEL[0]! };
+/** A small mark drawn by hand, a row per string: `#` is a color (the enamel pink), `o` its highlight, `d` its shade. */
+function mark(rows: string[], [shade, color, light] = [ENAMEL[0]!, ENAMEL[2]!, ENAMEL[4]!]) {
+  const colors: Record<string, string> = { "#": color!, o: light!, d: shade! };
   const s = new Sprite(rows[0]!.length, rows.length);
   rows.forEach((row, y) => [...row].forEach((c, x) => colors[c] && s.set(x, y, colors[c])));
   return s;
@@ -345,6 +345,15 @@ const art: Record<string, Sprite> = {
   // The cards' list bullets.
   heart: mark([".#o.##.", "#o#####", "######d", ".####d.", "..##d..", "...d..."]),
   arrow: mark(["#...", "##..", "###.", "####", "##d.", "#d..", "d..."]),
+  // The scheme switch: what a click brings, the moon by day and the sun by night.
+  moon: mark(
+    ["..........", "...####...", "..#o##....", ".#o##.....", ".####.....", ".####.....", ".#####..d.", "..######d.", "...###dd..", ".........."],
+    [METAL[1]!, METAL[3]!, METAL[4]!],
+  ).outline(),
+  sun: mark(
+    [".............", "......#......", "..#.......#..", "....#####....", "...##ooo##...", "...#o####d...", ".#.#o####d.#.", "...#o####d...", "...###ddd#...", "....#####....", "..#.......#..", "......#......", "............."],
+    ["#e3a93f", "#f3c45e", "#ffdf8a"],
+  ).outline(),
   tiles: tiles(),
   counter: counter(),
   "steamer-back": steamer().back,
@@ -358,8 +367,8 @@ const art: Record<string, Sprite> = {
 };
 
 mkdirSync(out, { recursive: true });
-// The bullets keep their pink at night.
-const lit = new Set(["heart", "arrow"]);
+// The bullets and the switch keep their colors at night.
+const lit = new Set(["heart", "arrow", "moon", "sun"]);
 for (const [name, sprite] of Object.entries(art)) {
   writeFileSync(`${out}${name}.png`, sprite.png());
   if (!lit.has(name)) writeFileSync(`${out}${name}-night.png`, sprite.night(name === "steam" ? 0.55 : 1).png());

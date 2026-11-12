@@ -1,7 +1,7 @@
 // The sky in the landing page's window (index.html, #landing .window): clouds drifting past, drawn a few art pixels
 // at a time and reduced to five colors with ordered (Bayer) dithering, like the kitchen's props
-// (scripts/landing-art.ts). The colors follow the visitor's clock: dawn, day, dusk, night; under a dark system scheme
-// the kitchen is in its night colors (style.css #landing), and so is the sky, whatever the hour.
+// (scripts/landing-art.ts). In the page's light scheme the colors follow the visitor's clock: dawn, day, dusk. In its
+// dark one (html[data-scheme], style.css #landing) the kitchen is in its night colors, and the sky is the night's.
 
 // Dark to light.
 const SKIES = {
@@ -13,11 +13,11 @@ const SKIES = {
 
 const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
 
+/** The sky of an hour; the night one is the dark scheme's, so by day the small hours are dawn and the late ones dusk. */
 function sky(hour: number) {
-  if (hour >= 5 && hour < 8) return SKIES.dawn;
-  if (hour >= 8 && hour < 17) return SKIES.day;
-  if (hour >= 17 && hour < 20) return SKIES.dusk;
-  return SKIES.night;
+  if (hour < 8) return SKIES.dawn;
+  if (hour < 17) return SKIES.day;
+  return SKIES.dusk;
 }
 
 /** A repeatable pseudo-random value in [0, 1) for a lattice point. */
@@ -41,11 +41,10 @@ export function startSky(canvas: HTMLCanvasElement) {
   const context = canvas.getContext("2d");
   if (!context) return;
   const { width, height } = canvas;
-  const dark = matchMedia("(prefers-color-scheme: dark)");
   let colors: number[][] = [];
   let night = false;
   const pick = () => {
-    const now = dark.matches ? SKIES.night : sky(new Date().getHours());
+    const now = document.documentElement.dataset.scheme === "dark" ? SKIES.night : sky(new Date().getHours());
     colors = now.map((hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)));
     night = now === SKIES.night;
   };
@@ -72,10 +71,10 @@ export function startSky(canvas: HTMLCanvasElement) {
 
   draw(0);
   // The scheme changed: the other sky, at once (the clouds may be standing still).
-  dark.addEventListener("change", () => {
+  new MutationObserver(() => {
     pick();
     draw(performance.now());
-  });
+  }).observe(document.documentElement, { attributeFilter: ["data-scheme"] });
   if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   // Eight frames a second: the clouds move in steps, like the rest of the page.
   let timer = 0;
