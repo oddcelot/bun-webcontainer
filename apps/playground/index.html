@@ -244,6 +244,15 @@
             height="380px"
             title="A Bun.serve app, running in this page"
           >
+          <!-- The same file, colored like the editor's theme, until Run starts the embed. Keep it in step with index.ts below. -->
+          <pre slot="poster"><code><span class="k">const</span> <span class="v">server</span> <span class="p">=</span> <span class="v">Bun</span><span class="p">.</span><span class="f">serve</span><span class="p">({</span>
+  routes<span class="p">:</span> <span class="p">{</span>
+    <span class="s">"/"</span><span class="p">:</span> <span class="p">()</span> <span class="k">=&gt;</span> <span class="k">new</span> <span class="f">Response</span><span class="p">(</span><span class="s">`Hello from Bun </span><span class="p">${</span><span class="v">Bun.version</span><span class="p">}</span><span class="s">!`</span><span class="p">),</span>
+    <span class="s">"/api/time"</span><span class="p">:</span> <span class="p">()</span> <span class="k">=&gt;</span>
+      <span class="v">Response</span><span class="p">.</span><span class="f">json</span><span class="p">({</span> now<span class="p">:</span> <span class="k">new</span> <span class="f">Date</span><span class="p">(),</span> bun<span class="p">:</span> <span class="v">Bun.version</span> <span class="p">}),</span>
+  <span class="p">},</span>
+<span class="p">});</span>
+console<span class="p">.</span><span class="f">log</span><span class="p">(</span><span class="s">`Listening on </span><span class="p">${</span><span class="v">server.url</span><span class="p">}</span><span class="s">`</span><span class="p">);</span></code></pre>
           <script type="text/plain" data-file="index.ts">
 const server = Bun.serve({
   routes: {

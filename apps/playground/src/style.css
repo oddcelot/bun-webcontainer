@@ -606,6 +606,41 @@ html[data-view="opening"] {
 
     display: block;
     min-width: 0;
+
+    /* The poster's code, in the embed's theme (Rosé Pine Dawn). */
+    pre {
+      margin: 0;
+      padding: 14px 18px;
+      font: 13px/1.6 var(--font-mono);
+      white-space: pre-wrap;
+      color: #575279;
+    }
+
+    code {
+      padding: 0;
+      background: none;
+      font: inherit;
+    }
+
+    .k {
+      color: #286983;
+    }
+
+    .f {
+      color: #d7827e;
+    }
+
+    .s {
+      color: #ea9d34;
+    }
+
+    .p {
+      color: #797593;
+    }
+
+    .v {
+      font-style: italic;
+    }
   }
 
   /* Embedding: the pitch, and a snippet to copy the idea from. */
