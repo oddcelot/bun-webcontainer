@@ -34,8 +34,13 @@ export interface Props {
   files?: Record<string, string>;
   /** Names in `files` that run but don't open as tabs (`data-hidden`), e.g. a generated package.json. */
   hidden?: string[];
+  /**
+   * Names in `files` the page owns (`data-generated`), e.g. a check `test()` runs: written on every load over what
+   * `persist` kept, never saved, and out of the tree and the tabs, so readers can't edit them. Run and test see them.
+   */
+  generated?: string[];
 }
-const { files = {}, hidden = [], load = "click", ...attrs } = Astro.props;
+const { files = {}, hidden = [], generated = [], load = "click", ...attrs } = Astro.props;
 const bool = (v: unknown) => (v === undefined ? undefined : v ? "" : undefined);
 // Written responses (`=>`): a request panel under the poster's code, and the requests alone for the embed. Its radio
 // name counts the page's panels (Astro.locals is per render), apart from the fence plugin's. Without a poster of its
@@ -50,7 +55,7 @@ if (presets?.responses) {
   const k = (locals[PANELS] = ((locals[PANELS] as number | undefined) ?? 0) + 1);
   panel = requestPanel(presets.entries, `runbun-code-requests-${k}`);
   if (!Astro.slots.has("default")) {
-    const [name, text] = Object.entries(files).find(([path]) => !hidden.includes(path)) ?? ["", ""];
+    const [name, text] = Object.entries(files).find(([path]) => !hidden.includes(path) && !generated.includes(path)) ?? ["", ""];
     code = codeBlock(text, langOf(name));
   }
   const COPY = Symbol.for("runbun.copy");
@@ -80,7 +85,7 @@ if (presets?.responses) {
   title={attrs.title}
   expand={attrs.expand === undefined || attrs.expand === false ? undefined : attrs.expand === true ? "" : attrs.expand}
 >
-  <Fragment set:html={Object.entries(files).map(([path, text]) => fileScript(path, text, hidden.includes(path))).join("\n")} />
+  <Fragment set:html={Object.entries(files).map(([path, text]) => fileScript(path, text, hidden.includes(path), generated.includes(path))).join("\n")} />
   {/* Without a poster of its own, the element shows the first file's code. */}
   {
     panel ? (

@@ -3,7 +3,7 @@
 // @runbun/embed. Registering the elements is `define` (index.ts calls it), so a page can pick the playground first.
 // Types only: a runtime import would make runbun.dev's build share protocol.ts with the embed page as a chunk, and
 // embed.js, loaded from other origins, has to be one file.
-import type { Event, Feature, Library, LibraryProject, Mode, Reply, Request, Vars } from "./protocol.js";
+import type { Event, Feature, Library, LibraryProject, Mode, Reply, Request, TestResult, Vars } from "./protocol.js";
 
 const TAG = "bunPlayground"; // = protocol TAG
 const VERSION = 1; // = protocol VERSION
@@ -233,8 +233,8 @@ export class BunPlayground extends HTMLElement {
   install() {
     return this.#call("install");
   }
-  /** Runs tests (all, or the given files); resolves with the embed's result. */
-  test(files?: string[]) {
+  /** Runs tests (all, or the given files); resolves with how many failed, in all and per file. */
+  test(files?: string[]): Promise<TestResult> {
     return this.#call("test", files ? { files } : undefined);
   }
   /** Reads a file's text. */
@@ -252,6 +252,10 @@ export class BunPlayground extends HTMLElement {
   /** Opens a file in the editor. */
   openFile(path: string) {
     return this.#call("openFile", { path });
+  }
+  /** Deletes a file (closing its tab); rejects when there's no such file. */
+  removeFile(path: string): Promise<void> {
+    return this.#call("removeFile", { path });
   }
   /** Switches the layout mode. */
   setMode(mode: Mode) {
@@ -375,6 +379,11 @@ export class BunPlayground extends HTMLElement {
     return [...this.querySelectorAll(":scope > script[data-file][data-hidden]")].map((s) => s.getAttribute("data-file")!);
   }
 
+  /** Inline files marked `data-generated`: the page's own, written on every load, never saved or shown to edit. */
+  #generated(): string[] {
+    return [...this.querySelectorAll(":scope > script[data-file][data-generated]")].map((s) => s.getAttribute("data-file")!);
+  }
+
   /** The `vars` attribute: a JSON object (see protocol.ts Vars) merged per scheme over the page default's. Malformed JSON
    * is ignored like other bad values (that layer is skipped). */
   #vars(): Vars | undefined {
@@ -430,7 +439,7 @@ export class BunPlayground extends HTMLElement {
     const def = document.createElement("div");
     def.className = "def";
     const pre = document.createElement("pre");
-    const hidden = new Set(this.#hidden());
+    const hidden = new Set([...this.#hidden(), ...this.#generated()]);
     pre.textContent = Object.entries(this.#files()).find(([path]) => !hidden.has(path))?.[1] ?? "Bun playground";
     def.append(pre);
     this.#poster.prepend(def);
@@ -566,8 +575,10 @@ export class BunPlayground extends HTMLElement {
     if (event === "expand") return void this.#setExpanded(data.open);
     if (event === "boot") {
       this.#booted = true;
+      // Generated files are hidden too, for embeds older than `generated`: there they at least stay out of the tabs.
+      const generated = this.#generated();
       void this.#library()
-        .then((library) => this.#request("init", { files: this.#files(), hidden: this.#hidden(), options: {}, vars: this.#vars(), library }))
+        .then((library) => this.#request("init", { files: this.#files(), hidden: [...this.#hidden(), ...generated], generated, options: {}, vars: this.#vars(), library }))
         .catch(() => {});
     } else if (event === "ready" || event === "unsupported") {
       this.#isReady = true;

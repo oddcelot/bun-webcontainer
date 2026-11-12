@@ -33,7 +33,8 @@ export async function withLoaded<T>(vfs: VFS, fn: () => Promise<T> | T): Promise
     }
   }
 }
-export type VfsEvent = { path: string; created: boolean; removed?: boolean };
+/** `unchanged`: a write that left the file as it was (the same text, or the same bytes). */
+export type VfsEvent = { path: string; created: boolean; removed?: boolean; unchanged?: boolean };
 
 export function norm(p: string): string {
   const out: string[] = [];
@@ -76,6 +77,14 @@ export function shareFiles<T extends { data: Uint8Array }>(files: T[], share = t
     const data = mem.subarray(at, (at += f.data.byteLength));
     return { ...f, data };
   });
+}
+
+/** Equal text or equal bytes; a lazy file, or text against bytes, counts as different. */
+function same(a: FileData, b: FileData): boolean {
+  if (typeof a === "string" || typeof b === "string") return a === b;
+  if (isLazy(a) || isLazy(b) || a.byteLength !== b.byteLength) return false;
+  for (let i = 0; i < a.byteLength; i++) if (a[i] !== b[i]) return false;
+  return true;
 }
 
 export class VFS {
@@ -175,11 +184,13 @@ export class VFS {
 
   write(path: string, data: FileData) {
     const p = norm(path);
-    const created = !this.files.has(p);
+    const before = this.files.get(p);
+    const created = before === undefined;
+    const unchanged = !created && same(before, data);
     this.files.set(p, data);
     this.mtimes.set(p, Date.now());
     if (created) this.mkdir(dirname(p));
-    for (const fn of this.listeners) fn({ path: p, created });
+    for (const fn of this.listeners) fn(unchanged ? { path: p, created, unchanged } : { path: p, created });
   }
 
   /** Drops every file and directory, e.g. before loading another project. */

@@ -242,6 +242,30 @@ To follow your page's theme, set `theme` (or `vars`) on the defaults element; ev
 
 Every method and event is in the [reference](/reference/embed-api/).
 
+### Check a reader's code with tests
+
+Give the embed test files of your own and mark them `data-generated`. The reader never sees or edits them, and with `persist` their saved edits stay while your checks are written fresh on every load. One `test()` call grades every task at once:
+
+```html
+<bun-playground id="lesson" mode="code" persist="lesson-1" autorun="false">
+  <script type="text/plain" data-file="index.ts">export const add = (a: number, b: number) => 0;</script>
+  <script type="text/plain" data-file="add.test.ts" data-generated>
+    import { test, expect } from "bun:test";
+    import { add } from "./index";
+    test("adds", () => expect(add(1, 2)).toBe(3));
+  </script>
+</bun-playground>
+
+<script type="module">
+  const el = document.getElementById("lesson");
+  await el.ready;
+  const { failed, results } = await el.test(["add.test.ts"]);
+  // results: [{ file: "add.test.ts", failed: 1 }]
+</script>
+```
+
+`el.removeFile(path)` deletes a file, generated or not.
+
 ## Limits
 
 - **Browsers.** Embeds need WebAssembly Memory64: Chrome and Edge 133+, Firefox 134+. Safari doesn't have it yet. There the embed still shows and edits the code, says why it can't run it, and sends `unsupported`. See [Browsers](/compatibility/browsers/).

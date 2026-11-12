@@ -311,7 +311,7 @@ Astro's content cache doesn't track integration options, so after switching `fen
 
 ## Playground
 
-`<Playground>` is the embed on its own: `files` are its sources, and its children are the poster shown until it starts. Without children it shows the first file's code. Here `title` is the embed's accessible name (default "Bun playground"), as on `<bun-playground>`. Its other props are the element's options too, e.g. `layout="stack"` for the preview under the editor.
+`<Playground>` is the embed on its own: `files` are its sources, and its children are the poster shown until it starts. Without children it shows the first file's code. Here `title` is the embed's accessible name (default "Bun playground"), as on `<bun-playground>`. Its other props are the element's options too, e.g. `layout="stack"` for the preview under the editor. `hidden` names files of `files` kept out of the tabs (`data-hidden`); `generated` names the page's own, such as checks `test()` runs (`data-generated`: out of the tree and tabs, never saved by `persist`, see [Embedding](/guides/embedding/#check-a-readers-code-with-tests)).
 
 ```mdx
 import { Playground } from "@runbun/astro/components";

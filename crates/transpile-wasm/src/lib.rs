@@ -284,6 +284,7 @@ fn hoist_imports_as_requires<'a>(ast: &mut bun_ast::Ast<'a>, arena: &'a Arena) {
     use bun_collections::VecExt as _;
     let hmr = Expr::init_identifier(ast.wrapper_ref, bun_ast::Loc::EMPTY);
     let mut requires: Vec<Stmt> = Vec::new();
+    let mut namespaces: Vec<bun_ast::Ref> = Vec::new();
     for part in ast.parts.iter_mut() {
         let mut rest: Vec<Stmt> = Vec::new();
         for stmt in part.stmts.slice().iter() {
@@ -301,6 +302,9 @@ fn hoist_imports_as_requires<'a>(ast: &mut bun_ast::Ast<'a>, arena: &'a Arena) {
                 stmt.loc,
             );
             let bare = st.star_name_loc.is_empty() && st.items.len() == 0 && st.default_name.is_none();
+            if !bare && !namespaces.contains(&st.namespace_ref) {
+                namespaces.push(st.namespace_ref);
+            }
             requires.push(if bare {
                 Stmt::alloc(S::SExpr { value: call, ..Default::default() }, stmt.loc)
             } else {
@@ -324,6 +328,41 @@ fn hoist_imports_as_requires<'a>(ast: &mut bun_ast::Ast<'a>, arena: &'a Arena) {
     if let Some(first) = ast.parts.iter_mut().next() {
         requires.extend_from_slice(first.stmts.slice());
         first.stmts = bun_ast::StoreSlice::new_mut(arena.alloc_slice_copy(&requires));
+    }
+    rename_namespaces(ast, arena, &namespaces);
+}
+
+/// Bun names a namespace after its path (`export * from "./const.mjs"` declares `const`) and leaves clashes to the
+/// bundler's renamer, which doesn't run here: one that is a reserved word or another symbol's name gets a number, as
+/// the renamer gives it. The module's own `import * as ns` keeps its name for a direct `eval` unless it can't.
+fn rename_namespaces<'a>(ast: &mut bun_ast::Ast<'a>, arena: &'a Arena, refs: &[bun_ast::Ref]) {
+    use bun_ast::lexer_tables::{is_strict_mode_reserved_word, keyword};
+    use std::collections::HashSet;
+    if refs.is_empty() {
+        return;
+    }
+    let own = |r: &bun_ast::Ref| ast.module_scope.members.values().any(|m| m.ref_ == *r);
+    let (mut order, generated): (Vec<_>, Vec<_>) = refs.iter().copied().partition(own);
+    let generated_ids: HashSet<u32> = generated.iter().map(|r| r.inner_index()).collect();
+    let taken: HashSet<Vec<u8>> = ast.symbols.iter().enumerate().filter(|(i, _)| !generated_ids.contains(&(*i as u32))).map(|(_, s)| s.original_name.to_vec()).collect();
+    let own_count = order.len();
+    order.extend(generated);
+    let reserved = |n: &[u8]| keyword(n).is_some() || is_strict_mode_reserved_word(n) || matches!(n, b"arguments" | b"eval" | b"undefined" | b"NaN" | b"Infinity");
+    let mut assigned: HashSet<Vec<u8>> = HashSet::new();
+    for (i, r) in order.iter().enumerate() {
+        let symbol = &mut ast.symbols[r.inner_index() as usize];
+        let original = symbol.original_name.to_vec();
+        let base = bun_core::fmt::fmt_identifier(&original).to_string().into_bytes();
+        let mut name = base.clone();
+        let mut n = 1;
+        while reserved(&name) || assigned.contains(&name) || (i >= own_count && taken.contains(&name)) {
+            n += 1;
+            name = [&base[..], n.to_string().as_bytes()].concat();
+        }
+        if name != original {
+            symbol.original_name = bun_ast::StoreStr::new(arena.alloc_slice_copy(&name));
+        }
+        assigned.insert(name);
     }
 }
 

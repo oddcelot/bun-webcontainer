@@ -177,4 +177,5 @@ describe("add", () => {
 | `import(expr)` with a computed path | ✅ Works | |
 | `fetch("file:///…")` | ✅ Works | Reads project files. Relative URLs throw. Other URLs go to the network, subject to CORS. |
 | `Headers#toJSON` | ✅ Works | As in Bun: a plain object of lower-cased names, values joined with `, `, Set-Cookie as an array. |
+| `new Request()` headers | ✅ Works | As in Bun, `request.headers` keeps Cookie, Host, Origin, Referer and Content-Length (a browser drops them), through `clone()` and `new Request(request)` too, so `app.handle(new Request(url, { headers: { cookie } }))` sees its cookies. `fetch()` still sends only what the browser allows. |
 | `process`, `Buffer`, `global`, timers | ✅ Works | See [Node built-ins](/compatibility/node/). |

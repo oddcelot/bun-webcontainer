@@ -53,6 +53,8 @@ export function createWorkspace() {
   let openAt: (path: string, line: number, column: number) => void = () => {};
   let format = () => {};
   const renamed = new Set<(from: string, to: string) => void>();
+  // Files an embedding page owns (embed `generated`): in the project, never in the tree or a tab.
+  const generated = new Set<string>();
   return {
     state,
     setDirty(path: string, dirty: boolean) {
@@ -97,7 +99,7 @@ export function createWorkspace() {
       openAt = fn;
     },
     /** Opens `path` (or switches to its tab) with the cursor at a 1-based line and column. */
-    openAt: (path: string, line: number, column: number) => openAt(path, line, column),
+    openAt: (path: string, line: number, column: number) => void (!generated.has(path) && openAt(path, line, column)),
     onFormat(fn: () => void) {
       format = fn;
     },
@@ -112,8 +114,18 @@ export function createWorkspace() {
     },
     /** The text of a read-only tab's file, or undefined for a project file. */
     readOnlyText: (path: string) => readOnly.get(path),
+    /**
+     * Keeps these files out of the file tree and the tabs, in place of the last ones (set before the tree mounts, or
+     * before `reloadTree`; `open` ignores them). None once a library project opens.
+     */
+    setGenerated(paths: string[]) {
+      generated.clear();
+      for (const p of paths) generated.add(p);
+    },
+    isGenerated: (path: string) => generated.has(path),
     /** Opens `path` in a tab (after the active one) or switches to its tab. */
     open(path: string) {
+      if (generated.has(path)) return;
       setState((s) => {
         if (!s.open.includes(path)) s.open.splice(s.active ? s.open.indexOf(s.active) + 1 : s.open.length, 0, path);
         s.active = path;

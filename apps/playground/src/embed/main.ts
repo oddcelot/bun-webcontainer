@@ -13,6 +13,7 @@ import { isFeature, isMode, lockedFeatures, optionsFromUrl, resolveFeatures } fr
 import { mountEmbed } from "./mount";
 import { parseRequests } from "./requests";
 import { readConfig, type ProjectConfig } from "../projectConfig";
+import { watchChanges } from "./changes";
 import { responseReserve } from "../preview";
 import { isMessage, TAG, VERSION, type Event, type Feature, type LibraryProject, type Mode, type Options, type Request } from "@runbun/embed/protocol";
 import { VFS } from "@runbun/vfs";
@@ -72,6 +73,10 @@ const initFiles = init?.files ?? {};
 /** The host's own projects (`library`): a project button in the bar opens a gallery of only these. */
 const library = (init?.library?.projects ?? []).filter((p): p is LibraryProject => !!p && typeof p.id === "string" && typeof p.name === "string");
 const locked = lockedFeatures(options.features);
+const bare = (path: string) => path.replace(/^\.?\//, "");
+/** The host's own files (`generated`): written on every load, never saved, out of the tree and the tabs. */
+const generated = new Set((init?.generated ?? []).map(bare));
+workspace.setGenerated([...generated]);
 
 /** A short FNV-1a hash, base 36. */
 function hash(text: string) {
@@ -309,6 +314,8 @@ function switchProject(id: string, fresh = false): Promise<void> {
     await pg.clearProject();
     for (const [path, data] of files.files) vfs.write(path, data);
     pg.previews.reset();
+    // The host's generated files are its inline project's, not a library project's.
+    workspace.setGenerated([]);
     workspace.reloadTree();
     projectConfig = applyConfig(false);
     if (key) stopSaving = await attach(key, vfs, log, !restored);
@@ -326,6 +333,7 @@ async function begin() {
   // The host's `autorun` wins; without one, the project's runbun.json may say not to.
   const autorun = hostSet("autorun") ? options.autorun : (projectConfig.autorun ?? options.autorun);
   // Missing packages install before the first run whatever the mode; the `install` feature is the menu's action.
+  // Queued right after `ready` (boot.ts inTurn), so a host's run or test waits for it.
   if ((embed.has("install") || autorun) && pg.missingDeps()) await pg.install();
   if (autorun) await pg.run();
   else session.setStatus({ state: "idle", text: "Ready" });
@@ -343,7 +351,6 @@ function applyConfig(inline: boolean): ProjectConfig {
   const problems: string[] = [];
   const config = readConfig((path) => vfs.readText(path), problems);
   for (const p of problems) log("warn", `[config] ${p}`);
-  const bare = (path: string) => path.replace(/^\.?\//, "");
   // Hidden ones (generated, such as a package.json) stay in the project and the tree, out of the tabs.
   const hidden = new Set([...(init?.hidden ?? []).map(bare), ...(config.hidden ?? [])]);
   const listed = inline ? Object.keys(initFiles).map(bare) : (config.open ?? []);
@@ -381,7 +388,10 @@ const startKey = persistKey(startProject);
 const restored = startKey ? await restore(startKey, vfs, log) : 0;
 const startEntry = library.find((p) => p.id === startProject);
 if (!restored) await (startEntry ? loadLibraryProject(vfs, startEntry) : loadSource());
-if (startKey) stopSaving = await attach(startKey, vfs, log, !restored);
+// Generated files are the host's inline project's. Theirs win over saved copies (one saved before the host marked it generated).
+if (startEntry) workspace.setGenerated([]);
+else for (const [path, text] of Object.entries(initFiles)) if (generated.has(bare(path))) vfs.write(bare(path), text);
+if (startKey) stopSaving = await attach(startKey, vfs, log, !restored, startEntry ? undefined : (path) => generated.has(path));
 embed.setProject(startProject);
 await pg.start({ reset });
 
@@ -396,9 +406,7 @@ addEventListener("keydown", (e) => {
   embed.requestExpand(false);
 });
 
-vfs.onChange(({ path, removed }) => {
-  if (!SKIP.test(path)) emit("change", { path, removed: !!removed });
-});
+const asHost = watchChanges(vfs, () => pg.programWriting, (path) => SKIP.test(path) || generated.has(path), (data) => emit("change", data));
 // The height the embed would like (`height="auto"` on <bun-playground>): the bar, the open file's lines (within
 // bounds) and the console when it sits under the editor.
 const LINE = 20;
@@ -573,9 +581,9 @@ async function handle(req: Request): Promise<unknown> {
     case "install":
       return pg.install();
     case "test": {
-      const failed = await pg.test(req.params?.files ?? [...vfs.files.keys()].filter((p) => /[._](test|spec)\.[cm]?[jt]sx?$/.test(p) && !SKIP.test(p)));
-      emit("test", { failed });
-      return { failed };
+      const { failed, results } = await pg.test(req.params?.files ?? [...vfs.files.keys()].filter((p) => /[._](test|spec)\.[cm]?[jt]sx?$/.test(p) && !SKIP.test(p)));
+      emit("test", { failed, results });
+      return { failed, results };
     }
     case "readFile": {
       workspace.saveAll();
@@ -585,13 +593,17 @@ async function handle(req: Request): Promise<unknown> {
       return text ?? new Uint8Array(vfs.readBytes(req.params.path)!);
     }
     case "writeFile":
-      vfs.write(req.params.path, req.params.text);
-      return;
+      return asHost(() => vfs.write(req.params.path, req.params.text));
     case "listFiles":
       return [...vfs.files.keys()].filter((p) => !SKIP.test(p));
     case "openFile":
       if (!vfs.files.has(req.params.path)) throw new Error(`no such file: ${req.params.path}`);
+      if (workspace.isGenerated(req.params.path)) throw new Error(`generated, not opened: ${req.params.path}`);
       return workspace.open(req.params.path);
+    case "removeFile":
+      // Its tab closes and the host hears `change` with `removed` (both on the VFS's change, boot.ts and below).
+      if (!vfs.files.has(req.params.path)) throw new Error(`no such file: ${req.params.path}`);
+      return asHost(() => vfs.remove(req.params.path));
     case "setMode":
       if (!isMode(req.params.mode)) throw new Error(`unknown mode: ${req.params.mode}`);
       return embed.setMode(req.params.mode);

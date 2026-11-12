@@ -92,23 +92,47 @@ export type LibraryProject = {
  */
 export type Library = { projects: LibraryProject[]; open?: string };
 
+/**
+ * What `test` replies and the `test` event carries: failed tests in all, and per test file that ran, in order (a file
+ * that fails to load counts one). `results` is missing from embeds older than it, and when the run ended before it
+ * reported (`process.exit` in a test, `stop`, past 30 s; `failed` is then at least 1): grade no file as passed then.
+ */
+export type TestResult = { failed: number; results?: { file: string; failed: number }[] };
+
+/**
+ * Who changed a file (the `change` event): "reader" in the editor, the file tree or the console; "program" the code
+ * running (`run` or `test`); "host" with `writeFile` or `removeFile`.
+ */
+export type ChangeBy = "reader" | "program" | "host";
+
 /** Host → embed. Each gets a reply with the same `id`: `{ id, result }` or `{ id, error }`. */
 export type Request =
   | {
       method: "init";
-      /** `hidden`: files of `files` not opened as tabs (`data-hidden`): generated ones, such as a package.json. */
-      params: { files?: Record<string, string>; hidden?: string[]; options?: Partial<Options>; vars?: Vars; library?: Library };
+      /**
+       * `hidden`: files of `files` not opened as tabs (`data-hidden`), still in the file tree.
+       * `generated`: files of `files` the host owns (`data-generated`), such as checks a test runs: written on every
+       * load over what `persist` restored, never saved, and kept out of the file tree and the tabs so the reader can't
+       * edit them. Run and test see them. Embeds older than it ignore `generated`: name them in `hidden` too.
+       */
+      params: { files?: Record<string, string>; hidden?: string[]; generated?: string[]; options?: Partial<Options>; vars?: Vars; library?: Library };
     }
   /** Opens a project of the library in place of the current one, as the reader picking it in the gallery does. */
   | { method: "openProject"; params: { id: string } }
   | { method: "run"; params?: { entry?: string } }
   | { method: "stop" }
   | { method: "install" }
+  /**
+   * `bun test` on these files (default: every test file); replies a TestResult. `run`, `test` and `install` take turns:
+   * one sent while another is under way starts when it's done.
+   */
   | { method: "test"; params?: { files?: string[] } }
   | { method: "readFile"; params: { path: string } }
   | { method: "writeFile"; params: { path: string; text: string } }
   | { method: "listFiles" }
   | { method: "openFile"; params: { path: string } }
+  /** Deletes a file (and closes its tab); an error when there's no such file. */
+  | { method: "removeFile"; params: { path: string } }
   | { method: "setMode"; params: { mode: Mode } }
   | { method: "setFeatures"; params: Partial<Record<Feature, boolean>> }
   | { method: "setTheme"; params: { theme: string } }
@@ -128,8 +152,9 @@ export type Event =
   | { event: "unsupported"; data: { checks: { name: string; ok: boolean; why: string }[] } }
   | { event: "status"; data: Status }
   | { event: "console"; data: { level: string; text: string } }
-  | { event: "change"; data: { path: string; removed: boolean } }
-  | { event: "test"; data: { failed: number } }
+  /** `by` is missing from embeds older than it: count those changes as the reader's. */
+  | { event: "change"; data: { path: string; removed: boolean; by?: ChangeBy } }
+  | { event: "test"; data: TestResult }
   | { event: "mode"; data: { mode: Mode; features: Feature[] } }
   | { event: "resize"; data: { height: number } }
   /** The reader pressed the expand button (or Escape while expanded): the host should open or close its modal. */

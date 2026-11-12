@@ -44,7 +44,7 @@ The element's attributes and the iframe's URL parameters share names.
 
 A boolean is on unless it is `false` or `0`. Unknown or malformed values fall back to the default.
 
-Inline files: child `<script type="text/plain" data-file="path">` elements, dedented. Mark one `data-hidden` to keep it out of the editor's tabs (it's still in the project, and in the file tree where there is one), e.g. a generated `<script type="text/plain" data-file="package.json" data-hidden>`. Poster: children with `slot="poster"`, shown until the embed is ready; with `load="click"` a Run button over them starts it.
+Inline files: child `<script type="text/plain" data-file="path">` elements, dedented. Mark one `data-hidden` to keep it out of the editor's tabs (it's still in the project, and in the file tree where there is one), e.g. a generated `<script type="text/plain" data-file="package.json" data-hidden>`. Mark one `data-generated` when your page owns it, such as a check `test()` runs: it's written on every load over a copy `persist` kept, never saved, and stays out of the file tree and the tabs, so readers can't open or edit it. Run and test still see it. The element also lists generated files as hidden, so an older playground keeps them out of the tabs at least. Poster: children with `slot="poster"`, shown until the embed is ready; with `load="click"` a Run button over them starts it.
 
 ## Libraries
 
@@ -107,11 +107,12 @@ On the element, each returns a promise. Call them after `await el.ready`.
 | `run(entry?)` | file to start instead of the entry | resolves when started |
 | `stop()` | | |
 | `install()` | | resolves when done |
-| `test(files?)` | file paths | `{ failed }` |
+| `test(files?)` | file paths (default: every test file) | `{ failed, results }`: `results` is `{ file, failed }[]`, one per file that ran |
 | `readFile(path)` | path | the file's text (bytes for a binary file) |
 | `writeFile(path, text)` | path, text | |
 | `listFiles()` | | array of paths |
-| `openFile(path)` | path | |
+| `openFile(path)` | path | rejects for a missing or generated file |
+| `removeFile(path)` | path | deletes the file and closes its tab; rejects for a missing file |
 | `setMode(mode)` | a mode | |
 | `setFeatures(obj)` | `{ types: true, format: false }` | |
 | `setTheme(theme)` | a theme | |
@@ -125,6 +126,8 @@ On the element, each returns a promise. Call them after `await el.ready`.
 
 `el.expanded` is true while the modal is open.
 
+`test()` counts a file that fails to load as one failure. A run that ends before `bun test` reports fails, with no `results`: a test called `process.exit` (with any code), `stop()` ended it, or it ran past 30 seconds. `results` is also missing from playgrounds older than it. Without `results`, treat each file as not passed, or unknown: `failed` alone doesn't say which one failed. `run()`, `test()` and `install()` take turns: one called while another is under way starts when that one is done, so a `test()` right after `ready` waits for the install the embed starts then.
+
 `el.ready` resolves once the embed has sent `ready` (or `unsupported`); read the data from the `bun-playground:ready` event. Requests sent earlier wait until the project has loaded.
 
 ## Events
@@ -137,13 +140,15 @@ On the element they are DOM events named `bun-playground:<event>`, with the data
 | `unsupported` | `{ checks: { name, ok, why }[] }`: the browser lacks something, so nothing runs; the code still shows and edits |
 | `status` | `{ state: "idle" \| "busy" \| "running" \| "error", text }` |
 | `console` | `{ level, text }` |
-| `change` | `{ path, removed }` |
-| `test` | `{ failed }` |
+| `change` | `{ path, removed, by }`: a file changed; `by` says who changed it, see below |
+| `test` | `{ failed, results }`, as `test()` returns |
 | `mode` | `{ mode, features }`: after `setMode`, `setFeatures` or the reader's menu |
 | `resize` | `{ height }`: the content's height in pixels, for iframes |
 | `expand` | `{ open }`: on the element, the modal opened or closed. Over postMessage, the reader pressed the expand button (or Escape while open); the host opens or closes its modal and answers with `setExpanded` |
 | `project` | `{ id }`: another library project opened, picked by the reader or by `openProject` |
 | `boot` | `{ version }`: postMessage only; see below |
+
+`change` comes when a file's contents change, not for a write that left a file as it was, and never for `node_modules`, generated files or the files the project loads with. `by` is `"reader"` for the reader's edits in the editor, the file tree and the console (`bun add` writing `package.json` included), `"program"` for files the running code writes (`run` or `test`: a database, a file written at startup), and `"host"` for your `writeFile` and `removeFile`. Playgrounds older than `by` leave it out: treat a `change` without it as the reader's. A host that checks the reader's code on each change can skip the other two, so a program that writes a file as it starts doesn't set off another check.
 
 ## postMessage protocol
 
@@ -178,7 +183,7 @@ window.addEventListener("message", (e) => {
 });
 ```
 
-`files` maps paths to text; `hidden` lists those not to open as tabs (`data-hidden`). `options` takes `mode`, `features`, `file`, `path`, `requests`, `autorun`, `theme`, `family`, `fonts`, `readonly`, `persist`, `expand`, `status` and `layout`. `vars` takes the object described under [Theming](#theming). `library` takes a [library](#libraries), already read; its `open` is the project to start with. Without `?init=1`, the page loads from its URL and `init` isn't needed; `setFamily` and `setVars` change both afterwards.
+`files` maps paths to text; `hidden` lists those not to open as tabs (`data-hidden`); `generated` those your page owns (`data-generated`). Send generated files in `hidden` too: a playground older than `generated` ignores it. `options` takes `mode`, `features`, `file`, `path`, `requests`, `autorun`, `theme`, `family`, `fonts`, `readonly`, `persist`, `expand`, `status` and `layout`. `vars` takes the object described under [Theming](#theming). `library` takes a [library](#libraries), already read; its `open` is the project to start with. Without `?init=1`, the page loads from its URL and `init` isn't needed; `setFamily` and `setVars` change both afterwards.
 
 ## Theming
 

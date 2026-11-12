@@ -2,7 +2,7 @@ import { PACKED_REQUEST, PACKED_RESPONSE, type FileData, type ServerMessage } fr
 import type { VFS } from "@runbun/vfs";
 import type { LocalBun } from "./localBun";
 import { SKIP } from "./persist";
-import { Runner, type LogFn } from "./runner";
+import { Runner, type LogFn, type TestResults } from "./runner";
 
 /** A program that neither serves nor exits by then is running: Run is done starting. */
 const SETTLE_MS = 1500;
@@ -82,10 +82,11 @@ export class RemoteRunner extends Runner {
     await this.ready;
   }
 
-  override async runTests(files: string[]): Promise<number> {
+  /** Native Bun reports failed tests in all, not per file (no `results`). */
+  override async runTests(files: string[]): Promise<TestResults> {
     await this.start("", files);
     await this.current?.exited;
-    return this.failed;
+    return { failed: this.failed };
   }
 
   /** `bun install` on the runner, without running anything. */

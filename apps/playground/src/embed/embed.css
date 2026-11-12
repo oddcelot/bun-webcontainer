@@ -25,7 +25,7 @@
 #embed-bar button:disabled { opacity: 0.5; cursor: default; }
 #embed-bar .run { border-color: color-mix(in srgb, var(--accent) 60%, var(--panel)); background: color-mix(in srgb, var(--accent) 18%, var(--panel)); }
 #embed-bar .run:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 30%, var(--panel)); }
-#embed-bar .more, #embed-bar .expand { padding: 0 7px; }
+#embed-bar .more, #embed-bar .expand, #embed-bar .files { padding: 0 7px; }
 .embed-menu { min-width: 13rem; }
 .embed-menu .check { display: grid; place-items: center; width: 14px; color: var(--accent); }
 .embed-menu .cost { color: var(--muted); font-size: 11px; }
@@ -51,7 +51,7 @@
 #embed[data-tree][data-side][data-preview] #embed-main { grid-template-areas: "tree editor preview"; }
 #embed[data-tree][data-side]:not([data-preview]) #embed-main { grid-template-areas: "tree editor console"; }
 #embed[data-tree][data-side][data-preview][data-console] #embed-main { grid-template-areas: "tree editor preview" "tree editor console"; }
-/* layout=stack: the side column under the editor (the tree stays out). Rows fit the content when the frame is as tall
+/* layout=stack: the side column under the editor (the tree beside the editor where there's room). Rows fit the content when the frame is as tall
    as the embed asked (data-fit: a host with height="auto"), else they share the height; --stack-rows is a dragged share. */
 #embed[data-stack] {
   --stack-default: minmax(0, 55fr) minmax(0, 45fr);
@@ -74,6 +74,37 @@
     grid-template-rows: var(--stack-rows, var(--stack-default)) var(--console-h, 120px);
     grid-template-areas: "editor" "preview" "console";
   }
+  /* Room for the tree (ui/EmbedApp.tsx STACK_TREE): in the editor's row only. */
+  &[data-side][data-tree] #embed-main {
+    grid-template-columns: var(--tree-w, minmax(110px, 170px)) minmax(0, 1fr);
+    grid-template-areas: "tree editor" "preview preview";
+  }
+  &[data-side][data-tree]:not([data-preview]) #embed-main {
+    grid-template-areas: "tree editor" "console console";
+  }
+  &[data-side][data-tree][data-preview][data-console] #embed-main {
+    grid-template-areas: "tree editor" "preview preview" "console console";
+  }
+}
+/* The tree as a drawer over the editor's left edge (stacked, or a narrow frame; ui/EmbedApp.tsx): out of the flow, so
+   the grid stays as it is. Above the handles, under the status toast. */
+#embed[data-drawer] #tree {
+  display: block;
+  position: absolute;
+  grid-area: editor;
+  inset: 0 auto 0 0;
+  z-index: 10;
+  width: var(--tree-w, 170px);
+  max-width: calc(100% - 32px);
+  height: auto;
+  border: 1px solid var(--control-border);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  @media (prefers-reduced-motion: no-preference) {
+    animation: tree-drawer 0.14s ease-out;
+  }
+}
+@keyframes tree-drawer {
+  from { opacity: 0; transform: translateX(-8px); }
 }
 /* Result mode: the preview (and the console under it), no editor. */
 #embed:not([data-editor]) #embed-main { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: "preview"; }

@@ -455,26 +455,33 @@ async function runSuite(s: Suite, only: boolean, skipAll: boolean) {
   if (started) for (const h of s.hooks.afterAll) await call(h, defaultTimeout).catch((e) => ((totals.fail++), console.error(`${failure(e)}\n\x1b[31m✗\x1b[0m\x1b[31m ${names(s).join(" > ")} (afterAll)\x1b[0m`)));
 }
 
+/** Failed tests in all, and per file in the order they ran. */
+export type TestOutcome = { failed: number; results: { file: string; failed: number }[] };
+
 /**
  * Loads each file (its top level registers suites in `bun:test`), runs it and prints Bun's report.
- * Resolves to the number of failed tests (import errors count as failures).
+ * Resolves to the number of failed tests, in all and per file (import errors count as failures).
  */
-export async function runTestFiles(files: string[], load: (file: string) => Promise<unknown>, version: string): Promise<number> {
+export async function runTestFiles(files: string[], load: (file: string) => Promise<unknown>, version: string): Promise<TestOutcome> {
   const t0 = performance.now();
   totals.pass = totals.fail = totals.skip = totals.todo = 0;
   expectCalls = 0;
+  const results: TestOutcome["results"] = [];
   console.log(`bun test v${version.replace(/-.*/, "")}`);
   for (const file of files) {
     console.log(`\n${file}:`);
     root = current = newSuite("");
+    const before = totals.fail;
     try {
       await load(file);
     } catch (e) {
       totals.fail++;
       console.error(`${failure(e)}\n\x1b[31m✗\x1b[0m\x1b[31m ${file}\x1b[0m`);
+      results.push({ file, failed: 1 });
       continue;
     }
     await runSuite(root, hasOnly(root), false);
+    results.push({ file, failed: totals.fail - before });
   }
   const n = totals.pass + totals.fail + totals.skip + totals.todo;
   const row = (count: number, word: string) => (count ? ` ${count} ${word}` : "");
@@ -485,7 +492,7 @@ export async function runTestFiles(files: string[], load: (file: string) => Prom
   else console.log(" 0 fail");
   console.log(` ${expectCalls} expect() calls`);
   console.log(`Ran ${n} test${n === 1 ? "" : "s"} across ${files.length} file${files.length === 1 ? "" : "s"}. ${dim(`[${ms(performance.now() - t0)}]`)}`);
-  return totals.fail;
+  return { failed: totals.fail, results };
 }
 
 export default {
