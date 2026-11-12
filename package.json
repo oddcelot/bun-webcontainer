@@ -10,14 +10,17 @@
       "packages/*"
     ],
     "catalog": {
-      "@iconify-json/lucide": "^1.2.148",
+      "@iconify-json/lucide": "^1.2.153",
       "@iconify-json/logos": "^1.2.19",
       "unocss": "66.12.0",
-      "solid-js": "2.0.0-rc.19",
-      "@solidjs/web": "2.0.0-rc.19",
-      "@solidjs/vite-plugin": "3.0.0-next.55",
+      "solid-js": "2.0.0-rc.21",
+      "@solidjs/web": "2.0.0-rc.21",
+      "@solidjs/vite-plugin": "3.0.0-next.57",
       "@kobalte/core": "2.0.0-alpha.4"
     }
+  },
+  "overrides": {
+    "fflate": "0.8.3"
   },
   "patchedDependencies": {
     "@solid-primitives/presence@1.0.0-next.2": "patches/npm/@solid-primitives%2Fpresence@1.0.0-next.2.patch",
@@ -25,6 +28,6 @@
   },
   "devDependencies": {
     "@types/bun": "1.4.4",
-    "tsrs": "0.20.1-ts7.1.0-beta"
+    "tsrs": "0.24.0-ts7.1.0-beta"
   }
 }
