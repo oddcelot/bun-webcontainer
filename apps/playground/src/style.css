@@ -17,6 +17,10 @@ body { display: flex; flex-direction: column; }
  * window in #app. The landing page scrolls like a document.
  */
 html:not([data-view="app"]) {
+  /* The landing page is light whatever the theme. */
+  color-scheme: light;
+  scrollbar-color: #d9bf95 #fdeed3;
+
   #app {
     display: none;
   }
@@ -25,11 +29,8 @@ html:not([data-view="app"]) {
     display: block;
     height: auto;
     min-height: 100%;
-    /* The landing page's night sky (#landing's palette), with a faint pixel grid. */
-    background:
-      linear-gradient(#ffffff06 1px, transparent 1px) 0 0 / 8px 8px,
-      linear-gradient(90deg, #ffffff06 1px, transparent 1px) 0 0 / 8px 8px,
-      #1a1c2c;
+    /* Under the landing page's kitchen (#landing's palette): a shade deeper than its wall. */
+    background: #fdeed3;
   }
 }
 html[data-view="app"] #landing {
@@ -65,171 +66,386 @@ html[data-view="opening"] {
   }
 }
 /*
- * The landing page: an 8-bit look, on its own fixed palette (not the playground's theme). Headings and buttons in
- * Press Start 2P, text in VT323; sections are RPG-style dialog boxes, each with a dumpling from dumplings.png as its
- * speaker. The dialogs, buttons, window and dumplings are the shared retro layer (packages/ui/css/retro.css); the rules
- * here are the page's layout and palette.
+ * The landing page: a light pixel-art kitchen, on its own fixed palette (not the playground's theme). A wall with a
+ * window (its sky is a dithered canvas, src/landing/sky.ts) and a shelf; a counter of props, the CRT among them; then
+ * the page's sections as cards. The props are src/landing/art/*.png (scripts/landing-art.ts), shown at --art CSS pixels
+ * per art pixel; the dumplings are dumplings.png, always at a whole multiple. Headings and buttons in Pixelify Sans,
+ * text in the UI font. Cards and buttons are the shared retro layer (packages/ui/css/retro.css) in this palette.
  */
 #landing {
   /* The theme tokens, pinned: the page keeps its own palette whatever the playground's theme is. */
-  --bg: #1a1c2c;
-  --panel: #262b44;
-  --fg: #f4f4f4;
-  --muted: #94b0c2;
-  --warn: #ffcd75;
-  --error: #b13e53;
-  --ok: #a7f070;
-  --accent: #41a6f6;
-  /* Offset shadows (the live example, the CRT) are red, not the accent toned down. */
-  --retro-shade: var(--error);
+  --bg: #fff6e5;
+  --panel: #f6e4c4;
+  --fg: #5b3a2e;
+  --muted: #96735c;
+  --warn: #e3a93f;
+  --error: #c93f72;
+  --ok: #3f8a3d;
+  --accent: #c93f72;
+  --retro-fill: #fffaf0;
+  --retro-shade: #ecd2a6;
+  --retro-hi: #ff86b4;
+  /* One art pixel: of the frames (retro.css), and of the kitchen's props. */
+  --px: 3px;
+  --art: 3px;
+  --gutter: max(24px, calc((100% - 72rem) / 2));
+  --frame:
+    0 calc(-1 * var(--art)) 0 0 var(--fg),
+    0 var(--art) 0 0 var(--fg),
+    calc(-1 * var(--art)) 0 0 0 var(--fg),
+    var(--art) 0 0 0 var(--fg);
 
-  box-sizing: border-box;
-  max-width: 72rem;
-  margin: 0 auto;
-  padding: 48px 24px 64px;
   color: var(--fg);
-  font: 22px/1.3 "VT323", ui-monospace, monospace;
+  font: 17px/1.6 var(--font-ui);
+
+  @media (width < 640px) {
+    --art: 2px;
+  }
 
   code {
-    color: var(--warn);
-    font: inherit;
+    padding: 1px 5px;
+    background: var(--panel);
+    font: 0.88em var(--font-mono);
   }
 
   a {
-    color: var(--accent);
-    text-decoration: underline dotted;
+    color: inherit;
+    text-decoration: underline var(--retro-hi) 2px;
     text-underline-offset: 3px;
 
     &:hover {
-      color: var(--warn);
-      text-decoration-style: solid;
+      color: var(--accent);
     }
   }
 
-  /* The shared sprite (a face of dumplings.png), scaled by whole pixels. */
+  /* A face of dumplings.png, twice its size. */
   .retro-sprite {
-    width: 48px;
-    height: 48px;
+    width: 64px;
+    height: 64px;
 
     /* The smile's idle loop, smile-idle.png: 16 frames of 32px (a hop with squash, then a blink), 100 ms each. */
     &.big {
-      width: 96px;
-      height: 96px;
+      width: calc(32 * var(--art));
+      height: calc(32 * var(--art));
       background: url("./smile-idle.png") 0 0 / 1600% 100%;
       animation: smile-idle 1.6s steps(16, jump-none) infinite;
     }
   }
 
-  /* A dialog box: sans text (retro.css) at a size that matches the page's VT323, code in the mono font. */
-  .retro-dialog {
-    font-size: 17px;
-
-    code {
-      font: 0.9em var(--font-mono);
-    }
-
-    p,
-    ul {
-      margin: 0 0 8px;
-    }
-
-    > :last-child {
-      margin-bottom: 0;
-    }
+  /* A prop: its class sets the picture and its size in art pixels. */
+  .art {
+    flex: none;
+    display: block;
+    width: calc(var(--w) * var(--art));
+    height: calc(var(--h) * var(--art));
+    background: 0 0 / 100% 100% no-repeat;
+    image-rendering: pixelated;
   }
 
-  .hero {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
-    gap: 48px;
-    align-items: center;
-    min-height: min(600px, calc(100dvh - 112px));
-
-    @media (width < 900px) {
-      grid-template-columns: minmax(0, 1fr);
-    }
+  .shelf {
+    --w: 104;
+    --h: 46;
+    background-image: url("./landing/art/shelf.png");
   }
 
-  /* The dumpling and the name, with the CRT on the right. */
-  .brand {
+  .steamer-back,
+  .steamer-front {
+    --w: 68;
+    --h: 42;
+  }
+
+  .steamer-back {
+    background-image: url("./landing/art/steamer-back.png");
+  }
+
+  .steamer-front {
+    background-image: url("./landing/art/steamer-front.png");
+  }
+
+  .rolling-pin {
+    --w: 78;
+    --h: 16;
+    background-image: url("./landing/art/rolling-pin.png");
+  }
+
+  .pot {
+    --w: 60;
+    --h: 36;
+    background-image: url("./landing/art/pot.png");
+  }
+
+  /* Eight frames side by side. */
+  .steam {
+    --w: 30;
+    --h: 40;
+    background: url("./landing/art/steam.png") 0 0 / 800% 100%;
+    animation: landing-steam 1.2s steps(8, jump-none) infinite;
+  }
+
+  .crock {
+    --w: 36;
+    --h: 62;
+    background-image: url("./landing/art/crock.png");
+  }
+
+  .basil {
+    --w: 50;
+    --h: 54;
+    background-image: url("./landing/art/basil.png");
+  }
+
+  .kitchen {
+    background: var(--bg);
+  }
+
+  .top {
     display: flex;
     gap: 24px;
-    align-items: end;
-    justify-content: space-between;
-    margin: 0 0 20px;
-
-    > p {
-      display: flex;
-      gap: 16px;
-      align-items: end;
-      margin: 0;
-      color: var(--warn);
-      font: 14px var(--font-pixel-label);
-    }
-  }
-
-  h1 {
-    margin: 0 0 28px;
-    color: var(--fg);
-    font: clamp(20px, 2.6vw, 30px) / 1.5 var(--font-pixel-label);
-    text-shadow: var(--px) var(--px) 0 var(--error);
-    text-wrap: balance;
-  }
-
-  .lead {
-    margin-bottom: 32px;
-    font-size: 19px;
-  }
-
-  /* Menu buttons: a ▶ cursor points at the one under the pointer or focus, and a press sinks it into its shadow. */
-  .actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 20px 28px;
     align-items: center;
-    margin: 0 0 0 20px;
+    justify-content: space-between;
+    padding: 20px var(--gutter) 0;
 
-    /* No room for the shared button's margin: the row has its own gaps. */
-    .retro-button {
+    .brand {
+      display: flex;
+      gap: 8px;
+      align-items: center;
       margin: 0;
-      font-size: 12px;
+      font: 600 24px var(--font-pixel);
     }
 
-    /* The link button keeps its look over the page's link styles. */
-    a.retro-button {
-      text-decoration: none;
+    nav {
+      display: flex;
+      gap: 28px;
+      font: 500 19px var(--font-pixel);
 
-      &,
-      &:hover {
-        color: var(--fg);
+      a {
+        text-decoration: none;
+      }
+
+      @media (width < 640px) {
+        gap: 16px;
+        font-size: 16px;
+
+        a:nth-child(n + 2) {
+          display: none;
+        }
       }
     }
   }
 
-  /* The live example, in a window (.retro-shadow) with a pixel title bar. */
-  .window {
-    min-width: 0;
-    background: #000;
-  }
+  .wall {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 56px;
+    align-items: center;
+    padding: 20px var(--gutter) 36px;
 
-  .window-title {
-    display: flex;
-    justify-content: space-between;
-    margin: 0;
-    padding: 10px 12px;
-    background: var(--panel);
-    color: var(--fg);
-    font: 10px var(--font-pixel-label);
-    text-transform: uppercase;
-
-    > :last-child {
-      color: var(--ok);
+    @media (width < 960px) {
+      grid-template-columns: minmax(0, 1fr);
     }
   }
 
-  .demo {
+  h1 {
+    margin: 0 0 24px;
+    font: 700 clamp(40px, 4.6vw, 62px) / 1 var(--font-pixel);
+    text-shadow: var(--px) var(--px) 0 #ffc2d8;
+    text-wrap: balance;
+
+    .kicker {
+      display: block;
+      margin-bottom: 18px;
+      color: var(--accent);
+      font: 12px/1.4 var(--font-pixel-label);
+      text-shadow: none;
+      text-transform: uppercase;
+    }
+  }
+
+  .lead {
+    max-width: 34em;
+    margin: 0 0 32px;
+    font-size: 19px;
+  }
+
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    margin: 0;
+  }
+
+  /* A key: it sinks into its shadow when pressed. */
+  .retro-button {
+    margin: 0;
+    padding: 12px 20px;
+    background: var(--retro-fill);
+    color: var(--fg);
+    font: 600 19px/1.2 var(--font-pixel);
+    text-decoration: none;
+    text-transform: none;
+    box-shadow:
+      var(--_frame),
+      var(--px) calc(2 * var(--px)) 0 0 var(--fg);
+
+    &::before {
+      display: none;
+    }
+
+    &:hover {
+      background: #fff;
+      color: var(--fg);
+    }
+
+    &:focus-visible {
+      outline: var(--px) solid var(--accent);
+      outline-offset: calc(2 * var(--px));
+    }
+
+    &:active {
+      translate: 0 calc(2 * var(--px));
+      box-shadow: var(--_frame);
+    }
+
+    &.primary {
+      background: var(--retro-hi);
+      color: var(--fg);
+
+      &:hover {
+        background: #ffa3c6;
+      }
+    }
+  }
+
+  /* On the wall, right of the words: the window, and a shelf of jars. */
+  .decor {
+    display: grid;
+    gap: calc(9 * var(--art));
+    justify-items: end;
+
+    @media (width < 960px) {
+      display: none;
+    }
+
+    .shelf {
+      justify-self: start;
+      margin-right: calc(24 * var(--art));
+    }
+  }
+
+  /* A wooden frame around the sky, with a cross of bars and a sill. */
+  .window {
+    position: relative;
     display: block;
-    min-width: 0;
+    padding: calc(3 * var(--art));
+    background: #e8b47d;
+    box-shadow: var(--frame);
+
+    canvas {
+      display: block;
+      width: calc(104 * var(--art));
+      height: calc(64 * var(--art));
+      /* Until sky.ts draws, and without JavaScript. */
+      background: #b9d9f8;
+      box-shadow: 0 0 0 var(--art) var(--fg);
+      image-rendering: pixelated;
+    }
+
+    &::before {
+      content: "";
+      position: absolute;
+      inset: calc(3 * var(--art));
+      background:
+        linear-gradient(#e8b47d, #e8b47d) center / calc(2 * var(--art)) 100% no-repeat,
+        linear-gradient(#e8b47d, #e8b47d) center / 100% calc(2 * var(--art)) no-repeat;
+    }
+
+    &::after {
+      content: "";
+      position: absolute;
+      top: calc(100% + var(--art));
+      right: calc(-4 * var(--art));
+      left: calc(-4 * var(--art));
+      height: calc(3 * var(--art));
+      background: #f5d2a2;
+      box-shadow: var(--frame);
+    }
+  }
+
+  /* The counter: props standing on its top, in front of three rows of tiles. */
+  .counter {
+    position: relative;
+    display: flex;
+    gap: calc(4 * var(--art));
+    align-items: flex-end;
+    justify-content: space-between;
+    /* The strip is 26 art pixels high; the props stand 8 into its top. */
+    padding: 0 var(--gutter) calc(18 * var(--art));
+    background: url("./landing/art/counter.png") left bottom / calc(96 * var(--art)) calc(26 * var(--art)) repeat-x;
+    image-rendering: pixelated;
+
+    &::before {
+      content: "";
+      position: absolute;
+      right: 0;
+      bottom: calc(26 * var(--art));
+      left: 0;
+      height: calc(48 * var(--art));
+      border-top: var(--art) solid #f0d9b4;
+      background: url("./landing/art/tiles.png") left bottom / calc(32 * var(--art)) repeat;
+      image-rendering: pixelated;
+    }
+
+    > * {
+      position: relative;
+    }
+
+    /* Lying nearer the edge. */
+    .rolling-pin {
+      margin-bottom: calc(-4 * var(--art));
+
+      @media (width < 1180px) {
+        display: none;
+      }
+    }
+
+    .crock {
+      @media (width < 860px) {
+        display: none;
+      }
+    }
+
+    .pot {
+      margin-top: calc(40 * var(--art));
+
+      .steam {
+        position: absolute;
+        bottom: calc(33 * var(--art));
+        left: calc(15 * var(--art));
+      }
+
+      @media (width < 420px) {
+        display: none;
+      }
+    }
+  }
+
+  /* The dumpling sits in the steamer, between its back and the wall in front of it. */
+  .steamer {
+    flex: none;
+    width: calc(68 * var(--art));
+    height: calc(42 * var(--art));
+    margin-top: calc(24 * var(--art));
+
+    > * {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+    }
+
+    .retro-sprite.big {
+      bottom: calc(29 * var(--art));
+      left: calc(18 * var(--art));
+    }
   }
 
   /* A small CRT monitor showing the playground (src/landing/crt.ts); clicking it opens the playground, zooming in. */
@@ -238,41 +454,39 @@ html[data-view="opening"] {
     flex-direction: column;
     align-items: center;
     flex: none;
-    width: 180px;
-    margin: 0 calc(4 * var(--px)) var(--px) 0;
-
-    /* On a narrow (portrait) screen the window-shaped screen would be taller than wide and crowd the name out:
-     * no monitor there, and "Open the playground" opens it directly (src/entry.ts). */
-    @media (width < 640px) {
-      display: none;
-    }
+    width: calc(64 * var(--art));
     padding: 0;
     border: 0;
     background: none;
     cursor: pointer;
 
+    /* On a narrow (portrait) screen the window-shaped screen would be taller than wide: no monitor there, and
+     * "Open the playground" opens it directly (src/entry.ts). */
+    @media (width < 640px) {
+      display: none;
+    }
+
     .crt-case {
+      position: relative;
       display: block;
       width: 100%;
-      padding: 10px 10px 20px;
-      background: #c2c3c7;
+      padding: calc(3 * var(--art)) calc(3 * var(--art)) calc(7 * var(--art));
+      background: #f3e3c6;
       box-shadow:
-        inset calc(-1 * var(--px)) calc(-1 * var(--px)) 0 0 #83769c,
-        inset var(--px) var(--px) 0 0 var(--fg),
-        0 0 0 var(--px) #000,
-        calc(3 * var(--px)) calc(3 * var(--px)) 0 var(--px) var(--error);
-      position: relative;
+        inset calc(-1 * var(--art)) calc(-1 * var(--art)) 0 0 #d9bf95,
+        inset var(--art) var(--art) 0 0 #fffaf0,
+        var(--frame);
 
       /* The power light. */
       &::after {
         content: "";
         position: absolute;
-        right: 12px;
-        bottom: 7px;
-        width: 6px;
-        height: 6px;
-        background: var(--ok);
-        box-shadow: 0 0 6px var(--ok);
+        right: calc(4 * var(--art));
+        bottom: calc(2 * var(--art));
+        width: calc(2 * var(--art));
+        height: calc(2 * var(--art));
+        background: #70b055;
+        box-shadow: 0 0 6px #9fd168;
       }
     }
 
@@ -280,9 +494,9 @@ html[data-view="opening"] {
       display: block;
       aspect-ratio: var(--crt-aspect, 16 / 10);
       overflow: hidden;
-      border-radius: 10px / 14px;
-      background: #000;
-      box-shadow: 0 0 0 var(--px) #5f574f;
+      border-radius: 8px / 10px;
+      background: #2a2233;
+      box-shadow: 0 0 0 var(--art) var(--fg);
 
       canvas {
         display: block;
@@ -293,49 +507,120 @@ html[data-view="opening"] {
 
     .crt-stand {
       display: block;
-      width: 30%;
-      height: 10px;
-      background: #83769c;
-      box-shadow: 0 var(--px) 0 0 #000;
+      width: 36%;
+      height: calc(3 * var(--art));
+      margin-top: var(--art);
+      background: #d9bf95;
+      box-shadow: var(--frame);
     }
 
     &:hover .crt-case,
     &:focus-visible .crt-case {
-      outline: var(--px) solid var(--warn);
+      background: #fff1d6;
+    }
+
+    &:focus-visible {
+      outline: var(--px) solid var(--accent);
       outline-offset: calc(2 * var(--px));
     }
   }
 
-  /* A row of dumplings walking in place between the hero and the boxes. */
-  .party {
+  /* A card: the shared dialog box, without its caret. */
+  .retro-dialog {
+    padding: 24px 28px;
+
+    &::after {
+      display: none;
+    }
+
+    p,
+    ul {
+      margin: 0 0 10px;
+    }
+
+    > :last-child {
+      margin-bottom: 0;
+    }
+  }
+
+  h2 {
     display: flex;
-    flex-wrap: wrap;
-    gap: 16px 24px;
-    justify-content: center;
-    margin: 64px 0 40px;
+    gap: 12px;
+    align-items: center;
+    margin: 0 0 12px;
+    font: 600 26px/1.2 var(--font-pixel);
+  }
 
-    .retro-sprite {
-      animation: landing-bob 0.8s steps(2, jump-none) infinite;
+  /* What it is, next to the live example. */
+  .taste {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+    gap: 44px;
+    align-items: center;
+    padding: 72px var(--gutter) 0;
 
-      &:nth-child(even) {
-        animation-delay: -0.4s;
+    @media (width < 960px) {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  /* The live example, in a window with a title bar. */
+  .live {
+    min-width: 0;
+    background: var(--retro-fill);
+  }
+
+  .live-title {
+    display: flex;
+    justify-content: space-between;
+    margin: 0;
+    padding: 8px 14px;
+    border-bottom: var(--px) solid var(--fg);
+    background: var(--panel);
+    font: 600 17px var(--font-pixel);
+
+    > :last-child {
+      color: var(--ok);
+
+      &::before {
+        content: "";
+        display: inline-block;
+        width: calc(2 * var(--px));
+        height: calc(2 * var(--px));
+        margin-right: 8px;
+        background: currentColor;
+        animation: retro-blink 1.6s steps(1) infinite;
       }
     }
   }
 
+  /* The element's poster (the code and its Run button, until it is clicked) in the page's palette. */
+  .demo {
+    --poster-bg: var(--retro-fill);
+    --poster-fg: var(--fg);
+    --play-bg: var(--retro-hi);
+    --play-fg: var(--fg);
+    --play-border: var(--fg);
+    --play-radius: 0;
+    --play-font: 600 16px var(--font-pixel);
+
+    display: block;
+    min-width: 0;
+  }
+
   .about {
     display: grid;
-    gap: 36px;
-    max-width: 50rem;
-    margin: 0 auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 40px 44px;
+    padding: 52px var(--gutter) 0;
 
-    h2 {
-      display: flex;
-      gap: 14px;
-      align-items: center;
-      margin: 0 0 14px;
-      color: var(--warn);
-      font: 14px/1.5 var(--font-pixel-label);
+    > :first-child,
+    > .faq {
+      grid-column: 1 / -1;
+    }
+
+    @media (width < 960px) {
+      grid-template-columns: minmax(0, 1fr);
     }
 
     ul {
@@ -345,68 +630,95 @@ html[data-view="opening"] {
 
     li {
       position: relative;
-      margin: 0 0 4px;
-      padding-left: 28px;
+      margin: 0 0 6px;
+      padding-left: 26px;
 
       &::before {
         position: absolute;
         left: 0;
+        color: var(--retro-hi);
       }
     }
 
     .works li::before {
       content: "♥";
-      color: var(--error);
     }
 
     .examples li::before {
       content: "▶";
-      color: var(--warn);
       font-size: 0.8em;
-      line-height: 1.6;
+      line-height: 2;
     }
 
-    /* Questions: a "?" prompt in front of each, answers below in the box's text. */
-    .faq h3 {
-      margin: 22px 0 6px;
-      color: var(--accent);
-      font: 11px/1.7 var(--font-pixel-label);
+    /* Questions, in two columns under the heading. */
+    .faq {
+      columns: 2 340px;
+      column-gap: 48px;
 
-      &::before {
-        content: "? ";
-        color: var(--warn);
+      h2 {
+        column-span: all;
       }
 
-      h2 + & {
-        margin-top: 0;
+      h3 {
+        margin: 0 0 4px;
+        font: 600 20px/1.3 var(--font-pixel);
+        break-after: avoid;
+      }
+
+      p {
+        margin: 0 0 20px;
+        break-inside: avoid;
       }
     }
   }
 
   footer {
-    max-width: 50rem;
-    margin: 56px auto 0;
+    padding: 72px var(--gutter) 48px;
     color: var(--muted);
-    font-size: 20px;
+    font-size: 15px;
     text-align: center;
 
     p {
-      margin: 0 0 6px;
+      margin: 0 0 4px;
     }
 
-    .disclaimer {
-      font-size: 18px;
+    /* A row of dumplings walking in place on a line. */
+    .party {
+      display: flex;
+      gap: 8px 20px;
+      justify-content: center;
+      width: fit-content;
+      margin: 0 auto 28px;
+      padding: 0 28px;
+      border-bottom: var(--px) solid var(--fg);
+
+      .retro-sprite {
+        animation: landing-bob 0.8s steps(2, jump-none) infinite;
+
+        &:nth-child(even) {
+          animation-delay: -0.4s;
+        }
+
+        @media (width < 640px) {
+          &:nth-child(n + 4) {
+            display: none;
+          }
+        }
+      }
     }
   }
 
   @media (prefers-reduced-motion: reduce) {
     .retro-sprite.big,
-    .party .retro-sprite {
+    .party .retro-sprite,
+    .steam,
+    .live-title > :last-child::before {
       animation: none;
     }
   }
 }
 @keyframes landing-bob { to { translate: 0 -4px; } }
+@keyframes landing-steam { to { background-position-x: 100%; } }
 @keyframes smile-idle { to { background-position-x: 100%; } }
 #app {
   display: flex;

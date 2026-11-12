@@ -101,6 +101,7 @@ bun install                                # root bun workspace (playground, doc
 moon run playground:deploy-canary docs:deploy-canary      # canary.runbun.dev + docs-canary.runbun.dev (noindex)
 scripts/dev.ts                                           # playground (:5173) + docs (:4321) dev servers; docs embeds need both
 (cd apps/playground && bun run swatches)                       # after changing theme families: packages/ui/themes.json (also the swatches), code-themes/
+(cd apps/playground && bun run landing-art)                    # after changing the landing page's kitchen props: src/landing/art/*.png
 # Cross-links: DOCS_URL / PLAYGROUND_URL (both builds read them; default localhost in dev, runbun.dev in builds)
 ```
 
