@@ -53,6 +53,33 @@ export function splitKey(key: string): string[] {
 /** `["a", "@s/b"]` → `"node_modules/a/node_modules/@s/b"`. */
 export const installPath = (names: string[]) => names.map((n) => `node_modules/${n}`).join("/");
 
+/**
+ * Removes the packages in node_modules that aren't at one of `keep`'s install paths (`node_modules/a`,
+ * `node_modules/a/node_modules/@s/b`), as native `bun install` does with what the new bun.lock no longer places.
+ * Folders starting with a dot (`.bin`, `.vite`, `.cache`) stay. Returns the folders removed.
+ */
+export function pruneNodeModules(vfs: Pick<VFS, "list" | "remove">, keep: Set<string>): string[] {
+  const stale = new Set<string>();
+  for (const file of vfs.list("node_modules")) {
+    const parts = file.split("/");
+    // Down the chain of node_modules/<pkg>/node_modules/<pkg>…: the first package that isn't kept goes, with all below it.
+    for (let i = 0; parts[i] === "node_modules" && i + 1 < parts.length - 1; ) {
+      const name = parts[i + 1]!;
+      if (name.startsWith(".")) break;
+      const end = name.startsWith("@") ? i + 3 : i + 2;
+      if (end >= parts.length) break;
+      const dir = parts.slice(0, end).join("/");
+      if (!keep.has(dir)) {
+        stale.add(dir);
+        break;
+      }
+      i = end;
+    }
+  }
+  for (const dir of stale) vfs.remove(dir);
+  return [...stale];
+}
+
 /** `cpu` of a wasm32 package: npm's `"wasm32"`, or `"none"` in bun.lock (no CPU Bun knows). */
 const WASM32 = new Set(["wasm32", "none"]);
 

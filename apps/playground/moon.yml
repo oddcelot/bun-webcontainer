@@ -36,9 +36,9 @@ tasks:
     # (scripts/request-fields.ts), the worker's VFS mirror (scripts/vfs-mirror.ts), `bun test`'s per-file counts
     # (scripts/test-results.ts), what `persist` leaves unsaved (scripts/persist-skip.ts), how a test run that doesn't
     # report ends: Stop, the watchdog, process.exit (scripts/runner-stop.ts), who the embed's `change` event says
-    # changed a file (scripts/change-origin.ts), and the worker's Requests keeping forbidden headers
-    # (scripts/request-headers.ts).
-    script: 'bun scripts/inspect-corpus/diff.ts && bun scripts/data-apis/jsonl.ts && bun scripts/data-apis/xml-stringify.ts && bun scripts/requests.ts && bun scripts/request-fields.ts && bun scripts/vfs-mirror.ts && bun scripts/test-results.ts && bun scripts/persist-skip.ts && bun scripts/runner-stop.ts && bun scripts/change-origin.ts && bun scripts/request-headers.ts'
+    # changed a file (scripts/change-origin.ts), the worker's Requests keeping forbidden headers
+    # (scripts/request-headers.ts), and what `bun install` prunes from node_modules (scripts/install-prune.ts).
+    script: 'bun scripts/inspect-corpus/diff.ts && bun scripts/data-apis/jsonl.ts && bun scripts/data-apis/xml-stringify.ts && bun scripts/requests.ts && bun scripts/request-fields.ts && bun scripts/vfs-mirror.ts && bun scripts/test-results.ts && bun scripts/persist-skip.ts && bun scripts/runner-stop.ts && bun scripts/change-origin.ts && bun scripts/request-headers.ts && bun scripts/install-prune.ts'
     toolchains: ['bun']
     inputs:
       - 'scripts/inspect-corpus/**/*'
@@ -64,6 +64,8 @@ tasks:
       - 'src/embed/changes.ts'
       - '/packages/vfs/vfs.ts'
       - 'scripts/request-headers.ts'
+      - 'scripts/install-prune.ts'
+      - 'src/lockfile.ts'
       - 'src/worker/requestHeaders.ts'
   test-git:
     # The WASI host over the VFS (src/git/wasi.ts): its edge cases, then crates/git-wasm's git.wasm committing into a
