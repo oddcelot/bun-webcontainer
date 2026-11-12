@@ -388,7 +388,26 @@ for (const [name, sprite] of Object.entries(art)) {
   const dark = name === "switch" ? lightSwitch(false) : sprite;
   if (!lit.has(name)) writeFileSync(`${out}${name}-night.png`, dark.night(name === "steam" ? 0.55 : 1).png());
 }
-console.log(`${Object.keys(art).length} sprites in ${out}`);
+// The page's cursors, in cream with the props' outline: an arrow, and a hand with a pink cuff over what can be clicked.
+// A cursor is drawn at its file's size, so each is written at two art pixels a pixel, and at four for 2x screens.
+// Their hot spots (the arrow's tip, the fingertip) are in style.css #landing.
+const CREAM = ["#ecd2a6", "#fffaf0", "#fffaf0"];
+const hand = mark(
+  ["..............", ".....oo.......", ".....oo.......", ".....oo.......", ".....oo.......", ".....oooooo...", ".....oooooooo.", "..oo.oooooooo.", "..oooooooooood", "...ooooooooood", "...ooooooooood", "....ooooooood.", ".....ooooooo..", "..............", ".............."],
+  CREAM,
+);
+// The cuff.
+hand.fill(rect(5, 13, 11, 13), ENAMEL, 0.5);
+const cursors: Record<string, Sprite> = {
+  cursor: mark(
+    ["...........", ".o.........", ".oo........", ".ooo.......", ".oooo......", ".ooooo.....", ".oooooo....", ".ooooooo...", ".oooooooo..", ".oooood....", ".oo.ood....", ".o...ood...", ".....ood...", "...........", "..........."],
+    CREAM,
+  ).outline(),
+  pointer: hand.outline(),
+};
+for (const [name, sprite] of Object.entries(cursors))
+  for (const [suffix, scale] of [["", 2], ["@2x", 4]] as const) writeFileSync(`${out}${name}${suffix}.png`, new Sprite(sprite.w * scale, sprite.h * scale).draw(sprite, 0, 0, scale).png());
+console.log(`${Object.keys(art).length} sprites and ${Object.keys(cursors).length} cursors in ${out}`);
 
 const colors = process.argv.indexOf("--night");
 if (colors > 0)

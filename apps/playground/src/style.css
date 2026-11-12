@@ -136,6 +136,16 @@ html[data-view="opening"] {
 
   color: var(--fg);
   font: 17px/1.6 var(--font-ui);
+  /* The page's own cursors (landing-art.ts): an arrow, and a hand over what can be clicked. Twice: the plain picture
+   * for a browser without image-set() in `cursor`, then the sharp one for 2x screens. The numbers are the hot spot. */
+  cursor: url("./landing/art/cursor.png") 2 2, auto;
+  cursor: image-set(url("./landing/art/cursor.png") 1x, url("./landing/art/cursor@2x.png") 2x) 2 2, auto;
+
+  a,
+  button {
+    cursor: url("./landing/art/pointer.png") 11 2, pointer;
+    cursor: image-set(url("./landing/art/pointer.png") 1x, url("./landing/art/pointer@2x.png") 2x) 11 2, pointer;
+  }
 
   @media (width < 640px) {
     --art: 2px;
@@ -241,7 +251,6 @@ html[data-view="opening"] {
     border: 0;
     background-color: transparent;
     background-image: url("./landing/art/switch.png");
-    cursor: pointer;
 
     &[hidden] {
       display: none;
@@ -292,7 +301,6 @@ html[data-view="opening"] {
         padding: 0;
         border: 0;
         background: none;
-        cursor: pointer;
 
         &::before {
           content: "";
@@ -562,7 +570,6 @@ html[data-view="opening"] {
     padding: 0;
     border: 0;
     background: none;
-    cursor: pointer;
 
     /* On a narrow (portrait) screen the window-shaped screen would be taller than wide: no monitor there, and
      * "Open the playground" opens it directly (src/entry.ts). */
