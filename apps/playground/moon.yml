@@ -102,6 +102,14 @@ tasks:
     toolchains: ['bun']
     options:
       cache: false
+  test-processes:
+    # Child processes end to end (scripts/processes.ts): a project that spawns, pipes, kills and nests children runs
+    # in the embed in headless Chrome, on the editor's origin and on a content origin, and prints what native Bun
+    # prints for it. Needs Chrome, so it isn't part of `test`.
+    script: 'bun scripts/processes.ts && bun scripts/processes.ts --no-native --content-origin'
+    toolchains: ['bun']
+    options:
+      cache: false
   fmt-examples:
     # The gallery's projects (examples/, the demo included) as `bun fmt` leaves them (`-- --write` formats them).
     command: 'bun scripts/fmt-examples.ts'

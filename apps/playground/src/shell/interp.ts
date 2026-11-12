@@ -1,7 +1,7 @@
 // Runs the AST Bun's shell parser gives (parse.ts) the way Bun's interpreter does (bun/src/runtime/shell/states/):
 // statements, && and ||, pipelines (each stage concurrent, joined by pipes), subshells, if, [[ ]], one redirect per
 // command, and word expansion ($VAR, $0-$9, ~, $(…), {a,b}, * and **). Commands are the builtins (builtins.ts) and
-// whatever the host adds (the console's bun and git); everything else is `command not found`.
+// whatever the host adds (the console's bun and git, a program's child processes); everything else is `command not found`.
 import type { VFS } from "@runbun/vfs";
 import type { Assign, Atom, CondExpr, Expr, If, PipelineItem, Redirect, RedirectFlags, Script, SimpleAtom, Stmt, Subshell } from "./ast";
 import type { ShellWasm } from "./parse";
@@ -243,6 +243,8 @@ export type ShellOptions = {
   builtins: Record<string, Command>;
   /** The host's commands (the console's bun, git, help…), after the builtins. */
   commands?: Record<string, Command>;
+  /** Any other command the host can start in `cwd` (a program's child process, worker/processes.ts); undefined: not found. */
+  external?: (name: string, cwd: string) => Command | undefined;
   home?: string;
   signal?: AbortSignal;
 };
@@ -567,7 +569,7 @@ export class Shell {
     const name = argv[0]!;
     const redirected = await this.redirect(node.redirect, node.redirect_file, io, env, objs, name);
     if (typeof redirected === "number") return redirected;
-    const run = this.opts.builtins[name] ?? this.opts.commands?.[name];
+    const run = this.opts.builtins[name] ?? this.opts.commands?.[name] ?? this.opts.external?.(name, env.cwd);
     try {
       if (!run) {
         await redirected.io.stderr.write(`bun: command not found: ${name}\n`);
@@ -580,7 +582,7 @@ export class Shell {
         env: { ...Object.fromEntries(env.exported), ...local },
         fs: this.opts.fs,
         path: (p) => resolvePath(env.cwd, p),
-        known: (n) => (Object.hasOwn(this.opts.builtins, n) ? "builtin" : this.opts.commands && Object.hasOwn(this.opts.commands, n) ? "command" : undefined),
+        known: (n) => (Object.hasOwn(this.opts.builtins, n) ? "builtin" : (this.opts.commands && Object.hasOwn(this.opts.commands, n)) || this.opts.external?.(n, env.cwd) ? "command" : undefined),
         signal: this.signal,
       };
       return await run(ctx);

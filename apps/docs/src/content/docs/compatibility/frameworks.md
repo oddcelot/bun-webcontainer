@@ -43,9 +43,9 @@ The Vite and Astro examples need cross-origin isolation, which this site doesn't
 
 ## What usually blocks a framework
 
-- **CLI scripts** beyond one command. `"dev": "bun <file>"` and a package's bin (`"dev": "vite"`) run; `tsc && vite`, pipes, variables and `npx` don't. Start the dev server from a file instead (for example `createServer()` in Vite, `dev()` in Astro).
+- **CLI scripts** beyond one command, for Run. Run starts `"dev": "bun <file>"` and a package's bin (`"dev": "vite"`). `bun run build` in the console also runs a script like `tsc && vite build` in Bun's shell, each command a child process, but a server a child starts isn't reachable from the preview. Start the dev server from a file instead (for example `createServer()` in Vite, `dev()` in Astro).
 - **Native bindings** without a wasm fallback.
-- **Child processes** (`child_process`, `Bun.spawn`).
+- **Tools that spawn something other than** `bun`, `node`, a `package.json` script or an installed bin (`git`, `esbuild`'s native binary), or that spawn synchronously (`execSync`).
 - **Install scripts**, which never run.
 
 Tried something? [Tell us](#page-feedback) whether it worked.

@@ -74,6 +74,7 @@ moon run connect:test                                  # the local runner end to
 moon run playground:fmt-examples                       # the gallery's projects (examples/ submodule, demo included) are `bun fmt`-clean
 moon run playground:check-examples                     # each of them installs and runs in the playground (headless Chrome)
 moon run playground:test-lockfile                      # the bun.lock an install writes = native bun install's (needs npm)
+moon run playground:test-processes                     # child processes (Bun.spawn, child_process, Bun.$) vs native Bun (headless Chrome)
 scripts/setup-bun.ts                       # recreate bun/ (pinned commit + patches/bun/ via git am); bun/ is not tracked
 scripts/export-bun-patches.ts              # after committing in bun/ on wasm-experiment
 scripts/bun-upgrade.ts --check             # newer Bun release? do patches/bun/ still apply? (changes nothing)

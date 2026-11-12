@@ -21,7 +21,6 @@ export const dns = stubModule("dns", "resolve resolve4 resolve6 reverse setServe
 
 export const http2 = stubModule("http2", "connect createServer createSecureServer getDefaultSettings getPackedSettings getUnpackedSettings Http2ServerRequest Http2ServerResponse", { constants: {}, sensitiveHeaders: Symbol("nodejs.http2.sensitiveHeaders") });
 export const tls = stubModule("tls", "connect createServer createSecureContext checkServerIdentity getCiphers TLSSocket Server", { DEFAULT_MIN_VERSION: "TLSv1.2", DEFAULT_MAX_VERSION: "TLSv1.3", rootCertificates: [] });
-export const child_process = stubModule("child_process", "spawn exec execFile fork spawnSync execSync execFileSync ChildProcess");
 export const v8 = stubModule("v8", "getHeapStatistics getHeapSpaceStatistics getHeapSnapshot writeHeapSnapshot serialize deserialize setFlagsFromString cachedDataVersionTag");
 export const readline = stubModule("readline", "createInterface Interface clearLine clearScreenDown cursorTo moveCursor emitKeypressEvents", { promises: stubModule("readline/promises", "createInterface Interface") });
 export const vm = stubModule("vm", "runInThisContext runInNewContext runInContext createContext isContext compileFunction Script SourceTextModule measureMemory");

@@ -1,7 +1,7 @@
 import assert from "./assert";
 import buffer from "./buffer";
 import crypto from "./crypto";
-import { diagnostics_channel, async_hooks, child_process, cluster, constants, dns, http2, inspector, readline, tls, v8, vm } from "./stubs";
+import { diagnostics_channel, async_hooks, cluster, constants, dns, http2, inspector, readline, tls, v8, vm } from "./stubs";
 import events from "./events";
 import fs from "./fs";
 import http, { https } from "./http";
@@ -23,6 +23,7 @@ import tty from "./tty";
 import url from "./url";
 import util from "./util";
 import worker_threads from "./worker_threads";
+import child_process from "./child_process";
 import zlib from "./zlib";
 
 /** node:stream/web re-exports the web stream classes, which are globals here. */
@@ -34,7 +35,7 @@ const streamWeb = Object.fromEntries(
 );
 
 /** What `Bun` has; runtime.ts types the global against this list. */
-export const BUN_NAMES = ["version", "env", "gc", "main", "argv", "stdout", "stderr", "inspect", "deepEquals", "escapeHTML", "which", "sleep", "nanoseconds", "semver", "file", "write", "serve", "build", "CryptoHasher", "gzipSync", "gunzipSync", "deflateSync", "inflateSync", "hash", "Transpiler", "resolveSync", "resolve", "Glob", "YAML", "TOML", "JSONC", "JSON5", "password", "Cookie", "CookieMap", "sleepSync", "revision", "JSONL", "XML", "markdown", "$"] as const;
+export const BUN_NAMES = ["version", "env", "gc", "main", "argv", "stdout", "stderr", "inspect", "deepEquals", "escapeHTML", "which", "spawn", "spawnSync", "sleep", "nanoseconds", "semver", "file", "write", "serve", "build", "CryptoHasher", "gzipSync", "gunzipSync", "deflateSync", "inflateSync", "hash", "Transpiler", "resolveSync", "resolve", "Glob", "YAML", "TOML", "JSONC", "JSON5", "password", "Cookie", "CookieMap", "sleepSync", "revision", "JSONL", "XML", "markdown", "$"] as const;
 /** `import ... from "bun"`: the worker copies the `Bun` global in once it exists; the page only needs the names. */
 const bun: Record<string, unknown> = Object.fromEntries(BUN_NAMES.map((k) => [k, undefined]));
 
@@ -95,7 +96,7 @@ builtins.module = createModule(builtins);
 
 export { setFs } from "./fs";
 export { setRequire } from "./module";
-export { setExit, setStdio } from "./process";
+export { setExit, setRawStdio, setStdio } from "./process";
 export { installTimers } from "./timers";
 
 /** Names that can be `export const { name }` from a wrapper module. */

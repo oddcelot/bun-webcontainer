@@ -2,6 +2,7 @@ import { PACKED_REQUEST, PACKED_RESPONSE, type FileData, type ServerMessage } fr
 import type { VFS } from "@runbun/vfs";
 import type { LocalBun } from "./localBun";
 import { SKIP } from "./persist";
+import { isShellCommand } from "./scripts";
 import { Runner, type LogFn, type TestResults } from "./runner";
 
 /** A program that neither serves nor exits by then is running: Run is done starting. */
@@ -77,6 +78,12 @@ export class RemoteRunner extends Runner {
 
   override async start(entry: string, tests?: string[], args: string[] = []): Promise<void> {
     await this.stop();
+    if (isShellCommand(entry, args)) {
+      // The runner takes a file to run; a script line it would have to run through a shell of its own.
+      this.out("error", `[local] only "bun <file>" scripts and installed packages' bins run with local Bun: "${args[1]}"`);
+      this.exitCode = 1;
+      return;
+    }
     const c = this.begin(!!tests);
     this.local.send({ t: "run", id: c.id, project: this.project, files: this.snapshot(), entry, args, test: tests });
     await this.ready;

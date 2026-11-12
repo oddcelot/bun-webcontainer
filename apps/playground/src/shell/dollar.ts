@@ -9,6 +9,8 @@ export type DollarHost = {
   wasm: ShellWasm;
   builtins: Record<string, Command>;
   commands?: Record<string, Command>;
+  /** Commands that run as child processes (see interp.ts ShellOptions). */
+  external?: (name: string, cwd: string) => Command | undefined;
   /** Where unquiet output goes as it's written (the program's stdout and stderr). */
   stdout: Writer;
   stderr: Writer;
@@ -70,7 +72,7 @@ export function createDollar(host: DollarHost) {
         for (const [k, v] of Object.entries(env ?? host.env())) if (v !== undefined) vars.set(k, String(v));
         const dir = normalize(cwd ?? host.cwd());
         const shellEnv = new ShellEnv(dir, new Map(), vars);
-        const shell = new Interpreter({ fs: host.fs, wasm: host.wasm, builtins: host.builtins, commands: host.commands, home: host.home });
+        const shell = new Interpreter({ fs: host.fs, wasm: host.wasm, builtins: host.builtins, commands: host.commands, external: host.external, home: host.home });
         // Not awaited inside run(): `then` starts it and the promise settles when it ends.
         void (async () => {
           if (!host.fs.stat(dir)?.dir) throw Object.assign(new Error(`ENOENT: No such file or directory: ${dir}`), { code: "ENOENT", path: dir });

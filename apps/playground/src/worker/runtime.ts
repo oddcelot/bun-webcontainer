@@ -3,7 +3,7 @@ import { loadResolver, parseData, parseDataFile, resolve } from "../resolver";
 import { loadSemver } from "../semver";
 import { dirname, norm, VFS } from "@runbun/vfs";
 import { readConfig } from "../projectConfig";
-import { BUN_NAMES, builtins, installTimers, setExit, setFs, setRequire, setStdio } from "./node";
+import { BUN_NAMES, builtins, installTimers, setExit, setFs, setRawStdio, setRequire, setStdio } from "./node";
 import { bundle, type BundleConfig, type BundleLog } from "./bundler";
 import { setHostVfs } from "./hostPackages";
 import { hash } from "./hash";
@@ -40,6 +40,12 @@ import { nodeFs as shellFs } from "../shell/nodeFs";
 import { loadShellWasm } from "../shell/load";
 import { FILE_PATH } from "../shell/parse";
 import { Buffer } from "./node/buffer";
+import { Readable } from "./node/stream";
+import { Shell as ShellInterpreter, ShellEnv, type Command as ShellCommand, type Reader } from "../shell/interp";
+import { templateSource } from "../shell/parse";
+import { childByPid, launchOf, onProcMessage, setKernel, signalName, SIGNALS, spawnChild, type Child } from "./processes";
+import { spawn as bunSpawn, spawnSync as bunSpawnSync } from "./spawn";
+import { isShellCommand } from "../scripts";
 
 type Handler = (req: Request, server: unknown) => Response | Promise<Response>;
 type HtmlImport = { __htmlImport: string };
@@ -77,6 +83,9 @@ if (typeof SharedArrayBuffer === "function" && crossOriginIsolated)
 setHostVfs(vfs);
 setFs(vfs, (op, ...args) => post({ type: "vfs", op, args }));
 setStdio((level, text) => post({ type: "console", level, text }));
+const has = (path: string) => vfs.files.has(path);
+const read = (path: string) => vfs.readText(path);
+setKernel(post, 1, has, read);
 g.__nodeBuiltins = builtins;
 /**
  * `import(url)` that the host Vite leaves alone: in dev it rewrites computed imports in the playground's own code to
@@ -655,7 +664,7 @@ function exit(code: number): never {
  * Ends the program: open databases are written back and the page terminates the worker (runner.ts). Nothing runs
  * after it, as nothing runs after Bun's `process.exit`: the worker blocks until then.
  */
-function halt(code: number): never {
+function halt(code: number, signal?: string): never {
   if (!halted) {
     halted = true;
     try {
@@ -663,7 +672,7 @@ function halt(code: number): never {
     } catch (err) {
       post({ type: "console", level: "error", text: fmt(err) });
     }
-    post({ type: "exit", code });
+    post({ type: "exit", code, signal });
   }
   if (typeof SharedArrayBuffer === "function") for (;;) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);
   // Without shared memory (a page that isn't cross-origin isolated): no further task runs, and the throw ends this one.
@@ -1035,6 +1044,86 @@ function colorfgbgLight(v: string | undefined): boolean {
   return last === "7" || last === "15";
 }
 
+/** Bun's shell over the project's files, as Bun.$ and a shell process (`sh -c`, a package.json script) run it. */
+const shellHost = (wasm: Awaited<ReturnType<typeof loadShellWasm>>) => ({
+  // Through node:fs, whose writes reach the page's copy of the project (and its file tree).
+  fs: shellFs(builtins.fs as never),
+  wasm,
+  builtins: shellBuiltins,
+  external: externalCommand,
+});
+
+/**
+ * A command that isn't a builtin, as a child process (processes.ts) with the command's stdin, stdout and stderr
+ * joined to it; undefined for one that isn't there (`command not found`).
+ */
+function externalCommand(name: string, cwd: string): ShellCommand | undefined {
+  const launch = launchOf([name], cwd, has, read);
+  if ("error" in launch && launch.enoent) return;
+  return async (ctx) => {
+    let child: Child;
+    try {
+      child = spawnChild(ctx.argv, { cwd: ctx.shell.cwd, env: ctx.env });
+    } catch (err) {
+      const e = err as Error & { code?: string };
+      await ctx.stderr.write(e.code === "ENOENT" ? `bun: command not found: ${ctx.argv[0]}\n` : `bun: ${e.message}\n`);
+      return 1;
+    }
+    // In order, each after the last: the writers are async.
+    let written: Promise<unknown> = Promise.resolve();
+    child.onData = (fd, data) => void (written = written.then(() => (fd === 1 ? ctx.stdout : ctx.stderr).write(data)));
+    const abort = () => child.kill("SIGKILL");
+    ctx.signal.addEventListener("abort", abort, { once: true });
+    void (async () => {
+      for (let chunk; (chunk = await ctx.stdin.read()) && !child.status; ) child.write(chunk);
+      child.end();
+    })();
+    const status = await child.exited;
+    ctx.signal.removeEventListener("abort", abort);
+    await written;
+    return status.code;
+  };
+}
+
+/** A child process's stdin: what its parent writes, until the parent closes it. Reading it holds the program, as an open pipe does. */
+function childStdin() {
+  const stdin = Object.assign(new Readable({ read() {} }), { fd: 0, isTTY: false, setRawMode: () => stdin, ref() {}, unref() {} });
+  stdin.on("newListener", (event: string) => {
+    if ((event === "data" || event === "readable") && !stdin.readableEnded) hold(stdin);
+  });
+  stdin.on("end", () => release(stdin));
+  return stdin;
+}
+
+/** A signal sent to this program (a parent's kill, process.kill): its listeners get it, else it ends the program. */
+function signal(name: string) {
+  if (halted) return;
+  if (process.listenerCount(name) > 0) {
+    try {
+      process.emit(name, name);
+    } catch (err) {
+      uncaught(err, "uncaughtException");
+    }
+    return;
+  }
+  // Ended by a signal, `exit` listeners don't run (as in Bun); a shell sees 128 + its number.
+  halt(128 + (SIGNALS[name] ?? 15), name);
+}
+
+process.kill = (pid: number, sig: string | number = "SIGTERM") => {
+  const name = signalName(sig);
+  if (!name) throw Object.assign(new TypeError(`Unknown signal: ${sig}`), { code: "ERR_UNKNOWN_SIGNAL" });
+  const target = Number(pid);
+  if (target === process.pid || target === 0) {
+    if (name !== "0") setTimeout(() => signal(name));
+    return true;
+  }
+  const child = childByPid(target);
+  if (!child) throw Object.assign(new Error("kill ESRCH"), { code: "ESRCH", errno: -3, syscall: "kill" });
+  child.kill(name);
+  return true;
+};
+
 async function main() {
   // Bun's resolver, for `require` and `require.resolve` with a computed specifier (node/module.ts); the page has its own instance.
   // The shell's parser too: `$` parses as it's called, as Bun's does (a syntax error throws there).
@@ -1055,6 +1144,8 @@ async function main() {
     deepEquals: (a: unknown, b: unknown, strict = false) => isDeepStrictEqual(a, b, strict),
     escapeHTML,
     which: () => null,
+    spawn: bunSpawn,
+    spawnSync: bunSpawnSync,
     sleep: trackedFn(function sleep(ms: number) {
       return new Promise<void>((r) => setTimeout(r, ms));
     }),
@@ -1094,12 +1185,9 @@ async function main() {
     password,
     Cookie,
     CookieMap,
-    // Bun's shell with its builtins over the project's files; other commands need processes, which the browser lacks.
+    // Bun's shell with its builtins over the project's files; other commands run as child processes.
     $: createDollar({
-      // Through node:fs, whose writes reach the page's copy of the project (and its file tree).
-      fs: shellFs(builtins.fs as never),
-      wasm: shellWasm,
-      builtins: shellBuiltins,
+      ...shellHost(shellWasm),
       stdout: { write: async (c) => (process.stdout.write(c), true) },
       stderr: { write: async (c) => (process.stderr.write(c), true) },
       cwd: () => process.cwd(),
@@ -1177,19 +1265,69 @@ self.addEventListener("message", (e: MessageEvent) => {
   else if (m.op === "remove") vfs.remove(m.path);
 });
 
+// The page's reports about this program's children, and what its parent sends it as a child itself. The stdin a
+// parent writes can arrive before "start" is through (it waits for the wasm): it waits in the stream.
+const stdinStream = childStdin();
+self.addEventListener("message", (e: MessageEvent) => {
+  const m = e.data;
+  if (m.type === "proc") onProcMessage(m);
+  else if (m.type === "stdin") stdinStream.push(m.data === null ? null : Buffer.from(m.data));
+  else if (m.type === "signal") signal(m.signal);
+});
+
+/** A shell process (`sh -c <line>`, a package.json script): the line in Bun's shell, then its exit code. */
+async function runScript(script: string, args: string[], child: boolean) {
+  const wasm = await loadShellWasm();
+  const source = templateSource([script], []);
+  const vars = new Map(Object.entries(env).filter((kv): kv is [string, string] => kv[1] !== undefined));
+  // Run from the console (not a child), it has no stdin.
+  const iter = child ? stdinStream[Symbol.asyncIterator]() : undefined;
+  const stdin: Reader = { read: async () => ((await iter?.next())?.value as Uint8Array | undefined) ?? null, close: () => void iter?.return?.() };
+  const out = (w: { write(c: Uint8Array | string): unknown }) => ({ write: async (c: Uint8Array | string) => (w.write(c), true) });
+  try {
+    const code = await new ShellInterpreter(shellHost(wasm)).run(wasm.parse(source), { stdin, stdout: out(process.stdout), stderr: out(process.stderr) }, new ShellEnv(process.cwd(), new Map(), vars, ["sh", ...args]), source.objs);
+    exit(code);
+  } catch (err) {
+    if (err === EXIT) return;
+    process.stderr.write(`bun: ${err instanceof Error ? err.message : String(err)}\n`);
+    exit(1);
+  }
+}
+
 self.addEventListener("message", async (e: MessageEvent) => {
   if (e.data.type !== "start") return;
   if (e.data.vfsRoot) VFS_ROOT = e.data.vfsRoot;
   vfs.load(e.data.files, e.data.dirs);
   await booted;
+  const proc = e.data.proc as { pid: number; ppid: number; cwd: string; env: Record<string, string> } | undefined;
+  if (proc) {
+    // A child process: its parent's env, cwd and ids, its stdout and stderr as bytes to the parent, its stdin from it.
+    process.pid = proc.pid;
+    process.ppid = proc.ppid;
+    for (const k of Object.keys(env)) delete env[k];
+    Object.assign(env, proc.env);
+    process.chdir(proc.cwd);
+    setKernel(post, proc.pid, has, read);
+    setRawStdio((fd, data) => post({ type: "stdio", fd, data }, [data.buffer]));
+    process.stdin = stdinStream;
+    if (e.data.script !== undefined) {
+      post({ type: "ready" });
+      return runScript(e.data.script, e.data.args ?? [], true);
+    }
+  }
   // runbun.json's `env`, over the defaults: runs, restarts on save and tests (the page logs what's wrong with the file).
-  Object.assign(env, readConfig((path) => vfs.readText(path)).env);
+  else Object.assign(env, readConfig((path) => vfs.readText(path)).env);
   if (e.data.tests) {
     testing = true;
     // `bun test`: load and run each file instead of an entry.
     const { failed, results } = await runTestFiles(e.data.tests, (f) => importUrl(`${VFS_ROOT}${f}`), (g.Bun as { version: string }).version).catch((err) => (post({ type: "console", level: "error", text: fmt(err) }), { failed: 1, results: undefined }));
     post({ type: "ready", failed, results });
     return;
+  }
+  // A package.json script's line (scripts.ts shellCommand), unless the project has a file named `sh`.
+  if (!proc && isShellCommand(e.data.entry, e.data.args ?? []) && !vfs.files.has(e.data.entry)) {
+    post({ type: "ready" });
+    return runScript(e.data.args[1], e.data.args.slice(2), false);
   }
   (g.Bun as { main: string }).main = process.argv[1] = `/${e.data.entry}`;
   // A package's bin run from a script (`"dev": "vite --port 3000"`) reads its arguments here.
