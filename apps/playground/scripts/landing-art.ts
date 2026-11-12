@@ -333,6 +333,18 @@ function shelf() {
   return s.outline();
 }
 
+/** The light switch on the wall: a plate with a lever, up for on. */
+function lightSwitch(on: boolean) {
+  const s = new Sprite(14, 20);
+  s.fill(rounded(1, 1, 12, 18, 2), ["#d9bf95", "#f3e3c6", "#fffaf0"], (x, y) => 0.95 - (x - 1) * 0.04 - (y - 1) * 0.03);
+  // A screw at each end, the slot, and the lever in it.
+  for (const y of [3, 16]) s.fill(rect(6, y, 7, y), ["#b89a6c"]);
+  s.fill(rect(5, 6, 8, 13), [INK]);
+  const top = on ? 5 : 10;
+  s.fill(rect(5, top, 8, top + 4), ENAMEL, (_, y) => 0.9 - (y - top) * 0.2);
+  return s.outline();
+}
+
 /** A small mark drawn by hand, a row per string: `#` is a color (the enamel pink), `o` its highlight, `d` its shade. */
 function mark(rows: string[], [shade, color, light] = [ENAMEL[0]!, ENAMEL[2]!, ENAMEL[4]!]) {
   const colors: Record<string, string> = { "#": color!, o: light!, d: shade! };
@@ -354,6 +366,7 @@ const art: Record<string, Sprite> = {
     [".............", "......#......", "..#.......#..", "....#####....", "...##ooo##...", "...#o####d...", ".#.#o####d.#.", "...#o####d...", "...###ddd#...", "....#####....", "..#.......#..", "......#......", "............."],
     ["#e3a93f", "#f3c45e", "#ffdf8a"],
   ).outline(),
+  switch: lightSwitch(true),
   tiles: tiles(),
   counter: counter(),
   "steamer-back": steamer().back,
@@ -371,7 +384,9 @@ mkdirSync(out, { recursive: true });
 const lit = new Set(["heart", "arrow", "moon", "sun"]);
 for (const [name, sprite] of Object.entries(art)) {
   writeFileSync(`${out}${name}.png`, sprite.png());
-  if (!lit.has(name)) writeFileSync(`${out}${name}-night.png`, sprite.night(name === "steam" ? 0.55 : 1).png());
+  // At night the switch is off.
+  const dark = name === "switch" ? lightSwitch(false) : sprite;
+  if (!lit.has(name)) writeFileSync(`${out}${name}-night.png`, dark.night(name === "steam" ? 0.55 : 1).png());
 }
 console.log(`${Object.keys(art).length} sprites in ${out}`);
 

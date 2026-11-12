@@ -233,6 +233,26 @@ html[data-view="opening"] {
     background-image: url("./landing/art/basil.png");
   }
 
+  /* The light switch: a button, the header's scheme switch again (entry.ts). */
+  .switch {
+    --w: 14;
+    --h: 20;
+    padding: 0;
+    border: 0;
+    background-color: transparent;
+    background-image: url("./landing/art/switch.png");
+    cursor: pointer;
+
+    &[hidden] {
+      display: none;
+    }
+
+    &:focus-visible {
+      outline: var(--px) solid var(--accent);
+      outline-offset: var(--px);
+    }
+  }
+
   .kitchen {
     background: var(--bg);
   }
@@ -397,6 +417,7 @@ html[data-view="opening"] {
     display: grid;
     gap: calc(9 * var(--art));
     justify-items: end;
+    position: relative;
 
     @media (width < 960px) {
       display: none;
@@ -405,6 +426,13 @@ html[data-view="opening"] {
     .shelf {
       justify-self: start;
       margin-right: calc(24 * var(--art));
+    }
+
+    /* On the wall right of the shelf. */
+    .switch {
+      position: absolute;
+      right: calc(3 * var(--art));
+      bottom: calc(14 * var(--art));
     }
   }
 
@@ -970,6 +998,10 @@ html[data-view="opening"] {
       &::before {
         background-image: url("./landing/art/tiles-night.png");
       }
+    }
+
+    .switch {
+      background-image: url("./landing/art/switch-night.png");
     }
 
     .scheme::before {

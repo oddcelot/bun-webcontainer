@@ -198,7 +198,7 @@
             <a href="https://docs.runbun.dev/compatibility/">Compatibility</a>
             <a href="https://docs.runbun.dev/examples/">Examples</a>
             <a href="https://docs.runbun.dev/guides/embedding/">Embed</a>
-            <button type="button" class="scheme" aria-label="Switch to night" hidden></button>
+            <button type="button" class="scheme" data-scheme-switch aria-label="Switch to night" hidden></button>
           </nav>
         </div>
         <div class="wall">
@@ -214,9 +214,10 @@
               <a class="retro-button" href="https://docs.runbun.dev/">Read the docs</a>
             </p>
           </div>
-          <div class="decor" aria-hidden="true">
-            <span class="window"><canvas class="sky" width="104" height="64"></canvas></span>
-            <span class="art shelf"></span>
+          <div class="decor">
+            <span class="window" aria-hidden="true"><canvas class="sky" width="104" height="64"></canvas></span>
+            <span class="art shelf" aria-hidden="true"></span>
+            <button type="button" class="art switch" data-scheme-switch aria-label="Switch to night" hidden></button>
           </div>
         </div>
         <div class="counter">
