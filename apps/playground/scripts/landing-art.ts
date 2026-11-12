@@ -1,7 +1,9 @@
 // Draws the landing page's kitchen (src/landing/art/*.png; index.html, style.css #landing): each prop is a few shapes,
 // shaded from the top left and reduced to a short color ramp with ordered (Bayer) dithering, then outlined in ink, so
 // they all share one light, one palette and one pixel size. Run `bun run landing-art` after changing one; the outputs
-// are committed. `--preview <file.png>` also writes a contact sheet of them all.
+// are committed, each with a `-night` twin for the page's dark scheme: the same pixels by moonlight (`night`).
+// `--preview <file.png>` also writes a contact sheet of them all, and `--night <hex>...` prints colors by moonlight,
+// for the ones style.css paints itself (the window's frame, the monitor's case).
 import { mkdirSync, writeFileSync } from "node:fs";
 import { deflateSync } from "node:zlib";
 
@@ -19,6 +21,9 @@ const LEAF = ["#2f6b3a", "#4a8c44", "#70b055", "#9fd168", "#d0ee98"];
 const CLAY = ["#a55034", "#c66c47", "#df8c61", "#f1b088"];
 const CERAMIC = ["#7fa9d0", "#a3c6e4", "#c6dff2", "#e6f2fb"];
 const GLASS = ["#b9d8de", "#d5eaee", "#ecf7f8", "#ffffff"];
+
+/** A color channel by moonlight: dimmed, the blue least, over a deep blue. */
+const moon = (r: number, g: number, b: number) => [r * 0.25 + 8, g * 0.26 + 8, b * 0.4 + 22].map(Math.round) as [number, number, number];
 
 type Inside = (x: number, y: number) => boolean;
 type Shade = number | ((x: number, y: number) => number);
@@ -109,6 +114,16 @@ class Sprite {
         this.data[o + 3] = Math.max(this.data[o + 3]!, other.data[i + 3]!);
       }
     return this;
+  }
+  /** A copy by moonlight; `strength` under 1 keeps some of the day's light (steam, which glows). */
+  night(strength = 1) {
+    const copy = new Sprite(this.w, this.h);
+    copy.data.set(this.data);
+    for (let i = 0; i < copy.data.length; i += 4) {
+      const lit = moon(copy.data[i]!, copy.data[i + 1]!, copy.data[i + 2]!);
+      for (let c = 0; c < 3; c++) copy.data[i + c] = Math.round(copy.data[i + c]! * (1 - strength) + lit[c]! * strength);
+    }
+    return copy;
   }
   png() {
     const raw = Buffer.alloc((this.w * 4 + 1) * this.h);
@@ -343,8 +358,20 @@ const art: Record<string, Sprite> = {
 };
 
 mkdirSync(out, { recursive: true });
-for (const [name, sprite] of Object.entries(art)) writeFileSync(`${out}${name}.png`, sprite.png());
+// The bullets keep their pink at night.
+const lit = new Set(["heart", "arrow"]);
+for (const [name, sprite] of Object.entries(art)) {
+  writeFileSync(`${out}${name}.png`, sprite.png());
+  if (!lit.has(name)) writeFileSync(`${out}${name}-night.png`, sprite.night(name === "steam" ? 0.55 : 1).png());
+}
 console.log(`${Object.keys(art).length} sprites in ${out}`);
+
+const colors = process.argv.indexOf("--night");
+if (colors > 0)
+  for (const hex of process.argv.slice(colors + 1)) {
+    const n = parseInt(hex.slice(1), 16);
+    console.log(hex, "#" + moon(n >> 16, (n >> 8) & 255, n & 255).map((c) => c.toString(16).padStart(2, "0")).join(""));
+  }
 
 const preview = process.argv.indexOf("--preview");
 if (preview > 0) {

@@ -17,9 +17,13 @@ body { display: flex; flex-direction: column; }
  * window in #app. The landing page scrolls like a document.
  */
 html:not([data-view="app"]) {
-  /* The landing page is light whatever the theme. */
-  color-scheme: light;
+  /* The landing page follows the system's scheme, not the playground's theme: a kitchen by day, or by night. */
+  color-scheme: light dark;
   scrollbar-color: #d9bf95 #fdeed3;
+
+  @media (prefers-color-scheme: dark) {
+    scrollbar-color: #5a578c #2f2d50;
+  }
 
   #app {
     display: none;
@@ -31,6 +35,10 @@ html:not([data-view="app"]) {
     min-height: 100%;
     /* Under the landing page's kitchen (#landing's palette): a shade deeper than its wall. */
     background: #fdeed3;
+
+    @media (prefers-color-scheme: dark) {
+      background: #2f2d50;
+    }
   }
 }
 html[data-view="app"] #landing {
@@ -66,7 +74,8 @@ html[data-view="opening"] {
   }
 }
 /*
- * The landing page: a light pixel-art kitchen, on its own fixed palette (not the playground's theme). A wall with a
+ * The landing page: a pixel-art kitchen, on its own palette (not the playground's theme): light by day, and by night
+ * under a dark system scheme (the block at the end of #landing: the tokens, and each prop's `-night` twin). A wall with a
  * window (its sky is a dithered canvas, src/landing/sky.ts) and a shelf; a counter of props, the CRT among them; then
  * the page's sections as cards. The props are src/landing/art/*.png (scripts/landing-art.ts), shown at --art CSS pixels
  * per art pixel; the dumplings are dumplings.png, always at a whole multiple. Headings and buttons in Pixelify Sans,
@@ -74,6 +83,7 @@ html[data-view="opening"] {
  */
 #landing {
   /* The theme tokens, pinned: the page keeps its own palette whatever the playground's theme is. */
+  color-scheme: light;
   --bg: #fff6e5;
   --panel: #f6e4c4;
   --fg: #5b3a2e;
@@ -85,15 +95,39 @@ html[data-view="opening"] {
   --retro-fill: #fffaf0;
   --retro-shade: #ecd2a6;
   --retro-hi: #ff86b4;
+  /* Outlines: the frames', and the props' (landing-art.ts INK). */
+  --ink: #5b3a2e;
+  --retro-ink: var(--ink);
+  /* Text on --retro-hi. */
+  --on-hi: #5b3a2e;
+  --key-hover: #fff;
+  --hi-hover: #ffa3c6;
+  --title-shadow: #ffc2d8;
+  /* Painted here, not in a picture: the window's frame and sill, the tiles' top line, the monitor. */
+  --wood: #e8b47d;
+  --wood-hi: #f5d2a2;
+  --tile-line: #f0d9b4;
+  --case: #f3e3c6;
+  --case-shade: #d9bf95;
+  --case-hi: #fffaf0;
+  --case-hover: #fff1d6;
+  --sky: #b9d9f8;
+  /* The live example's code before it runs, in its theme's colors (Rosé Pine Dawn), and the snippet's attributes. */
+  --code: #575279;
+  --code-keyword: #286983;
+  --code-function: #d7827e;
+  --code-string: #ea9d34;
+  --code-mark: #797593;
+  --code-attr: #2f7d8c;
   /* One art pixel: of the frames (retro.css), and of the kitchen's props. */
   --px: 3px;
   --art: 3px;
   --gutter: max(24px, calc((100% - 72rem) / 2));
   --frame:
-    0 calc(-1 * var(--art)) 0 0 var(--fg),
-    0 var(--art) 0 0 var(--fg),
-    calc(-1 * var(--art)) 0 0 0 var(--fg),
-    var(--art) 0 0 0 var(--fg);
+    0 calc(-1 * var(--art)) 0 0 var(--ink),
+    0 var(--art) 0 0 var(--ink),
+    calc(-1 * var(--art)) 0 0 0 var(--ink),
+    var(--art) 0 0 0 var(--ink);
 
   color: var(--fg);
   font: 17px/1.6 var(--font-ui);
@@ -248,7 +282,7 @@ html[data-view="opening"] {
   h1 {
     margin: 0 0 24px;
     font: 700 clamp(40px, 4.6vw, 62px) / 1 var(--font-pixel);
-    text-shadow: var(--px) var(--px) 0 #ffc2d8;
+    text-shadow: var(--px) var(--px) 0 var(--title-shadow);
     text-wrap: balance;
 
     .kicker {
@@ -285,14 +319,14 @@ html[data-view="opening"] {
     text-transform: none;
     box-shadow:
       var(--_frame),
-      var(--px) calc(2 * var(--px)) 0 0 var(--fg);
+      var(--px) calc(2 * var(--px)) 0 0 var(--ink);
 
     &::before {
       display: none;
     }
 
     &:hover {
-      background: #fff;
+      background: var(--key-hover);
       color: var(--fg);
     }
 
@@ -308,10 +342,11 @@ html[data-view="opening"] {
 
     &.primary {
       background: var(--retro-hi);
-      color: var(--fg);
+      color: var(--on-hi);
 
       &:hover {
-        background: #ffa3c6;
+        background: var(--hi-hover);
+        color: var(--on-hi);
       }
     }
   }
@@ -337,7 +372,7 @@ html[data-view="opening"] {
     position: relative;
     display: block;
     padding: calc(3 * var(--art));
-    background: #e8b47d;
+    background: var(--wood);
     box-shadow: var(--frame);
 
     canvas {
@@ -345,8 +380,8 @@ html[data-view="opening"] {
       width: calc(104 * var(--art));
       height: calc(64 * var(--art));
       /* Until sky.ts draws, and without JavaScript. */
-      background: #b9d9f8;
-      box-shadow: 0 0 0 var(--art) var(--fg);
+      background: var(--sky);
+      box-shadow: 0 0 0 var(--art) var(--ink);
       image-rendering: pixelated;
     }
 
@@ -355,8 +390,8 @@ html[data-view="opening"] {
       position: absolute;
       inset: calc(3 * var(--art));
       background:
-        linear-gradient(#e8b47d, #e8b47d) center / calc(2 * var(--art)) 100% no-repeat,
-        linear-gradient(#e8b47d, #e8b47d) center / 100% calc(2 * var(--art)) no-repeat;
+        linear-gradient(var(--wood), var(--wood)) center / calc(2 * var(--art)) 100% no-repeat,
+        linear-gradient(var(--wood), var(--wood)) center / 100% calc(2 * var(--art)) no-repeat;
     }
 
     &::after {
@@ -366,7 +401,7 @@ html[data-view="opening"] {
       right: calc(-4 * var(--art));
       left: calc(-4 * var(--art));
       height: calc(3 * var(--art));
-      background: #f5d2a2;
+      background: var(--wood-hi);
       box-shadow: var(--frame);
     }
   }
@@ -390,7 +425,7 @@ html[data-view="opening"] {
       bottom: calc(26 * var(--art));
       left: 0;
       height: calc(48 * var(--art));
-      border-top: var(--art) solid #f0d9b4;
+      border-top: var(--art) solid var(--tile-line);
       background: url("./landing/art/tiles.png") left bottom / calc(32 * var(--art)) repeat;
       image-rendering: pixelated;
     }
@@ -471,10 +506,10 @@ html[data-view="opening"] {
       display: block;
       width: 100%;
       padding: calc(3 * var(--art)) calc(3 * var(--art)) calc(7 * var(--art));
-      background: #f3e3c6;
+      background: var(--case);
       box-shadow:
-        inset calc(-1 * var(--art)) calc(-1 * var(--art)) 0 0 #d9bf95,
-        inset var(--art) var(--art) 0 0 #fffaf0,
+        inset calc(-1 * var(--art)) calc(-1 * var(--art)) 0 0 var(--case-shade),
+        inset var(--art) var(--art) 0 0 var(--case-hi),
         var(--frame);
 
       /* The power light. */
@@ -496,7 +531,7 @@ html[data-view="opening"] {
       overflow: hidden;
       border-radius: 8px / 10px;
       background: #2a2233;
-      box-shadow: 0 0 0 var(--art) var(--fg);
+      box-shadow: 0 0 0 var(--art) var(--ink);
 
       canvas {
         display: block;
@@ -510,13 +545,13 @@ html[data-view="opening"] {
       width: 36%;
       height: calc(3 * var(--art));
       margin-top: var(--art);
-      background: #d9bf95;
+      background: var(--case-shade);
       box-shadow: var(--frame);
     }
 
     &:hover .crt-case,
     &:focus-visible .crt-case {
-      background: #fff1d6;
+      background: var(--case-hover);
     }
 
     &:focus-visible {
@@ -575,7 +610,7 @@ html[data-view="opening"] {
     justify-content: space-between;
     margin: 0;
     padding: 8px 14px;
-    border-bottom: var(--px) solid var(--fg);
+    border-bottom: var(--px) solid var(--ink);
     background: var(--panel);
     font: 600 17px var(--font-pixel);
 
@@ -599,21 +634,21 @@ html[data-view="opening"] {
     --poster-bg: var(--retro-fill);
     --poster-fg: var(--fg);
     --play-bg: var(--retro-hi);
-    --play-fg: var(--fg);
-    --play-border: var(--fg);
+    --play-fg: var(--on-hi);
+    --play-border: var(--ink);
     --play-radius: 0;
     --play-font: 600 16px var(--font-pixel);
 
     display: block;
     min-width: 0;
 
-    /* The poster's code, in the embed's theme (Rosé Pine Dawn). */
+    /* The poster's code, in the embed's theme. */
     pre {
       margin: 0;
       padding: 14px 18px;
       font: 13px/1.6 var(--font-mono);
       white-space: pre-wrap;
-      color: #575279;
+      color: var(--code);
     }
 
     code {
@@ -623,19 +658,19 @@ html[data-view="opening"] {
     }
 
     .k {
-      color: #286983;
+      color: var(--code-keyword);
     }
 
     .f {
-      color: #d7827e;
+      color: var(--code-function);
     }
 
     .s {
-      color: #ea9d34;
+      color: var(--code-string);
     }
 
     .p {
-      color: #797593;
+      color: var(--code-mark);
     }
 
     .v {
@@ -702,7 +737,7 @@ html[data-view="opening"] {
     }
 
     .attr {
-      color: #2f7d8c;
+      color: var(--code-attr);
     }
 
     .note {
@@ -801,7 +836,7 @@ html[data-view="opening"] {
       width: fit-content;
       margin: 0 auto 28px;
       padding: 0 28px;
-      border-bottom: var(--px) solid var(--fg);
+      border-bottom: var(--px) solid var(--ink);
 
       .retro-sprite {
         animation: landing-bob 0.8s steps(2, jump-none) infinite;
@@ -816,6 +851,91 @@ html[data-view="opening"] {
           }
         }
       }
+    }
+  }
+
+  /*
+   * By night: the same kitchen under a dark system scheme. The tokens; the props' moonlit twins (landing-art.ts
+   * `night`, which also gives the painted parts' colors: `--night <hex>`); the sky is sky.ts's night one. The dumplings
+   * and the monitor's screen keep their light.
+   */
+  @media (prefers-color-scheme: dark) {
+    color-scheme: dark;
+    --bg: #484872;
+    --panel: #2c2a4b;
+    --fg: #f4e8d4;
+    --muted: #b7adcf;
+    --warn: #f3c45e;
+    --error: #ff86b4;
+    --ok: #8fd67a;
+    --accent: #ff86b4;
+    --retro-fill: #3b3964;
+    --retro-shade: #1d1b36;
+    --ink: #191428;
+    --on-hi: #3d1f38;
+    --key-hover: #4c4a7e;
+    --title-shadow: #8a3563;
+    --wood: #423748;
+    --wood-hi: #453f57;
+    --tile-line: #44405e;
+    --case: #454365;
+    --case-shade: #3e3a52;
+    --case-hi: #5a588c;
+    --case-hover: #504e78;
+    --sky: #2a326c;
+    /* Rosé Pine. */
+    --code: #e0def4;
+    --code-keyword: #3e8fb0;
+    --code-function: #ebbcba;
+    --code-string: #f6c177;
+    --code-mark: #908caa;
+    --code-attr: #9ccfd8;
+
+    .shelf {
+      background-image: url("./landing/art/shelf-night.png");
+    }
+
+    .steamer-back {
+      background-image: url("./landing/art/steamer-back-night.png");
+    }
+
+    .steamer-front {
+      background-image: url("./landing/art/steamer-front-night.png");
+    }
+
+    .rolling-pin {
+      background-image: url("./landing/art/rolling-pin-night.png");
+    }
+
+    .pot {
+      background-image: url("./landing/art/pot-night.png");
+    }
+
+    .steam {
+      background-image: url("./landing/art/steam-night.png");
+    }
+
+    .crock {
+      background-image: url("./landing/art/crock-night.png");
+    }
+
+    .basil {
+      background-image: url("./landing/art/basil-night.png");
+    }
+
+    .counter {
+      background-image: url("./landing/art/counter-night.png");
+
+      &::before {
+        background-image: url("./landing/art/tiles-night.png");
+      }
+    }
+
+    /* The screen lights the counter around it. */
+    .crt-screen {
+      box-shadow:
+        0 0 0 var(--art) var(--ink),
+        0 0 calc(14 * var(--art)) calc(2 * var(--art)) rgb(150 190 255 / 0.28);
     }
   }
 

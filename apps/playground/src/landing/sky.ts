@@ -1,6 +1,7 @@
 // The sky in the landing page's window (index.html, #landing .window): clouds drifting past, drawn a few art pixels
 // at a time and reduced to five colors with ordered (Bayer) dithering, like the kitchen's props
-// (scripts/landing-art.ts). The colors follow the visitor's clock: dawn, day, dusk, night.
+// (scripts/landing-art.ts). The colors follow the visitor's clock: dawn, day, dusk, night; under a dark system scheme
+// the kitchen is in its night colors (style.css #landing), and so is the sky, whatever the hour.
 
 // Dark to light.
 const SKIES = {
@@ -40,9 +41,15 @@ export function startSky(canvas: HTMLCanvasElement) {
   const context = canvas.getContext("2d");
   if (!context) return;
   const { width, height } = canvas;
-  const hour = new Date().getHours();
-  const colors = sky(hour).map((hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)));
-  const night = sky(hour) === SKIES.night;
+  const dark = matchMedia("(prefers-color-scheme: dark)");
+  let colors: number[][] = [];
+  let night = false;
+  const pick = () => {
+    const now = dark.matches ? SKIES.night : sky(new Date().getHours());
+    colors = now.map((hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)));
+    night = now === SKIES.night;
+  };
+  pick();
   const image = context.createImageData(width, height);
   // The sun, or the moon.
   const [sunX, sunY, sunR] = [width * 0.74, height * 0.3, 7.5];
@@ -64,6 +71,11 @@ export function startSky(canvas: HTMLCanvasElement) {
   }
 
   draw(0);
+  // The scheme changed: the other sky, at once (the clouds may be standing still).
+  dark.addEventListener("change", () => {
+    pick();
+    draw(performance.now());
+  });
   if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   // Eight frames a second: the clouds move in steps, like the rest of the page.
   let timer = 0;
