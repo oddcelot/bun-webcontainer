@@ -631,23 +631,31 @@ html[data-view="opening"] {
     li {
       position: relative;
       margin: 0 0 6px;
-      padding-left: 26px;
+      padding-left: 34px;
 
+      /* A pixel bullet (src/landing/art), at the frames' three CSS pixels an art pixel. */
       &::before {
+        content: "";
         position: absolute;
         left: 0;
-        color: var(--retro-hi);
+        background: 0 0 / 100% 100% no-repeat;
+        image-rendering: pixelated;
       }
     }
 
     .works li::before {
-      content: "♥";
+      top: 5px;
+      width: 21px;
+      height: 18px;
+      background-image: url("./landing/art/heart.png");
     }
 
     .examples li::before {
-      content: "▶";
-      font-size: 0.8em;
-      line-height: 2;
+      top: 3px;
+      left: 3px;
+      width: 12px;
+      height: 21px;
+      background-image: url("./landing/art/arrow.png");
     }
 
     /* Questions, in two columns under the heading. */
@@ -2141,7 +2149,7 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
       display: flex;
       align-items: center;
       gap: 4px;
-      height: 24px;
+      height: 21px;
       margin-left: auto;
       padding: 0 8px;
       border: 1px solid transparent;
@@ -2165,7 +2173,7 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
     .segmented {
       display: inline-flex;
       button {
-        height: 24px;
+        height: 21px;
         font-size: 12px;
       }
     }
@@ -2182,7 +2190,7 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
       display: none;
     }
     button {
-      height: 24px;
+      height: 21px;
       padding: 0 8px;
       border: 1px solid var(--control-border);
       border-radius: 6px;
@@ -2202,7 +2210,7 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
     height: 30px;
     > input:not([type="checkbox"]) {
       min-width: 0;
-      height: 24px;
+      height: 21px;
       padding: 0 6px;
       border: 1px solid var(--control-border);
       border-radius: 6px;
@@ -2226,8 +2234,8 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
     }
     > input[type="checkbox"] {
       flex: 0 0 auto;
-      width: 14px;
-      height: 14px;
+      width: 21px;
+      height: 21px;
       margin: 0;
       accent-color: var(--accent);
       /* The empty row's: there's nothing to turn off yet, but the column stays. */
@@ -2242,7 +2250,7 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
       place-items: center;
       flex: 0 0 auto;
       width: 24px;
-      height: 24px;
+      height: 21px;
       padding: 0;
       border: 0;
       border-radius: 4px;
@@ -2276,7 +2284,7 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
       }
     }
     .select-trigger {
-      height: 24px;
+      height: 21px;
       font-size: 12px;
       &.auth-type {
         flex: 1 1 auto;
@@ -2302,8 +2310,8 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
       cursor: pointer;
       > i {
         flex: 0 0 14px;
-        width: 14px;
-        height: 14px;
+        width: 21px;
+        height: 21px;
       }
       > .name {
         flex: 0 0 calc(14em - 20px);

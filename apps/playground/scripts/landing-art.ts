@@ -318,7 +318,18 @@ function shelf() {
   return s.outline();
 }
 
+/** A small mark drawn by hand, a row per string: `#` is the enamel pink, `o` its highlight, `d` its shade. */
+function mark(rows: string[]) {
+  const colors: Record<string, string> = { "#": ENAMEL[2]!, o: ENAMEL[4]!, d: ENAMEL[0]! };
+  const s = new Sprite(rows[0]!.length, rows.length);
+  rows.forEach((row, y) => [...row].forEach((c, x) => colors[c] && s.set(x, y, colors[c])));
+  return s;
+}
+
 const art: Record<string, Sprite> = {
+  // The cards' list bullets.
+  heart: mark([".#o.##.", "#o#####", "######d", ".####d.", "..##d..", "...d..."]),
+  arrow: mark(["#...", "##..", "###.", "####", "##d.", "#d..", "d..."]),
   tiles: tiles(),
   counter: counter(),
   "steamer-back": steamer().back,
