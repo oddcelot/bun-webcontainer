@@ -20,6 +20,8 @@ const METAL = ["#7f8898", "#a5afbd", "#cbd3dd", "#e8edf3", "#ffffff"];
 const LEAF = ["#2f6b3a", "#4a8c44", "#70b055", "#9fd168", "#d0ee98"];
 const CLAY = ["#a55034", "#c66c47", "#df8c61", "#f1b088"];
 const CERAMIC = ["#7fa9d0", "#a3c6e4", "#c6dff2", "#e6f2fb"];
+/** For `mark`: the cursors, the speaker. */
+const CREAM = ["#ecd2a6", "#fffaf0", "#fffaf0"];
 const GLASS = ["#b9d8de", "#d5eaee", "#ecf7f8", "#ffffff"];
 
 /** A color channel by moonlight: dimmed, the blue least, over a deep blue. */
@@ -345,6 +347,16 @@ function lightSwitch(on: boolean) {
   return s.outline();
 }
 
+/** The header's sound button: a speaker, with waves in pink when on and a cross when off. */
+function speaker(on: boolean) {
+  const s = mark(["..............", "......o.......", ".....oo.......", ".ooooo........", ".ooooo........", ".ooooo........", ".....oo.......", "......o.......", ".............."], CREAM).outline();
+  const pink = on
+    ? [[9, 3], [9, 4], [9, 5], [11, 1], [12, 2], [12, 3], [12, 4], [12, 5], [12, 6], [11, 7]]
+    : [[9, 3], [11, 3], [10, 4], [9, 5], [11, 5]];
+  for (const [x, y] of pink) s.set(x!, y!, ENAMEL[2]!);
+  return s;
+}
+
 /** A small mark drawn by hand, a row per string: `#` is a color (the enamel pink), `o` its highlight, `d` its shade. */
 function mark(rows: string[], [shade, color, light] = [ENAMEL[0]!, ENAMEL[2]!, ENAMEL[4]!]) {
   const colors: Record<string, string> = { "#": color!, o: light!, d: shade! };
@@ -366,6 +378,8 @@ const art: Record<string, Sprite> = {
     [".............", "......#......", "..#.......#..", "....#####....", "...##ooo##...", "...#o####d...", ".#.#o####d.#.", "...#o####d...", "...###ddd#...", "....#####....", "..#.......#..", "......#......", "............."],
     ["#e3a93f", "#f3c45e", "#ffdf8a"],
   ).outline(),
+  "sound-on": speaker(true),
+  "sound-off": speaker(false),
   switch: lightSwitch(true),
   tiles: tiles(),
   counter: counter(),
@@ -381,7 +395,7 @@ const art: Record<string, Sprite> = {
 
 mkdirSync(out, { recursive: true });
 // The bullets and the switch keep their colors at night.
-const lit = new Set(["heart", "arrow", "moon", "sun"]);
+const lit = new Set(["heart", "arrow", "moon", "sun", "sound-on", "sound-off"]);
 for (const [name, sprite] of Object.entries(art)) {
   writeFileSync(`${out}${name}.png`, sprite.png());
   // At night the switch is off.
@@ -391,7 +405,6 @@ for (const [name, sprite] of Object.entries(art)) {
 // The page's cursors, in cream with the props' outline: an arrow, and a hand with a pink cuff over what can be clicked.
 // A cursor is drawn at its file's size, so each is written at two art pixels a pixel, and at four for 2x screens.
 // Their hot spots (the arrow's tip, the fingertip) are in style.css #landing.
-const CREAM = ["#ecd2a6", "#fffaf0", "#fffaf0"];
 const hand = mark(
   ["..............", ".....oo.......", ".....oo.......", ".....oo.......", ".....oo.......", ".....oooooo...", ".....oooooooo.", "..oo.oooooooo.", "..oooooooooood", "...ooooooooood", "...ooooooooood", "....ooooooood.", ".....ooooooo..", "..............", ".............."],
   CREAM,

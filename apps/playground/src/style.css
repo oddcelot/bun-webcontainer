@@ -290,6 +290,33 @@ html[data-view="opening"] {
         text-decoration: none;
       }
 
+      /* Sounds off and on (landing/sound.ts): a speaker. */
+      .sound {
+        width: calc(14 * var(--px));
+        height: calc(9 * var(--px));
+        padding: 0;
+        border: 0;
+        background: url("./landing/art/sound-on.png") 0 0 / 100% 100% no-repeat;
+        image-rendering: pixelated;
+
+        &[aria-pressed="false"] {
+          background-image: url("./landing/art/sound-off.png");
+        }
+
+        &[hidden] {
+          display: none;
+        }
+
+        &:hover {
+          translate: 0 calc(-1 * var(--px));
+        }
+
+        &:focus-visible {
+          outline: var(--px) solid var(--accent);
+          outline-offset: var(--px);
+        }
+      }
+
       /* The scheme switch: the moon by day, the sun by night (entry.ts). */
       .scheme {
         display: grid;

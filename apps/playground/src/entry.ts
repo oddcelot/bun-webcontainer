@@ -80,6 +80,9 @@ if (root.dataset.view === "app") {
       } catch {}
     });
   }
+  // Its sounds, and the header's button for them.
+  const landing = document.getElementById("landing");
+  if (landing) void import("./landing/sound").then((m) => m.startSounds(landing, landing.querySelector<HTMLButtonElement>(".sound")));
   let opening = false;
   async function openPlayground() {
     if (opening) return;
