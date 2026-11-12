@@ -190,6 +190,7 @@
             <a href="https://docs.runbun.dev/">Docs</a>
             <a href="https://docs.runbun.dev/compatibility/">Compatibility</a>
             <a href="https://docs.runbun.dev/examples/">Examples</a>
+            <a href="https://docs.runbun.dev/guides/embedding/">Embed</a>
           </nav>
         </div>
         <div class="wall">
@@ -246,6 +247,43 @@ const server = Bun.serve({
 console.log(`Listening on ${server.url}`);
           </script>
         </bun-playground>
+        </div>
+      </section>
+      <section class="embed">
+        <div class="retro-dialog retro-shadow">
+          <h2><span class="retro-sprite" style="--x: 1; --y: 7" aria-hidden="true"></span>Embed it in tutorials and demos</h2>
+          <p>
+            The live example above is an embed: one element in this page's HTML. Put the same thing in a tutorial, a blog
+            post, a talk or your library's docs, and readers run and edit the code right where they read about it. It runs
+            in their browser, so there is no backend to host.
+          </p>
+          <ul class="works">
+            <li><strong>Tutorials:</strong> give a lesson tests the reader doesn't see, and check their code against them; their edits are still there on the next visit</li>
+            <li><strong>Demos:</strong> show a <code>Bun.serve</code> app's preview, a console or the whole playground, started on a click</li>
+            <li><strong>Docs:</strong> <code>@runbun/astro</code> turns the code blocks of an Astro site into runnable ones</li>
+          </ul>
+          <p class="actions">
+            <a class="retro-button primary" href="https://docs.runbun.dev/guides/embedding/">Embedding guide</a>
+            <a class="retro-button" href="https://docs.runbun.dev/guides/configurator/">Build a snippet</a>
+          </p>
+        </div>
+        <div class="live retro-shadow snippet">
+          <p class="live-title" aria-hidden="true"><span>lesson.html</span><span>HTML</span></p>
+          <pre><code><span class="tag">&lt;script</span> <span class="attr">type</span>="module"
+  <span class="attr">src</span>="https://runbun.dev/embed.js"<span class="tag">&gt;&lt;/script&gt;</span>
+
+<span class="tag">&lt;bun-playground</span> <span class="attr">mode</span>="code" <span class="attr">persist</span>="lesson-1"<span class="tag">&gt;</span>
+  <span class="tag">&lt;script</span> <span class="attr">type</span>="text/plain" <span class="attr">data-file</span>="index.ts"<span class="tag">&gt;</span>
+    export const add = (a: number, b: number) =&gt; 0;
+  <span class="tag">&lt;/script&gt;</span>
+  <span class="note">&lt;!-- Your checks: the reader never sees them. --&gt;</span>
+  <span class="tag">&lt;script</span> <span class="attr">type</span>="text/plain" <span class="attr">data-file</span>="add.test.ts"
+    <span class="attr">data-generated</span><span class="tag">&gt;</span>
+    import { test, expect } from "bun:test";
+    import { add } from "./index";
+    test("adds", () =&gt; expect(add(1, 2)).toBe(3));
+  <span class="tag">&lt;/script&gt;</span>
+<span class="tag">&lt;/bun-playground&gt;</span></code></pre>
         </div>
       </section>
       <section class="about">
