@@ -108,14 +108,17 @@ export function Preview() {
     <>
       <div id="preview-backdrop" hidden={!s.expanded} onClick={() => p.setExpanded(false)} />
       <div id="preview-wrap" class={{ expanded: s.expanded }}>
-        <div id="preview-tabs" class="tabs">
-          <TabList class="tablist" label="Previews" onSelect={(id) => Number(id) !== s.active && p.activate(Number(id))}>
-            <For each={s.tabs}>{(tab) => <PreviewTabItem tab={tab} />}</For>
-          </TabList>
-          <Tip class="add" type="button" tip="New preview" aria-label="New preview" onClick={() => p.request(p.open())}>
-            <i class="i-lucide-plus" aria-hidden="true" />
-          </Tip>
-        </div>
+        {/* An embed without tabs has no bar for a single preview either; several (`requests`) keep theirs. */}
+        <Show when={(app.features?.has("tabs") ?? true) || s.tabs.length > 1}>
+          <div id="preview-tabs" class="tabs">
+            <TabList class="tablist" label="Previews" onSelect={(id) => Number(id) !== s.active && p.activate(Number(id))}>
+              <For each={s.tabs}>{(tab) => <PreviewTabItem tab={tab} />}</For>
+            </TabList>
+            <Tip class="add" type="button" tip="New preview" aria-label="New preview" onClick={() => p.request(p.open())}>
+              <i class="i-lucide-plus" aria-hidden="true" />
+            </Tip>
+          </div>
+        </Show>
         <form
           id="request"
           onSubmit={(e) => {
