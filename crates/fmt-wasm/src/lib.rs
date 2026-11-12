@@ -18,7 +18,8 @@ pub const SINGLE_QUOTE: u32 = 4;
 /// True if `bun fmt` formats a file with this name (`bun_lint_driver`'s `language_of`, plus TOML and Svelte, which
 /// `bun fmt` turns on). `format_for_tests` itself formats any other name as JavaScript.
 pub fn supports(path: &[u8]) -> bool {
-    let name = path.rsplit(|&b| b == b'/').next().unwrap_or(path).to_ascii_lowercase();
+    let base = path.rsplit(|&b| b == b'/').next().unwrap_or(path);
+    let name = base.to_ascii_lowercase();
     let extension = name.rsplit(|&b| b == b'.').next().filter(|it| it.len() < name.len()).unwrap_or(b"");
     matches!(extension, b"js" | b"mjs" | b"cjs" | b"jsx" | b"ts" | b"mts" | b"cts" | b"tsx")
         || name.ends_with(b".js.flow")
@@ -30,8 +31,15 @@ pub fn supports(path: &[u8]) -> bool {
         || bun_format::graphql::is_graphql_path(&name)
         || bun_format::handlebars::is_handlebars_path(&name)
         || bun_format::html::parser_for_path(&name).is_some()
-        || (name.len() > 5 && name.ends_with(b".toml"))
+        || is_toml(base)
         || (name.len() > 7 && name.ends_with(b".svelte"))
+}
+
+/// The names `bun fmt` formats as TOML (`files::is_toml`, after oxfmt; case-sensitive).
+fn is_toml(name: &[u8]) -> bool {
+    name.strip_suffix(b".toml").is_some_and(|it| !it.is_empty())
+        || matches!(name, b"Pipfile" | b"Cargo.toml.orig")
+        || name.ends_with(b".toml.example")
 }
 
 /// Lock files and minified code, which `bun fmt` skips when it walks a directory (`files::is_generated`).

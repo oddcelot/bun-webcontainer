@@ -1,5 +1,5 @@
 import type { Semver } from "./semver";
-import { gunzip, installFromBunLock, installPath, packageFiles, parseBunLock, splitKey, staleInLock, untar } from "./lockfile";
+import { gunzip, installFromBunLock, installPath, packageFiles, parseBunLock, pruneNodeModules, splitKey, staleInLock, untar } from "./lockfile";
 import { lockedPackages, resolveProject, writeBunLock, type Manifest, type ResolveHost } from "./lockfileWrite";
 import { fetchPackument, fetchTarball, fetchVersion } from "./pkgCache";
 import type { VFS } from "@runbun/vfs";
@@ -68,6 +68,19 @@ async function installWasiBindings(vfs: VFS, lockText: string, semver: Semver, l
   return installed;
 }
 
+/** Where bun.lock's packages go, and the browser's binding next to each that has one (`installWasiBindings`). */
+function installedPaths(lock: ReturnType<typeof parseBunLock>): Set<string> {
+  const keep = new Set<string>();
+  for (const [key, entry] of Object.entries(lock.packages)) {
+    const names = splitKey(key);
+    keep.add(installPath(names));
+    const info = entry.find((e) => e && typeof e === "object" && !Array.isArray(e)) as Manifest | undefined;
+    const wasi = unlistedWasiBinding(info?.optionalDependencies);
+    if (wasi) keep.add(installPath([...names.slice(0, -1), wasi[0]]));
+  }
+  return keep;
+}
+
 /**
  * `bun install`. With a bun.lock that matches package.json, what it lists. Without one, or with one package.json has
  * moved past, resolves package.json as Bun does (a dependency keeps its locked version while its range fits), writes
@@ -79,6 +92,8 @@ export async function bunInstall(vfs: VFS, semver: Semver, log: Log): Promise<nu
   const pkg = text === undefined ? undefined : (JSON.parse(text) as Manifest);
   const old = lock === undefined ? undefined : parseBunLock(lock);
   const stale = old && pkg ? staleInLock(old, pkg) : [];
+  // Packages the lockfile no longer places are removed only once it holds every dependency.
+  let complete = true;
   if (lock !== undefined && !stale.length) log("log", "bun.lock found: installing locked versions");
   else {
     if (!pkg) throw new Error("no package.json");
@@ -87,12 +102,15 @@ export async function bunInstall(vfs: VFS, semver: Semver, log: Log): Promise<nu
     for (const p of resolved.problems) log("error", p);
     lock = writeBunLock(resolved);
     // A bun.lock without some of the dependencies would be wrong for native Bun too.
-    if (resolved.problems.length) log("error", `bun.lock not ${old ? "updated" : "saved"}: some dependencies could not be resolved`);
+    complete = !resolved.problems.length;
+    if (!complete) log("error", `bun.lock not ${old ? "updated" : "saved"}: some dependencies could not be resolved`);
     else {
       vfs.write("bun.lock", lock);
       log("log", "Saved bun.lock");
     }
   }
   const n = await installFromBunLock(vfs, lock, log);
-  return n + (await installWasiBindings(vfs, lock, semver, log));
+  const total = n + (await installWasiBindings(vfs, lock, semver, log));
+  if (complete) for (const dir of pruneNodeModules(vfs, installedPaths(parseBunLock(lock)))) log("log", `- ${dir.replace(/^node_modules\//, "").replaceAll("/node_modules/", "/")}`);
+  return total;
 }

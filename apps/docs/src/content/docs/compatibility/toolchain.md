@@ -167,6 +167,7 @@ Runs in the console (`bun install`, `bun add`, `bun remove`) and automatically w
 - ✅ `bun.lock` (text format): exact versions, nested `node_modules`, integrity checks
 - ✅ Without a `bun.lock`, the install resolves versions and nests conflicting ones in `node_modules` as Bun does, and writes the `bun.lock` Bun would: native `bun install --frozen-lockfile` accepts it
 - ✅ When `package.json` changes (by hand, `bun add` or `bun remove`), the next install updates `bun.lock`: the other dependencies keep their locked versions
+- ✅ Packages that `bun.lock` no longer lists (after `bun remove`, or a dependency's own dependencies that changed) are removed from `node_modules`
 - ✅ Optional packages limited to other platforms (native bindings) are skipped
 - ✅ A package with native bindings that leaves its `-wasm32-wasi` binding out of `optionalDependencies` (oxc-parser) gets it installed anyway, when one is published. It stays out of `bun.lock`, as native Bun doesn't install it
 - ✅ A package cache shared by all projects, kept across reloads: a downloaded tarball isn't downloaded again, and package metadata is reused for 5 minutes, as in Bun. `bun pm cache` shows its size, `bun pm cache rm` clears it.
