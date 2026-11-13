@@ -1,4 +1,5 @@
-// Draws the landing page's kitchen (src/landing/art/*.png; index.html, style.css #landing): each prop is a few shapes,
+// Draws the landing page's kitchen (src/landing/art/*.png; index.html, style.css #landing; the parts the docs use too
+// go to packages/ui/assets/): each prop is a few shapes,
 // shaded from the top left and reduced to a short color ramp with ordered (Bayer) dithering, then outlined in ink, so
 // they all share one light, one palette and one pixel size. Run `bun run landing-art` after changing one; the outputs
 // are committed, each with a `-night` twin for the page's dark scheme: the same pixels by moonlight (`night`).
@@ -8,6 +9,8 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { deflateSync } from "node:zlib";
 
 const out = new URL("../src/landing/art/", import.meta.url).pathname;
+/** The docs wear the kitchen's look too: what they share with the landing page (the scheme switch, the cursors). */
+const shared = new URL("../../../packages/ui/assets/", import.meta.url).pathname;
 
 /** The outline, and the page's text color (style.css #landing --fg). */
 const INK = "#5b3a2e";
@@ -396,8 +399,9 @@ const art: Record<string, Sprite> = {
 mkdirSync(out, { recursive: true });
 // The bullets and the switch keep their colors at night.
 const lit = new Set(["heart", "arrow", "moon", "sun", "sound-on", "sound-off"]);
+const both = new Set(["moon", "sun"]);
 for (const [name, sprite] of Object.entries(art)) {
-  writeFileSync(`${out}${name}.png`, sprite.png());
+  writeFileSync(`${both.has(name) ? shared : out}${name}.png`, sprite.png());
   // At night the switch is off.
   const dark = name === "switch" ? lightSwitch(false) : sprite;
   if (!lit.has(name)) writeFileSync(`${out}${name}-night.png`, dark.night(name === "steam" ? 0.55 : 1).png());
@@ -419,7 +423,7 @@ const cursors: Record<string, Sprite> = {
   pointer: hand.outline(),
 };
 for (const [name, sprite] of Object.entries(cursors))
-  for (const [suffix, scale] of [["", 2], ["@2x", 4]] as const) writeFileSync(`${out}${name}${suffix}.png`, new Sprite(sprite.w * scale, sprite.h * scale).draw(sprite, 0, 0, scale).png());
+  for (const [suffix, scale] of [["", 2], ["@2x", 4]] as const) writeFileSync(`${shared}${name}${suffix}.png`, new Sprite(sprite.w * scale, sprite.h * scale).draw(sprite, 0, 0, scale).png());
 console.log(`${Object.keys(art).length} sprites and ${Object.keys(cursors).length} cursors in ${out}`);
 
 const colors = process.argv.indexOf("--night");
