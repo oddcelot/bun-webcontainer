@@ -41,8 +41,12 @@ import { PLAYGROUND_URL } from "../../site-urls.ts";
   <p class="note">Sends the rating and this page's address; nothing else unless you write it. <a href="/privacy/#feedback">Privacy</a></p>
 </section>
 
-<!-- Every embed on the page (runnable code blocks, <Playground>) in the kitchen's colors: styles/theme.css's, as the embed's own variables. -->
-<bun-playground-defaults family="rose-pine-dawn" vars='{"base":{"--radius":"0"},"light":{"--bg":"#fffaf0","--canvas":"#f6e4c4","--panel":"#f6e4c4","--fg":"#5b3a2e","--muted":"#96735c","--border":"#d9bf95","--accent":"#c93f72","--error":"#cf4a3a","--ok":"#3f8a3d"},"dark":{"--bg":"#3b3964","--canvas":"#262443","--panel":"#262443","--fg":"#f4e8d4","--muted":"#b7adcf","--border":"#4a4778","--accent":"#ff86b4","--error":"#ff7a90","--ok":"#8fd67a"}}'></bun-playground-defaults>
+<!--
+  Every embed on the page (runnable code blocks, <Playground>) in the kitchen's colors: styles/theme.css's, as the embed's
+  own variables. And as tall as its content: before Run a block is its code and no taller (a preview or console block
+  would hold its running height open under the code), and grows to its running height once started.
+-->
+<bun-playground-defaults family="rose-pine-dawn" height="auto" vars='{"base":{"--radius":"0"},"light":{"--bg":"#fffaf0","--canvas":"#f6e4c4","--panel":"#f6e4c4","--fg":"#5b3a2e","--muted":"#96735c","--border":"#d9bf95","--accent":"#c93f72","--error":"#cf4a3a","--ok":"#3f8a3d"},"dark":{"--bg":"#3b3964","--canvas":"#262443","--panel":"#262443","--fg":"#f4e8d4","--muted":"#b7adcf","--border":"#4a4778","--accent":"#ff86b4","--error":"#ff7a90","--ok":"#8fd67a"}}'></bun-playground-defaults>
 
 <Default />
 
