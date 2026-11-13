@@ -5,6 +5,164 @@ browser, its editor, and the docs at docs.runbun.dev. They release together at o
 `package.json`, tagged `v<version>`), organised by part. `@runbun/astro` keeps its own changelog in
 [packages/astro/CHANGELOG.md](./packages/astro/CHANGELOG.md).
 
+## 0.3.0 — 2026-11-13
+
+Git arrives in the playground: a Git panel and `git` in the console, cloning with history from GitHub, GitLab, Codeberg
+and Bitbucket, and push once you sign in with GitHub. The console becomes Bun's shell, programs can start child
+processes and use `Bun.$`, `bun install` writes `bun.lock`, and `bun check` type-checks a project. runbun.dev now opens
+on a landing page, a pixel-art kitchen by day and by night, and the docs wear the same look. Project code runs on its own
+origin, and a project opened from a link waits for Run; nothing needs action.
+
+### Playground
+
+- **Added** — **A Git panel.** The file explorer switches to a Git view (Mod+Shift+G) to stage, commit, amend or undo,
+  switch and create branches, read the history, and pull or push; the file tree marks changed files and the Changes tab
+  compares with the last commit. Git runs in a background worker, so a large repository doesn't hold up typing.
+- **Added** — **`git` in the console.** `init`, `add`, `commit`, `status`, `diff`, `log`, `show`, `branch`, `switch`,
+  `restore`, `reset --hard`, `config` and `remote` work on the project's files, renamed files are paired as in git, and
+  the repository is kept across reloads.
+- **Added** — **Clone a repository with its history.** In the project gallery, Repository… opens a repo's files as
+  before or, with "With Git history", clones it from GitHub, GitLab, Codeberg or Bitbucket, so you can commit, branch,
+  fetch and pull; `git clone`, `fetch` and `pull` do the same in the console, and links work too: `?git=owner/repo`.
+  The status bar shows how much has arrived.
+- **Added** — **Sign in with GitHub to clone private repositories and push.** Clone a repository lists your repositories
+  once you sign in, private ones clone and fetch, and `git push` (`-u`, `-f`, `--delete`, `<src>:<dst>`) or ↑ in the
+  Git view pushes. You choose which repositories runbun.dev may use; the token stays in an encrypted cookie in your
+  browser, for 7 days after your last visit or until you sign out.
+- **Added** — **The console is Bun's shell.** Pipes, `&&`, redirects, variables, `$(…)`, globs and `cd` work, with Bun's
+  builtins (`ls`, `cat`, `mkdir`, `rm`, `mv`, `cp`, `echo`…) over the project's files. Before, a line was split at
+  spaces and only a few commands were known.
+- **Added** — **runbun.dev opens on a landing page.** A first visit shows a pixel-art kitchen with what runs, a live
+  example and how to embed one; "Open the playground" starts it in the same page, and later visits and project links go
+  straight to the playground. About, in the status bar, opens it again (runbun.dev/about), and `?open` on a link skips
+  it.
+- **Added** — **The landing page by night, and with sound.** With your system in dark mode it is the same kitchen by
+  moonlight; the moon in the header (or the light switch on the wall) switches, and your choice is remembered. Buttons,
+  links and switches make arcade sounds, which the speaker in the header turns off.
+- **Added** — **A project gallery, with starter templates.** Starters (Blank, HTTP API, React, SQLite, WebSocket chat),
+  examples and GitHub projects sit in sections with their technologies tagged, in place of the project dropdown; search
+  by name or technology, or filter by tag.
+- **Added** — **runbun.json: say how a project opens.** An optional file beside package.json sets what Run starts,
+  environment variables, the open tabs and panels, and requests to try in the preview.
+- **Added** — **Scripts that call a package's CLI run.** A project with `"dev": "vite"` and no entry file starts Vite's
+  CLI on Run, `vite.config.ts` included, where it failed with "module not found: index.ts"; `bun run <script>` runs such
+  scripts too.
+- **Added** — **Rename and delete files and folders from the file tree.** Right-click a row (or use its ⋯ button), or
+  press F2 to rename and Delete to delete; open tabs follow a rename. For ten seconds after, Undo under the tree (or
+  Ctrl/Cmd+Z in it) brings a deleted file or folder back, tabs included, or moves a renamed one back.
+- **Added** — **The status bar shows the port, the dependencies and whether your edits are saved.** `:3000` appears
+  while a server runs, and a click shows the preview when it's hidden; the dependency count offers an install when some
+  are missing and warns when bun.lock no longer matches package.json; Saving…, Saved or Not saved says where your edits
+  are kept, or why they aren't.
+- **Added** — **Format on save.** Turn on the wand in the status bar and Ctrl/Cmd+S formats the file with `bun fmt`
+  before saving it.
+- **Added** — **Find Local Bun from the header.** The **Local Bun** button is always there and, without a runner, shows
+  how to run projects with the Bun on your machine; paste the runner's link to connect the open page.
+- **Added** — **Embeds without room for the file tree open it as a drawer.** A Files button in the bar reaches every
+  file in stacked and narrow embeds, and stacked embeds 782px and wider show the tree beside the editor.
+- **Changed** — **Project code runs on its own origin.** Code you run can no longer read your other saved projects,
+  folder access or the Local Bun token, and a preview's cookies and storage stay out of the editor's. Embeds on other
+  sites keep package files in memory, and "open preview in a new tab" from an embed opens the playground instead.
+- **Changed** — **Switching projects no longer reloads the page.** The header, console and preview stay put while the
+  files swap, and Back and Forward move between the projects you opened.
+- **Changed** — **Undo history survives switching tabs and renaming a file.** Going to another file and back, or
+  renaming one, used to start its undo history afresh.
+- **Changed** — **Large files open and scroll faster.** The editor renders only the lines in view; a 5000-line file
+  opens about three times faster.
+- **Changed** — **Hono and the Lit SSR guestbook open instantly.** They are bundled examples now, not GitHub repos
+  fetched on each pick, so they work offline and don't run into GitHub's hourly limit.
+- **Changed** — **An embed with `features="-tabs"` has no preview tab bar either.** A preview with one tab shows its
+  request bar and response only, which leaves a short embed more room for the code. Embeds with several preview tabs
+  keep the bar.
+- **Changed** — **Plainer wording across the playground.** Tooltips, dialogs and console messages say what a control
+  does or what happened, without the explanations bolted on.
+- **Fixed** — **Projects from a link no longer run until you press Run.** Opening a share link or ?repo= link used to
+  run the code at once; now you can read it first.
+- **Fixed** — **A ?connect= link can no longer send your project to another server.** The playground now connects only
+  to a Local Bun runner on your own machine and ignores any other host.
+- **Fixed** — **Other websites can no longer reach your running preview server.** A link or form on another site that
+  pointed at /__preview/ used to be answered by the app running in your playground tab.
+- **Fixed** — **Opening runbun.dev with a local runner link no longer waits on Chrome's prompt.** The project opens and
+  runs in the browser while Chrome asks for local network access, and moves to Local Bun once it's allowed.
+- **Fixed** — **A preview opened in its own tab says why it's empty.** Opening the preview from an embedded playground,
+  or after closing the playground, showed the browser's bare not-found page; it now explains that the preview runs in
+  its playground tab, with a link back.
+- **Fixed** — **The cursor position follows your clicks.** After clicking into a file, the status bar's Ln/Col and F12
+  (go to definition) used the previous click's position, or none right after opening the file.
+- **Fixed** — **Long commands stay on one prompt in the console.** Typing past the console's width repeated the line on
+  every keystroke.
+
+### Runtime
+
+- **Added** — **Programs can start child processes.** `Bun.spawn`, `child_process.spawn`/`exec`/`execFile` and `Bun.$`
+  run `bun`, `node`, `package.json` scripts and installed bins, with piped stdio, stdin, exit codes and `kill`; and
+  `bun run` in the console runs scripts like `tsc && vite build`.
+- **Added** — **`Bun.$` runs.** Bun's own shell parser and its builtins over the project's files: pipes, redirects (also
+  into buffers), `.text()`, `.json()`, `.quiet()`, `.nothrow()`, `ShellError`, `$.escape` and `$.braces`. Commands other
+  than the builtins, `bun`, `node` and installed bins aren't found.
+- **Changed** — **Saving under Watch keeps the preview up.** The running server keeps answering until the edited program
+  is up, and an edit that crashes on start leaves the previous version running instead of nothing.
+- **Fixed** — **Programs end when they run out of work.** A script that finished kept running with no exit code; now
+  `beforeExit` and `exit` fire and the status shows the code, while timers, servers and pending requests keep a program
+  going unless `unref`'d.
+- **Fixed** — **`bun test` fails a test on an uncaught error.** An error thrown from a timer or an unhandled rejection
+  was printed and the test passed; now the test running at the time fails, as in Bun.
+- **Fixed** — **`new Request()` keeps Cookie, Host, Origin, Referer and Content-Length, as in Bun.**
+  `app.handle(new Request(url, { headers: { cookie } }))` sees its cookies instead of losing them.
+- **Fixed** — **Imports of `file:` URLs load.** `import "file:///node_modules/…"` failed with "cannot resolve", so a Vite
+  CLI couldn't load its `vite.config.ts`.
+- **Fixed** — **`exit` listeners see Bun's code after an unhandled rejection.** They got 1 where Bun passes
+  `process.exitCode` (0 when unset); the program still ends with code 1.
+
+### Toolchain
+
+- **Added** — **`bun install` writes `bun.lock`.** A project without one gets the lockfile native Bun would write,
+  conflicting versions are nested instead of dropped, and editing `package.json`, `bun add` or `bun remove` updates it.
+  Tarball URLs, `file:` folders and `npm:` aliases install too.
+- **Added** — **`bun check` in the console.** Bun's own type checker (TypeScript 7) checks the project with its
+  `tsconfig.json` and installed types, and prints the errors and summary `bun check` prints, colors and source lines
+  included. `bun --check <file>`, also in `package.json` scripts, type-checks first and only starts the program when
+  there are no errors.
+- **Changed** — **The playground loads faster.** The transpiler it downloads first is a third smaller (537 KB instead of
+  867 KB compressed).
+- **Fixed** — **Packages whose files are named after keywords load.** TypeBox 1.x no longer fails to load, so Elysia 2
+  routes with schemas answer instead of returning 500, and imports of same-named files from different folders no longer
+  overwrite each other.
+- **Fixed** — **Packages like oxc-parser load their wasm binding.** A package that lists its native bindings but not its
+  `-wasm32-wasi` one now gets that installed too, where it failed to load with "Cannot find module".
+- **Fixed** — **Vite projects run on the rolldown they install.** A fresh install got rolldown 1.2.19 while the
+  playground supplied 1.2.16 and warned about the mismatch.
+- **Fixed** — **`bun remove` removes the package's dependencies too.** Packages that `bun.lock` no longer lists stayed
+  in `node_modules` after an install.
+- **Fixed** — **`bun fmt` formats `Cargo.toml.orig`, `Pipfile` and `*.toml.example`.** The playground skipped them as
+  files it can't format.
+
+### Editor
+
+- **Added** — **Hints for JSON files.** runbun.json, and any JSON file that names its `$schema`, gets completions, field
+  descriptions on hover and errors as you type; a `$schema` path like `./config.schema.json` or
+  `../node_modules/tool/schema.json` is read from the project's files.
+- **Changed** — **The editor's TypeScript service is on tsrs 0.24.** Diagnostics, hovers and completions come from the
+  newer release (still TypeScript 7.1 beta).
+
+### Docs
+
+- **Added** — **Runnable Bun examples.** docs.runbun.dev/examples/ has Bun.serve, routes, WebSockets, bun:sqlite,
+  Bun.file, Bun.password, Bun.$, Elysia and Hono examples that run on the page when you press Run.
+- **Added** — **Comparison pages.** docs.runbun.dev/compare/ weighs runbun.dev against StackBlitz WebContainers, online
+  Bun compilers and installing Bun locally, and says when each is the better pick.
+- **Added** — **A guide to running projects with Bun on your own machine.** Run with local Bun covers
+  `bunx @runbun/connect`, the browsers it works in and what the sandbox does and doesn't stop.
+- **Changed** — **The docs match the landing page's kitchen.** One palette, by day and by night; the moon or sun in the
+  header switches between them, and the theme family picker is gone. Open playground is a plain link, without the zoom
+  into a monitor.
+- **Changed** — **One table of what runs in the browser.** The compatibility overview sums up Bun.serve, bun install,
+  bun:sqlite, node:* and the toolchain at a glance, with the Bun release and the date it was last checked.
+- **Fixed** — **The browser page says Safari Technology Preview runs code.** It was listed as edit-only, though it has
+  Memory64 and runs the playground.
+- **Fixed** — **Runnable examples are as tall as their code.** A short preview or console example no longer has empty
+  space under it before you run it.
+
 ## 0.2.0 — 2026-11-05
 
 The preview becomes a request client: send query params, headers, forms, files and credentials, edit a request as text
