@@ -16,7 +16,7 @@ const fonts = [
   { name: "JetBrains Mono", weight: 500, data: read("node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff") },
 ] as const;
 
-// Pierre Dark (the playground's default dark theme), plus Bun's cream from the logo.
+// Pierre Dark (the playground's default dark theme), plus Bun's cream from the logo: the badge's and the icons' colors.
 const C = { bg: "#0a0a0a", panel: "#171717", fg: "#fafafa", muted: "#a3a3a3", border: "#262626", accent: "#009fff", bun: "#fbf0df" };
 
 type El = { type: string; props: Record<string, unknown> & { style?: Record<string, unknown>; children?: unknown } };
@@ -25,47 +25,56 @@ const h = (type: string, style: Record<string, unknown>, children?: unknown, pro
   props: { ...props, style: { display: "flex", ...style }, children },
 });
 
-const chip = (text: string) =>
-  h("div", { padding: "10px 18px", border: `1px solid ${C.border}`, borderRadius: 999, background: C.panel, color: C.fg, fontFamily: "JetBrains Mono", fontSize: 24 }, text);
-
-const card = h(
-  "div",
-  {
-    // Satori adds padding to width and height (content-box), so these are 1200x630 minus the padding.
-    width: 1200 - 160,
-    height: 630 - 128,
-    flexDirection: "column",
-    justifyContent: "space-between",
-    padding: "64px 80px",
-    background: C.bg,
-    // A warm glow behind the logo, Bun's cream fading into the dark.
-    backgroundImage: `radial-gradient(circle at 85% 50%, rgba(251, 240, 223, 0.16), rgba(10, 10, 10, 0) 45%)`,
-    color: C.fg,
-    fontFamily: "Inter",
-  },
-  [
-    h("div", { alignItems: "center", gap: 14, color: C.muted, fontSize: 28 }, [
-      h("img", {}, undefined, { src: logo, width: 46, height: 40 }),
+// The social card: the landing page's kitchen by day (src/style.css #landing), from its props (src/landing/art/*.png,
+// scripts/landing-art.ts) at four pixels an art pixel. Satori lays it out; the pictures are marked pixelated in its SVG,
+// so resvg scales them without smoothing.
+const K = { wall: "#fff6e5", ink: "#5b3a2e", muted: "#96735c", accent: "#c93f72", glow: "#ffc2d8" };
+const ART = 4;
+const png64 = (p: string) => `data:image/png;base64,${read(p).toString("base64")}`;
+const art = (name: string) => png64(`src/landing/art/${name}.png`);
+/** A picture `w` × `tall` art pixels with its left edge at `x`, standing `up` art pixels above the card's bottom edge. */
+const prop = (src: string, w: number, tall: number, x: number, up: number) =>
+  h("img", { position: "absolute", left: x, bottom: up * ART }, undefined, { src, width: w * ART, height: tall * ART });
+/** The first frame of a sheet of `frames` square pictures of `size` art pixels, shown at `px` pixels an art pixel. */
+const frame = (src: string, size: number, frames: number, rows: number, px: number, style: Record<string, unknown>) =>
+  h("div", { width: size * px, height: size * px, overflow: "hidden", ...style }, [
+    h("img", { flexShrink: 0 }, undefined, { src, width: size * px * frames, height: size * px * rows }),
+  ]);
+// The counter's strip is 26 art pixels high and the props stand 8 into its top, as on the page.
+const STAND = 18;
+const card = h("div", { width: 1200, height: 630, position: "relative", background: K.wall, color: K.ink, fontFamily: "Inter" }, [
+  // Three rows of tiles behind the props, then the counter along the bottom.
+  h("div", { position: "absolute", left: 0, bottom: 26 * ART, width: 1200, height: 48 * ART, overflow: "hidden", flexWrap: "wrap" },
+    Array.from({ length: 20 }, () => h("img", {}, undefined, { src: art("tiles"), width: 32 * ART, height: 32 * ART }))),
+  h("div", { position: "absolute", left: 0, bottom: 0, width: 1200, height: 26 * ART, overflow: "hidden" },
+    Array.from({ length: 4 }, () => h("img", { flexShrink: 0 }, undefined, { src: art("counter"), width: 96 * ART, height: 26 * ART }))),
+  // The dumpling sits in the steamer, between its back and the wall in front of it.
+  prop(art("steamer-back"), 68, 42, 80, STAND),
+  frame(png64("src/smile-idle.png"), 32, 16, 1, ART, { position: "absolute", left: 80 + 18 * ART, bottom: (STAND + 29) * ART }),
+  prop(art("steamer-front"), 68, 42, 80, STAND),
+  prop(art("rolling-pin"), 78, 16, 400, STAND - 4),
+  prop(art("pot"), 60, 36, 760, STAND),
+  frame(art("steam"), 0, 0, 0, 0, { display: "none" }),
+  h("div", { position: "absolute", left: 760 + 15 * ART, bottom: (STAND + 33) * ART, width: 30 * ART, height: 40 * ART, overflow: "hidden" }, [
+    h("img", { flexShrink: 0 }, undefined, { src: art("steam"), width: 30 * ART * 8, height: 40 * ART }),
+  ]),
+  prop(art("crock"), 36, 62, 1020, STAND),
+  // The words, on the wall.
+  h("div", { position: "absolute", left: 80, top: 44, flexDirection: "column" }, [
+    h("div", { alignItems: "center", gap: 12, fontFamily: "Pixelify Sans", fontWeight: 700, fontSize: 34 }, [
+      frame(png64("../../packages/ui/assets/dumplings.png"), 32, 8, 8, 2, {}),
       h("div", {}, "runbun.dev"),
     ]),
-    h("div", { alignItems: "center", justifyContent: "space-between", gap: 40 }, [
-      h("div", { flexDirection: "column", gap: 20, width: 760 }, [
-        h("div", { fontSize: 80, fontWeight: 800, letterSpacing: -2.5, lineHeight: 1.05 }, "Bun in your browser"),
-        h(
-          "div",
-          { fontSize: 30, color: C.muted, lineHeight: 1.4 },
-          "Run Bun.serve apps, install packages and edit TypeScript in a tab, built from Bun's own Rust crates compiled to wasm64.",
-        ),
-      ]),
-      h("img", { flexShrink: 0 }, undefined, { src: logo, width: 240, height: 210 }),
-    ]),
-    h("div", { gap: 14 }, ["Bun.serve", "bun install", "TypeScript", "wasm64"].map(chip)),
-  ],
-);
+    h("div", { marginTop: 18, fontFamily: "Pixelify Sans", fontWeight: 700, fontSize: 96, lineHeight: 1, textShadow: `5px 5px 0 ${K.glow}` }, "Bun in your browser"),
+    h("div", { marginTop: 22, fontSize: 30, lineHeight: 1.35, width: 1000 }, "Run Bun.serve apps, install packages and edit TypeScript in a tab. No install, no server, no account."),
+  ]),
+]);
 
 const png = (svg: string, width: number) => new Resvg(svg, { fitTo: { mode: "width", value: width } }).render().asPng();
 
-writeFileSync(root + "public/og.png", png(await satori(card as never, { width: 1200, height: 630, fonts: [...fonts] }), 1200));
+const cardFonts = [...fonts, { name: "Pixelify Sans", weight: 700 as const, data: read("node_modules/@fontsource/pixelify-sans/files/pixelify-sans-latin-700-normal.woff") }];
+const cardSvg = (await satori(card as never, { width: 1200, height: 630, fonts: cardFonts })).replaceAll("<image ", '<image image-rendering="optimizeSpeed" ');
+writeFileSync(root + "public/og.png", png(cardSvg, 1200));
 
 // "Open in runbun" badge for READMEs (public/badge.svg, linked from Share → Markdown/HTML). Satori turns the text into
 // paths, so it looks the same wherever GitHub or anyone else shows it, without fonts.

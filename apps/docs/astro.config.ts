@@ -98,7 +98,7 @@ export default defineConfig({
         { tag: "meta", attrs: { property: "og:image:type", content: "image/png" } },
         { tag: "meta", attrs: { property: "og:image:width", content: "1200" } },
         { tag: "meta", attrs: { property: "og:image:height", content: "630" } },
-        { tag: "meta", attrs: { property: "og:image:alt", content: "Bun's logo next to the words: Bun in your browser" } },
+        { tag: "meta", attrs: { property: "og:image:alt", content: "A pixel-art kitchen counter with a dumpling in a bamboo steamer, under the words: Bun in your browser" } },
         { tag: "meta", attrs: { name: "twitter:image", content: `${PLAYGROUND_URL}og.png` } },
         { tag: "meta", attrs: { name: "twitter:site", content: "@oddcelot" } },
       ],
