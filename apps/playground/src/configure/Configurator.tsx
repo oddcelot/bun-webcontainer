@@ -44,7 +44,7 @@ console.log(Bun.version);
 const MODE_INFO: Record<Mode, [icon: string, text: string]> = {
   code: ["i-lucide-code", "The editor and a console below it"],
   console: ["i-lucide-terminal", "The editor beside a console that takes commands"],
-  preview: ["i-lucide-app-window", "The editor with tabs beside the preview of a server"],
+  preview: ["i-lucide-app-window", "Editor with tabs next to the preview"],
   full: ["i-lucide-layout-dashboard", "Full playground. Starts when you press Run"],
   result: ["i-lucide-eye", "Only the preview, with an Edit button"],
 };
@@ -53,15 +53,15 @@ const FEATURE_INFO: Record<Feature, string> = {
   tabs: "Tab bar for open files",
   console: "Console output",
   preview: "Preview of a server",
-  types: "Type errors, hover and completions (10 MB on first use)",
-  format: "Format button, bun fmt (7 MB on first use)",
+  types: "Type errors, hover and completions . 10 MB on first use",
+  format: "Format button, bun fmt. 7 MB on first use",
   install: "Install button",
   terminal: "Interactive terminal",
   open: "Open in runbun.dev",
   watch: "Restart the program when an edit is saved",
   autosave: "An Auto-save switch over the editor",
-  close: "Close buttons on the tabs (on in full mode)",
-  git: "Git panel beside the file tree, and git in the terminal (1 MB on first use)",
+  close: "Close buttons on the tabs. On in full mode",
+  git: "Git panel beside the file tree, and git in the terminal. 1 MB on first use",
 };
 
 type Option = { value: string; label: string; swatch?: string };
@@ -370,7 +370,7 @@ export function Configurator() {
                 options={[
                   ["visible", "When visible", "i-lucide-scan-eye", "When the embed scrolls into view"],
                   ["eager", "At once", "i-lucide-zap", "As soon as the page loads"],
-                  ["click", "On click", "i-lucide-mouse-pointer-click", "When the reader clicks the poster's Run button"],
+                  ["click", "On click", "i-lucide-mouse-pointer-click", "When the reader clicks Run"],
                 ]}
               />
             </Field>

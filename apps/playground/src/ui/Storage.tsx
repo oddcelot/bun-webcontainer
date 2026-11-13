@@ -113,8 +113,8 @@ function StorageForm() {
     <>
       <DialogTitle>Storage</DialogTitle>
       <DialogDescription>
-        Saved projects and caches this browser keeps for the playground.
-        <Show when={usage()}>{(u) => <>{` ${size(u().used)} in use of ${size(u().quota)} available.`}</>}</Show>
+        Saved projects and caches.
+        <Show when={usage()}>{(u) => <>{` ${size(u().used)} of ${size(u().quota)} used.`}</>}</Show>
       </DialogDescription>
       <p class="storage-kept">
         <Show
@@ -153,10 +153,10 @@ function StorageForm() {
                       disabled={busy() || elsewhere(p.id)}
                       tip={
                         elsewhere(p.id)
-                          ? "Close the other tab to delete it"
+                          ? "Open in another tab. Close that tab to delete"
                           : p.id === current()
-                            ? "Delete the saved files and reload this project from its source"
-                            : "Delete its saved files"
+                            ? "Delete saved files and reload from source"
+                            : "Delete saved files"
                       }
                       aria-label={`Delete ${label(p.id).name}`}
                       onClick={() => remove(p.id)}

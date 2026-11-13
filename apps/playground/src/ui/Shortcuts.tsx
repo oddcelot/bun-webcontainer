@@ -124,7 +124,7 @@ function ShortcutsForm() {
                         <code>{c}</code>
                         <Show when={clashes(c).length}>
                           <span class="shortcut-clash">
-                            <i class="i-lucide-triangle-alert" aria-hidden="true" /> Also{" "}
+                            <i class="i-lucide-triangle-alert" aria-hidden="true" /> Same keys as{" "}
                             {clashes(c)
                               .map((o) => COMMANDS[o].label.toLowerCase())
                               .join(", ")}

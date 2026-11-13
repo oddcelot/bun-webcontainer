@@ -133,6 +133,6 @@ export async function shortLink(l: Link): Promise<string> {
   const payload = l.url.slice(l.url.indexOf(PREFIX) + PREFIX.length);
   const res = await fetch(`${BASE}api/short`, { method: "POST", body: payload });
   const body = (await res.json().catch(() => ({}))) as { path?: string; error?: string };
-  if (!res.ok || !body.path) throw new Error(body.error ?? `the shortener answered ${res.status}`);
+  if (!res.ok || !body.path) throw new Error(body.error ?? `link shortener failed (${res.status})`);
   return new URL(body.path, location.origin).href;
 }

@@ -31,7 +31,7 @@ function LocalBunToggle(props: { rt: NonNullable<App["runtime"]> }) {
   const [setup, setSetup] = createSignal(false);
   const native = () => {
     const i = rt.info();
-    return i ? `Bun ${i.bun} on this machine (sandbox: ${i.sandbox})` : "Bun on this machine";
+    return i ? `Bun ${i.bun} on this machine, sandbox ${i.sandbox}` : "Bun on this machine";
   };
   const tip = () => {
     switch (rt.local()) {
@@ -67,7 +67,7 @@ function LocalBunToggle(props: { rt: NonNullable<App["runtime"]> }) {
           {rt.browserOk ? " In the browser it can reach neither." : ""}
         </DialogDescription>
         <DialogActions>
-          <DialogClose>{rt.browserOk ? "Keep it in the browser" : "Don't run it"}</DialogClose>
+          <DialogClose>{rt.browserOk ? "Stay in the browser" : "Don't run"}</DialogClose>
           <Button primary onClick={() => rt.answer(true)}>
             Run on this machine
           </Button>

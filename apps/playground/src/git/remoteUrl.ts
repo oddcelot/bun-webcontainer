@@ -16,11 +16,11 @@ export function gitUrl(input: string): { url: string } | { error: string } {
     return { error: "not a repository URL" };
   }
   if (!u.hostname.includes(".")) return { error: "not a repository URL" };
-  if (u.protocol !== "https:") return { error: "only https:// repositories" };
-  if (!GIT_HOSTS.includes(u.hostname)) return { error: `only ${GIT_HOSTS.join(", ")}` };
+  if (u.protocol !== "https:") return { error: "use an https:// URL" };
+  if (!GIT_HOSTS.includes(u.hostname)) return { error: `supported hosts: ${GIT_HOSTS.join(", ")}` };
   // GitHub URLs of a page inside the repository (…/tree/main/src) name the repository by their first two parts.
   const parts = u.pathname.split("/").filter(Boolean);
-  if (parts.length < 2) return { error: "no owner/repository in the URL" };
+  if (parts.length < 2) return { error: "the URL needs an owner and a repository" };
   const path = u.hostname === "github.com" || u.hostname === "codeberg.org" || u.hostname === "bitbucket.org" ? parts.slice(0, 2) : parts.slice(0, parts.indexOf("-") > 0 ? parts.indexOf("-") : undefined);
   return { url: `https://${u.hostname}/${path.join("/")}` };
 }

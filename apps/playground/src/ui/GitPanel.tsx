@@ -98,7 +98,7 @@ export function GitPanel() {
   const canCommit = () => !!message().trim() && (amending() ? s.hasHead : s.staged.length > 0 || s.changes.length > 0);
   const label = () => (amending() ? "Amend" : s.staged.length ? "Commit" : "Commit all");
   const commitTip = () =>
-    amending() ? "Replace the last commit with the staged changes and this message" : s.staged.length ? "Commit the staged changes" : "Stage everything and commit";
+    amending() ? "Amend the last commit" : s.staged.length ? "Commit the staged changes" : "Stage everything and commit";
 
   async function commit() {
     if (!canCommit() || s.busy) return;

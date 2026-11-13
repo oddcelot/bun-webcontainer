@@ -124,7 +124,7 @@ function startHost(): Promise<Host> {
         }
       };
       port1.onmessageerror = () => {
-        for (const w of workers.values()) w.fail("a message from the runtime could not be read");
+        for (const w of workers.values()) w.fail("couldn't read a message from the runtime");
       };
       pings = setInterval(() => {
         if (seen) (seen = false), (missed = 0);

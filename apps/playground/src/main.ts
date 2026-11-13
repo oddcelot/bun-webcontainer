@@ -340,7 +340,7 @@ async function openFolder(files: File[]) {
   }
   setBaseline(vfs);
   workspace.reloadTree();
-  log("sys", `[open] ${files[0].webkitRelativePath.split("/")[0] || "files"}: ${n} files (node_modules skipped)`);
+  log("sys", `[open] ${files[0].webkitRelativePath.split("/")[0] || "files"}: ${n} files, node_modules skipped`);
   applyConfig();
 }
 
@@ -408,7 +408,7 @@ async function openZip(file: File) {
   for (const [path, data] of entries) vfs.write(path, data);
   setBaseline(vfs);
   workspace.reloadTree();
-  log("sys", `[open] ${file.name}: ${entries.length} files (node_modules skipped)`);
+  log("sys", `[open] ${file.name}: ${entries.length} files, node_modules skipped`);
   applyConfig();
 }
 

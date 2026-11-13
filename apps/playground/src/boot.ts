@@ -113,7 +113,7 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
       });
       whenLost((reason) => {
         log("error", `the runtime host stopped: ${reason}. Run starts it again.`);
-        session.setStatus({ state: "error", text: "Runtime host lost · Run restarts it" });
+        session.setStatus({ state: "error", text: "Runtime host stopped · Run to restart" });
       });
       try {
         await connectHost();
@@ -386,7 +386,7 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
       const [at, message] = broken;
       if (at !== waitingFor) log("sys", `[watch] syntax error in ${at}: ${message}`);
       waitingFor = at;
-      session.setStatus({ state: session.settled().state, text: `Syntax error in ${at} · waiting for a fix` });
+      session.setStatus({ state: session.settled().state, text: `Syntax error in ${at} · fix it to restart` });
       return;
     }
     waitingFor = undefined;

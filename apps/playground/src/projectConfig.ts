@@ -58,7 +58,7 @@ export function readConfig(read: (path: string) => string | undefined, problems:
   }
   const r = raw as Record<string, unknown>;
   const c: ProjectConfig = {};
-  const bad = (field: string, want: string) => problems.push(`${CONFIG_FILE}: "${field}" should be ${want}; left out`);
+  const bad = (field: string, want: string) => problems.push(`${CONFIG_FILE}: "${field}" must be ${want}, ignored`);
   for (const key of Object.keys(r))
     if (!["$schema", "run", "autorun", "env", "open", "hidden", "panels", "preview", "requires"].includes(key)) problems.push(`${CONFIG_FILE}: unknown field "${key}"`);
 
@@ -83,7 +83,7 @@ export function readConfig(read: (path: string) => string | undefined, problems:
       c.panels = {};
       for (const [k, v] of Object.entries(panels)) {
         if (PANELS.includes(k as Panel) && typeof v === "boolean") c.panels[k as Panel] = v;
-        else problems.push(`${CONFIG_FILE}: panels."${k}" should be one of ${PANELS.join(", ")}, true or false`);
+        else problems.push(`${CONFIG_FILE}: panels."${k}" must be true, false or one of ${PANELS.join(", ")}`);
       }
     }
   }

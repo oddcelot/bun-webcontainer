@@ -193,7 +193,7 @@ function Changed(props: { git: boolean; gitShown: boolean; toggleGit(): void }) 
     const n = count();
     const head = git.state.hasHead;
     const action = props.git ? "show or hide Git" : "show the changes";
-    if (n === null) return props.git ? "Show or hide Git" : head ? "Compare the files with the last commit" : "Compare the files with the project's source";
+    if (n === null) return props.git ? "Show or hide Git" : head ? "Show changes since the last commit" : "Show changes from the project's source";
     if (!n) return `${head ? "No changes since the last commit" : "No changes from the project's source"}. Click to ${action}`;
     const files = `${n} ${n === 1 ? "file" : "files"}`;
     return head ? `${files} changed since the last commit. Click to ${action}` : `${files} ${n === 1 ? "differs" : "differ"} from the project's source. Click to ${action}`;
@@ -264,7 +264,7 @@ function Install() {
       case "none":
         return undefined;
       case "missing":
-        return { icon: "i-lucide-package-x", label: "Not installed", tip: `Not in node_modules: ${listed(st.names)}. Click to run bun install.` };
+        return { icon: "i-lucide-package-x", label: "Not installed", tip: `Missing: ${listed(st.names)}. Click to run bun install` };
       case "stale":
         return {
           icon: "i-lucide-package-minus",
@@ -309,8 +309,8 @@ function Saved() {
     if (st.failed) return { icon: "i-lucide-triangle-alert", label: "Not saved", tip: `Save failed: ${st.failed}. Retries on your next edit` };
     if (st.where === "nowhere") return { icon: "i-lucide-circle-slash", label: "Not saved", tip: `${st.why ?? "Edits aren't kept"}. Reloading loses them` };
     const place = st.where === "folder" ? `the folder ${st.name} on disk` : "this browser";
-    if (st.pending) return { icon: "i-lucide-loader-circle spin", label: "Saving…", tip: `Writing edits to ${place}` };
-    return { icon: st.where === "folder" ? "i-lucide-folder-check" : "i-lucide-check", label: "Saved", tip: `Edits are saved to ${place}` };
+    if (st.pending) return { icon: "i-lucide-loader-circle spin", label: "Saving…", tip: `Saving to ${place}` };
+    return { icon: st.where === "folder" ? "i-lucide-folder-check" : "i-lucide-check", label: "Saved", tip: `Saved to ${place}` };
   };
   return (
     <Tip as="span" class="saved" tip={view().tip}>

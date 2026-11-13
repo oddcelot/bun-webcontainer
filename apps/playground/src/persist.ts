@@ -417,7 +417,7 @@ export function mirror(dir: Dir, vfs: VFS, log: Log, { all, generated, stash: st
       try {
         sessionStorage.setItem(stashAt, JSON.stringify(stash));
       } catch (e) {
-        log("warn", `${tag} can't keep unsaved files across the reload: ${e}`);
+        log("warn", `${tag} unsaved files won't survive the reload: ${e}`);
       }
     }
     if (dirty.size) void flush();
@@ -476,7 +476,7 @@ export function mirror(dir: Dir, vfs: VFS, log: Log, { all, generated, stash: st
     const fail = (e: unknown) => {
       if (failed) return;
       failed = true;
-      log("warn", `${tag} can't pick up changes made outside the playground: ${e}`);
+      log("warn", `${tag} can't read changes made outside the playground: ${e}`);
     };
     // A save is often several records (created empty, then written; a temporary file renamed over the file), so the
     // paths are collected for a moment and each is then read as it ends up.
@@ -498,7 +498,7 @@ export function mirror(dir: Dir, vfs: VFS, log: Log, { all, generated, stash: st
         });
       }, 100);
     });
-    o.observe(dir, { recursive: true }).catch((e) => log("warn", `${tag} can't watch the folder for outside changes: ${e}`));
+    o.observe(dir, { recursive: true }).catch((e) => log("warn", `${tag} can't watch the folder: ${e}`));
     return () => {
       o.disconnect();
       clearTimeout(settle);

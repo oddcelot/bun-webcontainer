@@ -94,16 +94,16 @@ export async function bunInstall(vfs: VFS, semver: Semver, log: Log): Promise<nu
   const stale = old && pkg ? staleInLock(old, pkg) : [];
   // Packages the lockfile no longer places are removed only once it holds every dependency.
   let complete = true;
-  if (lock !== undefined && !stale.length) log("log", "bun.lock found: installing locked versions");
+  if (lock !== undefined && !stale.length) log("log", "Installing locked versions from bun.lock");
   else {
     if (!pkg) throw new Error("no package.json");
-    log("log", stale.length ? `Updating bun.lock: package.json changed ${stale.join(", ")}` : "Resolving dependencies");
+    log("log", stale.length ? `package.json changed ${stale.join(", ")}. Updating bun.lock` : "Resolving dependencies");
     const resolved = await resolveProject(pkg, resolveHost(vfs, semver), old ? lockedPackages(old.packages) : []);
     for (const p of resolved.problems) log("error", p);
     lock = writeBunLock(resolved);
     // A bun.lock without some of the dependencies would be wrong for native Bun too.
     complete = !resolved.problems.length;
-    if (!complete) log("error", `bun.lock not ${old ? "updated" : "saved"}: some dependencies could not be resolved`);
+    if (!complete) log("error", `couldn't ${old ? "update" : "save"} bun.lock, some dependencies didn't resolve`);
     else {
       vfs.write("bun.lock", lock);
       log("log", "Saved bun.lock");

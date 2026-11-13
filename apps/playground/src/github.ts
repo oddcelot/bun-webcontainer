@@ -65,7 +65,7 @@ export async function loadRepo(vfs: VFS, r: Repo, log: Log): Promise<boolean> {
     log("error", `[github] ${name}: ${list}`);
     return false;
   }
-  if (list.truncated) log("error", `[github] ${name}: tree listing truncated by GitHub; some files are missing`);
+  if (list.truncated) log("error", `[github] ${name}: GitHub cut the file list short, so some files are missing`);
   const prefix = r.dir ? `${r.dir}/` : "";
   const files = await Promise.all(list.paths.map(async (path) => [path.slice(prefix.length), await repoFile(r, path)] as const)).catch(
     (e) => void log("error", `[github] ${name}: ${e instanceof Error ? e.message : e}`),

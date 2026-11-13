@@ -175,11 +175,11 @@ export async function installFromBunLock(vfs: VFS, lockText: string, log: Log): 
       const kind = /^\d/.test(res) ? "npm" : /^https?:\/\//.test(res) ? "tarball" : res.startsWith("file:") ? "file" : undefined;
       if (!kind) {
         const what = res.startsWith("workspace:") ? "workspaces" : res.startsWith("link:") ? "link: dependencies" : res.startsWith("root:") ? undefined : "git dependencies";
-        if (what) log("error", `skip ${key}@${res}: ${what} are not supported in the browser`);
+        if (what) log("error", `skipped ${key}@${res}: ${what} don't work in the browser`);
         return;
       }
       if (platformRestricted(meta) && optional.has(splitKey(key).at(-1)!)) {
-        log("log", `- ${key}@${res} (optional, unsupported platform)`);
+        log("log", `- ${key}@${res} (optional, not for this platform)`);
         return;
       }
       const dest = installPath(splitKey(key));

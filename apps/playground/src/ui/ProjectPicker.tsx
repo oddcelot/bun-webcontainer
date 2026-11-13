@@ -54,7 +54,7 @@ export function ProjectPicker() {
 
   return (
     <>
-      <Tip id="example" ref={(el: HTMLButtonElement) => (trigger = el)} type="button" tip="Open a project: starters, examples, GitHub, your files" aria-haspopup="dialog" onClick={() => setOpen(true)}>
+      <Tip id="example" ref={(el: HTMLButtonElement) => (trigger = el)} type="button" tip="Open a project" aria-haspopup="dialog" onClick={() => setOpen(true)}>
         <Show when={current()} keyed>
           {(c) =>
             typeof c === "string" ? (
@@ -115,7 +115,7 @@ export function ProjectPicker() {
         check={(input) => {
           if (mode() !== "git") return;
           const r = gitUrl(input);
-          return "error" in r ? `Can't clone that: ${r.error}.` : undefined;
+          return "error" in r ? `Can't clone: ${r.error}.` : undefined;
         }}
         onSubmit={(input) => {
           if (mode() === "git") {

@@ -43,7 +43,7 @@ export function ShareMenu() {
       return "Copied";
     } catch (e) {
       const why = e instanceof Error ? e.message : String(e);
-      app.log("error", /fetch|JSON|answered 404/.test(why) ? "[share] short links only work on runbun.dev" : `[share] no short link: ${why}`);
+      app.log("error", /fetch|JSON|failed \(404\)/.test(why) ? "[share] short links only work on runbun.dev" : `[share] no short link: ${why}`);
       return "Couldn't shorten";
     }
   }
@@ -81,7 +81,7 @@ export function ShareMenu() {
               <ul class={["notes", { warn: l().url.length > LONG_LINK }]} hidden={!noteLines(l()).length}>
                 <For each={noteLines(l())}>{(line) => <li>{line}</li>}</For>
               </ul>
-              <ShareItem icon="i-lucide-link" title="Copy link" sub="Send it in a chat, open it anywhere" copy={() => copy("link")} />
+              <ShareItem icon="i-lucide-link" title="Copy link" sub="Share in a chat or open anywhere" copy={() => copy("link")} />
               <ShareItem
                 icon="i-lucide-link-2"
                 title="Copy short link"

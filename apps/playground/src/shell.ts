@@ -176,7 +176,7 @@ export function createShell(host: ShellHost) {
   }
 
   async function pm([sub, action]: string[]) {
-    if (sub !== "cache") return fail(`bun pm ${sub ?? ""}: only "bun pm cache [rm]" is available here`);
+    if (sub !== "cache") return fail(`bun pm ${sub ?? ""}: only "bun pm cache [rm]" works here`);
     if (action === "rm") return await Promise.all([clearPkgCache(), clearStore()]), log("sys", "[bun pm cache] cleared");
     if (action) return fail(`bun pm cache: unknown option ${action}`);
     const [{ tarballs, packuments, bytes }, store] = await Promise.all([pkgCacheInfo(), storeInfo()]);
@@ -328,7 +328,7 @@ export function createShell(host: ShellHost) {
     reset: command(() => host.reset()),
     cookies: command(([sub]) => cookies(sub)),
     clear: command(() => host.clear()),
-    git: command((args) => (host.git?.() === false ? fail("git: off in this embed (turn on Git in the ⋯ menu)") : git(args))),
+    git: command((args) => (host.git?.() === false ? fail("git: off in this embed. Turn on Git in the ⋯ menu.") : git(args))),
     bun: command(async (args, ctx) => {
       // `bun --check <file>`, `bun run --check <file or script>`: type-check before running.
       const withCheck = args[0] === "--check" || (args[0] === "run" && args[1] === "--check");

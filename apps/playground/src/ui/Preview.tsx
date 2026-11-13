@@ -150,7 +150,7 @@ export function Preview() {
           <Tip
             type="button"
             id="req-panel-toggle"
-            tip={`${active().panel ? "Hide" : "Show"} the request panel${panelSummary(active()) ? ` (${panelSummary(active())})` : ""}`}
+            tip={`${active().panel ? "Hide" : "Show"} the request panel${panelSummary(active()) ? `: ${panelSummary(active())}` : ""}`}
             aria-label="Request panel"
             aria-controls="req-panel"
             aria-pressed={active().panel ? "true" : "false"}
@@ -257,7 +257,7 @@ const BODY_MODES: { mode: BodyMode; label: string; tip: string }[] = [
   { mode: "json", label: "JSON", tip: "application/json" },
   { mode: "text", label: "Text", tip: "text/plain" },
   { mode: "form", label: "Form", tip: "application/x-www-form-urlencoded" },
-  { mode: "multipart", label: "Multipart", tip: "multipart/form-data, with files from the project" },
+  { mode: "multipart", label: "Multipart", tip: "multipart/form-data, can attach project files" },
 ];
 
 const AUTH_TYPES: { type: Auth["type"]; label: string }[] = [
@@ -378,7 +378,7 @@ function authSummary(auth: Auth): string {
   const type = AUTH_TYPES.find((a) => a.type === auth.type)?.label ?? "";
   if (auth.type === "none") return "Authorization: none";
   if (!set.header && !set.param) return `${type}: nothing to send yet`;
-  return set.header ? `${type}, sent as the ${set.header[0]} header` : `${type}, sent as ?${set.param!.name}=`;
+  return set.header ? `${type} in the ${set.header[0]} header` : `${type} in ?${set.param!.name}=`;
 }
 
 /** The Auth section: a type, and its fields (a token, a user and password, or an API key's name, value and place). */
@@ -583,7 +583,7 @@ function RequestPanel(props: { tab: PreviewTab }) {
     sayTimer = setTimeout(() => {
       const t = untrack(() => props.tab);
       const n = sent(t.headers).length;
-      setSaid(`Request read from Raw: ${t.method} ${t.path}, ${n} header${n === 1 ? "" : "s"}`);
+      setSaid(`Request updated: ${t.method} ${t.path}, ${n} header${n === 1 ? "" : "s"}`);
     }, 800);
   };
   /** The JSON body, if it parses, pretty-printed with two spaces; undefined if it doesn't. */
@@ -669,7 +669,7 @@ function RequestPanel(props: { tab: PreviewTab }) {
             <Tip
               type="button"
               class="raw-toggle"
-              tip={raw() ? "Back to the fields" : "Edit the whole request as text (.http)"}
+              tip={raw() ? "Back to fields" : "Edit the whole request as text (.http)"}
               aria-pressed={raw() ? "true" : "false"}
               onClick={() => p.toggleRaw(p.state.active)}
             >

@@ -52,7 +52,7 @@ export function RepoList(props: { onPick: (name: string) => void }) {
           {(a) => (
             <>
               <p class="hint">
-                Your repositories ({a().name}). <a href={MANAGE_ACCESS} target="_blank" rel="noopener">Change which ones runbun.dev may use</a>
+                Your repositories ({a().name}). <a href={MANAGE_ACCESS} target="_blank" rel="noopener">Manage access</a>
               </p>
               <Show when={repos()} fallback={<p class="hint">Loading…</p>}>
                 {(r) => (

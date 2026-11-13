@@ -91,14 +91,14 @@ function FeedbackForm() {
       };
       const res = await fetch(`${BASE}api/feedback`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
       const answer = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) throw new Error(answer.error ?? `the server answered ${res.status}`);
+      if (!res.ok) throw new Error(answer.error ?? `server error (${res.status})`);
       app.log("sys", `[feedback] sent, thank you${attached.project ? ` (with the project: ${location.origin}${attached.project})` : ""}`);
       // The thanks (and its heart) for a moment, then the dialog closes by itself.
       setSent(true);
       closing = setTimeout(() => dialog.close(), 2600);
     } catch (err) {
       const why = err instanceof Error ? err.message : String(err);
-      setError(/fetch|JSON|answered 404/.test(why) ? "Feedback only works on runbun.dev." : `Not sent: ${why}`);
+      setError(/fetch|JSON|server error \(404\)/.test(why) ? "Feedback only works on runbun.dev." : `Not sent: ${why}`);
     } finally {
       setSending(false);
     }
