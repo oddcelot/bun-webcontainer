@@ -10,7 +10,7 @@ export function Unsupported(props: { checks: Check[] }) {
   return (
     <details class="unsupported">
       <summary>
-        <strong>This browser can't run code here</strong> (missing: {missing().join(", ")}). You can still edit files, open examples and share
+        <strong>This browser can't run code here.</strong> Missing: {missing().join(", ")}. You can still edit files, open examples and share
         links.
       </summary>
       <ul>

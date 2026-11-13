@@ -76,7 +76,7 @@ export function Explorer(props: { switcher?: boolean }) {
             value={view()}
             options={[
               ["files", "Files", "i-lucide-files", "Files"],
-              ["git", "Git", "i-lucide-git-branch", "Source control: changes, commits and branches"],
+              ["git", "Git", "i-lucide-git-branch", "Source control"],
             ]}
             onChange={(v) => git.setView(v === "git" ? "git" : "files")}
           />

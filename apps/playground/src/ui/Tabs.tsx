@@ -48,7 +48,7 @@ export function EditorTabs() {
             <TabItem
               value={path}
               selected={!ws.state.changesShown && ws.state.active === path}
-              title={ws.readOnlyText(path) === undefined ? path : `${path} (read-only: not a project file)`}
+              title={ws.readOnlyText(path) === undefined ? path : `${path} (read-only)`}
               onClose={closable() ? () => ws.close(path) : undefined}
               closeLabel={`Close ${name(path)}`}
               onKeyDown={(e) => {
@@ -78,7 +78,7 @@ export function EditorTabs() {
           <TabItem
             value={CHANGES}
             selected={ws.state.changesShown}
-            title="What differs from the project's source"
+            title="Changes from the project's source"
             onClose={() => ws.closeChanges()}
             closeLabel="Close Changes"
             onKeyDown={(e) => {

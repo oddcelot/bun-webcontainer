@@ -153,11 +153,11 @@ export async function gunzip(bytes: Uint8Array): Promise<Uint8Array> {
  */
 export async function installFromBunLock(vfs: VFS, lockText: string, log: Log): Promise<number> {
   const lock = parseBunLock(lockText);
-  if (lock.lockfileVersion > 2) log("error", `bun.lock: lockfileVersion ${lock.lockfileVersion} is newer than this installer knows`);
+  if (lock.lockfileVersion > 2) log("error", `bun.lock: lockfileVersion ${lock.lockfileVersion} isn't supported yet`);
 
   const pkgText = vfs.readText("package.json");
   const stale = pkgText ? staleInLock(lock, JSON.parse(pkgText)) : [];
-  if (stale.length) log("error", `bun.lock is out of date with package.json (${stale.join(", ")}); installing what the lockfile says`);
+  if (stale.length) log("error", `bun.lock doesn't match package.json (${stale.join(", ")}). Installing the locked versions.`);
 
   // Like Bun, only optional dependencies are dropped for a platform mismatch; a required one is still installed.
   const optional = new Set<string>();
@@ -175,11 +175,11 @@ export async function installFromBunLock(vfs: VFS, lockText: string, log: Log): 
       const kind = /^\d/.test(res) ? "npm" : /^https?:\/\//.test(res) ? "tarball" : res.startsWith("file:") ? "file" : undefined;
       if (!kind) {
         const what = res.startsWith("workspace:") ? "workspaces" : res.startsWith("link:") ? "link: dependencies" : res.startsWith("root:") ? undefined : "git dependencies";
-        if (what) log("error", `skip ${key}@${res}: ${what} are not supported in the browser`);
+        if (what) log("error", `skipped ${key}@${res}: ${what} don't work in the browser`);
         return;
       }
       if (platformRestricted(meta) && optional.has(splitKey(key).at(-1)!)) {
-        log("log", `- ${key}@${res} (optional, unsupported platform)`);
+        log("log", `- ${key}@${res} (optional, not for this platform)`);
         return;
       }
       const dest = installPath(splitKey(key));

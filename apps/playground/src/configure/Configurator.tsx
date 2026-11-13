@@ -44,8 +44,8 @@ console.log(Bun.version);
 const MODE_INFO: Record<Mode, [icon: string, text: string]> = {
   code: ["i-lucide-code", "The editor and a console below it"],
   console: ["i-lucide-terminal", "The editor beside a console that takes commands"],
-  preview: ["i-lucide-app-window", "The editor with tabs beside the preview of a server"],
-  full: ["i-lucide-layout-dashboard", "The whole playground: file tree, tabs, preview, console. Waits for Run"],
+  preview: ["i-lucide-app-window", "Editor with tabs next to the preview"],
+  full: ["i-lucide-layout-dashboard", "Full playground. Starts when you press Run"],
   result: ["i-lucide-eye", "Only the preview, with an Edit button"],
 };
 const FEATURE_INFO: Record<Feature, string> = {
@@ -53,15 +53,15 @@ const FEATURE_INFO: Record<Feature, string> = {
   tabs: "Tab bar for open files",
   console: "Console output",
   preview: "Preview of a server",
-  types: "Type errors, hover and completions (10 MB on first use)",
-  format: "Format button, bun fmt (7 MB on first use)",
+  types: "Type errors, hover and completions . 10 MB on first use",
+  format: "Format button, bun fmt. 7 MB on first use",
   install: "Install button",
   terminal: "Interactive terminal",
   open: "Open in runbun.dev",
   watch: "Restart the program when an edit is saved",
   autosave: "An Auto-save switch over the editor",
-  close: "Close buttons on the tabs (on in full mode)",
-  git: "Git panel beside the file tree, and git in the terminal (1 MB on first use)",
+  close: "Close buttons on the tabs. On in full mode",
+  git: "Git panel beside the file tree, and git in the terminal. 1 MB on first use",
 };
 
 type Option = { value: string; label: string; swatch?: string };
@@ -323,7 +323,7 @@ export function Configurator() {
               }
               options={MODES.map((m) => [m, m, MODE_INFO[m][0], MODE_INFO[m][1]])}
             />
-            <Field label="Features" hint="a mode's feature turned off is locked for readers" class="wide">
+            <Field label="Features" hint="Features you turn off stay off for readers" class="wide">
               <Chips label="Features" value={form.features} onChange={(v) =>
                   setForm((s) => {
                     s.features.splice(0, s.features.length, ...(v as Feature[]));
@@ -353,7 +353,7 @@ export function Configurator() {
                 value={form.status}
                 onChange={(v) => set("status")(v as Form["status"])}
                 options={[
-                  ["toast", "Toast", "i-lucide-message-square", "A toast over the panes that fades once it settles"],
+                  ["toast", "Toast", "i-lucide-message-square", "A toast that fades"],
                   ["bar", "Pill in the bar", "i-lucide-panel-bottom", "A pill in the embed's bar"],
                 ]}
               />
@@ -370,7 +370,7 @@ export function Configurator() {
                 options={[
                   ["visible", "When visible", "i-lucide-scan-eye", "When the embed scrolls into view"],
                   ["eager", "At once", "i-lucide-zap", "As soon as the page loads"],
-                  ["click", "On click", "i-lucide-mouse-pointer-click", "When the reader clicks the poster's Run button"],
+                  ["click", "On click", "i-lucide-mouse-pointer-click", "When the reader clicks Run"],
                 ]}
               />
             </Field>

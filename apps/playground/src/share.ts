@@ -120,11 +120,11 @@ export const formats = {
 /** What the link leaves out, and whether it's long: one line each. */
 export const noteLines = (l: Link) =>
   [
-    l.secrets.length ? `Left out, as they may hold secrets: ${l.secrets.join(", ")}` : "",
+    l.secrets.length ? `Left out (may hold secrets): ${l.secrets.join(", ")}` : "",
     l.skipped ? `Left out: ${l.skipped} binary ${l.skipped === 1 ? "file" : "files"} (images, fonts, …)` : "",
-    l.droppedLock ? "Left out bun.lock to keep the link short: versions are resolved from package.json." : "",
+    l.droppedLock ? "bun.lock left out to keep the link short." : "",
     l.url.length > LONG_LINK
-      ? "Long link: some chat apps cut these off. For a project this size, push it to GitHub and share it from there (?repo=)."
+      ? "Long link. Some chat apps cut it off. Share from GitHub (?repo=) instead."
       : "",
   ].filter(Boolean);
 
@@ -133,6 +133,6 @@ export async function shortLink(l: Link): Promise<string> {
   const payload = l.url.slice(l.url.indexOf(PREFIX) + PREFIX.length);
   const res = await fetch(`${BASE}api/short`, { method: "POST", body: payload });
   const body = (await res.json().catch(() => ({}))) as { path?: string; error?: string };
-  if (!res.ok || !body.path) throw new Error(body.error ?? `the shortener answered ${res.status}`);
+  if (!res.ok || !body.path) throw new Error(body.error ?? `link shortener failed (${res.status})`);
   return new URL(body.path, location.origin).href;
 }

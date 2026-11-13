@@ -31,7 +31,7 @@ export async function listRepo(r: Repo): Promise<{ paths: string[]; truncated: b
   const res = await fetch(`https://api.github.com/repos/${r.owner}/${r.repo}/git/trees/${r.ref}?recursive=1`);
   if (!res.ok) {
     const limited = res.status === 403 && res.headers.get("x-ratelimit-remaining") === "0";
-    return limited ? "API rate limit reached (60/hour without a token)" : `${res.status}; is it a public repo?`;
+    return limited ? "GitHub rate limit reached (60 requests an hour without a token)" : `${res.status}. Is the repo public?`;
   }
   const tree = (await res.json()) as { tree: { path: string; type: string; size?: number }[]; truncated: boolean };
   const prefix = r.dir ? `${r.dir}/` : "";
@@ -65,7 +65,7 @@ export async function loadRepo(vfs: VFS, r: Repo, log: Log): Promise<boolean> {
     log("error", `[github] ${name}: ${list}`);
     return false;
   }
-  if (list.truncated) log("error", `[github] ${name}: tree listing truncated by GitHub; some files are missing`);
+  if (list.truncated) log("error", `[github] ${name}: GitHub cut the file list short, so some files are missing`);
   const prefix = r.dir ? `${r.dir}/` : "";
   const files = await Promise.all(list.paths.map(async (path) => [path.slice(prefix.length), await repoFile(r, path)] as const)).catch(
     (e) => void log("error", `[github] ${name}: ${e instanceof Error ? e.message : e}`),

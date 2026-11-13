@@ -15,7 +15,7 @@ export function showCanaryBadge(): void {
   badge.setAttribute("role", "note");
   const link = document.createElement("a");
   link.href = PRODUCTION + location.pathname + location.search + location.hash;
-  link.textContent = "Canary build: may be broken. Use runbun.dev";
+  link.textContent = "Canary build, may be broken. Use runbun.dev";
   const close = document.createElement("button");
   close.type = "button";
   close.textContent = "×";

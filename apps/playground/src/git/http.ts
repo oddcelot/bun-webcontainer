@@ -75,8 +75,8 @@ function toProxy(proxy: string, head: string): Request {
   const [first, ...lines] = head.split("\n").filter(Boolean);
   const [method, url] = first.split(" ");
   const u = new URL(url);
-  if (u.protocol !== "https:") return `only https:// remotes work in the playground, not ${u.protocol}//`;
-  if (u.username || u.password) return "the playground doesn't send credentials in a remote's URL";
+  if (u.protocol !== "https:") return `only https:// remotes work here, not ${u.protocol}//`;
+  if (u.username || u.password) return "credentials in a remote URL aren't supported";
   const headers: [string, string][] = [];
   for (const line of lines) {
     const i = line.indexOf(":");
@@ -104,7 +104,7 @@ export function syncXhr(proxy: string): Transport {
     } catch (e) {
       return `couldn't reach the git proxy: ${e instanceof Error ? e.message : e}`;
     }
-    if (xhr.status === 0) return "couldn't reach the git proxy (offline?)";
+    if (xhr.status === 0) return "couldn't reach the git proxy, you may be offline";
     const data = new Uint8Array(xhr.response as ArrayBuffer);
     const refused = refusal(xhr.status, xhr.getResponseHeader("content-type"), data);
     if (refused) return refused;
@@ -161,7 +161,7 @@ export function pageChannel(proxy: string, sab: SharedArrayBuffer, post: (ask: H
       read(max) {
         ask({ op: "read", handle, max: Math.min(max, CHANNEL_DATA) });
         const n = Atomics.load(ctl, RESULT);
-        return n < 0 ? "the download broke off" : n === 0 ? null : data.slice(0, n);
+        return n < 0 ? "the download was interrupted" : n === 0 ? null : data.slice(0, n);
       },
       close: () => post({ op: "close", handle }),
     };

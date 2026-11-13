@@ -179,7 +179,7 @@ export async function resolveProject(root: Manifest, host: ResolveHost, locked: 
     const range = a ? (a[2] ?? "latest") : dep.range;
     const why = unsupportedRange(range);
     if (why) {
-      problems.push(`${dep.name}@${dep.range}: ${why} are not supported in the browser`);
+      problems.push(`${dep.name}@${dep.range}: ${why} don't work in the browser`);
       return;
     }
     const kept = keep(realName, range);

@@ -80,7 +80,7 @@ export class RemoteRunner extends Runner {
     await this.stop();
     if (isShellCommand(entry, args)) {
       // The runner takes a file to run; a script line it would have to run through a shell of its own.
-      this.out("error", `[local] only "bun <file>" scripts and installed packages' bins run with local Bun: "${args[1]}"`);
+      this.out("error", `[local] Local Bun runs only "bun <file>" and installed bins, not "${args[1]}".`);
       this.exitCode = 1;
       return;
     }
@@ -169,8 +169,8 @@ export class RemoteRunner extends Runner {
     if (m.t === "out") {
       if (c.test) c.output += m.data;
       this.line(c, m.fd, m.data);
-    } else if (m.t === "phase" && m.phase === "approval") this.out("sys", "[local] waiting for you to allow this page in the terminal where the runner runs");
-    else if (m.t === "phase" && m.phase === "install") this.out("sys", "[bun install] on this machine (native Bun)");
+    } else if (m.t === "phase" && m.phase === "approval") this.out("sys", "[local] allow this page in the runner's terminal");
+    else if (m.t === "phase" && m.phase === "install") this.out("sys", "[bun install] running with native Bun on this machine");
     else if (m.t === "started") {
       c.preview = m.preview;
       // A test run is over when it exits; a program is started once it serves, or keeps running for a moment.

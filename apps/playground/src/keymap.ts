@@ -11,15 +11,15 @@ export const COMMANDS = {
   send: { label: "Send the preview's request", keys: ["Mod+Shift+Enter"] },
   stop: { label: "Stop the server", keys: ["Mod+."] },
   save: { label: "Save the file", keys: ["Mod+S"] },
-  format: { label: "Format the file (bun fmt)", keys: ["Shift+Alt+F"] },
+  format: { label: "Format the file", keys: ["Shift+Alt+F"] },
   goToDefinition: { label: "Go to the definition", keys: ["F12"] },
   showHover: { label: "Show the type at the cursor", keys: ["Mod+I"] },
   // Ctrl on macOS too, as there: Cmd+Space opens Spotlight.
   suggest: { label: "Suggest completions", keys: ["Ctrl+Space"] },
-  signatureHelp: { label: "Show the parameters of the call", keys: ["Mod+Shift+Space"] },
+  signatureHelp: { label: "Show parameter hints", keys: ["Mod+Shift+Space"] },
   closeTab: { label: "Close the focused tab", keys: ["Mod+W", "Delete"] },
   toggleExplorer: { label: "Show or hide the file tree", keys: ["Mod+B"] },
-  toggleGit: { label: "Show or hide Git (source control)", keys: ["Mod+Shift+G"] },
+  toggleGit: { label: "Show or hide Git", keys: ["Mod+Shift+G"] },
   toggleConsole: { label: "Show or hide the console", keys: ["Mod+J"] },
   togglePreview: { label: "Show or hide the preview", keys: ["Mod+K"] },
   exitFullscreen: { label: "Leave the expanded preview", keys: ["Escape"] },
@@ -91,12 +91,12 @@ function chords(command: Command): Chord[] {
 
 /** Why `value` isn't a valid overrides object, or undefined if it is. */
 function check(value: unknown): string | undefined {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return "Expected an object of command names to chords";
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return 'Use an object like { "run": "Mod+R" }';
   for (const [c, v] of Object.entries(value)) {
     if (!(c in COMMANDS)) return `Unknown command "${c}"`;
     if (v === null) continue;
     const keys = typeof v === "string" ? [v] : v;
-    if (!Array.isArray(keys) || !keys.every((k) => typeof k === "string")) return `"${c}": expected a chord, a list of chords or null`;
+    if (!Array.isArray(keys) || !keys.every((k) => typeof k === "string")) return `"${c}" must be a chord, a list of chords or null`;
     for (const k of keys) {
       const p = parse(k);
       if (typeof p === "string") return `"${c}": ${p}`;

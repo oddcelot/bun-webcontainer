@@ -26,7 +26,7 @@ export function ShareMenu() {
       () => false,
     );
     const what = kind === "link" ? "link" : kind === "markdown" ? "Markdown badge" : "HTML badge";
-    app.log("sys", `[share] ${copied ? `${what} copied` : "copying failed; the link is in the address bar"}: ${size(l)}`);
+    app.log("sys", copied ? `[share] ${what} copied: ${size(l)}` : "[share] couldn't copy. The link is in the address bar");
     for (const line of noteLines(l)) app.log(l.url.length > LONG_LINK && line.startsWith("Long") ? "warn" : "sys", `[share] ${line}`);
     return copied ? "Copied" : "Couldn't copy";
   }
@@ -39,11 +39,11 @@ export function ShareMenu() {
     const url = resolve(link).then((l) => shortLink(l!));
     try {
       await navigator.clipboard.write([new ClipboardItem({ "text/plain": url.then((u) => new Blob([u], { type: "text/plain" })) })]);
-      app.log("sys", `[share] short link copied: ${await url} (a copy of the project is stored on runbun.dev)`);
+      app.log("sys", `[share] short link copied: ${await url}`);
       return "Copied";
     } catch (e) {
       const why = e instanceof Error ? e.message : String(e);
-      app.log("error", `[share] no short link: ${/fetch|JSON|answered 404/.test(why) ? "the shortener isn't reachable here (it runs on runbun.dev)" : why}`);
+      app.log("error", /fetch|JSON|failed \(404\)/.test(why) ? "[share] short links only work on runbun.dev" : `[share] no short link: ${why}`);
       return "Couldn't shorten";
     }
   }
@@ -73,19 +73,19 @@ export function ShareMenu() {
               <p class="lead">
                 <span data-share-lead>
                   {l().short
-                    ? `A short link to ${l().short}. Edit a file and the link carries your copy instead.`
-                    : "The project travels in the link: nothing is uploaded, unless you pick a short link."}
+                    ? `Short link to ${l().short}. After an edit, the link includes your changes.`
+                    : "The project is in the link. Nothing is uploaded unless you pick a short link."}
                 </span>{" "}
                 <span data-share-size>{size(l())}</span>
               </p>
               <ul class={["notes", { warn: l().url.length > LONG_LINK }]} hidden={!noteLines(l()).length}>
                 <For each={noteLines(l())}>{(line) => <li>{line}</li>}</For>
               </ul>
-              <ShareItem icon="i-lucide-link" title="Copy link" sub="Send it in a chat, open it anywhere" copy={() => copy("link")} />
+              <ShareItem icon="i-lucide-link" title="Copy link" sub="Share in a chat or open anywhere" copy={() => copy("link")} />
               <ShareItem
                 icon="i-lucide-link-2"
                 title="Copy short link"
-                sub={l().url.length > MAX_SHORT ? "Too large for a short link: share it from GitHub" : "runbun.dev/s/…: stores a copy on runbun.dev"}
+                sub={l().url.length > MAX_SHORT ? "Too large. Share from GitHub instead" : "Stores a copy on runbun.dev"}
                 hidden={!!l().short}
                 disabled={l().url.length > MAX_SHORT}
                 working="Shortening…"
@@ -95,7 +95,7 @@ export function ShareMenu() {
                 <img src={badgeUrl()} alt="Open in runbun" width="150" height="28" />
               </ShareItem>
               <ShareItem icon="i-lucide-code" title="Copy HTML badge" sub="For a website or blog post" copy={() => copy("html")} />
-              <ShareItem icon="i-lucide-download" title="Download as zip" sub="A copy outside the browser; open it again from the project menu" copy={download} />
+              <ShareItem icon="i-lucide-download" title="Download as zip" sub="A backup you can reopen from the project menu" copy={download} />
             </>
           )}
         </Show>

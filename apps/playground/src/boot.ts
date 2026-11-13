@@ -85,7 +85,7 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
     for (const fn of logListeners) fn(level, text);
   }
   reportStoreProblems((message) => log("warn", `[store] ${message}`));
-  const cantRun = () => log("error", "this browser can't run code here; see the banner above the editor");
+  const cantRun = () => log("error", "this browser can't run code. See the banner above the editor.");
 
   async function setupServiceWorker() {
     const reg = await navigator.serviceWorker.register(`${BASE}sw.js`, { scope: BASE });
@@ -98,7 +98,7 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
         new Promise((r) => setTimeout(r, 3000)),
       ]);
     }
-    if (!navigator.serviceWorker.controller) return log("error", "service worker is not controlling this page; reload without hard-refresh");
+    if (!navigator.serviceWorker.controller) return log("error", "reload the page normally to start the service worker");
     // Which client this page is to the worker: module URLs carry it, so the worker asks this page for its files.
     const ch = new MessageChannel();
     const answer = new Promise<string>((r) => (ch.port1.onmessage = (e) => r(e.data)));
@@ -112,13 +112,13 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
         setPreviewOwner(host.id);
       });
       whenLost((reason) => {
-        log("error", `content origin: ${reason}; Run starts a new host frame`);
-        session.setStatus({ state: "error", text: "Runtime host lost · Run restarts it" });
+        log("error", `the runtime host stopped: ${reason}. Run starts it again.`);
+        session.setStatus({ state: "error", text: "Runtime host stopped · Run to restart" });
       });
       try {
         await connectHost();
       } catch (err) {
-        log("error", `content origin: ${err instanceof Error ? err.message : err}; Run tries again`);
+        log("error", `couldn't start the runtime host: ${err instanceof Error ? err.message : err}. Run to retry.`);
       }
     } else if (id) {
       setVfsOwner(id);
@@ -162,8 +162,8 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
           if (result.kind === "superseded") return; // what came after it sets the status
           if (result.kind === "failed") {
             if (!runner!.running) return exited(runner!.exitCode ?? 1);
-            log("error", `[watch] the edited program didn't start (${result.reason}); the previous one keeps running`);
-            return { state: "running", text: `Running ${entry} · the last save didn't start` };
+            log("error", `[watch] restart failed: ${result.reason}. The previous run is still going.`);
+            return { state: "running", text: `Running ${entry} · last save failed to start` };
           }
         } else await runner!.start(entry!, undefined, args);
         if (runner!.exitCode !== undefined) return exited(runner!.exitCode);
@@ -384,9 +384,9 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
     const broken = await unparsable();
     if (broken) {
       const [at, message] = broken;
-      if (at !== waitingFor) log("sys", `[watch] waiting for a save that parses: ${at}: ${message}`);
+      if (at !== waitingFor) log("sys", `[watch] syntax error in ${at}: ${message}`);
       waitingFor = at;
-      session.setStatus({ state: session.settled().state, text: `Syntax error in ${at} · waiting for a fix` });
+      session.setStatus({ state: session.settled().state, text: `Syntax error in ${at} · fix it to restart` });
       return;
     }
     waitingFor = undefined;
@@ -402,23 +402,23 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
 
   /** Connects to the runner on this machine; says so in the console when it takes long or fails. */
   async function connectLocal(url: string) {
-    const fallback = browserOk ? "runs stay in the browser" : "nothing can run here until it is";
-    const meanwhile = browserOk ? "; runs start in the browser meanwhile and move to it once connected" : "";
+    const fallback = browserOk ? "Runs stay in the browser." : "Nothing can run here until it connects.";
+    const meanwhile = browserOk ? " Runs start in the browser meanwhile." : "";
     local = await connectLocalBun(url, () =>
-      log("sys", `[local] waiting for the runner on this machine${meanwhile}. If the browser asks whether this site may reach devices on your local network, allow it`),
+      log("sys", `[local] connecting to the local runner.${meanwhile} Allow local network access if the browser asks.`),
     );
     if (!local) {
       setLocalState("lost");
-      return log("error", `[local] can't reach the runner on this machine (is \`bunx @runbun/connect\` running, and was access allowed?); ${fallback}`);
+      return log("error", `[local] can't reach the local runner. Start it with bunx @runbun/connect and allow access. ${fallback}`);
     }
     setLocalInfo({ bun: local.bun, sandbox: local.sandbox });
     setLocalState("connected");
     void local.closed.then(async () => {
       setLocalState("lost");
-      const reload = "start it again (bunx @runbun/connect) and reload to use it";
-      if (runtime() !== "local") return log("sys", `[local] the runner on this machine went away; ${reload}`);
-      if (!browserOk) return log("error", `[local] the runner on this machine went away; ${reload} and run code`);
-      log("error", "[local] the runner on this machine went away");
+      const reload = "Restart it (bunx @runbun/connect) and reload";
+      if (runtime() !== "local") return log("sys", `[local] the local runner disconnected. ${reload} to use it.`);
+      if (!browserOk) return log("error", `[local] the local runner disconnected. ${reload} to run code.`);
+      log("error", "[local] the local runner disconnected");
       await useRuntime("browser");
     });
   }
@@ -449,8 +449,8 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
       await previous.stop();
     }
     // Without a runner for this page, the browser is the only runtime: nothing to say.
-    if (kind === "local") log("sys", `[local] runs go to Bun ${local!.bun} on this machine (sandbox: ${local!.sandbox})`);
-    else if (localUrl) log("sys", "[browser] runs go to the in-browser runtime");
+    if (kind === "local") log("sys", `[local] running on Bun ${local!.bun} on this machine, sandbox ${local!.sandbox}`);
+    else if (localUrl) log("sys", "[browser] running in the browser");
   }
 
   /**
@@ -470,7 +470,7 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
     setAsking(undefined);
     answer = undefined;
     if (ok) untrustedFrom = undefined;
-    else log("sys", "[local] not run on this machine");
+    else log("sys", "[local] cancelled. Nothing ran on this machine.");
     return ok;
   }
 
@@ -500,7 +500,7 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
     if (!local || localState() !== "connected" || !browserOk) return;
     const kind = from === undefined && localStorage.getItem(RUNTIME_KEY) !== "browser" ? "local" : "browser";
     await useRuntime(kind);
-    if (from !== undefined) log("sys", `[local] ${from} runs in the browser; press Local Bun to run it on this machine`);
+    if (from !== undefined) log("sys", `[local] ${from} runs in the browser. Press Local Bun to use this machine.`);
   }
 
   /** Brings up the service worker, semver and the runner (when the browser can run code) and the console's shell. */
@@ -521,7 +521,7 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
       // Someone else's project stays in the browser (where it can't reach this machine) until the reader moves it.
       const preferBrowser = (from !== undefined || localStorage.getItem(RUNTIME_KEY) === "browser") && browserOk;
       await useRuntime(local && !preferBrowser ? "local" : "browser");
-      if (local && from !== undefined && browserOk) log("sys", `[local] ${from} runs in the browser; press Local Bun to run it on this machine`);
+      if (local && from !== undefined && browserOk) log("sys", `[local] ${from} runs in the browser. Press Local Bun to use this machine.`);
       void later?.then(async () => {
         if (!local || preferBrowser) return;
         await session.started;

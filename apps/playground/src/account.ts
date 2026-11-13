@@ -59,7 +59,7 @@ export function listRepos(force = false): Promise<GitHubRepo[] | string> {
       setAccount(null);
       return "not signed in";
     }
-    if (!r.ok) return `couldn't list them (${r.status})`;
+    if (!r.ok) return `couldn't list your repositories (${r.status})`;
     return (await r.json()) as GitHubRepo[];
   });
   return repos;
