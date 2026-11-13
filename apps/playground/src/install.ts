@@ -59,7 +59,7 @@ async function installWasiBindings(vfs: VFS, lockText: string, semver: Semver, l
         const url = doc.versions[version].dist!.tarball;
         for (const { name: file, data } of packageFiles(await gunzip(await fetchTarball(url)), url)) vfs.write(`${dest}/${file}`, data);
         installed++;
-        log("log", `+ ${name}@${version} (the browser's binding)`);
+        log("log", `+ ${name}@${version} (browser build)`);
       } catch {
         // A guessed name: the package may not publish one.
       }

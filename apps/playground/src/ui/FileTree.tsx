@@ -355,9 +355,9 @@ export function FileTree() {
               <DialogTitle>Delete {vfsPath(path())}?</DialogTitle>
               <DialogDescription>
                 {path().endsWith("/")
-                  ? `The folder and the ${fileCount(path())} ${fileCount(path()) === 1 ? "file" : "files"} in it are deleted.`
-                  : "The file is deleted."}{" "}
-                Undo brings it back for a few seconds after.
+                  ? `Deletes the folder and its ${fileCount(path())} ${fileCount(path()) === 1 ? "file" : "files"}.`
+                  : "Deletes the file."}{" "}
+                You can undo for a few seconds.
               </DialogDescription>
               <DialogActions>
                 <DialogClose>Cancel</DialogClose>

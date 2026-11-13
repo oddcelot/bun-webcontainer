@@ -5,8 +5,8 @@ import { familyOf, pickFamily, preloadThemes, setColorMode, switchTheme, themeSt
 import { setStatusDisplay, statusDisplay } from "./StatusBar";
 
 const STATUS: ["bar" | "toast", string, string, string][] = [
-  ["bar", "i-lucide-panel-bottom", "Status pill", "The run status as a pill in the status bar"],
-  ["toast", "i-lucide-message-square", "Status toast", "The run status as a toast over the panes that fades once it settles"],
+  ["bar", "i-lucide-panel-bottom", "Status pill", "Show status as a pill in the bar"],
+  ["toast", "i-lucide-message-square", "Status toast", "Show status as a toast that fades"],
 ];
 
 /**

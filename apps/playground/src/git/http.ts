@@ -104,7 +104,7 @@ export function syncXhr(proxy: string): Transport {
     } catch (e) {
       return `couldn't reach the git proxy: ${e instanceof Error ? e.message : e}`;
     }
-    if (xhr.status === 0) return "couldn't reach the git proxy (offline?)";
+    if (xhr.status === 0) return "couldn't reach the git proxy, you may be offline";
     const data = new Uint8Array(xhr.response as ArrayBuffer);
     const refused = refusal(xhr.status, xhr.getResponseHeader("content-type"), data);
     if (refused) return refused;

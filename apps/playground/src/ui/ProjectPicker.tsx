@@ -106,8 +106,8 @@ export function ProjectPicker() {
         title={mode() === "git" ? "Clone a repository" : "Open a repository"}
         description={
           mode() === "git"
-            ? "owner/repo, or an https:// URL on GitHub, GitLab, Codeberg or Bitbucket. Brings the last 50 commits: commit, branch, fetch and pull in the Git view."
-            : "owner/repo, owner/repo@ref or a github.com URL. Opens its files from GitHub, without their history."
+            ? "owner/repo or an https:// URL (GitHub, GitLab, Codeberg, Bitbucket). Clones the last 50 commits."
+            : "owner/repo, owner/repo@ref or a github.com URL. Files only, no history."
         }
         label="Repository"
         initial={app.repoParam || "oddcelot/bun-elysia-demo"}
@@ -131,8 +131,8 @@ export function ProjectPicker() {
               label="How to open it"
               value={mode()}
               options={[
-                ["files", "Files", "i-lucide-files", "Its files from GitHub, without their history: quick"],
-                ["git", "With Git history", "i-lucide-git-branch", "A clone with its last commits: commit, branch, fetch and pull"],
+                ["files", "Files", "i-lucide-files", "Files only, no history. Faster"],
+                ["git", "With Git history", "i-lucide-git-branch", "Clone with recent commits: commit, branch, fetch, pull"],
               ]}
               onChange={(v) => setAskingRepo(v === "git" ? "git" : "files")}
             />

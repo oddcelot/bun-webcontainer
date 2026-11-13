@@ -88,7 +88,7 @@ export function GitPanel() {
   const deleteBranch = (b: string) =>
     void git.deleteBranch(b).then((deleted) => {
       if (deleted || !git.state.error?.includes("not fully merged")) return;
-      setAsk({ title: `Delete ${b} anyway?`, body: "Its commits are on no other branch; they're lost with it.", label: "Delete anyway", run: () => void git.deleteBranch(b, true) });
+      setAsk({ title: `Delete ${b} anyway?`, body: "Its commits are on no other branch and will be lost.", label: "Delete anyway", run: () => void git.deleteBranch(b, true) });
     });
   const [naming, setNaming] = createSignal(false);
   const [showing, setShowing] = createSignal<{ commit: Commit; text: string } | null>(null);
@@ -98,7 +98,7 @@ export function GitPanel() {
   const canCommit = () => !!message().trim() && (amending() ? s.hasHead : s.staged.length > 0 || s.changes.length > 0);
   const label = () => (amending() ? "Amend" : s.staged.length ? "Commit" : "Commit all");
   const commitTip = () =>
-    amending() ? "Replace the last commit with the staged changes and this message" : s.staged.length ? "Commit the staged changes" : "Nothing is staged: stage all the changes, then commit them";
+    amending() ? "Replace the last commit with the staged changes and this message" : s.staged.length ? "Commit the staged changes" : "Stage everything and commit";
 
   async function commit() {
     if (!canCommit() || s.busy) return;
@@ -115,7 +115,7 @@ export function GitPanel() {
     const last = s.commits[0];
     setAsk({
       title: "Undo the last commit?",
-      body: `${last ? `"${last.subject}" is` : "The commit is"} taken back: its changes stay staged, and the message goes back in the box.`,
+      body: `${last ? `Undoes "${last.subject}".` : "Undoes the commit."} The changes stay staged and the message returns to the box.`,
       label: "Undo commit",
       run: () =>
         void git.undoCommit().then((ok) => {
@@ -128,9 +128,9 @@ export function GitPanel() {
     const one = list[0];
     setAsk({
       title: all ? `Discard all ${list.length} changes?` : `Discard changes to ${split(one.path)[0]}?`,
-      body: `${all ? "The files go back to how the index has them" : "The file goes back to how the index has it"}${
-        untracked ? `; ${all ? `${untracked} untracked ${untracked === 1 ? "file is" : "files are"}` : "it is untracked, so it is"} deleted` : ""
-      }. This can't be undone.`,
+      body: `${all ? "Resets the files to the staged version." : untracked ? "Deletes the untracked file." : "Resets the file to the staged version."}${
+        all && untracked ? ` ${untracked} untracked ${untracked === 1 ? "file is" : "files are"} deleted.` : ""
+      } This can't be undone.`,
       label: "Discard",
       run: () => void git.discard(list),
     });
@@ -138,8 +138,8 @@ export function GitPanel() {
   const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
   // A remote answered 401/403: GitHub wants the signed-in user's token (git/http.ts adds it through the proxy).
   const wantsSignIn = () => !app.features && signInAvailable() && account() === null && /HTTP 40[13]|authentication required|access denied|[Ss]ign in with GitHub/.test(s.error ?? "");
-  const pushTip = () => (s.ahead ? `Push ${plural(s.ahead, "commit")} to ${s.upstream}` : `Push to ${s.upstream} (nothing new since the last fetch)`);
-  const pullTip = () => (s.behind ? `Pull ${plural(s.behind, "commit")} from ${s.upstream}` : `Pull from ${s.upstream} (fetches, then fast-forwards)`);
+  const pushTip = () => (s.ahead ? `Push ${plural(s.ahead, "commit")} to ${s.upstream}` : `Push to ${s.upstream}`);
+  const pullTip = () => (s.behind ? `Pull ${plural(s.behind, "commit")} from ${s.upstream}` : `Pull from ${s.upstream}`);
 
   async function showCommit(commit: Commit) {
     setShowing({ commit, text: "Reading the commit…" });
@@ -150,7 +150,7 @@ export function GitPanel() {
     const parts = () => split(props.c.path);
     return (
       <li class="git-row">
-        <button type="button" class="git-file" title={`${props.c.path}: ${CODES[props.c.code] ?? props.c.code}. Show the changes`} onClick={() => ws.showChange(props.c.path)}>
+        <button type="button" class="git-file" title={`${props.c.path} (${CODES[props.c.code] ?? props.c.code})`} onClick={() => ws.showChange(props.c.path)}>
           <span class="name">{parts()[0]}</span>
           <Show when={parts()[1]}>
             <span class="dir">{parts()[1]}</span>
@@ -211,7 +211,7 @@ export function GitPanel() {
                       icon="i-lucide-trash-2"
                       label={b}
                       onSelect={() =>
-                        later(() => setAsk({ title: `Delete ${b}?`, body: "The branch is deleted if its commits are on another branch; git refuses otherwise.", label: "Delete", run: () => void deleteBranch(b) }))
+                        later(() => setAsk({ title: `Delete ${b}?`, body: "Deletes the branch. Fails if it has unmerged commits.", label: "Delete", run: () => void deleteBranch(b) }))
                       }
                     />
                   )}
@@ -226,7 +226,7 @@ export function GitPanel() {
                 {(remote) => (
                   <Tip
                     class="git-act git-count"
-                    tip={`Publish ${s.branch} to ${remote()}: push it and track ${remote()}/${s.branch}`}
+                    tip={`Publish ${s.branch} to ${remote()}`}
                     aria-label={`Publish ${s.branch} to ${remote()}`}
                     disabled={s.busy}
                     onClick={() => void git.push()}
@@ -250,7 +250,7 @@ export function GitPanel() {
               </Show>
             </Tip>
           </Show>
-          <Act icon="i-lucide-refresh-cw" tip="Read the repository again" onClick={() => void git.refresh()} />
+          <Act icon="i-lucide-refresh-cw" tip="Refresh" onClick={() => void git.refresh()} />
         </div>
         <Show when={s.syncing}>
           {(kind) => (
@@ -324,7 +324,7 @@ export function GitPanel() {
           </div>
           <Show when={amending()}>
             <button type="button" class="git-amending" onClick={() => setAmending(false)}>
-              Amending the last commit: stop
+              Stop amending
             </button>
           </Show>
         </div>
@@ -381,7 +381,7 @@ export function GitPanel() {
         open={naming()}
         onOpenChange={setNaming}
         title="Create branch"
-        description="The new branch starts at the commit you are on, and the files stay as they are."
+        description="Starts at the current commit."
         label="Branch name"
         initial=""
         submit="Create"
@@ -440,11 +440,11 @@ function Start() {
   return (
     <div class="git-start">
       <Show when={git.state.loaded} fallback={<p>Reading the repository…</p>}>
-        <p>This project has no Git repository. Create one to commit your changes, branch, and compare the files with the last commit.</p>
+        <p>This project has no Git repository. Create one to commit, branch and compare changes.</p>
         <Button primary disabled={git.state.busy} onClick={() => void git.init()}>
           <i class="i-lucide-git-branch" aria-hidden="true" /> Initialize repository
         </Button>
-        <p class="hint">The repository stays in this browser; it isn't part of a share link or a zip.</p>
+        <p class="hint">Stored in this browser only. Not included in share links or zips.</p>
         {/* The playground's gallery opens it (an embed has no gallery, nor `features` unset). */}
         <Show when={!app.features}>
           <Button onClick={() => askRepo("git")}>

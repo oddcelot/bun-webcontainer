@@ -64,7 +64,7 @@ function FeedbackForm() {
     app.workspace.saveAll();
     const l = await shareLink(app.vfs);
     if (l.short) return { source: new URL(l.url).search || "(the demo)" };
-    if (l.url.length > MAX_SHORT) throw new Error("the project is too large to attach; describe it, or share it from GitHub");
+    if (l.url.length > MAX_SHORT) throw new Error("the project is too large to attach. Share it from GitHub instead");
     return { project: new URL(await shortLink(l)).pathname };
   }
 
@@ -98,7 +98,7 @@ function FeedbackForm() {
       closing = setTimeout(() => dialog.close(), 2600);
     } catch (err) {
       const why = err instanceof Error ? err.message : String(err);
-      setError(/fetch|JSON|answered 404/.test(why) ? "Feedback can't be sent from here (it goes to runbun.dev)." : `Not sent: ${why}`);
+      setError(/fetch|JSON|answered 404/.test(why) ? "Feedback only works on runbun.dev." : `Not sent: ${why}`);
     } finally {
       setSending(false);
     }
@@ -109,7 +109,7 @@ function FeedbackForm() {
       <form onSubmit={send}>
         <DialogTitle>Send feedback</DialogTitle>
         <DialogDescription>
-          A bug, something that should run but doesn't, an idea. It goes to the people building this.{" "}
+          Tell us about a bug, something that should run but doesn't, or an idea.{" "}
           <a href={`${DOCS}privacy/#feedback`} target="_blank" rel="noopener">
             What's kept
           </a>
@@ -131,7 +131,7 @@ function FeedbackForm() {
           }}
         />
         <label class="dialog-label" for={`${id}-email`}>
-          Email, if you'd like an answer (optional)
+          Email (optional)
         </label>
         <Input ref={email} id={`${id}-email`} type="email" maxlength={200} autocomplete="email" spellcheck={false} />
         <label class="feedback-check">
@@ -156,7 +156,7 @@ function FeedbackForm() {
           <input ref={withProject} type="checkbox" />
           <span>
             Attach this project
-            <span class="sub">Stores a copy on runbun.dev as a short link, as Share does (no .env or key files)</span>
+            <span class="sub">Saves a copy as a short link, like Share. Skips .env and key files.</span>
           </span>
         </label>
         <p class="dialog-error" id={`${id}-error`} role="alert">

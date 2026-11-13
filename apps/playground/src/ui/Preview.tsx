@@ -11,7 +11,7 @@ import { onFrameMessage } from "../previewBridge";
 import { BODY_ROOM_LINES, normalize, previewUrl, responseReserve, PREFIX, type Card } from "../preview";
 import { AppContext } from "./context";
 import { draftKey, hasBody, type PreviewTab, type Rows, type Section } from "./previews";
-import { LOCAL_ORIGIN, fromAuth, paramRows, queryOf, sent, toCurl, toFetch, toHttp, type Auth, type BodyMode, type Field } from "../request";
+import { fromAuth, paramRows, queryOf, sent, toCurl, toFetch, toHttp, type Auth, type BodyMode, type Field } from "../request";
 import { Tip } from "@runbun/ui/solid/Tip";
 
 const CANT_RUN = "This browser can't run code here";
@@ -175,7 +175,7 @@ export function Preview() {
           <Tip
             type="button"
             id="open-tab"
-            tip={disabled ? CANT_RUN : "Open in a new tab (the server keeps running here)"}
+            tip={disabled ? CANT_RUN : "Open in a new tab"}
             aria-label="Open in a new tab"
             disabled={disabled}
             onClick={() => {
@@ -294,7 +294,7 @@ function Fields(props: {
     <div class="fields" role="group" aria-label={props.label} hidden={props.hidden}>
       <Show when={props.derived}>
         {(d) => (
-          <button type="button" class="field derived" title="Set in Auth: click to edit it there" onClick={() => d().open()}>
+          <button type="button" class="field derived" title="Set in Auth. Click to edit" onClick={() => d().open()}>
             <i class="i-lucide-lock" aria-hidden="true" />
             <span class="name">{d().name}</span>
             <span class="value">{d().value}</span>
@@ -377,7 +377,7 @@ function authSummary(auth: Auth): string {
   const set = fromAuth(auth);
   const type = AUTH_TYPES.find((a) => a.type === auth.type)?.label ?? "";
   if (auth.type === "none") return "Authorization: none";
-  if (!set.header && !set.param) return `${type}: not filled in yet, nothing is sent`;
+  if (!set.header && !set.param) return `${type}: nothing to send yet`;
   return set.header ? `${type}, sent as the ${set.header[0]} header` : `${type}, sent as ?${set.param!.name}=`;
 }
 
@@ -429,7 +429,7 @@ function AuthFields(props: { auth: Auth; hidden: boolean; onChange: (change: Par
           />
         </Show>
         <Show when={props.auth.type === "none"}>
-          <span class="hint">Sent as a header (or a query parameter) when set</span>
+          <span class="hint">Pick a type to add auth</span>
         </Show>
       </div>
     </div>
@@ -669,7 +669,7 @@ function RequestPanel(props: { tab: PreviewTab }) {
             <Tip
               type="button"
               class="raw-toggle"
-              tip={raw() ? "Back to the fields" : "The whole request as text (.http), to read or edit at once"}
+              tip={raw() ? "Back to the fields" : "Edit the whole request as text (.http)"}
               aria-pressed={raw() ? "true" : "false"}
               onClick={() => p.toggleRaw(p.state.active)}
             >
@@ -679,7 +679,7 @@ function RequestPanel(props: { tab: PreviewTab }) {
             <Menu
               placement="bottom-end"
               trigger={
-                <Tip as={MenuTrigger} class="copy-request" tip={copied() ? "Copied" : `Copy the request, to send to the app run locally (${LOCAL_ORIGIN})`} aria-label="Copy the request">
+                <Tip as={MenuTrigger} class="copy-request" tip={copied() ? "Copied" : "Copy request"} aria-label="Copy the request">
                   <i class={copied() ? "i-lucide-check" : "i-lucide-copy"} aria-hidden="true" />
                 </Tip>
               }
@@ -724,7 +724,7 @@ function RequestPanel(props: { tab: PreviewTab }) {
               type="button"
               class="format-body"
               aria-disabled={formattedJson() === undefined ? "true" : undefined}
-              tip={!props.tab.body.trim() ? "Nothing to format yet" : formattedJson() === undefined ? "Not valid JSON yet, so it can't be formatted" : "Indent the JSON body"}
+              tip={!props.tab.body.trim() ? "Nothing to format yet" : formattedJson() === undefined ? "Not valid JSON" : "Indent the JSON body"}
               keys={keysFor("format").map(chordKeys)}
               onClick={formatBody}
             >
@@ -882,7 +882,7 @@ function Response(props: { card: Card | null; hidden: boolean; stale: boolean })
               </Show>
               <span class="line">{card().line}</span>
               <Show when={props.stale}>
-                <span class="stale-note">The request changed since, Send to update</span>
+                <span class="stale-note">Request changed. Send again to update</span>
               </Show>
             </div>
             <Show when={card().head}>

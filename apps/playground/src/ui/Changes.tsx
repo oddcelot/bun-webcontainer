@@ -7,7 +7,7 @@ import { AppContext } from "./context";
 /** One CodeView item per changed file; `version` goes up when its contents change, so CodeView re-renders only it. */
 function toItem(c: Change, version: number): CodeViewItem<undefined> {
   if (c.before === null || c.after === null)
-    return { id: c.path, type: "file", version, file: { name: c.path, contents: `Binary file ${c.kind}; its contents aren't shown.` } };
+    return { id: c.path, type: "file", version, file: { name: c.path, contents: `Binary file ${c.kind}. No preview.` } };
   const before = c.kind === "added" ? null : { name: c.path, contents: c.before };
   const after = c.kind === "deleted" ? null : { name: c.path, contents: c.after };
   return { id: c.path, type: "diff", version, fileDiff: parseDiffFromFile(before, after) };
@@ -98,10 +98,10 @@ export function ChangesView(props: { shown: boolean }) {
   return (
     <div class="changes" hidden={!props.shown}>
       <div class="changes-head" aria-live="polite">
-        <Show when={list()} fallback={<span>{missing() ? `${against()[0].toUpperCase()}${against().slice(1)} couldn't be loaded to compare against.` : `Loading ${against()}…`}</span>}>
+        <Show when={list()} fallback={<span>{missing() ? `Couldn't load ${against()} to compare.` : `Loading ${against()}…`}</span>}>
           {(l) => (
             <span>
-              {count() ? `${count()} ${count() === 1 ? "file differs" : "files differ"} from ${against()}` : git.state.hasHead ? "No changes: the files are as the last commit has them." : "No changes: the files are as the project's source has them."}
+              {count() ? `${count()} ${count() === 1 ? "file differs" : "files differ"} from ${against()}` : git.state.hasHead ? "No changes since the last commit." : "No changes from the project's source."}
               <Show when={l().length}>
                 <span class="changes-kinds">
                   <Kinds list={l()} />

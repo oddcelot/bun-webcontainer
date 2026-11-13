@@ -120,11 +120,11 @@ export const formats = {
 /** What the link leaves out, and whether it's long: one line each. */
 export const noteLines = (l: Link) =>
   [
-    l.secrets.length ? `Left out, as they may hold secrets: ${l.secrets.join(", ")}` : "",
+    l.secrets.length ? `Left out (may hold secrets): ${l.secrets.join(", ")}` : "",
     l.skipped ? `Left out: ${l.skipped} binary ${l.skipped === 1 ? "file" : "files"} (images, fonts, …)` : "",
-    l.droppedLock ? "Left out bun.lock to keep the link short: versions are resolved from package.json." : "",
+    l.droppedLock ? "bun.lock left out to keep the link short." : "",
     l.url.length > LONG_LINK
-      ? "Long link: some chat apps cut these off. For a project this size, push it to GitHub and share it from there (?repo=)."
+      ? "Long link. Some chat apps cut it off. Share from GitHub (?repo=) instead."
       : "",
   ].filter(Boolean);
 

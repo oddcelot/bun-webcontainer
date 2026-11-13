@@ -216,7 +216,7 @@ export async function attach(id: string, vfs: VFS, log: Log, all: boolean, gener
         });
       });
       if (!got) {
-        log("warn", "[storage] project open in another tab; changes here won't be saved");
+        log("warn", "[storage] project open in another tab. Changes here won't be saved.");
         setSaveState({ where: "nowhere", pending: false, why: "It's open in another tab, which saves it" });
         return off;
       }
@@ -239,7 +239,7 @@ export async function attach(id: string, vfs: VFS, log: Log, all: boolean, gener
     };
   } catch (e) {
     release();
-    log("warn", `[storage] saving is unavailable (${e}); this project won't be kept across reloads`);
+    log("warn", `[storage] can't save: ${e}. This project is lost on reload.`);
     setSaveState({ where: "nowhere", pending: false, why: `This browser can't store it (${e})` });
     return off;
   }
@@ -484,7 +484,7 @@ export function mirror(dir: Dir, vfs: VFS, log: Log, { all, generated, stash: st
     let settle: ReturnType<typeof setTimeout> | undefined;
     const o = new FSO((records) => {
       for (const r of records) {
-        if (r.type === "errored") return fail("the folder can't be watched any more");
+        if (r.type === "errored") return fail("the folder is no longer being watched");
         // "unknown": changes were missed, so look at everything.
         const paths = r.type === "unknown" ? [[]] : [r.relativePathComponents, ...(r.type === "moved" && r.relativePathMovedFrom ? [r.relativePathMovedFrom] : [])];
         for (const parts of paths) changed.set(parts.join("/"), parts);

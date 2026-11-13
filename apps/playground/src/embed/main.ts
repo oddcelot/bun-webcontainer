@@ -368,8 +368,8 @@ function applyConfig(inline: boolean): ProjectConfig {
   if (presets.length) pg.previews.presets(presets);
   else if (path) pg.previews.start(path);
   for (const need of config.requires ?? []) {
-    if (need === "cross-origin-isolation" && !crossOriginIsolated) log("warn", "[config] this project needs cross-origin isolation (SharedArrayBuffer), which this embed doesn't have: open it on runbun.dev");
-    if (need === "local-bun") log("warn", "[config] this project needs Bun on this machine: open it on runbun.dev and press Local Bun");
+    if (need === "cross-origin-isolation" && !crossOriginIsolated) log("warn", "[config] this project needs cross-origin isolation, which this embed doesn't have. Open it on runbun.dev.");
+    if (need === "local-bun") log("warn", "[config] this project needs Bun on this machine. Open it on runbun.dev and press Local Bun");
   }
   return config;
 }

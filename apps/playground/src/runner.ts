@@ -412,7 +412,7 @@ export class Runner {
     }
     this.end(worker);
     const reason =
-      o.kind === "exit" ? `it exited with code ${o.code} while starting` : o.kind === "timeout" ? `it didn't start within ${START_TIMEOUT / 1000}s` : o.kind === "error" ? `its worker failed: ${o.message}` : "it was cancelled";
+      o.kind === "exit" ? `exited with code ${o.code} while starting` : o.kind === "timeout" ? `didn't start within ${START_TIMEOUT / 1000}s` : o.kind === "error" ? `worker failed: ${o.message}` : "cancelled";
     return { kind: "failed", reason };
   }
 

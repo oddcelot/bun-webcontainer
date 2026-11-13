@@ -72,13 +72,12 @@ export function LocalBunSetup(props: { open: boolean; onOpenChange: (open: boole
       <DialogTitle>{props.lost ? "Start Local Bun again" : "Run with Bun on this machine"}</DialogTitle>
       <DialogDescription>
         {props.lost
-          ? "The runner on this machine stopped. Start it again; its link changes each time, so open the new one."
-          : "The playground runs Bun in your browser. With Local Bun, Run, bun install and bun test use the Bun installed on your computer instead, in a sandbox: child processes, bun:ffi and real sockets work."}
+          ? "The runner stopped. Start it again and open the new link."
+          : "Run, bun install and bun test use the Bun on your computer, in a sandbox. Child processes, bun:ffi and real sockets work."}
       </DialogDescription>
       <Show when={detected === "mobile"}>
         <p class="note">
-          Local Bun runs on a computer: it needs Bun and a terminal. Open the playground on your Mac or Linux PC to use it; the
-          steps are below.
+          Local Bun needs a computer with Bun and a terminal. Open the playground on a Mac or Linux PC.
         </p>
       </Show>
       <Segmented
@@ -95,59 +94,59 @@ export function LocalBunSetup(props: { open: boolean; onOpenChange: (open: boole
         <Match when={os() === "mac"}>
           <ol>
             <li>
-              Install <a href="https://bun.sh" target="_blank" rel="noopener">Bun</a> 1.3 or later, if you haven't:
+              Install <a href="https://bun.sh" target="_blank" rel="noopener">Bun</a> 1.3 or later:
               <Command text={INSTALL_BUN} />
-              The sandbox (sandbox-exec) comes with macOS.
+              macOS includes the sandbox (sandbox-exec).
             </li>
             <li>
               Start the runner:
               <Command text={COMMAND} />
-              It opens the playground with Local Bun on, in any browser, Safari included.
+              Opens the playground with Local Bun on, in any browser, Safari included.
             </li>
           </ol>
         </Match>
         <Match when={os() === "linux"}>
           <ol>
             <li>
-              Install <a href="https://bun.sh" target="_blank" rel="noopener">Bun</a> 1.3 or later, if you haven't:
+              Install <a href="https://bun.sh" target="_blank" rel="noopener">Bun</a> 1.3 or later:
               <Command text={INSTALL_BUN} />
             </li>
             <li>
-              Install bubblewrap, the sandbox runs go in (Fedora: <code>dnf</code>, Arch: <code>pacman -S</code>):
+              Install bubblewrap, the sandbox (<code>dnf</code> on Fedora, <code>pacman -S</code> on Arch):
               <Command text="sudo apt install bubblewrap" />
             </li>
             <li>
               Start the runner:
               <Command text={COMMAND} />
-              It opens the playground with Local Bun on.
+              Opens the playground with Local Bun on.
             </li>
           </ol>
         </Match>
         <Match when={os() === "windows"}>
           <p>
-            Not on Windows itself yet: there's no sandbox for it, so the runner doesn't start there. Under WSL 2 it may work as on
-            Linux (untested): in the WSL terminal, install Bun and bubblewrap, then run
+            Windows isn't supported yet (no sandbox). WSL 2 may work like Linux, but is untested. In the WSL terminal,
+            install Bun and bubblewrap, then run
           </p>
           <Command text={COMMAND.replace(" --open", "")} />
-          <p>and open the link it prints.</p>
+          <p>and open the link.</p>
         </Match>
       </Switch>
       <Show when={props.browserOk}>
         <form onSubmit={connect}>
-          <label for={id}>Or stay on this page: start it without --open and paste the link it prints (Chrome, Firefox).</label>
+          <label for={id}>Or stay here: run it without --open and paste its link (Chrome, Firefox).</label>
           <span class="paste">
             <Input ref={input} id={id} placeholder="https://runbun.dev/?connect=ws%3A%2F%2F127.0.0.1…" spellcheck={false} autocomplete="off" onInput={() => setBad(false)} />
             <Button type="submit">Connect</Button>
           </span>
           <Show when={bad()}>
             <p class="error" role="alert">
-              That isn't a link from the runner: it prints one with ?connect=ws://127.0.0.1…
+              Not a runner link. It should contain ?connect=ws://127.0.0.1…
             </p>
           </Show>
         </form>
       </Show>
       <p class="note">
-        Before a page runs anything, the runner asks in its terminal: say no if you didn't just press Run.{" "}
+        The runner asks in its terminal before running anything. Say no if you didn't press Run.{" "}
         <a href={`${DOCS}guides/local-bun/`} target="_blank" rel="noopener">
           How it works
         </a>

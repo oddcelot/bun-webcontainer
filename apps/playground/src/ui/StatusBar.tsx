@@ -117,7 +117,7 @@ export function StatusBar(props: { treeShown: boolean; toggleFiles(): void; togg
             <Show
               when={TYPED.test(path())}
               fallback={
-                <Tip as="span" class="language" tip="What the file is read as">
+                <Tip as="span" class="language" tip="Language of the file">
                   {language(path())}
                 </Tip>
               }
@@ -131,7 +131,7 @@ export function StatusBar(props: { treeShown: boolean; toggleFiles(): void; togg
                 tip={
                   <>
                     Type-checked by tsrs {TSRS_VERSION}, a Rust port of TypeScript {TS_VERSION}
-                    <span class="tooltip-note">Opens what it checks in the docs</span>
+                    <span class="tooltip-note">Opens the type-checking docs</span>
                   </>
                 }
               >
@@ -147,7 +147,7 @@ export function StatusBar(props: { treeShown: boolean; toggleFiles(): void; togg
           class="format-on-save"
           aria-pressed={ws.formatOnSave() ? "true" : "false"}
           keys={keys("save")}
-          tip={ws.formatOnSave() ? "Format on save: saving with the shortcut formats the file with bun fmt first. Saves as you type don't." : "Format on save is off: saving with the shortcut keeps the file as it is. Click to format it with bun fmt first."}
+          tip={ws.formatOnSave() ? "Format on save is on (bun fmt). Auto-saves skip it" : "Format on save is off. Click to turn it on"}
           onClick={() => ws.setFormatOnSave(!ws.formatOnSave())}
         >
           <i class="i-lucide-wand-sparkles" aria-hidden="true" />
@@ -164,8 +164,8 @@ export function StatusBar(props: { treeShown: boolean; toggleFiles(): void; togg
         placement="top-end"
         tip={
           <>
-            The Bun release these crates are built from
-            <span class="tooltip-note">Opens what works in the docs</span>
+            The Bun release this is built from
+            <span class="tooltip-note">Opens the compatibility docs</span>
           </>
         }
       >
@@ -175,7 +175,7 @@ export function StatusBar(props: { treeShown: boolean; toggleFiles(): void; togg
       <Tip as="a" href={`${import.meta.env.BASE_URL}about`} target="_blank" rel="noopener" placement="top-end" tip="What runbun.dev is and how it runs Bun">
         About
       </Tip>
-      <Tip as="a" href={`${DOCS}privacy/`} target="_blank" rel="noopener" placement="top-end" tip="No tracking; cookies only if you sign in with GitHub; what is stored, and where">
+      <Tip as="a" href={`${DOCS}privacy/`} target="_blank" rel="noopener" placement="top-end" tip="Privacy: no tracking, and what is stored">
         Privacy
       </Tip>
     </footer>
@@ -193,10 +193,10 @@ function Changed(props: { git: boolean; gitShown: boolean; toggleGit(): void }) 
     const n = count();
     const head = git.state.hasHead;
     const action = props.git ? "show or hide Git" : "show the changes";
-    if (n === null) return props.git ? "Show or hide Git: changes, commits and branches" : head ? "Compare the files with the last commit" : "Compare the files with the project's source";
-    if (!n) return `${head ? "No changes since the last commit" : "No changes from the project's source"}: ${action}`;
+    if (n === null) return props.git ? "Show or hide Git" : head ? "Compare the files with the last commit" : "Compare the files with the project's source";
+    if (!n) return `${head ? "No changes since the last commit" : "No changes from the project's source"}. Click to ${action}`;
     const files = `${n} ${n === 1 ? "file" : "files"}`;
-    return head ? `${files} changed since the last commit: ${action}` : `${files} ${n === 1 ? "differs" : "differ"} from the project's source: ${action}`;
+    return head ? `${files} changed since the last commit. Click to ${action}` : `${files} ${n === 1 ? "differs" : "differ"} from the project's source. Click to ${action}`;
   };
   return (
     <Tip
@@ -218,8 +218,9 @@ function Ports(props: { previewShown: boolean; showPreview(): void }) {
   const { session } = useContext(AppContext);
   const tip = () => {
     const [first, ...rest] = session.ports();
-    const serving = rest.length ? `Serving on ports ${[first, ...rest].join(", ")}; the preview shows ${first}` : `Serving on port ${first}; the preview shows it`;
-    return props.previewShown ? serving : `${serving}. Click to show the preview.`;
+    const list = rest.length ? `Ports ${[first, ...rest].join(", ")}` : `Port ${first}`;
+    if (!props.previewShown) return `${list}. Click to show the preview.`;
+    return rest.length ? `${list}. Preview shows ${first}` : `${list}, shown in the preview`;
   };
   return (
     <Show when={session.ports().length}>
@@ -268,15 +269,15 @@ function Install() {
         return {
           icon: "i-lucide-package-minus",
           label: "bun.lock out of date",
-          tip: `package.json changed ${listed(st.names)} since bun.lock was written. Click to run bun install, which updates bun.lock (the other dependencies keep their locked versions).`,
+          tip: `package.json changed ${listed(st.names)} since bun.lock. Click to run bun install`,
         };
       case "unreadable":
-        return { icon: "i-lucide-package-x", label: `${st.file} unreadable`, tip: `${st.file} doesn't parse, so nothing can be installed. Click to open it.` };
+        return { icon: "i-lucide-package-x", label: `${st.file} unreadable`, tip: `${st.file} has a syntax error. Click to open` };
       case "installed":
         return {
           icon: "i-lucide-package-check",
           label: String(st.count),
-          tip: `${plural(st.count, "dependency")} installed${st.lock ? ", at the versions bun.lock pins" : " (no bun.lock: versions come from package.json)"}. Click to run bun install again.`,
+          tip: `${plural(st.count, "dependency")} installed. Click to run bun install again`,
         };
     }
   };
@@ -305,9 +306,9 @@ function Saved() {
   onSettled(() => onSaveState(setState));
   const view = () => {
     const st = state();
-    if (st.failed) return { icon: "i-lucide-triangle-alert", label: "Not saved", tip: `The last save failed (${st.failed}); the next edit tries again` };
-    if (st.where === "nowhere") return { icon: "i-lucide-circle-slash", label: "Not saved", tip: `${st.why ?? "Edits aren't kept"}: a reload loses them` };
-    const place = st.where === "folder" ? `the folder ${st.name} on disk` : "this browser (Storage lists what it keeps)";
+    if (st.failed) return { icon: "i-lucide-triangle-alert", label: "Not saved", tip: `Save failed: ${st.failed}. Retries on your next edit` };
+    if (st.where === "nowhere") return { icon: "i-lucide-circle-slash", label: "Not saved", tip: `${st.why ?? "Edits aren't kept"}. Reloading loses them` };
+    const place = st.where === "folder" ? `the folder ${st.name} on disk` : "this browser";
     if (st.pending) return { icon: "i-lucide-loader-circle spin", label: "Saving…", tip: `Writing edits to ${place}` };
     return { icon: st.where === "folder" ? "i-lucide-folder-check" : "i-lucide-check", label: "Saved", tip: `Edits are saved to ${place}` };
   };

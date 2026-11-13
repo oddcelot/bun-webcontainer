@@ -38,12 +38,12 @@ function LocalBunToggle(props: { rt: NonNullable<App["runtime"]> }) {
       case "connecting":
         return "Connecting to the runner on this machine…";
       case "lost":
-        return "The runner on this machine isn't reachable. Click to see how to start it again.";
+        return "The runner isn't reachable. Click to see how to start it.";
       case "none":
-        return "Run with the Bun installed on this machine: child processes, bun:ffi, real sockets. Click to set it up.";
+        return "Run with Bun on this machine. Click to set up.";
     }
-    if (!rt.browserOk) return `Runs go to ${native()}: this browser can't run code itself.`;
-    return on() ? `Runs go to ${native()}. Click to run in the browser instead.` : `Runs go to the in-browser runtime. Click to run with ${native()}.`;
+    if (!rt.browserOk) return `Running on ${native()}. This browser can't run code.`;
+    return on() ? `Running on ${native()}. Click to run in the browser.` : `Running in the browser. Click to run on ${native()}.`;
   };
   return (
     <>
@@ -62,9 +62,9 @@ function LocalBunToggle(props: { rt: NonNullable<App["runtime"]> }) {
       <Dialog open={rt.asking() !== undefined} onOpenChange={(open) => !open && rt.answer(false)}>
         <DialogTitle>Run {rt.asking()} on this machine?</DialogTitle>
         <DialogDescription>
-          It's someone else's code. With Local Bun it runs as a real program on your computer, sandboxed: it can't read
-          your home folder or write outside the project, but it can use the network, including other services on this
-          machine and your local network.{rt.browserOk ? " In the browser it can reach neither." : ""}
+          This is someone else's code. Local Bun runs it sandboxed. It can't read your home folder or write outside the
+          project, but it can use the network, including other services on this machine and your local network.
+          {rt.browserOk ? " In the browser it can reach neither." : ""}
         </DialogDescription>
         <DialogActions>
           <DialogClose>{rt.browserOk ? "Keep it in the browser" : "Don't run it"}</DialogClose>
@@ -131,13 +131,13 @@ export function Header() {
           id="watch"
           aria-label="Restart on save"
           aria-pressed={ws.watch() ? "true" : "false"}
-          tip={ws.watch() ? "A save restarts the running program, like bun --watch. Click to restart with Run only." : "Only Run restarts the program. Click to restart it on every save, like bun --watch."}
+          tip={ws.watch() ? "Restarts on every save (bun --watch). Click to turn off." : "Restarts only on Run. Click to restart on every save."}
           onClick={() => ws.setWatch(!ws.watch())}
         >
           <i class={ws.watch() ? "i-lucide-refresh-cw" : "i-lucide-refresh-cw-off"} aria-hidden="true" />
         </Tip>
       </span>
-      <Tip as="a" id="docs" href={DOCS} target="_blank" rel="noopener" tip="Documentation: what works, and how (opens in a new tab)">
+      <Tip as="a" id="docs" href={DOCS} target="_blank" rel="noopener" tip="Documentation (opens in a new tab)">
         <i class="i-lucide-book-open" aria-hidden="true" /> Docs
       </Tip>
       <Tip id="share" popovertarget="share-menu" tip="Share this project">

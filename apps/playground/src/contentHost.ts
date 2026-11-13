@@ -120,7 +120,7 @@ function startHost(): Promise<Host> {
           seen = true;
           lastWorkers = d.workers;
         } else if (d.kind === "merr") {
-          for (const w of workers.values()) w.fail("a message to the runtime could not be delivered (a message carrying shared memory cannot cross to another origin)");
+          for (const w of workers.values()) w.fail("couldn't send a message to the runtime: shared memory can't cross origins");
         }
       };
       port1.onmessageerror = () => {
@@ -204,7 +204,7 @@ function ask<T>(port: MessagePort, m: ToHost, transfer: Transferable[], timeout 
     };
     const fail = (reason: string) => {
       done();
-      reject(new Error(`the content host did not answer: ${reason}`));
+      reject(new Error(`the runtime host didn't answer: ${reason}`));
     };
     const timer = setTimeout(() => fail(`no reply within ${timeout / 1000}s`), timeout);
     asking.add(fail);
@@ -212,7 +212,7 @@ function ask<T>(port: MessagePort, m: ToHost, transfer: Transferable[], timeout 
       done();
       resolve(e.data);
     };
-    port1.onmessageerror = () => fail("its reply could not be read");
+    port1.onmessageerror = () => fail("the reply was unreadable");
     send(port, m, [port2, ...transfer]);
   });
 }

@@ -178,14 +178,13 @@ function ShortcutsForm() {
         </For>
       </div>
       <p class="shortcuts-note">
-        Some keys (like <Keys keys={[["⌘", "W"]]} /> or <Keys keys={[["Ctrl", "T"]]} />) belong to the browser and never reach the page.
+        The browser keeps some keys, like <Keys keys={[["⌘", "W"]]} /> and <Keys keys={[["Ctrl", "T"]]} />.
       </p>
       {/* Open from the start when there are overrides to see. */}
       <details class="shortcuts-custom" open={initial.trim() !== "{}"}>
         <summary>Edit as JSON</summary>
         <label class="dialog-label" for={id}>
-          Command names to a chord, a list of chords, or <code>null</code> to unbind, e.g.{" "}
-          <code>{'{ "run": "Mod+R", "stop": ["Mod+.", "Shift+F5"], "togglePreview": null }'}</code>. <code>Mod</code> is Cmd on macOS,
+          Map command names to a chord, a list of chords, or <code>null</code> to unbind. <code>Mod</code> is Cmd on macOS,
           Ctrl elsewhere.
         </label>
         <Input

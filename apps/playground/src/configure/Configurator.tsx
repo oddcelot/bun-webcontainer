@@ -45,7 +45,7 @@ const MODE_INFO: Record<Mode, [icon: string, text: string]> = {
   code: ["i-lucide-code", "The editor and a console below it"],
   console: ["i-lucide-terminal", "The editor beside a console that takes commands"],
   preview: ["i-lucide-app-window", "The editor with tabs beside the preview of a server"],
-  full: ["i-lucide-layout-dashboard", "The whole playground: file tree, tabs, preview, console. Waits for Run"],
+  full: ["i-lucide-layout-dashboard", "Full playground. Starts when you press Run"],
   result: ["i-lucide-eye", "Only the preview, with an Edit button"],
 };
 const FEATURE_INFO: Record<Feature, string> = {
@@ -323,7 +323,7 @@ export function Configurator() {
               }
               options={MODES.map((m) => [m, m, MODE_INFO[m][0], MODE_INFO[m][1]])}
             />
-            <Field label="Features" hint="a mode's feature turned off is locked for readers" class="wide">
+            <Field label="Features" hint="Features you turn off stay off for readers" class="wide">
               <Chips label="Features" value={form.features} onChange={(v) =>
                   setForm((s) => {
                     s.features.splice(0, s.features.length, ...(v as Feature[]));
@@ -353,7 +353,7 @@ export function Configurator() {
                 value={form.status}
                 onChange={(v) => set("status")(v as Form["status"])}
                 options={[
-                  ["toast", "Toast", "i-lucide-message-square", "A toast over the panes that fades once it settles"],
+                  ["toast", "Toast", "i-lucide-message-square", "A toast that fades"],
                   ["bar", "Pill in the bar", "i-lucide-panel-bottom", "A pill in the embed's bar"],
                 ]}
               />

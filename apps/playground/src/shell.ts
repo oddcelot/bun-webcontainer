@@ -39,11 +39,11 @@ const HELP = `Bun's shell: quotes, pipes |, && || ;, redirects > >> < 2>&1, $VAR
 
 bun run <script|file>  run a script or a file
 bun <file>             run a file
-bun test [filter...]   run *.test.ts, *.spec.ts… (stops the server meanwhile)
+bun test [filter...]   run test files (stops the server)
 bun install, bun i     install dependencies
 bun add <pkg> [-d]     add (dev) dependencies
 bun remove <pkg>       remove dependencies
-bun pm cache [rm]      show (or clear) the package cache, shared by all projects
+bun pm cache [rm]      show or clear the package cache
 bun fmt [-c] [path...]  format (or --check) files like Prettier, with the project's configs
 bun check [path...]    type check with Bun's TypeScript 7 checker (tsconfig.json, @types)
 git <command>          init, status, add, commit, log, diff… (git help: all of them)
@@ -182,7 +182,7 @@ export function createShell(host: ShellHost) {
     const [{ tarballs, packuments, bytes }, store] = await Promise.all([pkgCacheInfo(), storeInfo()]);
     const mb = (n: number) => (n / 2 ** 20).toFixed(1);
     log("log", `${tarballs} tarballs, ${packuments} manifests, ${mb(bytes)} MB in browser storage`);
-    if (store.entries) log("log", `${store.entries} packages' large files unpacked, ${mb(store.bytes)} MB (read when a program needs them)`);
+    if (store.entries) log("log", `${store.entries} large package files, ${mb(store.bytes)} MB (unpacked on demand)`);
   }
 
   async function remove(names: string[]) {

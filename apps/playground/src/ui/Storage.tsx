@@ -187,7 +187,7 @@ function StorageForm() {
         <li class="storage-row">
           <span class="storage-name">
             Transpiled modules
-            <small>large files, kept so a reload is faster · {caches() ? size(caches()!.transpiled) : "…"}</small>
+            <small>speeds up reloads · {caches() ? size(caches()!.transpiled) : "…"}</small>
           </span>
           <Button disabled={busy() || !caches()?.transpiled} onClick={() => void act(clearTranspileCache)}>
             Clear
@@ -207,8 +207,8 @@ function StorageForm() {
         }
       >
         <p class="storage-warning">
-          Deletes every saved project (but those open in other tabs) and both caches, then reloads. Edits you haven't
-          downloaded as a zip or shared are gone for good.
+          Deletes all saved projects (except ones open in other tabs) and both caches, then reloads. Edits you haven't
+          shared or downloaded are lost.
         </p>
         <DialogActions>
           <Button onClick={() => setConfirming(null)}>Cancel</Button>

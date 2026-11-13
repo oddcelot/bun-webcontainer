@@ -125,7 +125,7 @@ async function loadProject(url: URL, into: VFS): Promise<Loaded> {
       shared = true;
       loaded = true;
     } catch (e) {
-      log("error", "[share] this link is damaged or incomplete; opening the demo");
+      log("error", "[share] this link is broken. Opening the demo instead.");
       into.clear();
     }
   }
@@ -196,7 +196,7 @@ async function cloneInto(into: VFS, remote: string): Promise<boolean> {
     });
     for (const line of r.stderr.split("\n").filter((l) => l && !l.startsWith("Cloning into"))) log(r.exitCode ? "error" : "log", `[git] ${line}`);
     if (r.exitCode) return false;
-    log("sys", `[git] cloned ${gitName(remote)} (the last ${CLONE_DEPTH} commits; git fetch --depth <n> brings more)`);
+    log("sys", `[git] cloned ${gitName(remote)}, last ${CLONE_DEPTH} commits. Run git fetch --depth <n> for more.`);
     return true;
   } catch (e) {
     log("error", `[git] ${e instanceof Error ? e.message : e}`);
@@ -290,8 +290,8 @@ function applyConfig(): ProjectConfig {
   else if (config.preview?.path) previews.start(config.preview.path);
   for (const need of config.requires ?? []) {
     if (need === "cross-origin-isolation" && !crossOriginIsolated)
-      log("warn", "[config] this project needs cross-origin isolation (SharedArrayBuffer), which this page doesn't have: open it on runbun.dev");
-    if (need === "local-bun" && pg.runtime.current() !== "local") log("warn", "[config] this project needs Bun on this machine: press Local Bun to run it there");
+      log("warn", "[config] this project needs cross-origin isolation, which this page doesn't have. Open it on runbun.dev.");
+    if (need === "local-bun" && pg.runtime.current() !== "local") log("warn", "[config] this project needs Bun on this machine. Press Local Bun.");
   }
   return config;
 }
@@ -373,7 +373,7 @@ async function openDirectory(dir?: FileSystemDirectoryHandle) {
   // After the load: the files just read are on disk already.
   stopSaving = mirror(dir, vfs, log, { all: false, tag: "[folder]", where: "folder", watch: true });
   workspace.reloadTree();
-  log("sys", `[open] ${dir.name}: ${files.length} files; changes are saved to the folder (node_modules stays in the browser)`);
+  log("sys", `[open] ${dir.name}: ${files.length} files. Edits save to the folder; node_modules stays in the browser.`);
   applyConfig();
   // A reload opens it again (see the end of startup).
   void rememberFolder(dir);
@@ -399,7 +399,7 @@ async function openZip(file: File) {
   try {
     entries = importZip(new Uint8Array(await file.arrayBuffer()));
   } catch (e) {
-    return log("error", `[open] ${file.name} isn't a zip file this can read: ${e}`);
+    return log("error", `[open] couldn't read ${file.name} as a zip: ${e}`);
   }
   if (!entries.length) return log("error", `[open] ${file.name} has no files`);
   await session.started;
@@ -418,7 +418,7 @@ const folder = "showDirectoryPicker" in window ? await lastFolder() : undefined;
 if (folder) session.setProject({ ...session.project(), reopen: folder.name });
 if (params.has("folder")) {
   if (folder && (await canWrite(folder, false))) await openDirectory(folder);
-  else log("sys", `[open] pick "Reopen ${folder?.name ?? params.get("folder")}" in the project menu to keep working on the folder`);
+  else log("sys", `[open] to keep editing the folder, use "Reopen ${folder?.name ?? params.get("folder")}" in the project menu.`);
 }
 
 /**
@@ -428,8 +428,8 @@ if (params.has("folder")) {
 async function begin(config: ProjectConfig) {
   if (pg.canRun && from !== undefined) {
     // Someone else's code (a share link, a GitHub repo) loads into the editor but runs only on the reader's Run click.
-    log("sys", `[open] ${from} comes from a link: review it, then press Run`);
-    session.setStatus({ state: "idle", text: "From a link: review it, then press Run" });
+    log("sys", `[open] ${from} is from a link. Review it, then press Run.`);
+    session.setStatus({ state: "idle", text: "Opened from a link. Review, then Run." });
   } else if (pg.canRun) {
     // The runner installs before each run itself.
     if (pg.missingDeps() && pg.runtime.current() === "browser") await install();

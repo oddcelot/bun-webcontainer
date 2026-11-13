@@ -110,7 +110,7 @@ async function put(key: string, url: string, parts: Uint8Array[], size: number) 
       await send(spare.slice(0));
     } catch (second) {
       memory.set(key, new Uint8Array(spare));
-      problem(`could not store package files (${second instanceof Error ? second.message : second}); they stay in the editor's memory, and a program reading them may fail`);
+      problem(`couldn't store package files (${second instanceof Error ? second.message : second}). They stay in memory, so reading them may fail.`);
     }
   }
 }

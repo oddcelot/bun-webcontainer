@@ -314,8 +314,8 @@ export function EditorPane() {
 export function AutosaveTip(props: { on: boolean }) {
   const save = () => <Keys keys={keysFor("save").map(chordKeys)} />;
   return props.on ? (
-    <span>Edits save shortly after you stop typing. Click to save with {save()} instead.</span>
+    <span>Saving as you type. Click to save with {save()} only.</span>
   ) : (
-    <span>Edits save with {save()} (and before Run). Click to save as you type.</span>
+    <span>Saving with {save()} and on Run. Click to save as you type.</span>
   );
 }

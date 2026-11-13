@@ -125,8 +125,8 @@ export function iframeSnippet(f: Form, list: Attr[], playground: string): string
   const map = new Map(list);
   let height = map.get("height") || HEIGHTS[f.mode];
   const notes: string[] = [];
-  if (height === "auto") (height = "360px"), notes.push("An iframe doesn't fit its content: listen for the resize event, or set a height.");
-  if (map.has("vars")) notes.push("vars is element-only: send it over postMessage with setVars.");
+  if (height === "auto") (height = "360px"), notes.push("An iframe can't fit its content. Listen for the resize event or set a height.");
+  if (map.has("vars")) notes.push("vars only works on the element. Send it with postMessage and setVars.");
   const title = map.get("title");
   const src = `${playground}embed${params.size ? "?" + params : ""}${file ? shareHash({ [file.path]: file.text }) : ""}`;
   return [

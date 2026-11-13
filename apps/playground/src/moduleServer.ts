@@ -134,7 +134,7 @@ function hoistMetaRequire(vfs: VFS, code: string, path: string, dir: string, url
   if (id in t) return "__cjs" in t[id] ? t[id].__cjs : t[id];
   if ("bun:" + id in b) return b["bun:" + id];
   if (globalThis.__cjsRequire) return globalThis.__cjsRequire(id, ${JSON.stringify("/" + path)});
-  throw new Error("import.meta.require: cannot require " + JSON.stringify(id) + " (only literal specifiers of installed packages or built-ins are supported)");
+  throw new Error("Can't require " + JSON.stringify(id) + ". Only installed packages and built-ins work, with a literal name.");
 })({ ${table} }, globalThis.__nodeBuiltins);`.replace(/\n\s*/g, " ") + code.replace(/\bimport\.meta\.require\b/g, "__metaRequire");
 }
 

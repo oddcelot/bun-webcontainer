@@ -153,11 +153,11 @@ export async function gunzip(bytes: Uint8Array): Promise<Uint8Array> {
  */
 export async function installFromBunLock(vfs: VFS, lockText: string, log: Log): Promise<number> {
   const lock = parseBunLock(lockText);
-  if (lock.lockfileVersion > 2) log("error", `bun.lock: lockfileVersion ${lock.lockfileVersion} is newer than this installer knows`);
+  if (lock.lockfileVersion > 2) log("error", `bun.lock: lockfileVersion ${lock.lockfileVersion} isn't supported yet`);
 
   const pkgText = vfs.readText("package.json");
   const stale = pkgText ? staleInLock(lock, JSON.parse(pkgText)) : [];
-  if (stale.length) log("error", `bun.lock is out of date with package.json (${stale.join(", ")}); installing what the lockfile says`);
+  if (stale.length) log("error", `bun.lock doesn't match package.json (${stale.join(", ")}). Installing the locked versions.`);
 
   // Like Bun, only optional dependencies are dropped for a platform mismatch; a required one is still installed.
   const optional = new Set<string>();

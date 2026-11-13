@@ -317,7 +317,7 @@ const TOOLS: [Feature, string][] = [
   ["format", "Formatting"],
   ["git", "Git"],
   ["watch", "Restart on save"],
-  ["autosave", "Auto-save switch"],
+  ["autosave", "Auto-save"],
 ];
 
 /** The ⋯ menu: panes and tools to turn on or off (what the author didn't lock), and actions. */

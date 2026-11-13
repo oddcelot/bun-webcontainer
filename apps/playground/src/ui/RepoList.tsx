@@ -33,7 +33,7 @@ export function RepoList(props: { onPick: (name: string) => void }) {
           when={account()}
           fallback={
             <Show when={account() === null}>
-              <p class="hint">Sign in with GitHub to pick from your repositories and clone private ones. You choose which repositories runbun.dev may use.</p>
+              <p class="hint">Sign in to pick from your repositories and clone private ones.</p>
               <Button
                 onClick={async () => {
                   setProblem(await signIn());
@@ -76,7 +76,7 @@ export function RepoList(props: { onPick: (name: string) => void }) {
                     <ul aria-label="Your repositories">
                       <For
                         each={shown()}
-                        fallback={<li class="hint">{query() ? "No repository matches." : "None yet: give runbun.dev access to some on GitHub."}</li>}
+                        fallback={<li class="hint">{query() ? "No repository matches." : "No repositories yet. Grant runbun.dev access on GitHub."}</li>}
                       >
                         {(repo) => (
                           <li>

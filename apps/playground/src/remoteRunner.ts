@@ -80,7 +80,7 @@ export class RemoteRunner extends Runner {
     await this.stop();
     if (isShellCommand(entry, args)) {
       // The runner takes a file to run; a script line it would have to run through a shell of its own.
-      this.out("error", `[local] only "bun <file>" scripts and installed packages' bins run with local Bun: "${args[1]}"`);
+      this.out("error", `[local] Local Bun runs only "bun <file>" and installed bins, not "${args[1]}".`);
       this.exitCode = 1;
       return;
     }

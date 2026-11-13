@@ -189,7 +189,7 @@ function require(id) {
   const required = { ${table} };
   if (!(id in required)) {
     if (globalThis.__cjsRequire) return globalThis.__cjsRequire(id, ${file});
-    throw Object.assign(new Error("Cannot find module " + JSON.stringify(id) + " from ${path} (only literal require() calls of installed modules are supported)"), { code: "MODULE_NOT_FOUND" });
+    throw Object.assign(new Error("Cannot find module " + JSON.stringify(id) + " from ${path}. Only literal require() of installed modules works here."), { code: "MODULE_NOT_FOUND" });
   }
   const ns = required[id];
   return "__cjsModule" in ns ? ns.__cjsModule().exports : "__cjs" in ns ? ns.__cjs : ns;

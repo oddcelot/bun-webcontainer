@@ -32,23 +32,23 @@ function moduleWorkers(): boolean {
 export function checkSupport(): Check[] {
   const wasm = typeof WebAssembly === "object";
   return [
-    { name: "WebAssembly", ok: wasm, why: "Bun's transpiler, resolver and bundler run as WebAssembly." },
+    { name: "WebAssembly", ok: wasm, why: "Needs WebAssembly." },
     {
       name: "WebAssembly Memory64",
       ok: wasm && memory64(),
-      why: "Bun's crates are compiled to wasm64 (64-bit memory). Chrome 133+ and Firefox 134+ support it.",
+      why: "Needs WebAssembly Memory64 (Chrome 133+, Firefox 134+).",
     },
     {
       name: "Secure context",
       ok: window.isSecureContext,
-      why: "Service workers only run on https:// or localhost.",
+      why: "Needs https:// or localhost.",
     },
     {
       name: "Service workers",
       ok: "serviceWorker" in navigator,
-      why: "A service worker serves your modules and the Bun.serve preview. Private windows may disable it.",
+      why: "Needs service workers. Private windows may block them.",
     },
-    { name: "Module workers", ok: moduleWorkers(), why: "Your program runs in a module Web Worker." },
+    { name: "Module workers", ok: moduleWorkers(), why: "Needs module Web Workers." },
   ];
 }
 
@@ -58,7 +58,7 @@ export function engineHint(checks: Check[]): string {
   const ua = navigator.userAgent;
   const webkit = /AppleWebKit/.test(ua) && !/Chrome|Chromium|Edg\//.test(ua);
   if (/iPhone|iPad|iPod/.test(ua) || (webkit && navigator.maxTouchPoints > 1))
-    return "On iOS and iPadOS every browser uses Safari's engine (WebKit), which hasn't shipped Memory64 yet (Safari 27 lacks it). Try a desktop with Chrome or Firefox.";
-  if (webkit) return "Safari hasn't shipped Memory64 yet (Safari 27 lacks it; WebKit's development builds have it). Use Chrome 133+ or Firefox 134+.";
-  return "Update your browser: Chrome 133+ and Firefox 134+ support it.";
+    return "Every iOS and iPadOS browser uses Safari's engine, which has no WebAssembly Memory64 yet. Use Chrome or Firefox on a desktop.";
+  if (webkit) return "Safari has no WebAssembly Memory64 yet. Use Chrome 133+ or Firefox 134+.";
+  return "Update your browser. Chrome 133+ and Firefox 134+ support Memory64.";
 }
