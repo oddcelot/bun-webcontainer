@@ -60,7 +60,7 @@ export function tokensCss({ families = false } = {}): string {
 
 const v = (name: string) => `var(--${name})`;
 
-/** The preset. `families: true` adds every family's colors (the docs; the playground sets them at runtime). */
+/** The preset. `families: true` adds every family's colors, for a site with a family picker (the playground sets them at runtime; the docs have their own palette). */
 export function uiPreset(options: { families?: boolean } = {}) {
   return {
     name: "bun-playground-ui",

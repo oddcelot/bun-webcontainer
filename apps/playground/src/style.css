@@ -138,13 +138,13 @@ html[data-view="opening"] {
   font: 17px/1.6 var(--font-ui);
   /* The page's own cursors (landing-art.ts): an arrow, and a hand over what can be clicked. Twice: the plain picture
    * for a browser without image-set() in `cursor`, then the sharp one for 2x screens. The numbers are the hot spot. */
-  cursor: url("./landing/art/cursor.png") 2 2, auto;
-  cursor: image-set(url("./landing/art/cursor.png") 1x, url("./landing/art/cursor@2x.png") 2x) 2 2, auto;
+  cursor: url("@runbun/ui/assets/cursor.png") 2 2, auto;
+  cursor: image-set(url("@runbun/ui/assets/cursor.png") 1x, url("@runbun/ui/assets/cursor@2x.png") 2x) 2 2, auto;
 
   a,
   button {
-    cursor: url("./landing/art/pointer.png") 11 2, pointer;
-    cursor: image-set(url("./landing/art/pointer.png") 1x, url("./landing/art/pointer@2x.png") 2x) 11 2, pointer;
+    cursor: url("@runbun/ui/assets/pointer.png") 11 2, pointer;
+    cursor: image-set(url("@runbun/ui/assets/pointer.png") 1x, url("@runbun/ui/assets/pointer@2x.png") 2x) 11 2, pointer;
   }
 
   @media (width < 640px) {
@@ -333,7 +333,7 @@ html[data-view="opening"] {
           content: "";
           width: calc(10 * var(--px));
           height: calc(10 * var(--px));
-          background: url("./landing/art/moon.png") 0 0 / 100% 100% no-repeat;
+          background: url("@runbun/ui/assets/moon.png") 0 0 / 100% 100% no-repeat;
           image-rendering: pixelated;
         }
 
@@ -1041,7 +1041,7 @@ html[data-view="opening"] {
     .scheme::before {
       width: calc(13 * var(--px));
       height: calc(13 * var(--px));
-      background-image: url("./landing/art/sun.png");
+      background-image: url("@runbun/ui/assets/sun.png");
     }
 
     /* The screen lights the counter around it. */

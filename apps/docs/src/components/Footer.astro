@@ -41,6 +41,13 @@ import { PLAYGROUND_URL } from "../../site-urls.ts";
   <p class="note">Sends the rating and this page's address; nothing else unless you write it. <a href="/privacy/#feedback">Privacy</a></p>
 </section>
 
+<!--
+  Every embed on the page (runnable code blocks, <Playground>) in the kitchen's colors: styles/theme.css's, as the embed's
+  own variables. And as tall as its content: before Run a block is its code and no taller (a preview or console block
+  would hold its running height open under the code), and grows to its running height once started.
+-->
+<bun-playground-defaults family="rose-pine-dawn" height="auto" vars='{"base":{"--radius":"0"},"light":{"--bg":"#fffaf0","--canvas":"#f6e4c4","--panel":"#f6e4c4","--fg":"#5b3a2e","--muted":"#96735c","--border":"#d9bf95","--accent":"#c93f72","--error":"#cf4a3a","--ok":"#3f8a3d"},"dark":{"--bg":"#3b3964","--canvas":"#262443","--panel":"#262443","--fg":"#f4e8d4","--muted":"#b7adcf","--border":"#4a4778","--accent":"#ff86b4","--error":"#ff7a90","--ok":"#8fd67a"}}'></bun-playground-defaults>
+
 <Default />
 
 <p class="disclaimer not-content">runbun is an independent project, not affiliated with or endorsed by Oven or Bun.</p>
@@ -120,22 +127,36 @@ import { PLAYGROUND_URL } from "../../site-urls.ts";
     font-weight: 600;
     color: var(--sl-color-white);
   }
+  /* Keys, as the landing page's buttons are (styles/theme.css); the answer given stays pressed, in pink. */
   button {
+    --_frame:
+      0 calc(-1 * var(--px)) 0 0 var(--ink),
+      0 var(--px) 0 0 var(--ink),
+      calc(-1 * var(--px)) 0 0 0 var(--ink),
+      var(--px) 0 0 0 var(--ink);
+
     display: inline-flex;
     align-items: center;
     gap: 0.375rem;
     height: 2rem;
+    margin: var(--px) var(--px) calc(2 * var(--px));
     padding: 0 0.75rem;
-    border: 1px solid var(--control-border, var(--sl-color-gray-5));
-    border-radius: var(--inner-radius, 6px);
-    background: var(--control, transparent);
-    color: inherit;
-    font: inherit;
-    cursor: pointer;
+    border: 0;
+    border-radius: 0;
+    background: var(--code-bg);
+    box-shadow:
+      var(--_frame),
+      var(--px) calc(2 * var(--px)) 0 0 var(--ink);
+    color: var(--fg);
+    font: 600 1rem/1.2 var(--font-pixel);
   }
   button:hover:not(:disabled) {
-    background: var(--control-hover, var(--sl-color-gray-6));
-    color: var(--sl-color-white);
+    background: var(--key-hover);
+  }
+  button:active:not(:disabled),
+  button[aria-pressed="true"] {
+    translate: 0 calc(2 * var(--px));
+    box-shadow: var(--_frame);
   }
   button:disabled {
     cursor: default;
@@ -143,8 +164,8 @@ import { PLAYGROUND_URL } from "../../site-urls.ts";
   }
   button[aria-pressed="true"] {
     opacity: 1;
-    border-color: var(--sl-color-accent);
-    color: var(--sl-color-white);
+    background: var(--brand);
+    color: var(--on-brand);
   }
   form {
     display: grid;
@@ -160,9 +181,9 @@ import { PLAYGROUND_URL } from "../../site-urls.ts";
     box-sizing: border-box;
     width: 100%;
     padding: 0.375rem 0.5rem;
-    border: 1px solid var(--control-border, var(--sl-color-gray-5));
-    border-radius: var(--inner-radius, 6px);
-    background: var(--control, var(--sl-color-black));
+    border: var(--px) solid var(--ink);
+    border-radius: 0;
+    background: var(--code-bg);
     color: var(--sl-color-white);
     font: inherit;
   }
@@ -175,7 +196,6 @@ import { PLAYGROUND_URL } from "../../site-urls.ts";
   form button {
     justify-self: start;
     margin-top: 0.5rem;
-    border-color: var(--sl-color-accent);
   }
   .done {
     display: flex;

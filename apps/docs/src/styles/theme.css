@@ -1,8 +1,70 @@
 /*
- * Starlight in the playground's look: its color scale read from the shared tokens (@runbun/ui, through UnoCSS),
- * which follow the reader's theme family and scheme. Starlight keeps its own CSS in cascade layers, so these unlayered
- * rules win in both schemes.
+ * Starlight in the landing page's kitchen (apps/playground/src/style.css #landing): its palette by night (Starlight's
+ * dark scheme, the default) and by day (`data-theme="light"`), in place of the shared tokens' colors (@runbun/ui,
+ * through UnoCSS; `html:root` outranks its `:root` rules). The header's moon or sun switches between the two
+ * (components/ThemeSelect.astro). --ink is the outline of every pixel frame, --shade the shadow a frame casts.
  */
+html:root {
+  --bg: #2f2d50;
+  --panel: #262443;
+  --fg: #f4e8d4;
+  --muted: #b7adcf;
+  --border: #4a4778;
+  --accent: #ff86b4;
+  --error: #ff7a90;
+  --warn: #f3c45e;
+  --info: #9ccfd8;
+  --ok: #8fd67a;
+  --brand: #ff86b4;
+  --on-brand: #3d1f38;
+  --ink: #191428;
+  --shade: #1d1b36;
+  /* A card of the kitchen's, lighter than the page: behind code (in place of the code theme's own background), and a
+   * key's face (--key-hover under the pointer). */
+  --code-bg: #3b3964;
+  --key-hover: #4c4a7e;
+  --brand-hover: #ffa3c6;
+  /* The landing page's scrollbars. */
+  scrollbar-color: #5a578c #2f2d50;
+  --retro-ink: var(--ink);
+  --retro-shade: var(--shade);
+  --px: 3px;
+  /* The kitchen's cursors (packages/ui/assets, drawn by the playground's scripts/landing-art.ts): an arrow, and a hand
+   * over what can be clicked. Twice: the plain picture for a browser without image-set() in `cursor`, then the sharp
+   * one for 2x screens. The numbers are the hot spot. */
+  cursor: url("@runbun/ui/assets/cursor.png") 2 2, auto;
+  cursor: image-set(url("@runbun/ui/assets/cursor.png") 1x, url("@runbun/ui/assets/cursor@2x.png") 2x) 2 2, auto;
+
+  :is(a, button, summary, label[for], select, [role="button"], [role="tab"]) {
+    cursor: url("@runbun/ui/assets/pointer.png") 11 2, pointer;
+    cursor: image-set(url("@runbun/ui/assets/pointer.png") 1x, url("@runbun/ui/assets/pointer@2x.png") 2x) 11 2, pointer;
+  }
+}
+html:root[data-theme="light"] {
+  --bg: #fff6e5;
+  --panel: #f6e4c4;
+  --fg: #5b3a2e;
+  --muted: #96735c;
+  --border: #d9bf95;
+  --accent: #c93f72;
+  --error: #cf4a3a;
+  --warn: #e3a93f;
+  --info: #2f7d8c;
+  --ok: #3f8a3d;
+  --on-brand: #5b3a2e;
+  --ink: #5b3a2e;
+  --shade: #ecd2a6;
+  --code-bg: #fffaf0;
+  --key-hover: #fff;
+  scrollbar-color: #d9bf95 #fdeed3;
+}
+/* @runbun/astro sets its code background per theme under :root[data-theme]; this outranks it. */
+html:root[data-theme] {
+  --hls-background: var(--code-bg);
+}
+
+/* Starlight's color scale, read from those tokens. It keeps its own CSS in cascade layers, so these unlayered rules win
+ * in both schemes. */
 :root {
   --sl-color-white: var(--fg);
   --sl-color-gray-1: color-mix(in srgb, var(--fg) 90%, var(--bg));
@@ -22,14 +84,7 @@
   --sl-color-hairline-shade: var(--border);
 }
 
-/*
- * Pierre's light accents are near-black or grey, which can't mark a link, so Pierre families take their info blue in
- * the light scheme. `html:root` outranks the family rules (`:root[data-family][data-theme]`).
- */
-html:root[data-theme="light"]:is(:not([data-family]), [data-family^="pierre-"]) {
-  --accent: var(--info);
-}
-/* Link text uses the darker accent-high in the light scheme: a mid accent (Pierre's blue too) is under 4.5:1 on white. */
+/* Link text uses the darker accent-high in the light scheme: the mid accent is under 4.5:1 on the cream. */
 :root[data-theme="light"] {
   --sl-color-gray-7: color-mix(in srgb, var(--panel) 50%, var(--bg));
   --sl-color-accent-low: color-mix(in srgb, var(--accent) 14%, var(--bg));
@@ -58,11 +113,92 @@ html:root[data-theme="light"]:is(:not([data-family]), [data-family^="pierre-"]) 
   }
 }
 
-/* Controls take the playground's 6px corners; cards its 12px panes. */
+/*
+ * A key, as the landing page's buttons are (apps/playground/src/style.css #landing .retro-button): a card's face in the
+ * pixel frame, on a shadow it sinks into when pressed, labelled in the pixel face. The sidebar's sections
+ * (components/Sidebar.astro) and the page rating's buttons (components/Footer.astro) are the same key, in their own
+ * scoped styles. "Open playground" is the pink one.
+ */
+.open-playground,
 site-search button[data-open-modal],
-starlight-theme-select select,
 .sl-link-button {
-  border-radius: 6px;
+  --_frame:
+    0 calc(-1 * var(--px)) 0 0 var(--ink),
+    0 var(--px) 0 0 var(--ink),
+    calc(-1 * var(--px)) 0 0 0 var(--ink),
+    var(--px) 0 0 0 var(--ink);
+
+  border: 0;
+  border-radius: 0;
+  background: var(--code-bg);
+  box-shadow:
+    var(--_frame),
+    var(--px) calc(2 * var(--px)) 0 0 var(--ink);
+  color: var(--fg);
+  font: 600 1rem/1.2 var(--font-pixel);
+
+  &:hover,
+  &:focus-visible {
+    background: var(--key-hover);
+    color: var(--fg);
+  }
+
+  &:active {
+    translate: 0 calc(2 * var(--px));
+    box-shadow: var(--_frame);
+  }
+}
+.open-playground,
+.sl-link-button.primary {
+  background: var(--brand);
+  color: var(--on-brand);
+
+  &:hover,
+  &:focus-visible {
+    background: var(--brand-hover);
+    color: var(--on-brand);
+  }
+}
+/* The search key's shortcut hint, flat on its face. */
+site-search button[data-open-modal] kbd {
+  border-radius: 0;
+  background: var(--panel);
+  font-family: var(--font-mono);
+  font-weight: 400;
+}
+
+/* The scheme switch (components/ThemeSelect.astro): the moon by day, the sun by night, as on the landing page. */
+.scheme-switch {
+  display: grid;
+  place-items: center;
+  width: 39px;
+  height: 39px;
+  padding: 0;
+  border: 0;
+  background: none;
+
+  &::before {
+    content: "";
+    width: 39px;
+    height: 39px;
+    background: url("@runbun/ui/assets/sun.png") 0 0 / 100% 100% no-repeat;
+    image-rendering: pixelated;
+  }
+
+  :root[data-theme="light"] &::before {
+    width: 30px;
+    height: 30px;
+    background-image: url("@runbun/ui/assets/moon.png");
+  }
+
+  &:hover::before {
+    translate: 0 -3px;
+  }
+
+  &:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 3px;
+  }
 }
 
 /* The site title in plain text, like the playground's header. */
@@ -72,103 +208,26 @@ starlight-theme-select select,
 
 /* "Open playground" in the header (components/SocialIcons.astro): a square pixel button at the header's control height. */
 .open-playground {
-  --_frame:
-    0 calc(-1 * var(--px)) 0 0 var(--fg),
-    0 var(--px) 0 0 var(--fg),
-    calc(-1 * var(--px)) 0 0 0 var(--fg),
-    var(--px) 0 0 0 var(--fg);
-
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: var(--control-height);
-  margin: 0 var(--px);
-  padding: 0 10px;
-  border: 0;
-  border-radius: 0;
-  background: var(--brand);
-  box-shadow: var(--_frame);
-  color: var(--on-brand);
-  font: 0.5rem/1 var(--font-pixel-label);
+  height: 32px;
+  margin: 0 var(--px) calc(2 * var(--px));
+  padding: 0 12px;
   text-decoration: none;
-  text-transform: uppercase;
   white-space: nowrap;
-
-  &:hover,
-  &:focus-visible {
-    background: color-mix(in srgb, var(--brand) 80%, #fff);
-    color: var(--on-brand);
-  }
-
-  &:active {
-    translate: 0 var(--px);
-  }
 }
 
-/* The CRT that "Open playground" zooms into (src/crt-launch.ts): a dark monitor over a dimmed page. */
-.crt-launch {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  overflow: hidden;
-
-  .crt-launch-backdrop {
-    position: absolute;
-    inset: 0;
-    background: #000;
-    opacity: 0;
-  }
-
-  .crt-launch-monitor {
-    position: absolute;
-    padding: 12px 12px 24px;
-    border-radius: 0;
-    background: var(--panel);
-    /* The pixel frame and offset shadow, as the retro layer draws them. */
-    box-shadow:
-      0 calc(-1 * var(--px)) 0 0 var(--fg),
-      0 var(--px) 0 0 var(--fg),
-      calc(-1 * var(--px)) 0 0 0 var(--fg),
-      var(--px) 0 0 0 var(--fg),
-      calc(3 * var(--px)) calc(3 * var(--px)) 0 0 color-mix(in srgb, var(--brand) 70%, var(--bg));
-    will-change: transform;
-
-    /* The power light. */
-    &::after {
-      content: "";
-      position: absolute;
-      right: 16px;
-      bottom: 9px;
-      width: 6px;
-      height: 6px;
-      background: var(--ok);
-    }
-  }
-
-  .crt-launch-screen {
-    aspect-ratio: var(--crt-aspect, 16 / 10);
-    overflow: hidden;
-    border-radius: 0;
-    background: #000;
-    box-shadow: 0 0 0 var(--px) var(--fg);
-
-    canvas {
-      display: block;
-      width: 100%;
-      height: 100%;
-    }
-  }
-}
-
-/* A runnable code block's poster sits on the page, and its Run button is the same control. */
+/* A runnable code block's poster is a card like the code blocks, and its Run button the pink key, as on the landing page. */
 bun-playground {
-  --poster-bg: var(--bg);
+  --poster-bg: var(--code-bg);
   --poster-fg: var(--fg);
-  --play-bg: var(--control);
-  --play-bg-hover: var(--control-hover);
-  --play-fg: var(--fg);
-  --play-border: var(--control-border);
+  --play-bg: var(--brand);
+  --play-bg-hover: var(--brand-hover);
+  --play-fg: var(--on-brand);
+  --play-border: var(--ink);
   --play-radius: 0;
+  --play-font: 600 1rem var(--font-pixel);
 }
 
 /* Status icons on the compatibility pages (remark-status.ts): the playground's lucide icons in the status colors. */
@@ -234,7 +293,7 @@ bun-playground {
 
 /*
  * The pixel frame (a notched border from four 0-blur shadows) and its offset shadow, on Starlight markup we can't give
- * retro-* classes. Set per element so --fg and --accent resolve where they are used, not on :root.
+ * retro-* classes.
  */
 .expressive-code .frame,
 .runbun-code:not(.runbun-tabs > *, bun-playground *),
@@ -245,11 +304,11 @@ bun-playground,
 .card,
 .pagination-links a {
   --_frame:
-    0 calc(-1 * var(--px)) 0 0 var(--fg),
-    0 var(--px) 0 0 var(--fg),
-    calc(-1 * var(--px)) 0 0 0 var(--fg),
-    var(--px) 0 0 0 var(--fg);
-  --_shade: color-mix(in srgb, var(--brand) 70%, var(--bg));
+    0 calc(-1 * var(--px)) 0 0 var(--ink),
+    0 var(--px) 0 0 var(--ink),
+    calc(-1 * var(--px)) 0 0 0 var(--ink),
+    var(--px) 0 0 0 var(--ink);
+  --_shade: var(--shade);
   --_offset: calc(3 * var(--px)) calc(3 * var(--px)) 0 0 var(--_shade);
 
   border-radius: 0;
@@ -392,7 +451,7 @@ h1,
   .sl-link-card:hover,
   .card:hover,
   .pagination-links a:hover,
-  .open-playground:active {
+  :is(.open-playground, site-search button[data-open-modal], .sl-link-button):active {
     translate: none;
   }
 }

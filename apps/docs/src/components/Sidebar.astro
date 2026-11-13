@@ -1,6 +1,6 @@
 ---
 // The sidebar in two parts, so it isn't one long list: the top-level sections (astro.config.ts's sidebar groups, and
-// Privacy) as pixel game buttons, then only the current section's pages. A section opens on its first page.
+// Privacy) as keys, then only the current section's pages. A section opens on its first page.
 import MobileMenuFooter from "virtual:starlight/components/MobileMenuFooter";
 import SidebarPersister from "@astrojs/starlight/components/SidebarPersister.astro";
 import SidebarSublist from "@astrojs/starlight/components/SidebarSublist.astro";
@@ -57,109 +57,56 @@ const current = sidebar.find(hasCurrent) ?? sidebar[0];
 
 <style>
   /*
-   * Pixel game buttons: corners stepped in --step pixels (clip-path), an outline (.button's own background) around the
-   * fill (::before, the same shape inset by one step), glints top left and bottom right (::after) and a hard shadow (the
-   * link's drop-shadow, outside the clip). Quiet in the theme's control colors; the current section is Bun's pink,
-   * pressed into its shadow.
+   * The sections as keys, like the landing page's buttons (styles/theme.css): a card's face in the pixel frame, on a
+   * shadow; the current section is pink and pressed into its shadow.
    */
   .sections {
-    --step: 3px;
-    --ink: #15151f;
-    --pill: polygon(
-      0 calc(2 * var(--step)),
-      var(--step) calc(2 * var(--step)),
-      var(--step) var(--step),
-      calc(2 * var(--step)) var(--step),
-      calc(2 * var(--step)) 0,
-      calc(100% - 2 * var(--step)) 0,
-      calc(100% - 2 * var(--step)) var(--step),
-      calc(100% - var(--step)) var(--step),
-      calc(100% - var(--step)) calc(2 * var(--step)),
-      100% calc(2 * var(--step)),
-      100% calc(100% - 2 * var(--step)),
-      calc(100% - var(--step)) calc(100% - 2 * var(--step)),
-      calc(100% - var(--step)) calc(100% - var(--step)),
-      calc(100% - 2 * var(--step)) calc(100% - var(--step)),
-      calc(100% - 2 * var(--step)) 100%,
-      calc(2 * var(--step)) 100%,
-      calc(2 * var(--step)) calc(100% - var(--step)),
-      var(--step) calc(100% - var(--step)),
-      var(--step) calc(100% - 2 * var(--step)),
-      0 calc(100% - 2 * var(--step))
-    );
+    --_frame:
+      0 calc(-1 * var(--px)) 0 0 var(--ink),
+      0 var(--px) 0 0 var(--ink),
+      calc(-1 * var(--px)) 0 0 0 var(--ink),
+      var(--px) 0 0 0 var(--ink);
 
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    margin: 0 calc(2 * var(--step)) 1.5rem 0;
+    gap: calc(5 * var(--px));
+    margin: var(--px) calc(2 * var(--px)) 1.75rem var(--px);
 
     a {
-      --fill: var(--control);
-      --edge: color-mix(in srgb, var(--fg) 28%, var(--bg));
-      --glint: color-mix(in srgb, #fff 35%, transparent);
-
       display: block;
       color: var(--fg);
       text-decoration: none;
-      filter: drop-shadow(var(--step) var(--step) 0 var(--edge));
 
-      &:hover {
-        --fill: var(--control-hover);
+      &:hover .button {
+        background: var(--key-hover);
       }
 
       &:focus-visible {
-        outline: 2px solid var(--brand);
-        outline-offset: 4px;
+        outline: var(--px) solid var(--accent);
+        outline-offset: calc(2 * var(--px));
       }
 
-      /* Near-black outline and label on the pink, as in pixel game art; a dark pink edge on a dark page, where
-       * near-black would vanish into the sidebar. */
-      &[aria-current="true"] {
-        --fill: var(--brand);
-        --edge: var(--ink);
-        --glint: #fff;
+      &:active .button,
+      &[aria-current="true"] .button {
+        translate: 0 calc(2 * var(--px));
+        box-shadow: var(--_frame);
+      }
 
-        color: var(--ink);
-        filter: none;
-        translate: var(--step) var(--step);
+      &[aria-current="true"] .button {
+        background: var(--brand);
+        color: var(--on-brand);
       }
     }
 
     .button {
-      position: relative;
       display: flex;
       gap: 0.6rem;
       align-items: center;
-      padding: 4px 14px;
-      background: var(--edge);
-      clip-path: var(--pill);
-
-      &::before {
-        content: "";
-        position: absolute;
-        inset: var(--step);
-        background: var(--fill);
-        clip-path: var(--pill);
-      }
-
-      /* The glints: a dash and a dot top left, a dot and a dash bottom right. */
-      &::after {
-        content: "";
-        position: absolute;
-        inset: 0;
-        background:
-          linear-gradient(var(--glint), var(--glint)) calc(4 * var(--step)) calc(2 * var(--step)) / calc(5 * var(--step)) var(--step) no-repeat,
-          linear-gradient(var(--glint), var(--glint)) calc(10 * var(--step)) calc(2 * var(--step)) / var(--step) var(--step) no-repeat,
-          linear-gradient(var(--glint), var(--glint)) right calc(10 * var(--step)) bottom calc(2 * var(--step)) / var(--step) var(--step) no-repeat,
-          linear-gradient(var(--glint), var(--glint)) right calc(4 * var(--step)) bottom calc(2 * var(--step)) / calc(4 * var(--step)) var(--step) no-repeat;
-        opacity: 0.85;
-        pointer-events: none;
-      }
-
-      > * {
-        position: relative;
-        z-index: 1;
-      }
+      padding: 4px 12px;
+      background: var(--code-bg);
+      box-shadow:
+        var(--_frame),
+        var(--px) calc(2 * var(--px)) 0 0 var(--ink);
     }
 
     .face {
@@ -171,18 +118,12 @@ const current = sidebar.find(hasCurrent) ?? sidebar[0];
     }
 
     .label {
-      font: 0.5625rem/1.4 var(--font-pixel-label);
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
+      font: 600 1.0625rem/1.2 var(--font-pixel);
     }
   }
 
-  :global(:root:not([data-theme="light"])) .sections a[aria-current="true"] {
-    --edge: color-mix(in srgb, var(--brand) 40%, #000);
-  }
-
   @media (prefers-reduced-motion: reduce) {
-    .sections a[aria-current="true"] {
+    .sections a .button {
       translate: none;
     }
   }

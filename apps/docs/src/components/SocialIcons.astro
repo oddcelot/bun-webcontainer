@@ -1,20 +1,12 @@
 ---
-// Starlight's social links plus an "Open playground" button in the playground's control style (src/styles/theme.css).
-// A click zooms into a CRT showing the playground before it navigates (src/crt-launch.ts).
+// Starlight's social links plus an "Open playground" link, drawn as the pink key (src/styles/theme.css). `?open` takes a
+// first-time visitor into the playground itself, not to its landing page (apps/playground/index.html).
 import Default from "@astrojs/starlight/components/SocialIcons.astro";
 import { PLAYGROUND_URL } from "../../site-urls.ts";
 ---
 
 <Default />
-<a class="open-playground" href={PLAYGROUND_URL}>
+<a class="open-playground" href={`${PLAYGROUND_URL}?open`}>
   <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M7 4v16l13-8z" fill="currentColor" /></svg>
   Open playground
 </a>
-
-<script>
-  import { openPlayground } from "../crt-launch.ts";
-
-  for (const link of document.querySelectorAll<HTMLAnchorElement>("a.open-playground")) {
-    link.addEventListener("click", (event) => openPlayground(event, link));
-  }
-</script>
