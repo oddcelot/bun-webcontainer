@@ -20,6 +20,13 @@
         for (const [k, v] of Object.entries(JSON.parse(localStorage.getItem("theme-vars") || "{}"))) if (v) document.documentElement.style.setProperty(k, v);
       } catch {}
     </script>
+    <!-- The landing page's scheme (style.css #landing): what its switch last set (src/entry.ts), else the system's. -->
+    <script>
+      try {
+        const saved = localStorage.getItem("landing.scheme");
+        document.documentElement.dataset.scheme = saved === "light" || saved === "dark" ? saved : matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      } catch {}
+    </script>
     <!--
       Landing page or playground. runbun.dev/ opens on the landing page (#landing), which is what search engines index;
       its "Open the playground" button starts the playground in place (src/entry.ts). A link to a project (?example=,
@@ -182,31 +189,81 @@
     </div>
     <!-- The landing page: what search engines, link previews and first-time visitors see. Static HTML. -->
     <main id="landing">
-      <section class="hero">
-        <div class="intro">
-          <div class="brand">
-            <p><span class="retro-sprite big" aria-hidden="true"></span>runbun.dev</p>
-            <button type="button" class="crt" data-open-playground aria-label="Open the playground">
-              <span class="crt-case"><span class="crt-screen"><canvas></canvas></span></span>
-              <span class="crt-stand"></span>
-            </button>
-          </div>
-          <h1>Bun Playground: run Bun in your browser</h1>
-          <div class="retro-dialog lead">
-            <p>
+      <!-- The kitchen: a wall with a window and a shelf, and a counter of props (src/landing/art, scripts/landing-art.ts). -->
+      <section class="kitchen">
+        <div class="top">
+          <p class="brand"><span class="retro-sprite" aria-hidden="true"></span>runbun.dev</p>
+          <nav aria-label="Site">
+            <a href="https://docs.runbun.dev/">Docs</a>
+            <a href="https://docs.runbun.dev/compatibility/">Compatibility</a>
+            <a href="https://docs.runbun.dev/examples/">Examples</a>
+            <a href="https://docs.runbun.dev/guides/embedding/">Embed</a>
+            <button type="button" class="sound" aria-label="Sound" aria-pressed="true" hidden></button>
+            <button type="button" class="scheme" data-scheme-switch aria-label="Switch to night" hidden></button>
+          </nav>
+        </div>
+        <div class="wall">
+          <div class="intro">
+            <h1><span class="kicker">Bun Playground:</span> Run Bun in your browser</h1>
+            <p class="lead">
               Write TypeScript, install packages with <code>bun install</code> and serve apps with <code>Bun.serve</code>,
               all in a browser tab. Built from Bun's own Rust crates compiled to WebAssembly: no install, no server, no
               account.
             </p>
+            <p class="actions">
+              <button type="button" class="retro-button primary" data-open-playground>Open the playground</button>
+              <a class="retro-button" href="https://docs.runbun.dev/">Read the docs</a>
+            </p>
           </div>
-          <p class="actions">
-            <button type="button" class="retro-button primary" data-open-playground>Open the playground</button>
-            <a class="retro-button" href="https://docs.runbun.dev/">Read the docs</a>
+          <div class="decor">
+            <span class="window" aria-hidden="true"><canvas class="sky" width="104" height="64"></canvas></span>
+            <span class="art shelf" aria-hidden="true"></span>
+            <button type="button" class="art switch" data-scheme-switch aria-label="Switch to night" hidden></button>
+          </div>
+        </div>
+        <div class="counter">
+          <span class="steamer" aria-hidden="true"><span class="art steamer-back"></span><span class="retro-sprite big"></span><span class="art steamer-front"></span></span>
+          <span class="art rolling-pin" aria-hidden="true"></span>
+          <button type="button" class="crt" data-open-playground aria-label="Open the playground">
+            <span class="crt-case"><span class="crt-screen"><canvas></canvas></span></span>
+            <span class="crt-stand"></span>
+          </button>
+          <span class="art pot" aria-hidden="true"><span class="art steam"></span></span>
+          <span class="art crock" aria-hidden="true"></span>
+          <span class="art basil" aria-hidden="true"></span>
+        </div>
+      </section>
+      <section class="taste">
+        <div class="retro-dialog retro-shadow">
+          <h2><span class="retro-sprite" style="--x: 2; --y: 1" aria-hidden="true"></span>What it is</h2>
+          <p>
+            runbun.dev is a Bun playground that runs entirely in your browser tab. Write TypeScript, install packages from
+            npm with <code>bun install</code>, run tests with <code>bun test</code> and serve an app with
+            <code>Bun.serve</code>, without installing Bun, creating an account or sending your code to a server. Projects
+            are saved in your browser, and a share link carries a whole project, so a bug reproduction is one URL.
           </p>
         </div>
-        <div class="window retro-shadow">
-          <p class="window-title" aria-hidden="true"><span>index.ts</span><span>Live</span></p>
-          <bun-playground class="demo" load="click" mode="preview" height="380px" title="A Bun.serve app, running in this page">
+        <div class="live retro-shadow">
+          <p class="live-title" aria-hidden="true"><span>index.ts</span><span>Live</span></p>
+          <bun-playground
+            class="demo"
+            load="click"
+            mode="preview"
+            family="rose-pine-dawn"
+            features="-tabs"
+            vars='{"base":{"--radius":"0"},"light":{"--bg":"#fffaf0","--canvas":"#f6e4c4","--panel":"#f6e4c4","--fg":"#5b3a2e","--muted":"#96735c","--border":"#d9bf95","--accent":"#c93f72","--error":"#c93f72","--ok":"#3f8a3d"},"dark":{"--bg":"#3b3964","--canvas":"#2c2a4b","--panel":"#2c2a4b","--fg":"#f4e8d4","--muted":"#b7adcf","--border":"#191428","--accent":"#ff86b4","--error":"#ff86b4","--ok":"#8fd67a"}}'
+            height="380px"
+            title="A Bun.serve app, running in this page"
+          >
+          <!-- The same file, colored like the editor's theme, until Run starts the embed. Keep it in step with index.ts below. -->
+          <pre slot="poster"><code><span class="k">const</span> <span class="v">server</span> <span class="p">=</span> <span class="v">Bun</span><span class="p">.</span><span class="f">serve</span><span class="p">({</span>
+  routes<span class="p">:</span> <span class="p">{</span>
+    <span class="s">"/"</span><span class="p">:</span> <span class="p">()</span> <span class="k">=&gt;</span> <span class="k">new</span> <span class="f">Response</span><span class="p">(</span><span class="s">`Hello from Bun </span><span class="p">${</span><span class="v">Bun.version</span><span class="p">}</span><span class="s">!`</span><span class="p">),</span>
+    <span class="s">"/api/time"</span><span class="p">:</span> <span class="p">()</span> <span class="k">=&gt;</span>
+      <span class="v">Response</span><span class="p">.</span><span class="f">json</span><span class="p">({</span> now<span class="p">:</span> <span class="k">new</span> <span class="f">Date</span><span class="p">(),</span> bun<span class="p">:</span> <span class="v">Bun.version</span> <span class="p">}),</span>
+  <span class="p">},</span>
+<span class="p">});</span>
+console<span class="p">.</span><span class="f">log</span><span class="p">(</span><span class="s">`Listening on </span><span class="p">${</span><span class="v">server.url</span><span class="p">}</span><span class="s">`</span><span class="p">);</span></code></pre>
           <script type="text/plain" data-file="index.ts">
 const server = Bun.serve({
   routes: {
@@ -220,20 +277,45 @@ console.log(`Listening on ${server.url}`);
         </bun-playground>
         </div>
       </section>
-      <div class="party" aria-hidden="true">
-        <span class="retro-sprite" style="--x: 1; --y: 0"></span><span class="retro-sprite" style="--x: 4; --y: 1"></span><span class="retro-sprite" style="--x: 6; --y: 1"></span><span class="retro-sprite" style="--x: 1; --y: 6"></span><span class="retro-sprite" style="--x: 6; --y: 5"></span><span class="retro-sprite" style="--x: 0; --y: 7"></span>
-      </div>
-      <section class="about">
-        <div class="retro-dialog">
-          <h2><span class="retro-sprite" style="--x: 2; --y: 1" aria-hidden="true"></span>What it is</h2>
+      <section class="embed">
+        <div class="retro-dialog retro-shadow">
+          <h2><span class="retro-sprite" style="--x: 1; --y: 7" aria-hidden="true"></span>Embed it in tutorials and demos</h2>
           <p>
-            runbun.dev is a Bun playground that runs entirely in your browser tab. Write TypeScript, install packages from
-            npm with <code>bun install</code>, run tests with <code>bun test</code> and serve an app with
-            <code>Bun.serve</code>, without installing Bun, creating an account or sending your code to a server. Projects
-            are saved in your browser, and a share link carries a whole project, so a bug reproduction is one URL.
+            The live example above is an embed: one element in this page's HTML. Put the same thing in a tutorial, a blog
+            post, a talk or your library's docs, and readers run and edit the code right where they read about it. It runs
+            in their browser, so there is no backend to host.
+          </p>
+          <ul class="works">
+            <li><strong>Tutorials:</strong> give a lesson tests the reader doesn't see, and check their code against them; their edits are still there on the next visit</li>
+            <li><strong>Demos:</strong> show a <code>Bun.serve</code> app's preview, a console or the whole playground, started on a click</li>
+            <li><strong>Docs:</strong> <code>@runbun/astro</code> turns the code blocks of an Astro site into runnable ones</li>
+          </ul>
+          <p class="actions">
+            <a class="retro-button primary" href="https://docs.runbun.dev/guides/embedding/">Embedding guide</a>
+            <a class="retro-button" href="https://docs.runbun.dev/guides/configurator/">Build a snippet</a>
           </p>
         </div>
-        <div class="retro-dialog">
+        <div class="live retro-shadow snippet">
+          <p class="live-title" aria-hidden="true"><span>lesson.html</span><span>HTML</span></p>
+          <pre><code><span class="tag">&lt;script</span> <span class="attr">type</span>="module"
+  <span class="attr">src</span>="https://runbun.dev/embed.js"<span class="tag">&gt;&lt;/script&gt;</span>
+
+<span class="tag">&lt;bun-playground</span> <span class="attr">mode</span>="code" <span class="attr">persist</span>="lesson-1"<span class="tag">&gt;</span>
+  <span class="tag">&lt;script</span> <span class="attr">type</span>="text/plain" <span class="attr">data-file</span>="index.ts"<span class="tag">&gt;</span>
+    export const add = (a: number, b: number) =&gt; 0;
+  <span class="tag">&lt;/script&gt;</span>
+  <span class="note">&lt;!-- Your checks: the reader never sees them. --&gt;</span>
+  <span class="tag">&lt;script</span> <span class="attr">type</span>="text/plain" <span class="attr">data-file</span>="add.test.ts"
+    <span class="attr">data-generated</span><span class="tag">&gt;</span>
+    import { test, expect } from "bun:test";
+    import { add } from "./index";
+    test("adds", () =&gt; expect(add(1, 2)).toBe(3));
+  <span class="tag">&lt;/script&gt;</span>
+<span class="tag">&lt;/bun-playground&gt;</span></code></pre>
+        </div>
+      </section>
+      <section class="about">
+        <div class="retro-dialog retro-shadow">
           <h2><span class="retro-sprite" style="--x: 6; --y: 1" aria-hidden="true"></span>How it works</h2>
           <p>
             runbun.dev runs Bun client-side by compiling Bun's own Rust crates to 64-bit WebAssembly (wasm64): the
@@ -245,7 +327,7 @@ console.log(`Listening on ${server.url}`);
             hovers and type errors come from TypeScript 7's language service, also compiled to WebAssembly.
           </p>
         </div>
-        <div class="retro-dialog">
+        <div class="retro-dialog retro-shadow">
           <h2><span class="retro-sprite" style="--x: 4; --y: 1" aria-hidden="true"></span>What works</h2>
           <ul class="works">
             <li><code>Bun.serve</code> with routes, WebSockets and streaming, previewed in the page</li>
@@ -255,7 +337,17 @@ console.log(`Listening on ${server.url}`);
             <li>TypeScript and JSX without a build step, and many <code>node:*</code> built-ins (<code>fs</code>, <code>path</code>, <code>http</code>, <code>events</code>, <code>crypto</code>)</li>
           </ul>
         </div>
-        <div class="retro-dialog">
+        <div class="retro-dialog retro-shadow">
+          <h2><span class="retro-sprite" style="--x: 6; --y: 0" aria-hidden="true"></span>Examples</h2>
+          <ul class="examples">
+            <li><a href="./?example=elysia-demo">Elysia</a>, <a href="./?repo=honojs/starter/tree/main/templates/bun">Hono</a>, <a href="./?example=vite-demo">Vite</a> and <a href="./?example=astro-solid-demo">Astro + Solid</a> dev servers</li>
+            <li><a href="./?example=node-demo">Node built-ins</a> and a <a href="./?example=lockfile-demo"><code>bun.lock</code> install</a></li>
+            <li><a href="https://docs.runbun.dev/examples/">Runnable examples</a>: <code>Bun.serve</code>, WebSockets, <code>bun:sqlite</code>, <code>Bun.file</code>, <code>Bun.password</code>, Elysia and Hono</li>
+            <li>Any public GitHub repo: <code>runbun.dev/?repo=owner/repo</code></li>
+            <li><a href="https://docs.runbun.dev/guides/embedding/">Embed a runnable example</a> in your own page, like the one above</li>
+          </ul>
+        </div>
+        <div class="retro-dialog retro-shadow">
           <h2><span class="retro-sprite" style="--x: 7; --y: 0" aria-hidden="true"></span>What doesn't</h2>
           <p>
             It is not Bun itself. The runtime APIs are reimplemented in JavaScript, so coverage is uneven: a browser has no
@@ -267,7 +359,7 @@ console.log(`Listening on ${server.url}`);
             <a href="https://docs.runbun.dev/compatibility/node/">Node built-in</a>.
           </p>
         </div>
-        <div class="retro-dialog">
+        <div class="retro-dialog retro-shadow">
           <h2><span class="retro-sprite" style="--x: 0; --y: 4" aria-hidden="true"></span>Browser support</h2>
           <p>
             Running code needs WebAssembly Memory64: Chrome and Edge 133+, and Firefox 134+. Safari, and every browser on
@@ -275,17 +367,7 @@ console.log(`Listening on ${server.url}`);
             <a href="https://docs.runbun.dev/compatibility/browsers/">Browser details</a>.
           </p>
         </div>
-        <div class="retro-dialog">
-          <h2><span class="retro-sprite" style="--x: 6; --y: 0" aria-hidden="true"></span>Examples</h2>
-          <ul class="examples">
-            <li><a href="./?example=elysia-demo">Elysia</a>, <a href="./?repo=honojs/starter/tree/main/templates/bun">Hono</a>, <a href="./?example=vite-demo">Vite</a> and <a href="./?example=astro-solid-demo">Astro + Solid</a> dev servers</li>
-            <li><a href="./?example=node-demo">Node built-ins</a> and a <a href="./?example=lockfile-demo"><code>bun.lock</code> install</a></li>
-            <li><a href="https://docs.runbun.dev/examples/">Runnable examples</a>: <code>Bun.serve</code>, WebSockets, <code>bun:sqlite</code>, <code>Bun.file</code>, <code>Bun.password</code>, Elysia and Hono</li>
-            <li>Any public GitHub repo: <code>runbun.dev/?repo=owner/repo</code></li>
-            <li><a href="https://docs.runbun.dev/guides/embedding/">Embed a runnable example</a> in your own page, like the one above</li>
-          </ul>
-        </div>
-        <div class="retro-dialog faq">
+        <div class="retro-dialog retro-shadow faq">
           <h2><span class="retro-sprite" style="--x: 3; --y: 7" aria-hidden="true"></span>Questions</h2>
           <h3>Can I run Bun in the browser?</h3>
           <p>Yes. runbun.dev runs Bun projects in a browser tab. Bun's own transpiler, resolver, bundler, formatter and semver are compiled to WebAssembly, and the <code>Bun.*</code>, <code>bun:*</code> and <code>node:*</code> APIs are JavaScript shims. Most everyday code runs; processes, raw sockets and native addons don't. The <a href="https://docs.runbun.dev/compatibility/">compatibility pages</a> list every API.</p>
@@ -306,6 +388,9 @@ console.log(`Listening on ${server.url}`);
         </div>
       </section>
       <footer>
+        <div class="party" aria-hidden="true">
+          <span class="retro-sprite" style="--x: 1; --y: 0"></span><span class="retro-sprite" style="--x: 4; --y: 1"></span><span class="retro-sprite" style="--x: 6; --y: 1"></span><span class="retro-sprite" style="--x: 1; --y: 6"></span><span class="retro-sprite" style="--x: 6; --y: 5"></span><span class="retro-sprite" style="--x: 0; --y: 7"></span>
+        </div>
         <p>Built from Bun %BUN_VERSION%. <a href="https://docs.runbun.dev/">Docs</a> · <a href="https://docs.runbun.dev/privacy/">Privacy</a></p>
         <p class="disclaimer">runbun is an independent project, not affiliated with or endorsed by Oven or Bun.</p>
       </footer>

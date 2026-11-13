@@ -83,7 +83,7 @@ Each project loads in place of the last: the embed stays, and the project instal
 | Name | What | On in | Cost |
 |---|---|---|---|
 | `files` | File tree | `full` | |
-| `tabs` | Tab bar for open files | `preview`, `full` | |
+| `tabs` | Tab bars: the open files', and the preview's. Off (`features="-tabs"`), the bar names the open file, and a preview has no tab bar unless it has several tabs (`requests`), which leaves the code and the response more of a short embed | `preview`, `full` | |
 | `console` | Console output | `code`, `console`, `full` | |
 | `preview` | Preview of a server | `preview`, `full`, `result` | |
 | `types` | Type errors, hover and completions | none | 10 MB on first use |
