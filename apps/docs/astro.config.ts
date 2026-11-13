@@ -7,7 +7,6 @@ import starlightLlmsTxt from "starlight-llms-txt";
 import runbun from "@runbun/astro";
 import remarkRunbun from "@runbun/astro/remark";
 import UnoCSS from "unocss/astro";
-import { codeThemeOptions, codeThemes } from "./src/code-themes.ts";
 import remarkExamples from "./src/remark-examples.ts";
 import remarkStatus from "./src/remark-status.ts";
 import { DOCS_URL, PLAYGROUND_URL } from "./site-urls.ts";
@@ -16,6 +15,9 @@ import { DOCS_URL, PLAYGROUND_URL } from "./site-urls.ts";
 // the links would 404 for readers: set REPO_PUBLIC to true once it is public.
 const REPO = "https://github.com/oddcelot/bun-webcontainer";
 const REPO_PUBLIC = false;
+
+/** The code themes, dark first: Shiki's names. */
+const CODE_THEMES = ["rose-pine", "rose-pine-dawn"] as const;
 
 export default defineConfig({
   site: DOCS_URL,
@@ -26,13 +28,13 @@ export default defineConfig({
     UnoCSS({ injectReset: false }),
     // Solid 2 islands (.tsx). @astrojs/solid-js is the vendored v8 in packages/astro-solid until it is on npm.
     solid(),
-    // Runnable fences and <Code> blocks, in every family's code theme (data-code-theme, components/ThemeProvider.astro);
-    // embeds follow the page's scheme and family.
+    // Runnable fences and <Code> blocks, in Rosé Pine (Dawn by day), which suits the kitchen's palette; embeds follow
+    // the page's scheme, and take the same family from the page's defaults (components/Footer.astro).
     runbun({
       playgroundUrl: PLAYGROUND_URL,
-      themes: codeThemeOptions,
-      themeSelector: ({ name }) => `:root[data-code-theme='${name}']`,
-      sync: { scheme: "data-theme", family: "data-family" },
+      themes: [...CODE_THEMES],
+      themeSelector: ({ appearance }) => (appearance === "light" ? ":root[data-theme='light']" : ":root:not([data-theme='light'])"),
+      sync: { scheme: "data-theme" },
     }),
     starlight({
       title: "Run Bun",
@@ -58,21 +60,30 @@ export default defineConfig({
         "@runbun/ui/css/retro.css",
         "./src/styles/theme.css",
       ],
-      // Every family's code themes; the page picks one with data-code-theme (components/ThemeProvider.astro), so a
-      // runnable block's poster matches the embed it turns into.
+      // The same pair as the runnable blocks, so a block's poster matches the embed it turns into. Starlight switches
+      // them with its scheme: the dark one first.
       expressiveCode: {
-        themes: codeThemes,
-        useStarlightDarkModeSwitch: false,
-        themeCssSelector: (theme) => `[data-code-theme='${theme.name}']`,
+        themes: [...CODE_THEMES],
         // Square corners; the pixel frame around each block is drawn in styles/theme.css.
-        styleOverrides: { borderRadius: "0", borderColor: "transparent" },
+        // And the kitchen's card behind the code, not the theme's own background.
+        styleOverrides: {
+          borderRadius: "0",
+          borderColor: "transparent",
+          codeBackground: "var(--code-bg)",
+          frames: {
+            editorBackground: "var(--code-bg)",
+            terminalBackground: "var(--code-bg)",
+            editorActiveTabBackground: "var(--code-bg)",
+            editorTabBarBackground: "var(--panel)",
+            terminalTitlebarBackground: "var(--panel)",
+          },
+        },
       },
       components: {
         SocialIcons: "./src/components/SocialIcons.astro",
         Sidebar: "./src/components/Sidebar.astro",
         SiteTitle: "./src/components/SiteTitle.astro",
         PageTitle: "./src/components/PageTitle.astro",
-        ThemeProvider: "./src/components/ThemeProvider.astro",
         ThemeSelect: "./src/components/ThemeSelect.astro",
         Banner: "./src/components/Banner.astro",
         Footer: "./src/components/Footer.astro",

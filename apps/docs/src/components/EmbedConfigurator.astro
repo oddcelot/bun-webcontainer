@@ -1,7 +1,8 @@
 ---
 // The embed configurator lives in the playground (playground/configure.html), built from its own components and
-// theme; this frames it, wide enough for the form beside the live embed. It wears the reader's scheme and theme family
-// (ThemeProvider.astro): they go in the frame's URL, and to the frame as a message when they change.
+// theme; this frames it, wide enough for the form beside the live embed. It wears the reader's scheme and the docs'
+// theme family (the code blocks' Rosé Pine): they go in the frame's URL, and the scheme to the frame as a message when
+// it changes.
 import { PLAYGROUND_URL } from "../../site-urls.ts";
 
 const src = `${PLAYGROUND_URL}configure`;
@@ -16,14 +17,14 @@ const src = `${PLAYGROUND_URL}configure`;
   const frame = document.querySelector<HTMLIFrameElement>(".configurator iframe")!;
   const base = new URL(frame.dataset.src!);
   const html = document.documentElement;
-  const look = () => ({ theme: html.dataset.theme === "light" ? "light" : "dark", family: html.dataset.family ?? "" });
+  const look = () => ({ theme: html.dataset.theme === "light" ? "light" : "dark", family: "rose-pine-dawn" });
   // The URL carries the look at load, so the frame paints in it from the start.
   const url = new URL(base);
   for (const [k, v] of Object.entries(look())) if (v) url.searchParams.set(k, v);
   frame.src = url.href;
   new MutationObserver(() => frame.contentWindow?.postMessage({ bunConfigure: 1, ...look() }, base.origin)).observe(html, {
     attributes: true,
-    attributeFilter: ["data-theme", "data-family"],
+    attributeFilter: ["data-theme"],
   });
 </script>
 
