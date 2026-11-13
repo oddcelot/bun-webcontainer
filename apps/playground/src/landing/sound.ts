@@ -8,10 +8,18 @@ export function startSounds(landing: HTMLElement, toggle: HTMLButtonElement | nu
   const ui = createUISFX({ pack: "arcade", volume: 0.6, preferences: { key: "landing.sound" } });
   const control = (target: EventTarget | null) => (target instanceof Element ? target.closest("a, button") : null);
 
-  // A browser plays nothing before the visitor's first press or key.
-  const unlock = () => void ui.unlock();
-  landing.addEventListener("pointerdown", unlock, { once: true, capture: true });
-  landing.addEventListener("keydown", unlock, { once: true, capture: true });
+  // A browser plays nothing before the visitor's first click (or key on a link or button, a click too): until then the
+  // page is quiet and the button shows the sounds as off, whatever the saved choice.
+  let awake = navigator.userActivation?.hasBeenActive ?? false;
+  let woke: Event | undefined;
+  const show = () => toggle?.setAttribute("aria-pressed", String(awake && ui.isEnabled()));
+  const wake = (event: Event) => {
+    awake = true;
+    woke = event;
+    void ui.unlock();
+    show();
+  };
+  if (!awake) landing.addEventListener("click", wake, { once: true, capture: true });
 
   /** What a click on `target` sounds like. The page's own listeners (entry.ts) have run by now. */
   function cue(event: MouseEvent, target: Element): CueName {
@@ -30,16 +38,16 @@ export function startSounds(landing: HTMLElement, toggle: HTMLButtonElement | nu
   // Onto a link or a button with a mouse, not from one of its own parts.
   landing.addEventListener("pointerover", (event) => {
     const target = control(event.target);
-    if (event.pointerType !== "mouse" || !target || (event.relatedTarget instanceof Node && target.contains(event.relatedTarget))) return;
+    if (!awake || event.pointerType !== "mouse" || !target || (event.relatedTarget instanceof Node && target.contains(event.relatedTarget))) return;
     ui.play("hover");
   });
 
   if (!toggle) return;
-  const show = () => toggle.setAttribute("aria-pressed", String(ui.isEnabled()));
   show();
   toggle.hidden = false;
-  toggle.addEventListener("click", () => {
-    ui.setEnabled(!ui.isEnabled());
+  toggle.addEventListener("click", (event) => {
+    // The press that woke the page leaves sounds that were on as they were: the button only now shows them.
+    if (event !== woke || !ui.isEnabled()) ui.setEnabled(!ui.isEnabled());
     show();
     ui.play("toggle-on");
   });
