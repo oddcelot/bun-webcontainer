@@ -3,6 +3,16 @@
 Notable changes per release of `@runbun/astro`. Each release is tagged `astro-v<version>` and has a GitHub Release
 with its section.
 
+## 0.4.0 — 2026-11-13
+
+`<Playground>` can carry files that belong to the page, such as the tests a lesson checks a reader's code with, and
+code blocks highlight `ansi`. Nothing needs action to upgrade.
+
+- **Added** — **`<Playground generated>` marks files the page owns.** Checks a `test()` runs stay out of the reader's
+  tree and tabs and aren't saved with `persist`.
+- **Changed** — **`<Code>` and fenced blocks highlight `ansi`.** @pierre/highlights 0.5.1 adds the language; nothing
+  else changes for existing blocks.
+
 ## 0.3.0 — 2026-11-05
 
 Static code blocks catch up with Expressive Code: with `fences: "all"` every fence renders as a runbun block, with
