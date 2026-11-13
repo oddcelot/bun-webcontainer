@@ -1,0 +1,43 @@
+---
+// The four looks (element-themes.ts), live, in a grid that folds to one column in a narrow page.
+import { LOOKS, frame, vars } from "./element-themes.ts";
+---
+
+<div class="element-themes not-content">
+  {
+    LOOKS.map((l) => (
+      <figure>
+        <figcaption>{l.name}</figcaption>
+        <bun-playground mode="code" family={l.family} vars={JSON.stringify(vars(l))} style={frame(l).join(";")} title={`${l.name} theme`}>
+          <Fragment set:html={`<script type="text/plain" data-file="index.ts">${l.code.replaceAll("</", "<\\/")}</script>`} />
+        </bun-playground>
+      </figure>
+    ))
+  }
+</div>
+
+<style>
+  .element-themes {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
+    gap: 2rem 1.75rem;
+    /* Room for the frames' shadows, which would otherwise overflow the column. */
+    padding: 0.5rem 0.75rem 1.5rem;
+
+    figure {
+      min-width: 0;
+      margin: 0;
+    }
+
+    figcaption {
+      margin-block-end: 0.75rem;
+      font-family: var(--font-pixel);
+      font-weight: 600;
+    }
+
+    /* Each look draws its own frame (inline, as in the snippets) in place of these docs' pixel frame. */
+    bun-playground {
+      margin: 0;
+    }
+  }
+</style>
