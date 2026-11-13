@@ -4,6 +4,13 @@ Notable changes per release of `@runbun/connect`, the local runner for runbun.de
 `connect-v<version>` and has a GitHub Release with its section. The runner talks to the playground over its own
 protocol (`src/protocol.ts`); the deployed runbun.dev and the runner from npm can differ in version.
 
+## 0.1.3 — 2026-11-13
+
+A fix for Linux systems without lsof. Nothing needs action to upgrade.
+
+- **Fixed** — **Previews on Linux work without lsof.** A program that chose its own port never showed up in the preview
+  on a system without lsof installed.
+
 ## 0.1.2 — 2026-11-07
 
 Security fixes from an audit of the runner: update before running projects from others (`bunx

@@ -4,6 +4,28 @@ Notable changes per release of `@runbun/embed`. Each release is tagged `embed-v<
 with its section. The element talks to the playground deployed at runbun.dev over the embed protocol (version 1),
 which only grows, so any release works with the live playground.
 
+## 0.4.0 — 2026-11-13
+
+Embeds for teaching: a page can give an embed files of its own that the reader never sees, such as the tests a lesson
+checks their code with, learn who changed a file, and get test results per file. A host can also bring its own example
+library, and turn on Git. runbun.dev's `embed.js` has all of it already. Nothing needs action to upgrade.
+
+- **Added** — **Embeds take files the page owns: `data-generated`.** Checks a `test()` runs stay out of the reader's
+  tree and tabs, aren't saved with `persist`, and are written fresh on every load, so a saved project can't keep an old
+  check.
+- **Added** — **`test()` says which test files failed, and always settles.** The reply and the `test` event carry
+  `results`, failed tests per file. A `test()` sent while a run, test or install is under way waits its turn instead
+  of leaving Run busy, and Stop, a test hanging past 30 s or `process.exit` in a test end the run as failed instead of
+  hanging or passing.
+- **Added** — **`change` events say who changed the file.** `by` is "reader", "program" or "host", so a host can grade
+  only the reader's edits, and a write that leaves a file as it was no longer sends one.
+- **Added** — **`removeFile(path)` deletes a file from the host.** Its tab closes; a missing file rejects.
+- **Added** — **Your own example library in an embed.** Point `library` at a JSON file of your projects (or put it
+  inline) and readers get a gallery of just those, switching in place; `npx @runbun/embed pack` builds the file from a
+  folder of examples.
+- **Added** — **`git` feature.** `features="git"` (on in `full`) turns on the playground's Git panel and the `git`
+  command; readers can switch it on from the ⋯ menu (1 MB on first use).
+
 ## 0.3.0 — 2026-11-05
 
 Embeds take preset requests to try against their server. runbun.dev's `embed.js` has it already. Nothing needs action to
