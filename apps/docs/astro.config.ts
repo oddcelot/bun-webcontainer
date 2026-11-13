@@ -93,13 +93,15 @@ export default defineConfig({
         : {}),
       // Starlight sets the title, description, canonical, og:url and twitter:card per page; the share image is the
       // playground's card (apps/playground/public/og.png), so links to the docs preview like links to the playground.
+      // ?v=: social sites cache a card's image by its URL, so a redrawn card needs a new one. Bump it here and in the
+      // playground's index.html and configure.html when `bun run og` changes the picture.
       head: [
-        { tag: "meta", attrs: { property: "og:image", content: `${PLAYGROUND_URL}og.png` } },
+        { tag: "meta", attrs: { property: "og:image", content: `${PLAYGROUND_URL}og.png?v=2` } },
         { tag: "meta", attrs: { property: "og:image:type", content: "image/png" } },
         { tag: "meta", attrs: { property: "og:image:width", content: "1200" } },
         { tag: "meta", attrs: { property: "og:image:height", content: "630" } },
         { tag: "meta", attrs: { property: "og:image:alt", content: "A pixel-art kitchen counter with a dumpling in a bamboo steamer, under the words: Bun in your browser" } },
-        { tag: "meta", attrs: { name: "twitter:image", content: `${PLAYGROUND_URL}og.png` } },
+        { tag: "meta", attrs: { name: "twitter:image", content: `${PLAYGROUND_URL}og.png?v=2` } },
         { tag: "meta", attrs: { name: "twitter:site", content: "@oddcelot" } },
       ],
       sidebar: [

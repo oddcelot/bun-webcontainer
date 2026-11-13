@@ -1,6 +1,7 @@
 // Generates the social card (public/og.png, 1200x630), the README badge (public/badge.svg) and the icons (favicon.svg, favicon.ico,
 // favicon-32x32.png, apple-touch-icon.png, icon-192.png, icon-512.png in public/) with Satori + resvg. Run `bun run og` after changing the copy or the logo;
-// the outputs are committed.
+// the outputs are committed. After changing the card's picture, bump `og.png?v=` where the pages name it (index.html,
+// configure.html, apps/docs/astro.config.ts): social sites cache the image by its URL.
 import { Resvg } from "@resvg/resvg-js";
 import satori from "satori";
 import { copyFileSync, readFileSync, writeFileSync } from "node:fs";
