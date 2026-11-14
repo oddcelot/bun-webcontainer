@@ -1,9 +1,10 @@
 // Bun.spawn over the playground's child processes (processes.ts). stdout is piped by default, stderr inherited (it goes
 // where this program's stderr goes), stdin ignored; "pipe" gives a ReadableStream (out) or a FileSink (in), and stdin
-// also takes data to feed it (a string, bytes, a Blob or BunFile, a Response, a ReadableStream). Bun.spawnSync would
-// have to block this worker until the child answers, which needs a cross-origin isolated page: not yet.
+// also takes data to feed it (a string, bytes, a Blob or BunFile, a Response, a ReadableStream). Bun.spawnSync blocks
+// this worker until the child is done, which needs a cross-origin isolated page (processes.ts spawnChildSync).
+import { Buffer } from "./node/buffer";
 import process, { env as processEnv } from "./node/process";
-import { spawnChild, type Child, type ExitStatus } from "./processes";
+import { spawnChild, spawnChildSync, type Child, type ExitStatus } from "./processes";
 
 type Io = "pipe" | "inherit" | "ignore" | null | undefined;
 type StdinSource = Io | string | ArrayBuffer | ArrayBufferView | Blob | Response | Request | ReadableStream<Uint8Array>;
@@ -157,6 +158,47 @@ export function spawn(cmdOrOptions: string[] | Options, maybeOptions: Options = 
   return proc;
 }
 
-export function spawnSync(): never {
-  throw new Error("Bun.spawnSync isn't supported in the playground yet: it would block this program until the child is done. Use Bun.spawn and await proc.exited.");
+type SyncSpawnOptions = Omit<Options, "stdin" | "stdio" | "onExit" | "signal"> & {
+  stdin?: Io | string | ArrayBuffer | ArrayBufferView;
+  stdio?: [SyncSpawnOptions["stdin"], Io, Io];
+  maxBuffer?: number;
+};
+
+/**
+ * `Bun.spawnSync(cmd, options)` or `Bun.spawnSync({ cmd, ...options })`: waits for the child, then its output as
+ * Buffers (stdout and stderr piped by default). Only on a cross-origin isolated page (processes.ts spawnChildSync).
+ */
+export function spawnSync(cmdOrOptions: string[] | SyncSpawnOptions, maybeOptions: SyncSpawnOptions = {}) {
+  const opts: SyncSpawnOptions = Array.isArray(cmdOrOptions) ? { ...maybeOptions, cmd: cmdOrOptions } : (cmdOrOptions ?? {});
+  const cmd = opts.cmd?.map(String) ?? [];
+  const [stdinOpt, stdoutOpt = "pipe", stderrOpt = "pipe"] = opts.stdio ?? [opts.stdin, opts.stdout, opts.stderr];
+  const env: Record<string, string> = {};
+  for (const [k, v] of Object.entries(opts.env ?? processEnv)) if (v !== undefined) env[k] = String(v);
+  const input = typeof stdinOpt === "string" && !["pipe", "inherit", "ignore"].includes(stdinOpt) ? enc.encode(stdinOpt) : stdinOpt instanceof ArrayBuffer ? new Uint8Array(stdinOpt) : ArrayBuffer.isView(stdinOpt) ? new Uint8Array(stdinOpt.buffer, stdinOpt.byteOffset, stdinOpt.byteLength) : undefined;
+  const io = [stdoutOpt, stderrOpt];
+  const r = spawnChildSync("Bun.spawnSync", "Bun.spawn and await proc.exited", cmd, {
+    cwd: opts.cwd ?? process.cwd(),
+    env,
+    input,
+    timeout: opts.timeout,
+    killSignal: opts.killSignal,
+    maxBuffer: opts.maxBuffer,
+    pass: (fd, data) => {
+      const how = io[fd - 1];
+      if (how === "pipe") return false;
+      if (how === "inherit") (fd === 1 ? process.stdout : process.stderr).write(data);
+      return true;
+    },
+  });
+  const signalCode = r.status.signal;
+  return {
+    exitCode: signalCode ? null : r.status.code,
+    ...(signalCode && { signalCode }),
+    stdout: stdoutOpt === "pipe" ? Buffer.from(r.stdout.buffer, r.stdout.byteOffset, r.stdout.byteLength) : undefined,
+    stderr: stderrOpt === "pipe" ? Buffer.from(r.stderr.buffer, r.stderr.byteOffset, r.stderr.byteLength) : undefined,
+    success: !signalCode && r.status.code === 0,
+    resourceUsage: undefined,
+    pid: r.pid,
+    ...(r.timedOut && { exitedDueToTimeout: true as const }),
+  };
 }

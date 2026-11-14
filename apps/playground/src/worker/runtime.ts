@@ -1,7 +1,7 @@
 import { BASE } from "../base";
 import { loadResolver, parseData, parseDataFile, resolve } from "../resolver";
 import { loadSemver } from "../semver";
-import { dirname, norm, VFS } from "@runbun/vfs";
+import { dirname, norm, VFS, type FileData } from "@runbun/vfs";
 import { readConfig } from "../projectConfig";
 import { BUN_NAMES, builtins, installTimers, setExit, setFs, setRawStdio, setRequire, setStdio } from "./node";
 import { bundle, type BundleConfig, type BundleLog } from "./bundler";
@@ -43,7 +43,7 @@ import { Buffer } from "./node/buffer";
 import { Readable } from "./node/stream";
 import { Shell as ShellInterpreter, ShellEnv, type Command as ShellCommand, type Reader } from "../shell/interp";
 import { templateSource } from "../shell/parse";
-import { childByPid, launchOf, onProcMessage, setKernel, signalName, SIGNALS, spawnChild, type Child } from "./processes";
+import { childByPid, launchOf, onProcMessage, setKernel, setSyncVfs, signalName, SIGNALS, spawnChild, type Child } from "./processes";
 import { spawn as bunSpawn, spawnSync as bunSpawnSync } from "./spawn";
 import { isShellCommand } from "../scripts";
 
@@ -1257,12 +1257,15 @@ self.addEventListener("message", (e: MessageEvent) => {
 
 // Page-side edits made after "start" (editor, file tree, installs). Applied straight to the VFS: only node:fs and
 // Bun.write mirror back to the page, so this isn't echoed.
-self.addEventListener("message", (e: MessageEvent) => {
-  const m = e.data;
-  if (m.type !== "vfs") return;
-  if (m.op === "write") vfs.write(m.path, m.data);
+// The same changes made while this program waited on a synchronous child come through its channel instead.
+const applyVfs = (m: { op: string; path: string; data?: unknown }) => {
+  if (m.op === "write") vfs.write(m.path, m.data as FileData);
   else if (m.op === "mkdir") vfs.mkdir(m.path);
   else if (m.op === "remove") vfs.remove(m.path);
+};
+setSyncVfs(applyVfs);
+self.addEventListener("message", (e: MessageEvent) => {
+  if (e.data.type === "vfs") applyVfs(e.data);
 });
 
 // The page's reports about this program's children, and what its parent sends it as a child itself. The stdin a

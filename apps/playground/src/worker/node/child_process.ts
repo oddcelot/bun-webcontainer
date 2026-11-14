@@ -1,11 +1,11 @@
 // node:child_process over the playground's child processes (../processes.ts): spawn, exec and execFile, with stdio as
-// streams. fork needs an IPC channel to the child, and the Sync functions would have to block this worker until the
-// child is done (only possible on a cross-origin isolated page): they throw instead.
+// streams; spawnSync, execSync and execFileSync, which block this worker until the child is done (only on a
+// cross-origin isolated page: elsewhere they throw a NotIsolatedError). fork needs an IPC channel to the child: it throws.
 import EventEmitter from "events";
 import { Readable, Writable } from "./stream";
 import { Buffer } from "./buffer";
 import process, { env as processEnv } from "./process";
-import { spawnChild, type Child } from "../processes";
+import { NotIsolatedError, spawnChild, spawnChildSync, type Child } from "../processes";
 
 type ReadStream = InstanceType<typeof Readable>;
 type WriteStream = InstanceType<typeof Writable>;
@@ -30,7 +30,6 @@ const unsupported = (name: string, why: string) =>
   function () {
     throw Object.assign(new Error(`node:child_process.${name} is not supported in the playground: ${why}`), { code: "ERR_NOT_SUPPORTED" });
   };
-const SYNC = "it would block this program until the child is done; use the async version";
 
 export class ChildProcess extends EventEmitter {
   pid: number | undefined;
@@ -221,14 +220,99 @@ const promised =
 Object.defineProperty(exec, promisifyCustom, { value: promised(exec as never) });
 Object.defineProperty(execFile, promisifyCustom, { value: promised(execFile as never) });
 
+type SyncOptions = ExecOptions & { input?: string | ArrayBufferView };
+type SpawnSyncResult = {
+  pid: number;
+  output: (string | Buffer | null)[];
+  stdout: string | Buffer | null;
+  stderr: string | Buffer | null;
+  status: number | null;
+  signal: string | null;
+  error?: ExecError;
+};
+
+/** Node's spawnSync over processes.ts spawnChildSync: output in `encoding`, a failure to start or a timeout in `error`. */
+function runSync(api: string, instead: string, file: string, args: readonly string[], opts: SyncOptions, stdio: Stdio[]): SpawnSyncResult {
+  const argv = argvOf(file, args, opts.shell);
+  const env: Record<string, string> = {};
+  for (const [k, v] of Object.entries(opts.env ?? processEnv)) if (v !== undefined) env[k] = String(v);
+  const cwd = opts.cwd instanceof URL ? decodeURIComponent(opts.cwd.pathname) : (opts.cwd ?? process.cwd());
+  const input = typeof opts.input === "string" ? Buffer.from(opts.input) : opts.input && new Uint8Array(opts.input.buffer, opts.input.byteOffset, opts.input.byteLength);
+  const piped = (io: Stdio) => io === undefined || io === null || io === "pipe" || io === "overlapped";
+  const enc = opts.encoding === "buffer" || opts.encoding === null ? undefined : opts.encoding;
+  const text = (b: Uint8Array, io: Stdio) => (piped(io) ? (enc ? Buffer.from(b).toString(enc) : Buffer.from(b.buffer, b.byteOffset, b.byteLength)) : null);
+  let r;
+  try {
+    r = spawnChildSync(api, instead, argv, {
+      cwd,
+      env,
+      input: piped(stdio[0]) ? input : undefined,
+      timeout: opts.timeout,
+      killSignal: opts.killSignal,
+      maxBuffer: opts.maxBuffer ?? 1024 * 1024,
+      pass: (fd, data) => {
+        const io = stdio[fd];
+        if (piped(io)) return false;
+        if (io === "inherit") (fd === 1 ? process.stdout : process.stderr).write(data);
+        return true;
+      },
+    });
+  } catch (e) {
+    if (e instanceof NotIsolatedError) throw e;
+    const err = e as ExecError;
+    const error: ExecError = Object.assign(new Error(err.message), { errno: err.code === "ENOENT" ? -2 : undefined, code: err.code, syscall: `spawnSync ${file}`, path: file, spawnargs: argv.slice(1) });
+    const none = (io: Stdio) => (piped(io) ? text(new Uint8Array(), io) : null);
+    return { pid: 0, output: [null, none(stdio[1]), none(stdio[2])], stdout: none(stdio[1]), stderr: none(stdio[2]), status: null, signal: null, error };
+  }
+  const stdout = text(r.stdout, stdio[1]);
+  const stderr = text(r.stderr, stdio[2]);
+  const signal = r.status.signal;
+  const res: SpawnSyncResult = { pid: r.pid, output: [null, stdout, stderr], stdout, stderr, status: signal ? null : r.status.code, signal };
+  const fail = (code: string, errno: number, why: string) =>
+    (res.error = Object.assign(new Error(`spawnSync ${argv[0]} ${code}${why}`), { code, errno, syscall: `spawnSync ${argv[0]}`, path: argv[0], spawnargs: argv.slice(1) }));
+  if (r.overflow) fail("ENOBUFS", -55, " (stdout or stderr buffer reached maxBuffer size limit)");
+  else if (r.timedOut) fail("ETIMEDOUT", -60, "");
+  return res;
+}
+
+const syncArgs = (args?: readonly string[] | SyncOptions | null, options?: SyncOptions | null): [readonly string[], SyncOptions] =>
+  Array.isArray(args) ? [args, options ?? {}] : [[], (args as SyncOptions | null | undefined) ?? options ?? {}];
+
+export function spawnSync(file: string, args?: readonly string[] | SyncOptions | null, options?: SyncOptions | null): SpawnSyncResult {
+  const [argv, opts] = syncArgs(args, options);
+  return runSync("child_process.spawnSync", "spawn", file, argv, opts, stdioOf(opts.stdio));
+}
+
+/** execSync and execFileSync: stdout, or a throw for a child that failed (stderr goes to ours unless `stdio` says). */
+function execOf(api: string, instead: string, file: string, args: readonly string[], opts: SyncOptions, cmd: string): string | Buffer | null {
+  const stdio = opts.stdio === undefined ? (["pipe", "pipe", "inherit"] as Stdio[]) : stdioOf(opts.stdio);
+  const r = runSync(api, instead, file, args, opts, stdio);
+  if (r.error) throw Object.assign(r.error, { status: r.status, signal: r.signal, output: r.output, pid: r.pid, stdout: r.stdout, stderr: r.stderr });
+  if (r.status !== 0) {
+    const msg = `Command failed: ${cmd}${r.stderr?.length ? `\n${String(r.stderr)}` : ""}`;
+    throw Object.assign(new Error(msg), { status: r.status, signal: r.signal, output: r.output, pid: r.pid, stdout: r.stdout, stderr: r.stderr });
+  }
+  return r.stdout;
+}
+
+export function execSync(command: string, options?: SyncOptions | null): string | Buffer | null {
+  const opts = options ?? {};
+  return execOf("child_process.execSync", "exec", command, [], { ...opts, shell: opts.shell || true }, command);
+}
+
+export function execFileSync(file: string, args?: readonly string[] | SyncOptions | null, options?: SyncOptions | null): string | Buffer | null {
+  const [argv, opts] = syncArgs(args, options);
+  return execOf("child_process.execFileSync", "execFile", file, argv, opts, [file, ...argv].join(" "));
+}
+
 export default {
   ChildProcess,
   spawn,
   exec,
   execFile,
   fork: unsupported("fork", "it needs an IPC channel to the child; use spawn"),
-  spawnSync: unsupported("spawnSync", SYNC),
-  execSync: unsupported("execSync", SYNC),
-  execFileSync: unsupported("execFileSync", SYNC),
+  spawnSync,
+  execSync,
+  execFileSync,
   _forkChild: unsupported("_forkChild", "no IPC"),
 };

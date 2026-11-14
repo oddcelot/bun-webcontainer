@@ -3,6 +3,7 @@ import { PANEL_COOKIE, joinCookies } from "./request";
 import { resetSyncEsm, serveModule, vfsRoot } from "./moduleServer";
 import type { VFS } from "@runbun/vfs";
 import { serveLazyRead } from "./pkgStore";
+import { withSyncRelay } from "./worker/syncChannel";
 import { CONTENT_ORIGIN } from "./contentOrigin";
 import { answerAsks, connectHost, notifyStopped, readContentCookies, spawnWorker, writeContentCookies } from "./contentHost";
 
@@ -488,7 +489,9 @@ export class Runner {
   }
 
   private newWorker(): Worker {
-    return this.host ? spawnWorker(this.host) : new Worker(new URL("./worker/runtime.ts", import.meta.url), { type: "module" });
+    // A program blocked on a synchronous child reads what is meant for it through the relay (worker/syncChannel.ts);
+    // on the content origin the host frame relays, as the buffer it reads can't come here.
+    return this.host ? spawnWorker(this.host) : withSyncRelay(new Worker(new URL("./worker/runtime.ts", import.meta.url), { type: "module" }));
   }
 
   /** What any program's worker may ask, a child process's too: file changes, lazy reads, and its own children. */
