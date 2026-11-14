@@ -32,7 +32,7 @@ export const LOOKS: Look[] = [
   {
     name: "Wind",
     family: "min-light",
-    base: { "--radius": "1.25rem", "--font-ui": "ui-rounded, system-ui, sans-serif" },
+    base: { "--radius": "1.25rem", "--font-ui": "Avenir Next, Century Gothic, sans-serif" },
     light: { "--bg": "#fbfdfd", "--canvas": "#eef4f5", "--panel": "#f4f8f9", "--fg": "#33464d", "--muted": "#86a0a8", "--border": "#dbe7ea", "--accent": "#2f8799" },
     dark: { "--bg": "#20282c", "--canvas": "#171d20", "--panel": "#1b2326", "--fg": "#dfeaec", "--muted": "#8aa1a8", "--border": "#2f3b40", "--accent": "#9fdbe6" },
     radius: "1.5rem",
@@ -42,7 +42,7 @@ export const LOOKS: Look[] = [
   {
     name: "Earth",
     family: "everforest-light",
-    base: { "--radius": "3px", "--font-ui": "Georgia, serif" },
+    base: { "--radius": "3px", "--font-ui": "Georgia, serif", "--font-mono": "Courier New, Courier, monospace" },
     light: { "--bg": "#f6f0dc", "--canvas": "#e3d6b3", "--panel": "#ebe0c2", "--fg": "#3b2f1e", "--muted": "#7d6b4c", "--border": "#c9b88c", "--accent": "#5f7a2e" },
     dark: { "--bg": "#2a241a", "--canvas": "#1d1811", "--panel": "#231d14", "--fg": "#e9dfc4", "--muted": "#a39676", "--border": "#4a3f2b", "--accent": "#a3b85a" },
     radius: "4px",
@@ -80,6 +80,8 @@ export const frame = (l: Look) => {
     `--play-border: ${both("--accent")}`,
     `--play-radius: ${l.base["--radius"]}`,
     `--play-font: 600 0.875rem ${l.base["--font-ui"]}`,
+    // The poster's code, in the font the embed will show it in.
+    ...(l.base["--font-mono"] ? [`--font-mono: ${l.base["--font-mono"]}`] : []),
   ];
 };
 
