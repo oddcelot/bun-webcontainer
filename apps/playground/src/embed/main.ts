@@ -175,6 +175,12 @@ const embed = createRoot(() => {
         for (const [f, on] of Object.entries(next)) if (isFeature(f) && !(fromReader && on && locked.has(f))) c[f] = on;
       });
     },
+    /** Drops the changes to these features, back to what the mode and the author's list say. */
+    clearFeatures(names: Feature[]) {
+      setChanges((c) => {
+        for (const f of names) delete c[f];
+      });
+    },
     run: () => void pg.run(),
     stop: pg.stop,
     install: () => void pg.install(),
@@ -339,6 +345,9 @@ async function begin() {
   else session.setStatus({ state: "idle", text: "Ready" });
 }
 
+/** The panes the open project's runbun.json set (`panels`), put back to the defaults when another project opens. */
+let configPanels: Feature[] = [];
+
 /** Whether the host set option `name` (URL parameter or init), so it wins over the project's runbun.json. */
 const hostSet = (name: keyof Options) => params.has(name) || init?.options?.[name] !== undefined;
 
@@ -358,8 +367,12 @@ function applyConfig(inline: boolean): ProjectConfig {
   for (const path of tabs) workspace.open(path);
   const file = options.file && vfs.files.has(options.file) && !hidden.has(options.file) ? options.file : (tabs[0] ?? pg.entryFile());
   if (!hidden.has(file)) workspace.open(file);
-  // The panes: the host's mode and features, unless it set neither.
-  if (config.panels && !hostSet("mode") && !hostSet("features")) embed.setFeatures(config.panels);
+  // The panes: the host's mode and features, unless it set neither. Those the last project's file set go back to the
+  // defaults first, so a project without `panels` doesn't keep the previous one's.
+  const panels = !hostSet("mode") && !hostSet("features") ? (config.panels ?? {}) : {};
+  embed.clearFeatures(configPanels.filter((f) => !(f in panels)));
+  embed.setFeatures(panels);
+  configPanels = Object.keys(panels) as Feature[];
   // `path` picks where the preview's first tab points (default "/"); the next Run loads it there. `requests` wins over
   // it: a tab per preset, the first sent by that Run, the others when first opened (previews.ts presets).
   const host = hostSet("requests") || hostSet("path");
