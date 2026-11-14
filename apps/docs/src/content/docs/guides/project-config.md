@@ -18,6 +18,12 @@ A `runbun.json` beside `package.json` tells the playground how to open and run t
 {
   "$schema": "https://runbun.dev/schema/runbun.json",
 
+  // Its card in a gallery
+  "name": "HTTP API",
+  "description": "Routes, JSON bodies and a health check",
+  "kind": "starter",
+  "tags": ["Elysia"],
+
   // How it runs
   "run": { "entry": "src/server.ts", "args": ["--verbose"] },
   "autorun": true,
@@ -28,6 +34,8 @@ A `runbun.json` beside `package.json` tells the playground how to open and run t
   "hidden": ["bun.lock"],
   "readonly": ["package.json", "vendor/"],
   "panels": { "files": true, "preview": true, "console": true },
+  "layout": "side",
+  "sizes": { "files": 20, "editor": 55, "preview": 70 },
   "preview": {
     "path": "/",
     "requests": ["GET /health", "POST /echo {\"hello\": \"world\"}"]
@@ -42,6 +50,7 @@ The playground's editor completes the fields, shows what each does when you hove
 
 | Field | What it does |
 |---|---|
+| `name`, `description`, `kind`, `tags` | The project's card in a gallery: [runbun-examples](https://github.com/oddcelot/runbun-examples)' folders, and a library built with [`@runbun/embed pack`](/guides/embedding/). `kind` is `starter` (listed first) or `example`; `tags` name what it's built on, and the first with a logo is the card's icon. They win over an `example.json` beside it, which is still read. |
 | `run` | What Run starts: `entry` and its `args`. Without it, Run takes `package.json`'s `module` or `main`, the file its `dev` or `start` script runs, else `index.ts`. |
 | `autorun` | `false` opens the project without running it (missing packages still install, for the editor's types). |
 | `env` | `process.env` values for the program, in runs, restarts on save and `bun test`. The file is shared with the project, so it's no place for secrets. Not applied with [Local Bun](/guides/local-bun/) yet. |

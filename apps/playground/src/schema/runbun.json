@@ -7,6 +7,17 @@
   "additionalProperties": false,
   "properties": {
     "$schema": { "type": "string" },
+    "name": { "type": "string", "minLength": 1, "description": "The project's name on its card in a gallery (runbun.dev's examples, an embed's library), e.g. \"HTTP API\"." },
+    "description": { "type": "string", "description": "A line on what it shows, under the name on its card." },
+    "kind": {
+      "enum": ["starter", "example"],
+      "description": "\"starter\": a small project to build on, listed first; \"example\" (default): one that shows a framework or feature."
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "The frameworks and libraries it is built on, e.g. [\"Elysia\", \"SQLite\"]; a gallery filters by them, and the first with a logo is the card's icon."
+    },
     "run": {
       "description": "What Run starts, instead of the guess (package.json's module, main, dev script, else index.ts).",
       "type": "object",

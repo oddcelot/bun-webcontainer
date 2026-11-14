@@ -15,6 +15,13 @@ const REQUIREMENTS =["cross-origin-isolation", "local-bun"] as const;
 export type Requirement = (typeof REQUIREMENTS)[number];
 
 export type ProjectConfig = {
+  /** Its card in a gallery (the examples', an embed's library): the name, a line on what it shows, and its kind and tags. */
+  name?: string;
+  description?: string;
+  /** "starter": a small project to build on; "example": one that shows a framework or feature. */
+  kind?: "starter" | "example";
+  /** The frameworks and libraries it is built on. */
+  tags?: string[];
   /** What Run starts, over the guess (package.json's module, main, dev script, index.ts). */
   run?: { entry: string; args: string[] };
   /** Run once opened (default: yes). Ignored for code from a link, which waits for the reader's Run. */
@@ -72,8 +79,12 @@ export function readConfig(read: (path: string) => string | undefined, problems:
   const c: ProjectConfig = {};
   const bad = (field: string, want: string) => problems.push(`${CONFIG_FILE}: "${field}" must be ${want}, ignored`);
   for (const key of Object.keys(r))
-    if (!["$schema", "run", "autorun", "env", "open", "hidden", "readonly", "panels", "layout", "sizes", "preview", "requires"].includes(key)) problems.push(`${CONFIG_FILE}: unknown field "${key}"`);
+    if (!["$schema", "name", "description", "kind", "tags", "run", "autorun", "env", "open", "hidden", "readonly", "panels", "layout", "sizes", "preview", "requires"].includes(key)) problems.push(`${CONFIG_FILE}: unknown field "${key}"`);
 
+  if (r.name !== undefined) typeof r.name === "string" && r.name ? (c.name = r.name) : bad("name", "a string");
+  if (r.description !== undefined) typeof r.description === "string" ? (c.description = r.description) : bad("description", "a string");
+  if (r.kind !== undefined) r.kind === "starter" || r.kind === "example" ? (c.kind = r.kind) : bad("kind", '"starter" or "example"');
+  if (r.tags !== undefined) isStrings(r.tags) ? (c.tags = r.tags) : bad("tags", "a list of strings");
   if (r.run !== undefined) {
     const run = r.run as { entry?: unknown; args?: unknown };
     if (typeof run !== "object" || run === null || typeof run.entry !== "string" || (run.args !== undefined && !isStrings(run.args)))
