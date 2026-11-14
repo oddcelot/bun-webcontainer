@@ -56,6 +56,7 @@ The playground uses these when the browser has them and works without them.
 | Chrome / Edge 133+, Firefox 134+ | ✅ Works | Every mode, the API, the modal and several embeds on one page; checked in Chrome and Firefox 160 from another origin. |
 | Safari and iOS | 🟡 Edit only | The embed shows and edits the code but can't run it, and sends `unsupported`. |
 | Vite / Rolldown projects in an iframe | 🟡 Partial | They need cross-origin isolation. It works only if the host page is isolated (`COOP: same-origin`, `COEP: credentialless`) and the iframe has `allow="cross-origin-isolated"`. Otherwise run them on runbun.dev. |
+| `Bun.spawnSync`, `execSync`, `execFileSync`, `spawnSync` in an iframe | 🟡 Partial | They block the program until the child ends, which needs cross-origin isolation: only if the host page is isolated and the iframe has `allow="cross-origin-isolated"`. Otherwise they throw a `NotIsolatedError`; the async versions work anywhere. |
 | Everything else in an iframe | ✅ Works | No isolation needed. |
 | Storage | 🟡 Partial | The service worker and OPFS are partitioned per host site. The first visit on each site downloads the wasm again. |
 | Package files | 🟡 Partial | Project code runs on run.runbun.dev. An embed on another site doesn't get cross-origin isolation for that origin, so installed packages' large files stay in memory instead of the package cache. |

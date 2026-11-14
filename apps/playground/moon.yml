@@ -107,8 +107,9 @@ tasks:
   test-processes:
     # Child processes end to end (scripts/processes.ts): a project that spawns, pipes, kills and nests children runs
     # in the embed in headless Chrome, on the editor's origin and on a content origin, and prints what native Bun
-    # prints for it. Needs Chrome, so it isn't part of `test`.
-    script: 'bun scripts/processes.ts && bun scripts/processes.ts --no-native --content-origin'
+    # prints for it; the synchronous calls run on an isolated embedder (on both origins) and throw on one that isn't.
+    # Needs Chrome, so it isn't part of `test`.
+    script: 'bun scripts/processes.ts && bun scripts/processes.ts --no-native --isolated && bun scripts/processes.ts --no-native --content-origin --isolated'
     toolchains: ['bun']
     options:
       cache: false

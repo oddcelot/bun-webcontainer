@@ -6,12 +6,15 @@ import { BASE } from "../base";
 import { EDITOR_ORIGINS } from "../contentOrigin";
 import { answerStore, serveLazyRead, type LazyRead } from "../pkgStore";
 import { envelope, isMessage, type HandshakeMessage, type ToEditor, type ToHost } from "../contentProtocol";
+import { SyncRelay } from "../worker/syncChannel";
 
 // The editor names its origin (`?editor=`), but only a configured editor origin is answered: any site can frame this
 // page, and the relay (a Worker, the service worker's asks, fetch) must serve only the playground.
 const asked = new URLSearchParams(location.search).get("editor") ?? "";
 const EDITOR = EDITOR_ORIGINS.has(asked) ? asked : "";
 const workers = new Map<number, Worker>();
+/** Each Worker's channel for a synchronous child it waits on (worker/syncChannel.ts). */
+const relays = new WeakMap<Worker, SyncRelay>();
 /** Set once the handshake may begin (host-ready sent); cleared by the first connect. */
 let started = false;
 
@@ -92,15 +95,19 @@ function connect(port: MessagePort) {
       workers.get(g)?.terminate();
       const worker = new Worker(new URL("../worker/runtime.ts", import.meta.url), { type: "module" });
       workers.set(g, worker);
+      relays.set(worker, new SyncRelay());
       worker.onmessage = (we) => {
         // The Worker blocks on a lazy package file: answered here, in its own agent cluster (a shared buffer can't go to the editor).
         if (we.data?.type === "lazy-read") return void answerLazyRead(we.data);
+        // Or on a synchronous child: what the editor sends it meanwhile goes through the relay's buffer, for the same reason.
+        if (relays.get(worker)?.fromWorker(we.data)) return;
         reply(port, { kind: "w", g, d: we.data }, [...we.ports]);
       };
       worker.onerror = (we) => reply(port, { kind: "werr", g, message: we.message });
     } else if (m.kind === "w") {
       // Ports ride in the transfer list (a request's reply port, a WebSocket); the message itself is cloned.
-      workers.get(m.g)?.postMessage(m.d, [...e.ports]);
+      const w = workers.get(m.g);
+      if (w && !relays.get(w)?.toWorker(m.d)) w.postMessage(m.d, [...e.ports]);
     } else if (m.kind === "kill") {
       workers.get(m.g)?.terminate();
       workers.delete(m.g);

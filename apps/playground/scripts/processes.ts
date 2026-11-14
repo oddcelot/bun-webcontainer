@@ -3,10 +3,14 @@
 // src/runner.ts), end to end: a project runs in the embed in headless Chrome and each program prints what its children
 // did. Bun.spawn with pipes, stdin, exit codes and kill; child_process spawn/exec/execFile; Bun.$ running `bun` in a
 // pipeline; package.json scripts (spawned, and the console's `bun run` of a shell line); a child's file writes;
-// grandchildren; worker_threads threads; a server a child starts, reached through the preview. The expected lines are
-// what native Bun prints for the same project (checked by running it with `bun` in a temp folder, unless --no-native).
-//   bun scripts/processes.ts [--no-native] [--content-origin]
+// grandchildren; worker_threads threads; a server a child starts, reached through the preview; the synchronous calls
+// (spawnSync, execSync, execFileSync, Bun.spawnSync: output of several MiB, stdin, timeouts, file changes both ways, a
+// synchronous grandchild). The expected lines are what native Bun prints for the same project (checked by running it
+// with `bun` in a temp folder, unless --no-native).
+//   bun scripts/processes.ts [--no-native] [--content-origin] [--isolated]
 // --content-origin: project code on its own origin (run.runbun.localhost), as on runbun.dev (src/contentOrigin.ts).
+// --isolated: the embedding page sends COOP and COEP, so the embed is cross-origin isolated and the synchronous calls
+// run; without it they must throw a NotIsolatedError.
 // Chrome: CHROME=<path to the binary>, else the usual install on macOS or Linux.
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -18,8 +22,38 @@ const PORT = 5198;
 const HOST_PORT = 5197;
 const CONTENT = process.argv.includes("--content-origin");
 const EDITOR = `http://${CONTENT ? "runbun." : ""}localhost:${PORT}`;
+const ISOLATED = process.argv.includes("--isolated");
+// An isolated run checks only the synchronous calls (sync.ts), on a fresh page: the async ones are the run without
+// --isolated's. Running the lot isolated starts dozens of workers on one page, and headless Chrome then runs out of
+// memory for wasm instances on some machines (a grandchild fails to boot, also before the synchronous calls existed).
+const ENTRY = ISOLATED ? "sync.ts" : "main.ts";
+const MiB = 1024 * 1024;
+
+/** The synchronous calls main.ts makes: a label, the expression it prints, what native Bun prints for it. */
+const SYNC: [string, string, string][] = [
+  ["bun.spawnSync", `(r => [r.stdout.toString().trim(), r.exitCode, r.success, r.stderr.length].join(" "))(Bun.spawnSync(["bun", "child.ts", "s1"], { env: { ...process.env, X: "x3", CODE: "3" } }))`, "child s1 x3 3 false 0"],
+  ["spawnSync", `JSON.stringify((r => [r.stdout, r.stderr, r.status, r.signal])(spawnSync("bun", ["writer.ts"], { encoding: "utf8" })))`, '["","to stderr\\n",0,null]'],
+  // The child reads a file this program just wrote, and this program reads the one it wrote, all synchronously.
+  ["vfs", `(spawnSync("bun", ["syncfs.ts"]), readFileSync("sync-out.txt", "utf8"))`, "child read p1"],
+  ["execSync", `JSON.stringify(execSync("echo hi && bun child.ts e2", { encoding: "utf8" }))`, '"hi\\nchild e2 -\\n"'],
+  ["execSync fail", `(() => { try { execSync("bun child.ts", { env: { ...process.env, CODE: "2" }, stdio: "pipe" }); } catch (e) { if (e.code === "ERR_NOT_ISOLATED") throw e; return JSON.stringify([e.status, e.signal, e.message, String(e.stdout)]); } })()`, '[2,null,"Command failed: bun child.ts","child  -\\n"]'],
+  ["execFileSync", `execFileSync("bun", ["upper.ts"], { input: "piped" }).toString()`, "PIPED"],
+  ["enoent", `JSON.stringify((r => [r.error.code, r.status])(spawnSync("nope-cmd")))`, '["ENOENT",null]'],
+  ["bun enoent", `(() => { try { Bun.spawnSync(["nope-cmd"]); } catch (e) { if (e.code === "ERR_NOT_ISOLATED") throw e; return e.code; } })()`, "ENOENT"],
+  ["bun string stdin", `(() => { try { Bun.spawnSync(["bun", "upper.ts"], { stdin: "x" }); return "accepted"; } catch (e) { if (e.code === "ERR_NOT_ISOLATED") throw e; return e.code; } })()`, "ERR_INVALID_ARG_TYPE"],
+  // Output past the shared window (and past Node's default maxBuffer), on both streams.
+  ["big", `(r => [r.stdout.length, r.stderr.length, r.exitCode].join(" "))(Bun.spawnSync(["bun", "big.ts"]))`, `${5 * MiB} ${3 * MiB} 0`],
+  ["big exec", `execSync("bun big.ts", { maxBuffer: 64 * ${MiB}, stdio: "pipe" }).length`, `${5 * MiB}`],
+  ["maxBuffer", `execSync("bun big.ts", { stdio: "pipe" }).length`, "threw ENOBUFS"],
+  ["timeout", `JSON.stringify((r => [r.status, r.signal, r.error?.code])(spawnSync("bun", ["forever.ts"], { timeout: 500 })))`, '[null,"SIGTERM","ETIMEDOUT"]'],
+  ["bun timeout", `JSON.stringify((r => [r.exitCode, r.signalCode, r.exitedDueToTimeout])(Bun.spawnSync(["bun", "forever.ts"], { timeout: 500 })))`, '[null,"SIGTERM",true]'],
+  ["nested sync", `Bun.spawnSync(["bun", "nestedsync.ts"]).stdout.toString().trim()`, "ns: child deep -"],
+];
 
 const files: Record<string, string> = {
+  "syncfs.ts": `import { readFileSync, writeFileSync } from "node:fs";\nwriteFileSync("sync-out.txt", "child read " + readFileSync("from-parent.txt", "utf8"));`,
+  "big.ts": `process.stdout.write("x".repeat(${5 * MiB}));\nprocess.stderr.write("y".repeat(${3 * MiB}));`,
+  "nestedsync.ts": `console.log("ns:", Bun.spawnSync(["bun", "child.ts", "deep"]).stdout.toString().trim());`,
   "package.json": JSON.stringify({ name: "procs", scripts: { greet: "echo from-script && bun child.ts s", build: "echo built && bun child.ts b > built.txt && cat built.txt", serve: "echo serving && bun server.ts" } }),
   "server.ts": `Bun.serve({ port: 3001, fetch: (req) => new Response("child server " + new URL(req.url).pathname) });\nconsole.log("listening");`,
   "child.ts": `console.log("child", process.argv.slice(2).join(","), process.env.X ?? "-");\nprocess.exitCode = Number(process.env.CODE ?? 0);`,
@@ -42,9 +76,10 @@ parentPort!.on("message", (m) => {
   "idle.ts": `import { parentPort } from "node:worker_threads";\nparentPort!.on("message", () => {});`,
   "done.ts": `import { parentPort } from "node:worker_threads";\nconsole.log("done.ts ran");\nparentPort!.postMessage("done");`,
   "main.ts": `import { $ } from "bun";
-import { exec, execFile, execSync, spawn } from "node:child_process";
+import { exec, execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { readFileSync } from "node:fs";
+import { runSync } from "./sync.ts";
 
 const log = (...a: unknown[]) => console.log(...a);
 // Not top-level await: the entry would count as still starting all along (the playground gives that 15 s).
@@ -138,12 +173,6 @@ log("$ code:", (await $\`bun child.ts\`.env({ ...process.env, CODE: "4" }).nothr
   const p = Bun.spawn(["bun", "nested.ts"]);
   log((await new Response(p.stdout).text()).trim());
 }
-try {
-  execSync("echo no");
-  log("execSync: ran");
-} catch (e) {
-  log("execSync:", (e as Error).message.includes("not supported"));
-}
 // worker_threads: workerData, env, argv, messages both ways, a transfer, an uncaught error, process.exit, terminate,
 // a file: URL, eval
 {
@@ -175,12 +204,40 @@ try {
   const w5 = new Worker('const t = require("node:worker_threads"); t.parentPort.postMessage(t.workerData + 1)', { eval: true, workerData: 41 });
   log("wt eval:", await next("message", w5), await next("exit", w5));
 }
+runSync();
 log("__end__");
 })();
 `,
+  // The synchronous calls, also run on their own (the isolated runs: see below).
+  "sync.ts": `import { execFileSync, execSync, spawnSync } from "node:child_process";
+import { readFileSync, writeFileSync } from "node:fs";
+
+// On a page that isn't cross-origin isolated each throws a NotIsolatedError instead.
+export function runSync() {
+  writeFileSync("from-parent.txt", "p1");
+  const sync = (label: string, f: () => unknown) => {
+    try {
+      console.log(label + ":", f());
+    } catch (e) {
+      const err = e as Error & { code?: string };
+      console.log(label + ":", err.code === "ERR_NOT_ISOLATED" ? err.name + " " + err.message.includes("cross-origin isolated") : "threw " + err.code);
+    }
+  };
+${SYNC.map(([label, expr]) => `  sync(${JSON.stringify(label)}, () => ${expr});`).join("\n")}
+}
+if (import.meta.main) {
+  runSync();
+  console.log("__end__");
+}
+`,
 };
 
-/** What native Bun prints, except where the playground differs on purpose (execSync runs natively). */
+/** What native Bun prints for the synchronous calls (and the playground on an isolated page). */
+const EXPECTED_SYNC = SYNC.map(([label, , want]) => `${label}: ${want}`);
+/** What the playground prints for them on a page that isn't isolated. */
+const NOT_ISOLATED = SYNC.map(([label]) => `${label}: NotIsolatedError true`);
+
+/** What native Bun prints. */
 const EXPECTED = [
   "spawn: child a,b c x1 3 3",
   "stdin: HELLO WORLD",
@@ -199,7 +256,6 @@ const EXPECTED = [
   "$ code: 4",
   "script: from-script | child s -",
   "nested: child grand -",
-  "execSync: true",
   "wt main: true 0 null",
   'wt hello: [false,1,{"n":2},"w1",["a1"]] 1 online',
   "wt double: 42",
@@ -211,22 +267,23 @@ const EXPECTED = [
   "done.ts ran",
   "wt url: done 0",
   "wt eval: 42 0",
+  ...EXPECTED_SYNC,
   "__end__",
 ];
 
 let bad = 0;
-const compare = (label: string, got: string[]) => {
+const compare = (label: string, got: string[], want = EXPECTED) => {
   let wrong = 0;
-  for (let i = 0; i < Math.max(got.length, EXPECTED.length); i++) {
-    if (got[i] === EXPECTED[i]) continue;
+  for (let i = 0; i < Math.max(got.length, want.length); i++) {
+    if (got[i] === want[i]) continue;
     wrong++;
-    console.error(`✗ ${label} line ${i + 1}\n  got  ${JSON.stringify(got[i])}\n  want ${JSON.stringify(EXPECTED[i])}`);
+    console.error(`✗ ${label} line ${i + 1}\n  got  ${JSON.stringify(got[i]?.slice(0, 300))}\n  want ${JSON.stringify(want[i])}`);
   }
   bad += wrong;
   if (!wrong) console.log(`✓ ${label}: ${got.length} lines`);
 };
 
-// Native Bun first: the expectations are its behavior (execSync aside, which runs natively).
+// Native Bun first: the expectations are its behavior.
 if (!process.argv.includes("--no-native")) {
   const dir = mkdtempSync(join(tmpdir(), "procs-"));
   try {
@@ -235,10 +292,7 @@ if (!process.argv.includes("--no-native")) {
       writeFileSync(join(dir, p), text);
     }
     const r = Bun.spawnSync(["bun", "main.ts"], { cwd: dir, env: { ...process.env, X: undefined, CODE: undefined } });
-    const lines = r.stdout.toString().trim().split("\n");
-    const i = lines.indexOf("execSync: ran");
-    if (i >= 0) lines[i] = "execSync: true";
-    compare("native bun", lines);
+    compare("native bun", r.stdout.toString().trim().split("\n"));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -285,7 +339,7 @@ const host = Bun.serve({
     if (d.event === "console") window.lines.push(...d.data.text.split("\\n"));
   });
 </script>`,
-      { headers: { "content-type": "text/html" } },
+      { headers: { "content-type": "text/html", ...(ISOLATED && { "Cross-Origin-Opener-Policy": "same-origin", "Cross-Origin-Embedder-Policy": "credentialless" }) } },
     ),
 });
 const profile = mkdtempSync(join(tmpdir(), "processes-"));
@@ -306,14 +360,14 @@ try {
     }
     await page.goto(`http://localhost:${HOST_PORT}/`);
     await page.waitForFunction(() => (window as unknown as { events: string[] }).events.includes("ready"), { timeout: 60_000 });
-    await page.evaluate(() => (window as unknown as { rpc: (m: string, p?: unknown) => Promise<unknown> }).rpc("run", { entry: "main.ts" }));
+    await page.evaluate((entry: string) => (window as unknown as { rpc: (m: string, p?: unknown) => Promise<unknown> }).rpc("run", { entry }), ENTRY);
     await page.waitForFunction(() => (window as unknown as { lines: string[] }).lines.some((l) => l.includes("__end__") || /^error/.test(l)), { timeout: 60_000 }).catch(() => {});
     await Bun.sleep(300);
     const all = await page.evaluate(() => (window as unknown as { lines: string[] }).lines);
     // The program's own lines (the console also shows the embed's `$ bun main.ts` and such).
-    const start = all.findIndex((l) => l.startsWith("spawn:"));
+    const start = all.findIndex((l) => l.startsWith(ISOLATED ? `${SYNC[0]![0]}:` : "spawn:"));
     const got = start < 0 ? all : all.slice(start, all.indexOf("__end__", start) + 1 || undefined).filter((l) => l.trim() !== "");
-    compare("playground", got);
+    compare(`playground (${ISOLATED ? "" : "not "}isolated)`, got, ISOLATED ? [...EXPECTED_SYNC, "__end__"] : [...EXPECTED.slice(0, -1 - SYNC.length), ...NOT_ISOLATED, "__end__"]);
     if (bad && start < 0) console.error(all.join("\n"));
     // The console's `bun run` of a script that is a shell line: the program is Bun's shell, its commands children.
     const embed = page.frames().find((f) => f.url().includes("/embed"))!;

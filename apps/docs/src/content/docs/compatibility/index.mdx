@@ -27,7 +27,7 @@ The playground is built from Bun {BUN_VERSION}; `Bun.version` reports <code>{BUN
 | [`Bun.password`, `Bun.CryptoHasher`, `Bun.Glob`, `Bun.semver`](/compatibility/bun/) | ✅ Works | Also `Bun.YAML`, `Bun.TOML`, `Bun.JSONC`, `Bun.JSON5`, `Bun.JSONL`, `Bun.XML`, `Bun.markdown` and `Bun.CookieMap`. |
 | [`bun:sqlite`](/compatibility/bun/) | 🟡 Partial | Built on sql.js; databases, prepared statements and transactions work. |
 | [`bun:test`](/compatibility/bun/#buntest) | 🟡 Partial | `bun test` in the console. |
-| [`Bun.$`, `Bun.spawn`](/compatibility/bun/) | 🟡 Partial | Bun's shell and its builtins (`ls`, `cat`, `mkdir`, `rm`…) over the project's files. Child processes run `bun`, `node`, `package.json` scripts and installed bins, each in a worker of its own; no `spawnSync`. |
+| [`Bun.$`, `Bun.spawn`](/compatibility/bun/) | 🟡 Partial | Bun's shell and its builtins (`ls`, `cat`, `mkdir`, `rm`…) over the project's files. Child processes run `bun`, `node`, `package.json` scripts and installed bins, each in a worker of its own; `spawnSync` only on cross-origin isolated pages. |
 | [`Bun.connect`, `Bun.sql`, `bun:ffi`](/compatibility/bun/) | ❌ Missing | No raw sockets or native code in a browser; also `Bun.redis`, `Bun.s3`, `HTMLRewriter`. |
 | [`node:*` built-ins](/compatibility/node/) | 🟡 Partial | `buffer`, `events`, `path`, `stream`, `url` and `timers` work; `fs`, `http` and `crypto` mostly do. `child_process` runs child processes; `net` and `tls` are stubs. |
 | [Transpiler](/compatibility/toolchain/#transpiler) | ✅ Works | TypeScript, JSX and decorators, with Bun's defaults and the project's `tsconfig.json`. |

@@ -125,7 +125,13 @@ function embedRoutes(): Plugin {
   };
   return {
     name: "embed-routes",
-    configureServer: (server) => void server.middlewares.use((req, _res, next) => (rewrite(req), next())),
+    configureServer: (server) =>
+      void server.middlewares.use((req, res, next) => {
+        // As public/_headers: an isolated embedder (COEP) can frame the embed.
+        if (/\/embed(?:$|[?#])/.test(req.url ?? "")) res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+        rewrite(req);
+        next();
+      }),
     configurePreviewServer: (server) => void server.middlewares.use((req, _res, next) => (req.url = (req.url ?? "").replace(/\/(embed|configure)(?=$|[?#])/, "/$1.html").replace(/\/about(?=$|[?#])/, "/"), next())),
   };
 }
