@@ -1,13 +1,14 @@
 // Bun.spawn over the playground's child processes (processes.ts). stdout is piped by default, stderr inherited (it goes
 // where this program's stderr goes), stdin ignored; "pipe" gives a ReadableStream (out) or a FileSink (in), and stdin
-// also takes data to feed it (a string, bytes, a Blob or BunFile, a Response, a ReadableStream). Bun.spawnSync blocks
-// this worker until the child is done, which needs a cross-origin isolated page (processes.ts spawnChildSync).
+// also takes data to feed it (bytes, a Blob or BunFile, a Response, a ReadableStream; not a string, as in Bun).
+// Bun.spawnSync blocks this worker until the child is done, which needs a cross-origin isolated page
+// (processes.ts spawnChildSync).
 import { Buffer } from "./node/buffer";
 import process, { env as processEnv } from "./node/process";
-import { spawnChild, spawnChildSync, type Child, type ExitStatus } from "./processes";
+import { canBlock, NotIsolatedError, spawnChild, spawnChildSync, type Child, type ExitStatus } from "./processes";
 
 type Io = "pipe" | "inherit" | "ignore" | null | undefined;
-type StdinSource = Io | string | ArrayBuffer | ArrayBufferView | Blob | Response | Request | ReadableStream<Uint8Array>;
+type StdinSource = Io | ArrayBuffer | ArrayBufferView | Blob | Response | Request | ReadableStream<Uint8Array>;
 type Options = {
   cmd?: string[];
   cwd?: string;
@@ -24,6 +25,12 @@ type Options = {
 };
 
 const enc = new TextEncoder();
+
+/** Bun's error for a stdio entry it doesn't take: a string other than "pipe", "inherit" and "ignore" (data or not). */
+function checkStdio(stdio: unknown[]) {
+  if (stdio.some((v) => typeof v === "string" && v !== "pipe" && v !== "inherit" && v !== "ignore"))
+    throw Object.assign(new TypeError("stdio must be an array of 'inherit', 'pipe', 'ignore', Bun.file(pathOrFd), number, or null"), { code: "ERR_INVALID_ARG_TYPE" });
+}
 
 /** What `stdin: "pipe"` gives: Bun's FileSink (write, flush, end). */
 class FileSink {
@@ -60,8 +67,7 @@ function sink(io: Io, fd: 1 | 2): { stream?: ReadableStream<Uint8Array>; push(da
 /** Feeds a stdin source into the child, then closes its stdin. */
 async function feed(child: Child, src: Exclude<StdinSource, Io>) {
   try {
-    if (typeof src === "string") child.write(enc.encode(src));
-    else if (src instanceof ArrayBuffer) child.write(new Uint8Array(src));
+    if (src instanceof ArrayBuffer) child.write(new Uint8Array(src));
     else if (ArrayBuffer.isView(src)) child.write(new Uint8Array(src.buffer, src.byteOffset, src.byteLength));
     else {
       const stream = src instanceof ReadableStream ? src : src instanceof Blob ? src.stream() : src.body;
@@ -133,6 +139,7 @@ export function spawn(cmdOrOptions: string[] | Options, maybeOptions: Options = 
   const opts: Options = Array.isArray(cmdOrOptions) ? { ...maybeOptions, cmd: cmdOrOptions } : (cmdOrOptions ?? {});
   const cmd = opts.cmd?.map(String) ?? [];
   const [stdinOpt, stdoutOpt, stderrOpt] = opts.stdio ?? [opts.stdin, opts.stdout, opts.stderr];
+  checkStdio([stdinOpt, stdoutOpt, stderrOpt]);
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(opts.env ?? processEnv)) if (v !== undefined) env[k] = String(v);
   const child = spawnChild(cmd, { cwd: opts.cwd ?? process.cwd(), env });
@@ -158,8 +165,11 @@ export function spawn(cmdOrOptions: string[] | Options, maybeOptions: Options = 
   return proc;
 }
 
+const API = "Bun.spawnSync";
+const INSTEAD = "Bun.spawn and await proc.exited";
+
 type SyncSpawnOptions = Omit<Options, "stdin" | "stdio" | "onExit" | "signal"> & {
-  stdin?: Io | string | ArrayBuffer | ArrayBufferView;
+  stdin?: Io | ArrayBuffer | ArrayBufferView;
   stdio?: [SyncSpawnOptions["stdin"], Io, Io];
   maxBuffer?: number;
 };
@@ -172,11 +182,14 @@ export function spawnSync(cmdOrOptions: string[] | SyncSpawnOptions, maybeOption
   const opts: SyncSpawnOptions = Array.isArray(cmdOrOptions) ? { ...maybeOptions, cmd: cmdOrOptions } : (cmdOrOptions ?? {});
   const cmd = opts.cmd?.map(String) ?? [];
   const [stdinOpt, stdoutOpt = "pipe", stderrOpt = "pipe"] = opts.stdio ?? [opts.stdin, opts.stdout, opts.stderr];
+  // Not isolated says so first: it fails whatever the options.
+  if (!canBlock()) throw new NotIsolatedError(API, INSTEAD);
+  checkStdio([stdinOpt, stdoutOpt, stderrOpt]);
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(opts.env ?? processEnv)) if (v !== undefined) env[k] = String(v);
-  const input = typeof stdinOpt === "string" && !["pipe", "inherit", "ignore"].includes(stdinOpt) ? enc.encode(stdinOpt) : stdinOpt instanceof ArrayBuffer ? new Uint8Array(stdinOpt) : ArrayBuffer.isView(stdinOpt) ? new Uint8Array(stdinOpt.buffer, stdinOpt.byteOffset, stdinOpt.byteLength) : undefined;
+  const input = stdinOpt instanceof ArrayBuffer ? new Uint8Array(stdinOpt) : ArrayBuffer.isView(stdinOpt) ? new Uint8Array(stdinOpt.buffer, stdinOpt.byteOffset, stdinOpt.byteLength) : undefined;
   const io = [stdoutOpt, stderrOpt];
-  const r = spawnChildSync("Bun.spawnSync", "Bun.spawn and await proc.exited", cmd, {
+  const r = spawnChildSync(API, INSTEAD, cmd, {
     cwd: opts.cwd ?? process.cwd(),
     env,
     input,

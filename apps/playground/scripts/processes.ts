@@ -39,6 +39,7 @@ const SYNC: [string, string, string][] = [
   ["execFileSync", `execFileSync("bun", ["upper.ts"], { input: "piped" }).toString()`, "PIPED"],
   ["enoent", `JSON.stringify((r => [r.error.code, r.status])(spawnSync("nope-cmd")))`, '["ENOENT",null]'],
   ["bun enoent", `(() => { try { Bun.spawnSync(["nope-cmd"]); } catch (e) { if (e.code === "ERR_NOT_ISOLATED") throw e; return e.code; } })()`, "ENOENT"],
+  ["bun string stdin", `(() => { try { Bun.spawnSync(["bun", "upper.ts"], { stdin: "x" }); return "accepted"; } catch (e) { if (e.code === "ERR_NOT_ISOLATED") throw e; return e.code; } })()`, "ERR_INVALID_ARG_TYPE"],
   // Output past the shared window (and past Node's default maxBuffer), on both streams.
   ["big", `(r => [r.stdout.length, r.stderr.length, r.exitCode].join(" "))(Bun.spawnSync(["bun", "big.ts"]))`, `${5 * MiB} ${3 * MiB} 0`],
   ["big exec", `execSync("bun big.ts", { maxBuffer: 64 * ${MiB}, stdio: "pipe" }).length`, `${5 * MiB}`],
