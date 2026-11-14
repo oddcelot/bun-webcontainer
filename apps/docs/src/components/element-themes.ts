@@ -22,7 +22,7 @@ export const LOOKS: Look[] = [
   {
     name: "Fire",
     family: "horizon-bright",
-    base: { "--radius": "0", "--font-ui": "ui-monospace, Menlo, Consolas, monospace" },
+    base: { "--radius": "0", "--font-ui": "system-ui, sans-serif" },
     light: { "--bg": "#fff4ec", "--canvas": "#ffd9c2", "--panel": "#ffe6d5", "--fg": "#4a1608", "--muted": "#a8573a", "--border": "#f3a57e", "--accent": "#e8390e" },
     dark: { "--bg": "#1c0d0a", "--canvas": "#120706", "--panel": "#2a120c", "--fg": "#ffe3c9", "--muted": "#c98a6b", "--border": "#5a2414", "--accent": "#ff6a1f" },
     radius: "0",
@@ -32,7 +32,7 @@ export const LOOKS: Look[] = [
   {
     name: "Wind",
     family: "min-light",
-    base: { "--radius": "1.25rem", "--font-ui": "Avenir Next, Century Gothic, sans-serif" },
+    base: { "--radius": "1.25rem", "--font-ui": "system-ui, sans-serif" },
     light: { "--bg": "#fbfdfd", "--canvas": "#eef4f5", "--panel": "#f4f8f9", "--fg": "#33464d", "--muted": "#86a0a8", "--border": "#dbe7ea", "--accent": "#2f8799" },
     dark: { "--bg": "#20282c", "--canvas": "#171d20", "--panel": "#1b2326", "--fg": "#dfeaec", "--muted": "#8aa1a8", "--border": "#2f3b40", "--accent": "#9fdbe6" },
     radius: "1.5rem",
@@ -42,7 +42,7 @@ export const LOOKS: Look[] = [
   {
     name: "Earth",
     family: "everforest-light",
-    base: { "--radius": "3px", "--font-ui": "Georgia, serif", "--font-mono": "Courier New, Courier, monospace" },
+    base: { "--radius": "3px", "--font-ui": "system-ui, sans-serif" },
     light: { "--bg": "#f6f0dc", "--canvas": "#e3d6b3", "--panel": "#ebe0c2", "--fg": "#3b2f1e", "--muted": "#7d6b4c", "--border": "#c9b88c", "--accent": "#5f7a2e" },
     dark: { "--bg": "#2a241a", "--canvas": "#1d1811", "--panel": "#231d14", "--fg": "#e9dfc4", "--muted": "#a39676", "--border": "#4a3f2b", "--accent": "#a3b85a" },
     radius: "4px",
@@ -79,10 +79,7 @@ export const frame = (l: Look) => {
     `--play-fg: ${both("--bg")}`,
     `--play-border: ${both("--accent")}`,
     `--play-radius: ${l.base["--radius"]}`,
-    `--play-font: 600 0.875rem ${l.base["--font-ui"]}`,
-    // The poster's code, in the font the embed will show it in.
-    ...(l.base["--font-mono"] ? [`--font-mono: ${l.base["--font-mono"]}`] : []),
-  ];
+    `--play-font: 600 0.875rem ${l.base["--font-ui"]}`,  ];
 };
 
 const row = (o: Record<string, string>) => `{ ${Object.entries(o).map(([k, v]) => `${JSON.stringify(k)}: ${JSON.stringify(v)}`).join(", ")} }`;
