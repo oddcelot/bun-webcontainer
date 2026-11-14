@@ -49,6 +49,7 @@ The playground's editor completes the fields, shows what each does when you hove
 | `hidden` | Files kept out of the tabs. They stay in the project and the file tree. |
 | `readonly` | Files the editor won't change, and folders for everything in them (`"vendor/"`). They open, highlighted, but take no typing and no Format, and the file tree doesn't rename or delete them; the program and `bun install` can still write them. An embed's own `readonly` makes every file read-only. |
 | `panels` | `files` (the tree), `tabs` (an embed's tab bar), `preview` and `console`: `true` shows one, `false` hides it, and the others stay as they are. In the playground this doesn't change your saved layout: a project without `panels` brings it back. |
+| `layout` | In an embed, `"stack"` puts the preview (or console) under the editor and `"side"` (the default) beside it, as the embed's [`layout`](/reference/embed-api/) does. The host page's `layout` wins. |
 | `sizes` | Each pane's share of space when the project opens, in percent: `files` of the width for the tree, `editor` of what the tree leaves (beside the preview and console, or above them in a stacked embed), `preview` of the column it shares with the console. The reader can still drag the borders, and what they drag wins; in the playground it stays their saved layout, as with `panels`. |
 | `preview` | `path`: what the preview requests first. `requests`: requests to try, each in its own preview tab, written `METHOD /path [-H "Name: value"] [body]` as in an embed's [`requests`](/reference/embed-api/). |
 | `requires` | `cross-origin-isolation` (Vite and Rolldown need it) or `local-bun` (child processes, native addons): if the page lacks it, the console says so when the project opens. |
@@ -58,5 +59,5 @@ The [examples](https://github.com/oddcelot/runbun-examples) use it: the Blank st
 ## What wins
 
 - **Code from a link** (a share link, a GitHub repo) still opens without running, whatever `autorun` says, and stays in the browser.
-- **In an embed** the host page's attributes win: `mode` or `features` set means the host picks the panels, and `file`, `path`, `requests` and `autorun` set by the host win over the file's. Inline files decide the tabs.
+- **In an embed** the host page's attributes win: `mode` or `features` set means the host picks the panels, and `file`, `path`, `requests`, `autorun` and `layout` set by the host win over the file's. Inline files decide the tabs.
 - **The reader** can still open and close panels and tabs; the file only sets where the project starts.

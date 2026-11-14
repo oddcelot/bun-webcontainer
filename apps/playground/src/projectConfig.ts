@@ -29,6 +29,8 @@ export type ProjectConfig = {
   readonly?: string[];
   /** Panes to show (true) or hide (false) when the project opens; the others stay as they are. */
   panels?: Partial<Record<Panel, boolean>>;
+  /** In an embed: the preview (or console) beside the editor ("side") or under it ("stack"), unless the host says. */
+  layout?: "side" | "stack";
   /**
    * Shares of space, in percent: `files` of the width for the tree, `editor` of what's left beside the preview and
    * console (of the height with them under it), `preview` of the column it shares with the console.
@@ -70,7 +72,7 @@ export function readConfig(read: (path: string) => string | undefined, problems:
   const c: ProjectConfig = {};
   const bad = (field: string, want: string) => problems.push(`${CONFIG_FILE}: "${field}" must be ${want}, ignored`);
   for (const key of Object.keys(r))
-    if (!["$schema", "run", "autorun", "env", "open", "hidden", "readonly", "panels", "sizes", "preview", "requires"].includes(key)) problems.push(`${CONFIG_FILE}: unknown field "${key}"`);
+    if (!["$schema", "run", "autorun", "env", "open", "hidden", "readonly", "panels", "layout", "sizes", "preview", "requires"].includes(key)) problems.push(`${CONFIG_FILE}: unknown field "${key}"`);
 
   if (r.run !== undefined) {
     const run = r.run as { entry?: unknown; args?: unknown };
@@ -99,6 +101,7 @@ export function readConfig(read: (path: string) => string | undefined, problems:
       }
     }
   }
+  if (r.layout !== undefined) r.layout === "side" || r.layout === "stack" ? (c.layout = r.layout) : bad("layout", '"side" or "stack"');
   if (r.sizes !== undefined) {
     const sizes = r.sizes as Record<string, unknown>;
     if (typeof sizes !== "object" || sizes === null || Array.isArray(sizes)) bad("sizes", `an object of ${SIZED.join(", ")}: percent`);

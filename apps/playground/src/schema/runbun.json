@@ -52,6 +52,10 @@
         "console": { "type": "boolean", "description": "The console." }
       }
     },
+    "layout": {
+      "enum": ["side", "stack"],
+      "description": "In an embed: the preview (or console) beside the editor (\"side\", the default) or under it (\"stack\"). The host page's layout wins; a narrow frame stacks either way."
+    },
     "sizes": {
       "type": "object",
       "additionalProperties": false,

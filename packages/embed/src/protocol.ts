@@ -25,7 +25,7 @@ export type Vars = {
   dark?: Record<string, string>;
 };
 
-/** What the host may set at load (URL parameters or `init`) and later (`setMode`, `setFeatures`, `setTheme`). */
+/** What the host may set at load (URL parameters or `init`) and later (`setMode`, `setFeatures`, `setLayout`, `setTheme`). */
 export type Options = {
   mode: Mode;
   /** Comma list layered on the mode's defaults; `-name` turns one off and keeps readers from turning it on. */
@@ -62,7 +62,7 @@ export type Options = {
   expand: "" | "on" | Mode;
   /**
    * "side" (default): the preview (or console) beside the editor; "stack": under it, as in a narrow frame, which
-   * stacks either way. Set at load only.
+   * stacks either way. `setLayout` changes it; unset, the project's runbun.json may pick one.
    */
   layout: Layout;
   /** Where the run status shows: "toast", one that fades once it settles (default), or "bar", a pill in the bar. */
@@ -135,6 +135,8 @@ export type Request =
   | { method: "removeFile"; params: { path: string } }
   | { method: "setMode"; params: { mode: Mode } }
   | { method: "setFeatures"; params: Partial<Record<Feature, boolean>> }
+  /** Moves the preview (or console) beside the editor or under it. Embeds older than it reply an error. */
+  | { method: "setLayout"; params: { layout: Layout } }
   | { method: "setTheme"; params: { theme: string } }
   | { method: "setFamily"; params: { family: string } }
   | { method: "setVars"; params: { vars: Vars } }

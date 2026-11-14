@@ -1,4 +1,4 @@
-import { FEATURES, MODES, type Feature, type Mode, type Options } from "@runbun/embed/protocol";
+import { FEATURES, LAYOUTS, MODES, type Feature, type Layout, type Mode, type Options } from "@runbun/embed/protocol";
 
 /** What each mode shows and turns on before the author's `features` list. */
 export const PRESETS: Record<Mode, readonly Feature[]> = {
@@ -13,6 +13,7 @@ export const PRESETS: Record<Mode, readonly Feature[]> = {
 export const COST: Partial<Record<Feature, string>> = { types: "10 MB", format: "7 MB", git: "1 MB" };
 
 export const isMode = (s: unknown): s is Mode => MODES.includes(s as Mode);
+export const isLayout = (s: unknown): s is Layout => LAYOUTS.includes(s as Layout);
 export const isFeature = (s: unknown): s is Feature => FEATURES.includes(s as Feature);
 
 /** The author's `features` list: names turned on, and names turned off (`-name`), which readers can't turn on. */
