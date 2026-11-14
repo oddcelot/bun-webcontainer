@@ -3,7 +3,7 @@
 // @runbun/embed. Registering the elements is `define` (index.ts calls it), so a page can pick the playground first.
 // Types only: a runtime import would make runbun.dev's build share protocol.ts with the embed page as a chunk, and
 // embed.js, loaded from other origins, has to be one file.
-import type { Event, Feature, Library, LibraryProject, Mode, Reply, Request, TestResult, Vars } from "./protocol.js";
+import type { Event, Feature, Layout, Library, LibraryProject, Mode, Reply, Request, TestResult, Vars } from "./protocol.js";
 
 const TAG = "bunPlayground"; // = protocol TAG
 const VERSION = 1; // = protocol VERSION
@@ -37,7 +37,7 @@ const PARAMS = [
  * `library` is the point: each embed then names its `project`. */
 const DEFAULTABLE = new Set(["mode", "features", "autorun", "theme", "family", "fonts", "readonly", "expand", "status", "layout", "vars", "load", "height", "src", "library"]);
 /** Defaults a running embed takes without reloading; the others only reach embeds that haven't started yet. */
-const LIVE = new Set(["theme", "family", "vars", "mode", "height"]);
+const LIVE = new Set(["theme", "family", "vars", "mode", "layout", "height"]);
 /** How long a start may take before the poster offers to try again (a first start downloads several MB of wasm). */
 const START_TIMEOUT = 60_000;
 const HEIGHTS: Record<string, string> = { code: "auto", console: "360px", preview: "420px", full: "600px", result: "420px" };
@@ -208,6 +208,8 @@ export class BunPlayground extends HTMLElement {
       return;
     }
     if (name === "mode") void this.setMode(this.#get("mode") as Mode);
+    // An embed older than setLayout starts over with the new layout instead.
+    else if (name === "layout") void this.setLayout(this.#get("layout") === "stack" ? "stack" : "side").catch(() => this.#rebuild());
     else if (name === "theme") void this.setTheme(this.#get("theme") ?? "auto");
     else if (name === "family") void this.setFamily(this.#get("family") ?? "");
     else if (name === "vars") void this.setVars(this.#vars());
@@ -260,6 +262,10 @@ export class BunPlayground extends HTMLElement {
   /** Switches the layout mode. */
   setMode(mode: Mode) {
     return this.#call("setMode", { mode });
+  }
+  /** Moves the preview (or console) beside the editor ("side") or under it ("stack"); rejects on embeds older than it. */
+  setLayout(layout: Layout) {
+    return this.#call("setLayout", { layout });
   }
   /** Turns features on or off. */
   setFeatures(features: Partial<Record<Feature, boolean>>) {

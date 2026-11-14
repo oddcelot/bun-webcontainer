@@ -8,10 +8,20 @@ export const CONFIG_FILE = "runbun.json";
 /** The panes a project can open or close: the file tree, the editor's tab bar (embeds), the preview, the console. */
 export type Panel = "files" | "tabs" | "preview" | "console";
 const PANELS: Panel[] = ["files", "tabs", "preview", "console"];
-const REQUIREMENTS = ["cross-origin-isolation", "local-bun"] as const;
+/** The panes `sizes` sets a share of space for. */
+export type Sized = "files" | "editor" | "preview";
+const SIZED: Sized[] = ["files", "editor", "preview"];
+const REQUIREMENTS =["cross-origin-isolation", "local-bun"] as const;
 export type Requirement = (typeof REQUIREMENTS)[number];
 
 export type ProjectConfig = {
+  /** Its card in a gallery (the examples', an embed's library): the name, a line on what it shows, and its kind and tags. */
+  name?: string;
+  description?: string;
+  /** "starter": a small project to build on; "example": one that shows a framework or feature. */
+  kind?: "starter" | "example";
+  /** The frameworks and libraries it is built on. */
+  tags?: string[];
   /** What Run starts, over the guess (package.json's module, main, dev script, index.ts). */
   run?: { entry: string; args: string[] };
   /** Run once opened (default: yes). Ignored for code from a link, which waits for the reader's Run. */
@@ -22,8 +32,17 @@ export type ProjectConfig = {
   open?: string[];
   /** Files kept out of the tabs (still in the project and the tree). */
   hidden?: string[];
+  /** Files the editor won't change, and folders for everything in them; the program can still write them. */
+  readonly?: string[];
   /** Panes to show (true) or hide (false) when the project opens; the others stay as they are. */
   panels?: Partial<Record<Panel, boolean>>;
+  /** In an embed: the preview (or console) beside the editor ("side") or under it ("stack"), unless the host says. */
+  layout?: "side" | "stack";
+  /**
+   * Shares of space, in percent: `files` of the width for the tree, `editor` of what's left beside the preview and
+   * console (of the height with them under it), `preview` of the column it shares with the console.
+   */
+  sizes?: Partial<Record<Sized, number>>;
   /** Where the preview points first, and preset requests, each in its own preview tab. */
   preview?: { path?: string; requests?: string[] };
   /** What it can't run without: the playground says so up front. */
@@ -60,8 +79,12 @@ export function readConfig(read: (path: string) => string | undefined, problems:
   const c: ProjectConfig = {};
   const bad = (field: string, want: string) => problems.push(`${CONFIG_FILE}: "${field}" must be ${want}, ignored`);
   for (const key of Object.keys(r))
-    if (!["$schema", "run", "autorun", "env", "open", "hidden", "panels", "preview", "requires"].includes(key)) problems.push(`${CONFIG_FILE}: unknown field "${key}"`);
+    if (!["$schema", "name", "description", "kind", "tags", "run", "autorun", "env", "open", "hidden", "readonly", "panels", "layout", "sizes", "preview", "requires"].includes(key)) problems.push(`${CONFIG_FILE}: unknown field "${key}"`);
 
+  if (r.name !== undefined) typeof r.name === "string" && r.name ? (c.name = r.name) : bad("name", "a string");
+  if (r.description !== undefined) typeof r.description === "string" ? (c.description = r.description) : bad("description", "a string");
+  if (r.kind !== undefined) r.kind === "starter" || r.kind === "example" ? (c.kind = r.kind) : bad("kind", '"starter" or "example"');
+  if (r.tags !== undefined) isStrings(r.tags) ? (c.tags = r.tags) : bad("tags", "a list of strings");
   if (r.run !== undefined) {
     const run = r.run as { entry?: unknown; args?: unknown };
     if (typeof run !== "object" || run === null || typeof run.entry !== "string" || (run.args !== undefined && !isStrings(run.args)))
@@ -76,6 +99,8 @@ export function readConfig(read: (path: string) => string | undefined, problems:
   }
   if (r.open !== undefined) isStrings(r.open) ? (c.open = r.open.map(bare)) : bad("open", "a list of paths");
   if (r.hidden !== undefined) isStrings(r.hidden) ? (c.hidden = r.hidden.map(bare)) : bad("hidden", "a list of paths");
+  if (r.readonly !== undefined)
+    isStrings(r.readonly) ? (c.readonly = r.readonly.map((p) => bare(p).replace(/\/+$/, "")).filter(Boolean)) : bad("readonly", "a list of paths");
   if (r.panels !== undefined) {
     const panels = r.panels as Record<string, unknown>;
     if (typeof panels !== "object" || panels === null || Array.isArray(panels)) bad("panels", `an object of ${PANELS.join(", ")}: true or false`);
@@ -84,6 +109,18 @@ export function readConfig(read: (path: string) => string | undefined, problems:
       for (const [k, v] of Object.entries(panels)) {
         if (PANELS.includes(k as Panel) && typeof v === "boolean") c.panels[k as Panel] = v;
         else problems.push(`${CONFIG_FILE}: panels."${k}" must be true, false or one of ${PANELS.join(", ")}`);
+      }
+    }
+  }
+  if (r.layout !== undefined) r.layout === "side" || r.layout === "stack" ? (c.layout = r.layout) : bad("layout", '"side" or "stack"');
+  if (r.sizes !== undefined) {
+    const sizes = r.sizes as Record<string, unknown>;
+    if (typeof sizes !== "object" || sizes === null || Array.isArray(sizes)) bad("sizes", `an object of ${SIZED.join(", ")}: percent`);
+    else {
+      c.sizes = {};
+      for (const [k, v] of Object.entries(sizes)) {
+        if (SIZED.includes(k as Sized) && typeof v === "number" && v > 0 && v < 100) c.sizes[k as Sized] = v;
+        else problems.push(`${CONFIG_FILE}: sizes."${k}" must be one of ${SIZED.join(", ")}, a percent between 0 and 100`);
       }
     }
   }

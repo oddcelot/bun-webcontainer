@@ -31,7 +31,7 @@ The element's attributes and the iframe's URL parameters share names.
 | `persist` | key | none | Keeps edits in the reader's browser under this key. Without it every load starts from the source. |
 | `expand` | empty, a mode, `false` | none | A button that opens the embed in a modal over the page. With a mode (`expand="full"`) it switches to that mode while open, with that mode's features plus your `features` (so `types` stays on, `-name` stays locked). While it's open the page behind is inert (no clicks, no focus) and doesn't scroll, and scrolling inside the embed doesn't carry over to it. Escape or the button closes it, and the embed is back inline as it was: its mode, features, layout and open tabs. |
 | `status` | `toast`, `bar` | `toast` | Where the run status shows: a toast over the panes' bottom-right corner that fades a few seconds after it settles (errors stay), or a pill in the bar. |
-| `layout` | `side`, `stack` | `side` | Where the preview (or the console, in `console` mode) goes: beside the editor, or under it, e.g. `<bun-playground mode="preview" layout="stack" height="auto">`. Stacked, there's no file tree. With `height="auto"` the editor fits its code (3 to 30 lines), the preview fits its request bar, the request panel when it shows (its params or headers, or a body of one line up to 7em) and a response (under a body at least room for a short one, 200px in all; a page keeps 200px; dragging the handle under the body only moves room between the two), and the console gets 120px, up to the 640px cap; past it, or at another height, they share the height and the response scrolls. Frames narrower than 560px stack either way. Inline only: expanded (`expand`), the embed has its usual layout, file tree included. Set at load: changing it reloads the embed. |
+| `layout` | `side`, `stack` | `side` | Where the preview (or the console, in `console` mode) goes: beside the editor, or under it, e.g. `<bun-playground mode="preview" layout="stack" height="auto">`. Stacked, there's no file tree. With `height="auto"` the editor fits its code (3 to 30 lines), the preview fits its request bar, the request panel when it shows (its params or headers, or a body of one line up to 7em) and a response (under a body at least room for a short one, 200px in all; a page keeps 200px; dragging the handle under the body only moves room between the two), and the console gets 120px, up to the 640px cap; past it, or at another height, they share the height and the response scrolls. Frames narrower than 560px stack either way. Inline only: expanded (`expand`), the embed has its usual layout, file tree included. Changing it moves the panes without reloading (a playground older than that reloads the embed); without it, the project's [`runbun.json`](/guides/project-config/) may pick one. |
 | `example` | name | none | A bundled example. |
 | `repo` | `owner/repo[@ref]` | none | A public GitHub repo. |
 | `share` | `#code=…` | none | A share link's hash. In an iframe URL put it after `#`. |
@@ -60,7 +60,7 @@ A library is JSON: `{ "projects": [ … ], "open"?: "<id>" }`. Each project:
 | `files` | `{ path: text }` | The project. |
 | `repo` | `owner/repo[@ref]` or a github.com URL | Instead of `files`: opened from GitHub when picked (60 projects an hour per reader without a token). |
 
-Each project loads in place of the last: the embed stays, and the project installs and runs as `autorun` says. With `persist`, each project keeps its own edits; **Reset** puts the open one back as the library has it. `npx @runbun/embed pack <dir>` builds a library from a folder of projects laid out like [runbun-examples](https://github.com/oddcelot/runbun-examples), one folder per project with an `example.json`.
+Each project loads in place of the last: the embed stays, and the project installs and runs as `autorun` says. With `persist`, each project keeps its own edits; **Reset** puts the open one back as the library has it. `npx @runbun/embed pack <dir>` builds a library from a folder of projects laid out like [runbun-examples](https://github.com/oddcelot/runbun-examples), one folder per project with its card (`name`, `description`, `kind`, `tags`) in a [`runbun.json`](/guides/project-config/) or an `example.json`.
 
 ## Page defaults
 
@@ -73,7 +73,7 @@ Each project loads in place of the last: the embed stays, and the project instal
 - Keys: `mode`, `features`, `autorun`, `theme`, `family`, `fonts`, `readonly`, `expand`, `status`, `layout`, `vars`, `load`, `height`, `src`, `library`. The others (`file`, `path`, `requests`, `example`, `repo`, `share`, `title`, `persist`, `project`) are per embed; a shared `persist` key would make embeds overwrite each other's edits. A shared `library` is read once, and each embed names its `project`.
 - Precedence: built-in default, then the page default, then the element's attribute, then what the reader picks in the embed's menu. An element opts out of a boolean default with `false`, e.g. `readonly="false"`. Removing an element's attribute falls back to the page default.
 - `vars` merges per scheme: the element's `base`, `light` and `dark` go over the page default's. Every other key replaces the default, `features` too. Malformed `vars` JSON in either place is skipped.
-- Changing `theme`, `family`, `vars`, `mode` or `height` on the defaults element updates running embeds without reloading them. The other keys only reach embeds that haven't started yet.
+- Changing `theme`, `family`, `vars`, `mode`, `layout` or `height` on the defaults element updates running embeds without reloading them. The other keys only reach embeds that haven't started yet.
 - The first `<bun-playground-defaults>` in the document wins; with more than one the element logs a warning. It is looked up every time, so a page that swaps its content (client-side navigation) can swap it too.
 
 ## Features
@@ -115,6 +115,7 @@ On the element, each returns a promise. Call them after `await el.ready`.
 | `removeFile(path)` | path | deletes the file and closes its tab; rejects for a missing file |
 | `setMode(mode)` | a mode | |
 | `setFeatures(obj)` | `{ types: true, format: false }` | |
+| `setLayout(layout)` | `"side"` or `"stack"` | The `layout` attribute does the same. Rejects on a playground older than it. |
 | `setTheme(theme)` | a theme | |
 | `setFamily(theme)` | a theme family's light variant | picks both halves without changing the color mode |
 | `setVars(vars)` | a `vars` object | sets the chrome's CSS variables |

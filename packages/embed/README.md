@@ -29,7 +29,7 @@ Without a bundler, load the same element from runbun.dev instead:
 
 Your own examples: `<bun-playground library="/examples.json">` gives the embed a gallery of your projects, and
 `npx @runbun/embed pack ./examples --out examples.json` builds that file from a folder of projects (one per folder,
-each with an `example.json`, as in [runbun-examples](https://github.com/oddcelot/runbun-examples)).
+each with its name in a `runbun.json` or an `example.json`, as in [runbun-examples](https://github.com/oddcelot/runbun-examples)).
 
 Modes, features, attributes, methods and events: [docs.runbun.dev/guides/embedding](https://docs.runbun.dev/guides/embedding/)
 and the [embed reference](https://docs.runbun.dev/reference/embed-api/).

@@ -150,7 +150,7 @@ Give an embed a library of your projects and readers can switch between them, li
 
 The element reads the file on your page, so one on your own site needs no CORS headers. A bar button then names the open project and opens the gallery, and each pick loads in place. `project` names the one to start with. For several embeds on a page, set `library` once on `<bun-playground-defaults>` and give each embed its `project`. Small libraries can go inline as a `<script type="application/json" data-library>` child instead. Fields, the `openProject()` method and the `project` event are in the [reference](/reference/embed-api/#libraries).
 
-To build the file from a folder of projects (one folder each, with an `example.json`, as in [runbun-examples](https://github.com/oddcelot/runbun-examples)):
+To build the file from a folder of projects (one folder each, its card in a [`runbun.json`](/guides/project-config/) or an `example.json`, as in [runbun-examples](https://github.com/oddcelot/runbun-examples)):
 
 ```sh
 npx @runbun/embed pack ./examples --out public/runbun/examples.json

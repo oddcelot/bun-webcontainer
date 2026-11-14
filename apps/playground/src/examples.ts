@@ -1,17 +1,29 @@
 import type { VFS } from "@runbun/vfs";
 import type { LibraryProject } from "@runbun/embed/protocol";
+import { readConfig } from "./projectConfig";
 
 // The gallery's projects come from the examples repo (oddcelot/runbun-examples), a git submodule at examples/: each
-// folder's example.json says how the gallery shows it, and every other file of it is bundled as text (the repo's
-// check keeps projects to text). Their node_modules are never included; "bun install" fetches packages from the
-// lockfile. demo.ts takes the demo's with the same pattern.
+// folder's runbun.json or example.json says how the gallery shows it, and every other file of it is bundled as text
+// (the repo's check keeps projects to text). Their node_modules are never included; "bun install" fetches packages
+// from the lockfile. demo.ts takes the demo's with the same pattern.
 const files = import.meta.glob<string>(
   ["../examples/*/**/*", "../examples/*/**/.*", "!../examples/*/**/node_modules/**", "!../examples/*/example.json", "!../examples/*/**/*.{png,jpg,jpeg,gif,webp,ico,woff,woff2,sqlite,db}"],
   { query: "?raw", import: "default" },
 );
 /** The examples repo's example.json (its example.schema.json): a project, or a GitHub repo to open (`repo`). */
-type ExampleMeta = { name: string; description: string; kind: "starter" | "example"; order?: number; tags: string[]; repo?: string };
-const metas = import.meta.glob<ExampleMeta>("../examples/*/example.json", { eager: true, import: "default" });
+type ExampleMeta = { name?: string; description?: string; kind?: "starter" | "example"; order?: number; tags?: string[]; repo?: string };
+const exampleJsons = import.meta.glob<ExampleMeta>("../examples/*/example.json", { eager: true, import: "default" });
+// A folder's runbun.json may carry its card too (name, description, kind, tags), over example.json's: example.json
+// stays for what's only the gallery's (order, repo) and for folders without the fields.
+const runbunJsons = import.meta.glob<string>("../examples/*/runbun.json", { eager: true, query: "?raw", import: "default" });
+const folderOf = (path: string) => path.split("/").at(-2)!;
+const metas: Record<string, ExampleMeta> = {};
+for (const [path, m] of Object.entries(exampleJsons)) metas[folderOf(path)] = { ...m };
+for (const [path, text] of Object.entries(runbunJsons)) {
+  const { name, description, kind, tags } = readConfig(() => text);
+  const card = Object.fromEntries(Object.entries({ name, description, kind, tags }).filter(([, v]) => v !== undefined));
+  if (card.name || metas[folderOf(path)]) metas[folderOf(path)] = { ...metas[folderOf(path)], ...card };
+}
 if (!Object.keys(metas).length) throw new Error("the examples submodule is empty: git submodule update --init apps/playground/examples");
 
 /** Where a project in the gallery sits: a starting point, a bundled example, or a public GitHub repo. */
@@ -43,15 +55,15 @@ const KIND_ORDER: ProjectKind[] = ["starter", "example", "github"];
 const iconOf = (tags: string[]) => tags.map((t) => techIcons[t]).find(Boolean) ?? "i-logos-bun?bg";
 
 export const catalog: CatalogEntry[] = Object.entries(metas)
-  .map(([path, m]) => {
-    const folder = path.split("/").at(-2)!;
+  .filter(([, m]) => m.name)
+  .map(([folder, m]) => {
     const entry: CatalogEntry = {
       value: m.repo ? `repo:${m.repo}` : folder === "demo" ? "" : folder,
-      kind: m.repo ? "github" : m.kind,
-      name: m.name,
-      description: m.description,
-      tags: m.tags,
-      icon: iconOf(m.tags),
+      kind: m.repo ? "github" : (m.kind ?? "example"),
+      name: m.name!,
+      description: m.description ?? "",
+      tags: m.tags ?? [],
+      icon: iconOf(m.tags ?? []),
     };
     return [entry, m.order ?? Infinity] as const;
   })

@@ -9,13 +9,13 @@ import { attach, discard, restore, SKIP, type StopSaving } from "../persist";
 import { isShareLink, loadShareLink, rememberSource, shareLink } from "../share";
 import { isFamily, pickFamily, setColorMode, setThemeVars } from "../theme";
 import { BUN_VERSION } from "../worker/bunVersion";
-import { isFeature, isMode, lockedFeatures, optionsFromUrl, resolveFeatures } from "./config";
+import { isFeature, isLayout, isMode, lockedFeatures, optionsFromUrl, resolveFeatures } from "./config";
 import { mountEmbed } from "./mount";
 import { parseRequests } from "./requests";
 import { readConfig, type ProjectConfig } from "../projectConfig";
 import { watchChanges } from "./changes";
 import { responseReserve } from "../preview";
-import { isMessage, TAG, VERSION, type Event, type Feature, type LibraryProject, type Mode, type Options, type Request } from "@runbun/embed/protocol";
+import { isMessage, TAG, VERSION, type Event, type Feature, type Layout, type LibraryProject, type Mode, type Options, type Request } from "@runbun/embed/protocol";
 import { VFS } from "@runbun/vfs";
 
 // runbun.dev/embed: the playground inside another page (an iframe, or <bun-playground>, which builds one). The URL's
@@ -103,11 +103,15 @@ const embed = createRoot(() => {
   // A column beside the editor: the preview, or the console in console mode. `layout=stack` puts it under the editor,
   // inline only: the modal has room for the usual layout, file tree included.
   const side = () => mode() !== "result" && (has("preview") || (mode() === "console" && has("console")));
-  const stacked = () => side() && options.layout === "stack" && !expanded();
+  // The host's `layout` (load, or `setLayout`), else the project's runbun.json, else "side".
+  const [layout, setLayout] = createSignal<Layout>(options.layout);
+  const stacked = () => side() && layout() === "stack" && !expanded();
   // The frame is as tall as the embed asked (`resize`): a host with height="auto". Stacked rows then fit the code.
   const [fit, setFit] = createSignal(false);
   // The library project open now; null for anything else (the host's inline files, a share link, an example).
   const [project, setProject] = createSignal<string | null>(null);
+  // The open project's runbun.json `sizes` (percent), under the sizes the reader dragged.
+  const [shares, setShares] = createSignal<ProjectConfig["sizes"]>();
   createEffect(
     () => ({ mode: mode(), features: features() }),
     (d) => {
@@ -128,6 +132,10 @@ const embed = createRoot(() => {
     library: libraryCatalog(library),
     project,
     setProject,
+    shares,
+    setShares,
+    layout,
+    setLayout,
     /** Opens a library project in place of the current one (the gallery, `openProject`). */
     openProject: (id: string) => switchProject(id),
     mode,
@@ -173,6 +181,12 @@ const embed = createRoot(() => {
     setFeatures(next: Partial<Record<Feature, boolean>>, fromReader = false) {
       setChanges((c) => {
         for (const [f, on] of Object.entries(next)) if (isFeature(f) && !(fromReader && on && locked.has(f))) c[f] = on;
+      });
+    },
+    /** Drops the changes to these features, back to what the mode and the author's list say. */
+    clearFeatures(names: Feature[]) {
+      setChanges((c) => {
+        for (const f of names) delete c[f];
       });
     },
     run: () => void pg.run(),
@@ -339,6 +353,11 @@ async function begin() {
   else session.setStatus({ state: "idle", text: "Ready" });
 }
 
+/** The panes the open project's runbun.json set (`panels`), put back to the defaults when another project opens. */
+let configPanels: Feature[] = [];
+/** The host picked the layout (at load, or `setLayout`): runbun.json's `layout` doesn't apply. */
+let layoutByHost = params.has("layout") || init?.options?.layout !== undefined;
+
 /** Whether the host set option `name` (URL parameter or init), so it wins over the project's runbun.json. */
 const hostSet = (name: keyof Options) => params.has(name) || init?.options?.[name] !== undefined;
 
@@ -353,13 +372,21 @@ function applyConfig(inline: boolean): ProjectConfig {
   for (const p of problems) log("warn", `[config] ${p}`);
   // Hidden ones (generated, such as a package.json) stay in the project and the tree, out of the tabs.
   const hidden = new Set([...(init?.hidden ?? []).map(bare), ...(config.hidden ?? [])]);
+  workspace.setReadonly(config.readonly ?? []);
   const listed = inline ? Object.keys(initFiles).map(bare) : (config.open ?? []);
   const tabs = listed.filter((path) => vfs.files.has(path) && !hidden.has(path));
   for (const path of tabs) workspace.open(path);
   const file = options.file && vfs.files.has(options.file) && !hidden.has(options.file) ? options.file : (tabs[0] ?? pg.entryFile());
   if (!hidden.has(file)) workspace.open(file);
-  // The panes: the host's mode and features, unless it set neither.
-  if (config.panels && !hostSet("mode") && !hostSet("features")) embed.setFeatures(config.panels);
+  // The panes: the host's mode and features, unless it set neither. Those the last project's file set go back to the
+  // defaults first, so a project without `panels` doesn't keep the previous one's.
+  const panels = !hostSet("mode") && !hostSet("features") ? (config.panels ?? {}) : {};
+  embed.clearFeatures(configPanels.filter((f) => !(f in panels)));
+  embed.setFeatures(panels);
+  configPanels = Object.keys(panels) as Feature[];
+  embed.setShares(config.sizes);
+  // The layout: the host's when it set one, else the project's (a project without one goes back to "side").
+  if (!layoutByHost) embed.setLayout(config.layout ?? "side");
   // `path` picks where the preview's first tab points (default "/"); the next Run loads it there. `requests` wins over
   // it: a tab per preset, the first sent by that Run, the others when first opened (previews.ts presets).
   const host = hostSet("requests") || hostSet("path");
@@ -609,6 +636,10 @@ async function handle(req: Request): Promise<unknown> {
       return embed.setMode(req.params.mode);
     case "setFeatures":
       return embed.setFeatures(req.params);
+    case "setLayout":
+      if (!isLayout(req.params.layout)) throw new Error(`unknown layout: ${req.params.layout}`);
+      layoutByHost = true;
+      return embed.setLayout(req.params.layout);
     case "setTheme":
       return applyTheme(req.params.theme);
     case "setFamily":

@@ -2,6 +2,7 @@
 //   bun test.ts [secret-file]    secret-file: a file the sandbox must hide (default: this package.json)
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import type { ServerMessage } from "./src/protocol.ts";
+import { launch } from "./src/sandbox.ts";
 import { startRunner } from "./src/server.ts";
 
 const ORIGIN = "https://runbun.dev";
@@ -79,6 +80,32 @@ try {
   check("node:child_process works", n.exec === "exec", native.err);
   check("bun:ffi works", n.ffiPid === true, native.err);
   check("the user's env doesn't leak in", !n.env.includes("RUNBUN_TEST_SECRET") && n.env.every((k: string) => !/token|key|secret/i.test(k)), JSON.stringify(n.env));
+
+  // The project's env (runbun.json): its own names reach the program, the runner's and the loader's don't.
+  const envRun = await run(
+    ws,
+    "env",
+    { "index.ts": `console.log(JSON.stringify({ greeting: process.env.GREETING, path: process.env.PATH, preload: process.env.LD_PRELOAD ?? process.env.DYLD_INSERT_LIBRARIES ?? null }))` },
+    undefined,
+    { env: { GREETING: "hi", PATH: "/nowhere", LD_PRELOAD: "/x.so", DYLD_INSERT_LIBRARIES: "/x.dylib", "BAD-NAME": "x" } },
+  );
+  const e = JSON.parse(envRun.out || "{}");
+  check("runbun.json's env reaches the program", e.greeting === "hi", envRun.err);
+  check("it can't replace the runner's or the loader's", e.path !== "/nowhere" && e.preload === null && /env left out: PATH, LD_PRELOAD, DYLD_INSERT_LIBRARIES, BAD-NAME/.test(envRun.err), envRun.err);
+
+  // …set inside the sandbox: its launcher (bwrap, sandbox-exec) gets the runner's env alone.
+  const runnerEnv = { PATH: "/usr/bin:/bin", HOME: "/p" };
+  const proj = { GREETING: "hi" };
+  const bw = launch("bwrap", "/p", ["run", "index.ts"], [], undefined, runnerEnv, proj);
+  const sx = launch("sandbox-exec", "/p", ["run", "index.ts"], [], 1, runnerEnv, proj);
+  const none = launch("none", "/p", ["run", "index.ts"], [], undefined, runnerEnv, { ...proj, HOME: "/elsewhere" });
+  check("bwrap: the project's env is --setenv, not the launcher's", !("GREETING" in bw.env) && bw.argv.join(" ").includes("--setenv GREETING hi"), JSON.stringify(bw));
+  check(
+    "sandbox-exec: the project's env goes through env(1) under the profile, not to the launcher",
+    !("GREETING" in sx.env) && sx.argv[3] === "/usr/bin/env" && sx.argv[4] === "GREETING=hi",
+    JSON.stringify(sx.argv.slice(3)),
+  );
+  check("no sandbox: the project's env goes to Bun, the runner's names winning", none.env.GREETING === "hi" && none.env.HOME === "/p", JSON.stringify(none.env));
 
   // The sandbox: the secret is unreadable, nothing outside the project lands on the host.
   const jail = await run(ws, "jail", {

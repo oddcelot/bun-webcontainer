@@ -1,4 +1,5 @@
 import { For, createEffect, createMemo, createSignal, onSettled } from "solid-js";
+import type { Sized } from "../projectConfig";
 
 /** What a reader can resize: the tree's width, the editor's share beside the side column (or over it, stacked), the preview's over the console, the console's height under the editor. */
 export type Size = "tree" | "side" | "rows" | "console" | "stack";
@@ -26,6 +27,29 @@ function toVars(s: Sizes) {
     "--stack-rows": s.stack === undefined ? undefined : ratio(s.stack),
   };
 }
+
+/**
+ * A project's runbun.json `sizes` (percent) as the same custom properties, under what the reader dragged. Stacked, the
+ * editor's share is of the height, and a frame that fits its content (`fit`) keeps its own rows.
+ */
+export function shareVars(s: Partial<Record<Sized, number>> | undefined, stacked: boolean, fit: boolean): Record<string, string> {
+  const vars: Record<string, string> = {};
+  if (!s) return vars;
+  if (s.files !== undefined) vars["--tree-w"] = `${s.files}%`;
+  if (s.editor !== undefined && !stacked) {
+    vars["--side-cols"] = ratio(s.editor / 100);
+    vars["--console-h"] = `${100 - s.editor}%`;
+  } else if (s.editor !== undefined && !fit) vars["--stack-rows"] = ratio(s.editor / 100);
+  if (s.preview !== undefined) vars["--rows"] = ratio(s.preview / 100);
+  return vars;
+}
+
+/** `shares` with the reader's sizes over them. */
+export const withShares = (shares: Record<string, string>, own: Record<string, string | undefined>) => {
+  const vars = { ...shares };
+  for (const [k, v] of Object.entries(own)) if (v !== undefined) vars[k] = v;
+  return vars;
+};
 
 /** The sizes the reader dragged, kept for the tab in sessionStorage under `key` (theme.ts: nothing in localStorage). */
 export function createSizes(key: string) {

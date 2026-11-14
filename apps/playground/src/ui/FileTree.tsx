@@ -71,7 +71,8 @@ const isDirectory = (item: FileTreeItemHandle | null): item is FileTreeDirectory
 /** A tree path without a folder's trailing slash: the VFS's form. */
 const vfsPath = (path: string) => path.replace(/\/$/, "");
 
-type MenuAction = { label: string; icon: string; keys?: string; run(): void };
+/** `disabled`: why it can't run now (the item's title); it stays in the menu, focusable, and does nothing. */
+type MenuAction = { label: string; icon: string; keys?: string; disabled?: string; run(): void };
 
 /**
  * A row's context menu, in the light DOM the tree slots in: styled like the app's menus (select.css), at the row's
@@ -97,7 +98,10 @@ function contextMenu(actions: MenuAction[], context: ContextMenuOpenContext): HT
       keys.textContent = action.keys;
       item.append(keys);
     }
-    item.addEventListener("click", () => action.run());
+    if (action.disabled) {
+      item.setAttribute("aria-disabled", "true");
+      item.title = action.disabled;
+    } else item.addEventListener("click", () => action.run());
     item.addEventListener("pointerenter", () => item.focus());
     item.addEventListener("focus", () => item.setAttribute("data-highlighted", ""));
     item.addEventListener("blur", () => item.removeAttribute("data-highlighted"));
@@ -128,6 +132,8 @@ export function FileTree() {
 
   // Rename, delete and New file here, unless an embed is read-only.
   const editable = () => app.features?.has("edit") ?? true;
+  /** Rename and delete for this row, unless runbun.json lists it in `readonly`. */
+  const changeable = (path: string) => editable() && !ws.isReadonly(vfsPath(path));
   const [deleting, setDeleting] = createSignal<string | null>(null);
   /** The last rename or delete, undoable for a while: Undo in the notice under the tree, or Ctrl/Cmd+Z in it. */
   const [undo, setUndo] = createSignal<{ label: string; run(): Promise<void> } | null>(null);
@@ -155,7 +161,7 @@ export function FileTree() {
     ...TREE_LOOK,
     // Inline, in the row (F2, or Rename in the menu): the tree moves the row, the VFS follows.
     renaming: {
-      canRename: () => editable(),
+      canRename: (item) => changeable(item.path),
       onRename: ({ sourcePath, destinationPath }) => {
         const [from, to] = [vfsPath(sourcePath), vfsPath(destinationPath)];
         void app.renamePath(from, to).then((run) => offerUndo(`Renamed ${from} to ${to}`, run));
@@ -200,6 +206,8 @@ export function FileTree() {
           setAsking(true);
         },
       });
+    // A read-only file or folder (runbun.json) keeps its name and stays: Rename and Delete are offered, disabled.
+    if (!changeable(item.path)) for (const a of actions) if (a.icon !== "i-lucide-file-plus") a.disabled = "read-only (runbun.json)";
     return actions;
   }
 
@@ -215,7 +223,7 @@ export function FileTree() {
     }
     if (!(e.key === "Delete" || (e.key === "Backspace" && (e.metaKey || e.ctrlKey)))) return;
     const path = tree.getFocusedPath();
-    if (!path || !editable()) return;
+    if (!path || !changeable(path)) return;
     e.preventDefault();
     setDeleting(path);
   }

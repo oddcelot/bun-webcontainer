@@ -13,6 +13,11 @@ export type ClientMessage =
       files: Record<string, FileData>;
       entry: string;
       args?: string[];
+      /**
+       * Environment variables for the program and its tests (the project's runbun.json `env`), under the runner's own;
+       * names it doesn't take (its own, LD_*, DYLD_*) are left out. Runners older than it ignore it.
+       */
+      env?: Record<string, string>;
       /** `bun install` before the run (default: when there is a package.json). */
       install?: boolean;
       /** `bun test <files>` instead of `bun run <entry>`. An empty entry and no `test` only installs. */

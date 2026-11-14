@@ -10,7 +10,7 @@ import type { Feature } from "@runbun/embed/protocol";
 import { AppContext } from "./context";
 import { Console } from "./Console";
 import { EditorPane } from "./EditorPane";
-import { Splits, createSizes, type Split } from "./EmbedSplit";
+import { Splits, createSizes, shareVars, withShares, type Split } from "./EmbedSplit";
 import { Explorer, toggleGit } from "./Explorer";
 import { inCommitBox } from "../git/store";
 import { Gallery } from "./Gallery";
@@ -172,7 +172,7 @@ export function EmbedApp() {
       <Show when={!app.session.canRun}>
         <Unsupported checks={app.support} />
       </Show>
-      <div id="embed-main" style={sizes.vars()}>
+      <div id="embed-main" style={withShares(shareVars(e.shares(), e.stacked(), e.fit()), sizes.vars())}>
         <Show when={showTree()}>
           <nav id="tree" class="pane" ref={nav} hidden={!tree() && !drawer()} onKeyDown={onDrawerKey}>
             <Explorer switcher />

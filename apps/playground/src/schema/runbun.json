@@ -7,6 +7,17 @@
   "additionalProperties": false,
   "properties": {
     "$schema": { "type": "string" },
+    "name": { "type": "string", "minLength": 1, "description": "The project's name on its card in a gallery (runbun.dev's examples, an embed's library), e.g. \"HTTP API\"." },
+    "description": { "type": "string", "description": "A line on what it shows, under the name on its card." },
+    "kind": {
+      "enum": ["starter", "example"],
+      "description": "\"starter\": a small project to build on, listed first; \"example\" (default): one that shows a framework or feature."
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "The frameworks and libraries it is built on, e.g. [\"Elysia\", \"SQLite\"]; a gallery filters by them, and the first with a logo is the card's icon."
+    },
     "run": {
       "description": "What Run starts, instead of the guess (package.json's module, main, dev script, else index.ts).",
       "type": "object",
@@ -36,6 +47,11 @@
       "items": { "type": "string" },
       "description": "Files kept out of the tabs; they stay in the project and the file tree."
     },
+    "readonly": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Files the editor won't change, e.g. \"bun.lock\", and folders for everything in them, e.g. \"vendor/\". The program can still write them."
+    },
     "panels": {
       "type": "object",
       "additionalProperties": false,
@@ -45,6 +61,30 @@
         "tabs": { "type": "boolean", "description": "The editor's tab bar (embeds; the playground always has it)." },
         "preview": { "type": "boolean", "description": "The preview of a running server." },
         "console": { "type": "boolean", "description": "The console." }
+      }
+    },
+    "layout": {
+      "enum": ["side", "stack"],
+      "description": "In an embed: the preview (or console) beside the editor (\"side\", the default) or under it (\"stack\"). The host page's layout wins; a narrow frame stacks either way."
+    },
+    "sizes": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Each pane's share of space when the project opens, in percent. The reader can still drag the borders; in the playground what they drag stays theirs.",
+      "properties": {
+        "files": { "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 100, "description": "The file tree's share of the width, e.g. 20." },
+        "editor": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 100,
+          "description": "The editor's share of the room the tree leaves, beside the preview and console (of the height when they sit under it, as in a stacked embed), e.g. 60."
+        },
+        "preview": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 100,
+          "description": "The preview's share of the column it shares with the console; the console gets the rest, e.g. 70."
+        }
       }
     },
     "preview": {
