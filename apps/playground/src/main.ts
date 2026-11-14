@@ -271,7 +271,7 @@ function switchTo(url: URL) {
 const openFile = (path: string) => workspace.open(path);
 
 /**
- * What the project's runbun.json asks for once it's loaded: its tabs (else the entry file), panels, preview path or
+ * What the project's runbun.json asks for once it's loaded: its tabs (else the entry file), panels and sizes, preview path or
  * requests, and a word on what it needs that this page lacks. Returns it for `begin`. Problems with the file are
  * logged, the rest of it still applies.
  */
@@ -284,6 +284,7 @@ function applyConfig(): ProjectConfig {
   for (const path of tabs) openFile(path);
   if (tabs.length) workspace.activate(tabs[0]);
   else if (!hidden.has(entryFile())) openFile(entryFile());
+  workspace.setSizes(config.sizes ?? null);
   workspace.setPanels(config.panels ?? null);
   const presets = parseRequests((config.preview?.requests ?? []).join("; "));
   if (presets.length) previews.presets(presets);

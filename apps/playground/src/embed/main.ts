@@ -108,6 +108,8 @@ const embed = createRoot(() => {
   const [fit, setFit] = createSignal(false);
   // The library project open now; null for anything else (the host's inline files, a share link, an example).
   const [project, setProject] = createSignal<string | null>(null);
+  // The open project's runbun.json `sizes` (percent), under the sizes the reader dragged.
+  const [shares, setShares] = createSignal<ProjectConfig["sizes"]>();
   createEffect(
     () => ({ mode: mode(), features: features() }),
     (d) => {
@@ -128,6 +130,8 @@ const embed = createRoot(() => {
     library: libraryCatalog(library),
     project,
     setProject,
+    shares,
+    setShares,
     /** Opens a library project in place of the current one (the gallery, `openProject`). */
     openProject: (id: string) => switchProject(id),
     mode,
@@ -373,6 +377,7 @@ function applyConfig(inline: boolean): ProjectConfig {
   embed.clearFeatures(configPanels.filter((f) => !(f in panels)));
   embed.setFeatures(panels);
   configPanels = Object.keys(panels) as Feature[];
+  embed.setShares(config.sizes);
   // `path` picks where the preview's first tab points (default "/"); the next Run loads it there. `requests` wins over
   // it: a tab per preset, the first sent by that Run, the others when first opened (previews.ts presets).
   const host = hostSet("requests") || hostSet("path");

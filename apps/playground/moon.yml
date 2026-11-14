@@ -37,8 +37,9 @@ tasks:
     # (scripts/test-results.ts), what `persist` leaves unsaved (scripts/persist-skip.ts), how a test run that doesn't
     # report ends: Stop, the watchdog, process.exit (scripts/runner-stop.ts), who the embed's `change` event says
     # changed a file (scripts/change-origin.ts), the worker's Requests keeping forbidden headers
-    # (scripts/request-headers.ts), and what `bun install` prunes from node_modules (scripts/install-prune.ts).
-    script: 'bun scripts/inspect-corpus/diff.ts && bun scripts/data-apis/jsonl.ts && bun scripts/data-apis/xml-stringify.ts && bun scripts/requests.ts && bun scripts/request-fields.ts && bun scripts/vfs-mirror.ts && bun scripts/test-results.ts && bun scripts/persist-skip.ts && bun scripts/runner-stop.ts && bun scripts/change-origin.ts && bun scripts/request-headers.ts && bun scripts/install-prune.ts'
+    # (scripts/request-headers.ts), what `bun install` prunes from node_modules (scripts/install-prune.ts), and how
+    # runbun.json is read (scripts/project-config.ts).
+    script: 'bun scripts/inspect-corpus/diff.ts && bun scripts/data-apis/jsonl.ts && bun scripts/data-apis/xml-stringify.ts && bun scripts/requests.ts && bun scripts/request-fields.ts && bun scripts/vfs-mirror.ts && bun scripts/test-results.ts && bun scripts/persist-skip.ts && bun scripts/runner-stop.ts && bun scripts/change-origin.ts && bun scripts/request-headers.ts && bun scripts/install-prune.ts && bun scripts/project-config.ts'
     toolchains: ['bun']
     inputs:
       - 'scripts/inspect-corpus/**/*'

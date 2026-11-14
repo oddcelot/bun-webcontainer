@@ -12,6 +12,7 @@ import { Header } from "./Header";
 import { StatusToast } from "./Status";
 import { StatusBar, statusDisplay } from "./StatusBar";
 import { Unsupported } from "./Unsupported";
+import type { Sized } from "../projectConfig";
 
 /** Panel sizes as fractions, kept across reloads. A hidden panel isn't kept: after a reload it opens at its size from before. */
 function sizesPref(key: string, fallback: number[]) {
@@ -74,15 +75,35 @@ export function App() {
       split.setSizes(i ? [1, 0] : [0, 1]);
     }
   };
-  // A project's runbun.json `panels`: shown or hidden as it asks, the others as they are. What that changes isn't the
-  // reader's layout, so it isn't saved; a project without `panels` brings the saved layout back.
+  // A project's runbun.json `sizes` (percent): the shares it asks for, the tree's and the right column's kept for when
+  // they show again if hidden now.
+  const setShares = (s: Partial<Record<Sized, number>>) => {
+    if (!cols || !split) return;
+    const [tree, editor, right] = cols.sizes;
+    if (s.files !== undefined) widths[0] = s.files / 100;
+    const t = tree > 0 && s.files !== undefined ? s.files / 100 : tree;
+    const rest = 1 - t;
+    let e = rest;
+    let r = 0;
+    if (s.editor !== undefined) {
+      if (right > 0) r = rest - (e = (rest * s.editor) / 100);
+      else widths[2] = (rest * (100 - s.editor)) / 100;
+    } else if (right > 0) r = rest - (e = (editor * rest) / (editor + right));
+    cols.setSizes([t, e, r]);
+    if (s.preview !== undefined) {
+      shown = [s.preview / 100, 1 - s.preview / 100];
+      if (split.sizes.every((n) => n > 0)) split.setSizes(shown);
+    }
+  };
+  // A project's runbun.json `panels`: shown or hidden as it asks, the others as they are; then its `sizes`. What they
+  // change isn't the reader's layout, so it isn't saved; a project with neither brings the saved layout back.
   let applying = false;
   let overridden = false;
   const saved = { columns: [...columns], rows: [...rows] };
-  const setPanels = (want: { files?: boolean; preview?: boolean; console?: boolean } | null) => {
+  const setPanels = (want: { files?: boolean; preview?: boolean; console?: boolean } | null, shares: Partial<Record<Sized, number>> | null) => {
     if (!cols || !split) return;
     applying = true;
-    if (!want) {
+    if (!want && !shares) {
       if (overridden) {
         cols.setSizes(saved.columns);
         split.setSizes(saved.rows);
@@ -90,15 +111,17 @@ export function App() {
       overridden = false;
     } else {
       overridden = true;
-      if (want.files !== undefined && want.files !== cols.sizes[0] > 0) toggleColumn(0);
+      if (shares) setShares(shares);
+      if (want?.files !== undefined && want.files !== cols.sizes[0] > 0) toggleColumn(0);
       const right = cols.sizes[2] > 0;
       const now = { preview: right && split.sizes[0] > 0, console: right && split.sizes[1] > 0 };
-      const next = { preview: want.preview ?? now.preview, console: want.console ?? now.console };
+      const next = { preview: want?.preview ?? now.preview, console: want?.console ?? now.console };
       if (next.preview !== now.preview || next.console !== now.console) {
         if (!next.preview && !next.console) toggleColumn(2);
         else {
           if (!right) toggleColumn(2);
-          split.setSizes(next.preview && next.console ? (saved.rows.every((r) => r > 0) ? saved.rows : [0.5, 0.5]) : next.preview ? [1, 0] : [0, 1]);
+          const both = shares?.preview !== undefined ? shown : saved.rows.every((r) => r > 0) ? saved.rows : [0.5, 0.5];
+          split.setSizes(next.preview && next.console ? both : next.preview ? [1, 0] : [0, 1]);
         }
       }
     }
@@ -106,9 +129,9 @@ export function App() {
     requestAnimationFrame(() => (applying = false));
   };
   createEffect(
-    () => app.workspace.panels(),
-    (want) => {
-      setPanels(want);
+    () => [app.workspace.panels(), app.workspace.sizes()] as const,
+    ([want, shares]) => {
+      setPanels(want, shares);
     },
   );
   onSettled(() => {

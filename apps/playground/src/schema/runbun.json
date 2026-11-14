@@ -47,6 +47,26 @@
         "console": { "type": "boolean", "description": "The console." }
       }
     },
+    "sizes": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Each pane's share of space when the project opens, in percent. The reader can still drag the borders; in the playground what they drag stays theirs.",
+      "properties": {
+        "files": { "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 100, "description": "The file tree's share of the width, e.g. 20." },
+        "editor": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 100,
+          "description": "The editor's share of the room the tree leaves, beside the preview and console (of the height when they sit under it, as in a stacked embed), e.g. 60."
+        },
+        "preview": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 100,
+          "description": "The preview's share of the column it shares with the console; the console gets the rest, e.g. 70."
+        }
+      }
+    },
     "preview": {
       "type": "object",
       "additionalProperties": false,

@@ -1,5 +1,5 @@
 import { createSignal, createStore } from "solid-js";
-import type { Panel } from "../projectConfig";
+import type { Panel, Sized } from "../projectConfig";
 import type { EditorCursor, EditorDiagnostic } from "../editors/types";
 import { pref } from "../prefs";
 import { EMBEDDED } from "../theme";
@@ -44,6 +44,8 @@ export function createWorkspace() {
   const readOnly = new Map<string, string>();
   // The open project's runbun.json `panels` (App.tsx shows and hides them); null: the reader's own layout.
   const [panels, setPanels] = createSignal<Partial<Record<Panel, boolean>> | null>(null);
+  // Its `sizes`, in percent (App.tsx sizes the panes by them); null: the reader's own.
+  const [sizes, setSizes] = createSignal<Partial<Record<Sized, number>> | null>(null);
   // What the editor reports for the status bar.
   const [cursor, setCursor] = createSignal<EditorCursor | null>(null);
   const [problems, setProblems] = createSignal<EditorDiagnostic[]>([]);
@@ -87,6 +89,9 @@ export function createWorkspace() {
     /** The panes the open project asks for (runbun.json), applied over the reader's layout without saving it. */
     panels,
     setPanels,
+    /** The panes' shares of space the open project asks for (runbun.json `sizes`), likewise not saved. */
+    sizes,
+    setSizes,
     /** The open file's error and warning markers. */
     problems,
     setProblems,

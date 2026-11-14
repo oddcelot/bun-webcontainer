@@ -8,7 +8,10 @@ export const CONFIG_FILE = "runbun.json";
 /** The panes a project can open or close: the file tree, the editor's tab bar (embeds), the preview, the console. */
 export type Panel = "files" | "tabs" | "preview" | "console";
 const PANELS: Panel[] = ["files", "tabs", "preview", "console"];
-const REQUIREMENTS = ["cross-origin-isolation", "local-bun"] as const;
+/** The panes `sizes` sets a share of space for. */
+export type Sized = "files" | "editor" | "preview";
+const SIZED: Sized[] = ["files", "editor", "preview"];
+const REQUIREMENTS =["cross-origin-isolation", "local-bun"] as const;
 export type Requirement = (typeof REQUIREMENTS)[number];
 
 export type ProjectConfig = {
@@ -24,6 +27,11 @@ export type ProjectConfig = {
   hidden?: string[];
   /** Panes to show (true) or hide (false) when the project opens; the others stay as they are. */
   panels?: Partial<Record<Panel, boolean>>;
+  /**
+   * Shares of space, in percent: `files` of the width for the tree, `editor` of what's left beside the preview and
+   * console (of the height with them under it), `preview` of the column it shares with the console.
+   */
+  sizes?: Partial<Record<Sized, number>>;
   /** Where the preview points first, and preset requests, each in its own preview tab. */
   preview?: { path?: string; requests?: string[] };
   /** What it can't run without: the playground says so up front. */
@@ -60,7 +68,7 @@ export function readConfig(read: (path: string) => string | undefined, problems:
   const c: ProjectConfig = {};
   const bad = (field: string, want: string) => problems.push(`${CONFIG_FILE}: "${field}" must be ${want}, ignored`);
   for (const key of Object.keys(r))
-    if (!["$schema", "run", "autorun", "env", "open", "hidden", "panels", "preview", "requires"].includes(key)) problems.push(`${CONFIG_FILE}: unknown field "${key}"`);
+    if (!["$schema", "run", "autorun", "env", "open", "hidden", "panels", "sizes", "preview", "requires"].includes(key)) problems.push(`${CONFIG_FILE}: unknown field "${key}"`);
 
   if (r.run !== undefined) {
     const run = r.run as { entry?: unknown; args?: unknown };
@@ -84,6 +92,17 @@ export function readConfig(read: (path: string) => string | undefined, problems:
       for (const [k, v] of Object.entries(panels)) {
         if (PANELS.includes(k as Panel) && typeof v === "boolean") c.panels[k as Panel] = v;
         else problems.push(`${CONFIG_FILE}: panels."${k}" must be true, false or one of ${PANELS.join(", ")}`);
+      }
+    }
+  }
+  if (r.sizes !== undefined) {
+    const sizes = r.sizes as Record<string, unknown>;
+    if (typeof sizes !== "object" || sizes === null || Array.isArray(sizes)) bad("sizes", `an object of ${SIZED.join(", ")}: percent`);
+    else {
+      c.sizes = {};
+      for (const [k, v] of Object.entries(sizes)) {
+        if (SIZED.includes(k as Sized) && typeof v === "number" && v > 0 && v < 100) c.sizes[k as Sized] = v;
+        else problems.push(`${CONFIG_FILE}: sizes."${k}" must be one of ${SIZED.join(", ")}, a percent between 0 and 100`);
       }
     }
   }

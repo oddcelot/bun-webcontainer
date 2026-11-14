@@ -47,6 +47,7 @@ The playground's editor completes the fields, shows what each does when you hove
 | `open` | The files opened as tabs, in order; the first is shown. Without it, the entry file. |
 | `hidden` | Files kept out of the tabs. They stay in the project and the file tree. |
 | `panels` | `files` (the tree), `tabs` (an embed's tab bar), `preview` and `console`: `true` shows one, `false` hides it, and the others stay as they are. In the playground this doesn't change your saved layout: a project without `panels` brings it back. |
+| `sizes` | Each pane's share of space when the project opens, in percent: `files` of the width for the tree, `editor` of what the tree leaves (beside the preview and console, or above them in a stacked embed), `preview` of the column it shares with the console. The reader can still drag the borders, and what they drag wins; in the playground it stays their saved layout, as with `panels`. |
 | `preview` | `path`: what the preview requests first. `requests`: requests to try, each in its own preview tab, written `METHOD /path [-H "Name: value"] [body]` as in an embed's [`requests`](/reference/embed-api/). |
 | `requires` | `cross-origin-isolation` (Vite and Rolldown need it) or `local-bun` (child processes, native addons): if the page lacks it, the console says so when the project opens. |
 
