@@ -60,7 +60,7 @@ A library is JSON: `{ "projects": [ … ], "open"?: "<id>" }`. Each project:
 | `files` | `{ path: text }` | The project. |
 | `repo` | `owner/repo[@ref]` or a github.com URL | Instead of `files`: opened from GitHub when picked (60 projects an hour per reader without a token). |
 
-Each project loads in place of the last: the embed stays, and the project installs and runs as `autorun` says. With `persist`, each project keeps its own edits; **Reset** puts the open one back as the library has it. `npx @runbun/embed pack <dir>` builds a library from a folder of projects laid out like [runbun-examples](https://github.com/oddcelot/runbun-examples), one folder per project with an `example.json`.
+Each project loads in place of the last: the embed stays, and the project installs and runs as `autorun` says. With `persist`, each project keeps its own edits; **Reset** puts the open one back as the library has it. `npx @runbun/embed pack <dir>` builds a library from a folder of projects laid out like [runbun-examples](https://github.com/oddcelot/runbun-examples), one folder per project with its card (`name`, `description`, `kind`, `tags`) in a [`runbun.json`](/guides/project-config/) or an `example.json`.
 
 ## Page defaults
 

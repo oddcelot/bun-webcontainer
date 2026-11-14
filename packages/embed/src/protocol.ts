@@ -72,7 +72,8 @@ export type Options = {
 /**
  * A project of an example library: what its card in the gallery shows, and its files (path → text) or a public GitHub
  * repo to open instead (`owner/repo`, `owner/repo@ref` or a github.com URL). `id` names it (`project`, `openProject`).
- * The fields match example.json in github.com/oddcelot/runbun-examples; `pack` builds a library from such folders.
+ * The fields match runbun.json's card (and example.json's) in github.com/oddcelot/runbun-examples; `pack` builds a
+ * library from such folders.
  */
 export type LibraryProject = {
   id: string;

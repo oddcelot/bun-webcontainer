@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // runbun-embed pack: builds an example library for <bun-playground library="…"> (protocol.ts Library) from a folder
-// of projects laid out like github.com/oddcelot/runbun-examples: one folder per project, each with an example.json
-// (name, description, kind, tags, order; or repo) and its files. Text files only; node_modules, .git and build
-// output are left out.
+// of projects laid out like github.com/oddcelot/runbun-examples: one folder per project, each with its card in a
+// runbun.json (name, description, kind, tags) or an example.json (those, order; or repo) and its files. Text files
+// only; node_modules, .git and build output are left out.
 //
 //   bunx @runbun/embed pack ./examples > public/runbun/library.json
 //   npx @runbun/embed pack ./examples --out public/runbun/library.json --open hello
@@ -11,13 +11,16 @@ import { join, relative } from "node:path";
 
 const USAGE = `usage: runbun-embed pack <dir> [--out <file>] [--open <id>]
 
-Builds a library for <bun-playground library="…"> from <dir>: one folder per project (its id), each with an
-example.json ({ "name", "description", "kind": "starter" | "example", "tags": [...], "order"?, "repo"? }).`;
+Builds a library for <bun-playground library="…"> from <dir>: one folder per project (its id), each with its card in
+a runbun.json or an example.json ({ "name", "description", "kind": "starter" | "example", "tags": [...] }; example.json
+also "order"?, "repo"?). runbun.json's fields win.`;
 
 const SKIP = new Set(["node_modules", ".git", "dist", ".astro", ".DS_Store", "example.json"]);
 /** Past this, a project is likely to carry something it shouldn't (a build, a database). */
 const BIG = 512 * 1024;
 const KINDS = ["starter", "example"];
+/** JSON with comments and trailing commas, as runbun.json allows (apps/playground/src/projectConfig.ts parseJsonc). */
+const parseJsonc = (text) => JSON.parse(text.replace(/("(?:\\.|[^"\\])*")|\/\/[^\n]*|\/\*[\s\S]*?\*\//g, "$1").replace(/,(\s*[}\]])/g, "$1"));
 
 const [command, ...rest] = process.argv.slice(2);
 if (command !== "pack" || !rest.length || rest.includes("--help") || rest.includes("-h")) {
@@ -64,17 +67,26 @@ function filesOf(root, at = root, files = {}) {
 const projects = [];
 for (const id of readdirSync(dir).sort()) {
   const folder = join(dir, id);
-  const metaPath = join(folder, "example.json");
-  if (!statSync(folder).isDirectory() || !existsSync(metaPath)) continue;
-  let meta;
-  try {
-    meta = JSON.parse(readFileSync(metaPath, "utf8"));
-  } catch (e) {
-    warn(`${id}/example.json doesn't parse (${e.message}): left out`);
-    continue;
-  }
+  if (!statSync(folder).isDirectory()) continue;
+  const read = (name, parse) => {
+    const path = join(folder, name);
+    if (!existsSync(path)) return undefined;
+    try {
+      const value = parse(readFileSync(path, "utf8"));
+      return typeof value === "object" && value !== null && !Array.isArray(value) ? value : {};
+    } catch (e) {
+      warn(`${id}/${name} doesn't parse (${e.message})`);
+      return {};
+    }
+  };
+  const example = read("example.json", JSON.parse);
+  const config = read("runbun.json", parseJsonc);
+  // runbun.json's card over example.json's; a folder with neither isn't a project.
+  if (!example && !config?.name) continue;
+  const card = Object.fromEntries(["name", "description", "kind", "tags"].filter((k) => config?.[k] !== undefined).map((k) => [k, config[k]]));
+  const meta = { ...example, ...card };
   if (typeof meta.name !== "string" || !meta.name) {
-    warn(`${id}/example.json has no name: left out`);
+    warn(`${id} has no name (runbun.json or example.json): left out`);
     continue;
   }
   const project = { id, name: meta.name };
@@ -101,7 +113,7 @@ if (open) {
   else warn(`--open ${open}: no such project`);
 }
 if (!library.projects.length) {
-  console.error(`no projects in ${dir} (folders with an example.json)`);
+  console.error(`no projects in ${dir} (folders with a runbun.json naming them, or an example.json)`);
   process.exit(1);
 }
 
