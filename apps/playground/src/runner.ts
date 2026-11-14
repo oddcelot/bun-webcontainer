@@ -520,7 +520,7 @@ export class Runner {
    * A child process a program started (worker/processes.ts spawnChild): a worker of its own on the project's files as
    * they are now, its stdout and stderr (console lines included) back to the parent as bytes, its exit as a report.
    */
-  private spawn(parent: Worker, m: { id: number; launch: { entry?: string; script?: string; args: string[] }; cwd: string; env: Record<string, string> }) {
+  private spawn(parent: Worker, m: { id: number; launch: { entry?: string; script?: string; args: string[] }; cwd: string; env: Record<string, string>; thread?: object; port?: MessagePort }) {
     const ppid = this.procs.get(parent)?.id ?? 1;
     const worker = this.newWorker();
     const proc: Proc = { worker, parent, id: m.id, ended: false };
@@ -541,7 +541,9 @@ export class Runner {
       this.endChild(proc, 1, null);
     };
     const { entry, script, args } = m.launch;
-    worker.postMessage({ type: "start", entry, script, args, files: this.vfs.files, dirs: this.vfs.dirs, vfsRoot: vfsRoot(), proc: { pid: m.id, ppid, cwd: m.cwd, env: m.env } });
+    // A worker_threads thread also gets its channel to the Worker (worker/node/worker_threads.ts).
+    const thread = m.port ? { thread: m.thread, port: m.port } : {};
+    worker.postMessage({ type: "start", entry, script, args, files: this.vfs.files, dirs: this.vfs.dirs, vfsRoot: vfsRoot(), proc: { pid: m.id, ppid, cwd: m.cwd, env: m.env }, ...thread }, m.port ? [m.port] : []);
   }
 
   /** A child process ended (by itself, or a signal): its parent hears how, and it goes, with its own children. */
