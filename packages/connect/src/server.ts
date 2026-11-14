@@ -13,7 +13,7 @@ import { dirname, extname, isAbsolute, join, normalize } from "node:path";
 import type { ServerWebSocket, Subprocess } from "bun";
 import { PACKED_REQUEST, PACKED_RESPONSE, type ClientMessage, type ConnectInfo, type ServerMessage } from "./protocol.ts";
 import { type FsLike, listeningPorts, peerVerdict, readNetRows, readProcs, refuse } from "./peer.ts";
-import { detectSandbox, sandboxed, type SandboxKind } from "./sandbox.ts";
+import { detectSandbox, launch, type SandboxKind } from "./sandbox.ts";
 
 export const DEFAULT_ORIGINS = ["https://runbun.dev", "https://canary.runbun.dev", "http://localhost:5173"];
 
@@ -113,6 +113,25 @@ export interface Limits {
 export const DEFAULT_LIMITS: Limits = { memoryMB: 2048, processes: 64 };
 /** How often a run's processes are checked against the limits. */
 const WATCH_MS = 500;
+
+/**
+ * The variables a run's `env` (the project's runbun.json) may set: well-formed names, not the ones the runner sets
+ * itself (they win), and none a dynamic loader reads (LD_*, DYLD_*). It's set inside the sandbox only (sandbox.ts
+ * launch), so the loader names are refused as a second line of defense. The rest are left out, with a line in the run's
+ * output.
+ */
+export function projectEnv(env: unknown): { env: Record<string, string>; refused: string[] } {
+  const out: Record<string, string> = {};
+  const refused: string[] = [];
+  if (typeof env !== "object" || env === null || Array.isArray(env)) return { env: out, refused };
+  for (const [k, v] of Object.entries(env)) {
+    if (typeof v !== "string") continue;
+    if (!/^[A-Za-z_][A-Za-z0-9_]{0,127}$/.test(k) || RUNNER_ENV.has(k) || /^(LD_|DYLD_)/.test(k) || v.length > 32_768) refused.push(k);
+    else out[k] = v;
+  }
+  return { env: out, refused };
+}
+const RUNNER_ENV = new Set(["PATH", "HOME", "TMPDIR", "PORT", "BUN_INSTALL_CACHE_DIR", "NO_COLOR"]);
 
 /** The real /proc, for peer.ts. */
 const procFs: FsLike = { readFile: (p) => readFileSync(p, "utf8"), readdir: (p) => readdirSync(p), readlink: (p) => readlinkSync(p) };
@@ -336,18 +355,21 @@ export function startRunner(opts: RunnerOptions = {}) {
   }
 
   /** Runs `bun <args>` in dir, streaming its output; resolves with its exit. */
-  async function spawn(ws: Socket, id: string, run: Run, dir: string, args: string[]) {
-    const proc = Bun.spawn(sandboxed(sandbox, dir, args, [run.cache], server.port), {
+  async function spawn(ws: Socket, id: string, run: Run, dir: string, args: string[], extraEnv: Record<string, string> = {}) {
+    // A clean environment: none of the user's tokens or keys. Bun.serve() with no port listens on $PORT. The
+    // project's own (projectEnv) is set inside the sandbox, never for its launcher (sandbox.ts launch).
+    const runnerEnv = {
+      PATH: "/usr/local/bin:/usr/bin:/bin",
+      HOME: dir,
+      TMPDIR: join(dir, ".tmp"),
+      PORT: String(run.port),
+      BUN_INSTALL_CACHE_DIR: run.cache,
+      NO_COLOR: "1",
+    };
+    const { argv, env } = launch(sandbox, dir, args, [run.cache], server.port, runnerEnv, extraEnv);
+    const proc = Bun.spawn(argv, {
       cwd: dir,
-      // A clean environment: none of the user's tokens or keys. Bun.serve() with no port listens on $PORT.
-      env: {
-        PATH: "/usr/local/bin:/usr/bin:/bin",
-        HOME: dir,
-        TMPDIR: join(dir, ".tmp"),
-        PORT: String(run.port),
-        BUN_INSTALL_CACHE_DIR: run.cache,
-        NO_COLOR: "1",
-      },
+      env,
       stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",
@@ -435,8 +457,11 @@ export function startRunner(opts: RunnerOptions = {}) {
         send(ws, { t: "phase", id: msg.id, phase: "run" });
         send(ws, { t: "started", id: msg.id, preview: `http://${ws.data.host}/__connect/preview/${token}/${msg.id}/` });
         const args = msg.test ? ["test", ...msg.test] : ["run", msg.entry, ...(msg.args ?? [])];
+        // The project's `env` for the program and its tests, not for `bun install`.
+        const { env, refused } = projectEnv(msg.env);
+        if (refused.length) send(ws, { t: "out", id: msg.id, fd: 2, data: `[runbun connect] env left out: ${refused.join(", ")}\n` });
         let exited = false;
-        const done = spawn(ws, msg.id, run, dir, args).finally(() => (exited = true));
+        const done = spawn(ws, msg.id, run, dir, args, env).finally(() => (exited = true));
         // Tell the page once the program listens, so Run can show the preview. On $PORT, or wherever it chose
         // (Elysia's `.listen(3000)`): the preview goes to that port.
         if (!msg.test)

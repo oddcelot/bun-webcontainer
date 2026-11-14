@@ -17,7 +17,9 @@ bun test.ts [secret]    # end-to-end: access checks, native APIs, sandbox, previ
   worker can fetch `/__connect/info` when the runner serves the page). So the CLI asks in its terminal before each
   connection's first run (`approve.ts`, server.ts `approve`); a page can't answer there. `--no-confirm` skips it.
 - **Run**: files from the playground are written to a fresh temp dir; `bun run <entry>` with a clean env
-  (`HOME`/`TMPDIR` inside the dir, `PORT` for `Bun.serve`). stdout/stderr stream back; stdin and kill go in.
+  (`HOME`/`TMPDIR` inside the dir, `PORT` for `Bun.serve`), plus the project's runbun.json `env` (the run message's
+  `env`, server.ts `projectEnv`: not the runner's names, nor `LD_*`/`DYLD_*`), set inside the sandbox only.
+  stdout/stderr stream back; stdin and kill go in.
 - **Sandbox**: Linux `bwrap` (root read-only, `/home` `/root` `/tmp` empty, the project dir the only writable
   bind, `--unshare-all --share-net`); macOS `sandbox-exec` (writes only to the project, home unreadable apart
   from the Bun binary; no `open`/`osascript` or LaunchServices lookups, which would start apps outside the sandbox; connecting to the runner's own port is denied, so the program can't fetch the token from
