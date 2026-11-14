@@ -3,7 +3,7 @@
 // src/runner.ts), end to end: a project runs in the embed in headless Chrome and each program prints what its children
 // did. Bun.spawn with pipes, stdin, exit codes and kill; child_process spawn/exec/execFile; Bun.$ running `bun` in a
 // pipeline; package.json scripts (spawned, and the console's `bun run` of a shell line); a child's file writes;
-// grandchildren. The expected lines are what native Bun prints for the same project (checked by running it with `bun`
+// grandchildren; a server a child starts, reached through the preview. The expected lines are what native Bun prints for the same project (checked by running it with `bun`
 // in a temp folder, unless --no-native).
 //   bun scripts/processes.ts [--no-native] [--content-origin]
 // --content-origin: project code on its own origin (run.runbun.localhost), as on runbun.dev (src/contentOrigin.ts).
@@ -20,7 +20,8 @@ const CONTENT = process.argv.includes("--content-origin");
 const EDITOR = `http://${CONTENT ? "runbun." : ""}localhost:${PORT}`;
 
 const files: Record<string, string> = {
-  "package.json": JSON.stringify({ name: "procs", scripts: { greet: "echo from-script && bun child.ts s", build: "echo built && bun child.ts b > built.txt && cat built.txt" } }),
+  "package.json": JSON.stringify({ name: "procs", scripts: { greet: "echo from-script && bun child.ts s", build: "echo built && bun child.ts b > built.txt && cat built.txt", serve: "echo serving && bun server.ts" } }),
+  "server.ts": `Bun.serve({ port: 3001, fetch: (req) => new Response("child server " + new URL(req.url).pathname) });\nconsole.log("listening");`,
   "child.ts": `console.log("child", process.argv.slice(2).join(","), process.env.X ?? "-");\nprocess.exitCode = Number(process.env.CODE ?? 0);`,
   "upper.ts": `let s = "";\nfor await (const c of process.stdin) s += c;\nprocess.stdout.write(s.toUpperCase());`,
   "forever.ts": `console.log("up");\nsetInterval(() => {}, 1000);`,
@@ -270,6 +271,16 @@ try {
     const ran = after.filter((l) => want.includes(l));
     if (JSON.stringify(ran) === JSON.stringify(want)) console.log("✓ console bun run <shell line>");
     else (bad++, console.error(`✗ console bun run build\n  got  ${JSON.stringify(after)}\n  want ${JSON.stringify(want)}`));
+    // A server a child process starts (the shell's `bun server.ts`; the program, Bun's shell, serves nothing) answers
+    // the preview. Fetched from a frame of the origin whose service worker serves previews.
+    const mark = (await page.evaluate(() => (window as unknown as { lines: string[] }).lines)).length;
+    await page.keyboard.type("bun run serve\n");
+    await page.waitForFunction((n: number) => (window as unknown as { lines: string[] }).lines.slice(n).includes("listening"), { timeout: 30_000 }, mark).catch(() => {});
+    const origin = CONTENT ? `http://run.runbun.localhost:${PORT}` : EDITOR;
+    const frame = page.frames().find((f) => f.url().startsWith(origin + "/") && !f.url().includes("/__preview"))!;
+    const preview = await frame.evaluate(() => fetch("/__preview/hello").then(async (r) => `${r.status} ${await r.text()}`)).catch(String);
+    if (preview === "200 child server /hello") console.log("✓ preview of a child's server");
+    else (bad++, console.error(`✗ preview of a child's server\n  got  ${JSON.stringify(preview)}\n  want "200 child server /hello"`));
     for (const c of crashes) (bad++, console.error(`✗ page error: ${c}`));
   } finally {
     await browser.close();

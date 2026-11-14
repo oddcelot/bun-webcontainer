@@ -60,9 +60,12 @@ export class Runner {
   exitCode: number | undefined;
   /** Called when a program that had started ends itself (one that ends while starting sets `exitCode` instead). */
   onExit?: (code: number) => void;
-  /** Called with the ports the program answering previews serves, whenever they change (none once it stops). */
+  /**
+   * Called with the ports the program answering previews serves, its child processes' after its own, whenever they
+   * change (none once it stops).
+   */
   onPorts?: (ports: number[]) => void;
-  /** Each program's ports as it last reported them: a restart's new program reports before it takes over. */
+  /** Each program's (and child process's) ports as it last reported them: a restart's new program reports before it takes over. */
   private ports = new WeakMap<Worker, number[]>();
   /** Child processes by their worker, and each program's children by the id it gave them. */
   private procs = new Map<Worker, Proc>();
@@ -215,7 +218,7 @@ export class Runner {
       if (!this.serving()) return sendText(port, 503, "No server running. Press Run.");
       // Relayed instead of handing the worker `port`, so an unfinished response can still be ended.
       const { port1, port2 } = new MessageChannel();
-      const entry = { started: false, owner: this.worker };
+      const entry = { started: false, owner: this.worker && this.route().worker };
       this.pending.set(port, entry);
       port1.onmessage = ({ data }) => {
         if (!this.pending.has(port)) return;
@@ -239,7 +242,8 @@ export class Runner {
       const { base, ...ws } = m;
       const headers = await this.withCookies(m.path, m.headers, base);
       if (!this.worker) return port.postMessage({ type: "close", code: 1011, reason: "No server running" });
-      this.worker.postMessage({ ...ws, headers }, [port]);
+      const to = this.route(ws.port);
+      to.worker.postMessage({ ...ws, headers, port: to.port }, [port]);
     }
   }
 
@@ -253,7 +257,42 @@ export class Runner {
    * streamed shape (`head`, `chunk`…, `end` or `error`; see sendResponse in worker/runtime.ts).
    */
   protected forward(req: { path: string; method: string; headers: [string, string][]; body: ArrayBuffer | null }, port: MessagePort) {
-    this.worker!.postMessage({ type: "request", req }, [port]);
+    const to = this.route();
+    to.worker.postMessage({ type: "request", req, port: to.port }, [port]);
+  }
+
+  /** The program's child processes (and theirs), in the order they were started. */
+  private *descendants(worker: Worker): Generator<Worker> {
+    for (const kid of this.kids.get(worker)?.values() ?? [])
+      if (!kid.ended) {
+        yield kid.worker;
+        yield* this.descendants(kid.worker);
+      }
+  }
+
+  /**
+   * Who answers a preview request, for `port` if it names one (a WebSocket to another port): the program, if it serves
+   * that port or (with none named) any; else the first of its child processes that does (a script's `bun run dev`
+   * starting the server), on that port; else the program, whose runtime says it has no server. Only call while a
+   * program runs.
+   */
+  private route(port?: number): { worker: Worker; port?: number } {
+    const main = this.worker!;
+    const own = this.ports.get(main) ?? [];
+    if (port === undefined ? own.length : own.includes(port)) return { worker: main, port };
+    for (const w of this.descendants(main)) {
+      const ports = this.ports.get(w) ?? [];
+      if (port === undefined ? ports.length : ports.includes(port)) return { worker: w, port: port ?? ports[0] };
+    }
+    return { worker: main, port };
+  }
+
+  /** Tells `onPorts` what the program answering previews serves now, its child processes included. */
+  private reportPorts() {
+    const main = this.worker;
+    if (!main) return this.onPorts?.([]);
+    const all = [main, ...this.descendants(main)].flatMap((w) => this.ports.get(w) ?? []);
+    this.onPorts?.([...new Set(all)]);
   }
 
   /** Ends the preview responses still on their way (only `owner`'s, if given): the program that would have finished them is gone. */
@@ -401,7 +440,7 @@ export class Runner {
     if (o.kind === "ready" || (o.kind === "exit" && o.code === 0)) {
       const old = this.worker;
       this.worker = worker;
-      this.onPorts?.(this.ports.get(worker) ?? []);
+      this.reportPorts();
       this.exitCode = undefined;
       if (old) this.drain(old);
       if (o.kind === "exit") {
@@ -457,7 +496,7 @@ export class Runner {
       else if (m.type === "cookies") this.storeCookies(m.path, m.setCookies);
       else if (m.type === "ports") {
         this.ports.set(worker, m.ports);
-        if (this.worker === worker) this.onPorts?.(m.ports);
+        if (this.worker === worker) this.reportPorts();
       }
       else if (m.type === "ready") {
         // From a worker Stop already let go of (still flushing): its report doesn't count.
@@ -534,7 +573,11 @@ export class Runner {
       if (c.type === "stdio") out(c.fd, c.data);
       else if (c.type === "console") out(c.level === "error" || c.level === "warn" ? 2 : 1, enc.encode(`${c.text}\n`));
       else if (c.type === "exit") this.endChild(proc, c.code, c.signal ?? null);
-      else this.common(worker, c);
+      // A server it starts answers previews when the program serves none (see `route`).
+      else if (c.type === "ports") {
+        this.ports.set(worker, c.ports);
+        this.reportPorts();
+      } else this.common(worker, c);
     };
     worker.onerror = (e) => {
       out(2, enc.encode(`worker error: ${e.message}\n`));
@@ -562,6 +605,9 @@ export class Runner {
       self.ended = true;
       this.procs.delete(worker);
       this.kids.get(self.parent)?.delete(self.id);
+      // A child process's server goes with it: the previews it was answering end, and its ports leave the list.
+      this.endPending(worker);
+      if (this.ports.delete(worker)) this.reportPorts();
     }
     for (const kid of kids?.values() ?? []) if (!kid.ended) this.endChild(kid, 137, "SIGKILL");
   }
