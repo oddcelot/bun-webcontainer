@@ -1,6 +1,17 @@
 ---
-// The four looks (element-themes.ts), live, in a grid that folds to one column in a narrow page.
+// The four looks (element-themes.ts), live, in a grid that folds to one column in a narrow page. With `load="click"`
+// each stays its poster (the code and a Run button, in the look's colors) until a reader starts it.
 import { LOOKS, frame, vars } from "./element-themes.ts";
+
+export interface Props {
+  load?: "click";
+}
+const { load } = Astro.props;
+// The poster declares `color-scheme: light dark`, so a `light-dark()` it reads through --poster-bg follows the
+// visitor's system, not this site's switch. The --look-* properties are registered colors (below), which resolve on
+// the element, in the page's scheme; the stylesheet then points the poster's properties at them.
+const resolved = (l: (typeof LOOKS)[number]) =>
+  (["bg", "fg", "accent"] as const).map((k) => `--look-${k}: light-dark(${l.light[`--${k}`]}, ${l.dark[`--${k}`]})`);
 ---
 
 <div class="element-themes not-content">
@@ -8,7 +19,7 @@ import { LOOKS, frame, vars } from "./element-themes.ts";
     LOOKS.map((l) => (
       <figure>
         <figcaption>{l.name}</figcaption>
-        <bun-playground mode="code" family={l.family} vars={JSON.stringify(vars(l))} style={frame(l).join(";")} title={`${l.name} theme`}>
+        <bun-playground mode="code" load={load} family={l.family} vars={JSON.stringify(vars(l))} style={[...frame(l), ...resolved(l)].join(";")} title={`${l.name} theme`}>
           <Fragment set:html={`<script type="text/plain" data-file="index.ts">${l.code.replaceAll("</", "<\\/")}</script>`} />
         </bun-playground>
       </figure>
@@ -38,6 +49,30 @@ import { LOOKS, frame, vars } from "./element-themes.ts";
     /* Each look draws its own frame (inline, as in the snippets) in place of these docs' pixel frame. */
     bun-playground {
       margin: 0;
+      /* Over the inline ones, which would follow the system scheme (see `resolved`). */
+      --poster-bg: var(--look-bg) !important;
+      --poster-fg: var(--look-fg) !important;
+      --play-bg: var(--look-accent) !important;
+      --play-fg: var(--look-bg) !important;
+      --play-border: var(--look-accent) !important;
     }
+  }
+</style>
+
+<style is:global>
+  @property --look-bg {
+    syntax: "<color>";
+    inherits: true;
+    initial-value: transparent;
+  }
+  @property --look-fg {
+    syntax: "<color>";
+    inherits: true;
+    initial-value: transparent;
+  }
+  @property --look-accent {
+    syntax: "<color>";
+    inherits: true;
+    initial-value: transparent;
   }
 </style>

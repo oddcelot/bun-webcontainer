@@ -228,7 +228,13 @@ The same embed four ways. Each sets a `family` for the code's colors, `vars` for
   files={Object.fromEntries(LOOKS.slice(1).map((l) => [`${l.name.toLowerCase()}.html`, snippet(l)]))}
 />
 
-The frame's colors use `light-dark()`, which follows your page's `color-scheme`. `--poster-bg` colors the element until the embed has loaded, so it doesn't flash your page's background first.
+The frame's colors use `light-dark()`, which follows your page's `color-scheme`.
+
+Until an embed has started, the element shows its poster, which is your page's to style: `vars` only reach the embed once it runs. The `--poster-*` and `--play-*` properties in the snippets give the poster the look's colors and its Run button the accent, so nothing flashes your page's background while the embed loads. Here are the same four with `load="click"`, waiting for a reader:
+
+<ElementThemes load="click" />
+
+Press Run on one and it starts in the same look. Inside the poster, `light-dark()` follows the visitor's system setting rather than your page's `color-scheme`; if your page has its own light and dark switch, set these properties per scheme in your stylesheet instead. The properties and the `::part()` names for the button and spinner are in the [reference](/reference/embed-api/#theming).
 
 ## Defaults for a page
 

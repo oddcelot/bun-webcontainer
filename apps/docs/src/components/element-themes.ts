@@ -33,7 +33,7 @@ export const LOOKS: Look[] = [
     name: "Wind",
     family: "min-light",
     base: { "--radius": "1.25rem", "--font-ui": "ui-rounded, system-ui, sans-serif" },
-    light: { "--bg": "#fbfdfd", "--canvas": "#eef4f5", "--panel": "#f4f8f9", "--fg": "#33464d", "--muted": "#86a0a8", "--border": "#dbe7ea", "--accent": "#3f9fb3" },
+    light: { "--bg": "#fbfdfd", "--canvas": "#eef4f5", "--panel": "#f4f8f9", "--fg": "#33464d", "--muted": "#86a0a8", "--border": "#dbe7ea", "--accent": "#2f8799" },
     dark: { "--bg": "#20282c", "--canvas": "#171d20", "--panel": "#1b2326", "--fg": "#dfeaec", "--muted": "#8aa1a8", "--border": "#2f3b40", "--accent": "#9fdbe6" },
     radius: "1.5rem",
     shadow: "0 0 0 1px light-dark(#dbe7ea, #2f3b40), 0 18px 36px -20px light-dark(#7fa9b3, #000)",
@@ -63,20 +63,32 @@ export const LOOKS: Look[] = [
 
 export const vars = ({ base, light, dark }: Look) => ({ base, light, dark });
 
-/** The frame, and the poster in the look's colors, so the element doesn't flash the page's while the embed loads. */
-export const frame = (l: Look) => [
-  `border-radius: ${l.radius}`,
-  `overflow: hidden`,
-  `box-shadow: ${l.shadow}`,
-  `--poster-bg: light-dark(${l.light["--bg"]}, ${l.dark["--bg"]})`,
-];
+/**
+ * The frame, and the poster (what the element shows until the embed is ready, or until a click with `load="click"`)
+ * in the look's colors: its code, and the Run button as the look's accent.
+ */
+export const frame = (l: Look) => {
+  const both = (name: keyof Palette) => `light-dark(${l.light[name]}, ${l.dark[name]})`;
+  return [
+    `border-radius: ${l.radius}`,
+    `overflow: hidden`,
+    `box-shadow: ${l.shadow}`,
+    `--poster-bg: ${both("--bg")}`,
+    `--poster-fg: ${both("--fg")}`,
+    `--play-bg: ${both("--accent")}`,
+    `--play-fg: ${both("--bg")}`,
+    `--play-border: ${both("--accent")}`,
+    `--play-radius: ${l.base["--radius"]}`,
+    `--play-font: 600 0.875rem ${l.base["--font-ui"]}`,
+  ];
+};
 
 const row = (o: Record<string, string>) => `{ ${Object.entries(o).map(([k, v]) => `${JSON.stringify(k)}: ${JSON.stringify(v)}`).join(", ")} }`;
 const indent = (s: string, by: string) => s.split("\n").map((line) => by + line).join("\n");
 
-/** What a reader copies for a look: the element as the grid renders it. */
-export const snippet = (l: Look) => `<bun-playground
-  mode="code"
+/** What a reader copies for a look: the element as the grid renders it. `load="click"` is the grid of posters. */
+export const snippet = (l: Look, load?: "click") => `<bun-playground
+  mode="code"${load ? `\n  load="${load}"` : ""}
   family="${l.family}"
   vars='{
     "base": ${row(l.base)},
