@@ -47,7 +47,7 @@ The runner listens only on `127.0.0.1`, and only runbun.dev (or the playground i
 | Your home folder | Hidden: it looks empty | Can't be read |
 | Writing files | Only the project's folder and its own Bun package cache are kept; other writes land in a throwaway copy | Refused, except in the project's folder and its own Bun package cache |
 | The rest of the file system | Readable | Readable |
-| Environment variables | None of yours | None of yours |
+| Environment variables | None of yours; the project's [`env`](/guides/project-config/), but not `PATH`, `HOME` or `LD_*` | None of yours; the project's [`env`](/guides/project-config/), but not `PATH`, `HOME` or `DYLD_*` |
 | Network | Open | Open |
 
 The network stays open because the preview has to reach the program's server and `bun install` has to reach the registry. That means a program can also reach other services on your computer and your local network. The exception is the runner's own port: on macOS a program can't connect to it, and on Linux the runner turns away connections that come from a program it started, so a program can't read the runner's token. A new connection also waits for your answer in the terminal.

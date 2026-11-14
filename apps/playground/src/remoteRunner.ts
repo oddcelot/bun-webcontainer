@@ -2,6 +2,7 @@ import { PACKED_REQUEST, PACKED_RESPONSE, type FileData, type ServerMessage } fr
 import type { VFS } from "@runbun/vfs";
 import type { LocalBun } from "./localBun";
 import { SKIP } from "./persist";
+import { readConfig } from "./projectConfig";
 import { isShellCommand } from "./scripts";
 import { Runner, type LogFn, type TestResults } from "./runner";
 
@@ -85,7 +86,9 @@ export class RemoteRunner extends Runner {
       return;
     }
     const c = this.begin(!!tests);
-    this.local.send({ t: "run", id: c.id, project: this.project, files: this.snapshot(), entry, args, test: tests });
+    // runbun.json's `env`, as in the browser (worker/runtime.ts); the runner leaves out names it keeps for itself.
+    const env = readConfig((path) => this.files.readText(path)).env;
+    this.local.send({ t: "run", id: c.id, project: this.project, files: this.snapshot(), entry, args, test: tests, env });
     await this.ready;
   }
 
