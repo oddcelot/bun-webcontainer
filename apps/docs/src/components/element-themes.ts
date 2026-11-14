@@ -18,6 +18,9 @@ export type Look = {
   code: string;
 };
 
+/** The same program in every look, so only the look differs; each prints its own symbol. */
+const sample = (symbol: string) => `for (const n of [1, 2, 3]) {\n  console.log("${symbol}".repeat(n));\n}`;
+
 export const LOOKS: Look[] = [
   {
     name: "Fire",
@@ -27,7 +30,7 @@ export const LOOKS: Look[] = [
     dark: { "--bg": "#1c0d0a", "--canvas": "#120706", "--panel": "#2a120c", "--fg": "#ffe3c9", "--muted": "#c98a6b", "--border": "#5a2414", "--accent": "#ff6a1f" },
     radius: "0",
     shadow: "0 0 0 2px light-dark(#e8390e, #ff6a1f), 0 0 28px -2px light-dark(#ff8a4c, #ff4d00)",
-    code: `for (const n of [1, 2, 3]) {\n  console.log("🔥".repeat(n));\n}`,
+    code: sample("🔥"),
   },
   {
     name: "Wind",
@@ -37,7 +40,7 @@ export const LOOKS: Look[] = [
     dark: { "--bg": "#20282c", "--canvas": "#171d20", "--panel": "#1b2326", "--fg": "#dfeaec", "--muted": "#8aa1a8", "--border": "#2f3b40", "--accent": "#9fdbe6" },
     radius: "1.5rem",
     shadow: "0 0 0 1px light-dark(#dbe7ea, #2f3b40), 0 18px 36px -20px light-dark(#7fa9b3, #000)",
-    code: `const knots = [4, 12, 28, 48];\nfor (const k of knots) {\n  console.log(k, "~".repeat(k / 4));\n}`,
+    code: sample("💨"),
   },
   {
     name: "Earth",
@@ -47,7 +50,7 @@ export const LOOKS: Look[] = [
     dark: { "--bg": "#2a241a", "--canvas": "#1d1811", "--panel": "#231d14", "--fg": "#e9dfc4", "--muted": "#a39676", "--border": "#4a3f2b", "--accent": "#a3b85a" },
     radius: "4px",
     shadow: "0 0 0 3px light-dark(#6b5433, #8a7448), 7px 7px 0 0 light-dark(#c9b88c, #14100a)",
-    code: `const dig = "soil clay rock";\ndig.split(" ").forEach((s, d) => {\n  console.log("  ".repeat(d) + s);\n});`,
+    code: sample("🌱"),
   },
   {
     name: "Water",
@@ -57,7 +60,7 @@ export const LOOKS: Look[] = [
     dark: { "--bg": "#06182b", "--canvas": "#030e1c", "--panel": "#0a2038", "--fg": "#d6ecff", "--muted": "#6f9ac0", "--border": "#15385c", "--accent": "#3fb6ff" },
     radius: "1rem",
     shadow: "0 0 0 2px light-dark(#a9d0f0, #15385c), 0 16px 32px -14px light-dark(#0a7fd6, #0059b3)",
-    code: `const tide = [0.4, 1.9, 3.1, 1.2];\nfor (const m of tide) {\n  console.log(m, "≈".repeat(m * 4));\n}`,
+    code: sample("💧"),
   },
 ];
 
@@ -85,9 +88,9 @@ export const frame = (l: Look) => {
 const row = (o: Record<string, string>) => `{ ${Object.entries(o).map(([k, v]) => `${JSON.stringify(k)}: ${JSON.stringify(v)}`).join(", ")} }`;
 const indent = (s: string, by: string) => s.split("\n").map((line) => by + line).join("\n");
 
-/** What a reader copies for a look: the element as the grid renders it. `load="click"` is the grid of posters. */
-export const snippet = (l: Look, load?: "click") => `<bun-playground
-  mode="code"${load ? `\n  load="${load}"` : ""}
+/** What a reader copies for a look: the element as the first grid renders it (the second adds `load="click"`). */
+export const snippet = (l: Look) => `<bun-playground
+  mode="code"
   family="${l.family}"
   vars='{
     "base": ${row(l.base)},
