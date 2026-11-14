@@ -3,8 +3,8 @@
 // src/runner.ts), end to end: a project runs in the embed in headless Chrome and each program prints what its children
 // did. Bun.spawn with pipes, stdin, exit codes and kill; child_process spawn/exec/execFile; Bun.$ running `bun` in a
 // pipeline; package.json scripts (spawned, and the console's `bun run` of a shell line); a child's file writes;
-// grandchildren; a server a child starts, reached through the preview. The expected lines are what native Bun prints for the same project (checked by running it with `bun`
-// in a temp folder, unless --no-native).
+// grandchildren; worker_threads threads; a server a child starts, reached through the preview. The expected lines are
+// what native Bun prints for the same project (checked by running it with `bun` in a temp folder, unless --no-native).
 //   bun scripts/processes.ts [--no-native] [--content-origin]
 // --content-origin: project code on its own origin (run.runbun.localhost), as on runbun.dev (src/contentOrigin.ts).
 // Chrome: CHROME=<path to the binary>, else the usual install on macOS or Linux.
@@ -28,6 +28,19 @@ const files: Record<string, string> = {
   "trap.ts": `process.on("SIGTERM", () => { console.log("trapped"); process.exit(5); });\nconsole.log("up");\nsetInterval(() => {}, 1000);`,
   "writer.ts": `await Bun.write("out.txt", "written by child");\nconsole.error("to stderr");`,
   "nested.ts": `const p = Bun.spawn(["bun", "child.ts", "grand"]);\nconsole.log("nested:", (await new Response(p.stdout).text()).trim());`,
+  "thread.ts": `import { parentPort, workerData, isMainThread, threadId } from "node:worker_threads";
+parentPort!.postMessage([isMainThread, threadId, workerData, process.env.WT ?? "-", process.argv.slice(2)]);
+parentPort!.on("message", (m) => {
+  if (m === "bye") {
+    console.log("thread: bye");
+    process.exit(3);
+  }
+  if (m === "throw") throw new TypeError("boom");
+  if (m instanceof ArrayBuffer) return parentPort!.postMessage(m.byteLength);
+  parentPort!.postMessage(m * workerData.n);
+});`,
+  "idle.ts": `import { parentPort } from "node:worker_threads";\nparentPort!.on("message", () => {});`,
+  "done.ts": `import { parentPort } from "node:worker_threads";\nconsole.log("done.ts ran");\nparentPort!.postMessage("done");`,
   "main.ts": `import { $ } from "bun";
 import { exec, execFile, execSync, spawn } from "node:child_process";
 import { promisify } from "node:util";
@@ -131,6 +144,37 @@ try {
 } catch (e) {
   log("execSync:", (e as Error).message.includes("not supported"));
 }
+// worker_threads: workerData, env, argv, messages both ways, a transfer, an uncaught error, process.exit, terminate,
+// a file: URL, eval
+{
+  const { Worker, isMainThread, threadId, parentPort } = await import("node:worker_threads");
+  log("wt main:", isMainThread, threadId, parentPort);
+  process.env.WT = "w1";
+  const w = new Worker("./thread.ts", { workerData: { n: 2 }, argv: ["a1"] });
+  const events: string[] = [];
+  w.on("online", () => events.push("online"));
+  const next = (ev = "message", t = w) => new Promise<any>((r) => t.once(ev, r));
+  log("wt hello:", JSON.stringify(await next()), w.threadId, events.join());
+  w.postMessage(21);
+  log("wt double:", await next());
+  const buf = new ArrayBuffer(8);
+  w.postMessage(buf, [buf]);
+  log("wt transfer:", await next(), buf.byteLength);
+  w.postMessage("throw");
+  const err = await next("error");
+  log("wt error:", err.name, err.message, err instanceof Error, await next("exit"));
+  const w2 = new Worker("./thread.ts", { workerData: { n: 1 } });
+  await next("message", w2);
+  w2.postMessage("bye");
+  log("wt exit:", await next("exit", w2));
+  const w3 = new Worker("./idle.ts");
+  await next("online", w3);
+  log("wt terminate:", await w3.terminate());
+  const w4 = new Worker(new URL("./done.ts", import.meta.url));
+  log("wt url:", await next("message", w4), await next("exit", w4));
+  const w5 = new Worker('const t = require("node:worker_threads"); t.parentPort.postMessage(t.workerData + 1)', { eval: true, workerData: 41 });
+  log("wt eval:", await next("message", w5), await next("exit", w5));
+}
 log("__end__");
 })();
 `,
@@ -156,6 +200,17 @@ const EXPECTED = [
   "script: from-script | child s -",
   "nested: child grand -",
   "execSync: true",
+  "wt main: true 0 null",
+  'wt hello: [false,1,{"n":2},"w1",["a1"]] 1 online',
+  "wt double: 42",
+  "wt transfer: 8 0",
+  "wt error: TypeError boom true 1",
+  "thread: bye",
+  "wt exit: 3",
+  "wt terminate: 1",
+  "done.ts ran",
+  "wt url: done 0",
+  "wt eval: 42 0",
   "__end__",
 ];
 

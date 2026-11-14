@@ -45,6 +45,7 @@ import { Shell as ShellInterpreter, ShellEnv, type Command as ShellCommand, type
 import { templateSource } from "../shell/parse";
 import { childByPid, launchOf, onProcMessage, setKernel, signalName, SIGNALS, spawnChild, type Child } from "./processes";
 import { spawn as bunSpawn, spawnSync as bunSpawnSync } from "./spawn";
+import { setThread, threadEnd, threadError, type ThreadInfo } from "./node/worker_threads";
 import { isShellCommand } from "../scripts";
 
 type Handler = (req: Request, server: unknown) => Response | Promise<Response>;
@@ -672,6 +673,7 @@ function halt(code: number, signal?: string): never {
     } catch (err) {
       post({ type: "console", level: "error", text: fmt(err) });
     }
+    threadEnd();
     post({ type: "exit", code, signal });
   }
   if (typeof SharedArrayBuffer === "function") for (;;) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);
@@ -700,6 +702,11 @@ function uncaught(v: unknown, kind: "uncaughtException" | "unhandledRejection", 
       printError(err);
       exit(7);
     }
+  }
+  // In a thread it is the Worker's "error" event instead, not printed.
+  if (threadError(v)) {
+    emitExit(1);
+    halt(1);
   }
   printError(v);
   // Bun's `exit` listeners get 1 for an uncaught error, but `process.exitCode` (0 when unset) for a rejection.
@@ -1276,6 +1283,15 @@ self.addEventListener("message", (e: MessageEvent) => {
   else if (m.type === "signal") signal(m.signal);
 });
 
+/** A thread's `eval: true` code: a CommonJS script, as Node runs it, with `require` from the working directory. */
+function evalThread(code: string): unknown {
+  const filename = nodePath.join(process.cwd(), "[worker eval]");
+  const require = (builtins.module as { createRequire(p: string): unknown }).createRequire(filename);
+  const module = { exports: {} as unknown };
+  new Function("exports", "require", "module", "__filename", "__dirname", code)(module.exports, require, module, filename, process.cwd());
+  return module.exports;
+}
+
 /** A shell process (`sh -c <line>`, a package.json script): the line in Bun's shell, then its exit code. */
 async function runScript(script: string, args: string[], child: boolean) {
   const wasm = await loadShellWasm();
@@ -1311,6 +1327,13 @@ self.addEventListener("message", async (e: MessageEvent) => {
     setKernel(post, proc.pid, has, read);
     setRawStdio((fd, data) => post({ type: "stdio", fd, data }, [data.buffer]));
     process.stdin = stdinStream;
+    const thread = e.data.thread as ThreadInfo | undefined;
+    if (thread) {
+      // A worker_threads thread: the process's ids, not a child's of its own.
+      process.pid = thread.pid;
+      process.ppid = thread.ppid;
+      setThread(e.data.port, thread);
+    }
     if (e.data.script !== undefined) {
       post({ type: "ready" });
       return runScript(e.data.script, e.data.args ?? [], true);
@@ -1334,7 +1357,8 @@ self.addEventListener("message", async (e: MessageEvent) => {
   // A package's bin run from a script (`"dev": "vite --port 3000"`) reads its arguments here.
   process.argv.splice(2, Infinity, ...((e.data.args as string[] | undefined) ?? []));
   try {
-    const mod = (await importUrl(`${VFS_ROOT}${e.data.entry}`)) as { default?: ServeOptions };
+    const code = (e.data.thread as ThreadInfo | undefined)?.eval;
+    const mod = (code !== undefined ? evalThread(code) : await importUrl(`${VFS_ROOT}${e.data.entry}`)) as { default?: ServeOptions };
     // Bun serves an entry whose default export has a fetch handler (Hono's `export default app`), unless that
     // port is already served (Elysia's `export default app.listen(3000)`).
     const def = mod.default;

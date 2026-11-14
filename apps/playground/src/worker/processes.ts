@@ -204,6 +204,18 @@ export function spawnChild(argv: string[], opts: SpawnOptions): Child {
   return child;
 }
 
+/**
+ * Starts a worker_threads thread (node/worker_threads.ts): a child running `file` (resolved against `opts.cwd`) that
+ * gets `port` and `thread` as it starts. A file that isn't there fails in the thread, as its "error" event.
+ */
+export function spawnThread(file: string, args: string[], opts: SpawnOptions, port: MessagePort, thread: object, transfer: Transferable[] = []): Child {
+  const id = pid * 100 + ++nextId;
+  const child = new Child(id);
+  children.set(id, child);
+  post({ type: "spawn", id, launch: { entry: projectPath(opts.cwd, file), args }, cwd: opts.cwd, env: opts.env, thread, port }, [port, ...transfer]);
+  return child;
+}
+
 /** The page's reports about this program's children ("proc" messages). */
 export function onProcMessage(m: { id: number; ev: "out"; fd: 1 | 2; data: Uint8Array } | { id: number; ev: "exit"; code: number; signal: string | null }) {
   children.get(m.id)?.report(m);
