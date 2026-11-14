@@ -202,7 +202,7 @@ Names and values are CSS custom properties; anything that isn't a `--name` with 
 | Name | What |
 |---|---|
 | `--bg` | The code surface |
-| `--canvas` | Behind the panes |
+| `--canvas` | Behind the panes; a `background`, so a gradient works too |
 | `--panel` | The bar, tabs and file tree |
 | `--fg` | Text |
 | `--muted` | Secondary text |
@@ -221,7 +221,7 @@ The poster (shown until the embed is ready) is styled by CSS custom properties s
 
 | Name | What | Default |
 |---|---|---|
-| `--poster-bg`, `--poster-fg` | The poster's background and text | `Canvas`, `CanvasText` |
+| `--poster-bg`, `--poster-fg` | The poster's background (a color or a gradient) and text | `Canvas`, `CanvasText` |
 | `--font-mono` | The default poster's code font (`load="click"` without a `slot="poster"`) | `ui-monospace`, … |
 | `--play-bg`, `--play-fg` | The Run button's background and text; `--play-bg` also colors the spinner shown while the embed starts | `ButtonFace`, `ButtonText` |
 | `--play-bg-hover` | The Run button's background on hover | `--play-bg` mixed 15% toward `--play-fg` |

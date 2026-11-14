@@ -9,6 +9,10 @@ sidebar:
   order: 4
 ---
 
+import { Code } from "@runbun/astro/components";
+import ElementThemes from "../../../components/ElementThemes.astro";
+import { LOOKS, snippet } from "../../../components/element-themes.ts";
+
 An embed runs Bun code in your page, in the visitor's browser. Nothing runs on a server. This page shows the options; the full list is in the [embed reference](/reference/embed-api/), and the [configurator](/guides/configurator/) builds a snippet from them with a live preview.
 
 This one is live. Click it to start:
@@ -210,6 +214,31 @@ Prefer `click` for pages with several embeds, or for modes that download a lot.
 ```
 
 `fonts` takes stylesheet URLs (whitespace-separated) and loads them inside the embed; `--font-ui` and `--font-mono` are what the chrome and the code use. When your page's own theme changes, call `el.setVars(vars)` with the new values; the object's shape and the variables are in the [reference](/reference/embed-api/#theming).
+
+### Fire, wind, earth, water
+
+One embed, dressed four ways. All four run the same three lines; only the emoji changes.
+
+Each look is three things: a `family` for the code's colors, `vars` for the chrome in both schemes, and a frame (a corner radius and a shadow) on the element itself. `--canvas` is a `background`, so it takes a gradient, which shows in the bar and around the panes. Flip these docs between light and dark and all four follow:
+
+<ElementThemes />
+
+Take the one you like:
+
+<Code
+  lang="html"
+  title="fire.html"
+  code={snippet(LOOKS[0])}
+  files={Object.fromEntries(LOOKS.slice(1).map((l) => [`${l.name.toLowerCase()}.html`, snippet(l)]))}
+/>
+
+The frame's colors use `light-dark()`, which follows your page's `color-scheme`.
+
+Before anyone presses Run there is no embed yet, only the element's poster, and that one is your page's to style: `vars` reach the embed once it runs. The `--poster-*` and `--play-*` properties in the snippets carry the look over, gradient included, so nothing flashes your page's background while the embed loads. Here are the four again with `load="click"`, waiting for someone to press Run:
+
+<ElementThemes load="click" />
+
+Go on, press one: it starts in the same look. Inside the poster, `light-dark()` follows the visitor's system setting rather than your page's `color-scheme`; if your page has its own light and dark switch, set these properties per scheme in your stylesheet instead. The properties and the `::part()` names for the button and spinner are in the [reference](/reference/embed-api/#theming).
 
 ## Defaults for a page
 

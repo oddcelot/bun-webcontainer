@@ -1,0 +1,106 @@
+---
+// The four looks (element-themes.ts), live, in a grid that folds to one column in a narrow page. With `load="click"`
+// each stays its poster (the code and a Run button, in the look's colors) until a reader starts it.
+import { LOOKS, frame, gradient, vars } from "./element-themes.ts";
+
+export interface Props {
+  load?: "click";
+}
+const { load } = Astro.props;
+// The poster declares `color-scheme: light dark`, so a `light-dark()` it reads through --poster-bg follows the
+// visitor's system, not this site's switch. The --look-* properties are registered colors (below), which resolve on
+// the element, in the page's scheme; the poster's properties, set again after the snippet's, read those.
+const resolved = (l: (typeof LOOKS)[number]) => {
+  const both = (light: string, dark: string) => `light-dark(${light}, ${dark})`;
+  return [
+    `--look-bg: ${both(l.light["--bg"], l.dark["--bg"])}`,
+    `--look-fg: ${both(l.light["--fg"], l.dark["--fg"])}`,
+    `--look-accent: ${both(l.light["--accent"], l.dark["--accent"])}`,
+    `--look-from: ${both(l.gradient.light[0], l.gradient.dark[0])}`,
+    `--look-to: ${both(l.gradient.light[1], l.gradient.dark[1])}`,
+    `--poster-bg: ${gradient("var(--look-from)", "var(--look-to)")}`,
+    "--poster-fg: var(--look-fg)",
+    "--play-bg: var(--look-accent)",
+    "--play-fg: var(--look-bg)",
+    "--play-border: var(--look-accent)",
+  ];
+};
+---
+
+<div class="element-themes not-content">
+  {
+    LOOKS.map((l) => (
+      <figure>
+        <figcaption>
+          {l.name}
+          <span>{l.note}</span>
+        </figcaption>
+        <bun-playground mode="code" load={load} family={l.family} vars={JSON.stringify(vars(l))} style={[...frame(l), ...resolved(l)].join(";")} title={`${l.name} theme`}>
+          <Fragment set:html={`<script type="text/plain" data-file="index.ts">${l.code.replaceAll("</", "<\\/")}</script>`} />
+        </bun-playground>
+      </figure>
+    ))
+  }
+</div>
+
+<style>
+  .element-themes {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
+    gap: 2rem 1.75rem;
+    /* Room for the frames' shadows, which would otherwise overflow the column. */
+    padding: 0.5rem 0.75rem 1.5rem;
+
+    figure {
+      min-width: 0;
+      margin: 0;
+    }
+
+    figcaption {
+      margin-block-end: 0.75rem;
+      font-family: var(--font-pixel);
+      font-weight: 600;
+
+      span {
+        display: block;
+        color: var(--sl-color-gray-3);
+        font-family: var(--__sl-font);
+        font-size: var(--sl-text-sm);
+        font-weight: 400;
+      }
+    }
+
+    /* Each look draws its own frame (inline, as in the snippets) in place of these docs' pixel frame. */
+    bun-playground {
+      margin: 0;
+    }
+  }
+</style>
+
+<style is:global>
+  @property --look-bg {
+    syntax: "<color>";
+    inherits: true;
+    initial-value: transparent;
+  }
+  @property --look-fg {
+    syntax: "<color>";
+    inherits: true;
+    initial-value: transparent;
+  }
+  @property --look-accent {
+    syntax: "<color>";
+    inherits: true;
+    initial-value: transparent;
+  }
+  @property --look-from {
+    syntax: "<color>";
+    inherits: true;
+    initial-value: transparent;
+  }
+  @property --look-to {
+    syntax: "<color>";
+    inherits: true;
+    initial-value: transparent;
+  }
+</style>
