@@ -1,7 +1,7 @@
 ---
 // The four looks (element-themes.ts), live, in a grid that folds to one column in a narrow page. With `load="click"`
 // each stays its poster (the code and a Run button, in the look's colors) until a reader starts it.
-import { LOOKS, frame, vars } from "./element-themes.ts";
+import { LOOKS, frame, gradient, vars } from "./element-themes.ts";
 
 export interface Props {
   load?: "click";
@@ -9,9 +9,22 @@ export interface Props {
 const { load } = Astro.props;
 // The poster declares `color-scheme: light dark`, so a `light-dark()` it reads through --poster-bg follows the
 // visitor's system, not this site's switch. The --look-* properties are registered colors (below), which resolve on
-// the element, in the page's scheme; the stylesheet then points the poster's properties at them.
-const resolved = (l: (typeof LOOKS)[number]) =>
-  (["bg", "fg", "accent"] as const).map((k) => `--look-${k}: light-dark(${l.light[`--${k}`]}, ${l.dark[`--${k}`]})`);
+// the element, in the page's scheme; the poster's properties, set again after the snippet's, read those.
+const resolved = (l: (typeof LOOKS)[number]) => {
+  const both = (light: string, dark: string) => `light-dark(${light}, ${dark})`;
+  return [
+    `--look-bg: ${both(l.light["--bg"], l.dark["--bg"])}`,
+    `--look-fg: ${both(l.light["--fg"], l.dark["--fg"])}`,
+    `--look-accent: ${both(l.light["--accent"], l.dark["--accent"])}`,
+    `--look-from: ${both(l.gradient.light[0], l.gradient.dark[0])}`,
+    `--look-to: ${both(l.gradient.light[1], l.gradient.dark[1])}`,
+    `--poster-bg: ${gradient("var(--look-from)", "var(--look-to)")}`,
+    "--poster-fg: var(--look-fg)",
+    "--play-bg: var(--look-accent)",
+    "--play-fg: var(--look-bg)",
+    "--play-border: var(--look-accent)",
+  ];
+};
 ---
 
 <div class="element-themes not-content">
@@ -49,12 +62,6 @@ const resolved = (l: (typeof LOOKS)[number]) =>
     /* Each look draws its own frame (inline, as in the snippets) in place of these docs' pixel frame. */
     bun-playground {
       margin: 0;
-      /* Over the inline ones, which would follow the system scheme (see `resolved`). */
-      --poster-bg: var(--look-bg) !important;
-      --poster-fg: var(--look-fg) !important;
-      --play-bg: var(--look-accent) !important;
-      --play-fg: var(--look-bg) !important;
-      --play-border: var(--look-accent) !important;
     }
   }
 </style>
@@ -71,6 +78,16 @@ const resolved = (l: (typeof LOOKS)[number]) =>
     initial-value: transparent;
   }
   @property --look-accent {
+    syntax: "<color>";
+    inherits: true;
+    initial-value: transparent;
+  }
+  @property --look-from {
+    syntax: "<color>";
+    inherits: true;
+    initial-value: transparent;
+  }
+  @property --look-to {
     syntax: "<color>";
     inherits: true;
     initial-value: transparent;
