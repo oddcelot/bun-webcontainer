@@ -1,10 +1,12 @@
-// Four looks for one embed (guides/embedding.mdx, Theme): a family for the code's colors, `vars` for the chrome, and
+// Fire, wind, earth and water: four looks for one embed (guides/embedding.mdx, Theme): a family for the code's colors, `vars` for the chrome, and
 // the page's own CSS for the frame around it. ElementThemes.astro renders them live and the guide prints their
 // snippets, both from this data, so what a reader copies is what they see.
 
 type Palette = Record<"--bg" | "--panel" | "--fg" | "--muted" | "--border" | "--accent", string>;
 export type Look = {
   name: string;
+  /** What the look is, in a few words, under its name. */
+  note: string;
   /** A theme family by its light variant: the syntax colors. */
   family: string;
   /** No `'` in a value: the snippet puts `vars` in a single-quoted attribute. */
@@ -26,6 +28,7 @@ const sample = (symbol: string) => `for (const n of [1, 2, 3]) {\n  console.log(
 export const LOOKS: Look[] = [
   {
     name: "Fire",
+    note: "Square corners, ember glow",
     family: "horizon-bright",
     base: { "--radius": "0", "--font-ui": "system-ui, sans-serif" },
     light: { "--bg": "#fff4ec", "--panel": "#ffe6d5", "--fg": "#4a1608", "--muted": "#a8573a", "--border": "#f3a57e", "--accent": "#e8390e" },
@@ -37,6 +40,7 @@ export const LOOKS: Look[] = [
   },
   {
     name: "Wind",
+    note: "Round, pale, barely there",
     family: "min-light",
     base: { "--radius": "1.25rem", "--font-ui": "system-ui, sans-serif" },
     light: { "--bg": "#fbfdfd", "--panel": "#f4f8f9", "--fg": "#33464d", "--muted": "#86a0a8", "--border": "#dbe7ea", "--accent": "#2f8799" },
@@ -48,6 +52,7 @@ export const LOOKS: Look[] = [
   },
   {
     name: "Earth",
+    note: "Thick border, hard shadow",
     family: "everforest-light",
     base: { "--radius": "3px", "--font-ui": "system-ui, sans-serif" },
     light: { "--bg": "#f6f0dc", "--panel": "#ebe0c2", "--fg": "#3b2f1e", "--muted": "#7d6b4c", "--border": "#c9b88c", "--accent": "#5f7a2e" },
@@ -59,6 +64,7 @@ export const LOOKS: Look[] = [
   },
   {
     name: "Water",
+    note: "Soft corners over deep blue",
     family: "night-owl-light",
     base: { "--radius": "0.75rem", "--font-ui": "system-ui, sans-serif" },
     light: { "--bg": "#f2f9ff", "--panel": "#e0f0fd", "--fg": "#0b2c4a", "--muted": "#5580a3", "--border": "#a9d0f0", "--accent": "#0a7fd6" },
