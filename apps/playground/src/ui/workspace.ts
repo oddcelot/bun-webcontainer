@@ -44,6 +44,8 @@ export function createWorkspace() {
   const readOnly = new Map<string, string>();
   // The open project's runbun.json `panels` (App.tsx shows and hides them); null: the reader's own layout.
   const [panels, setPanels] = createSignal<Partial<Record<Panel, boolean>> | null>(null);
+  // Its `readonly` paths: files, and folders for everything under them.
+  const [readonly, setReadonly] = createSignal<string[]>([]);
   // Its `sizes`, in percent (App.tsx sizes the panes by them); null: the reader's own.
   const [sizes, setSizes] = createSignal<Partial<Record<Sized, number>> | null>(null);
   // What the editor reports for the status bar.
@@ -89,6 +91,10 @@ export function createWorkspace() {
     /** The panes the open project asks for (runbun.json), applied over the reader's layout without saving it. */
     panels,
     setPanels,
+    /** The files the open project keeps from edits in the editor (runbun.json `readonly`): files, or folders. */
+    setReadonly,
+    /** Whether the editor leaves `path` as it is (runbun.json `readonly`); the program can still write it. */
+    isReadonly: (path: string) => readonly().some((p) => path === p || path.startsWith(`${p}/`)),
     /** The panes' shares of space the open project asks for (runbun.json `sizes`), likewise not saved. */
     sizes,
     setSizes,

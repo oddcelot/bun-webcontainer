@@ -280,6 +280,7 @@ function applyConfig(): ProjectConfig {
   const config = readConfig((path) => vfs.readText(path), problems);
   for (const p of problems) log("warn", `[config] ${p}`);
   const hidden = new Set(config.hidden ?? []);
+  workspace.setReadonly(config.readonly ?? []);
   const tabs = (config.open ?? []).filter((p) => vfs.files.has(p) && !hidden.has(p));
   for (const path of tabs) openFile(path);
   if (tabs.length) workspace.activate(tabs[0]);

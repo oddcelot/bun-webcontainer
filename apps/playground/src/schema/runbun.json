@@ -36,6 +36,11 @@
       "items": { "type": "string" },
       "description": "Files kept out of the tabs; they stay in the project and the file tree."
     },
+    "readonly": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Files the editor won't change, e.g. \"bun.lock\", and folders for everything in them, e.g. \"vendor/\". The program can still write them."
+    },
     "panels": {
       "type": "object",
       "additionalProperties": false,

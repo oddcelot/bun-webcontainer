@@ -91,7 +91,7 @@ export function EditorPane() {
   /** `quiet` (format on save): a file `bun fmt` can't format, or one that doesn't parse, saves as it is, unremarked. */
   async function formatOpenFile(quiet = false) {
     const path = current;
-    if (!path || !editor || !has("format") || ws.readOnlyText(path) !== undefined) return;
+    if (!path || !editor || !has("format") || ws.readOnlyText(path) !== undefined || ws.isReadonly(path)) return;
     try {
       const r = await fmt(vfs, path, editor.getText());
       if (path !== current) return;
@@ -137,7 +137,7 @@ export function EditorPane() {
     () => ws.state.active,
     guarded("editor", (path) => {
       editor ??= createPierre(el, {
-        readOnly: () => !has("edit") || (current !== null && ws.readOnlyText(current) !== undefined),
+        readOnly: () => !has("edit") || (current !== null && (ws.readOnlyText(current) !== undefined || ws.isReadonly(current))),
         onCursor: ws.setCursor,
         onDiagnostics: ws.setProblems,
         // Types for TypeScript files, with the editor's text (unsaved edits included).
@@ -300,7 +300,7 @@ export function EditorPane() {
           <ChangesView shown={ws.state.changesShown} />
         </Show>
         {/* Over the code's top right corner, shown while the pointer is over the code (always on touch screens). */}
-        <Show when={has("format") && ws.state.active && !ws.state.changesShown && ws.readOnlyText(ws.state.active!) === undefined}>
+        <Show when={has("format") && ws.state.active && !ws.state.changesShown && ws.readOnlyText(ws.state.active!) === undefined && !ws.isReadonly(ws.state.active!)}>
           <Tip class="format" type="button" tip="Format the open file with bun fmt" keys={keysFor("format").map(chordKeys)} onClick={() => void formatOpenFile()}>
             <i class="i-lucide-wand-sparkles" aria-hidden="true" /> Format
           </Tip>

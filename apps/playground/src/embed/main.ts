@@ -366,6 +366,7 @@ function applyConfig(inline: boolean): ProjectConfig {
   for (const p of problems) log("warn", `[config] ${p}`);
   // Hidden ones (generated, such as a package.json) stay in the project and the tree, out of the tabs.
   const hidden = new Set([...(init?.hidden ?? []).map(bare), ...(config.hidden ?? [])]);
+  workspace.setReadonly(config.readonly ?? []);
   const listed = inline ? Object.keys(initFiles).map(bare) : (config.open ?? []);
   const tabs = listed.filter((path) => vfs.files.has(path) && !hidden.has(path));
   for (const path of tabs) workspace.open(path);

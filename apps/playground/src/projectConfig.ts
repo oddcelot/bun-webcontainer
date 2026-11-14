@@ -25,6 +25,8 @@ export type ProjectConfig = {
   open?: string[];
   /** Files kept out of the tabs (still in the project and the tree). */
   hidden?: string[];
+  /** Files the editor won't change, and folders for everything in them; the program can still write them. */
+  readonly?: string[];
   /** Panes to show (true) or hide (false) when the project opens; the others stay as they are. */
   panels?: Partial<Record<Panel, boolean>>;
   /**
@@ -68,7 +70,7 @@ export function readConfig(read: (path: string) => string | undefined, problems:
   const c: ProjectConfig = {};
   const bad = (field: string, want: string) => problems.push(`${CONFIG_FILE}: "${field}" must be ${want}, ignored`);
   for (const key of Object.keys(r))
-    if (!["$schema", "run", "autorun", "env", "open", "hidden", "panels", "sizes", "preview", "requires"].includes(key)) problems.push(`${CONFIG_FILE}: unknown field "${key}"`);
+    if (!["$schema", "run", "autorun", "env", "open", "hidden", "readonly", "panels", "sizes", "preview", "requires"].includes(key)) problems.push(`${CONFIG_FILE}: unknown field "${key}"`);
 
   if (r.run !== undefined) {
     const run = r.run as { entry?: unknown; args?: unknown };
@@ -84,6 +86,8 @@ export function readConfig(read: (path: string) => string | undefined, problems:
   }
   if (r.open !== undefined) isStrings(r.open) ? (c.open = r.open.map(bare)) : bad("open", "a list of paths");
   if (r.hidden !== undefined) isStrings(r.hidden) ? (c.hidden = r.hidden.map(bare)) : bad("hidden", "a list of paths");
+  if (r.readonly !== undefined)
+    isStrings(r.readonly) ? (c.readonly = r.readonly.map((p) => bare(p).replace(/\/+$/, "")).filter(Boolean)) : bad("readonly", "a list of paths");
   if (r.panels !== undefined) {
     const panels = r.panels as Record<string, unknown>;
     if (typeof panels !== "object" || panels === null || Array.isArray(panels)) bad("panels", `an object of ${PANELS.join(", ")}: true or false`);

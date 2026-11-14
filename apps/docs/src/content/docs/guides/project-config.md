@@ -26,6 +26,7 @@ A `runbun.json` beside `package.json` tells the playground how to open and run t
   // What the reader sees first
   "open": ["src/server.ts", "src/routes.ts"],
   "hidden": ["bun.lock"],
+  "readonly": ["package.json", "vendor/"],
   "panels": { "files": true, "preview": true, "console": true },
   "preview": {
     "path": "/",
@@ -46,6 +47,7 @@ The playground's editor completes the fields, shows what each does when you hove
 | `env` | `process.env` values for the program, in runs, restarts on save and `bun test`. The file is shared with the project, so it's no place for secrets. Not applied with [Local Bun](/guides/local-bun/) yet. |
 | `open` | The files opened as tabs, in order; the first is shown. Without it, the entry file. |
 | `hidden` | Files kept out of the tabs. They stay in the project and the file tree. |
+| `readonly` | Files the editor won't change, and folders for everything in them (`"vendor/"`). They open, highlighted, but take no typing and no Format, and the file tree doesn't rename or delete them; the program and `bun install` can still write them. An embed's own `readonly` makes every file read-only. |
 | `panels` | `files` (the tree), `tabs` (an embed's tab bar), `preview` and `console`: `true` shows one, `false` hides it, and the others stay as they are. In the playground this doesn't change your saved layout: a project without `panels` brings it back. |
 | `sizes` | Each pane's share of space when the project opens, in percent: `files` of the width for the tree, `editor` of what the tree leaves (beside the preview and console, or above them in a stacked embed), `preview` of the column it shares with the console. The reader can still drag the borders, and what they drag wins; in the playground it stays their saved layout, as with `panels`. |
 | `preview` | `path`: what the preview requests first. `requests`: requests to try, each in its own preview tab, written `METHOD /path [-H "Name: value"] [body]` as in an embed's [`requests`](/reference/embed-api/). |
