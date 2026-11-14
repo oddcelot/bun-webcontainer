@@ -1216,7 +1216,8 @@ async function main() {
       let out: { res: Response; setCookies: string[] };
       const r = m.req;
       try {
-        const inst = previewServer();
+        // The page names the port when the server it routes to isn't this program's first (runner.ts route).
+        const inst = (m.port !== undefined && servers.find((s) => s.port === m.port)) || previewServer();
         if (!inst) return sendText(port, 503, "No Bun.serve handler registered");
         // A response being made holds the program, even after an unref'd or stopped server.
         out = await holdUntil(dispatch(inst, serverRequest(r.path, { method: r.method, body: r.body }, r.headers)));
