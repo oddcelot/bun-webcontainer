@@ -251,6 +251,8 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
   let listener: (text: string) => void = () => {};
   let theme = themeName();
   let markers: Marker[] = [];
+  let breakLines: number[] = [];
+  let pausedLine: number | null = null;
 
   // The editor has no selection event; read the cursor after whatever can move it (events from its shadow root bubble here).
   let lastCursor = "";
@@ -705,6 +707,22 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
     view = undefined;
   }
 
+  /**
+   * Breakpoint dots and the paused line, as a stylesheet adopted by the editor's shadow root: the rows are rendered
+   * (and recycled) by the virtualizer, so a rule per line number outlives them.
+   */
+  const debugSheet = new CSSStyleSheet();
+  function applyDebugLines(frames = 10) {
+    const root = host.querySelector("diffs-container")?.shadowRoot;
+    if (!root) return void (frames && requestAnimationFrame(() => applyDebugLines(frames - 1)));
+    const dots = breakLines.map((l) => `[data-column-number="${l}"]`);
+    debugSheet.replaceSync(
+      (dots.length ? `${dots.join(",")} { background-image: radial-gradient(circle, var(--debug-break, #e5484d) 0 3px, transparent 3.5px) !important; background-repeat: no-repeat !important; background-size: 8px 8px !important; background-position: 3px center !important; }` : "") +
+        (pausedLine ? `[data-line="${pausedLine}"] { background: var(--debug-paused, rgb(255 213 0 / 0.22)) !important; }` : ""),
+    );
+    if (!root.adoptedStyleSheets.includes(debugSheet)) root.adoptedStyleSheets = [...root.adoptedStyleSheets, debugSheet];
+  }
+
   /** Whether the current editor shows markers (a fresh one shows none). */
   let shown = false;
   /**
@@ -726,6 +744,8 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
   function show(nextPath: string, nextText: string | null) {
     close();
     if (nextPath !== path) {
+      breakLines = [];
+      pausedLine = null;
       markers = [];
       events.onDiagnostics?.([]);
     }
@@ -745,6 +765,7 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
       onTokenEnter,
       onTokenLeave,
       onTokenClick,
+      onLineNumberClick: events.onGutterClick && ((p) => events.onGutterClick!(path, p.lineNumber)),
       onEditChange(event) {
         const before = text;
         text = event.file.contents;
@@ -756,6 +777,7 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
       onEditComplete: () => "accept",
     }, virtualizer);
     view.render({ containerWrapper: host, file: { name: path, contents: nextText ?? "(binary file)" } });
+    applyDebugLines();
     if (nextText === null || events.readOnly?.()) return;
     const key = keyOf(path);
     // Kept state for other text (the file changed since: a program wrote it, it was formatted from outside, it was
@@ -786,6 +808,11 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
       }));
       applyMarkers();
       events.onDiagnostics?.(diagnostics);
+    },
+    setDebugLines(breakpoints, paused) {
+      breakLines = breakpoints;
+      pausedLine = paused;
+      applyDebugLines();
     },
     showHover() {
       const sel = editor?.getViewState().selections?.[0];
@@ -859,6 +886,8 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
       host.replaceChildren();
       path = text = "";
       markers = [];
+      breakLines = [];
+      pausedLine = null;
       listener = () => {};
       events.onDiagnostics?.([]);
       reportCursor();

@@ -1078,7 +1078,7 @@ html[data-view="opening"] {
 header { display: flex; gap: 8px; align-items: center; padding: 6px 10px 4px; }
 header button:not(.select-trigger), #docs, #clear, #request button { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 /* By id: the share menu is in the header too, and its items mustn't take this height. */
-#example, #run, #run-more, #local-bun, #autosave, #watch, #docs, #share, #shortcuts, #storage, #theme { height: var(--control-height); }
+#example, #run, #run-more, #local-bun, #debug, #autosave, #watch, #docs, #share, #shortcuts, #storage, #theme { height: var(--control-height); }
 /* Run and its menu (bun install): one control split in two. */
 #run-group { display: inline-flex; }
 #run { border-radius: 6px 0 0 6px; }
@@ -1092,6 +1092,16 @@ header button:not(.select-trigger), #docs, #clear, #request button { display: in
   }
 
   &[data-state="connected"][aria-pressed="true"] > i {
+    color: var(--accent);
+  }
+}
+/* Debug: off reads muted, on shows the accent icon. */
+#debug {
+  &[aria-pressed="false"] {
+    color: var(--muted);
+  }
+
+  &[aria-pressed="true"] > i {
     color: var(--accent);
   }
 }
@@ -2773,6 +2783,144 @@ body:has(#req-handle[data-dragging]) * {
 #clear { margin-left: auto; padding: 4px 6px; }
 #clear:hover:not(:disabled) { background: var(--control-hover); }
 #clear:disabled { opacity: 0.4; cursor: default; }
+/* The debugger, above the console in its panel. */
+#debug-panel {
+  flex: 0 0 55%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--border);
+
+  > .head {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    color: var(--muted);
+
+    .label {
+      margin-right: 4px;
+      color: var(--fg);
+      font-weight: 600;
+    }
+
+    .step {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 6px;
+
+      &:hover:not(:disabled) {
+        background: var(--control-hover);
+      }
+
+      &:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+    }
+
+    .status {
+      margin-left: auto;
+      overflow: hidden;
+      font: 11px/16px var(--font-mono);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+
+      &[data-paused] {
+        color: var(--warn);
+      }
+    }
+  }
+
+  > .body {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 0 8px 8px;
+    font: 12px/18px var(--font-mono);
+
+    h3 {
+      margin: 8px 0 2px;
+      color: var(--muted);
+      font: 600 11px/16px var(--font-ui);
+      text-transform: uppercase;
+    }
+
+    h4 {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font: 600 11px/16px var(--font-ui);
+    }
+
+    .empty {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    ul {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .stack button {
+      display: flex;
+      width: 100%;
+      gap: 12px;
+      justify-content: space-between;
+      padding: 1px 4px;
+      border: 0;
+      border-radius: 4px;
+      background: none;
+      color: var(--fg);
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+
+      &:hover {
+        background: var(--control-hover);
+      }
+
+      .at {
+        color: var(--muted);
+      }
+    }
+
+    .var,
+    .result {
+      display: flex;
+      gap: 8px;
+
+      .name,
+      .expr {
+        flex: none;
+        color: var(--accent);
+      }
+
+      .value {
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+    }
+
+    .result[data-error] .value {
+      color: var(--error);
+    }
+
+    .eval input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 3px 6px;
+      border: 1px solid var(--control-border);
+      border-radius: 4px;
+      background: var(--control);
+      color: var(--fg);
+      font: inherit;
+    }
+  }
+}
 /* A Ghostty terminal (console.ts) draws the lines. */
 #console { flex: 1; min-height: 0; overflow: hidden; padding: 4px 0 0 8px; }
 .unsupported { padding: 6px 10px; font-size: 0.85rem; line-height: 1.5; background: color-mix(in srgb, #e5484d 14%, var(--panel)); border-bottom: 1px solid var(--border); }

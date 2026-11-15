@@ -7,6 +7,7 @@ import { chordKeys, keysFor, matches } from "../keymap";
 import type { CodeEditor, EditorLocation } from "../editors/types";
 import { asConsoleEntry, errorLocation, fmt } from "../fmt";
 import { complete, definition, hover, readTypes, resolveCompletion, signatureHelp, TYPED } from "../typecheck";
+import { debugSession } from "../debugSession";
 import { AppContext } from "./context";
 import { guarded } from "./guarded";
 import { EditorTabs } from "./Tabs";
@@ -155,6 +156,8 @@ export function EditorPane() {
         signatureHelp: async (file, line, column, trigger, retrigger) =>
           typed(file) && editor ? signatureHelp(vfs, file, editor.getText(), line, column, trigger, retrigger) : null,
         goToDefinition: (file, line, column) => void goToDefinition(file, line, column),
+        // Only while Debug is on, so line numbers stay plain otherwise.
+        onGutterClick: (file, line) => debugSession.enabled() && ws.readOnlyText(file) === undefined && debugSession.toggleBreakpoint(file, line - 1),
       });
       check ??= mountDiagnostics(vfs, editor, () => has("types"));
       current = path;
@@ -188,6 +191,25 @@ export function EditorPane() {
       if (revealOnOpen?.path === path) editor.reveal(revealOnOpen.line, revealOnOpen.column);
       revealOnOpen = undefined;
     }),
+  );
+
+  // Breakpoint dots and the paused line follow the debugger's state and the open file. The paused file opens first
+  // (its tab, then this effect again once the editor shows it).
+  createEffect(
+    () => [ws.state.active, debugSession.breakpoints(), debugSession.paused()] as const,
+    guarded("debug-lines", ([path, breakpoints, paused]) => {
+      if (!path || !editor || path !== current) return;
+      editor.setDebugLines(
+        (breakpoints[path] ?? []).map((l) => l + 1),
+        paused?.path === path ? paused.line + 1 : null,
+      );
+    }),
+  );
+  createEffect(
+    () => debugSession.paused(),
+    (paused) => {
+      if (paused) ws.openAt(paused.path, paused.line + 1, paused.column + 1);
+    },
   );
 
   // Errors found while packages were still installing (a shared link checks before its install ends) are stale after it.

@@ -16,6 +16,7 @@ import { keepRequestHeaders, withHeaders } from "./requestHeaders";
 import { fulfilled, tracked, trackedFn } from "./promises";
 import { currentGeneration, hold, holdUntil, release, whenIdle } from "./loop";
 import { frameMapper, installStackTraces, previewSource } from "./sourceMaps";
+import { installDebugger, installNoopDebugger } from "./debugger";
 import { json5Stringify, tomlStringify, yamlStringify } from "./dataStringify";
 import { password } from "./password";
 import { Cookie, CookieMap } from "./cookie";
@@ -645,6 +646,8 @@ installConsole(
 );
 // error.stack itself, as Bun's reads (V8 only).
 installStackTraces(() => new URL(VFS_ROOT, location.href).href, (path) => vfs.readText(path));
+// Instrumented modules served to a process that isn't the debug run (a child process during one) find a __dbg too.
+installNoopDebugger();
 
 /** How Bun reports an uncaught error or rejection: its error printer for errors, `error: value` and the value otherwise. */
 function uncaughtText(v: unknown): string {
@@ -1371,6 +1374,8 @@ self.addEventListener("message", async (e: MessageEvent) => {
   if (e.data.type !== "start") return;
   if (e.data.vfsRoot) VFS_ROOT = e.data.vfsRoot;
   vfs.load(e.data.files, e.data.dirs);
+  // A debug run (debugSession.ts): its project files call __dbg before each statement.
+  if (e.data.debug) installDebugger(e.data.debug.sab, e.data.debug.breakpoints, post, () => new URL(VFS_ROOT, location.href).href);
   // A worker that can't boot (its wasm out of memory: too many processes at once) ends with code 1, so a parent
   // waiting on it as a child hears an exit and a run doesn't wait for "ready" until it times out.
   const boot = await booted.then(

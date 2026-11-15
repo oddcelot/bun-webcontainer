@@ -9,6 +9,7 @@ import { TS_VERSION, TSRS_VERSION } from "../typecheck/tsrsLs";
 import { BUN_VERSION } from "../worker/bunVersion";
 import { pref } from "../prefs";
 import { AppContext } from "./context";
+import { debugSession } from "../debugSession";
 import { Feedback } from "./Feedback";
 import { StatusPill } from "./Status";
 import { Tip } from "@runbun/ui/solid/Tip";
@@ -85,6 +86,12 @@ export function StatusBar(props: { treeShown: boolean; toggleFiles(): void; togg
         <i class="i-lucide-square-terminal" aria-hidden="true" />
         <span class="sr-only">Console</span>
       </Tip>
+      <Show when={debugSession.available()}>
+        <Tip tip="Show or hide the debugger (runs pause at breakpoints while it's shown)" type="button" aria-pressed={debugSession.enabled() ? "true" : "false"} onClick={() => debugSession.setEnabled(!debugSession.enabled())}>
+          <i class="i-lucide-bug" aria-hidden="true" />
+          <span class="sr-only">Debugger</span>
+        </Tip>
+      </Show>
       <Show when={statusDisplay() === "bar"}>
         <StatusPill role="status" status={s.status()} title={s.status().text} />
       </Show>

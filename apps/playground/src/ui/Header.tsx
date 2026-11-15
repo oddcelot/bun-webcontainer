@@ -1,5 +1,6 @@
 import { Show, createSignal, untrack, useContext } from "solid-js";
 import { DOCS } from "../base";
+import { debugSession } from "../debugSession";
 import { chordKeys, keysFor } from "../keymap";
 import logo from "../bun-logo.svg";
 import { AppContext, type App } from "./context";
@@ -115,6 +116,17 @@ export function Header() {
           <MenuItem icon="i-lucide-download" label="bun install" disabled={!!s.busy.install} onSelect={() => s.ready() && app.install()} />
         </Menu>
       </span>
+      {/* The step debugger (a prototype): only where it works, not on the content origin (bwc-4i8.40). */}
+      <Show when={debugSession.available()}>
+        <Tip
+          id="debug"
+          aria-pressed={debugSession.enabled() ? "true" : "false"}
+          tip={debugSession.enabled() ? "Runs pause at breakpoints (click a line number). Click to turn off." : "Run with the step debugger. Click to turn on."}
+          onClick={() => debugSession.setEnabled(!debugSession.enabled())}
+        >
+          <i class="i-lucide-bug" aria-hidden="true" /> Debug
+        </Tip>
+      </Show>
       <Show when={app.runtime}>{(rt) => <LocalBunToggle rt={rt()} />}</Show>
       {/* What a save does: when edits save, and whether a save restarts the program. Icons only; the tooltips say which. */}
       <span id="save-group">

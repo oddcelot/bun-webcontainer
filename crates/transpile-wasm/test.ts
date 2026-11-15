@@ -373,3 +373,5 @@ if (spawnSync("bun", ["--version"]).status === 0) {
 // Bun.markdown and Bun.XML.parse (apis-test.ts exits 1 on a mismatch).
 if (fail) process.exit(1);
 await import("./apis-test.ts");
+// DEBUG: the step debugger's probes (debug-test.ts throws on a mismatch).
+await import("./debug-test.ts");

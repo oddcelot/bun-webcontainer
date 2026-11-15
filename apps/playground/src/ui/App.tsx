@@ -5,6 +5,8 @@ import { Preview } from "./Preview";
 import { pref } from "../prefs";
 import { AppContext } from "./context";
 import { Console } from "./Console";
+import { DebugPanel, debugKey } from "./DebugPanel";
+import { debugSession } from "../debugSession";
 import { EditorPane } from "./EditorPane";
 import { Explorer, toggleFiles, toggleGit } from "./Explorer";
 import { inCommitBox } from "../git/store";
@@ -142,6 +144,11 @@ export function App() {
       if (recordingKeys()) return;
       // Mod+Enter in the commit message box commits (GitPanel.tsx), it doesn't run the project.
       if (inCommitBox(e) && matches("run", e)) return;
+      if (debugKey(e)) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       if (matches("run", e)) s.canRun && !s.busy.run && s.ready() && app.run();
       else if (matches("stop", e)) app.stop();
       else if (matches("toggleExplorer", e)) toggleColumn(0);
@@ -218,7 +225,15 @@ export function App() {
                             </Resizable.Panel>
                             <Resizable.Handle class="resize-handle" aria-label="Resize preview and console" />
                             <Resizable.Panel panelId="console-wrap" initialSize={rows[1]} minSize="60px">
-                              {() => <Console />}
+                              {() => (
+                                <>
+                                  {/* In the console's panel, above it: the rows split stays two panels. */}
+                                  <Show when={debugSession.enabled()}>
+                                    <DebugPanel />
+                                  </Show>
+                                  <Console />
+                                </>
+                              )}
                             </Resizable.Panel>
                           </>
                         );

@@ -6,6 +6,7 @@ import type { VFS } from "@runbun/vfs";
 import { serveLazyRead } from "./pkgStore";
 import { withSyncRelay } from "./worker/syncChannel";
 import { CONTENT_ORIGIN } from "./contentOrigin";
+import { attach as attachDebugger, detach as detachDebugger, onDebugMessage } from "./debugSession";
 import { answerAsks, connectHost, notifyStopped, readContentCookies, spawnWorker, writeContentCookies } from "./contentHost";
 
 /** A program's child process (worker/processes.ts): its worker, and who started it under which id. */
@@ -505,10 +506,12 @@ export class Runner {
   private boot(entry: string, tests: string[] | undefined, args: string[], content: Host | undefined) {
     this.host = content;
     const worker = this.newWorker();
+    const debug = attachDebugger(worker);
     let settle!: (o: Outcome) => void;
     let settled = false;
     const outcome = new Promise<Outcome>((resolve) => (settle = resolve));
-    const timer = tests ? undefined : setTimeout(() => done({ kind: "timeout" }), START_TIMEOUT);
+    // A debug run may stop at a breakpoint before it's ready, for as long as someone looks.
+    const timer = tests || debug ? undefined : setTimeout(() => done({ kind: "timeout" }), START_TIMEOUT);
     const done = (o: Outcome) => {
       if (settled) return;
       settled = true;
@@ -546,7 +549,7 @@ export class Runner {
       this.log("error", `worker error: ${e.message}`);
       done({ kind: "error", message: e.message });
     };
-    worker.postMessage({ type: "start", entry, args, tests, files: this.vfs.files, dirs: this.vfs.dirs, vfsRoot: vfsRoot() });
+    worker.postMessage({ type: "start", entry, args, tests, files: this.vfs.files, dirs: this.vfs.dirs, vfsRoot: vfsRoot(), debug });
     const cancel = () => {
       this.end(worker);
       if (this.next?.worker === worker) this.next = undefined;
@@ -564,6 +567,7 @@ export class Runner {
   /** What any program's worker may ask, a child process's too: file changes, lazy reads, and its own children. */
   private common(worker: Worker, m: { type: string; [k: string]: any }) {
     if (m.type === "lazy-read") void serveLazyRead(this.vfs, m as never);
+    else if (m.type.startsWith("dbg-")) onDebugMessage(worker, m);
     else if (m.type === "vfs") {
       const [a, b] = m.args;
       this.applying = worker;
@@ -656,6 +660,7 @@ export class Runner {
   /** Ends a program's worker and every child process under it. */
   private end(worker: Worker) {
     worker.terminate();
+    detachDebugger(worker);
     const kids = this.kids.get(worker);
     this.kids.delete(worker);
     const self = this.procs.get(worker);

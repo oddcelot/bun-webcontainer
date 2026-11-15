@@ -4,6 +4,7 @@ import { firstLineLength, shiftFirstColumn } from "./sourceMap";
 import bunWrap from "./bunWrap.js?raw";
 import { loadTranspiler, type Resolver } from "./transpiler";
 import { transpileCached } from "./transpileCache";
+import { instrumenting } from "./debugSession";
 import { tsconfigFor } from "./tsconfig";
 import { inRanges, isMethod, literalRanges } from "./literals";
 import { DATA_FILE, dataFormat, loadResolver, parseDataFile, resolve, type DataFormat, type ResolveKind } from "./resolver";
@@ -346,9 +347,14 @@ async function serveCommonJS(vfs: VFS, path: string, onError: (msg: string) => v
   let body = src;
   let inner: string | undefined;
   let stripped = 0;
-  if (/\.(?:[cm]?tsx?|jsx)$/.test(path)) {
+  let probes: string | undefined;
+  // In a debug run the project's own files get the step debugger's probes here, in the file's own lines (plain
+  // JavaScript too, which is otherwise served as written).
+  const debug = bun && instrumenting() && !/(^|\/)node_modules\//.test(path);
+  if (debug || /\.(?:[cm]?tsx?|jsx)$/.test(path)) {
     try {
-      const [js, mappings] = (await transpileCached(src, path, tsconfigFor(vfs, path), () => null, false, bun)).split("\0");
+      const [js, mappings, table] = (await transpileCached(src, path, tsconfigFor(vfs, path), () => null, false, bun, debug)).split("\0");
+      probes = table;
       body = stripDirname(js);
       if (body !== js) stripped = 1;
       body = requireRuntimeImports(body);
@@ -378,7 +384,9 @@ async function serveCommonJS(vfs: VFS, path: string, onError: (msg: string) => v
     // In the worker, its source map leads to the wrapper's lines, which are the file's (or the first transpile's, which
     // `inner` maps back) after a header (worker/sourceMaps.ts).
     if (mappings === undefined) return { status: 200, body: js };
-    return { status: 200, body: js + inlineSourceMap(path, mappings, { x_bwcLineOffset: wrappedBodyLine(code) - stripped, x_bwcInner: inner }) };
+    // Its probe table, on the wrapper's first line (before the file's), registered when the module loads.
+    const head = probes ? `__dbg.file(${JSON.parse(probes).file},${JSON.stringify(path)},${probes});` : "";
+    return { status: 200, body: head + js + inlineSourceMap(path, mappings, { x_bwcLineOffset: wrappedBodyLine(code) - stripped, x_bwcInner: inner }) };
   } catch (e) {
     if (e instanceof LazyMiss) throw e; // loaded and served again (withLoaded)
     const msg = `${path}: ${e instanceof Error ? e.message : String(e)}`;
@@ -489,7 +497,9 @@ async function serveModuleOnce(vfs: VFS, rawPath: string, onError: (msg: string)
     }
     // An ES module: Bun's parser finds the specifiers, as `bun build --no-bundle` does (JSX per tsconfig too).
     // In the worker, with a source map: its error printer maps stack frames back to the file's lines (worker/sourceMaps.ts).
-    const [transpiled, mappings] = (await transpileCached(src, path, tsconfigFor(vfs, path), resolver(vfs, dirname(path)), target === "bun", target === "bun")).split("\0");
+    // In a debug run, the project's own files call the step debugger before each statement (worker/debugger.ts).
+    const debug = target === "bun" && instrumenting() && !/(^|\/)node_modules\//.test(path);
+    const [transpiled, mappings, table] = (await transpileCached(src, path, tsconfigFor(vfs, path), resolver(vfs, dirname(path)), target === "bun", target === "bun", debug)).split("\0");
     let code = transpiled;
     if (target === "bun") {
       const sync = syncEsm.get(path);
@@ -511,6 +521,8 @@ async function serveModuleOnce(vfs: VFS, rawPath: string, onError: (msg: string)
     // from its own URL, so it's this instance.
     if (target === "bun") {
       body += `\nimport * as __bwcSelf from ${JSON.stringify(`${VFS_ROOT}${entry ? ENTRY_PREFIX : ""}${path}`)};\nglobalThis.__esmLoaded?.(${JSON.stringify("/" + path)}, __bwcSelf);`;
+      // Its probe table, before any of its statements runs.
+      if (table) body = `__dbg.file(${JSON.parse(table).file},${JSON.stringify(path)},${table});${body}`;
       // Its first import marks it as being imported (before its dependencies run), on the first line.
       body = `import ${JSON.stringify(`data:text/javascript,${encodeURIComponent(`globalThis.__esmImporting?.(${JSON.stringify("/" + path)})`)}`)};${body}`;
       // What was put before or changed at the start of the transpiler's first line moves that line's columns.

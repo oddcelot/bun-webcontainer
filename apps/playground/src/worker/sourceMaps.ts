@@ -90,7 +90,7 @@ interface Location {
  * source's line and column where they are known. "" for the worker's own code (the runtime, its node: shims, the
  * modules it serves for them, CommonJS facades): Bun doesn't show its internals either. null for any other URL.
  */
-function mapLocation(root: string, url: string, line: number, column: number): Location | "" | null {
+export function mapLocation(root: string, url: string, line: number, column: number): Location | "" | null {
   let path: string;
   let locate: Locate | null | undefined;
   if (url.startsWith(root)) {
@@ -122,8 +122,9 @@ export function frameMapper(root: () => string) {
 }
 
 /** V8's CallSite (the parts used here). */
-interface CallSite {
+export interface CallSite {
   getFileName(): string | null | undefined;
+  getScriptNameOrSourceURL?(): string | null | undefined;
   getLineNumber(): number | null;
   getColumnNumber(): number | null;
   getEnclosingLineNumber?(): number | null;
@@ -134,7 +135,7 @@ interface CallSite {
 }
 
 /** Wrapped CommonJS's own functions around a file's body (cjs.ts wrapCommonJS). */
-const CJS_WRAPPER = new Set(["__run", "__cjsModule", "require"]);
+export const CJS_WRAPPER = new Set(["__run", "__cjsModule", "require"]);
 
 /**
  * `Error.prepareStackTrace` as Bun has one (`ErrorPrepareStackTrace`), so `error.stack` reads as in Bun: frames in the
