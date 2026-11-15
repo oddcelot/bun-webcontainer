@@ -1,7 +1,8 @@
 import { isLazy } from "@runbun/vfs";
 import { Show, createEffect, onSettled, useContext } from "solid-js";
 import { CHECKED, mountDiagnostics } from "../diagnostics";
-import { JSON_FILE, connectJsonFiles, jsonComplete, jsonCompletionDetails, jsonHover } from "../jsonLanguage";
+import { JSON_FILE, connectJsonFiles, jsonComplete, jsonHover } from "../jsonLanguage";
+import { isLspItem, lspCompletionDetails } from "../lspItems";
 import { createPierre } from "../editors/pierre";
 import { chordKeys, keysFor, matches } from "../keymap";
 import type { CodeEditor, EditorLocation } from "../editors/types";
@@ -152,7 +153,7 @@ export function EditorPane() {
               : json(file)
                 ? jsonComplete(file, editor.getText(), line, column)
                 : null,
-        resolveCompletion: async (file, item) => (!editor ? null : json(file) ? jsonCompletionDetails(item) : resolveCompletion(vfs, file, editor.getText(), item)),
+        resolveCompletion: async (file, item) => (!editor ? null : isLspItem(item) ? lspCompletionDetails(item) : resolveCompletion(vfs, file, editor.getText(), item)),
         signatureHelp: async (file, line, column, trigger, retrigger) =>
           typed(file) && editor ? signatureHelp(vfs, file, editor.getText(), line, column, trigger, retrigger) : null,
         goToDefinition: (file, line, column) => void goToDefinition(file, line, column),
