@@ -93,6 +93,8 @@ export type EditorEvents = {
   signatureHelp?(path: string, line: number, column: number, trigger?: string, retrigger?: boolean): Promise<EditorSignatureHelp | null>;
   /** Go to where the name at a 1-based line and UTF-16 column of `path` is declared (Ctrl/Cmd+click on it). */
   goToDefinition?(path: string, line: number, column: number): void;
+  /** A line number was clicked (1-based line): toggle a breakpoint there. */
+  onGutterClick?(path: string, line: number): void;
 };
 
 /** One open file at a time. `text === null` means a binary file (shown read-only). */
@@ -105,6 +107,8 @@ export interface CodeEditor {
   replace(text: string): void;
   /** Inline error/warning markers for the open file (replaces the previous ones; empty clears). Lines and columns are 1-based UTF-16. */
   setDiagnostics(diagnostics: EditorDiagnostic[]): void;
+  /** Breakpoint dots in the gutter of the open file (1-based lines; replaces the previous ones), and the line the debugger is paused on (null: none). */
+  setDebugLines(breakpoints: number[], paused: number | null): void;
   /** Shows the hover (EditorEvents.hover) for the token at the cursor, as resting the pointer on it would. */
   showHover(): void;
   /** Opens the completion list at the cursor (EditorEvents.complete), as typing a name does. */
