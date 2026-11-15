@@ -23,10 +23,6 @@ const HOST_PORT = 5197;
 const CONTENT = process.argv.includes("--content-origin");
 const EDITOR = `http://${CONTENT ? "runbun." : ""}localhost:${PORT}`;
 const ISOLATED = process.argv.includes("--isolated");
-// An isolated run checks only the synchronous calls (sync.ts), on a fresh page: the async ones are the run without
-// --isolated's. Running the lot isolated starts dozens of workers on one page, and headless Chrome then runs out of
-// memory for wasm instances on some machines (a grandchild fails to boot, also before the synchronous calls existed).
-const ENTRY = ISOLATED ? "sync.ts" : "main.ts";
 const MiB = 1024 * 1024;
 
 /** The synchronous calls main.ts makes: a label, the expression it prints, what native Bun prints for it. */
@@ -225,10 +221,6 @@ export function runSync() {
   };
 ${SYNC.map(([label, expr]) => `  sync(${JSON.stringify(label)}, () => ${expr});`).join("\n")}
 }
-if (import.meta.main) {
-  runSync();
-  console.log("__end__");
-}
 `,
 };
 
@@ -360,14 +352,14 @@ try {
     }
     await page.goto(`http://localhost:${HOST_PORT}/`);
     await page.waitForFunction(() => (window as unknown as { events: string[] }).events.includes("ready"), { timeout: 60_000 });
-    await page.evaluate((entry: string) => (window as unknown as { rpc: (m: string, p?: unknown) => Promise<unknown> }).rpc("run", { entry }), ENTRY);
+    await page.evaluate((entry: string) => (window as unknown as { rpc: (m: string, p?: unknown) => Promise<unknown> }).rpc("run", { entry }), "main.ts");
     await page.waitForFunction(() => (window as unknown as { lines: string[] }).lines.some((l) => l.includes("__end__") || /^error/.test(l)), { timeout: 60_000 }).catch(() => {});
     await Bun.sleep(300);
     const all = await page.evaluate(() => (window as unknown as { lines: string[] }).lines);
     // The program's own lines (the console also shows the embed's `$ bun main.ts` and such).
-    const start = all.findIndex((l) => l.startsWith(ISOLATED ? `${SYNC[0]![0]}:` : "spawn:"));
+    const start = all.findIndex((l) => l.startsWith("spawn:"));
     const got = start < 0 ? all : all.slice(start, all.indexOf("__end__", start) + 1 || undefined).filter((l) => l.trim() !== "");
-    compare(`playground (${ISOLATED ? "" : "not "}isolated)`, got, ISOLATED ? [...EXPECTED_SYNC, "__end__"] : [...EXPECTED.slice(0, -1 - SYNC.length), ...NOT_ISOLATED, "__end__"]);
+    compare(`playground (${ISOLATED ? "" : "not "}isolated)`, got, ISOLATED ? EXPECTED : [...EXPECTED.slice(0, -1 - SYNC.length), ...NOT_ISOLATED, "__end__"]);
     if (bad && start < 0) console.error(all.join("\n"));
     // The console's `bun run` of a script that is a shell line: the program is Bun's shell, its commands children.
     const embed = page.frames().find((f) => f.url().includes("/embed"))!;
