@@ -6,10 +6,11 @@ import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import solid from "@solidjs/vite-plugin";
 import UnoCSS from "unocss/vite";
-import { rolldown } from "rolldown";
+import { rolldown, type OutputBundle } from "rolldown";
 import { defaultClientConditions, defineConfig, runnerImport, type Plugin } from "vite";
 import { BUN_VERSION } from "./src/worker/bunVersion";
 import type { AuthEnv } from "./worker/auth";
+import { npmNotice, npmPackageDir, render, rustNotices } from "./scripts/licenses";
 
 const isolation = {
   "Cross-Origin-Opener-Policy": "same-origin",
@@ -307,6 +308,40 @@ function examplesSubmodule(): Plugin {
   };
 }
 
+/** The npm packages the build's bundles took modules from: the app's, and its workers' (bundled first, as the app's imports). */
+const bundledPackages = new Set<string>();
+
+/** Notes the packages behind every module that made it into a chunk. */
+function notePackages(out: OutputBundle) {
+  for (const f of Object.values(out))
+    if (f.type === "chunk")
+      for (const id of f.moduleIds) {
+        const dir = npmPackageDir(id);
+        if (dir) bundledPackages.add(dir);
+      }
+}
+
+/** In each worker's build. */
+function workerPackages(): Plugin {
+  return { name: "worker-packages", apply: "build", generateBundle: (_, out) => notePackages(out) };
+}
+
+/**
+ * /third-party-licenses.txt (scripts/licenses.ts, linked from index.html's footer): the bundled npm packages and the crates
+ * in the wasm files, with their license texts. Emitted before serviceWorker's shell manifest lists the build's files.
+ */
+function thirdPartyLicenses(): Plugin {
+  return {
+    name: "third-party-licenses",
+    apply: "build",
+    generateBundle(_, out) {
+      notePackages(out);
+      const npm = [...bundledPackages].flatMap((dir) => npmNotice(dir) ?? []);
+      this.emitFile({ type: "asset", fileName: "third-party-licenses.txt", source: render([...npm, ...rustNotices(BUN_VERSION)]) });
+    },
+  };
+}
+
 /**
  * runbun.json's schema (src/schema/runbun.json, which the editor bundles) at /schema/runbun.json, the `$schema` URL a
  * project's file names: served in dev, emitted in builds. Code can't import from public/, hence not kept there.
@@ -336,7 +371,7 @@ export default defineConfig(({ mode }) => ({
     // CANARY=1 (playground:deploy-canary) shows the canary badge (src/canary.ts).
     "import.meta.env.CANARY": JSON.stringify(process.env.CANARY === "1"),
   },
-  plugins: [examplesSubmodule(), configSchema(), UnoCSS(), solid(), hostPackageNames(), emnapiNotNode(), docsLink(docsUrl(mode)), embedRoutes(), originHeaders(), serviceWorker(), workerRoutesDev()],
+  plugins: [examplesSubmodule(), configSchema(), UnoCSS(), solid(), hostPackageNames(), emnapiNotNode(), docsLink(docsUrl(mode)), embedRoutes(), originHeaders(), serviceWorker(), workerRoutesDev(), thirdPartyLicenses()],
   build: {
     target: "esnext",
     rollupOptions: {
@@ -346,7 +381,7 @@ export default defineConfig(({ mode }) => ({
     },
   },
   // In builds, worker bundles (the runtime and rolldown's wasi worker) only get worker.plugins.
-  worker: { format: "es", plugins: () => [emnapiNotNode()] },
+  worker: { format: "es", plugins: () => [emnapiNotNode(), workerPackages()] },
   // Vite's default `localhost` bind may be ::1 only. As a content origin (src/contentOrigin.ts: run.runbun.localhost next to
   // the editor at runbun.localhost) the server listens on 127.0.0.1, which every *.localhost name reaches (browsers resolve
   // them to loopback and try IPv4); Vite's Host check is told to accept those names.
