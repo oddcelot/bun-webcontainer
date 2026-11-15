@@ -1,7 +1,9 @@
 import { isLazy } from "@runbun/vfs";
 import { Show, createEffect, onSettled, useContext } from "solid-js";
 import { CHECKED, mountDiagnostics } from "../diagnostics";
-import { JSON_FILE, connectJsonFiles, jsonComplete, jsonCompletionDetails, jsonHover } from "../jsonLanguage";
+import { JSON_FILE, connectJsonFiles, jsonComplete, jsonHover } from "../jsonLanguage";
+import { isLspItem, lspCompletionDetails } from "../lspItems";
+import { cssComplete, cssHover, cssTemplateAt } from "../cssTemplates";
 import { createPierre } from "../editors/pierre";
 import { chordKeys, keysFor, matches } from "../keymap";
 import type { CodeEditor, EditorLocation } from "../editors/types";
@@ -41,6 +43,9 @@ export function EditorPane() {
   const typed = (file: string) => TYPED.test(file) && has("types") && ws.readOnlyText(file) === undefined;
   // Schema hints for .json files (runbun.json, or one naming its $schema), with type hints.
   const json = (file: string) => JSON_FILE.test(file) && has("types") && ws.readOnlyText(file) === undefined;
+  // CSS hints in a JS/TS file's css`…` templates (cssTemplates.ts), with type hints: the template at a position, if any.
+  const cssAt = (file: string, text: string, line: number, column: number) =>
+    CHECKED.test(file) && has("types") && ws.readOnlyText(file) === undefined ? cssTemplateAt(text, line, column) : undefined;
 
   /** Writes `path`'s edits to the VFS; false when there were none. */
   function save(path: string) {
@@ -142,17 +147,20 @@ export function EditorPane() {
         onCursor: ws.setCursor,
         onDiagnostics: ws.setProblems,
         // Types for TypeScript files, with the editor's text (unsaved edits included).
-        hover: async (file, line, column) =>
-          !editor ? null : typed(file) ? hover(vfs, file, editor.getText(), line, column) : json(file) ? jsonHover(file, editor.getText(), line, column) : null,
-        complete: async (file, line, column, trigger) =>
-          !editor
-            ? null
-            : typed(file)
-              ? complete(vfs, file, editor.getText(), line, column, trigger)
-              : json(file)
-                ? jsonComplete(file, editor.getText(), line, column)
-                : null,
-        resolveCompletion: async (file, item) => (!editor ? null : json(file) ? jsonCompletionDetails(item) : resolveCompletion(vfs, file, editor.getText(), item)),
+        hover: async (file, line, column) => {
+          if (!editor) return null;
+          const text = editor.getText();
+          const css = cssAt(file, text, line, column);
+          return css ? cssHover(text, css, line, column) : typed(file) ? hover(vfs, file, text, line, column) : json(file) ? jsonHover(file, text, line, column) : null;
+        },
+        complete: async (file, line, column, trigger) => {
+          if (!editor) return null;
+          const text = editor.getText();
+          const css = cssAt(file, text, line, column);
+          if (css) return cssComplete(text, css, line, column);
+          return typed(file) ? complete(vfs, file, text, line, column, trigger) : json(file) ? jsonComplete(file, text, line, column) : null;
+        },
+        resolveCompletion: async (file, item) => (!editor ? null : isLspItem(item) ? lspCompletionDetails(item) : resolveCompletion(vfs, file, editor.getText(), item)),
         signatureHelp: async (file, line, column, trigger, retrigger) =>
           typed(file) && editor ? signatureHelp(vfs, file, editor.getText(), line, column, trigger, retrigger) : null,
         goToDefinition: (file, line, column) => void goToDefinition(file, line, column),
