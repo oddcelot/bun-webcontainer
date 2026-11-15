@@ -60,7 +60,9 @@ function service() {
         if (uri.startsWith("file:///")) return projectSchema(uri);
         const url = new URL(uri);
         if (url.protocol !== "https:" && url.origin !== location.origin) throw new Error(`only https schemas are fetched, not ${uri}`);
-        const res = await fetch(uri);
+        // SchemaStore's old host (what most `$schema`s name) redirects to www. without CORS headers, so fetch fails.
+        if (url.hostname === "json.schemastore.org") url.hostname = "www.schemastore.org";
+        const res = await fetch(url);
         if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
         return res.text();
       },
