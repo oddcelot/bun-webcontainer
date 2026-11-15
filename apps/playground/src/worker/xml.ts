@@ -28,7 +28,14 @@ function unbox(v: unknown): unknown {
 const isObj = (v: unknown): v is object => (typeof v === "object" && v !== null) || typeof v === "function";
 /** Values `stringify` leaves out entirely, as `JSON.stringify` does. */
 const skipped = (v: unknown) => v === undefined || typeof v === "symbol" || typeof v === "function";
-const isDate = (v: unknown): v is Date => v instanceof Date;
+/**
+ * Whether a value is a proxy (proxies.ts, which the worker passes in; xml.ts imports nothing). Native Bun checks the
+ * object itself, so a proxy of an array or a Date is a plain object to it; `Array.isArray` and `instanceof` see the target.
+ */
+let isProxy: (v: unknown) => boolean = () => false;
+export const setProxyCheck = (check: (v: unknown) => boolean) => void (isProxy = check);
+const isArray = (v: unknown): v is unknown[] => Array.isArray(v) && !isProxy(v);
+const isDate = (v: unknown): v is Date => v instanceof Date && !isProxy(v);
 
 /**
  * `JSPropertyIterator` (own enumerable string keys, values read through getters): the keys are
@@ -109,7 +116,7 @@ function initSpace(spaceValue: unknown): Space {
  * undefined counts).
  */
 function isNode(value: object): boolean {
-  if (Array.isArray(value)) return false;
+  if (isArray(value)) return false;
   const name = get(value, "name");
   if (typeof name !== "string") return false;
   for (const key of ["children", "attributes"]) {
@@ -125,7 +132,7 @@ export function xmlStringify(value: unknown, replacer?: unknown, space?: unknown
   if (skipped(value)) return undefined;
   if (replacer !== undefined && replacer !== null) throw fail("XML.stringify does not support the replacer argument");
   const root = unbox(value);
-  if (!isObj(root) || Array.isArray(root)) {
+  if (!isObj(root) || isArray(root)) {
     throw fail("XML.stringify expects an object: a { name, attributes, children } node or an object with a single root element key");
   }
   const s = new XmlStringifier(initSpace(space));
@@ -180,7 +187,7 @@ class XmlStringifier {
 
     const attributes = get(node, "attributes");
     if (attributes !== undefined && attributes !== null) {
-      if (!isObj(attributes) || Array.isArray(attributes)) throw fail("XML.stringify: a node's attributes must be an object");
+      if (!isObj(attributes) || isArray(attributes)) throw fail("XML.stringify: a node's attributes must be an object");
       for (const [attrName, propValue] of props(attributes)) {
         const sc = this.scalar(propValue, "an attribute value");
         if (sc.kind === "text") this.appendAttribute(attrName, sc.text);
@@ -189,7 +196,7 @@ class XmlStringifier {
 
     const childrenValue = get(node, "children");
     let children: unknown[] | undefined;
-    if (Array.isArray(childrenValue)) children = childrenValue;
+    if (isArray(childrenValue)) children = childrenValue;
     else if (childrenValue === null || childrenValue === undefined) children = undefined;
     else throw fail("XML.stringify: a node's children must be an array");
     if (!children) {
@@ -205,7 +212,7 @@ class XmlStringifier {
       const child = unbox(raw);
       if (child === null || skipped(child)) continue;
       count++;
-      if (!isObj(child) || Array.isArray(child) || isDate(child)) hasText = true;
+      if (!isObj(child) || isArray(child) || isDate(child)) hasText = true;
     }
     if (count === 0) {
       this.out += "/>";
@@ -218,13 +225,13 @@ class XmlStringifier {
       const child = unbox(raw);
       if (child === null || skipped(child)) continue;
       if (pretty) this.newline();
-      if (isObj(child) && !Array.isArray(child) && !isDate(child)) {
+      if (isObj(child) && !isArray(child) && !isDate(child)) {
         // Inside `children` any object is an element (`name`), a comment (`comment`) or a
         // processing instruction (`target`).
         const childName = get(child, "name");
         if (childName === undefined && this.stringifyMarkup(child)) continue;
         this.stringifyNode(child, childName);
-      } else if (Array.isArray(child)) {
+      } else if (isArray(child)) {
         throw fail("XML.stringify: a node's children cannot contain arrays");
       } else {
         const sc = this.scalar(child, "a text child");
@@ -317,7 +324,7 @@ class XmlStringifier {
         throw fail(`XML.stringify: the top-level object is the document, so it can only contain the root element (found '${key}')`);
       }
       if (root) throw fail("XML.stringify: an XML document has exactly one root element, but the top-level object has more than one key");
-      if (Array.isArray(value)) {
+      if (isArray(value)) {
         throw fail(`XML.stringify: the root element '${key}' cannot be an array (an XML document has exactly one root element)`);
       }
       root = [key, value];
@@ -330,7 +337,7 @@ class XmlStringifier {
   static hasOutput(raw: unknown): boolean {
     const value = unbox(raw);
     if (skipped(value)) return false;
-    if (!Array.isArray(value)) return true;
+    if (!isArray(value)) return true;
     for (const item of items(value)) if (!skipped(unbox(item))) return true;
     return false;
   }
@@ -344,7 +351,7 @@ class XmlStringifier {
     }
     this.markVisiting(value);
     try {
-      if (Array.isArray(value)) this.stringifyCompactArray(name, value, separate);
+      if (isArray(value)) this.stringifyCompactArray(name, value, separate);
       else this.stringifyCompactObject(name, value);
     } finally {
       this.visiting.delete(value);
@@ -356,7 +363,7 @@ class XmlStringifier {
     for (const raw of items(value)) {
       const item = unbox(raw);
       if (skipped(item)) continue;
-      if (Array.isArray(item)) throw fail(`XML.stringify: nested arrays cannot be represented (element '${name}')`);
+      if (isArray(item)) throw fail(`XML.stringify: nested arrays cannot be represented (element '${name}')`);
       if (!first && separate) this.newline();
       first = false;
       this.stringifyCompactElement(name, item, separate);

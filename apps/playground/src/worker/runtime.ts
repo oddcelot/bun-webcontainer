@@ -23,7 +23,8 @@ import { importMetaResolve, resolveSync } from "./resolve";
 import { Transpiler } from "./transpiler";
 import { makeJSONL } from "./jsonl";
 import { makeMarkdown } from "./markdown";
-import { makeXML } from "./xml";
+import { makeXML, setProxyCheck } from "./xml";
+import { isProxy } from "./proxies";
 import { markdownWasm, xmlWasm } from "../transpiler";
 import { codeError, fsError } from "./node/errors";
 import { hooks, type NodeSocket } from "./node/serve";
@@ -122,6 +123,7 @@ g.process = process;
 // Bun's Worker, on the process kernel (the browser's own can't load the project's files).
 g.Worker = WebWorker;
 g.global ??= globalThis;
+setProxyCheck(isProxy);
 g.Buffer ??= (builtins.buffer as { Buffer: unknown }).Buffer;
 installTimers();
 
