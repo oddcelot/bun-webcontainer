@@ -63,9 +63,9 @@ export class Runner {
   onExit?: (code: number) => void;
   /**
    * Called with the ports the program answering previews serves, its child processes' after its own, whenever they
-   * change (none once it stops).
+   * change (none once it stops), and the one the preview shows (see `choosePort`).
    */
-  onPorts?: (ports: number[]) => void;
+  onPorts?: (ports: number[], shown: number | undefined) => void;
   /** Each program's (and child process's) ports as it last reported them: a restart's new program reports before it takes over. */
   private ports = new WeakMap<Worker, number[]>();
   /** Child processes by their worker, and each program's children by the id it gave them. */
@@ -279,6 +279,8 @@ export class Runner {
    */
   private route(port?: number): { worker: Worker; port?: number } {
     const main = this.worker!;
+    // With none named, the port the reader picked (`choosePort`), while it is still served.
+    port ??= this.picked;
     const own = this.ports.get(main) ?? [];
     if (port === undefined ? own.length : own.includes(port)) return { worker: main, port };
     for (const w of this.descendants(main)) {
@@ -288,12 +290,28 @@ export class Runner {
     return { worker: main, port };
   }
 
-  /** Tells `onPorts` what the program answering previews serves now, its child processes included. */
+  /**
+   * Tells `onPorts` what the program answering previews serves now, its child processes included, and which of those
+   * ports the preview shows. A picked port that is no longer served is forgotten: the preview goes back to the default.
+   */
   private reportPorts() {
     const main = this.worker;
-    if (!main) return this.onPorts?.([]);
-    const all = [main, ...this.descendants(main)].flatMap((w) => this.ports.get(w) ?? []);
-    this.onPorts?.([...new Set(all)]);
+    const all = main ? [...new Set([main, ...this.descendants(main)].flatMap((w) => this.ports.get(w) ?? []))] : [];
+    if (this.picked !== undefined && !all.includes(this.picked)) this.picked = undefined;
+    // The default (`route` with no port) is the first of the list: the program's first, else its first child's.
+    this.onPorts?.(all, this.picked ?? all[0]);
+  }
+
+  /** The port the preview shows when the reader picked one of several (the status bar), until it is no longer served. */
+  private picked?: number;
+
+  /**
+   * Sends the preview (its requests, and WebSockets that name no port) to the server on `port` instead of the default,
+   * while the program or one of its child processes serves it. The caller reloads the preview.
+   */
+  choosePort(port: number) {
+    this.picked = port;
+    this.reportPorts();
   }
 
   /** Ends the preview responses still on their way (only `owner`'s, if given): the program that would have finished them is gone. */
@@ -351,7 +369,7 @@ export class Runner {
     this.worker = undefined;
     this.abort = undefined;
     if (!worker) return;
-    this.onPorts?.([]);
+    this.reportPorts();
     this.endPending(worker);
     this.dropSockets();
     if (flush) await this.flush(worker);
@@ -497,6 +515,7 @@ export class Runner {
       else if (m.type === "cookies") this.storeCookies(m.path, m.setCookies);
       else if (m.type === "ports") {
         this.ports.set(worker, m.ports);
+        this.shareTaken(worker);
         if (this.worker === worker) this.reportPorts();
       }
       else if (m.type === "ready") {
@@ -579,6 +598,7 @@ export class Runner {
       // A server it starts answers previews when the program serves none (see `route`).
       else if (c.type === "ports") {
         this.ports.set(worker, c.ports);
+        this.shareTaken(worker);
         this.reportPorts();
       } else this.common(worker, c);
     };
@@ -590,6 +610,30 @@ export class Runner {
     // A worker_threads thread also gets its channel to the Worker (worker/node/worker_threads.ts).
     const thread = m.port ? { thread: m.thread, port: m.port } : {};
     worker.postMessage({ type: "start", entry, script, args, files: this.vfs.files, dirs: this.vfs.dirs, vfsRoot: vfsRoot(), proc: { pid: m.id, ppid, cwd: m.cwd, env: m.env }, ...thread }, m.port ? [m.port] : []);
+    // Before its code runs (the worker handles it ahead of the start, which awaits the wasm), so its first Bun.serve sees them.
+    this.shareTaken(worker);
+  }
+
+  /** The program a child process belongs to (the one Run, a restart or a test run started). */
+  private rootOf(worker: Worker): Worker {
+    for (let p = this.procs.get(worker); p; p = this.procs.get(worker)) worker = p.parent;
+    return worker;
+  }
+
+  /**
+   * Tells each process of `worker`'s run which ports the others serve (worker/runtime.ts `listen`), so a Bun.serve on
+   * one of them throws EADDRINUSE there and then, as on a real machine, instead of the port going to whoever was
+   * started first. Pushed ahead, not asked for: Bun.serve is synchronous. Two processes binding the same port at the
+   * same moment both get it (each hears of the other too late); `route` then takes the first. A restart's new program
+   * is a run of its own: it takes over the old one's ports.
+   */
+  private shareTaken(worker: Worker) {
+    const root = this.rootOf(worker);
+    const run = [root, ...this.descendants(root)];
+    for (const w of run) {
+      const taken = run.flatMap((o) => (o === w ? [] : (this.ports.get(o) ?? [])));
+      w.postMessage({ type: "taken", ports: [...new Set(taken)] });
+    }
   }
 
   /** A child process ended (by itself, or a signal): its parent hears how, and it goes, with its own children. */
@@ -612,7 +656,10 @@ export class Runner {
       this.kids.get(self.parent)?.delete(self.id);
       // A child process's server goes with it: the previews it was answering end, and its ports leave the list.
       this.endPending(worker);
-      if (this.ports.delete(worker)) this.reportPorts();
+      if (this.ports.delete(worker)) {
+        this.shareTaken(self.parent);
+        this.reportPorts();
+      }
     }
     for (const kid of kids?.values() ?? []) if (!kid.ended) this.endChild(kid, 137, "SIGKILL");
   }

@@ -16,6 +16,8 @@ export function createSession(canRun: boolean) {
   const [counts, setCounts] = createStore({ lines: 0, error: 0, warn: 0 });
   // The ports the running program serves (Bun.serve, http.Server#listen), as the runner reports them.
   const [ports, setPorts] = createSignal<number[]>([]);
+  // Which of them the preview shows: the first, unless the reader picked another (runner.ts choosePort).
+  const [previewPort, setPreviewPort] = createSignal<number | undefined>(undefined);
   const [project, setProject] = createSignal<{ selected: string; extra: [label: string, value: string][]; reopen?: string }>({ selected: "", extra: [] });
 
   // Writes made in the action's frame are held until it settles, so `work` starts after that frame is flushed:
@@ -73,6 +75,9 @@ export function createSession(canRun: boolean) {
     /** The ports the running program serves; empty with no server (or a runner that doesn't say, Local Bun). */
     ports,
     setPorts,
+    /** The port the preview shows, of `ports`. */
+    previewPort,
+    setPreviewPort,
     /** The project picker: which entry is selected, plus entries for the loaded repo or shared project. */
     project,
     setProject,

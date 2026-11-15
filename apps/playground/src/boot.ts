@@ -266,6 +266,13 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
     session.setStatus({ state: "idle", text: "Stopped" });
   }
 
+  /** Shows the server on `port` in the preview, one of several the program and its child processes serve. */
+  function choosePort(port: number) {
+    if (!runner || runner instanceof RemoteRunner) return;
+    runner.choosePort(port);
+    previews.reload();
+  }
+
   function clearConsole() {
     terminal.clear();
     session.resetCounts();
@@ -442,7 +449,10 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
     runner = next;
     runner.attach();
     runner.onExit = (code) => session.setStatus(exited(code));
-    runner.onPorts = (ports) => session.setPorts(ports);
+    runner.onPorts = (ports, shown) => {
+      session.setPorts(ports);
+      session.setPreviewPort(shown);
+    };
     setRuntime(kind);
     if (previous) {
       if (session.settled().state === "running") session.setStatus({ state: "idle", text: "Stopped" });
@@ -581,6 +591,7 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
     install,
     test,
     stop,
+    choosePort,
     clearConsole,
     clearProject,
     opened,

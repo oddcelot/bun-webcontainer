@@ -20,6 +20,7 @@ export function mountEmbed(pg: Playground, embed: Embed) {
     log: pg.log,
     run: () => void pg.run(),
     stop: pg.stop,
+    choosePort: pg.choosePort,
     install: () => void pg.install(),
     newFile: pg.newFile,
     renamePath: pg.renamePath,
