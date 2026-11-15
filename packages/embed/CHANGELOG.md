@@ -4,6 +4,16 @@ Notable changes per release of `@runbun/embed`. Each release is tagged `embed-v<
 with its section. The element talks to the playground deployed at runbun.dev over the embed protocol (version 1),
 which only grows, so any release works with the live playground.
 
+## 0.5.0 — 2026-11-15
+
+Projects describe themselves in runbun.json: `pack` reads a project's card from it, and an embed changes layout in
+place. runbun.dev's `embed.js` has both already. Nothing needs action to upgrade; `example.json` still works.
+
+- **Added** — **`pack` reads cards from runbun.json.** A project folder can name and describe itself in its
+  runbun.json instead of an example.json, which `pack` still reads.
+- **Changed** — **Changing `layout` no longer reloads the embed.** The preview moves beside or under the editor in
+  place, and `setLayout()` does the same from script.
+
 ## 0.4.0 — 2026-11-13
 
 Embeds for teaching: a page can give an embed files of its own that the reader never sees, such as the tests a lesson
