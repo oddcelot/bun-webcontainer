@@ -19,6 +19,6 @@
     "typecheck": "tsrs --noEmit",
     "prepack": "bun run build"
   },
-  "devDependencies": { "tsrs": "0.24.0-ts7.1.0-beta" },
+  "devDependencies": { "tsrs": "0.25.0-ts7.1.0-beta" },
   "publishConfig": { "access": "public" }
 }

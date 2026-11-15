@@ -63,7 +63,7 @@
     "puppeteer-core": "^25.17.0",
     "rolldown": "1.2.19",
     "satori": "^0.63.2",
-    "tsrs": "0.24.0-ts7.1.0-beta",
+    "tsrs": "0.25.0-ts7.1.0-beta",
     "undici-types": "8.12.4",
     "unocss": "catalog:",
     "vite": "^8.3.8"
