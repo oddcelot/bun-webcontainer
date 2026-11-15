@@ -3,7 +3,7 @@
 // src/runner.ts), end to end: a project runs in the embed in headless Chrome and each program prints what its children
 // did. Bun.spawn with pipes, stdin, exit codes and kill; child_process spawn/exec/execFile; Bun.$ running `bun` in a
 // pipeline; package.json scripts (spawned, and the console's `bun run` of a shell line); a child's file writes;
-// grandchildren; worker_threads threads; a server a child starts, reached through the preview; the synchronous calls
+// grandchildren; worker_threads threads and Web Workers; a server a child starts, reached through the preview; the synchronous calls
 // (spawnSync, execSync, execFileSync, Bun.spawnSync: output of several MiB, stdin, timeouts, file changes both ways, a
 // synchronous grandchild). The expected lines are what native Bun prints for the same project (checked by running it
 // with `bun` in a temp folder, unless --no-native).
@@ -75,6 +75,19 @@ parentPort!.on("message", (m) => {
 });`,
   "idle.ts": `import { parentPort } from "node:worker_threads";\nparentPort!.on("message", () => {});`,
   "done.ts": `import { parentPort } from "node:worker_threads";\nconsole.log("done.ts ran");\nparentPort!.postMessage("done");`,
+  // A Web Worker: a listener added before onmessage runs first, as on the Web.
+  "webworker.ts": `import { isMainThread, workerData } from "node:worker_threads";
+let seen = 0;
+self.addEventListener("message", () => seen++);
+self.onmessage = (e: MessageEvent) => {
+  const m = e.data;
+  if (m === "exit") process.exit(4);
+  if (m === "throw") throw new TypeError("ww boom");
+  if (m instanceof ArrayBuffer) return postMessage({ len: m.byteLength });
+  self.postMessage(\`echo \${m} \${seen}\`);
+};
+postMessage([isMainThread, workerData ?? null, process.argv.slice(2), process.env.WW ?? "-", typeof self, self === globalThis]);`,
+  "ww-end.ts": `postMessage("bye");`,
   "main.ts": `import { $ } from "bun";
 import { exec, execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
@@ -204,6 +217,39 @@ log("$ code:", (await $\`bun child.ts\`.env({ ...process.env, CODE: "4" }).nothr
   const w5 = new Worker('const t = require("node:worker_threads"); t.parentPort.postMessage(t.workerData + 1)', { eval: true, workerData: 41 });
   log("wt eval:", await next("message", w5), await next("exit", w5));
 }
+// The Web Worker global: a file: URL and a path relative to the cwd, argv, env, workerData, messages both ways (self's
+// onmessage, addEventListener and postMessage), a transfer, an uncaught error, process.exit, terminate, an end
+{
+  const ev = (t: EventTarget, type: string) => new Promise<any>((r) => t.addEventListener(type, r, { once: true }));
+  process.env.WW = "w2";
+  const w = new Worker(new URL("./webworker.ts", import.meta.url), { argv: ["b1"], workerData: { k: 1 } } as WorkerOptions);
+  const order: string[] = [];
+  w.addEventListener("open", () => order.push("open"));
+  const hello = await ev(w, "message");
+  log("ww hello:", hello.constructor.name, JSON.stringify(hello.data), hello.target === w, order.join(), typeof w.threadId);
+  w.postMessage("hi");
+  log("ww echo:", (await ev(w, "message")).data);
+  const buf = new ArrayBuffer(16);
+  w.postMessage(buf, [buf]);
+  log("ww transfer:", JSON.stringify((await ev(w, "message")).data), buf.byteLength);
+  w.postMessage("throw");
+  const err = await ev(w, "error");
+  const closed = await ev(w, "close");
+  log("ww error:", err.constructor.name, err.message.includes("ww boom"), closed.code, closed.wasClean);
+  const w2 = new Worker("./webworker.ts");
+  w2.onmessage = () => w2.postMessage("exit");
+  const exited = await ev(w2, "close");
+  log("ww exit:", exited.code, exited.reason);
+  const w3 = new Worker("./webworker.ts");
+  await ev(w3, "message");
+  // Its "close" code is 0, or 1 now and then, in Bun.
+  log("ww terminate:", w3.terminate(), (await ev(w3, "close")).type);
+  const w4 = new Worker("./ww-end.ts");
+  const got: string[] = [];
+  w4.onmessage = (e) => got.push(e.data);
+  const ended = await ev(w4, "close");
+  log("ww end:", ended.code, ended.reason, got.join());
+}
 runSync();
 log("__end__");
 })();
@@ -267,6 +313,13 @@ const EXPECTED = [
   "done.ts ran",
   "wt url: done 0",
   "wt eval: 42 0",
+  'ww hello: MessageEvent [false,{"k":1},["b1"],"w2","object",true] true open number',
+  "ww echo: echo hi 1",
+  'ww transfer: {"len":16} 0',
+  "ww error: ErrorEvent true 1 false",
+  "ww exit: 4 Worker exited abnormally",
+  "ww terminate: undefined close",
+  "ww end: 0 Worker terminated normally bye",
   ...EXPECTED_SYNC,
   "__end__",
 ];
