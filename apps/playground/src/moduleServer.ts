@@ -347,9 +347,14 @@ async function serveCommonJS(vfs: VFS, path: string, onError: (msg: string) => v
   let body = src;
   let inner: string | undefined;
   let stripped = 0;
-  if (/\.(?:[cm]?tsx?|jsx)$/.test(path)) {
+  let probes: string | undefined;
+  // In a debug run the project's own files get the step debugger's probes here, in the file's own lines (plain
+  // JavaScript too, which is otherwise served as written).
+  const debug = bun && instrumenting() && !/(^|\/)node_modules\//.test(path);
+  if (debug || /\.(?:[cm]?tsx?|jsx)$/.test(path)) {
     try {
-      const [js, mappings] = (await transpileCached(src, path, tsconfigFor(vfs, path), () => null, false, bun)).split("\0");
+      const [js, mappings, table] = (await transpileCached(src, path, tsconfigFor(vfs, path), () => null, false, bun, debug)).split("\0");
+      probes = table;
       body = stripDirname(js);
       if (body !== js) stripped = 1;
       body = requireRuntimeImports(body);
@@ -379,7 +384,9 @@ async function serveCommonJS(vfs: VFS, path: string, onError: (msg: string) => v
     // In the worker, its source map leads to the wrapper's lines, which are the file's (or the first transpile's, which
     // `inner` maps back) after a header (worker/sourceMaps.ts).
     if (mappings === undefined) return { status: 200, body: js };
-    return { status: 200, body: js + inlineSourceMap(path, mappings, { x_bwcLineOffset: wrappedBodyLine(code) - stripped, x_bwcInner: inner }) };
+    // Its probe table, on the wrapper's first line (before the file's), registered when the module loads.
+    const head = probes ? `__dbg.file(${JSON.parse(probes).file},${JSON.stringify(path)},${probes});` : "";
+    return { status: 200, body: head + js + inlineSourceMap(path, mappings, { x_bwcLineOffset: wrappedBodyLine(code) - stripped, x_bwcInner: inner }) };
   } catch (e) {
     if (e instanceof LazyMiss) throw e; // loaded and served again (withLoaded)
     const msg = `${path}: ${e instanceof Error ? e.message : String(e)}`;

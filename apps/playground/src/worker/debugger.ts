@@ -8,7 +8,7 @@
  */
 import { CTL, CTL_INTS, decodeCommand, type DebugCommand, type DebugFrame, type DebugScope, type Probe, type ProbeTable } from "../debugProtocol";
 import { formatCell } from "./inspect";
-import { type CallSite, mapLocation } from "./sourceMaps";
+import { type CallSite, CJS_WRAPPER, mapLocation } from "./sourceMaps";
 
 type File = { path: string; table: ProbeTable; bp: Uint8Array };
 type Step = "into" | "over" | "out";
@@ -62,11 +62,14 @@ export function installDebugger(sab: SharedArrayBuffer, breakpoints: Record<stri
   function frames(sites: CallSite[]): DebugFrame[] {
     const out: DebugFrame[] = [];
     for (const s of sites) {
-      const url = s.getFileName();
+      // Code run with `new Function` (a require()d file) has its sourceURL, not a file name.
+      const url = s.getFileName() ?? s.getScriptNameOrSourceURL?.();
       if (!url) continue;
       const loc = mapLocation(root(), url, s.getLineNumber() ?? 0, s.getColumnNumber() ?? 0);
       if (!loc) continue; // the worker's own code
       const name = s.getFunctionName();
+      // Wrapped CommonJS's own functions around a file's body.
+      if (!loc.mapped && name && CJS_WRAPPER.has(name)) continue;
       out.push({ name: name || "", path: loc.path.replace(/^\//, ""), line: loc.line - 1, column: loc.column - 1, async: s.isAsync() });
     }
     return out;
@@ -162,6 +165,8 @@ export function installDebugger(sab: SharedArrayBuffer, breakpoints: Record<stri
     pending = undefined;
     if (p) pause(p.f, p.id, scopedEval, p.reason, p.sites);
   };
+  /** Read by worker/node/module.ts: what it transpiles itself is instrumented too. */
+  dbg.active = true;
   dbg.file = (file: number, path: string, table: ProbeTable) => {
     const f: File = { path, table, bp: new Uint8Array(table.probes.length) };
     files.set(file, f);

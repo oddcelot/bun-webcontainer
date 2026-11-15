@@ -259,10 +259,10 @@ export function runtimeTranspile(op: RuntimeOp, source: string | null, loader: s
 /**
  * `transpile` without a resolver, synchronous (in the worker, loading the module on first use): for CommonJS the
  * worker loads at run time, which Bun's runtime transpiles as `bun build --no-bundle` does (the JSX runtime imported).
- * `sourceMap` as for `transpile`.
+ * `sourceMap` and `debug` as for `transpile`.
  */
-export function transpileSync(source: string, path: string, tsconfig: TsconfigFlags = {}, sourceMap = false): string {
-  return call(loadSync(), "transpile_flags_c", path, source, loaderOf(path), tsFlags(tsconfig) | (sourceMap ? SOURCE_MAP : 0), jsxKey(tsconfig), NO_OPTIONS);
+export function transpileSync(source: string, path: string, tsconfig: TsconfigFlags = {}, sourceMap = false, debug = false): string {
+  return call(loadSync(), "transpile_flags_c", path, source, loaderOf(path), tsFlags(tsconfig) | (sourceMap ? SOURCE_MAP : 0) | (debug ? DEBUG : 0), jsxKey(tsconfig), NO_OPTIONS);
 }
 
 /** Loads the transpiler, so that `moduleKind` can run synchronously on the page too. */
@@ -285,10 +285,10 @@ export function moduleKind(source: string, path: string, tsconfig: TsconfigFlags
 /**
  * An ES module as the body of a function of `hmr` (transpile-wasm's SYNC_ESM): for `require()` of one the worker
  * hasn't imported, which it runs synchronously (worker/node/module.ts). Throws Bun's error for top-level await.
- * `sourceMap` as for `transpile`.
+ * `sourceMap` and `debug` as for `transpile`.
  */
-export function transpileSyncEsm(source: string, path: string, tsconfig: TsconfigFlags = {}, sourceMap = false): string {
-  return call(loadSync(), "transpile_flags_c", path, source, loaderOf(path), tsFlags(tsconfig) | SYNC_ESM | (sourceMap ? SOURCE_MAP : 0), jsxKey(tsconfig), NO_OPTIONS);
+export function transpileSyncEsm(source: string, path: string, tsconfig: TsconfigFlags = {}, sourceMap = false, debug = false): string {
+  return call(loadSync(), "transpile_flags_c", path, source, loaderOf(path), tsFlags(tsconfig) | SYNC_ESM | (sourceMap ? SOURCE_MAP : 0) | (debug ? DEBUG : 0), jsxKey(tsconfig), NO_OPTIONS);
 }
 
 type DataEntry = "markdown_html_c" | "markdown_ansi_c" | "markdown_events_c" | "xml_parse_c";

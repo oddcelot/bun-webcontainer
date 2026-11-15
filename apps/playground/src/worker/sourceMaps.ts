@@ -124,6 +124,7 @@ export function frameMapper(root: () => string) {
 /** V8's CallSite (the parts used here). */
 export interface CallSite {
   getFileName(): string | null | undefined;
+  getScriptNameOrSourceURL?(): string | null | undefined;
   getLineNumber(): number | null;
   getColumnNumber(): number | null;
   getEnclosingLineNumber?(): number | null;
@@ -134,7 +135,7 @@ export interface CallSite {
 }
 
 /** Wrapped CommonJS's own functions around a file's body (cjs.ts wrapCommonJS). */
-const CJS_WRAPPER = new Set(["__run", "__cjsModule", "require"]);
+export const CJS_WRAPPER = new Set(["__run", "__cjsModule", "require"]);
 
 /**
  * `Error.prepareStackTrace` as Bun has one (`ErrorPrepareStackTrace`), so `error.stack` reads as in Bun: frames in the
