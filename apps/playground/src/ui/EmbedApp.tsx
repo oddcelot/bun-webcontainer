@@ -1,7 +1,8 @@
 import { For, Show, createContext, createEffect, createMemo, createSignal, onSettled, useContext } from "solid-js";
 import { Tip } from "@runbun/ui/solid/Tip";
 import { Menu, MenuCheckItem, MenuGroup, MenuItem, MenuSeparator, MenuTrigger } from "@runbun/ui/solid/Menu";
-import { Dialog } from "@runbun/ui/solid/Dialog";
+import { Dialog, DialogActions, DialogClose, DialogDescription, DialogTitle } from "@runbun/ui/solid/Dialog";
+import { Button } from "@runbun/ui/solid/Button";
 import logo from "../bun-logo.svg";
 import { COST } from "../embed/config";
 import { chordKeys, keysFor, matches, type Command } from "../keymap";
@@ -76,8 +77,11 @@ export function EmbedApp() {
       if (target) target.focus();
       else if (tries) focusDrawer(tries - 1);
     });
+  // Under the editor's tab bar when its button is there, so the button stays in sight.
+  const [drawerTop, setDrawerTop] = createSignal(0);
   const toggleDrawer = () => {
     if (drawer()) return closeDrawer();
+    setDrawerTop(has("tabs") ? (document.querySelector<HTMLElement>("#editor-pane > .tabs-bar")?.offsetHeight ?? 0) : 0);
     setOpen(true);
     focusDrawer();
   };
@@ -113,6 +117,9 @@ export function EmbedApp() {
       removeEventListener("pointerdown", onDown, { capture: true });
     };
   });
+  // Nothing in the bar but the ⋯ menu (EmbedBar's conditions): no bar, the menu at the end of the editor's tab bar.
+  // The drawer's button is at the start of the tab bar wherever there is one, so it doesn't count.
+  const barless = () => !e.library.length && editor() && has("tabs") && e.options.status !== "bar" && !has("run") && !e.options.expand;
   const showTree = sticky(() => tree() || drawer());
   const showPreview = sticky(() => has("preview"));
   const showConsole = sticky(() => has("console"));
@@ -153,6 +160,7 @@ export function EmbedApp() {
       ((side() && !e.stacked()) || !editor()) && has("preview") && has("console") && ROWS,
       editor() && !side() && has("console") && BELOW,
     ].filter((s): s is Split => !!s);
+  const drawerProps: Drawer = { ok: drawerOk, open: drawer, toggle: toggleDrawer, onKey: onDrawerKey, ref: (el: HTMLElement) => (filesButton = el) };
   return (
     <div
       id="embed"
@@ -165,21 +173,33 @@ export function EmbedApp() {
       data-fit={e.stacked() && e.fit() ? "" : undefined}
       data-preview={has("preview") ? "" : undefined}
       data-console={has("console") ? "" : undefined}
+      data-barless={barless() ? "" : undefined}
     >
-      <EmbedBar
-        drawer={{ ok: drawerOk, open: drawer, toggle: toggleDrawer, onKey: onDrawerKey, ref: (el: HTMLElement) => (filesButton = el) }}
-      />
+      <Show when={!barless()}>
+        <EmbedBar drawer={drawerProps} />
+      </Show>
       <Show when={!app.session.canRun}>
         <Unsupported checks={app.support} />
       </Show>
       <div id="embed-main" style={withShares(shareVars(e.shares(), e.stacked(), e.fit()), sizes.vars())}>
         <Show when={showTree()}>
-          <nav id="tree" class="pane" ref={nav} hidden={!tree() && !drawer()} onKeyDown={onDrawerKey}>
+          <nav id="tree" class="pane" ref={nav} hidden={!tree() && !drawer()} style={drawer() ? { top: `${drawerTop()}px` } : undefined} onKeyDown={onDrawerKey}>
             <Explorer switcher />
           </nav>
         </Show>
         <section id="editor-pane" class="pane" hidden={!editor()}>
-          <EditorPane />
+          <EditorPane
+            start={
+              <Show when={drawerOk() && has("tabs")}>
+                <FilesButton drawer={drawerProps} />
+              </Show>
+            }
+            end={
+              <Show when={barless()}>
+                <EmbedMenu />
+              </Show>
+            }
+          />
         </section>
         <Show when={showPreview()}>
           <section id="preview-panel" class="pane" hidden={!has("preview")}>
@@ -202,6 +222,26 @@ export function EmbedApp() {
 
 type Drawer = { ok: () => boolean; open: () => boolean; toggle: () => void; onKey: (ev: KeyboardEvent) => void; ref: (el: HTMLElement) => void };
 
+/** Opens the file tree as a drawer: at the start of the editor's tab bar, or in the bar where there's none. */
+function FilesButton(props: { drawer: Drawer }) {
+  return (
+    <Tip
+      type="button"
+      class="files"
+      ref={props.drawer.ref}
+      tip="Files"
+      keys={keysFor("toggleExplorer").map(chordKeys)}
+      aria-label="Files"
+      aria-expanded={props.drawer.open() ? "true" : "false"}
+      aria-controls="tree"
+      onClick={props.drawer.toggle}
+      onKeyDown={props.drawer.onKey}
+    >
+      <i class="i-lucide-panel-left" aria-hidden="true" />
+    </Tip>
+  );
+}
+
 function EmbedBar(props: { drawer: Drawer }) {
   const app = useContext(AppContext);
   const e = useContext(EmbedContext);
@@ -209,21 +249,8 @@ function EmbedBar(props: { drawer: Drawer }) {
   const running = () => s.settled().state === "running";
   return (
     <header id="embed-bar">
-      <Show when={props.drawer.ok()}>
-        <Tip
-          type="button"
-          class="files"
-          ref={props.drawer.ref}
-          tip="Files"
-          keys={keysFor("toggleExplorer").map(chordKeys)}
-          aria-label="Files"
-          aria-expanded={props.drawer.open() ? "true" : "false"}
-          aria-controls="tree"
-          onClick={props.drawer.toggle}
-          onKeyDown={props.drawer.onKey}
-        >
-          <i class="i-lucide-panel-left" aria-hidden="true" />
-        </Tip>
+      <Show when={props.drawer.ok() && !e.has("tabs")}>
+        <FilesButton drawer={props.drawer} />
       </Show>
       <Show when={e.library.length}>
         <ProjectButton />
@@ -240,15 +267,17 @@ function EmbedBar(props: { drawer: Drawer }) {
           <i class="i-lucide-code" aria-hidden="true" /> Edit
         </button>
       </Show>
-      <button
-        type="button"
-        class="run"
-        disabled={!s.canRun || !!s.busy.run}
-        title={s.canRun ? undefined : CANT_RUN}
-        onClick={() => s.ready() && (running() ? e.stop() : e.run())}
-      >
-        <i class={running() ? "i-lucide-square" : "i-lucide-play"} aria-hidden="true" /> {running() ? "Stop" : "Run"}
-      </button>
+      <Show when={e.has("run")}>
+        <button
+          type="button"
+          class="run"
+          disabled={!s.canRun || !!s.busy.run}
+          title={s.canRun ? undefined : CANT_RUN}
+          onClick={() => s.ready() && (running() ? e.stop() : e.run())}
+        >
+          <i class={running() ? "i-lucide-square" : "i-lucide-play"} aria-hidden="true" /> {running() ? "Stop" : "Run"}
+        </button>
+      </Show>
       <Show when={e.options.expand}>
         <Tip
           type="button"
@@ -326,65 +355,94 @@ function EmbedMenu() {
   const e = useContext(EmbedContext);
   const open = (list: [Feature, string][]) => list.filter(([f]) => !e.locked.has(f));
   const shownPort = () => app.session.previewPort() ?? app.session.ports()[0];
+  // Reset asks first when it would lose the reader's edits.
+  const [asking, setAsking] = createSignal(false);
+  let trigger: HTMLElement | undefined;
   const Toggle = (props: { feature: Feature; label: string }) => (
     <MenuCheckItem checked={e.has(props.feature)} label={props.label} onSelect={() => e.setFeatures({ [props.feature]: !e.has(props.feature) }, true)}>
       <Show when={!e.has(props.feature) && COST[props.feature]}>{(cost) => <span class="cost">{cost()}</span>}</Show>
     </MenuCheckItem>
   );
   return (
-    <Menu
-      placement="bottom-end"
-      class="embed-menu"
-      trigger={
-        <MenuTrigger class="more" aria-label="More">
-          <i class="i-lucide-ellipsis" aria-hidden="true" />
-        </MenuTrigger>
-      }
-    >
-      <MenuGroup label="View">
-        <For each={open(PANES)}>{([f, label]) => <Toggle feature={f} label={label} />}</For>
-      </MenuGroup>
-      <Show when={open(TOOLS).length}>
-        <MenuGroup label="Tools">
-          <For each={open(TOOLS)}>{([f, label]) => <Toggle feature={f} label={label} />}</For>
+    <>
+      <Menu
+        placement="bottom-end"
+        class="embed-menu"
+        trigger={
+          <MenuTrigger ref={trigger} class="more" aria-label="More">
+            <i class="i-lucide-ellipsis" aria-hidden="true" />
+          </MenuTrigger>
+        }
+      >
+        <MenuGroup label="View">
+          <For each={open(PANES)}>{([f, label]) => <Toggle feature={f} label={label} />}</For>
         </MenuGroup>
-      </Show>
-      {/* With several servers (the program's, its child processes'), which one the preview shows. */}
-      <Show when={app.session.ports().length > 1}>
-        <MenuGroup label="Preview port">
-          <For each={app.session.ports()}>
-            {(port) => (
-              <MenuItem
-                icon={port === shownPort() ? "i-lucide-check" : "i-lucide-check invisible"}
-                label={`:${port}`}
-                onSelect={() => port !== shownPort() && app.choosePort(port)}
-              >
-                <Show when={port === shownPort()}>
-                  <span class="sr-only">(shown)</span>
-                </Show>
-              </MenuItem>
-            )}
-          </For>
-        </MenuGroup>
-      </Show>
-      <MenuSeparator />
-      <Show when={e.has("format")}>
-        <MenuItem icon="i-lucide-wand-sparkles" label="Format file" disabled={!app.workspace.state.active} onSelect={() => app.workspace.format()} />
-      </Show>
-      <Show when={e.has("install")}>
-        <MenuItem
-          icon="i-lucide-download"
-          label="bun install"
-          disabled={!app.session.canRun || !!app.session.busy.install}
-          onSelect={() => app.session.ready() && e.install()}
-        />
-      </Show>
-      <MenuItem icon="i-lucide-rotate-ccw" label="Reset" onSelect={() => void e.reset()} />
-      <Show when={e.has("open")}>
-        <MenuItem icon={<img src={logo} alt="" width="14" height="12" />} label="Open in runbun.dev" onSelect={() => void e.openInPlayground()}>
-          <i class="i-lucide-arrow-up-right" aria-hidden="true" />
-        </MenuItem>
-      </Show>
-    </Menu>
+        <Show when={open(TOOLS).length}>
+          <MenuGroup label="Tools">
+            <For each={open(TOOLS)}>{([f, label]) => <Toggle feature={f} label={label} />}</For>
+          </MenuGroup>
+        </Show>
+        {/* With several servers (the program's, its child processes'), which one the preview shows. */}
+        <Show when={app.session.ports().length > 1}>
+          <MenuGroup label="Preview port">
+            <For each={app.session.ports()}>
+              {(port) => (
+                <MenuItem
+                  icon={port === shownPort() ? "i-lucide-check" : "i-lucide-check invisible"}
+                  label={`:${port}`}
+                  onSelect={() => port !== shownPort() && app.choosePort(port)}
+                >
+                  <Show when={port === shownPort()}>
+                    <span class="sr-only">(shown)</span>
+                  </Show>
+                </MenuItem>
+              )}
+            </For>
+          </MenuGroup>
+        </Show>
+        <MenuSeparator />
+        <Show when={e.has("format")}>
+          <MenuItem icon="i-lucide-wand-sparkles" label="Format file" disabled={!app.workspace.state.active} onSelect={() => app.workspace.format()} />
+        </Show>
+        <Show when={e.has("install")}>
+          <MenuItem
+            icon="i-lucide-download"
+            label="bun install"
+            disabled={!app.session.canRun || !!app.session.busy.install}
+            onSelect={() => app.session.ready() && e.install()}
+          />
+        </Show>
+        {/* After the menu has closed and handed focus back, or that would take it from the dialog. */}
+        <MenuItem icon="i-lucide-rotate-ccw" label="Reset" onSelect={() => (e.edited() ? setTimeout(() => setAsking(true), 50) : void e.reset())} />
+        <Show when={e.has("open")}>
+          <MenuItem icon={<img src={logo} alt="" width="14" height="12" />} label="Open in runbun.dev" onSelect={() => void e.openInPlayground()}>
+            <i class="i-lucide-arrow-up-right" aria-hidden="true" />
+          </MenuItem>
+        </Show>
+      </Menu>
+      <Dialog
+        open={asking()}
+        onOpenChange={setAsking}
+        onCloseAutoFocus={(ev) => {
+          ev.preventDefault();
+          trigger?.focus();
+        }}
+      >
+        <DialogTitle>Reset this project?</DialogTitle>
+        <DialogDescription>Your changes will be lost.</DialogDescription>
+        <DialogActions>
+          <DialogClose>Cancel</DialogClose>
+          <Button
+            primary
+            onClick={() => {
+              setAsking(false);
+              void e.reset();
+            }}
+          >
+            Reset
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
   );
 }

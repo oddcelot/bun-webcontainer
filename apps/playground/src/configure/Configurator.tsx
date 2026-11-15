@@ -62,6 +62,7 @@ const FEATURE_INFO: Record<Feature, string> = {
   autosave: "An Auto-save switch over the editor",
   close: "Close buttons on the tabs. On in full mode",
   git: "Git panel beside the file tree, and git in the terminal. 1 MB on first use",
+  run: "Run button in the bar",
 };
 
 type Option = { value: string; label: string; swatch?: string };

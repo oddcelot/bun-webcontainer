@@ -94,9 +94,12 @@ Each project loads in place of the last: the embed stays, and the project instal
 | `watch` | Restart the running program when an edit is saved, like `bun --watch`; also after a crash, and not while an open file has a syntax error | all | |
 | `close` | Close buttons on the editor's tabs (also middle-click, Delete and Ctrl/Cmd+W). Off, a reader can't close the example's tabs | `full` | |
 | `git` | A Git panel in place of the file tree (with `files`), and `git` in the terminal; see [Git](/guides/features/#git) | `full` | 1 MB on first use |
+| `run` | The bar's Run/Stop button. Off, Ctrl/Cmd+Enter, `autorun`, `watch` and `run()` still run the program | all | |
 | `autosave` | An Auto-save switch over the editor: off, edits save on Ctrl/Cmd+S and before Run (switching it back on, or turning the feature off, saves what's waiting). Without it, edits save as you type | none | |
 
 Readers can switch features on or off from the **⋯** menu, except those you locked with `-name`.
+
+With `tabs` on, the Files button of a frame too narrow for the file tree starts the editor's tab bar. When the bar would hold only the **⋯** menu (`-run` with `tabs` on, `status="toast"`, no `library` or `expand`), there's no bar: the menu sits at the right end of the editor's tab bar.
 
 ## Methods
 
@@ -213,6 +216,11 @@ Names and values are CSS custom properties; anything that isn't a `--name` with 
 | `--radius`, `--pad` | A pane's corner and the space inside it |
 | `--font-ui`, `--font-mono` | The UI and code fonts; load them with `fonts` |
 | `--control`, `--control-hover`, `--control-border` | Buttons and inputs |
+| `--tab-track`, `--tab-track-border`, `--tab-track-radius`, `--tab-track-pad` | A track behind the editor's and the preview's tab rows: its background, 1px border, corner and the space inside it. Unset, there's none. The padding doesn't make the bar taller |
+| `--tab-radius`, `--tab-hover` | A tab's corner (default `--inner-radius`) and its background on hover (default `--control`) |
+| `--tab-selected`, `--tab-selected-border` | The selected tab's background (default `--control-hover`) and 1px border (default none) |
+| `--tab-mark` | The line under the selected tab (default `--accent`); `transparent` hides it |
+| `--tab-slide`, `--tab-slide-ease` | How the selected tab's look slides to the next selected tab and takes its size: the duration (default `220ms`; `0s` jumps) and the easing (default `cubic-bezier(0.22, 1, 0.36, 1)`; e.g. `cubic-bezier(0.34, 1.56, 0.64, 1)` overshoots like a spring). Off with reduced motion |
 
 Others in `style.css` work too, but these are the ones a page usually wants to match its own design. To follow a page's light and dark themes, send `base` for the scheme in effect and update it (with `setVars`) when the page changes.
 

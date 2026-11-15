@@ -1,4 +1,4 @@
-import { Show, type ParentProps } from "solid-js";
+import { Show, onSettled, type ParentProps } from "solid-js";
 import { Tip } from "./Tip";
 import "../css/tabs.css";
 
@@ -10,8 +10,12 @@ import "../css/tabs.css";
 export function TabList(props: ParentProps<{ id?: string; class?: string; label: string; onSelect: (value: string) => void }>) {
   const tabs = (list: HTMLElement) => [...list.querySelectorAll<HTMLElement>('[role="tab"]')];
   const select = (tab: HTMLElement | undefined) => tab && props.onSelect(tab.dataset.value!);
+  let list!: HTMLDivElement;
+  let indicator!: HTMLSpanElement;
+  onSettled(() => followSelected(list, indicator));
   return (
     <div
+      ref={list}
       id={props.id}
       class={props.class}
       role="tablist"
@@ -35,9 +39,50 @@ export function TabList(props: ParentProps<{ id?: string; class?: string; label:
         select(next);
       }}
     >
+      <span ref={indicator} class="tab-indicator" aria-hidden="true" hidden />
       {props.children}
     </div>
   );
+}
+
+/**
+ * The selected tab's look (tabs.css .tab-indicator): one element under the tabs, moved to the selected tab and sized
+ * to it whenever the tabs, their sizes or the row change. It jumps rather than slides the first time and after the row
+ * was hidden; with no tab selected it hides. Returns the cleanup.
+ */
+function followSelected(list: HTMLElement, indicator: HTMLElement) {
+  let shown = false;
+  const place = () => {
+    const tab = list.querySelector<HTMLElement>(":scope > .tab[data-selected]");
+    if (!tab?.offsetWidth) {
+      indicator.hidden = true;
+      shown = false;
+      return;
+    }
+    if (!shown) indicator.style.transition = "none";
+    indicator.hidden = false;
+    indicator.style.width = `${tab.offsetWidth}px`;
+    indicator.style.height = `${tab.offsetHeight}px`;
+    indicator.style.translate = `${tab.offsetLeft}px ${tab.offsetTop}px`;
+    if (!shown) {
+      // Laid out where it lands before the transition comes back, so it doesn't slide there.
+      void indicator.offsetWidth;
+      indicator.style.transition = "";
+    }
+    shown = true;
+  };
+  // Each tab's size (a label, a dirty dot, a font loading) and the row's; tabs coming, going, moving or selected.
+  const sizes = new ResizeObserver(place);
+  const watch = () => {
+    sizes.disconnect();
+    sizes.observe(list);
+    for (const tab of list.querySelectorAll(":scope > .tab")) sizes.observe(tab);
+  };
+  const changes = new MutationObserver(() => (watch(), place()));
+  changes.observe(list, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-selected"] });
+  watch();
+  place();
+  return () => (sizes.disconnect(), changes.disconnect());
 }
 
 /**
