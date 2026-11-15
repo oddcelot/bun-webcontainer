@@ -193,6 +193,8 @@ const embed = createRoot(() => {
     stop: pg.stop,
     install: () => void pg.install(),
     reset,
+    /** Reset would lose the reader's work: edits since the project loaded, unsaved ones, or ones `persist` brought back. */
+    edited: () => edited || workspace.state.dirty.length > 0,
     /** Opens the project on runbun.dev in a new tab (opened at once: a tab opened after an await is a blocked popup). */
     async openInPlayground() {
       const tab = open("about:blank", "_blank");
@@ -240,6 +242,23 @@ applyTheme(options.theme);
 let stopSaving: StopSaving = async () => {};
 /** Where a project's edits are kept (with `persist`): per library project, so switching doesn't mix them. */
 const persistKey = (project: string | null) => (options.persist ? `embed:${options.persist}${project === null ? "" : `:${project}`}` : "");
+// Whether the reader edited the open project, kept beside its saved files: persist saves every file on first load, so
+// files restored alone don't say whether anyone edited them.
+let edited = false;
+const editedKey = (key: string) => `${key}:edited`;
+function setEdited(key: string, on: boolean) {
+  edited = on;
+  try {
+    if (key) on ? localStorage.setItem(editedKey(key), "1") : localStorage.removeItem(editedKey(key));
+  } catch {}
+}
+const wasEdited = (key: string, restored: number) => {
+  try {
+    return !!restored && !!key && localStorage.getItem(editedKey(key)) === "1";
+  } catch {
+    return false;
+  }
+};
 
 /**
  * The library project to start with: the one the host names (`project`, else the library's `open`), else the first
@@ -296,6 +315,7 @@ async function reset() {
   await stopSaving();
   const key = persistKey(null);
   if (key) await discard(key).catch(() => {});
+  setEdited(key, false);
   location.reload();
 }
 
@@ -315,6 +335,7 @@ function switchProject(id: string, fresh = false): Promise<void> {
       await stopSaving();
       stopSaving = async () => {};
       await discard(key).catch(() => {});
+      setEdited(key, false);
     }
     // Loaded aside while the last project stays on screen (a repo takes a while), then swapped in at once.
     const files = new VFS();
@@ -325,8 +346,11 @@ function switchProject(id: string, fresh = false): Promise<void> {
     await stopSaving({ flush: true });
     stopSaving = async () => {};
     pg.stop();
+    // Set, so the swap below doesn't count as the reader's edits (nor mark the last project's key).
+    edited = true;
     await pg.clearProject();
     for (const [path, data] of files.files) vfs.write(path, data);
+    edited = wasEdited(key, restored);
     pg.previews.reset();
     // The host's generated files are its inline project's, not a library project's.
     workspace.setGenerated([]);
@@ -419,6 +443,7 @@ if (!restored) await (startEntry ? loadLibraryProject(vfs, startEntry) : loadSou
 if (startEntry) workspace.setGenerated([]);
 else for (const [path, text] of Object.entries(initFiles)) if (generated.has(bare(path))) vfs.write(bare(path), text);
 if (startKey) stopSaving = await attach(startKey, vfs, log, !restored, startEntry ? undefined : (path) => generated.has(path));
+edited = wasEdited(startKey, restored);
 embed.setProject(startProject);
 await pg.start({ reset });
 
@@ -427,13 +452,17 @@ let projectConfig = applyConfig(startProject === null);
 // --- Events
 
 // Escape while expanded closes the modal (keys pressed in this frame never reach the host's dialog), unless something
-// in here used it: a completion list, the preview's own full view.
+// in here used it: a completion list, the preview's own full view, a dialog.
 addEventListener("keydown", (e) => {
-  if (e.key !== "Escape" || e.defaultPrevented || !untrack(embed.expanded) || document.querySelector("#preview-wrap.expanded")) return;
+  if (e.key !== "Escape" || e.defaultPrevented || !untrack(embed.expanded) || document.querySelector('#preview-wrap.expanded, [role="dialog"]')) return;
   embed.requestExpand(false);
 });
 
-const asHost = watchChanges(vfs, () => pg.programWriting, (path) => SKIP.test(path) || generated.has(path), (data) => emit("change", data));
+const asHost = watchChanges(vfs, () => pg.programWriting, (path) => SKIP.test(path) || generated.has(path), (data) => {
+  // bun.lock is install's.
+  if (data.by === "reader" && data.path !== "bun.lock" && !edited) setEdited(persistKey(untrack(embed.project)), true);
+  emit("change", data);
+});
 // The height the embed would like (`height="auto"` on <bun-playground>): the bar, the open file's lines (within
 // bounds) and the console when it sits under the editor.
 const LINE = 20;

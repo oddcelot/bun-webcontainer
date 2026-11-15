@@ -1,7 +1,8 @@
 import { For, Show, createContext, createEffect, createMemo, createSignal, onSettled, useContext } from "solid-js";
 import { Tip } from "@runbun/ui/solid/Tip";
 import { Menu, MenuCheckItem, MenuGroup, MenuItem, MenuSeparator, MenuTrigger } from "@runbun/ui/solid/Menu";
-import { Dialog } from "@runbun/ui/solid/Dialog";
+import { Dialog, DialogActions, DialogClose, DialogDescription, DialogTitle } from "@runbun/ui/solid/Dialog";
+import { Button } from "@runbun/ui/solid/Button";
 import logo from "../bun-logo.svg";
 import { COST } from "../embed/config";
 import { chordKeys, keysFor, matches, type Command } from "../keymap";
@@ -338,65 +339,94 @@ function EmbedMenu() {
   const e = useContext(EmbedContext);
   const open = (list: [Feature, string][]) => list.filter(([f]) => !e.locked.has(f));
   const shownPort = () => app.session.previewPort() ?? app.session.ports()[0];
+  // Reset asks first when it would lose the reader's edits.
+  const [asking, setAsking] = createSignal(false);
+  let trigger: HTMLElement | undefined;
   const Toggle = (props: { feature: Feature; label: string }) => (
     <MenuCheckItem checked={e.has(props.feature)} label={props.label} onSelect={() => e.setFeatures({ [props.feature]: !e.has(props.feature) }, true)}>
       <Show when={!e.has(props.feature) && COST[props.feature]}>{(cost) => <span class="cost">{cost()}</span>}</Show>
     </MenuCheckItem>
   );
   return (
-    <Menu
-      placement="bottom-end"
-      class="embed-menu"
-      trigger={
-        <MenuTrigger class="more" aria-label="More">
-          <i class="i-lucide-ellipsis" aria-hidden="true" />
-        </MenuTrigger>
-      }
-    >
-      <MenuGroup label="View">
-        <For each={open(PANES)}>{([f, label]) => <Toggle feature={f} label={label} />}</For>
-      </MenuGroup>
-      <Show when={open(TOOLS).length}>
-        <MenuGroup label="Tools">
-          <For each={open(TOOLS)}>{([f, label]) => <Toggle feature={f} label={label} />}</For>
+    <>
+      <Menu
+        placement="bottom-end"
+        class="embed-menu"
+        trigger={
+          <MenuTrigger ref={trigger} class="more" aria-label="More">
+            <i class="i-lucide-ellipsis" aria-hidden="true" />
+          </MenuTrigger>
+        }
+      >
+        <MenuGroup label="View">
+          <For each={open(PANES)}>{([f, label]) => <Toggle feature={f} label={label} />}</For>
         </MenuGroup>
-      </Show>
-      {/* With several servers (the program's, its child processes'), which one the preview shows. */}
-      <Show when={app.session.ports().length > 1}>
-        <MenuGroup label="Preview port">
-          <For each={app.session.ports()}>
-            {(port) => (
-              <MenuItem
-                icon={port === shownPort() ? "i-lucide-check" : "i-lucide-check invisible"}
-                label={`:${port}`}
-                onSelect={() => port !== shownPort() && app.choosePort(port)}
-              >
-                <Show when={port === shownPort()}>
-                  <span class="sr-only">(shown)</span>
-                </Show>
-              </MenuItem>
-            )}
-          </For>
-        </MenuGroup>
-      </Show>
-      <MenuSeparator />
-      <Show when={e.has("format")}>
-        <MenuItem icon="i-lucide-wand-sparkles" label="Format file" disabled={!app.workspace.state.active} onSelect={() => app.workspace.format()} />
-      </Show>
-      <Show when={e.has("install")}>
-        <MenuItem
-          icon="i-lucide-download"
-          label="bun install"
-          disabled={!app.session.canRun || !!app.session.busy.install}
-          onSelect={() => app.session.ready() && e.install()}
-        />
-      </Show>
-      <MenuItem icon="i-lucide-rotate-ccw" label="Reset" onSelect={() => void e.reset()} />
-      <Show when={e.has("open")}>
-        <MenuItem icon={<img src={logo} alt="" width="14" height="12" />} label="Open in runbun.dev" onSelect={() => void e.openInPlayground()}>
-          <i class="i-lucide-arrow-up-right" aria-hidden="true" />
-        </MenuItem>
-      </Show>
-    </Menu>
+        <Show when={open(TOOLS).length}>
+          <MenuGroup label="Tools">
+            <For each={open(TOOLS)}>{([f, label]) => <Toggle feature={f} label={label} />}</For>
+          </MenuGroup>
+        </Show>
+        {/* With several servers (the program's, its child processes'), which one the preview shows. */}
+        <Show when={app.session.ports().length > 1}>
+          <MenuGroup label="Preview port">
+            <For each={app.session.ports()}>
+              {(port) => (
+                <MenuItem
+                  icon={port === shownPort() ? "i-lucide-check" : "i-lucide-check invisible"}
+                  label={`:${port}`}
+                  onSelect={() => port !== shownPort() && app.choosePort(port)}
+                >
+                  <Show when={port === shownPort()}>
+                    <span class="sr-only">(shown)</span>
+                  </Show>
+                </MenuItem>
+              )}
+            </For>
+          </MenuGroup>
+        </Show>
+        <MenuSeparator />
+        <Show when={e.has("format")}>
+          <MenuItem icon="i-lucide-wand-sparkles" label="Format file" disabled={!app.workspace.state.active} onSelect={() => app.workspace.format()} />
+        </Show>
+        <Show when={e.has("install")}>
+          <MenuItem
+            icon="i-lucide-download"
+            label="bun install"
+            disabled={!app.session.canRun || !!app.session.busy.install}
+            onSelect={() => app.session.ready() && e.install()}
+          />
+        </Show>
+        {/* After the menu has closed and handed focus back, or that would take it from the dialog. */}
+        <MenuItem icon="i-lucide-rotate-ccw" label="Reset" onSelect={() => (e.edited() ? setTimeout(() => setAsking(true), 50) : void e.reset())} />
+        <Show when={e.has("open")}>
+          <MenuItem icon={<img src={logo} alt="" width="14" height="12" />} label="Open in runbun.dev" onSelect={() => void e.openInPlayground()}>
+            <i class="i-lucide-arrow-up-right" aria-hidden="true" />
+          </MenuItem>
+        </Show>
+      </Menu>
+      <Dialog
+        open={asking()}
+        onOpenChange={setAsking}
+        onCloseAutoFocus={(ev) => {
+          ev.preventDefault();
+          trigger?.focus();
+        }}
+      >
+        <DialogTitle>Reset this project?</DialogTitle>
+        <DialogDescription>Your changes will be lost.</DialogDescription>
+        <DialogActions>
+          <DialogClose>Cancel</DialogClose>
+          <Button
+            primary
+            onClick={() => {
+              setAsking(false);
+              void e.reset();
+            }}
+          >
+            Reset
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
   );
 }
