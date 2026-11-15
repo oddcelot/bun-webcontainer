@@ -345,8 +345,8 @@ class ThreadScope {
         },
       });
     }
-    // Not in Bun 1.4 (`self.close` is undefined there); the Web's way for a worker to end itself.
-    g.close = () => process.exit(0);
+    // Bun 1.4 has no `self.close` in a worker (calling it is a TypeError); the runtime ends the worker by its own copy.
+    g.close = undefined;
   }
 
   /** Listening for messages starts the channel and holds the thread. */

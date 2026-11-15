@@ -86,7 +86,7 @@ self.onmessage = (e: MessageEvent) => {
   if (m instanceof ArrayBuffer) return postMessage({ len: m.byteLength });
   self.postMessage(\`echo \${m} \${seen}\`);
 };
-postMessage([isMainThread, workerData ?? null, process.argv.slice(2), process.env.WW ?? "-", typeof self, self === globalThis]);`,
+postMessage([isMainThread, workerData ?? null, process.argv.slice(2), process.env.WW ?? "-", typeof self, self === globalThis, typeof self.close]);`,
   "ww-end.ts": `postMessage("bye");`,
   "main.ts": `import { $ } from "bun";
 import { exec, execFile, spawn } from "node:child_process";
@@ -235,7 +235,7 @@ log("$ code:", (await $\`bun child.ts\`.env({ ...process.env, CODE: "4" }).nothr
   w.postMessage("throw");
   const err = await ev(w, "error");
   const closed = await ev(w, "close");
-  log("ww error:", err.constructor.name, err.message.includes("ww boom"), closed.code, closed.wasClean);
+  log("ww error:", err.constructor.name, err.message.includes("ww boom"), err.error, closed.code, closed.wasClean);
   const w2 = new Worker("./webworker.ts");
   w2.onmessage = () => w2.postMessage("exit");
   const exited = await ev(w2, "close");
@@ -313,10 +313,10 @@ const EXPECTED = [
   "done.ts ran",
   "wt url: done 0",
   "wt eval: 42 0",
-  'ww hello: MessageEvent [false,{"k":1},["b1"],"w2","object",true] true open number',
+  'ww hello: MessageEvent [false,{"k":1},["b1"],"w2","object",true,"undefined"] true open number',
   "ww echo: echo hi 1",
   'ww transfer: {"len":16} 0',
-  "ww error: ErrorEvent true 1 false",
+  "ww error: ErrorEvent true null 1 false",
   "ww exit: 4 Worker exited abnormally",
   "ww terminate: undefined close",
   "ww end: 0 Worker terminated normally bye",

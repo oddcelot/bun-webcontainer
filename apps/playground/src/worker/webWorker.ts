@@ -45,7 +45,7 @@ export class WebWorker extends EventTarget {
       message: (data, ports) => this.dispatchEvent(new MessageEvent("message", { data, ports: [...ports] })),
       messageerror: (e) => this.dispatchEvent(new MessageEvent("messageerror", { data: e.data })),
       online: () => this.dispatchEvent(new Event("open")),
-      error: (error) => this.dispatchEvent(new ErrorEvent("error", { message: errorText(error), error })),
+      error: (error) => this.dispatchEvent(new ErrorEvent("error", { message: errorText(error), error: null })),
       data: (fd, data) => (fd === 1 ? process.stdout : process.stderr).write(data),
       exit: (code, terminated) => this.dispatchEvent(closeEvent(terminated ? 0 : code)),
     });
