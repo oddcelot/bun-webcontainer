@@ -1250,6 +1250,7 @@ async function main() {
 }
 
 const booted = main();
+booted.catch(() => {}); // reported to the page once "start" arrives
 
 // The page is about to terminate this worker (Run, Stop, bun test): write open databases back first. Their bytes go
 // to the page as "vfs" messages, which arrive before "flushed".
@@ -1318,7 +1319,19 @@ self.addEventListener("message", async (e: MessageEvent) => {
   if (e.data.type !== "start") return;
   if (e.data.vfsRoot) VFS_ROOT = e.data.vfsRoot;
   vfs.load(e.data.files, e.data.dirs);
-  await booted;
+  // A worker that can't boot (its wasm out of memory: too many processes at once) ends with code 1, so a parent
+  // waiting on it as a child hears an exit and a run doesn't wait for "ready" until it times out.
+  const boot = await booted.then(
+    () => undefined,
+    (err: unknown) => err,
+  );
+  if (boot !== undefined) {
+    const msg = boot instanceof Error ? boot.message : String(boot);
+    const hint = /Out of memory/i.test(msg) ? " (too many processes at once: a browser tab has room for about 60 Wasm memories, and each running process holds some)" : "";
+    post({ type: "console", level: "error", text: `bun: failed to start: ${msg}${hint}` });
+    post({ type: "exit", code: 1, signal: null });
+    return;
+  }
   const proc = e.data.proc as { pid: number; ppid: number; cwd: string; env: Record<string, string> } | undefined;
   if (proc) {
     // A child process: its parent's env, cwd and ids, its stdout and stderr as bytes to the parent, its stdin from it.

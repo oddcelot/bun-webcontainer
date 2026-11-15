@@ -36,7 +36,18 @@ const enc = new TextEncoder();
 const dec = new TextDecoder();
 
 /** The parser over the compiled module (`bun_shell_wasm.wasm`). */
+/**
+ * The parser over the compiled module (`bun_shell_wasm.wasm`), instantiated on first use: each instance is a wasm64
+ * memory, of which a tab gets only about 60 across the page and its workers (see resolver.ts), and most programs never
+ * run `$`.
+ */
 export function shellWasm(module: WebAssembly.Module): ShellWasm {
+  let real: ShellWasm | undefined;
+  const get = () => (real ??= instantiate(module));
+  return { parse: (src) => get().parse(src), braces: (word) => get().braces(word) };
+}
+
+function instantiate(module: WebAssembly.Module): ShellWasm {
   const w = new WebAssembly.Instance(module, {}).exports as unknown as Exports;
   const put = (bytes: Uint8Array) => {
     const len = BigInt(bytes.length);

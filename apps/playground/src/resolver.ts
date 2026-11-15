@@ -39,10 +39,17 @@ let module: WebAssembly.Module | undefined;
 let bound: VFS | undefined;
 let w: Exports | undefined;
 
-function instantiate(vfs: VFS) {
+/**
+ * A fresh instance, made when a call needs one (`w ??= create()`): each has its own wasm64 memory, and Chrome gives a
+ * tab only about 60 of those across the page and all its workers, so a program that never resolves, globs or parses
+ * data doesn't hold one. Dropping `w` (a cleared VFS, a panic) means the next call starts over.
+ */
+function create(): Exports {
+  if (!module || !bound) throw new Error("resolver not loaded");
   let memory: WebAssembly.Memory | undefined;
-  w = new WebAssembly.Instance(module!, createSysImports(vfs, () => memory!) as unknown as WebAssembly.Imports).exports as unknown as Exports;
-  memory = w.memory;
+  const x = new WebAssembly.Instance(module, createSysImports(bound, () => memory!) as unknown as WebAssembly.Imports).exports as unknown as Exports;
+  memory = x.memory;
+  return x;
 }
 
 function withStr<T>(s: string, f: (ptr: bigint, len: bigint) => T): T {
@@ -70,7 +77,7 @@ export async function loadResolver(vfs: VFS): Promise<void> {
   module = await compiled;
   if (bound === vfs) return;
   bound = vfs;
-  instantiate(vfs);
+  w = undefined;
   // A new file changes the listing of every directory up to the root (they may be new too); an edit matters only for
   // package.json/tsconfig.json, which are cached per directory.
   vfs.onChange(({ path, created, removed }) => {
@@ -82,7 +89,9 @@ export async function loadResolver(vfs: VFS): Promise<void> {
     else if (removed || /(^|\/)(package|tsconfig)\.json$/.test(path)) invalidate(dirname(path));
   });
   vfs.onDir((path) => bound === vfs && invalidate(dirname(path)));
-  vfs.onClear(() => bound === vfs && instantiate(vfs));
+  vfs.onClear(() => {
+    if (bound === vfs) w = undefined;
+  });
 }
 
 /** The compiled module, once `loadResolver` has started (another worker can instantiate it: see passwordWorker.ts). */
@@ -93,7 +102,7 @@ export function startResolver(m: WebAssembly.Module, vfs: VFS) {
   compiled = Promise.resolve(m);
   module = m;
   bound = vfs;
-  instantiate(vfs);
+  w = undefined;
 }
 
 /** Runs a call into the module. panic=abort traps and leaves the instance unusable: report the panic and start over. */
@@ -104,20 +113,20 @@ function guard<T>(what: string, f: () => T): T {
     // A large installed file it read isn't loaded (the page can't block): a fresh instance, and the caller loads it
     // and asks again (withLoaded). Not a panic.
     if (e instanceof LazyMiss) {
-      instantiate(bound!);
+      w = undefined;
       throw e;
     }
     const m = w!.panic_message_c();
     const [, mp, ml] = new BigUint64Array(w!.memory.buffer, Number(m), 3);
     const msg = dec.decode(new Uint8Array(w!.memory.buffer, Number(mp), Number(ml)));
-    instantiate(bound!);
+    w = undefined;
     throw new Error(`resolver panicked ${what}: ${msg}`, { cause: e });
   }
 }
 
 /** The VFS path `spec` imported from `dir` resolves to, or null (not found, or not a file). */
 export function resolve(spec: string, dir: string, kind: ResolveKind, target: ResolveTarget): string | null {
-  if (!w) throw new Error("resolver not loaded");
+  w ??= create();
   const out = guard(`on ${JSON.stringify(spec)} from /${dir}`, () =>
     withStr(spec, (sp, sl) => withStr("/" + dir, (dp, dl) => withStr(CONDITIONS, (cp, cl) => w!.resolve_c(sp, sl, dp, dl, KIND[kind], TARGET[target], cp, cl)))),
   );
@@ -129,7 +138,7 @@ export function resolve(spec: string, dir: string, kind: ResolveKind, target: Re
 
 /** `Bun.Glob#match` (bun_glob's matcher, in the same module). */
 export function globMatch(pattern: string, path: string): boolean {
-  if (!w) throw new Error("resolver not loaded");
+  w ??= create();
   return guard(`matching ${JSON.stringify(pattern)}`, () => withStr(pattern, (pp, pl) => withStr(path, (sp, sl) => w!.glob_match_c(pp, pl, sp, sl)))) === 1;
 }
 
@@ -149,7 +158,7 @@ export class GlobScanError extends Error {
  * `absolute`, in walk order. Reads the VFS directly, past the resolver's caches.
  */
 export function globScan(pattern: string, cwd: string, opts: GlobScanFlags): string[] {
-  if (!w) throw new Error("resolver not loaded");
+  w ??= create();
   let flags = 0;
   for (const k of Object.keys(GLOB_FLAGS) as (keyof GlobScanFlags)[]) if (opts[k]) flags |= GLOB_FLAGS[k];
   const out = guard(`scanning ${JSON.stringify(pattern)} in ${cwd}`, () => withStr(pattern, (pp, pl) => withStr(cwd, (cp, cl) => w!.glob_scan_c(pp, pl, cp, cl, flags))));
@@ -168,7 +177,7 @@ const DATA_FORMATS = { yaml: 0, toml: 1, jsonc: 2, json5: 3 } as const;
 
 /** `Bun.YAML.parse`/`Bun.TOML.parse`, JSONC and JSON5 (bun_parsers, in the same module). Throws Bun's SyntaxError. */
 export function parseData(text: string, format: keyof typeof DATA_FORMATS): unknown {
-  if (!w) throw new Error("resolver not loaded");
+  w ??= create();
   const out = guard(`parsing ${format.toUpperCase()}`, () => withStr(text, (p, l) => w!.data_parse_c(p, l, DATA_FORMATS[format])));
   const [status, ptr, len] = new BigUint64Array(w.memory.buffer, Number(out), 3);
   const json = dec.decode(new Uint8Array(w.memory.buffer, Number(ptr), Number(len)));
@@ -209,12 +218,12 @@ function passwordOutput(out: bigint): string {
 
 /** The encoded hash (PHC for argon2, `$2b$` for bcrypt) of `password` with `salt` (32 bytes for argon2, 16 for bcrypt). */
 export function passwordHash(password: Uint8Array, salt: Uint8Array, algorithm: PasswordAlgorithm, memoryCost: number, timeCost: number): string {
-  if (!w) throw new Error("resolver not loaded");
+  w ??= create();
   return passwordOutput(guard("hashing a password", () => withBytes(password, (pp, pl) => withBytes(salt, (sp, sl) => w!.password_hash_c(pp, pl, sp, sl, PASSWORD_ALGORITHMS[algorithm], memoryCost, timeCost)))));
 }
 
 /** Whether `password` matches `hash`, checked as `algorithm`. */
 export function passwordVerify(password: Uint8Array, hash: Uint8Array, algorithm: PasswordAlgorithm): boolean {
-  if (!w) throw new Error("resolver not loaded");
+  w ??= create();
   return passwordOutput(guard("verifying a password", () => withBytes(password, (pp, pl) => withBytes(hash, (hp, hl) => w!.password_verify_c(pp, pl, hp, hl, PASSWORD_ALGORITHMS[algorithm]))))) === "1";
 }

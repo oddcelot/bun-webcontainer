@@ -14,12 +14,13 @@ export type Semver = {
 };
 
 export async function loadSemver(): Promise<Semver> {
-  const res = await fetch(new URL(`${BASE}bun_semver_wasm.wasm`, location.href));
-  const { instance } = await WebAssembly.instantiate(await res.arrayBuffer(), {});
-  const w = instance.exports as unknown as Exports;
+  const module = await WebAssembly.compileStreaming(fetch(new URL(`${BASE}bun_semver_wasm.wasm`, location.href)));
+  // Instantiated on first use: each instance is a wasm64 memory, of which a tab gets only about 60 (see resolver.ts).
+  let instance: Exports | undefined;
   const enc = new TextEncoder();
 
   function withStr<T>(s: string, f: (ptr: bigint, len: bigint) => T): T {
+    const w = (instance ??= new WebAssembly.Instance(module, {}).exports as unknown as Exports);
     const b = enc.encode(s);
     const len = BigInt(b.length);
     const ptr = w.alloc(len);
@@ -33,12 +34,12 @@ export async function loadSemver(): Promise<Semver> {
 
   return {
     order(a, b) {
-      const r = withStr(a, (pa, la) => withStr(b, (pb, lb) => w.semver_order(pa, la, pb, lb)));
+      const r = withStr(a, (pa, la) => withStr(b, (pb, lb) => instance!.semver_order(pa, la, pb, lb)));
       if (r === 2) throw new TypeError(`invalid semver: ${a} / ${b}`);
       return r as -1 | 0 | 1;
     },
     satisfies(v, range) {
-      const r = withStr(v, (pv, lv) => withStr(range, (pr, lr) => w.semver_satisfies(pv, lv, pr, lr)));
+      const r = withStr(v, (pv, lv) => withStr(range, (pr, lr) => instance!.semver_satisfies(pv, lv, pr, lr)));
       if (r < 0) throw new Error("semver wasm allocation failure");
       return r === 1;
     },
