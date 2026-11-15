@@ -10,6 +10,11 @@
  * xterm's own scrollbar the same colors. */
 * { scrollbar-width: thin; scrollbar-color: var(--scrollbar) transparent; }
 *:hover { scrollbar-color: var(--scrollbar-hover) transparent; }
+/* xterm draws its scrollbar itself (VS Code's): a square block filling the 8px track. Clip the thumb to a pill inset
+ * from the track's edges, like the native thin ones. clip-path, as xterm sets the thumb's size and color inline. */
+.xterm .xterm-scrollable-element > .scrollbar > .slider {
+  clip-path: inset(1px 1px round 3px);
+}
 html, body { height: 100%; margin: 0; background: var(--canvas); color: var(--fg); font: 13px var(--font-ui); }
 body { display: flex; flex-direction: column; }
 /*
