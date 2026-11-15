@@ -41,6 +41,12 @@ await outer().catch((e) => console.log(e.stack));`,
 const x = import.meta.dir; const y = import.meta.file; throw new Error("col");`,
   // console.trace: the caller's frames, none of the console's.
   "trace.ts": `function inner() { console.trace("here", 1); }\nfunction outer() { inner(); }\nouter();`,
+  // A program's extension is its module type where its code doesn't decide (moduleKindOf `entry`): a .cjs one without
+  // CommonJS features runs as CommonJS (its top-level frame <anonymous>), a .mjs one with a free require as an ES
+  // module. Imported, the code and the package decide, so the same files go the other way.
+  "kind.cjs": `console.log("cjs", new Error().stack.split("\\n")[1].trim());`,
+  "kind.mjs": `const p = require("node:path");\nconsole.log("mjs", typeof p.join, new Error().stack.split("\\n")[1].trim());`,
+  "kinds.ts": `await import("./kind.cjs");\nawait import("./kind.mjs");`,
   // Bun prints no frame for JSON.parse (a builtin) between the reviver's and the caller's.
   "builtin.ts": `JSON.parse("1", function rev() { throw new Error("in reviver"); });`,
   // Asynchronous I/O errors carry no stack; keys in Bun's order; Bun.write's promise is resolved when it returns.

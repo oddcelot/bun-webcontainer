@@ -433,6 +433,12 @@ export { ${named.map((n, i) => `__s${i} as ${q(n)}`).join(", ")} };` : ""}`;
 }
 
 /**
+ * The URL prefix (under `/__vfs/`) the worker loads a `.cjs`, `.cts`, `.mjs` or `.mts` program by, so it is served by
+ * its extension's module type (moduleKindOf `entry`). Other programs load by their own URL, the one imports use.
+ */
+export const ENTRY_PREFIX = "__entry/";
+
+/**
  * A module for the service worker. Serving can read files it only finds on the way (requires it follows, re-exports),
  * some of them large installed files kept out of memory: each is loaded and the module served again (withLoaded).
  */
@@ -442,7 +448,10 @@ export function serveModule(vfs: VFS, rawPath: string, onError: (msg: string) =>
 
 async function serveModuleOnce(vfs: VFS, rawPath: string, onError: (msg: string) => void, target: ModuleTarget): Promise<ModuleResponse> {
   if (target === "bun" && rawPath.startsWith("__esmsync/")) return syncEsmRequest(rawPath.slice(10));
-  const path = norm(rawPath);
+  let path = norm(rawPath);
+  // `__entry/<path>`: the program the worker runs, whose extension can make it CommonJS or an ES module (moduleKindOf).
+  const entry = path.startsWith(ENTRY_PREFIX);
+  if (entry) path = path.slice(ENTRY_PREFIX.length);
   await loadResolver(vfs);
   if (path.startsWith("__node/")) return { status: 200, body: builtinModule(path.slice(7)) };
   if (path.startsWith("__host/")) return { status: 200, body: hostModule(path.slice(7)) };
@@ -476,7 +485,7 @@ async function serveModuleOnce(vfs: VFS, rawPath: string, onError: (msg: string)
     if (JS_LIKE.test(path)) {
       await loadTranspiler();
       TARGET = target;
-      if (moduleKindOf(vfs, path, src) === "cjs") return { status: 200, body: commonJSFacade(commonJSNames(vfs, path, src), `${VFS_ROOT}__cjs/${path}`) };
+      if (moduleKindOf(vfs, path, src, entry) === "cjs") return { status: 200, body: commonJSFacade(commonJSNames(vfs, path, src), `${VFS_ROOT}__cjs/${path}`) };
     }
     // An ES module: Bun's parser finds the specifiers, as `bun build --no-bundle` does (JSX per tsconfig too).
     // In the worker, with a source map: its error printer maps stack frames back to the file's lines (worker/sourceMaps.ts).
@@ -501,7 +510,7 @@ async function serveModuleOnce(vfs: VFS, rawPath: string, onError: (msg: string)
     // In the worker, the module's namespace once it has run, for a require() of it (worker/node/module.ts): imported
     // from its own URL, so it's this instance.
     if (target === "bun") {
-      body += `\nimport * as __bwcSelf from ${JSON.stringify(`${VFS_ROOT}${path}`)};\nglobalThis.__esmLoaded?.(${JSON.stringify("/" + path)}, __bwcSelf);`;
+      body += `\nimport * as __bwcSelf from ${JSON.stringify(`${VFS_ROOT}${entry ? ENTRY_PREFIX : ""}${path}`)};\nglobalThis.__esmLoaded?.(${JSON.stringify("/" + path)}, __bwcSelf);`;
       // Its first import marks it as being imported (before its dependencies run), on the first line.
       body = `import ${JSON.stringify(`data:text/javascript,${encodeURIComponent(`globalThis.__esmImporting?.(${JSON.stringify("/" + path)})`)}`)};${body}`;
       // What was put before or changed at the start of the transpiler's first line moves that line's columns.

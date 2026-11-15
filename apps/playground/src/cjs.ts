@@ -48,10 +48,16 @@ const fnv = (s: string) => {
  * statement. The extension plays no part (`.mjs` with `module.exports` is CommonJS too), as in Bun. Throws Bun's error
  * for CommonJS features next to an import statement, or a syntax error. Cached by path and source.
  */
-export function moduleKindOf(vfs: VFS, path: string, source: string): "cjs" | "esm" {
+/**
+ * `entry`: the file is the program Bun runs (`bun file.cjs`), not an import. Then its extension is its module type, as
+ * Bun's resolver gives it (`module_type_from_ext`): `.cjs`/`.cts` CommonJS, `.mjs`/`.mts` an ES module, where its
+ * code doesn't decide (an imported one follows its package's `"type"` like any file, as in Bun).
+ */
+export function moduleKindOf(vfs: VFS, path: string, source: string, entry = false): "cjs" | "esm" {
   if (!JS_LIKE.test(path)) return "esm";
   const tsconfig = tsconfigFor(vfs, path);
-  const type = packageType(vfs, path);
+  const ext = entry ? /\.([cm])[jt]s$/.exec(path)?.[1] : undefined;
+  const type = ext === "c" ? "commonjs" : ext === "m" ? "module" : packageType(vfs, path);
   const hash = `${type}\0${jsxKey(tsconfig)}\0${fnv(source)}`;
   let hit = kinds.get(path);
   if (!hit || hit.hash !== hash) {

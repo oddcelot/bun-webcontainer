@@ -1426,7 +1426,9 @@ self.addEventListener("message", async (e: MessageEvent) => {
   process.argv.splice(2, Infinity, ...((e.data.args as string[] | undefined) ?? []));
   try {
     const code = (e.data.thread as ThreadInfo | undefined)?.eval;
-    const mod = (code !== undefined ? evalThread(code) : await importUrl(`${VFS_ROOT}${e.data.entry}`)) as { default?: ServeOptions };
+    // A .cjs/.mjs program by moduleServer.ts's ENTRY_PREFIX: served as its extension makes it, as Bun runs one.
+    const entryUrl = `${VFS_ROOT}${/\.[cm][jt]s$/.test(e.data.entry) ? "__entry/" : ""}${e.data.entry}`;
+    const mod = (code !== undefined ? evalThread(code) : await importUrl(entryUrl)) as { default?: ServeOptions };
     // Bun serves an entry whose default export has a fetch handler (Hono's `export default app`), unless that
     // port is already served (Elysia's `export default app.listen(3000)`).
     const def = mod.default;

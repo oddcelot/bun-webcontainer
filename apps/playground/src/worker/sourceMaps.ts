@@ -96,7 +96,7 @@ function mapLocation(root: string, url: string, line: number, column: number): L
   if (url.startsWith(root)) {
     const rel = url.slice(root.length).replace(/[?#].*$/, "");
     if (/^__(node|host|bun)\//.test(rel)) return "";
-    path = "/" + decode(rel.replace(/^__cjs\//, ""));
+    path = "/" + decode(rel.replace(/^__(cjs|entry)\//, ""));
     locate = servedLocator(url);
     if (facades.has(url)) return "";
   } else if ((locate = evaluatedLocator(url))) path = decode(new URL(url).pathname);
