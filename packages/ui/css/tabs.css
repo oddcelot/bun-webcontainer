@@ -1,6 +1,7 @@
 /*
   TabList/TabItem: a row of tabs that scrolls sideways. Over the uno preset's tokens, and the --tab-* theme variables
-  (unset, today's look): a track behind the row, the tab's radius, hover and selected fills, its border, the accent mark.
+  (unset, today's look): a track behind the row, the tab's radius, hover and selected fills, its border, the accent mark,
+  and how the selected look slides from tab to tab.
 */
 @property --fade-start { syntax: "<length>"; inherits: false; initial-value: 0px; }
 @property --fade-end { syntax: "<length>"; inherits: false; initial-value: 0px; }
@@ -46,28 +47,51 @@
 
       &:hover {
         color: var(--fg);
+      }
+      &:not([data-selected]):hover {
         background: var(--tab-hover, var(--control));
       }
       &[data-selected] {
-        background: var(--tab-selected, var(--control-hover));
         color: var(--fg);
-        box-shadow: inset 0 0 0 1px var(--tab-selected-border, transparent);
-
-        /* The same mark as a pressed Segmented button: an accent line on the bottom edge, inset past the corners. */
-        &::after {
-          content: "";
-          position: absolute;
-          left: 7px;
-          right: 7px;
-          bottom: 0;
-          height: 2px;
-          border-radius: 1px 1px 0 0;
-          background: var(--tab-mark, var(--accent));
-        }
       }
       &:has(:focus-visible) {
         outline: 1px solid var(--accent);
         outline-offset: -1px;
+      }
+    }
+
+    /* The row is the indicator's box, and its stacking context: the indicator sits over the track, under the tabs. */
+    :has(> .tab-indicator),
+    &:has(> .tab-indicator) {
+      position: relative;
+      isolation: isolate;
+    }
+    /* The selected tab's fill, border and mark, which TabList moves to it and sizes to it (followSelected). */
+    .tab-indicator {
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: -1;
+      border-radius: var(--tab-radius, var(--inner-radius));
+      background: var(--tab-selected, var(--control-hover));
+      box-shadow: inset 0 0 0 1px var(--tab-selected-border, transparent);
+      pointer-events: none;
+      --_slide: var(--tab-slide, 220ms) var(--tab-slide-ease, cubic-bezier(0.22, 1, 0.36, 1));
+      transition: translate var(--_slide), width var(--_slide), height var(--_slide);
+
+      /* The same mark as a pressed Segmented button: an accent line on the bottom edge, inset past the corners. */
+      &::after {
+        content: "";
+        position: absolute;
+        left: 7px;
+        right: 7px;
+        bottom: 0;
+        height: 2px;
+        border-radius: 1px 1px 0 0;
+        background: var(--tab-mark, var(--accent));
+      }
+      @media (prefers-reduced-motion: reduce) {
+        transition: none;
       }
     }
 

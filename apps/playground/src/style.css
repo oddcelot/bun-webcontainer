@@ -2421,18 +2421,20 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
     .tab {
       min-width: 0;
       padding: 4px 8px;
-      &[data-selected] {
-        background: none;
-      }
       &:hover {
         background: none;
       }
     }
+    .tab-indicator {
+      background: none;
+    }
   }
   /* Raw shows every section at once: no section's mark. */
-  &[data-raw] .tabs-bar .tab[data-selected] {
-    color: var(--muted);
-    &::after {
+  &[data-raw] .tabs-bar {
+    .tab[data-selected] {
+      color: var(--muted);
+    }
+    .tab-indicator::after {
       background: transparent;
     }
   }

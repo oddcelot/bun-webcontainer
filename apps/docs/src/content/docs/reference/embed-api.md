@@ -220,6 +220,7 @@ Names and values are CSS custom properties; anything that isn't a `--name` with 
 | `--tab-radius`, `--tab-hover` | A tab's corner (default `--inner-radius`) and its background on hover (default `--control`) |
 | `--tab-selected`, `--tab-selected-border` | The selected tab's background (default `--control-hover`) and 1px border (default none) |
 | `--tab-mark` | The line under the selected tab (default `--accent`); `transparent` hides it |
+| `--tab-slide`, `--tab-slide-ease` | How the selected tab's look slides to the next selected tab and takes its size: the duration (default `220ms`; `0s` jumps) and the easing (default `cubic-bezier(0.22, 1, 0.36, 1)`; e.g. `cubic-bezier(0.34, 1.56, 0.64, 1)` overshoots like a spring). Off with reduced motion |
 
 Others in `style.css` work too, but these are the ones a page usually wants to match its own design. To follow a page's light and dark themes, send `base` for the scheme in effect and update it (with `setVars`) when the page changes.
 
