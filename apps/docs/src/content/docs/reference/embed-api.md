@@ -99,7 +99,7 @@ Each project loads in place of the last: the embed stays, and the project instal
 
 Readers can switch features on or off from the **⋯** menu, except those you locked with `-name`.
 
-When the bar would hold only the **⋯** menu (`-run` with `tabs` on, `status="toast"`, no `library`, `expand` or Files button), there's no bar: the menu sits at the right end of the editor's tab bar.
+With `tabs` on, the Files button of a frame too narrow for the file tree starts the editor's tab bar. When the bar would hold only the **⋯** menu (`-run` with `tabs` on, `status="toast"`, no `library` or `expand`), there's no bar: the menu sits at the right end of the editor's tab bar.
 
 ## Methods
 

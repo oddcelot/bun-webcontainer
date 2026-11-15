@@ -77,8 +77,11 @@ export function EmbedApp() {
       if (target) target.focus();
       else if (tries) focusDrawer(tries - 1);
     });
+  // Under the editor's tab bar when its button is there, so the button stays in sight.
+  const [drawerTop, setDrawerTop] = createSignal(0);
   const toggleDrawer = () => {
     if (drawer()) return closeDrawer();
+    setDrawerTop(has("tabs") ? (document.querySelector<HTMLElement>("#editor-pane > .tabs-bar")?.offsetHeight ?? 0) : 0);
     setOpen(true);
     focusDrawer();
   };
@@ -115,8 +118,8 @@ export function EmbedApp() {
     };
   });
   // Nothing in the bar but the ⋯ menu (EmbedBar's conditions): no bar, the menu at the end of the editor's tab bar.
-  const barless = () =>
-    !drawerOk() && !e.library.length && editor() && has("tabs") && e.options.status !== "bar" && !has("run") && !e.options.expand;
+  // The drawer's button is at the start of the tab bar wherever there is one, so it doesn't count.
+  const barless = () => !e.library.length && editor() && has("tabs") && e.options.status !== "bar" && !has("run") && !e.options.expand;
   const showTree = sticky(() => tree() || drawer());
   const showPreview = sticky(() => has("preview"));
   const showConsole = sticky(() => has("console"));
@@ -157,6 +160,7 @@ export function EmbedApp() {
       ((side() && !e.stacked()) || !editor()) && has("preview") && has("console") && ROWS,
       editor() && !side() && has("console") && BELOW,
     ].filter((s): s is Split => !!s);
+  const drawerProps: Drawer = { ok: drawerOk, open: drawer, toggle: toggleDrawer, onKey: onDrawerKey, ref: (el: HTMLElement) => (filesButton = el) };
   return (
     <div
       id="embed"
@@ -172,25 +176,30 @@ export function EmbedApp() {
       data-barless={barless() ? "" : undefined}
     >
       <Show when={!barless()}>
-        <EmbedBar
-          drawer={{ ok: drawerOk, open: drawer, toggle: toggleDrawer, onKey: onDrawerKey, ref: (el: HTMLElement) => (filesButton = el) }}
-        />
+        <EmbedBar drawer={drawerProps} />
       </Show>
       <Show when={!app.session.canRun}>
         <Unsupported checks={app.support} />
       </Show>
       <div id="embed-main" style={withShares(shareVars(e.shares(), e.stacked(), e.fit()), sizes.vars())}>
         <Show when={showTree()}>
-          <nav id="tree" class="pane" ref={nav} hidden={!tree() && !drawer()} onKeyDown={onDrawerKey}>
+          <nav id="tree" class="pane" ref={nav} hidden={!tree() && !drawer()} style={drawer() ? { top: `${drawerTop()}px` } : undefined} onKeyDown={onDrawerKey}>
             <Explorer switcher />
           </nav>
         </Show>
         <section id="editor-pane" class="pane" hidden={!editor()}>
-          <EditorPane>
-            <Show when={barless()}>
-              <EmbedMenu />
-            </Show>
-          </EditorPane>
+          <EditorPane
+            start={
+              <Show when={drawerOk() && has("tabs")}>
+                <FilesButton drawer={drawerProps} />
+              </Show>
+            }
+            end={
+              <Show when={barless()}>
+                <EmbedMenu />
+              </Show>
+            }
+          />
         </section>
         <Show when={showPreview()}>
           <section id="preview-panel" class="pane" hidden={!has("preview")}>
@@ -213,6 +222,26 @@ export function EmbedApp() {
 
 type Drawer = { ok: () => boolean; open: () => boolean; toggle: () => void; onKey: (ev: KeyboardEvent) => void; ref: (el: HTMLElement) => void };
 
+/** Opens the file tree as a drawer: at the start of the editor's tab bar, or in the bar where there's none. */
+function FilesButton(props: { drawer: Drawer }) {
+  return (
+    <Tip
+      type="button"
+      class="files"
+      ref={props.drawer.ref}
+      tip="Files"
+      keys={keysFor("toggleExplorer").map(chordKeys)}
+      aria-label="Files"
+      aria-expanded={props.drawer.open() ? "true" : "false"}
+      aria-controls="tree"
+      onClick={props.drawer.toggle}
+      onKeyDown={props.drawer.onKey}
+    >
+      <i class="i-lucide-panel-left" aria-hidden="true" />
+    </Tip>
+  );
+}
+
 function EmbedBar(props: { drawer: Drawer }) {
   const app = useContext(AppContext);
   const e = useContext(EmbedContext);
@@ -220,21 +249,8 @@ function EmbedBar(props: { drawer: Drawer }) {
   const running = () => s.settled().state === "running";
   return (
     <header id="embed-bar">
-      <Show when={props.drawer.ok()}>
-        <Tip
-          type="button"
-          class="files"
-          ref={props.drawer.ref}
-          tip="Files"
-          keys={keysFor("toggleExplorer").map(chordKeys)}
-          aria-label="Files"
-          aria-expanded={props.drawer.open() ? "true" : "false"}
-          aria-controls="tree"
-          onClick={props.drawer.toggle}
-          onKeyDown={props.drawer.onKey}
-        >
-          <i class="i-lucide-panel-left" aria-hidden="true" />
-        </Tip>
+      <Show when={props.drawer.ok() && !e.has("tabs")}>
+        <FilesButton drawer={props.drawer} />
       </Show>
       <Show when={e.library.length}>
         <ProjectButton />

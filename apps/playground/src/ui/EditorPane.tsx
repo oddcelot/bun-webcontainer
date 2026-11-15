@@ -27,7 +27,7 @@ const CONFIG = /(?:^|\/)[jt]sconfig(?:\.[^/]*)?\.json$/;
  * typing stops with auto-save on, else on the save shortcut (Ctrl/Cmd+S) (and before Run, Install or Share, through `ws.saveAll`).
  * Format (the format shortcut, Shift+Alt+F) runs `bun fmt` on the open file as one undoable edit.
  */
-export function EditorPane(props: { children?: JSX.Element }) {
+export function EditorPane(props: { start?: JSX.Element; end?: JSX.Element }) {
   const app = useContext(AppContext);
   const { vfs, workspace: ws, log } = app;
   // An embed loads the type checker (10 MB) and the formatter (7 MB) only once they're turned on.
@@ -304,6 +304,8 @@ export function EditorPane(props: { children?: JSX.Element }) {
       {/* An embed shows the tabs bar only with its tabs or its Auto-save toggle (`autosave`). */}
       <Show when={has("tabs") || app.features?.has("autosave")}>
         <div class="tabs-bar">
+          {/* An embed's drawer button and ⋯ menu, when they're here (EmbedApp.tsx). */}
+          {props.start}
           <Show when={has("tabs")}>
             <EditorTabs />
           </Show>
@@ -321,8 +323,7 @@ export function EditorPane(props: { children?: JSX.Element }) {
               <i class={ws.autosave() ? "i-lucide-save" : "i-lucide-save-off"} aria-hidden="true" /> Auto-save
             </Tip>
           </Show>
-          {/* An embed's ⋯ menu, when it has no bar (EmbedApp.tsx). */}
-          {props.children}
+          {props.end}
         </div>
       </Show>
       {/* "No file open" only once the project has loaded, not while its first file is on the way. */}
