@@ -15,6 +15,7 @@ use bun_js_parser::{Define, Parser, ParserOptions, options};
 use bun_js_printer as printer;
 
 pub mod apis;
+pub mod debug;
 pub mod runtime;
 use bun_ast::runtime::ReplaceableExportMap;
 use runtime::Data;
@@ -87,6 +88,9 @@ pub const SOURCE_MAP: u32 = 32768;
 /// `Bun.Transpiler`'s `target: "bun"`: printed as Bun's runtime prints for itself (the `IS_BUN` printer: ASCII-only
 /// strings, `var {require}=import.meta;` in an ES module), `using` not lowered.
 pub const TARGET_BUN: u32 = 65536;
+/// Not a tsconfig option: instrument the file for the playground's step debugger (see `debug`). The output ends in
+/// a NUL byte and the probe table (JSON), after the source map's `mappings` if there are any.
+pub const DEBUG: u32 = 131072;
 
 /// tsconfig `compilerOptions` for JSX, as strings ("" = not set). Per-file pragmas still win.
 #[derive(Clone, Default, Debug)]
@@ -179,6 +183,9 @@ pub fn transpile_with(path: &[u8], source: &[u8], loader: Loader, flags: u32, re
             }
             hoist_imports_as_requires(&mut ast, arena);
         }
+        let table = if flags & DEBUG != 0 { debug::instrument(&mut ast, arena, path, source) } else { Vec::new() };
+        let table: &[u8] = &table;
+        let tail: &[u8] = if flags & DEBUG != 0 { b"\0" } else { b"" };
         if let Some(resolve) = resolve {
             for record in ast.import_records.iter_mut() {
                 let kind = record.kind as u32;
@@ -223,7 +230,7 @@ pub fn transpile_with(path: &[u8], source: &[u8], loader: Loader, flags: u32, re
             return match printed {
                 Ok(_) => {
                     let mappings = chunk.map(|c| c.buffer.list.to_vec()).unwrap_or_default();
-                    Ok([require, writer.ctx.written(), b"\0", &shift_first_column(&mappings, require.len() as i64)].concat())
+                    Ok([require, writer.ctx.written(), b"\0", &shift_first_column(&mappings, require.len() as i64), tail, table].concat())
                 }
                 Err(e) => Err(format!("print failed: {e:?}").into_bytes()),
             };
@@ -234,7 +241,7 @@ pub fn transpile_with(path: &[u8], source: &[u8], loader: Loader, flags: u32, re
             printer::print_ast::<_, false, false>(&mut writer, arena, &ast, symbols, src, opts)
         };
         match printed {
-            Ok(_) => Ok([require, writer.ctx.written()].concat()),
+            Ok(_) => Ok([require, writer.ctx.written(), tail, table].concat()),
             Err(e) => Err(format!("print failed: {e:?}").into_bytes()),
         }
     })
