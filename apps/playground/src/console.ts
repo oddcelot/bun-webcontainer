@@ -45,6 +45,8 @@ function terminalTheme(theme: ThemeLike): ITheme {
     scrollbarSliderBackground: withAlpha(root.getPropertyValue("--fg"), 0.22),
     scrollbarSliderHoverBackground: withAlpha(root.getPropertyValue("--fg"), 0.38),
     scrollbarSliderActiveBackground: withAlpha(root.getPropertyValue("--fg"), 0.5),
+    // The overview ruler (it sizes the scrollbar, below) outlines itself with a 1px line in the foreground color.
+    overviewRulerBorder: withAlpha(root.getPropertyValue("--fg"), 0),
     black: ansi("Black"),
     red: ansi("Red"),
     green: ansi("Green"),
