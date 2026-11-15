@@ -15,7 +15,7 @@ import { trackBodies } from "./bodies";
 import { keepRequestHeaders, withHeaders } from "./requestHeaders";
 import { fulfilled, tracked, trackedFn } from "./promises";
 import { currentGeneration, hold, holdUntil, release, whenIdle } from "./loop";
-import { frameMapper, previewSource } from "./sourceMaps";
+import { frameMapper, installStackTraces, previewSource } from "./sourceMaps";
 import { json5Stringify, tomlStringify, yamlStringify } from "./dataStringify";
 import { password } from "./password";
 import { Cookie, CookieMap } from "./cookie";
@@ -26,7 +26,7 @@ import { makeMarkdown } from "./markdown";
 import { makeXML, setProxyCheck } from "./xml";
 import { isProxy } from "./proxies";
 import { markdownWasm, xmlWasm } from "../transpiler";
-import { codeError, fsError } from "./node/errors";
+import { asyncError, codeError, fsError } from "./node/errors";
 import { hooks, type NodeSocket } from "./node/serve";
 import { flushDatabases } from "./node/sqlite";
 import nodePath from "./node/path";
@@ -643,6 +643,8 @@ installConsole(
   frameMapper(() => new URL(VFS_ROOT, location.href).href),
   previewSource((path) => vfs.readText(path)),
 );
+// error.stack itself, as Bun's reads (V8 only).
+installStackTraces(() => new URL(VFS_ROOT, location.href).href, (path) => vfs.readText(path));
 
 /** How Bun reports an uncaught error or rejection: its error printer for errors, `error: value` and the value otherwise. */
 function uncaughtText(v: unknown): string {
@@ -805,6 +807,8 @@ class BunFile extends Blob {
   }
   readonly #start: number;
   readonly #end: number | undefined;
+  /** The path as given, which Bun's errors name. */
+  readonly #given: string;
   constructor(path: string, type?: string, start = 0, end?: number) {
     const name = norm(nodePath.resolve(path));
     const data = vfs.readBytes(name);
@@ -812,6 +816,7 @@ class BunFile extends Blob {
     this.name = name;
     this.#start = start;
     this.#end = end;
+    this.#given = path;
   }
   get size() {
     const d = vfs.readBytes(this.name);
@@ -826,7 +831,7 @@ class BunFile extends Blob {
   }
   #read() {
     const d = vfs.readBytes(this.name);
-    if (d === undefined) throw fsError("ENOENT", "open", "/" + this.name);
+    if (d === undefined) throw asyncError(fsError("ENOENT", "open", this.#given));
     return d.slice(this.#start, this.#end);
   }
   bytes() {
@@ -900,14 +905,25 @@ class BunFile extends Blob {
 const stdout = new BunFile("/dev/stdout");
 const stderr = new BunFile("/dev/stderr");
 
+/** What `Bun.write` writes without reading first: a string, or the bytes of a buffer or view (else undefined). */
+function directData(data: unknown): string | Uint8Array | undefined {
+  if (typeof data === "string") return data;
+  if (data instanceof ArrayBuffer) return new Uint8Array(data);
+  if (ArrayBuffer.isView(data)) return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+  return undefined;
+}
+
 async function writeFile(dest: string | URL | BunFile, data: unknown): Promise<number> {
-  let out: string | Uint8Array;
-  if (typeof data === "string") out = data;
-  else if (data instanceof BunFile) out = await data.bytes();
-  else if (data instanceof Blob || data instanceof Response) out = new Uint8Array(await data.arrayBuffer());
-  else if (data instanceof ArrayBuffer) out = new Uint8Array(data);
-  else if (ArrayBuffer.isView(data)) out = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-  else out = String(data);
+  let out = directData(data);
+  if (out === undefined) {
+    if (data instanceof BunFile) out = await data.bytes();
+    else if (data instanceof Blob || data instanceof Response) out = new Uint8Array(await data.arrayBuffer());
+    else out = String(data);
+  }
+  return writeOut(dest, out);
+}
+
+function writeOut(dest: string | URL | BunFile, out: string | Uint8Array): number {
   const size = typeof out === "string" ? new TextEncoder().encode(out).length : out.byteLength;
   if (dest === stdout || dest === stderr) {
     (dest === stdout ? process.stdout : process.stderr).write(out);
@@ -1190,9 +1206,18 @@ async function main() {
       satisfies: semver.satisfies,
     },
     file: (path: string | URL, opts?: { type?: string }) => new BunFile(path instanceof URL ? decodeURIComponent(path.pathname) : path, opts?.type),
-    write: trackedFn(function write(dest: string | URL | BunFile, data: unknown) {
-      return writeFile(dest, data);
-    }),
+    // A string or bytes to a file is written before Bun.write returns, its promise already resolved (as in Bun);
+    // anything to read first (a Blob, a Response, another file) settles later, as do errors.
+    write(dest: string | URL | BunFile, data: unknown) {
+      const out = directData(data);
+      if (out !== undefined && dest !== stdout && dest !== stderr)
+        try {
+          return fulfilled(writeOut(dest, out));
+        } catch (e) {
+          return tracked(Promise.reject(asyncError(e)));
+        }
+      return tracked(writeFile(dest, data));
+    },
     serve: (opts: ServeOptions) => listen(opts).server,
     build,
     CryptoHasher,

@@ -1316,7 +1316,9 @@ class Formatter {
       const message = str(safeGet(err, "message"));
       const codeValue = safeGet(err, "code");
       const code = typeof codeValue === "string" && /^[\x00-\xff]*$/.test(codeValue) ? codeValue : undefined;
-      const frames = stackFrames(err);
+      // Without builtins' frames (sourceMaps.ts installStackTraces' `fn (native)`): Bun prints none for JSON.parse's,
+      // and previews the first frame in a file.
+      const frames = stackFrames(err).filter((f) => !f.endsWith(" (native)"));
       this.sourcePreview(frames[0]);
       this.nameAndMessage(name, message, code);
 

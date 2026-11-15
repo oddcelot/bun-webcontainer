@@ -209,7 +209,7 @@ export function createModule(registry: Record<string, object>) {
       dynamicImport: (s: unknown, o?: unknown) => g.__dynamicImport(`file://${file}`, s, o),
     };
     const url = encodeURI(`file://${file}`);
-    registerSource(url, FUNCTION_HEADER_LINES, mappings);
+    registerSource(url, FUNCTION_HEADER_LINES, mappings, false);
     try {
       new Function("hmr", `${code}\n//# sourceURL=${url}`)(hmr);
     } catch (e) {
@@ -260,7 +260,7 @@ export function createModule(registry: Record<string, object>) {
     let code = /\.[cm]?(ts|tsx|jsx)$/.test(path) ? transpile() : src;
     const url = encodeURI(`file://${file}`);
     const compile = () => {
-      registerSource(url, FUNCTION_HEADER_LINES - stripped, mappings);
+      registerSource(url, FUNCTION_HEADER_LINES - stripped, mappings, true);
       return new Function("exports", "require", "module", "__filename", "__dirname", `${dynamicImports(code.replace(/^#!.*/, ""), file)}\n//# sourceURL=${url}`);
     };
     let body: Function;

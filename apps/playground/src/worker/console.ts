@@ -141,12 +141,12 @@ export function installConsole(emit: Emit, frame: (line: string) => string, sour
   wrap("groupEnd", () => void (depth = Math.max(0, depth - 1)));
 
   wrap("trace", (...args) => {
-    // V8 frames read `    at fn (url:1:2)`, SpiderMonkey/JSC ones `fn@url:1:2`; drop this function and the wrapper.
+    // V8 frames read `    at fn (url:1:2)`, SpiderMonkey/JSC ones `fn@url:1:2`. This function's and the wrapper's
+    // are the worker's own, which `frame` hides (as V8's stacks leave them out already: sourceMaps.ts).
     const frames = (new Error().stack ?? "")
       .split("\n")
       .map((l) => (/^\s+at /.test(l) ? l.replace(/^\s+at /, "") : /^(.*)@(.+)$/.test(l) ? l.replace(/^(.*)@(.+)$/, (_, fn, loc) => (fn ? `${fn} (${loc})` : loc)) : ""))
-      .filter(Boolean)
-      .slice(2);
+      .filter(Boolean);
     const stack = frames
       .map(frame)
       .filter(Boolean)
