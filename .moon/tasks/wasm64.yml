@@ -17,6 +17,8 @@ fileGroups:
     - '/bun/Cargo.toml'
     - '/bun/Cargo.lock'
     - '/bun/src/**/*.rs'
+    # crates/wasm-stubs/build.rs turns this into the visible-width tables.
+    - '/bun/src/jsc/bindings/stringWidthTables.h'
     - '/bun/src/**/Cargo.toml'
     - '/crates/sys-host/src/**/*'
     - '/crates/sys-host/Cargo.toml'
