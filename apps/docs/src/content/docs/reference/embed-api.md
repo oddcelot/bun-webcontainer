@@ -213,6 +213,10 @@ Names and values are CSS custom properties; anything that isn't a `--name` with 
 | `--radius`, `--pad` | A pane's corner and the space inside it |
 | `--font-ui`, `--font-mono` | The UI and code fonts; load them with `fonts` |
 | `--control`, `--control-hover`, `--control-border` | Buttons and inputs |
+| `--tab-track`, `--tab-track-border`, `--tab-track-radius`, `--tab-track-pad` | A track behind the editor's and the preview's tab rows: its background, 1px border, corner and the space inside it. Unset, there's none. The padding doesn't make the bar taller |
+| `--tab-radius`, `--tab-hover` | A tab's corner (default `--inner-radius`) and its background on hover (default `--control`) |
+| `--tab-selected`, `--tab-selected-border` | The selected tab's background (default `--control-hover`) and 1px border (default none) |
+| `--tab-mark` | The line under the selected tab (default `--accent`); `transparent` hides it |
 
 Others in `style.css` work too, but these are the ones a page usually wants to match its own design. To follow a page's light and dark themes, send `base` for the scheme in effect and update it (with `setVars`) when the page changes.
 

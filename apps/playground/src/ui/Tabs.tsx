@@ -31,7 +31,8 @@ export function EditorTabs() {
   );
 
   return (
-    <TabList id="tabs" class="tabs tablist" label="Open files" onSelect={(path) => (path === CHANGES ? ws.showChanges() : (path !== ws.state.active || ws.state.changesShown) && ws.activate(path))}>
+    <div class="tabs">
+      <TabList id="tabs" class="tablist" label="Open files" onSelect={(path) => (path === CHANGES ? ws.showChanges() : (path !== ws.state.active || ws.state.changesShown) && ws.activate(path))}>
         {/* With no file open, an invisible tab holds the bar's height so the editor doesn't jump. */}
         <Show when={!ws.state.open.length && !ws.state.changes}>
           <div class="tab" aria-hidden="true" style={{ visibility: "hidden" }}>
@@ -94,6 +95,7 @@ export function EditorTabs() {
             <span class="name">Changes</span>
           </TabItem>
         </Show>
-    </TabList>
+      </TabList>
+    </div>
   );
 }

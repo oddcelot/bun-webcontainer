@@ -2414,6 +2414,9 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
     display: none;
   }
   .tabs-bar .tabs {
+    /* The section tabs keep their mark, whatever the page's --tab-* variables do to the rows above. */
+    --tab-selected-border: transparent;
+    --tab-mark: var(--accent);
     padding-block: 2px;
     .tab {
       min-width: 0;
