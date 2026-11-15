@@ -717,7 +717,7 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
     if (!root) return void (frames && requestAnimationFrame(() => applyDebugLines(frames - 1)));
     const dots = breakLines.map((l) => `[data-column-number="${l}"]`);
     debugSheet.replaceSync(
-      (dots.length ? `${dots.join(",")} { color: transparent !important; background: radial-gradient(circle at center, var(--debug-break, #e5484d) 0 5px, transparent 5.5px) !important; }` : "") +
+      (dots.length ? `${dots.join(",")} { background-image: radial-gradient(circle, var(--debug-break, #e5484d) 0 3px, transparent 3.5px) !important; background-repeat: no-repeat !important; background-size: 8px 8px !important; background-position: 3px center !important; }` : "") +
         (pausedLine ? `[data-line="${pausedLine}"] { background: var(--debug-paused, rgb(255 213 0 / 0.22)) !important; }` : ""),
     );
     if (!root.adoptedStyleSheets.includes(debugSheet)) root.adoptedStyleSheets = [...root.adoptedStyleSheets, debugSheet];

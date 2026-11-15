@@ -23,7 +23,7 @@ export function DebugPanel() {
   const status = () => {
     const p = paused();
     if (p) return `Paused on ${p.reason === "breakpoint" ? "breakpoint" : p.reason} at ${p.path}:${p.line + 1}`;
-    return debugSession.attached() ? "Running" : "Not running";
+    return debugSession.attached() ? "Running" : "Press Run to debug";
   };
   const step = (icon: string, tip: string, key: string, run: () => unknown) => (
     <Tip class="step" tip={tip} keys={[key]} aria-label={tip} disabled={!paused()} onClick={run}>

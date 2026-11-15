@@ -26,7 +26,9 @@ function loadBreakpoints(): Record<string, number[]> {
 }
 
 const [enabled, setEnabledSignal] = createSignal(false);
-const [breakpoints, setBreakpointsSignal] = createSignal<Record<string, number[]>>(loadBreakpoints());
+// The signal is for showing them: Solid 2 batches writes, so a read right after one (two quick toggles) is stale.
+let breakpointState = loadBreakpoints();
+const [breakpoints, setBreakpointsSignal] = createSignal<Record<string, number[]>>(breakpointState);
 const [paused, setPaused] = createSignal<DebugPaused | undefined>(undefined);
 const [attached, setAttached] = createSignal(false);
 
@@ -54,6 +56,7 @@ function send(cmd: DebugCommand): boolean {
 }
 
 function setBreakpoints(next: Record<string, number[]>) {
+  breakpointState = next;
   setBreakpointsSignal(next);
   try {
     sessionStorage.setItem(STORE_KEY, JSON.stringify(next));
@@ -78,7 +81,7 @@ export const debugSession = {
     return breakpoints()[path] ?? [];
   },
   toggleBreakpoint(path: string, line: number) {
-    const all = { ...breakpoints() };
+    const all = { ...breakpointState };
     const lines = new Set(all[path] ?? []);
     if (lines.has(line)) lines.delete(line);
     else lines.add(line);
@@ -120,7 +123,7 @@ export function attach(worker: Worker): { sab: SharedArrayBuffer; breakpoints: R
   current = { worker, sab };
   setPaused(undefined);
   setAttached(true);
-  return { sab, breakpoints: breakpoints() };
+  return { sab, breakpoints: breakpointState };
 }
 
 /** For the runner: `worker` ended. */
