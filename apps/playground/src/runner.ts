@@ -63,9 +63,9 @@ export class Runner {
   onExit?: (code: number) => void;
   /**
    * Called with the ports the program answering previews serves, its child processes' after its own, whenever they
-   * change (none once it stops).
+   * change (none once it stops), and the one the preview shows (see `choosePort`).
    */
-  onPorts?: (ports: number[]) => void;
+  onPorts?: (ports: number[], shown: number | undefined) => void;
   /** Each program's (and child process's) ports as it last reported them: a restart's new program reports before it takes over. */
   private ports = new WeakMap<Worker, number[]>();
   /** Child processes by their worker, and each program's children by the id it gave them. */
@@ -279,6 +279,8 @@ export class Runner {
    */
   private route(port?: number): { worker: Worker; port?: number } {
     const main = this.worker!;
+    // With none named, the port the reader picked (`choosePort`), while it is still served.
+    port ??= this.picked;
     const own = this.ports.get(main) ?? [];
     if (port === undefined ? own.length : own.includes(port)) return { worker: main, port };
     for (const w of this.descendants(main)) {
@@ -288,12 +290,28 @@ export class Runner {
     return { worker: main, port };
   }
 
-  /** Tells `onPorts` what the program answering previews serves now, its child processes included. */
+  /**
+   * Tells `onPorts` what the program answering previews serves now, its child processes included, and which of those
+   * ports the preview shows. A picked port that is no longer served is forgotten: the preview goes back to the default.
+   */
   private reportPorts() {
     const main = this.worker;
-    if (!main) return this.onPorts?.([]);
-    const all = [main, ...this.descendants(main)].flatMap((w) => this.ports.get(w) ?? []);
-    this.onPorts?.([...new Set(all)]);
+    const all = main ? [...new Set([main, ...this.descendants(main)].flatMap((w) => this.ports.get(w) ?? []))] : [];
+    if (this.picked !== undefined && !all.includes(this.picked)) this.picked = undefined;
+    // The default (`route` with no port) is the first of the list: the program's first, else its first child's.
+    this.onPorts?.(all, this.picked ?? all[0]);
+  }
+
+  /** The port the preview shows when the reader picked one of several (the status bar), until it is no longer served. */
+  private picked?: number;
+
+  /**
+   * Sends the preview (its requests, and WebSockets that name no port) to the server on `port` instead of the default,
+   * while the program or one of its child processes serves it. The caller reloads the preview.
+   */
+  choosePort(port: number) {
+    this.picked = port;
+    this.reportPorts();
   }
 
   /** Ends the preview responses still on their way (only `owner`'s, if given): the program that would have finished them is gone. */
@@ -351,7 +369,7 @@ export class Runner {
     this.worker = undefined;
     this.abort = undefined;
     if (!worker) return;
-    this.onPorts?.([]);
+    this.reportPorts();
     this.endPending(worker);
     this.dropSockets();
     if (flush) await this.flush(worker);

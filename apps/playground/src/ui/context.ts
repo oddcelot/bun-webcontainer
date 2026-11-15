@@ -28,6 +28,8 @@ export type App = {
   run(): void;
   /** Stops the running server, if any. */
   stop(): void;
+  /** Shows the server on `port` in the preview (one of `session.ports()`) and reloads it. */
+  choosePort(port: number): void;
   install(): void;
   /** Reloads with `?example=` or `?repo=` (picker values for repos are `repo:<owner/repo>`). */
   openProject(value: string): void;

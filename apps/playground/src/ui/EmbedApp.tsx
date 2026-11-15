@@ -325,6 +325,7 @@ function EmbedMenu() {
   const app = useContext(AppContext);
   const e = useContext(EmbedContext);
   const open = (list: [Feature, string][]) => list.filter(([f]) => !e.locked.has(f));
+  const shownPort = () => app.session.previewPort() ?? app.session.ports()[0];
   const Toggle = (props: { feature: Feature; label: string }) => (
     <MenuCheckItem checked={e.has(props.feature)} label={props.label} onSelect={() => e.setFeatures({ [props.feature]: !e.has(props.feature) }, true)}>
       <Show when={!e.has(props.feature) && COST[props.feature]}>{(cost) => <span class="cost">{cost()}</span>}</Show>
@@ -346,6 +347,24 @@ function EmbedMenu() {
       <Show when={open(TOOLS).length}>
         <MenuGroup label="Tools">
           <For each={open(TOOLS)}>{([f, label]) => <Toggle feature={f} label={label} />}</For>
+        </MenuGroup>
+      </Show>
+      {/* With several servers (the program's, its child processes'), which one the preview shows. */}
+      <Show when={app.session.ports().length > 1}>
+        <MenuGroup label="Preview port">
+          <For each={app.session.ports()}>
+            {(port) => (
+              <MenuItem
+                icon={port === shownPort() ? "i-lucide-check" : "i-lucide-check invisible"}
+                label={`:${port}`}
+                onSelect={() => port !== shownPort() && app.choosePort(port)}
+              >
+                <Show when={port === shownPort()}>
+                  <span class="sr-only">(shown)</span>
+                </Show>
+              </MenuItem>
+            )}
+          </For>
         </MenuGroup>
       </Show>
       <MenuSeparator />

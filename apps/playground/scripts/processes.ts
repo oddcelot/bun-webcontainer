@@ -3,7 +3,8 @@
 // src/runner.ts), end to end: a project runs in the embed in headless Chrome and each program prints what its children
 // did. Bun.spawn with pipes, stdin, exit codes and kill; child_process spawn/exec/execFile; Bun.$ running `bun` in a
 // pipeline; package.json scripts (spawned, and the console's `bun run` of a shell line); a child's file writes;
-// grandchildren; worker_threads threads; a server a child starts, reached through the preview; EADDRINUSE for a port
+// grandchildren; worker_threads threads; a server a child starts, reached through the preview (and picked in the embed's
+// ⋯ menu over the program's own); EADDRINUSE for a port
 // another process (or the same one) serves; the synchronous calls
 // (spawnSync, execSync, execFileSync, Bun.spawnSync: output of several MiB, stdin, timeouts, file changes both ways, a
 // synchronous grandchild). The expected lines are what native Bun prints for the same project (checked by running it
@@ -57,7 +58,8 @@ const files: Record<string, string> = {
   "nestedsync.ts": `console.log("ns:", Bun.spawnSync(["bun", "child.ts", "deep"]).stdout.toString().trim());`,
   "package.json": JSON.stringify({ name: "procs", scripts: { greet: "echo from-script && bun child.ts s", build: "echo built && bun child.ts b > built.txt && cat built.txt", serve: "echo serving && bun server.ts" } }),
   "server.ts": `Bun.serve({ port: 3001, fetch: (req) => new Response("child server " + new URL(req.url).pathname) });\nconsole.log("listening");`,
-  "inuse.ts": `try {\n  Bun.serve({ port: 3002, fetch: () => new Response("child") });\n  console.log("served");\n  process.exit(0);\n} catch (e) {\n  const { code, syscall, errno, message } = e as Error & { code: string; syscall: string; errno: number };\n  console.log(code, syscall, errno, message);\n}`,
+  "two.ts": `Bun.serve({ port: 3003, fetch: (req) => new Response("program " + new URL(req.url).pathname) });\nBun.spawn(["bun", "server.ts"], { stdout: "inherit" });`,
+  "inuse.ts":`try {\n  Bun.serve({ port: 3002, fetch: () => new Response("child") });\n  console.log("served");\n  process.exit(0);\n} catch (e) {\n  const { code, syscall, errno, message } = e as Error & { code: string; syscall: string; errno: number };\n  console.log(code, syscall, errno, message);\n}`,
   "child.ts": `console.log("child", process.argv.slice(2).join(","), process.env.X ?? "-");\nprocess.exitCode = Number(process.env.CODE ?? 0);`,
   "upper.ts": `let s = "";\nfor await (const c of process.stdin) s += c;\nprocess.stdout.write(s.toUpperCase());`,
   "forever.ts": `console.log("up");\nsetInterval(() => {}, 1000);`,
@@ -407,6 +409,27 @@ try {
     const preview = await frame.evaluate(() => fetch("/__preview/hello").then(async (r) => `${r.status} ${await r.text()}`)).catch(String);
     if (preview === "200 child server /hello") console.log("✓ preview of a child's server");
     else (bad++, console.error(`✗ preview of a child's server\n  got  ${JSON.stringify(preview)}\n  want "200 child server /hello"`));
+    // Two servers, the program's (3003) and a child's (3001): the preview shows the program's until the ⋯ menu's
+    // Preview port picks the child's.
+    const mark2 = (await page.evaluate(() => (window as unknown as { lines: string[] }).lines)).length;
+    await page.evaluate(() => (window as unknown as { rpc: (m: string, p?: unknown) => Promise<unknown> }).rpc("run", { entry: "two.ts" }));
+    await page.waitForFunction((n: number) => (window as unknown as { lines: string[] }).lines.slice(n).includes("listening"), { timeout: 30_000 }, mark2).catch(() => {});
+    const fetchPreview = () => frame.evaluate(() => fetch("/__preview/hello").then(async (r) => `${r.status} ${await r.text()}`)).catch(String);
+    const before2 = await fetchPreview();
+    // By keyboard: a click doesn't open it in the content origin's frame, a process of its own in headless Chrome.
+    await embed.focus(".more");
+    await page.keyboard.press("Enter");
+    const item = await embed
+      .waitForFunction(() => [...document.querySelectorAll('[role="menuitem"]')].find((el) => el.textContent?.trim().startsWith(":3001")), { timeout: 5000 })
+      .then((h) => h.asElement() as import("puppeteer-core").ElementHandle<Element> | null)
+      .catch(() => null);
+    await item?.focus();
+    if (item) await page.keyboard.press("Enter");
+    await Bun.sleep(300);
+    const picked = [before2, await fetchPreview()];
+    const wantPicked = ["200 program /hello", "200 child server /hello"];
+    if (JSON.stringify(picked) === JSON.stringify(wantPicked)) console.log("✓ preview port picked");
+    else (bad++, console.error(`✗ preview port picked${item ? "" : " (no :3001 in the ⋯ menu)"}\n  got  ${JSON.stringify(picked)}\n  want ${JSON.stringify(wantPicked)}`));
     for (const c of crashes) (bad++, console.error(`✗ page error: ${c}`));
   } finally {
     await browser.close();

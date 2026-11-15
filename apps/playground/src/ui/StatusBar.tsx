@@ -1,4 +1,4 @@
-import { Show, createSignal, onSettled, useContext } from "solid-js";
+import { For, Show, createSignal, onSettled, useContext } from "solid-js";
 import { installState, type InstallState } from "../installState";
 import { onSaveState, type SaveState } from "../persist";
 import { trackChanges } from "../changes";
@@ -12,6 +12,7 @@ import { AppContext } from "./context";
 import { Feedback } from "./Feedback";
 import { StatusPill } from "./Status";
 import { Tip } from "@runbun/ui/solid/Tip";
+import { Menu, MenuGroup, MenuItem, MenuTrigger } from "@runbun/ui/solid/Menu";
 
 /** What Bun treats a file as, by extension (its loader), named as editors do. */
 const LANGUAGES: Record<string, string> = {
@@ -213,21 +214,61 @@ function Changed(props: { git: boolean; gitShown: boolean; toggleGit(): void }) 
   );
 }
 
-/** The ports the running program serves (`Bun.serve`, `http.Server#listen`); a click shows the preview if it's hidden. */
+/**
+ * The ports the running program serves (`Bun.serve`, `http.Server#listen`), its child processes' too. With one, a
+ * click shows the preview if it's hidden; with several, a click opens a menu of them that picks the one the preview shows.
+ */
 function Ports(props: { previewShown: boolean; showPreview(): void }) {
-  const { session } = useContext(AppContext);
-  const tip = () => {
-    const [first, ...rest] = session.ports();
-    const list = rest.length ? `Ports ${[first, ...rest].join(", ")}` : `Port ${first}`;
-    if (!props.previewShown) return `${list}. Click to show the preview.`;
-    return rest.length ? `${list}. Preview shows ${first}` : `${list}, shown in the preview`;
+  const app = useContext(AppContext);
+  const session = app.session;
+  const shown = () => session.previewPort() ?? session.ports()[0];
+  const pick = (port: number) => {
+    if (port !== shown()) app.choosePort(port);
+    if (!props.previewShown) props.showPreview();
   };
+  const label = () => (
+    <>
+      <i class="i-lucide-radio" aria-hidden="true" />:{shown()}
+      {session.ports().length > 1 ? ` +${session.ports().length - 1}` : ""}
+    </>
+  );
   return (
     <Show when={session.ports().length}>
-      <Tip type="button" class="ports" aria-disabled={props.previewShown ? "true" : undefined} tip={tip()} onClick={() => !props.previewShown && props.showPreview()}>
-        <i class="i-lucide-radio" aria-hidden="true" />:{session.ports()[0]}
-        {session.ports().length > 1 ? ` +${session.ports().length - 1}` : ""}
-      </Tip>
+      <Show
+        when={session.ports().length > 1}
+        fallback={
+          <Tip
+            type="button"
+            class="ports"
+            aria-disabled={props.previewShown ? "true" : undefined}
+            tip={props.previewShown ? `Port ${shown()}, shown in the preview` : `Port ${shown()}. Click to show the preview.`}
+            onClick={() => !props.previewShown && props.showPreview()}
+          >
+            {label()}
+          </Tip>
+        }
+      >
+        <Menu
+          placement="top-start"
+          trigger={
+            <Tip as={MenuTrigger} class="ports" tip={`Ports ${session.ports().join(", ")}. Preview shows ${shown()}. Click to pick another`}>
+              {label()}
+            </Tip>
+          }
+        >
+          <MenuGroup label="Show in the preview">
+            <For each={session.ports()}>
+              {(port) => (
+                <MenuItem icon={port === shown() ? "i-lucide-check" : "i-lucide-check invisible"} label={`:${port}`} onSelect={() => pick(port)}>
+                  <Show when={port === shown()}>
+                    <span class="sr-only">(shown)</span>
+                  </Show>
+                </MenuItem>
+              )}
+            </For>
+          </MenuGroup>
+        </Menu>
+      </Show>
     </Show>
   );
 }
