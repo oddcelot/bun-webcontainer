@@ -4,6 +4,20 @@ Notable changes per release of `@runbun/embed`. Each release is tagged `embed-v<
 with its section. The element talks to the playground deployed at runbun.dev over the embed protocol (version 1),
 which only grows, so any release works with the live playground.
 
+## 0.6.0 — 2026-11-15
+
+A quieter frame: an embed can drop its Run button, and with it the whole bar, for pages that only show code. Reset
+no longer throws away a reader's edits without asking. runbun.dev's `embed.js` has all of it already. Nothing needs
+action to upgrade.
+
+- **Added** — **Embeds without a Run button.** The new `run` feature is the bar's Run/Stop button, on in every mode;
+  `features="-run"` hides it, and when that leaves only the ⋯ menu the bar goes and the menu moves to the end of the
+  editor's tab bar.
+- **Changed** — **Reset asks before discarding edits.** The ⋯ menu's Reset asks for confirmation when the reader has
+  changed the project; untouched, it resets at once.
+- **Changed** — **The Files button sits with the tabs.** In frames too narrow for the file tree, the button that opens
+  it is at the start of the editor's tab bar, so an embed without Run has no bar at any width.
+
 ## 0.5.0 — 2026-11-15
 
 Projects describe themselves in runbun.json: `pack` reads a project's card from it, and an embed changes layout in
