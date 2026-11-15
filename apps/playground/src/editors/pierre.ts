@@ -1,4 +1,4 @@
-import { File, VirtualizedFile, Virtualizer, getHighlighterIfLoaded, getSharedHighlighter, registerCustomTheme } from "@pierre/diffs";
+import { File, VirtualizedFile, Virtualizer, getHighlighterIfLoaded, getSharedHighlighter, registerCustomLanguage, registerCustomTheme } from "@pierre/diffs";
 import { EditStateManager, Editor, type Marker } from "@pierre/diffs/edit";
 import { elysiaDark, elysiaLight } from "../elysiaTheme";
 import { isMac } from "../keymap";
@@ -8,6 +8,18 @@ import type { CodeEditor, CompletionKind, EditorCompletion, EditorCompletionDeta
 // @pierre/diffs resolves theme names from its own bundles; the Elysia pair (elysiaTheme.ts) has to be registered.
 registerCustomTheme("elysia-light", async () => elysiaLight);
 registerCustomTheme("elysia-dark", async () => elysiaDark);
+
+// CSS and HTML inside css`…` / html`…` (lit, styled-components): Shiki's JS/TS grammars see a plain string there.
+// Its es-tag-* grammars inject into source.ts and source.js only, so they are widened to TSX and JSX here.
+const TAG_TARGETS = ["source.ts", "source.tsx", "source.js", "source.js.jsx"];
+const withTags = (base: () => Promise<typeof import("@shikijs/langs/typescript")>) => async () => {
+  const [{ default: grammars }, { default: css }, { default: html }] = await Promise.all([base(), import("@shikijs/langs/es-tag-css"), import("@shikijs/langs/es-tag-html")]);
+  return { default: [...grammars, ...[...css, ...html].map((g) => (g.injectTo ? { ...g, injectTo: TAG_TARGETS } : g))] };
+};
+registerCustomLanguage("typescript", withTags(() => import("@shikijs/langs/typescript")));
+registerCustomLanguage("tsx", withTags(() => import("@shikijs/langs/tsx")));
+registerCustomLanguage("javascript", withTags(() => import("@shikijs/langs/javascript")));
+registerCustomLanguage("jsx", withTags(() => import("@shikijs/langs/jsx")));
 
 // Lucide's circle-x and triangle-alert, drawn in the severity's color (the popover is in a shadow root, where the page's icon classes don't apply).
 const ICONS = {
