@@ -28,7 +28,7 @@
   },
   "devDependencies": {
     "@solidjs/web": "catalog:",
-    "astro": "^7.4.11",
+    "astro": "^7.4.12",
     "solid-js": "catalog:",
     "tsrs": "0.24.0-ts7.1.0-beta"
   }
