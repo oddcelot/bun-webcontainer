@@ -43,8 +43,11 @@ interface WsRequest {
 const BASE = new URL("./", self.location.href).pathname;
 const VFS = `${BASE}__vfs/`;
 const PREVIEW = `${BASE}__preview`;
-/** A blank page under each preview's base, whose document.cookie the playground reads (runner.ts COOKIE_PAGE). */
-const COOKIE_PAGE = "/__runbun_cookies__";
+/**
+ * A blank page in any directory under a preview's base, whose document.cookie is what the browser holds for that
+ * directory (previewCookies.ts reads it).
+ */
+const COOKIE_PAGE = /(?:^|\/)__runbun_cookies__$/;
 /** Pages other sites frame (embed.html, configure.html): an iframe navigating to one isn't a preview leaving `/__preview`. */
 const FRAMED = new RegExp(`^${BASE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(embed|configure|host)(\\.html)?$`);
 /** Registered on the content origin (`sw.js?content`, src/host/main.ts): its responses are framed by the editor, another origin. */
@@ -282,7 +285,7 @@ async function servePreview(req: Request, url: URL, path?: string, ownerId = pre
   const base = previewBase(ownerId);
   path ??= (url.pathname.slice(base.length) || "/") + url.search;
   // The page's window onto the preview's cookies (runner.ts reads its document.cookie); never the server's.
-  if (path === COOKIE_PAGE) return new Response("<!doctype html>", isolated({ headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } }));
+  if (COOKIE_PAGE.test(path)) return new Response("<!doctype html>", isolated({ headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } }));
   const key = `${ownerId ?? ""} ${path}`;
   let extra = unpackHeaders(req.headers.get(HEADERS_HEADER));
   if (!extra.length && req.mode === "navigate") {

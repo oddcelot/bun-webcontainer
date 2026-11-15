@@ -114,6 +114,14 @@ tasks:
     toolchains: ['bun']
     options:
       cache: false
+  test-cookies:
+    # The preview's cookies end to end (scripts/cookies.ts): a script's cookie with a narrower path, its changes to a
+    # server's cookie, and a reload's sweep of the old preview base's, on the editor's origin and on a content origin
+    # (same site, and embedded on another site, where only the server's cookies can work). Needs Chrome.
+    script: 'bun scripts/cookies.ts && bun scripts/cookies.ts --content-origin && bun scripts/cookies.ts --content-origin --third-party'
+    toolchains: ['bun']
+    options:
+      cache: false
   fmt-examples:
     # The gallery's projects (examples/, the demo included) as `bun fmt` leaves them (`-- --write` formats them).
     command: 'bun scripts/fmt-examples.ts'

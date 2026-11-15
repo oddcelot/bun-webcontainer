@@ -12,7 +12,7 @@ const defaultPath = (reqPath: string) => {
   return i <= 0 ? "/" : p.slice(0, i);
 };
 
-const pathMatches = (reqPath: string, cookiePath: string) => {
+export const pathMatches = (reqPath: string, cookiePath: string) => {
   const p = reqPath.split("?")[0] || "/";
   return p === cookiePath || (p.startsWith(cookiePath) && (cookiePath.endsWith("/") || p[cookiePath.length] === "/"));
 };
@@ -72,13 +72,16 @@ export class CookieJar {
     this.cookies.clear();
   }
 
-  /** The Cookie header for a request to `reqPath`, or undefined when no cookie applies. Longer paths go first. */
-  header(reqPath: string): string | undefined {
+  /**
+   * The Cookie header for a request to `reqPath` (of the cookies `which` takes), or undefined when no cookie applies.
+   * Longer paths go first.
+   */
+  header(reqPath: string, which: (c: Readonly<Cookie>) => boolean = () => true): string | undefined {
     const now = Date.now();
     const out: Cookie[] = [];
     for (const [key, c] of this.cookies) {
       if (c.expires <= now) this.cookies.delete(key);
-      else if (pathMatches(reqPath, c.path)) out.push(c);
+      else if (pathMatches(reqPath, c.path) && which(c)) out.push(c);
     }
     if (!out.length) return undefined;
     return out

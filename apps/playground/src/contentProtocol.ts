@@ -23,10 +23,11 @@ export type ToHost =
   | { kind: "stopped" }
   /**
    * The preview's cookies in the browser, which live on this origin (the host frame owns the page whose document.cookie
-   * reads and writes them under `base`, `/__preview/@<id>`): `read` answers `{ cookie }` on the reply port; `write` takes
-   * `document.cookie` assignments and answers nothing.
+   * reads and writes them under `base`, `/__preview/@<id>`): `read` answers `{ cookie, usable }` on the reply port, the
+   * cookies for requests in `dir` (`/admin/`; a host without it reads `/`) and whether the browser keeps them at all (a
+   * host without it doesn't say); `write` takes `document.cookie` assignments and answers nothing.
    */
-  | { kind: "cookies"; op: "read"; base: string }
+  | { kind: "cookies"; op: "read"; base: string; dir?: string }
   | { kind: "cookies"; op: "write"; base: string; lines: string[] }
   /**
    * The package store (pkgStore.ts) lives on this origin: its OPFS, and the answer to the Worker's synchronous lazy

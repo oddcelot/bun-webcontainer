@@ -233,12 +233,15 @@ export async function fetchContent(path: string, init: RequestInit): Promise<Res
   return new Response([101, 204, 205, 304].includes(res.status) ? null : res.body, { status: res.status, statusText: res.statusText, headers: res.headers });
 }
 
-/** The preview's cookies in the browser (`a=1; b=2`), read from the content origin through the host frame. */
-export async function readContentCookies(base: string): Promise<string> {
+/**
+ * The preview's cookies in the browser for requests in `dir` (`a=1; b=2`), read from the content origin through the
+ * host frame, and whether the browser keeps them there at all (previewCookies.ts usable; true from an older host).
+ */
+export async function readContentCookies(base: string, dir = "/"): Promise<{ cookie: string; usable: boolean }> {
   const { port } = await connectHost();
-  const res = await ask<{ cookie?: string; error?: string }>(port, { kind: "cookies", op: "read", base }, [], 10_000);
+  const res = await ask<{ cookie?: string; usable?: boolean; error?: string }>(port, { kind: "cookies", op: "read", base, dir }, [], 10_000);
   if (res.error) throw new Error(res.error);
-  return res.cookie ?? "";
+  return { cookie: res.cookie ?? "", usable: res.usable ?? true };
 }
 
 /** `document.cookie` assignments for the preview's cookies, made on the content origin; in order with the reads after them. */
