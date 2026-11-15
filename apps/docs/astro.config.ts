@@ -21,6 +21,9 @@ const CODE_THEMES = ["rose-pine", "rose-pine-dawn"] as const;
 
 export default defineConfig({
   site: DOCS_URL,
+  // `:where(.astro-HASH)`, as Starlight forced before 0.43: the overrides in src/components and styles/theme.css are
+  // written against its zero specificity.
+  scopedStyleStrategy: "where",
   // remarkExamples first: it hands each ````md example's result to remarkRunbun itself (with fences: "all").
   markdown: { processor: unified({ remarkPlugins: [remarkExamples, remarkRunbun, remarkStatus] }) },
   integrations: [

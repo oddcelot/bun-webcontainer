@@ -1,4 +1,4 @@
 [toolchain]
-# tsrs's own pin (its rust-toolchain.toml at v0.24.0).
+# tsrs's own pin (its rust-toolchain.toml at v0.25.0).
 channel = "1.99.1"
 targets = ["wasm32-wasip1"]
