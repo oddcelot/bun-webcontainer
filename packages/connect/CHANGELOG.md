@@ -4,6 +4,14 @@ Notable changes per release of `@runbun/connect`, the local runner for runbun.de
 `connect-v<version>` and has a GitHub Release with its section. The runner talks to the playground over its own
 protocol (`src/protocol.ts`); the deployed runbun.dev and the runner from npm can differ in version.
 
+## 0.2.0 — 2026-11-15
+
+Projects can set environment variables for their runs: the `env` in a project's runbun.json now reaches programs run
+with Local Bun, as it already did in the browser. Nothing needs action to upgrade.
+
+- **Added** — **Programs get their project's environment variables.** The `env` of a project's runbun.json reaches the
+  program and `bun test`, apart from the runner's own variables and the dynamic loader's.
+
 ## 0.1.3 — 2026-11-13
 
 A fix for Linux systems without lsof. Nothing needs action to upgrade.
