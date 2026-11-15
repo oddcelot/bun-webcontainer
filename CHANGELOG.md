@@ -5,6 +5,109 @@ browser, its editor, and the docs at docs.runbun.dev. They release together at o
 `package.json`, tagged `v<version>`), organised by part. `@runbun/astro` keeps its own changelog in
 [packages/astro/CHANGELOG.md](./packages/astro/CHANGELOG.md).
 
+## 0.4.0 — 2026-11-15
+
+The playground gets a step debugger: breakpoints on line numbers, the call stack and variables where a program stops,
+and stepping. Programs can run `new Worker()` threads (Bun's and `node:worker_threads`), use `spawnSync` and
+`execSync`, and serve the preview from a child process, and stack traces and file errors print as Bun prints them. A
+project's runbun.json now sets pane sizes, read-only files, its layout and its gallery card, and an embed's tabs follow
+the page's theme. Nothing needs action.
+
+### Playground
+
+- **Added** — **A step debugger.** Turn on Debug, click a line number to set a breakpoint and run: the program pauses
+  there and shows its call stack and variables. Evaluate expressions where it stopped, and step over, into and out.
+- **Added** — **runbun.json sets the panes' sizes.** `sizes` gives the file tree, the editor and the preview their share
+  of space when a project opens, in the playground and in embeds.
+- **Added** — **runbun.json marks files read-only.** Files and folders listed in `readonly` open in the editor but can't
+  be edited, renamed or deleted there; the program can still write them.
+- **Added** — **Embeds switch between side and stack without reloading.** The layout follows `setLayout`, and a
+  project's runbun.json can choose one with `layout` when the host page doesn't.
+- **Added** — **runbun.json can describe a project's card.** `name`, `description`, `kind` and `tags` in a project's
+  runbun.json set how it shows in the gallery; an example.json beside it is still read.
+- **Added** — **Choose which server the preview shows.** When a program and its child processes serve several ports, the
+  port in the status bar (in an embed, the ⋯ menu's Preview port) lists them, and picking one reloads the preview from
+  that server.
+- **Added** — **Third-party licenses page.** runbun.dev/third-party-licenses.txt lists the open-source packages and
+  crates the playground runs, with their license texts; the landing page's footer links it.
+- **Added** — **CSS hints in Lit and styled-components templates.** Inside a css`…` template the editor shows a
+  property's docs on hover, completes properties and values, and warns about unknown properties and empty rules, as it
+  does in a stylesheet.
+- **Added** — **Tab rows follow the page's theme.** `vars` takes `--tab-track`, `--tab-radius`, `--tab-selected`,
+  `--tab-mark` and a few more, so an embed's editor and preview tabs can match a page's segmented controls, e.g. pill
+  tabs on a track without the accent line.
+- **Changed** — **Link previews show the kitchen.** A runbun.dev or docs link shared in a chat or on social media now
+  previews as the landing page's pixel-art kitchen instead of the old dark card.
+- **Changed** — **The terminal's scrollbar looks like the other panes'.** Its thumb is a rounded pill inset from the
+  edge instead of a square block.
+- **Changed** — **CSS and HTML in tagged templates are highlighted.** The editor colors CSS in css`…` and HTML in
+  html`…` (Lit, styled-components) instead of showing them as one plain string.
+- **Changed** — **The selected tab slides.** Switching tabs moves the selected tab's fill and mark to the new one in the
+  editor, the preview and the request panel. `vars` takes `--tab-slide` (duration, `0s` to turn it off) and
+  `--tab-slide-ease`.
+- **Fixed** — **The landing page's sound button shows what you hear.** It read "on" before your first click, while the
+  browser still kept the page silent, and the first press on it turned the sounds off.
+- **Fixed** — **Embeds forget the last project's panes.** Opening a library project without `panels` in its runbun.json
+  kept the panes the previous one showed or hid.
+- **Fixed** — **runbun.json's env applies with Local Bun.** Programs run with native Bun on your machine now see the
+  project's `env`, as they do in the browser.
+- **Fixed** — **No stray line at the terminal's right edge.** A thin bright line ran down the right side of the console.
+
+### Runtime
+
+- **Added** — **`new Worker()` runs your files in a worker.** `new Worker(new URL("./w.ts", import.meta.url))` or `new
+  Worker("./w.ts")` starts a project file with Bun's `argv`, `env` and `workerData` options, `postMessage` both ways
+  with transfers, the `open`, `message`, `error` and `close` events and `terminate()`; inside, `self.postMessage` and
+  `self.onmessage` talk to it. Before, it failed to load the file.
+- **Added** — **The preview reaches a server a child process starts.** A script like `bun run dev` that starts `bun
+  server.ts`, or a `Bun.spawn` of a server, now answers the preview instead of "No Bun.serve handler registered".
+- **Added** — **`new Worker()` from `node:worker_threads` runs threads.** `workerData`, `parentPort`, `postMessage` with
+  transfers, `terminate()`, `eval: true` and the `online`, `message`, `error` and `exit` events work as in Bun; before,
+  the constructor threw.
+- **Added** — **`spawnSync`, `execSync`, `execFileSync` and `Bun.spawnSync` work on runbun.dev.** They return the
+  child's output (of any size), exit code and signal, and the files it wrote are there when they return. On a page that
+  isn't cross-origin isolated, such as an embed whose host doesn't send COOP and COEP, they throw a `NotIsolatedError`
+  that says so instead.
+- **Changed** — **`Bun.spawn` and `Bun.spawnSync` refuse a string as stdin, as Bun does.** They threw nowhere else, so
+  code that worked in the playground failed in Bun; pass bytes or a `Response` instead.
+- **Fixed** — **Programs that start many processes keep running.** Past a dozen or so processes at once, a new one
+  failed to start with "Out of memory: Cannot allocate Wasm memory" and its parent hung; now processes hold far less,
+  and one that still can't start exits with code 1.
+- **Fixed** — **A server on a port that's already served fails with EADDRINUSE.** A child process (or the program
+  itself) starting a second server on a port the program already served got it without an error, and the preview kept
+  going to the first.
+- **Fixed** — **Proxies behave as in Bun.** `Bun.XML.stringify` treats a proxy of an array or a Date as an object, as
+  Bun does, and `util.types.isProxy` recognizes proxies instead of always returning false.
+- **Fixed** — **`Bun.markdown.ansi` lines up as in Bun.** Headings, wrapped lines and tables with keycaps, Devanagari,
+  Hebrew, Hangul or zero-width characters measured those characters differently and came out misaligned.
+- **Fixed** — **File errors print as in Bun.** An error from `fs.promises`, an fs callback or a `Bun.file` read prints
+  as `[Error: ENOENT: ...]` with its properties in Bun's order, without a stack trace, and names the path you passed.
+- **Fixed** — **`Bun.write` of a string or bytes is done when it returns.** Its promise prints `<resolved>` right after
+  the call, as in Bun, instead of `<pending>`.
+- **Fixed** — **Stack traces read as in Bun.** `error.stack` shows your files' paths, lines and columns and Bun's
+  function names instead of the playground's internal URLs and transpiled lines, and an uncaught error from inside
+  `JSON.parse` shows the source line that called it.
+- **Fixed** — **Cookies scoped to a folder work in the preview.** A cookie a page's script sets under `/admin/`, and a
+  script's changes to a cookie the server set for `/admin`, now reach the server; a closed tab's persistent cookies are
+  cleared by the next preview, and an embed on another site keeps the server's cookies working.
+- **Fixed** — **A `.cjs` or `.mjs` program runs as Bun runs it.** Run directly, a `.cjs` file without `require` or
+  `module.exports` runs as CommonJS and an `.mjs` file that calls `require` as an ES module, as in Bun, instead of the
+  other way round.
+
+### Editor
+
+- **Fixed** — **JSON files check against 2020-12 schemas.** A schema using `$dynamicRef` no longer puts a warning on
+  every file, and what it points to is validated.
+- **Fixed** — **SchemaStore `$schema` URLs load.** A JSON file naming `https://json.schemastore.org/…` got "Unable to
+  load schema: Failed to fetch" instead of completions and checks.
+
+### Docs
+
+- **Added** — **The embedding guide shows four looks for one embed.** Fire, wind, earth and water each set a theme
+  family, chrome colors for both schemes and a frame of their own, live and with the snippet to copy.
+- **Added** — **The embedding guide shows a themed embed before it starts.** The four looks appear as posters too, with
+  the properties that color the code and the Run button until a reader starts the embed.
+
 ## 0.3.0 — 2026-11-13
 
 Git arrives in the playground: a Git panel and `git` in the console, cloning with history from GitHub, GitLab, Codeberg
