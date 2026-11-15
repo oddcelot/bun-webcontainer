@@ -46,6 +46,22 @@ www.example.com and me@example.com and https://e.com/x [[wiki]] __under__ $m$ $$
 [r]: http://ref.example "Ref"
 `;
 
+const WIDTH_SAMPLES: [label: string, text: string][] = [
+  ["cjk", "中文标题 の日本語 한국어"],
+  ["zwj emoji", "👨‍👩‍👧‍👦 family 👩‍💻"],
+  ["flags", "🇩🇪🇯🇵 flags 🇺"],
+  ["skin tone", "👍🏽 thumbs 🧑🏿‍🚀"],
+  ["keycap", "1️⃣ #️⃣ keycap 1⃣"],
+  ["vs16 vs15", "☺️ ☺︎ ❤️ ❤︎ ©️ ®︎"],
+  ["combining", "é café à́̂ ñ"],
+  ["hebrew arabic", "שָׁלוֹם مرحبا ٱلسَّلَامُ"],
+  ["devanagari", "क्षत्रिय हिन्दी नमस्ते"],
+  ["hangul jamo", "한 각 ᄀ가"],
+  ["fullwidth ambiguous", "ＡＢＣ １２３ § ° ± ½ α"],
+  ["zero width", "a​b‍c⁠d­e﻿‮f"],
+  ["astral", "𝒜𝓁𝓅𝒽𝒶 𠀀𠀁 🀄 🪉 \u{1F600}\u{1F3FB}"],
+];
+
 type Case = [name: string, run: (md: Record<string, Function>, xml: Record<string, Function>) => unknown];
 const allCallbacks = (wrap: (name: string) => Function) =>
   Object.fromEntries(
@@ -73,6 +89,20 @@ const cases: Case[] = [
   ["ansi theme", (md) => md.ansi(MD, { hyperlinks: true, light: true, columns: 40 })],
   ["ansi columns", (md) => [5, 5.9, -5, NaN, 1e9, "5"].map((columns) => md.ansi("a b c d e f g h i j k l", { columns, colors: false }))],
   ["ansi theme 5", (md) => md.ansi("*a*", 5)],
+  // Text widths (Bun__visibleWidthExcludeANSI_utf8*): heading underlines, wrapping, table columns.
+  ...WIDTH_SAMPLES.map(([label, text]): Case => [`ansi width ${label}`, (md) => [
+    md.ansi(`# ${text}\n\n${text} ${text}\n\n## ${text} b\n`, { colors: false }),
+    md.ansi(`# ${text}\n\n${text} ${text}\n`),
+    md.ansi(`${text} ${text} ${text} ${text} ${text} ${text}\n\n| ${text} | b |\n|:-|-:|\n| x | ${text} ${text} |\n`, { columns: 20, colors: false }),
+    md.ansi(`${text}${text}${text}${text}${text}${text}${text}${text}`, { columns: 7, colors: false }),
+  ]]),
+  ["ansi width raw escapes", (md) => [
+    "\x1b[31mred\x1b[0m 中文 \x1b]8;;http://x\x07link\x1b]8;;\x07 \x1b[1;32m👨‍👩‍👧‍👦\x1b[m",
+    "# \x1b[31mtitle\x1b[0m 中文\n\n\x1b[1mbold\x1b[0m \x1b(B\x1b7 text \x1bP dcs \x1b\\ after \x1b[ unterminated",
+    "a\u009b31mb \u009d0;title\u0007 c \u0090x\u009c d é \u0080 e",
+    "word ".repeat(10) + "\x1b[4m" + "中".repeat(10) + "\x1b[24m",
+  ].map((s) => [md.ansi(s, { colors: false }), md.ansi(s, { columns: 12 }), md.ansi(`| ${s} |\n|-|\n| ${s} |`, { columns: 20 })])],
+  ["ansi width invalid utf8-ish", (md) => md.ansi("a\ud800b \udfff\u{10FFFF}\u{FFFD} \u{E0001}x ͸ \u{1F1E6}", { columns: 6, colors: false })],
   ["render none", (md) => md.render(MD)],
   ["render all", (md) => {
     const metas: unknown[] = [];

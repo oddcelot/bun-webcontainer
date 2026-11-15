@@ -1,0 +1,110 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Stefan Kopco <hey@oddcelot.dev>
+Date: Sun, 15 Nov 2026 19:42:49 +0100
+Subject: [PATCH] sema: leave the visible-width functions to the embedder on
+ wasm
+
+The wasm build now gets Bun__visibleWidthExcludeANSI_utf8* from
+crates/wasm-stubs (a port of stringWidth.cpp), so the stand-ins here are
+gated out on wasm. This also undoes the earlier escape_len patch: the file
+differs from upstream only by these cfg gates.
+---
+ src/sema/standalone/native.rs | 59 ++++-------------------------------
+ 1 file changed, 6 insertions(+), 53 deletions(-)
+
+diff --git a/src/sema/standalone/native.rs b/src/sema/standalone/native.rs
+index b1f8f173..a23273c8 100644
+--- a/src/sema/standalone/native.rs
++++ b/src/sema/standalone/native.rs
+@@ -883,7 +883,10 @@ unsafe extern "C" fn simdutf__base64_encode(
+ 
+ // ───────────────────────────── widths ─────────────────────────────
+ 
++// wasm-experiment: on wasm `crates/wasm-stubs/src/string_width.rs` defines the two `Bun__visibleWidthExcludeANSI_utf8*`
++// symbols (a port of `stringWidth.cpp`), so these stand-ins are left out.
+ /// An approximation. Bun's implementation is grapheme-aware.
++#[cfg(not(target_family = "wasm"))]
+ fn width_of(c: char) -> usize {
+     match c as u32 {
+         0x0300..=0x036F | 0x200B..=0x200F | 0xFE00..=0xFE0F => 0,
+@@ -900,57 +903,15 @@ fn width_of(c: char) -> usize {
+     }
+ }
+ 
+-/// The length of the ANSI escape sequence `bytes` starts with (CSI, OSC and the other ST-terminated strings, two-byte
+-/// escapes), 0 if it doesn't start with one.
+-// wasm-experiment: escapes are zero-width, as Bun's `stringWidth.cpp` has them (`Bun.markdown.ansi` measures
+-// styled text in the playground).
+-#[cfg(target_family = "wasm")]
+-fn escape_len(bytes: &[u8]) -> usize {
+-    if bytes.first() != Some(&0x1b) || bytes.len() < 2 {
+-        return 0;
+-    }
+-    match bytes[1] {
+-        b'[' => bytes[2..].iter().position(|c| (0x40..=0x7e).contains(c)).map_or(bytes.len(), |n| n + 3),
+-        b']' | b'P' | b'X' | b'^' | b'_' => {
+-            let mut i = 2;
+-            while i < bytes.len() {
+-                if bytes[i] == 0x07 && bytes[1] == b']' {
+-                    return i + 1;
+-                }
+-                if bytes[i] == 0x1b && bytes.get(i + 1) == Some(&b'\\') {
+-                    return i + 2;
+-                }
+-                i += 1;
+-            }
+-            bytes.len()
+-        }
+-        _ => 2,
+-    }
+-}
+ #[cfg(not(target_family = "wasm"))]
+-fn escape_len(_bytes: &[u8]) -> usize {
+-    0
+-}
+-
+ #[unsafe(no_mangle)]
+ unsafe extern "C" fn Bun__visibleWidthExcludeANSI_utf8(p: *const u8, len: usize) -> usize {
+     // SAFETY: the caller passes a slice.
+     let bytes = unsafe { core::slice::from_raw_parts(p, len) };
+-    let mut width = 0;
+-    let mut at = 0;
+-    while at < bytes.len() {
+-        let escape = escape_len(&bytes[at..]);
+-        if escape > 0 {
+-            at += escape;
+-            continue;
+-        }
+-        let (c, size) = bstr::decode_utf8(&bytes[at..]);
+-        width += width_of(c.unwrap_or('\u{FFFD}'));
+-        at += size.max(1);
+-    }
+-    width
++    bstr::ByteSlice::chars(bytes).map(width_of).sum()
+ }
+ 
++#[cfg(not(target_family = "wasm"))]
+ #[unsafe(no_mangle)]
+ unsafe extern "C" fn Bun__visibleWidthExcludeANSI_utf8IndexAtWidth(
+     p: *const u8,
+@@ -963,19 +924,11 @@ unsafe extern "C" fn Bun__visibleWidthExcludeANSI_utf8IndexAtWidth(
+         return len.min(max_width);
+     };
+     let mut width = 0;
+-    let mut at = 0;
+-    while at < text.len() {
+-        let escape = escape_len(&bytes[at..]);
+-        if escape > 0 {
+-            at += escape;
+-            continue;
+-        }
+-        let c = text[at..].chars().next().expect("not at the end");
++    for (at, c) in text.char_indices() {
+         width += width_of(c);
+         if width > max_width {
+             return at;
+         }
+-        at += c.len_utf8();
+     }
+     len
+ }

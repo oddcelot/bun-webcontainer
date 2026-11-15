@@ -1,6 +1,9 @@
 // Diff `xmlStringify` (apps/playground/src/worker/xml.ts) against native `Bun.XML.stringify`.
 // Run with bun: `bun diff.ts`. Exits non-zero on any mismatch.
-import { xmlStringify } from "../../src/worker/xml.ts";
+import { setProxyCheck, xmlStringify } from "../../src/worker/xml.ts";
+import { isProxy } from "../../src/worker/proxies.ts";
+
+setProxyCheck(isProxy);
 
 type Args = [value: unknown, replacer?: unknown, space?: unknown];
 
@@ -192,6 +195,15 @@ export const corpus: [string, () => Args][] = [
   ["node name only", () => [{ name: "x" }]],
   ["node cycle", () => [cyclicNode()]],
   ["node children getter", () => [{ name: "r", get children() { return ["g"]; } }]],
+  // A proxy is an object to Bun, whatever its target (src/worker/proxies.ts).
+  ["proxy array top", () => [new Proxy([1], {})]],
+  ["proxy array items", () => [{ r: { i: new Proxy([1, 2], {}) } }]],
+  ["proxy date", () => [{ r: { d: new Proxy(new Date(0), {}) } }]],
+  ["proxy object", () => [{ r: new Proxy({ a: 1 }, {}) }]],
+  ["proxy node", () => [new Proxy({ name: "r", children: ["x"] }, {})]],
+  ["proxy node children", () => [{ name: "r", children: new Proxy(["x"], {}) }]],
+  ["proxy node attributes", () => [{ name: "r", attributes: new Proxy({ a: "1" }, {}) }]],
+  ["revocable proxy array", () => [{ r: { i: Proxy.revocable([1], {}).proxy } }]],
   ["node with holes", () => [{ name: "r", children: [, "a", , { name: "b" , children: []}] }]],
 
   // round trips

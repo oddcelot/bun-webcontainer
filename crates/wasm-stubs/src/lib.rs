@@ -9,6 +9,11 @@
 #[path = "../../../bun/src/sema/standalone/native.rs"]
 mod sema_native;
 
+// `Bun__visibleWidthExcludeANSI_utf8*`, ported from stringWidth.cpp; sema_native's stand-ins are gated out on wasm.
+#[cfg(target_family = "wasm")]
+#[allow(non_snake_case)]
+mod string_width;
+
 #[allow(non_snake_case)]
 mod extra {
     use core::ptr::NonNull;

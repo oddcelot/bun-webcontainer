@@ -1,5 +1,6 @@
 // node:util/types. Brand checks (a builtin method that throws on anything else) where JS has one, so subclasses
 // and a spoofed Symbol.toStringTag don't fool them; otherwise the internal [[Class]] via Object.prototype.toString.
+import { isProxy } from "../proxies";
 
 const tag = (v: unknown) => Object.prototype.toString.call(v).slice(8, -1);
 const brand = (fn: Function) => (v: unknown) => {
@@ -47,7 +48,7 @@ export const types = {
   isAsyncFunction: isFunctionKind("AsyncFunction", "AsyncGeneratorFunction"),
   isGeneratorFunction: isFunctionKind("GeneratorFunction", "AsyncGeneratorFunction"),
   isGeneratorObject: (v: unknown) => tag(v) === "Generator",
-  isProxy: () => false,
+  isProxy,
   isBoxedPrimitive: (v: unknown) => isNumberObject(v) || isStringObject(v) || isBooleanObject(v) || isBigIntObject(v) || isSymbolObject(v),
   isNumberObject,
   isStringObject,
