@@ -3,6 +3,7 @@
 // WebSockets) to the editor over a MessagePort, which answers them with the handlers it has always had. Nothing the
 // editor holds (OPFS, IndexedDB, cookies) is on this origin. Protocol: contentProtocol.ts.
 import { BASE } from "../base";
+import { PreviewCookies } from "../previewCookies";
 import { EDITOR_ORIGINS } from "../contentOrigin";
 import { answerStore, serveLazyRead, type LazyRead } from "../pkgStore";
 import { envelope, isMessage, type HandshakeMessage, type ToEditor, type ToHost } from "../contentProtocol";
@@ -36,22 +37,10 @@ async function whoami(): Promise<string> {
 let myId = "";
 /** The editor's cookie requests run one at a time, in the order they came. */
 let cookieQueue: Promise<unknown> = Promise.resolve();
-/** The blank page under the preview's base whose document.cookie is the browser's preview cookies (sw.ts serves it). */
-let cookiePage: Promise<Document> | undefined;
+/** The browser's preview cookies, through blank pages under the preview's base (previewCookies.ts). */
+let cookiePages: PreviewCookies | undefined;
 
 const cookieBase = () => `${BASE}__preview/@${myId}`;
-function cookieDocument(): Promise<Document> {
-  return (cookiePage ??= new Promise((resolve, reject) => {
-    const frame = document.createElement("iframe");
-    frame.hidden = true;
-    frame.setAttribute("aria-hidden", "true");
-    // Same origin as this page: its document is readable here, and it is the one at the cookies' path.
-    frame.onload = () => (frame.contentDocument ? resolve(frame.contentDocument) : reject(new Error("the cookie page did not load")));
-    frame.onerror = () => reject(new Error("the cookie page did not load"));
-    frame.src = `${cookieBase()}/__runbun_cookies__`;
-    document.body.append(frame);
-  }));
-}
 
 /**
  * Tells the preview pages on this origin that their server is gone, as the editor's channel does for its own origin
@@ -125,9 +114,9 @@ function connect(port: MessagePort) {
         try {
           // Only the preview of this frame's own server: the cookies' path is its base.
           if (m.base !== cookieBase()) throw new Error("not this host's preview base");
-          const doc = await cookieDocument();
-          if (m.op === "write") for (const line of m.lines) doc.cookie = line;
-          else out?.postMessage({ cookie: doc.cookie });
+          cookiePages ??= new PreviewCookies(cookieBase());
+          if (m.op === "write") await cookiePages.write(m.lines);
+          else out?.postMessage({ cookie: await cookiePages.read(m.dir), usable: await cookiePages.usable() });
         } catch (err) {
           out?.postMessage({ error: String(err) });
         }

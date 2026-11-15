@@ -1,4 +1,5 @@
-import { CookieJar, parseSetCookie, type Cookie } from "./cookieJar";
+import { CookieJar, parseSetCookie, pathMatches, type Cookie } from "./cookieJar";
+import { PreviewCookies, dirOf, pagePath } from "./previewCookies";
 import { PANEL_COOKIE, joinCookies } from "./request";
 import { resetSyncEsm, serveModule, vfsRoot } from "./moduleServer";
 import type { VFS } from "@runbun/vfs";
@@ -116,43 +117,51 @@ export class Runner {
   protected pending = new Map<MessagePort, { started: boolean; owner?: Worker }>();
   /**
    * The preview host's cookies the browser doesn't hold for us: the HttpOnly ones (the preview's scripts mustn't see
-   * them, and scripts can't create them) and those with a narrower Path than the preview's root (the cookie page can't
-   * read those back). Kept across Runs, as a browser keeps them across server restarts.
+   * them, and scripts can't create them), and a copy of those a response set with a narrower Path than the preview's
+   * root, for requests whose directory's cookie page doesn't see them (`/admin` from `/`). Kept across Runs, as a
+   * browser keeps them across server restarts.
    */
   readonly cookies = new CookieJar();
   /** The path the preview's cookies live under in the browser (`/__preview/@<id>`), from sw.ts with each request. */
   private base: string | undefined;
-  /** A hidden frame at `<base>/__runbun_cookies__`, a blank page whose document.cookie is the browser's preview cookies. */
-  private cookiePage: Promise<Document | undefined> | undefined;
+  /** The browser's preview cookies, through blank pages under the base (previewCookies.ts). */
+  private pages: PreviewCookies | undefined;
+  /** Whether the browser keeps the preview's cookies (not where its origin is a third party); as last read. */
+  private browserKeeps = true;
 
-  /** The browser's cookies for the preview's root (`a=1; b=2`), read through the cookie page. */
-  private async browserCookies(): Promise<string> {
+  /** The browser's cookies for requests in `dir` (`a=1; b=2`): what the page in that directory sees. */
+  private async browserCookies(dir = "/"): Promise<string> {
     const base = this.base;
     if (!base) return "";
-    // Project cookies live on the content origin: its host frame owns the cookie page.
-    if (CONTENT_ORIGIN) return readContentCookies(base).catch(() => "");
-    this.cookiePage ??= new Promise((resolve) => {
-      const frame = document.createElement("iframe");
-      frame.hidden = true;
-      frame.setAttribute("aria-hidden", "true");
-      frame.onload = () => resolve(frame.contentDocument ?? undefined);
-      frame.onerror = () => resolve(undefined);
-      frame.src = base + COOKIE_PAGE;
-      document.body.append(frame);
-    });
-    return (await this.cookiePage)?.cookie ?? "";
+    // Project cookies live on the content origin: its host frame owns the cookie pages.
+    if (CONTENT_ORIGIN) {
+      const { cookie, usable } = await readContentCookies(base, dir).catch(() => ({ cookie: "", usable: this.browserKeeps }));
+      this.browserKeeps = usable;
+      return cookie;
+    }
+    if (this.pages?.base !== base) this.pages = new PreviewCookies(base);
+    this.browserKeeps = await this.pages.usable();
+    return this.pages.read(dir);
   }
 
   /**
-   * Request headers with the preview's cookies (the browser's, which the preview's scripts can change, and the jar's)
-   * in place of any the request brought, joined with the one set in the request panel (request.ts PANEL_COOKIE), which
-   * wins for a cookie in all.
+   * Request headers with the preview's cookies in place of any the request brought: the browser's for its directory,
+   * which the preview's scripts may have set or changed, and the jar's HttpOnly ones and those that page can't see;
+   * joined with the one set in the request panel (request.ts PANEL_COOKIE), which wins for a cookie in all. A jar copy
+   * of a cookie the page sees but the browser no longer has, a script deleted.
    */
   private async withCookies(path: string, headers: [string, string][], base: string | undefined) {
     if (base) this.base = base;
     const panel = headers.find(([k]) => k.toLowerCase() === PANEL_COOKIE)?.[1];
     const out = headers.filter(([k]) => k.toLowerCase() !== "cookie" && k.toLowerCase() !== PANEL_COOKIE);
-    const cookie = joinCookies(joinCookies(await this.browserCookies(), this.cookies.header(path)), panel);
+    const dir = dirOf(path);
+    const browser = await this.browserCookies(dir);
+    const names = new Set(browser.split("; ").map((pair) => pair.split("=", 1)[0]));
+    // Where the browser keeps none, the jar has them all.
+    const seen = (c: Readonly<Cookie>) => this.browserKeeps && !c.httpOnly && pathMatches(pagePath(dir), c.path);
+    if (this.base) for (const c of this.cookies.list()) if (seen(c) && !names.has(c.name)) this.cookies.drop(c.name, c.path);
+    const jar = this.cookies.header(path, (c) => !this.base || !seen(c));
+    const cookie = joinCookies(joinCookies(jar, browser), panel);
     if (cookie) out.push(["cookie", cookie]);
     return out;
   }
@@ -175,7 +184,7 @@ export class Runner {
       const assign = browserCookie(base, c.httpOnly ? { ...c, expires: 0 } : c);
       if (CONTENT_ORIGIN) void writeContentCookies(base, [assign]).catch(() => {});
       else document.cookie = assign;
-      if (c.httpOnly || c.path !== "/") this.cookies.put(c);
+      if (c.httpOnly || c.path !== "/" || !this.browserKeeps) this.cookies.put(c);
       else this.cookies.drop(c.name, c.path);
     }
   }
@@ -666,7 +675,6 @@ export class Runner {
 }
 
 /** The blank page under a preview's base whose document.cookie is the browser's preview cookies (sw.ts serves it). */
-const COOKIE_PAGE = "/__runbun_cookies__";
 
 /**
  * A document.cookie assignment that sets (or, expired, deletes) `c` under the preview's base path. The server's `/`
