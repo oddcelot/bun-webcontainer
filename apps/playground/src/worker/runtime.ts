@@ -249,6 +249,23 @@ class ServerWebSocket {
   }
 }
 
+/**
+ * The ports the other processes of this run serve (the program and its child processes, as the page last told this
+ * one: runner.ts `shareTaken`), so a `Bun.serve` on one of them fails as on a real machine.
+ */
+let taken = new Set<number>();
+
+/**
+ * `Bun.serve`: a server on a port this program or another process of the run already serves isn't started; it throws
+ * Bun's EADDRINUSE error, as native Bun does. Port 0 always gets a port of its own.
+ */
+function listen(opts: ServeOptions): Instance {
+  const port = Number(opts.port ?? env.PORT ?? env.BUN_PORT ?? 3000);
+  if (port !== 0 && (taken.has(port) || servers.some((s) => s.port === port)))
+    throw Object.assign(new Error(`Failed to start server. Is port ${port} in use?`), { code: "EADDRINUSE", syscall: "listen", errno: 0 });
+  return createInstance(opts);
+}
+
 function createInstance(opts: ServeOptions): Instance {
   const requested = Number(opts.port ?? env.PORT ?? env.BUN_PORT ?? 3000);
   const port = requested === 0 ? nextPort++ : requested;
@@ -1167,7 +1184,7 @@ async function main() {
     write: trackedFn(function write(dest: string | URL | BunFile, data: unknown) {
       return writeFile(dest, data);
     }),
-    serve: (opts: ServeOptions) => createInstance(opts).server,
+    serve: (opts: ServeOptions) => listen(opts).server,
     build,
     CryptoHasher,
     hash,
@@ -1284,6 +1301,7 @@ self.addEventListener("message", (e: MessageEvent) => {
   if (m.type === "proc") onProcMessage(m);
   else if (m.type === "stdin") stdinStream.push(m.data === null ? null : Buffer.from(m.data));
   else if (m.type === "signal") signal(m.signal);
+  else if (m.type === "taken") taken = new Set(m.ports);
 });
 
 /** A thread's `eval: true` code: a CommonJS script, as Node runs it, with `require` from the working directory. */
@@ -1366,7 +1384,7 @@ self.addEventListener("message", async (e: MessageEvent) => {
     // port is already served (Elysia's `export default app.listen(3000)`).
     const def = mod.default;
     const port = Number(def?.port ?? env.PORT ?? env.BUN_PORT ?? 3000);
-    if (typeof def?.fetch === "function" && !servers.some((s) => s.server === def || s.port === port)) createInstance(def);
+    if (typeof def?.fetch === "function" && !servers.some((s) => s.server === def || s.port === port)) listen(def);
   } catch (err) {
     // Ends the program (the "exit" message ends the start too), unless an uncaughtException listener takes it; Bun
     // passes it as the entry's rejection.

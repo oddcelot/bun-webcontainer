@@ -3,7 +3,8 @@
 // src/runner.ts), end to end: a project runs in the embed in headless Chrome and each program prints what its children
 // did. Bun.spawn with pipes, stdin, exit codes and kill; child_process spawn/exec/execFile; Bun.$ running `bun` in a
 // pipeline; package.json scripts (spawned, and the console's `bun run` of a shell line); a child's file writes;
-// grandchildren; worker_threads threads; a server a child starts, reached through the preview; the synchronous calls
+// grandchildren; worker_threads threads; a server a child starts, reached through the preview; EADDRINUSE for a port
+// another process (or the same one) serves; the synchronous calls
 // (spawnSync, execSync, execFileSync, Bun.spawnSync: output of several MiB, stdin, timeouts, file changes both ways, a
 // synchronous grandchild). The expected lines are what native Bun prints for the same project (checked by running it
 // with `bun` in a temp folder, unless --no-native).
@@ -56,6 +57,7 @@ const files: Record<string, string> = {
   "nestedsync.ts": `console.log("ns:", Bun.spawnSync(["bun", "child.ts", "deep"]).stdout.toString().trim());`,
   "package.json": JSON.stringify({ name: "procs", scripts: { greet: "echo from-script && bun child.ts s", build: "echo built && bun child.ts b > built.txt && cat built.txt", serve: "echo serving && bun server.ts" } }),
   "server.ts": `Bun.serve({ port: 3001, fetch: (req) => new Response("child server " + new URL(req.url).pathname) });\nconsole.log("listening");`,
+  "inuse.ts": `try {\n  Bun.serve({ port: 3002, fetch: () => new Response("child") });\n  console.log("served");\n  process.exit(0);\n} catch (e) {\n  const { code, syscall, errno, message } = e as Error & { code: string; syscall: string; errno: number };\n  console.log(code, syscall, errno, message);\n}`,
   "child.ts": `console.log("child", process.argv.slice(2).join(","), process.env.X ?? "-");\nprocess.exitCode = Number(process.env.CODE ?? 0);`,
   "upper.ts": `let s = "";\nfor await (const c of process.stdin) s += c;\nprocess.stdout.write(s.toUpperCase());`,
   "forever.ts": `console.log("up");\nsetInterval(() => {}, 1000);`,
@@ -204,6 +206,19 @@ log("$ code:", (await $\`bun child.ts\`.env({ ...process.env, CODE: "4" }).nothr
   const w5 = new Worker('const t = require("node:worker_threads"); t.parentPort.postMessage(t.workerData + 1)', { eval: true, workerData: 41 });
   log("wt eval:", await next("message", w5), await next("exit", w5));
 }
+// a port this program serves: taken for a child process, and for this program itself
+{
+  const server = Bun.serve({ port: 3002, fetch: () => new Response("parent") });
+  const p = Bun.spawn(["bun", "inuse.ts"]);
+  log("in use:", (await new Response(p.stdout).text()).trim(), await p.exited);
+  try {
+    Bun.serve({ port: 3002, fetch: () => new Response("again") });
+    log("in use here: served");
+  } catch (e) {
+    log("in use here:", (e as { code?: string }).code);
+  }
+  server.stop(true);
+}
 runSync();
 log("__end__");
 })();
@@ -267,6 +282,8 @@ const EXPECTED = [
   "done.ts ran",
   "wt url: done 0",
   "wt eval: 42 0",
+  "in use: EADDRINUSE listen 0 Failed to start server. Is port 3002 in use? 0",
+  "in use here: EADDRINUSE",
   ...EXPECTED_SYNC,
   "__end__",
 ];
