@@ -26,7 +26,7 @@ import { makeMarkdown } from "./markdown";
 import { makeXML, setProxyCheck } from "./xml";
 import { isProxy } from "./proxies";
 import { markdownWasm, xmlWasm } from "../transpiler";
-import { codeError, fsError } from "./node/errors";
+import { asyncError, codeError, fsError } from "./node/errors";
 import { hooks, type NodeSocket } from "./node/serve";
 import { flushDatabases } from "./node/sqlite";
 import nodePath from "./node/path";
@@ -805,6 +805,8 @@ class BunFile extends Blob {
   }
   readonly #start: number;
   readonly #end: number | undefined;
+  /** The path as given, which Bun's errors name. */
+  readonly #given: string;
   constructor(path: string, type?: string, start = 0, end?: number) {
     const name = norm(nodePath.resolve(path));
     const data = vfs.readBytes(name);
@@ -812,6 +814,7 @@ class BunFile extends Blob {
     this.name = name;
     this.#start = start;
     this.#end = end;
+    this.#given = path;
   }
   get size() {
     const d = vfs.readBytes(this.name);
@@ -826,7 +829,7 @@ class BunFile extends Blob {
   }
   #read() {
     const d = vfs.readBytes(this.name);
-    if (d === undefined) throw fsError("ENOENT", "open", "/" + this.name);
+    if (d === undefined) throw asyncError(fsError("ENOENT", "open", this.#given));
     return d.slice(this.#start, this.#end);
   }
   bytes() {

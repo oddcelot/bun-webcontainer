@@ -15,12 +15,22 @@ export type FsError = Error & { errno: number; code: string; syscall: string; pa
 export function fsError(code: string, syscall: string, path?: string, dest?: string): FsError {
   const [errno, desc] = ERRNO[code];
   const err = new Error(`${code}: ${desc}, ${syscall}${path !== undefined ? ` '${path}'` : ""}${dest !== undefined ? ` -> '${dest}'` : ""}`) as FsError;
-  err.errno = errno;
+  // Bun's order.
   err.code = code;
-  err.syscall = syscall;
   if (path !== undefined) err.path = path;
   if (dest !== undefined) err.dest = dest;
+  err.syscall = syscall;
+  err.errno = errno;
   return err;
+}
+
+/**
+ * A system error (fsError's) as an asynchronous API reports it: Bun makes those off the JavaScript stack, so they have
+ * no `stack` (`util.inspect` shows `[Error: ENOENT: …]`). Other errors are left alone.
+ */
+export function asyncError<T>(e: T): T {
+  if (e instanceof Error && "syscall" in e && "errno" in e) delete (e as { stack?: string }).stack;
+  return e;
 }
 
 /** An error with a Node `code`, e.g. ERR_INVALID_ARG_TYPE. */

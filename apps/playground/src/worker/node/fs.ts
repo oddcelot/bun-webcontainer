@@ -1,7 +1,7 @@
 import { Buffer } from "buffer";
 import EventEmitter from "events";
 import { dirname, isLazy, norm, VFS, type FileContents, type FileData } from "@runbun/vfs";
-import { codeError, fsError } from "./errors";
+import { asyncError, codeError, fsError } from "./errors";
 import path from "./path";
 import { Readable, Writable } from "./stream";
 import { fileURLToPath } from "./url";
@@ -770,7 +770,7 @@ const callbackOf =
     } catch (e) {
       error = e;
     }
-    queueMicrotask(() => (error ? cb(error) : report(cb, result, args)));
+    queueMicrotask(() => (error ? cb(asyncError(error)) : report(cb, result, args)));
   };
 
 const callbacks: Record<string, Any> = {};
@@ -804,7 +804,7 @@ Object.assign(fs, callbacks, {
 const promises: Record<string, any> = { constants };
 for (const n of "readFile writeFile appendFile stat lstat readdir mkdir rm rmdir unlink rename copyFile cp access realpath readlink symlink link chmod chown lchown utimes lutimes truncate mkdtemp".split(" ")) {
   const fn = sync[n + "Sync"];
-  promises[n] = (...args: unknown[]) => tracked((async () => fn(...args))());
+  promises[n] = (...args: unknown[]) => tracked((async () => fn(...args))().catch((e) => Promise.reject(asyncError(e))));
 }
 promises.open = (p: unknown, flags?: string | number, mode?: number) => tracked((async () => new FileHandle(openSync(p, flags, mode)))());
 promises.watch = (p: unknown, opts?: { signal?: AbortSignal }) => {
