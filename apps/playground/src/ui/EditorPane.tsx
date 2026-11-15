@@ -1,5 +1,6 @@
 import { isLazy } from "@runbun/vfs";
 import { Show, createEffect, onSettled, useContext } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { CHECKED, mountDiagnostics } from "../diagnostics";
 import { JSON_FILE, connectJsonFiles, jsonComplete, jsonHover } from "../jsonLanguage";
 import { isLspItem, lspCompletionDetails } from "../lspItems";
@@ -26,7 +27,7 @@ const CONFIG = /(?:^|\/)[jt]sconfig(?:\.[^/]*)?\.json$/;
  * typing stops with auto-save on, else on the save shortcut (Ctrl/Cmd+S) (and before Run, Install or Share, through `ws.saveAll`).
  * Format (the format shortcut, Shift+Alt+F) runs `bun fmt` on the open file as one undoable edit.
  */
-export function EditorPane() {
+export function EditorPane(props: { children?: JSX.Element }) {
   const app = useContext(AppContext);
   const { vfs, workspace: ws, log } = app;
   // An embed loads the type checker (10 MB) and the formatter (7 MB) only once they're turned on.
@@ -320,6 +321,8 @@ export function EditorPane() {
               <i class={ws.autosave() ? "i-lucide-save" : "i-lucide-save-off"} aria-hidden="true" /> Auto-save
             </Tip>
           </Show>
+          {/* An embed's ⋯ menu, when it has no bar (EmbedApp.tsx). */}
+          {props.children}
         </div>
       </Show>
       {/* "No file open" only once the project has loaded, not while its first file is on the way. */}

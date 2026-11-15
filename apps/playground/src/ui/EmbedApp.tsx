@@ -113,6 +113,9 @@ export function EmbedApp() {
       removeEventListener("pointerdown", onDown, { capture: true });
     };
   });
+  // Nothing in the bar but the ⋯ menu (EmbedBar's conditions): no bar, the menu at the end of the editor's tab bar.
+  const barless = () =>
+    !drawerOk() && !e.library.length && editor() && has("tabs") && e.options.status !== "bar" && !has("run") && !e.options.expand;
   const showTree = sticky(() => tree() || drawer());
   const showPreview = sticky(() => has("preview"));
   const showConsole = sticky(() => has("console"));
@@ -165,10 +168,13 @@ export function EmbedApp() {
       data-fit={e.stacked() && e.fit() ? "" : undefined}
       data-preview={has("preview") ? "" : undefined}
       data-console={has("console") ? "" : undefined}
+      data-barless={barless() ? "" : undefined}
     >
-      <EmbedBar
-        drawer={{ ok: drawerOk, open: drawer, toggle: toggleDrawer, onKey: onDrawerKey, ref: (el: HTMLElement) => (filesButton = el) }}
-      />
+      <Show when={!barless()}>
+        <EmbedBar
+          drawer={{ ok: drawerOk, open: drawer, toggle: toggleDrawer, onKey: onDrawerKey, ref: (el: HTMLElement) => (filesButton = el) }}
+        />
+      </Show>
       <Show when={!app.session.canRun}>
         <Unsupported checks={app.support} />
       </Show>
@@ -179,7 +185,11 @@ export function EmbedApp() {
           </nav>
         </Show>
         <section id="editor-pane" class="pane" hidden={!editor()}>
-          <EditorPane />
+          <EditorPane>
+            <Show when={barless()}>
+              <EmbedMenu />
+            </Show>
+          </EditorPane>
         </section>
         <Show when={showPreview()}>
           <section id="preview-panel" class="pane" hidden={!has("preview")}>
@@ -240,15 +250,17 @@ function EmbedBar(props: { drawer: Drawer }) {
           <i class="i-lucide-code" aria-hidden="true" /> Edit
         </button>
       </Show>
-      <button
-        type="button"
-        class="run"
-        disabled={!s.canRun || !!s.busy.run}
-        title={s.canRun ? undefined : CANT_RUN}
-        onClick={() => s.ready() && (running() ? e.stop() : e.run())}
-      >
-        <i class={running() ? "i-lucide-square" : "i-lucide-play"} aria-hidden="true" /> {running() ? "Stop" : "Run"}
-      </button>
+      <Show when={e.has("run")}>
+        <button
+          type="button"
+          class="run"
+          disabled={!s.canRun || !!s.busy.run}
+          title={s.canRun ? undefined : CANT_RUN}
+          onClick={() => s.ready() && (running() ? e.stop() : e.run())}
+        >
+          <i class={running() ? "i-lucide-square" : "i-lucide-play"} aria-hidden="true" /> {running() ? "Stop" : "Run"}
+        </button>
+      </Show>
       <Show when={e.options.expand}>
         <Tip
           type="button"

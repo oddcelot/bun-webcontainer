@@ -20,12 +20,15 @@
   }
 }
 #embed-bar #status { height: 22px; min-width: 0; font-size: 11px; }
-#embed-bar button { display: inline-flex; align-items: center; gap: 5px; height: var(--control-height); padding: 0 10px; border: 1px solid var(--control-border); border-radius: 6px; background: var(--control); color: inherit; font: inherit; cursor: pointer; }
-#embed-bar button:hover:not(:disabled) { background: var(--control-hover); }
+#embed-bar button, #embed .tabs-bar > .more { display: inline-flex; align-items: center; gap: 5px; height: var(--control-height); padding: 0 10px; border: 1px solid var(--control-border); border-radius: 6px; background: var(--control); color: inherit; font: inherit; cursor: pointer; }
+#embed-bar button:hover:not(:disabled), #embed .tabs-bar > .more:hover { background: var(--control-hover); }
 #embed-bar button:disabled { opacity: 0.5; cursor: default; }
 #embed-bar .run { border-color: color-mix(in srgb, var(--accent) 60%, var(--panel)); background: color-mix(in srgb, var(--accent) 18%, var(--panel)); }
 #embed-bar .run:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 30%, var(--panel)); }
-#embed-bar .more, #embed-bar .expand, #embed-bar .files { padding: 0 7px; }
+#embed-bar .more, #embed-bar .expand, #embed-bar .files, #embed .tabs-bar > .more { padding: 0 7px; }
+/* No bar (ui/EmbedApp.tsx barless): the menu ends the editor's tab bar, and the panes keep the bar's gap above them. */
+#embed .tabs-bar > .more { flex: none; margin: 0 4px 0 auto; }
+#embed[data-barless] #embed-main { padding-top: 4px; }
 .embed-menu { min-width: 13rem; }
 .embed-menu .check { display: grid; place-items: center; width: 14px; color: var(--accent); }
 .embed-menu .cost { color: var(--muted); font-size: 11px; }

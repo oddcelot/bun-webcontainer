@@ -13,7 +13,7 @@ export type Mode = (typeof MODES)[number];
 export const LAYOUTS = ["side", "stack"] as const;
 export type Layout = (typeof LAYOUTS)[number];
 
-export const FEATURES = ["files", "tabs", "console", "preview", "types", "format", "install", "terminal", "open", "watch", "autosave", "close", "git"] as const;
+export const FEATURES = ["files", "tabs", "console", "preview", "types", "format", "install", "terminal", "open", "watch", "autosave", "close", "git", "run"] as const;
 export type Feature = (typeof FEATURES)[number];
 
 export type Status = { state: "idle" | "busy" | "running" | "error"; text: string };

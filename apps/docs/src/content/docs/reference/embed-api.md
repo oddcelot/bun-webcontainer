@@ -94,9 +94,12 @@ Each project loads in place of the last: the embed stays, and the project instal
 | `watch` | Restart the running program when an edit is saved, like `bun --watch`; also after a crash, and not while an open file has a syntax error | all | |
 | `close` | Close buttons on the editor's tabs (also middle-click, Delete and Ctrl/Cmd+W). Off, a reader can't close the example's tabs | `full` | |
 | `git` | A Git panel in place of the file tree (with `files`), and `git` in the terminal; see [Git](/guides/features/#git) | `full` | 1 MB on first use |
+| `run` | The bar's Run/Stop button. Off, Ctrl/Cmd+Enter, `autorun`, `watch` and `run()` still run the program | all | |
 | `autosave` | An Auto-save switch over the editor: off, edits save on Ctrl/Cmd+S and before Run (switching it back on, or turning the feature off, saves what's waiting). Without it, edits save as you type | none | |
 
 Readers can switch features on or off from the **⋯** menu, except those you locked with `-name`.
+
+When the bar would hold only the **⋯** menu (`-run` with `tabs` on, `status="toast"`, no `library`, `expand` or Files button), there's no bar: the menu sits at the right end of the editor's tab bar.
 
 ## Methods
 
