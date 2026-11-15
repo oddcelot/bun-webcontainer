@@ -15,6 +15,9 @@ const ALGORITHMS = ["argon2d", "argon2i", "argon2id", "bcrypt"];
 /** argon2id's interactive preset (64 MiB, 2 passes) and bcrypt's 10 rounds, as Bun's defaults. */
 const ARGON2_DEFAULTS = { memoryCost: 65536, timeCost: 2 };
 const BCRYPT_COST = 10;
+// The browser's Worker, before the runtime puts Bun's in its place (webWorker.ts); still `new Worker(new URL(...))`
+// below, so Vite bundles passwordWorker.ts.
+const Worker = globalThis.Worker;
 
 const invalid = (message: string) => codeError(TypeError, "ERR_INVALID_ARG_TYPE", message);
 const argumentType = (fn: string, field: string, type: string) => invalid(`Expected ${field} to be a ${type} for '${fn}'.`);

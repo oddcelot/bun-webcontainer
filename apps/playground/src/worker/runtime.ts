@@ -46,6 +46,7 @@ import { templateSource } from "../shell/parse";
 import { childByPid, launchOf, onProcMessage, setKernel, setSyncVfs, signalName, SIGNALS, spawnChild, type Child } from "./processes";
 import { spawn as bunSpawn, spawnSync as bunSpawnSync } from "./spawn";
 import { setThread, threadEnd, threadError, type ThreadInfo } from "./node/worker_threads";
+import { WebWorker } from "./webWorker";
 import { isShellCommand } from "../scripts";
 
 type Handler = (req: Request, server: unknown) => Response | Promise<Response>;
@@ -62,7 +63,11 @@ type ServeOptions = { port?: number | string; hostname?: string; fetch?: Handler
 type WsPayload = string | ArrayBuffer | ArrayBufferView;
 
 const g = globalThis as unknown as Record<string, unknown>;
-const post = (msg: unknown, transfer: Transferable[] = []) => (self as unknown as Worker).postMessage(msg, transfer);
+// The worker's channel to the page, saved: in a thread, the program's own `self.postMessage` and `close` are its
+// Worker's (node/worker_threads.ts ThreadScope).
+const selfPost = (self as unknown as Worker).postMessage.bind(self);
+const selfClose = self.close.bind(self);
+const post = (msg: unknown, transfer: Transferable[] = []) => selfPost(msg, transfer);
 
 // The worker's copy of the page VFS (sent with "start"); node:fs and Bun.file read it synchronously, and
 // writes are mirrored to the page.
@@ -114,6 +119,8 @@ g.__importMetaResolve = importMetaResolve;
 /** A served data file's value (see moduleServer.ts dataModule). */
 g.__parseDataFile = parseDataFile;
 g.process = process;
+// Bun's Worker, on the process kernel (the browser's own can't load the project's files).
+g.Worker = WebWorker;
 g.global ??= globalThis;
 g.Buffer ??= (builtins.buffer as { Buffer: unknown }).Buffer;
 installTimers();
@@ -678,7 +685,7 @@ function halt(code: number, signal?: string): never {
   }
   if (typeof SharedArrayBuffer === "function") for (;;) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);
   // Without shared memory (a page that isn't cross-origin isolated): no further task runs, and the throw ends this one.
-  self.close();
+  selfClose();
   throw EXIT;
 }
 /** What `halt` throws where it can't block; the error handlers ignore it. */
