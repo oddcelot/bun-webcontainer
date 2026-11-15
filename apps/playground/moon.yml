@@ -114,6 +114,14 @@ tasks:
     toolchains: ['bun']
     options:
       cache: false
+  test-errors:
+    # Errors as programs see and print them (scripts/errors.ts): `error.stack`'s names, paths and columns, uncaught
+    # errors' source previews, I/O errors and promise states in the embed in headless Chrome, against native Bun's
+    # output for the same files. Needs Chrome, so it isn't part of `test`.
+    command: 'bun scripts/errors.ts'
+    toolchains: ['bun']
+    options:
+      cache: false
   fmt-examples:
     # The gallery's projects (examples/, the demo included) as `bun fmt` leaves them (`-- --write` formats them).
     command: 'bun scripts/fmt-examples.ts'

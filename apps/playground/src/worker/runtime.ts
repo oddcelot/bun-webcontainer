@@ -15,7 +15,7 @@ import { trackBodies } from "./bodies";
 import { keepRequestHeaders, withHeaders } from "./requestHeaders";
 import { fulfilled, tracked, trackedFn } from "./promises";
 import { currentGeneration, hold, holdUntil, release, whenIdle } from "./loop";
-import { frameMapper, previewSource } from "./sourceMaps";
+import { frameMapper, installStackTraces, previewSource } from "./sourceMaps";
 import { json5Stringify, tomlStringify, yamlStringify } from "./dataStringify";
 import { password } from "./password";
 import { Cookie, CookieMap } from "./cookie";
@@ -643,6 +643,8 @@ installConsole(
   frameMapper(() => new URL(VFS_ROOT, location.href).href),
   previewSource((path) => vfs.readText(path)),
 );
+// error.stack itself, as Bun's reads (V8 only).
+installStackTraces(() => new URL(VFS_ROOT, location.href).href, (path) => vfs.readText(path));
 
 /** How Bun reports an uncaught error or rejection: its error printer for errors, `error: value` and the value otherwise. */
 function uncaughtText(v: unknown): string {
