@@ -53,3 +53,27 @@ export function decodeCommand(data: Uint8Array, length: number): DebugCommand {
   // TextDecoder refuses views of shared memory.
   return JSON.parse(dec.decode(data.slice(0, length))) as DebugCommand;
 }
+
+/**
+ * Commands for a paused worker, in order: the buffer holds one until the worker takes it. Where the buffer is: the
+ * page's, or on the content origin the host frame's (host/main.ts), which gets the page's commands as messages.
+ */
+export class CommandQueue {
+  private queue: DebugCommand[] = [];
+  constructor(private sab: SharedArrayBuffer) {}
+  push(cmd: DebugCommand) {
+    this.queue.push(cmd);
+    this.pump();
+  }
+  clear() {
+    this.queue.length = 0;
+  }
+  private pump = () => {
+    while (this.queue.length && sendCommand(this.sab, this.queue[0])) this.queue.shift();
+    // Commands are few (a click each): polling until the worker takes the last one is enough.
+    if (this.queue.length) setTimeout(this.pump, 5);
+  };
+}
+
+/** The start message's `debug`: the page's buffer, or (`host`) one the host frame makes and puts in its place. */
+export type DebugStart = { sab?: SharedArrayBuffer; host?: true; breakpoints: Record<string, number[]> };

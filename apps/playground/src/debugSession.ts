@@ -4,18 +4,24 @@
  * attaches each debug run's worker (`attach`) and routes its `dbg-*` messages here; the module server instruments a
  * debug run's project files (`instrumenting`).
  *
- * Needs cross-origin isolation (the paused worker blocks on a SharedArrayBuffer) and the worker in this page's agent
- * cluster: not on the content origin, whose host frame owns the worker (`debugAvailable`).
+ * Needs cross-origin isolation where the worker is (the paused worker blocks on a SharedArrayBuffer). On the content
+ * origin the host frame owns the worker and the buffer: commands go to it as messages (`dbg-command`, host/main.ts).
  */
 import { createSignal } from "solid-js";
 import { CONTENT_ORIGIN } from "./contentOrigin";
-import { CTL_INTS, DEBUG_BUFFER_BYTES, type DebugCommand, type DebugPaused, sendCommand } from "./debugProtocol";
+import { isHostIsolated, onHost } from "./contentHost";
+import { CommandQueue, CTL_INTS, DEBUG_BUFFER_BYTES, type DebugCommand, type DebugPaused, type DebugStart } from "./debugProtocol";
 
 export type { DebugFrame, DebugPaused, DebugScope } from "./debugProtocol";
 
 const STORE_KEY = "bwc:breakpoints";
 
-export const debugAvailable = (): boolean => typeof SharedArrayBuffer === "function" && globalThis.crossOriginIsolated === true && !CONTENT_ORIGIN;
+// On the content origin, known once the host frame's handshake says whether it is isolated.
+const [hostIsolated, setHostIsolated] = createSignal(false);
+if (CONTENT_ORIGIN) onHost(() => setHostIsolated(isHostIsolated()));
+
+export const debugAvailable = (): boolean =>
+  CONTENT_ORIGIN ? hostIsolated() : typeof SharedArrayBuffer === "function" && globalThis.crossOriginIsolated === true;
 
 function loadBreakpoints(): Record<string, number[]> {
   try {
@@ -32,25 +38,16 @@ const [breakpoints, setBreakpointsSignal] = createSignal<Record<string, number[]
 const [paused, setPaused] = createSignal<DebugPaused | undefined>(undefined);
 const [attached, setAttached] = createSignal(false);
 
-let current: { worker: Worker; sab: SharedArrayBuffer } | undefined;
+/** The debug run: its worker, and the queue into its buffer (none on the content origin: the host frame has it). */
+let current: { worker: Worker; queue?: CommandQueue } | undefined;
 let evalId = 0;
 const evaluations = new Map<number, (r: { ok: boolean; result: string }) => void>();
-
-/** Commands for the paused worker, in order: the buffer holds one until the worker takes it. */
-const queue: DebugCommand[] = [];
-
-function pump() {
-  const run = current;
-  while (run && queue.length && sendCommand(run.sab, queue[0])) queue.shift();
-  // Commands are few (a click each): polling until the worker takes the last one is enough.
-  if (run && queue.length) setTimeout(pump, 5);
-}
 
 function send(cmd: DebugCommand): boolean {
   if (!current) return false;
   if (paused()) {
-    queue.push(cmd);
-    pump();
+    if (current.queue) current.queue.push(cmd);
+    else current.worker.postMessage({ type: "dbg-command", cmd });
   } else if (cmd.type === "breakpoints") current.worker.postMessage({ type: "dbg-breakpoints", breakpoints: cmd.breakpoints });
   return true;
 }
@@ -117,20 +114,24 @@ export function instrumenting(): boolean {
 }
 
 /** For the runner: a new run's worker; what its start message carries if it's a debug run. */
-export function attach(worker: Worker): { sab: SharedArrayBuffer; breakpoints: Record<string, number[]> } | undefined {
+export function attach(worker: Worker): DebugStart | undefined {
   if (!enabled() || !debugAvailable()) return undefined;
-  const sab = new SharedArrayBuffer(CTL_INTS * 4 + DEBUG_BUFFER_BYTES);
-  current = { worker, sab };
   setPaused(undefined);
   setAttached(true);
+  if (CONTENT_ORIGIN) {
+    current = { worker };
+    return { host: true, breakpoints: breakpointState };
+  }
+  const sab = new SharedArrayBuffer(CTL_INTS * 4 + DEBUG_BUFFER_BYTES);
+  current = { worker, queue: new CommandQueue(sab) };
   return { sab, breakpoints: breakpointState };
 }
 
 /** For the runner: `worker` ended. */
 export function detach(worker: Worker) {
   if (current?.worker !== worker) return;
+  current?.queue?.clear();
   current = undefined;
-  queue.length = 0;
   setPaused(undefined);
   setAttached(false);
   for (const resolve of evaluations.values()) resolve({ ok: false, result: "The program ended" });

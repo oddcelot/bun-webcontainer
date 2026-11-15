@@ -8,6 +8,7 @@ import { EDITOR_ORIGINS } from "../contentOrigin";
 import { answerStore, serveLazyRead, type LazyRead } from "../pkgStore";
 import { envelope, isMessage, type HandshakeMessage, type ToEditor, type ToHost } from "../contentProtocol";
 import { SyncRelay } from "../worker/syncChannel";
+import { CommandQueue, CTL_INTS, DEBUG_BUFFER_BYTES, type DebugCommand, type DebugStart } from "../debugProtocol";
 
 // The editor names its origin (`?editor=`), but only a configured editor origin is answered: any site can frame this
 // page, and the relay (a Worker, the service worker's asks, fetch) must serve only the playground.
@@ -67,6 +68,22 @@ async function answerLazyRead(m: LazyRead) {
   else lazyReads.failed++;
 }
 
+/** A debug run's command queue (debugSession.ts): its buffer is made here, in the Worker's agent cluster. */
+const debugQueues = new Map<Worker, CommandQueue>();
+
+/** A debug run's start gets the buffer; the editor's commands for it go into it. True if `d` was taken. */
+function relayDebug(w: Worker, d: { type?: string; debug?: DebugStart; cmd?: DebugCommand }): boolean {
+  if (d?.type === "start" && d.debug?.host) {
+    const sab = new SharedArrayBuffer(CTL_INTS * 4 + DEBUG_BUFFER_BYTES);
+    debugQueues.set(w, new CommandQueue(sab));
+    d.debug = { sab, breakpoints: d.debug.breakpoints };
+    return false;
+  }
+  if (d?.type !== "dbg-command" || !d.cmd) return false;
+  debugQueues.get(w)?.push(d.cmd);
+  return true;
+}
+
 const reply = (port: MessagePort, m: ToEditor, transfer: Transferable[] = []) => port.postMessage(envelope(m), transfer);
 
 function connect(port: MessagePort) {
@@ -96,9 +113,11 @@ function connect(port: MessagePort) {
     } else if (m.kind === "w") {
       // Ports ride in the transfer list (a request's reply port, a WebSocket); the message itself is cloned.
       const w = workers.get(m.g);
-      if (w && !relays.get(w)?.toWorker(m.d)) w.postMessage(m.d, [...e.ports]);
+      if (w && !relayDebug(w, m.d as Parameters<typeof relayDebug>[1]) && !relays.get(w)?.toWorker(m.d)) w.postMessage(m.d, [...e.ports]);
     } else if (m.kind === "kill") {
-      workers.get(m.g)?.terminate();
+      const killed = workers.get(m.g);
+      if (killed) debugQueues.delete(killed);
+      killed?.terminate();
       workers.delete(m.g);
     } else if (m.kind.startsWith("store-")) {
       const out = e.ports[0];
