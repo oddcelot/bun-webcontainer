@@ -31,8 +31,9 @@ function save({ b, cache }: { b: Bucket; cache: Cache }, url: string, e: Entry) 
  * `transpile`, cached in memory and in Cache Storage (so a reload doesn't transpile node_modules again), keyed by the
  * transpiler build, path, tsconfig options (decorators, JSX) and source.
  */
-export async function transpileCached(source: string, path: string, tsconfig: TsconfigFlags, resolve: Resolver, metaRequire = false, sourceMap = false): Promise<string> {
-  if (source.length < MIN_SIZE) return transpile(source, path, tsconfig, resolve, metaRequire, sourceMap);
+export async function transpileCached(source: string, path: string, tsconfig: TsconfigFlags, resolve: Resolver, metaRequire = false, sourceMap = false, debug = false): Promise<string> {
+  // A debug run's instrumented files are the project's own, and not worth keeping.
+  if (source.length < MIN_SIZE || debug) return transpile(source, path, tsconfig, resolve, metaRequire, sourceMap, debug);
   const flags = `${tsconfig.experimentalDecorators ? 1 : 0}${tsconfig.emitDecoratorMetadata ? 1 : 0}${metaRequire ? 1 : 0}${sourceMap ? 1 : 0}\0${jsxKey(tsconfig)}`;
   const key = hex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${await transpilerId()}\0${path}\0${flags}\0${source}`)));
   const url = new URL(`__transpile/${key}`, location.href).href;

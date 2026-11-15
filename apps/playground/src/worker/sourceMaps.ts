@@ -90,7 +90,7 @@ interface Location {
  * source's line and column where they are known. "" for the worker's own code (the runtime, its node: shims, the
  * modules it serves for them, CommonJS facades): Bun doesn't show its internals either. null for any other URL.
  */
-function mapLocation(root: string, url: string, line: number, column: number): Location | "" | null {
+export function mapLocation(root: string, url: string, line: number, column: number): Location | "" | null {
   let path: string;
   let locate: Locate | null | undefined;
   if (url.startsWith(root)) {
@@ -122,7 +122,7 @@ export function frameMapper(root: () => string) {
 }
 
 /** V8's CallSite (the parts used here). */
-interface CallSite {
+export interface CallSite {
   getFileName(): string | null | undefined;
   getLineNumber(): number | null;
   getColumnNumber(): number | null;

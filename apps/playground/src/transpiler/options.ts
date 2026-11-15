@@ -17,6 +17,8 @@ export const FLAGS = {
   SYNC_ESM: 16384,
   SOURCE_MAP: 32768,
   TARGET_BUN: 65536,
+  /** The step debugger's probes (src/debug.rs); the output ends in a NUL and their table. */
+  DEBUG: 131072,
 } as const;
 
 /** transpile-wasm's loader numbers (`Loader::from_u32`), by `Bun.Transpiler` loader name. */
