@@ -20,7 +20,7 @@ export interface ShellHost {
   run(entry?: string, args?: string[]): Promise<void>;
   install(): Promise<void>;
   /** Run these test files (`bun test`); resolves with the number of failed tests. */
-  test(files: string[]): Promise<{ failed: number }>;
+  test(files: string[], args?: string[]): Promise<{ failed: number }>;
   stop(): void;
   clear(): void;
   /** Forget this project's saved files and reload it from its source. */
@@ -39,7 +39,7 @@ const HELP = `Bun's shell: quotes, pipes |, && || ;, redirects > >> < 2>&1, $VAR
 
 bun run <script|file>  run a script or a file
 bun <file>             run a file
-bun test [filter...]   run test files (stops the server)
+bun test [-u] [filter...]  run test files (stops the server); -u updates snapshots
 bun install, bun i     install dependencies
 bun add <pkg> [-d]     add (dev) dependencies
 bun remove <pkg>       remove dependencies
@@ -134,13 +134,15 @@ export function createShell(host: ShellHost) {
     return (!(check || scriptChecks(script)) || (await checkFirst(entry!))) && host.run(entry!);
   }
 
+  /** The only `bun test` flag here: rewrite the snapshot files and inline snapshots (the playground's CI is never set). */
+  const UPDATE_FLAGS = ["-u", "--update-snapshots"];
   async function test(args: string[]) {
-    const flag = args.find((a) => a.startsWith("-"));
+    const flag = args.find((a) => a.startsWith("-") && !UPDATE_FLAGS.includes(a));
     if (flag) return fail(`error: bun test ${flag} is not supported here`);
-    const filters = args.map((a) => a.replace(/^\.\//, ""));
+    const filters = args.filter((a) => !a.startsWith("-")).map((a) => a.replace(/^\.\//, ""));
     const files = [...vfs.files.keys()].filter((f) => isTestFile(f) && (!filters.length || filters.some((x) => f.includes(x)))).sort();
     if (!files.length) return fail(`error: No tests found${filters.length ? ` matching ${filters.join(", ")}` : ""}!\n\nTest files match *.test.ts, *_test.ts, *.spec.ts or *_spec.ts (also .tsx .js .jsx), outside node_modules.`);
-    await host.test(files);
+    await host.test(files, args.filter((a) => a.startsWith("-")));
   }
 
   async function add(args: string[]) {

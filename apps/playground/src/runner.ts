@@ -408,8 +408,8 @@ export class Runner {
   results: TestResults["results"];
 
   /** `bun test`: runs test files in a fresh worker (replacing any server) and resolves when the run is over. */
-  async runTests(files: string[]): Promise<TestResults> {
-    await this.start("", files);
+  async runTests(files: string[], args: string[] = []): Promise<TestResults> {
+    await this.start("", files, args);
     await this.stop();
     return { failed: this.failed, results: this.results };
   }

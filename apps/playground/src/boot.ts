@@ -207,7 +207,7 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
   let stoppedTest = false;
 
   /** `bun test`: a fresh worker runs the files; a server that was running is started again afterwards, unless stopped. */
-  async function runTests(files: string[]): Promise<TestResults> {
+  async function runTests(files: string[], args: string[] = []): Promise<TestResults> {
     if (!runner) return cantRun(), { failed: 0 };
     if (runner instanceof RemoteRunner && !(await mayRunNative())) return { failed: 0 };
     workspace.saveAll();
@@ -222,7 +222,7 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
     try {
       try {
         await session.task("run", "Testing…", async (): Promise<Status> => {
-          tested = await runner!.runTests(files);
+          tested = await runner!.runTests(files, args);
           const { failed } = tested;
           if (stoppedTest) return { state: "idle", text: "Stopped" };
           return failed ? { state: "error", text: `${failed} test${failed === 1 ? "" : "s"} failed` } : { state: "idle", text: "Tests passed" };

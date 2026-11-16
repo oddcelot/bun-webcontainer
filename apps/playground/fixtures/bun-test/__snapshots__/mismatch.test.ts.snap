@@ -1,0 +1,36 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`object differs 1`] = `
+{
+  "v": 2,
+}
+`;
+
+exports[`array of many lines differs 1`] = `
+{
+  "a": 1,
+  "b": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    9,
+  ],
+  "c": "y",
+}
+`;
+
+exports[`string differs: s 1`] = `"world"`;
+
+exports[`same as stored 1`] = `
+[
+  1,
+  2,
+  3,
+]
+`;
+
+exports[`obsolete 1`] = `1`;
