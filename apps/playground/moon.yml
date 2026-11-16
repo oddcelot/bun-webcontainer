@@ -132,11 +132,16 @@ tasks:
       - '/crates/htmlrewriter-wasm/*.ts'
       - '/crates/htmlrewriter-wasm/expected.json'
       - '/target/wasm64-unknown-unknown/release/bun_htmlrewriter_wasm.wasm'
+    options:
+      cache: false
   test-sqlite:
     # bun:sqlite end to end (scripts/sqlite.ts): SQLiteError, safeIntegers, Statement.as, serialize/deserialize, strict,
     # paramsCount, finalize, toString and inTransaction in the embed in headless Chrome, against native Bun's output
     # for scripts/sqlite/main.ts. Needs Chrome, so it isn't part of `test`.
     script: 'bun scripts/sqlite.ts'
+    toolchains: ['bun']
+    options:
+      cache: false
   test-bun-test:
     # `bun:test` end to end (scripts/bun-test.ts): the files of fixtures/bun-test run through the console's `bun test`
     # in headless Chrome, and its summary, failures and snapshot files are compared with native `bun test`'s for the
