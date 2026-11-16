@@ -1,0 +1,33 @@
+$schema: 'https://moonrepo.dev/schemas/project.json'
+
+# node:crypto's ciphers, signatures and key objects on RustCrypto (no Bun crates, so not tagged wasm64: it takes no
+# part in the bun/ inputs). Still wasm64 and still in the root workspace, so one -Zbuild-std toolchain builds it.
+language: 'rust'
+
+fileGroups:
+  sources:
+    - 'src/**/*'
+    - 'Cargo.toml'
+    - '/Cargo.toml'
+    - '/Cargo.lock'
+    - '/rust-toolchain.toml'
+
+tasks:
+  build:
+    command: 'cargo'
+    args: ['build', '-Zbuild-std=std,panic_abort', '--target', 'wasm64-unknown-unknown', '--release']
+    inputs:
+      - '@group(sources)'
+    outputs:
+      - '/target/wasm64-unknown-unknown/release/bun_crypto_wasm.wasm'
+  test:
+    # Node >= 24 (Memory64; bun lacks it) runs the playground's node:crypto shim over the module: its output for
+    # fixtures/crypto/cases.ts must equal native Bun's, and random ciphers, keys and signatures must agree with node's
+    # own crypto (which also has chacha20-poly1305 and the odd GCM IV lengths that Bun lacks).
+    command: 'node test.ts'
+    toolchains: ['node', 'bun']
+    deps: ['~:build']
+    inputs:
+      - '*.ts'
+      - '/apps/playground/src/worker/node/crypto*.ts'
+      - '/apps/playground/fixtures/crypto/*'

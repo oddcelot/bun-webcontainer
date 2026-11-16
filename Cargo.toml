@@ -5,6 +5,7 @@
 resolver = "3"
 members = [
   "crates/semver-wasm",
+  "crates/crypto-wasm",
   "crates/transpile-wasm",
   "crates/bundle-wasm",
   "crates/sys-wasm",

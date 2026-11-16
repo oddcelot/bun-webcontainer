@@ -11,6 +11,7 @@ const files = [
   ["../../../crates/git-wasm/target/wasm32-wasip1/release/git.wasm", "git.wasm"],
   ["../../../target/wasm64-unknown-unknown/release/bun_shell_wasm.wasm", "bun_shell_wasm.wasm"],
   ["../../../target/wasm64-unknown-unknown/release/bun_htmlrewriter_wasm.wasm", "bun_htmlrewriter_wasm.wasm"],
+  ["../../../target/wasm64-unknown-unknown/release/bun_crypto_wasm.wasm", "bun_crypto_wasm.wasm"],
 ];
 
 // `--strip` (prebuild) drops the custom sections: mostly "name", the Rust function names that only make stack traces

@@ -6,6 +6,9 @@ import { scrypt as nobleS, scryptAsync } from "@noble/hashes/scrypt.js";
 import { sha224, sha256, sha384, sha512, sha512_224, sha512_256 } from "@noble/hashes/sha2.js";
 import { sha3_224, sha3_256, sha3_384, sha3_512 } from "@noble/hashes/sha3.js";
 import { Buffer } from "buffer";
+import { bytes, encode, type Data } from "./cryptoBytes";
+import { createCipheriv, createDecipheriv, Cipheriv, Decipheriv, getCiphers } from "./cryptoCipher";
+import { constants, createPrivateKey, createPublicKey, createSecretKey, createSign, createVerify, generateKey, generateKeyPair, generateKeyPairSync, generateKeySync, getCurves, KeyObject, privateDecrypt, privateEncrypt, publicDecrypt, publicEncrypt, secretBytes, Sign, sign, Verify, verify } from "./cryptoKeys";
 import { codeError } from "./errors";
 
 type Algo = any;
@@ -35,27 +38,14 @@ function algo(name: string): Algo {
   return a;
 }
 
-type Data = string | ArrayBufferView | ArrayBuffer;
-
-function bytes(data: Data, enc?: string): Uint8Array {
-  if (typeof data === "string") return Uint8Array.from(Buffer.from(data, (enc as BufferEncoding) ?? "utf8"));
-  if (data instanceof ArrayBuffer) return new Uint8Array(data);
-  if (ArrayBuffer.isView(data)) return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-  throw codeError(TypeError, "ERR_INVALID_ARG_TYPE", 'The "data" argument must be of type string or an instance of Buffer, TypedArray, or DataView.');
-}
-
-function encode(out: Uint8Array, enc?: string): string | Buffer {
-  const b = Buffer.from(out);
-  if (!enc || enc === "buffer") return b;
-  if (enc === "base64url") return b.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-  return b.toString(enc as BufferEncoding);
-}
-
 type Hasher = { update(d: Uint8Array): unknown; digest(): Uint8Array; clone(): Hasher };
 
 class Hash {
   private done = false;
-  constructor(private h: Hasher) {}
+  private h: Hasher;
+  constructor(h: Hasher) {
+    this.h = h;
+  }
   update(data: Data, enc?: string) {
     if (this.done) throw codeError(Error, "ERR_CRYPTO_HASH_FINALIZED", "Digest already called");
     this.h.update(bytes(data, enc));
@@ -72,7 +62,7 @@ class Hash {
 }
 
 const createHash = (alg: string) => new Hash(algo(alg).create() as Hasher);
-const createHmac = (alg: string, key: Data) => new Hash(hmac.create(algo(alg), bytes(key)) as Hasher);
+const createHmac = (alg: string, key: Data | KeyObject) => new Hash(hmac.create(algo(alg), key instanceof KeyObject ? secretBytes(key) : bytes(key)) as Hasher);
 
 function getRandomValues<T extends ArrayBufferView>(a: T): T {
   const u = new Uint8Array(a.buffer, a.byteOffset, a.byteLength);
@@ -123,6 +113,31 @@ export class CryptoHasher {
 }
 
 export default {
+  constants,
+  KeyObject,
+  Cipheriv,
+  Decipheriv,
+  Sign,
+  Verify,
+  createCipheriv,
+  createDecipheriv,
+  getCiphers,
+  getCurves,
+  createSecretKey,
+  createPublicKey,
+  createPrivateKey,
+  generateKeyPair,
+  generateKeyPairSync,
+  generateKey,
+  generateKeySync,
+  sign,
+  verify,
+  createSign,
+  createVerify,
+  publicEncrypt,
+  privateDecrypt,
+  privateEncrypt,
+  publicDecrypt,
   createHash,
   createHmac,
   hash: (alg: string, data: Data, enc: string = "hex") => encode(algo(alg).create().update(bytes(data)).digest(), enc),

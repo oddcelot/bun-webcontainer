@@ -93,6 +93,7 @@ W="-Zbuild-std=std,panic_abort --target wasm64-unknown-unknown --release"
 (cd crates/tsrs-ls-wasm && cargo build --release --target wasm32-wasip1 && node test.ts)  # TS7 language service (tsrs); own Rust pin
 (cd crates/fmt-wasm && cargo build $W && node test.ts)         # `bun fmt` (bun_format) vs native bun fmt on the repo's files (node >= 24)
 moon run git-wasm:test playground:test-git                       # `git` (gix, wasm32-wasip1, own nightly pin) vs native git; then over the VFS's WASI host
+moon run crypto-wasm:test playground:test-crypto                # node:crypto's ciphers/keys/signatures (RustCrypto, wasm64): the shim vs native Bun and node; then in headless Chrome, jsonwebtoken too
 moon run shell-wasm:test playground:test-shell                   # Bun's shell parser (wasm64) vs Bun's parse.test.ts; then src/shell vs bun/test/js/bun/shell
 (cd crates/shim-test && cargo +$(bun ../../scripts/bun-pins.ts TOOLCHAIN) test)  # pin from scripts/bun-pins.ts
 bun install                                # root bun workspace (playground, docs, packages/*): one bun.lock, isolated

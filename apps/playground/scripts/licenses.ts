@@ -47,6 +47,7 @@ const WASM_CRATES: { dir: string; target: string; packages: string[] }[] = [
       "bun_check_wasm",
       "bun_shell_wasm",
       "bun_htmlrewriter_wasm",
+      "bun_crypto_wasm",
     ],
   },
   {
