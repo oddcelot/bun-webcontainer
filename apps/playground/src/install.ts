@@ -24,7 +24,7 @@ export function unlistedWasiBinding(optional: Record<string, string> | undefined
 function resolveHost(vfs: VFS, semver: Semver): ResolveHost {
   return {
     semver,
-    packument: async (name) => (await fetchPackument(name)) as Packument,
+    packument: async (name, range) => (await fetchPackument(name, range)) as Packument,
     async tarball(url) {
       const bytes = await fetchTarball(url);
       for (const { name, data } of untar(await gunzip(bytes))) {
@@ -56,7 +56,7 @@ async function installWasiBindings(vfs: VFS, lockText: string, semver: Semver, l
       const dest = installPath([...splitKey(key).slice(0, -1), name]);
       if (vfs.files.has(`${dest}/package.json`)) return;
       try {
-        const doc = (await fetchPackument(name)) as Packument;
+        const doc = (await fetchPackument(name, range)) as Packument;
         const version = Object.keys(doc.versions).filter((v) => semver.satisfies(v, range)).sort((a, b) => semver.order(b, a))[0];
         if (!version) return;
         const url = doc.versions[version].dist!.tarball;

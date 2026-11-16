@@ -30,7 +30,8 @@ type Packument = { "dist-tags"?: Record<string, string>; versions: Record<string
 
 export type ResolveHost = {
   semver: Semver;
-  packument(name: string): Promise<Packument>;
+  /** `range`: the first one asked for this name; the packument fetched for it serves every later range too. */
+  packument(name: string, range?: string): Promise<Packument>;
   /** A tarball's bytes (gzipped) and its package.json. */
   tarball(url: string): Promise<{ bytes: Uint8Array<ArrayBuffer>; manifest: Manifest }>;
   /** A folder's package.json in the project, or undefined. */
@@ -150,9 +151,10 @@ export async function resolveProject(root: Manifest, host: ResolveHost, locked: 
   const byResolution = new Map<string, Pkg>();
   const pinned = new Set<string>();
   const docs = new Map<string, Promise<Packument>>();
-  const doc = (name: string) => {
+  const refetched = new Set<string>();
+  const doc = (name: string, range: string) => {
     let p = docs.get(name);
-    if (!p) docs.set(name, (p = host.packument(name)));
+    if (!p) docs.set(name, (p = host.packument(name, range)));
     p.catch(() => {});
     return p;
   };
@@ -199,8 +201,18 @@ export async function resolveProject(root: Manifest, host: ResolveHost, locked: 
       }
       return add({ name: manifest.name ?? dep.name, resolution: `file:${path}`, kind: "folder", manifest, deps: depsOf(manifest, false) });
     }
-    const d = await doc(realName);
-    const best = pickVersion(d, range, semver);
+    let d = await doc(realName, range);
+    let best = pickVersion(d, range, semver);
+    // The packument may be a stale one an earlier exact version reused (pkgCache): once per name, asked for again
+    // without a range, which fetches it when stale.
+    if (!best && !refetched.has(realName)) {
+      refetched.add(realName);
+      const p = host.packument(realName);
+      docs.set(realName, p);
+      p.catch(() => {});
+      d = await p;
+      best = pickVersion(d, range, semver);
+    }
     if (!best) {
       problems.push(`${dep.name}@${dep.range}: no version matches`);
       return;
@@ -231,7 +243,7 @@ export async function resolveProject(root: Manifest, host: ResolveHost, locked: 
     (d.group === "peerDependencies" && from ? peers : queue).push([d, from]);
     const a = alias(d.range);
     const r = a ? (a[2] ?? "") : d.range;
-    if (!unsupportedRange(r) && !isTarballUrl(r) && !/^file:|^\.{0,2}\//.test(r) && !keep(a ? a[1] : d.name, a ? (a[2] ?? "latest") : r)) doc(a ? a[1] : d.name);
+    if (!unsupportedRange(r) && !isTarballUrl(r) && !/^file:|^\.{0,2}\//.test(r) && !keep(a ? a[1] : d.name, a ? (a[2] ?? "latest") : r)) doc(a ? a[1] : d.name, a ? (a[2] ?? "latest") : r);
   };
   for (const d of rootDeps) enqueue(d, null);
   while (queue.length || peers.length) {
