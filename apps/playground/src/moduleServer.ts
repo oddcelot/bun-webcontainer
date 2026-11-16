@@ -402,16 +402,27 @@ async function serveCommonJS(vfs: VFS, path: string, onError: (msg: string) => v
 const syncEsm = new Map<string, { names: Promise<string[] | null>; settle: (names: string[] | null) => void }>();
 /** ES modules served to the worker: one of them may be imported but not yet run, so the worker can't run it itself. */
 const servedEsm = new Set<string>();
+/** Modules `mock.module` replaced in the worker (worker/node/module.ts mockModule), by path: their export names. */
+const mocks = new Map<string, string[]>();
 
 /** For a new worker (Run): nothing served or run yet. */
 export function resetSyncEsm() {
   syncEsm.clear();
   servedEsm.clear();
+  mocks.clear();
 }
 
 /** The worker's synchronous requests about the ES modules it runs itself: `claim/<path>`, `done/<names>/<path>`, `fail/<path>`. */
 function syncEsmRequest(req: string): ModuleResponse {
-  const [, what, rest] = /^(claim|done|fail)\/(.*)$/.exec(req) ?? [];
+  const [, what, rest] = /^(claim|done|fail|mock)\/(.*)$/.exec(req) ?? [];
+  // `mock/<names>/<path>`: refused once the module has been served (it is, or is being, imported).
+  if (what === "mock") {
+    const slash = rest.indexOf("/");
+    const path = norm(rest.slice(slash + 1));
+    if (servedEsm.has(path)) return { status: 409, body: "" };
+    mocks.set(path, JSON.parse(decodeURIComponent(rest.slice(0, slash))) as string[]);
+    return { status: 200, body: "" };
+  }
   if (what === "claim") {
     const path = norm(rest);
     if (servedEsm.has(path) || syncEsm.has(path)) return { status: 409, body: "" };
@@ -429,6 +440,14 @@ function syncEsmRequest(req: string): ModuleResponse {
     return { status: 200, body: "" };
   }
   return { status: 404, body: "" };
+}
+
+/** In place of a module `mock.module` replaced: the exports of what the worker holds for it (`globalThis.__bunMock`). */
+function mockedModule(path: string, names: string[]): string {
+  const q = JSON.stringify;
+  const named = names.filter((n) => n !== "default");
+  return `const __m = globalThis.__bunMock(${q(path)});
+${names.includes("default") ? "export default __m.default;\n" : ""}${named.length ? `export const { ${named.join(", ")} } = __m;` : ""}`;
 }
 
 /** In place of an ES module the worker ran itself: that instance's exports (their values when imported, not live). */
@@ -461,7 +480,15 @@ async function serveModuleOnce(vfs: VFS, rawPath: string, onError: (msg: string)
   const entry = path.startsWith(ENTRY_PREFIX);
   if (entry) path = path.slice(ENTRY_PREFIX.length);
   await loadResolver(vfs);
-  if (path.startsWith("__node/")) return { status: 200, body: builtinModule(path.slice(7)) };
+  const mocked = target === "bun" ? mocks.get(path) : undefined;
+  if (mocked) {
+    servedEsm.add(path);
+    return { status: 200, body: mockedModule(path, mocked) };
+  }
+  if (path.startsWith("__node/")) {
+    if (target === "bun") servedEsm.add(path);
+    return { status: 200, body: builtinModule(path.slice(7)) };
+  }
   if (path.startsWith("__host/")) return { status: 200, body: hostModule(path.slice(7)) };
   if (path === "__bun/wrap") return { status: 200, body: bunWrap };
   if (path.startsWith("__unresolved__/")) {

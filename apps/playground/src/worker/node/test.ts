@@ -490,8 +490,19 @@ function spyOn<T extends object>(obj: T, key: keyof T & string): MockFn {
   obj[key] = spy as unknown as T[keyof T & string];
   return spy;
 }
-mock.module = () => {
-  throw new Error("mock.module() is not supported here");
+/** The path of the project file whose code is running (the first frame the stacks don't hide), for resolving a relative specifier. */
+function callerPath(): string {
+  for (const line of (new Error().stack ?? "").split("\n")) {
+    const m = /(\/[^\s()]*?):\d+:\d+\)?$/.exec(line);
+    if (m) return m[1];
+  }
+  return "/";
+}
+/** `mock.module(specifier, factory)`: imports of the module that follow (and requires) get what the factory returns. */
+mock.module = (spec: string, factory: () => object) => {
+  const g = globalThis as { __mockModule?: (spec: string, from: string, exports: object) => void };
+  if (!g.__mockModule) throw new Error("mock.module() is not supported here");
+  g.__mockModule(spec, callerPath(), factory());
 };
 const jest = { fn: mock, spyOn, mock: mock.module, ...fakeTimers };
 const vi = { fn: mock, spyOn, mock: mock.module, ...fakeTimers };

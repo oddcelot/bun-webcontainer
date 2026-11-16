@@ -50,6 +50,9 @@ const cache: Record<string, CjsModule> = Object.create(null);
  */
 const esModules: Record<string, object> = Object.create(null);
 
+/** `mock.module`: what a module's path (or `__node/<name>`) stands for now; the page serves a module re-exporting it (moduleServer.ts). */
+const mocks = new Map<string, object>();
+
 /**
  * Served ES modules that have started but not finished evaluating (each marks itself first, see moduleServer.ts
  * serveModule): a `require()` of one can't get its namespace yet (a cycle, top-level await).
@@ -61,7 +64,7 @@ const importing = new Set<string>();
  * `claim` before running it, so that a later `import` of it gets this instance (refused if the page has served the
  * module already: it is being imported); `done` with its export names after, `fail` if it threw.
  */
-function tellPage(what: "claim" | "done" | "fail", file: string, names?: string[]): boolean {
+function tellPage(what: "claim" | "done" | "fail" | "mock", file: string, names?: string[]): boolean {
   if (!vfsRoot) return true;
   const xhr = new XMLHttpRequest();
   // The names as one path segment: the service worker decodes the path once.
@@ -157,7 +160,25 @@ export function createModule(registry: Record<string, object>) {
     const path = resolveFile?.(id, requireDir(from));
     if (!path || !vfs) throw notFound(id, from);
     const file = "/" + path;
+    if (mocks.has(path)) return mocks.get(path);
     return cache[file] ? cache[file].exports : (esModules[file] ?? loadFile(path));
+  }
+
+  /**
+   * `mock.module(spec, ...)` from the module at `from`: later imports (the page serves a stand-in) and requires get
+   * `exports`. Not one that is imported already: an ES module's bindings can't be swapped.
+   */
+  function mockModule(spec: string, from: string, exports: object) {
+    spec = String(spec);
+    const builtin = isBuiltin(spec);
+    const path = builtin ? `__node/${name(spec)}` : resolveImport?.(spec, requireDir(from));
+    if (!path || !vfs) throw Object.assign(new Error(`Cannot find module '${spec}' from '${from}'`), { name: "ResolveMessage", code: "ERR_MODULE_NOT_FOUND" });
+    const names = Object.keys(exports).filter((k) => k !== "default" && /^[A-Za-z_$][\w$]*$/.test(k));
+    if (typeof exports === "object" && exports !== null && "default" in exports) names.unshift("default");
+    if (cache["/" + path] || esModules["/" + path] || !tellPage("mock", "/" + path, names)) {
+      throw new Error(`mock.module("${spec}"): the module is imported already. The playground can only mock a module before its first import: call mock.module first and load it with import() afterwards.`);
+    }
+    mocks.set(path, exports);
   }
 
   /** `import ... from spec` in an ES module the worker runs itself (see loadEsm): the namespace a static import gives. */
@@ -169,6 +190,7 @@ export function createModule(registry: Record<string, object>) {
     const path = resolveImport?.(spec, requireDir(from));
     if (!path || !vfs) throw Object.assign(new Error(`Cannot find module '${spec}' from '${from}'`), { name: "ResolveMessage", code: "ERR_MODULE_NOT_FOUND" });
     const file = "/" + path;
+    if (mocks.has(path)) return Object.assign(Object.create(null) as object, mocks.get(path));
     if (esModules[file]) return esModules[file];
     const format = dataFormat(path);
     const value = cache[file] ? cache[file].exports : loadFile(path);
@@ -336,10 +358,11 @@ export function createModule(registry: Record<string, object>) {
   // For wrapped CommonJS (cjs.ts wrapCommonJS) and served JSON: one cache, and computed requires.
   hooks.load = load;
   hooks.require = requireFrom;
+  hooks.mock = mockModule;
   return Module;
 }
 
-const hooks: { load?: (file: string, run: (m: CjsModule) => void, req: Require) => CjsModule; require?: (id: string, from: string) => unknown } = {};
+const hooks: { load?: (file: string, run: (m: CjsModule) => void, req: Require) => CjsModule; require?: (id: string, from: string) => unknown; mock?: (spec: string, from: string, exports: object) => void } = {};
 
 /** `import(x)` in CommonJS the worker runs: through the worker's `__dynamicImport`, from the module's `file:` URL. */
 function dynamicImports(code: string, file: string): string {
@@ -367,6 +390,9 @@ export function setRequire(v: VFS, fn: (spec: string, dir: string) => string | n
     importing.delete(file);
   };
   g.__esmImporting = (file: string) => void importing.add(file);
+  // For `mock.module` (worker/node/test.ts) and the module the page serves in place of the mocked one (moduleServer.ts mockModule).
+  g.__mockModule = (spec: string, from: string, exports: object) => hooks.mock!(spec, from, exports);
+  g.__bunMock = (path: string) => mocks.get(path);
   // For the module the page serves in place of one the worker ran itself (moduleServer.ts syncEsmModule).
   g.__esmNamespace = (file: string) => esModules[file];
 }
