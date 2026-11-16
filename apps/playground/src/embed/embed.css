@@ -1,10 +1,30 @@
 /* The embed's layout (ui/EmbedApp.tsx); panes keep style.css's look. */
 #embed { display: flex; flex-direction: column; height: 100%; }
+/* The bar's controls (ui/EmbedApp.tsx BarStart, BarEnd): in the editor's tab bar, around the tabs, or in a bar over the
+   panes where it has none. The tab bar's panes keep the bar's gap above them. */
+/* The large view fills the host's modal: under a see-through --canvas (a page's inline look), the theme's own canvas,
+   so the page doesn't show between the panes. A solid --canvas covers it (body draws it over html). */
+:root[data-expanded] { background: color-mix(in srgb, var(--fg) 7%, var(--panel)); }
+/* --gutter: the room between the panes and the embed's edge (4px). A page that frames the embed itself can take it to
+   0 inline; the large view keeps it, since nothing frames it there. */
+:root[data-expanded] #embed { --gutter: 4px; }
 #embed-bar { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 5px 6px 5px 10px; white-space: nowrap; }
-#embed-bar .file { min-width: 0; overflow: hidden; text-overflow: ellipsis; font: 12px var(--font-mono); }
-#embed-bar .spacer { flex: 1; }
+#embed .controls { display: flex; flex: 0 1 auto; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; }
+#embed .controls.end { margin-left: auto; }
+/* In the tab bar the tabs give way first. */
+#embed .tabs-bar > .controls { flex-shrink: 0; }
+#embed .tabs-bar > .controls.start:not(:empty) { margin-left: 4px; }
+#embed .tabs-bar > .controls.end { margin-right: 4px; }
+/* The last control sits 4px in from the pane's corner (its margin; the bar is as tall as a control plus 4px each side),
+   so its corner follows the pane's: the pane's radius less that gap. */
+#embed .tabs-bar > .controls.end > button:last-child { border-top-right-radius: max(6px, calc(var(--radius) - 4px)); }
+/* Buttons keep their size; the project's name, the file's and the status shrink. The tabs keep room for part of one. */
+#embed .controls > :not(.project, .file, #status) { flex: none; }
+#embed .tabs-bar > .tabs { min-width: 4rem; }
+#embed[data-barless] #embed-main { padding-top: var(--gutter, 4px); }
+#embed .controls .file { min-width: 0; overflow: hidden; text-overflow: ellipsis; font: 12px var(--font-mono); }
 /* The library's project button (EmbedApp.tsx ProjectButton): the open project's logo and name. */
-#embed-bar .project {
+#embed .controls .project {
   min-width: 0;
   max-width: 14rem;
   padding: 0 8px;
@@ -19,27 +39,27 @@
     color: var(--muted);
   }
 }
-#embed-bar #status { height: 22px; min-width: 0; font-size: 11px; }
-#embed-bar button, #embed .tabs-bar > :is(.more, .files) { display: inline-flex; align-items: center; gap: 5px; height: var(--control-height); padding: 0 10px; border: 1px solid var(--control-border); border-radius: 6px; background: var(--control); color: inherit; font: inherit; cursor: pointer; }
-#embed-bar button:hover:not(:disabled), #embed .tabs-bar > :is(.more, .files):hover { background: var(--control-hover); }
-#embed-bar button:disabled { opacity: 0.5; cursor: default; }
-#embed-bar .run { border-color: color-mix(in srgb, var(--accent) 60%, var(--panel)); background: color-mix(in srgb, var(--accent) 18%, var(--panel)); }
-#embed-bar .run:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 30%, var(--panel)); }
-#embed-bar .more, #embed-bar .expand, #embed-bar .files, #embed .tabs-bar > :is(.more, .files) { padding: 0 7px; }
-/* No bar (ui/EmbedApp.tsx barless): the menu ends the editor's tab bar, and the panes keep the bar's gap above them. The
-   drawer's button starts it wherever there is one. */
-#embed .tabs-bar > .more { flex: none; margin: 0 4px 0 auto; }
-#embed .tabs-bar > .files { flex: none; margin-left: 4px; }
-#embed[data-barless] #embed-main { padding-top: 4px; }
+#embed .controls #status { height: 22px; min-width: 0; font-size: 11px; }
+#embed .controls button { display: inline-flex; align-items: center; gap: 5px; height: var(--control-height); padding: 0 10px; border: 1px solid var(--control-border); border-radius: 6px; background: var(--control); color: inherit; font: inherit; cursor: pointer; }
+#embed .controls button:hover:not(:disabled) { background: var(--control-hover); }
+#embed .controls button:disabled { opacity: 0.5; cursor: default; }
+#embed .controls .run { border-color: color-mix(in srgb, var(--accent) 60%, var(--panel)); background: color-mix(in srgb, var(--accent) 18%, var(--panel)); }
+#embed .controls .run:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 30%, var(--panel)); }
+#embed .controls :is(.more, .expand, .files) { padding: 0 7px; }
 .embed-menu { min-width: 13rem; }
 .embed-menu .check { display: grid; place-items: center; width: 14px; color: var(--accent); }
 .embed-menu .cost { color: var(--muted); font-size: 11px; }
 .embed-menu .separator { height: 1px; margin: 4px; border: 0; background: var(--control-border); }
 
 /* Panes on a grid. Default (code mode): the editor, the console under it. The --vars are sizes a reader dragged (ui/EmbedSplit.tsx). */
-#embed-main { position: relative; flex: 1; min-height: 0; display: grid; gap: 4px; padding: 0 4px 4px; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: "editor"; }
+#embed-main { position: relative; flex: 1; min-height: 0; display: grid; gap: 4px; padding: 0 var(--gutter, 4px) var(--gutter, 4px); grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: "editor"; }
 #embed-main > .pane { min-width: 0; min-height: 0; overflow: hidden; border-radius: var(--radius); background: var(--bg); }
 #embed-main > .pane[hidden] { display: none; }
+/* --pane-border: a 1px edge around each pane, over its content (tab rows, the editor) and inside its size; the drawer
+   keeps its own. Under the handles (5) and the drawer (10). */
+#embed-main > .pane { position: relative; }
+#embed-main > .pane::after { content: ""; position: absolute; inset: 0; z-index: 3; border-radius: inherit; box-shadow: inset 0 0 0 1px var(--pane-border, transparent); pointer-events: none; }
+#embed[data-drawer] #tree::after { content: none; }
 #embed #tree { grid-area: tree; }
 #embed #editor-pane { grid-area: editor; }
 #embed #preview-panel { grid-area: preview; }

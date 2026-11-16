@@ -54,6 +54,11 @@
       &[data-selected] {
         color: var(--fg);
       }
+      /* Without a ×, the tab is just its name: no room kept for one. */
+      &:not(:has(.close)) {
+        min-width: 0;
+        padding-inline: 10px;
+      }
       &:has(:focus-visible) {
         outline: 1px solid var(--accent);
         outline-offset: -1px;

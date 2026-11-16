@@ -45,7 +45,8 @@ function sticky(on: () => boolean) {
 }
 
 /**
- * The embed: a slim bar (file, status, Run, menu) over the panes its mode and features turn on, laid out on a grid
+ * The embed: its controls (status, Run, menu) in the editor's tab bar, or in a slim bar over the panes where there's
+ * none (with the file's name), and the panes its mode and features turn on, laid out on a grid
  * (embed.css): the editor with the console under it, or beside a column of preview over console, a file tree first.
  */
 export function EmbedApp() {
@@ -117,9 +118,9 @@ export function EmbedApp() {
       removeEventListener("pointerdown", onDown, { capture: true });
     };
   });
-  // Nothing in the bar but the ⋯ menu (EmbedBar's conditions): no bar, the menu at the end of the editor's tab bar.
-  // The drawer's button is at the start of the tab bar wherever there is one, so it doesn't count.
-  const barless = () => !e.library.length && editor() && has("tabs") && e.options.status !== "bar" && !has("run") && !e.options.expand;
+  // Where the editor shows its tab bar, the bar's controls are in it, and there's no bar.
+  // The large view has room for its own bar.
+  const barless = () => editor() && has("tabs") && !e.expanded();
   const showTree = sticky(() => tree() || drawer());
   const showPreview = sticky(() => has("preview"));
   const showConsole = sticky(() => has("console"));
@@ -176,7 +177,10 @@ export function EmbedApp() {
       data-barless={barless() ? "" : undefined}
     >
       <Show when={!barless()}>
-        <EmbedBar drawer={drawerProps} />
+        <header id="embed-bar">
+          <BarStart drawer={drawerProps} />
+          <BarEnd />
+        </header>
       </Show>
       <Show when={!app.session.canRun}>
         <Unsupported checks={app.support} />
@@ -190,13 +194,13 @@ export function EmbedApp() {
         <section id="editor-pane" class="pane" hidden={!editor()}>
           <EditorPane
             start={
-              <Show when={drawerOk() && has("tabs")}>
-                <FilesButton drawer={drawerProps} />
+              <Show when={barless()}>
+                <BarStart drawer={drawerProps} />
               </Show>
             }
             end={
               <Show when={barless()}>
-                <EmbedMenu />
+                <BarEnd />
               </Show>
             }
           />
@@ -222,7 +226,7 @@ export function EmbedApp() {
 
 type Drawer = { ok: () => boolean; open: () => boolean; toggle: () => void; onKey: (ev: KeyboardEvent) => void; ref: (el: HTMLElement) => void };
 
-/** Opens the file tree as a drawer: at the start of the editor's tab bar, or in the bar where there's none. */
+/** Opens the file tree as a drawer. */
 function FilesButton(props: { drawer: Drawer }) {
   return (
     <Tip
@@ -242,14 +246,13 @@ function FilesButton(props: { drawer: Drawer }) {
   );
 }
 
-function EmbedBar(props: { drawer: Drawer }) {
+/** The bar's controls before the tabs (or the file's name): the drawer's button, the library's project button. */
+function BarStart(props: { drawer: Drawer }) {
   const app = useContext(AppContext);
   const e = useContext(EmbedContext);
-  const s = app.session;
-  const running = () => s.settled().state === "running";
   return (
-    <header id="embed-bar">
-      <Show when={props.drawer.ok() && !e.has("tabs")}>
+    <div class="controls start">
+      <Show when={props.drawer.ok()}>
         <FilesButton drawer={props.drawer} />
       </Show>
       <Show when={e.library.length}>
@@ -258,10 +261,21 @@ function EmbedBar(props: { drawer: Drawer }) {
       <Show when={e.mode() !== "result" && !e.has("tabs")}>
         <span class="file">{app.workspace.state.active ?? ""}</span>
       </Show>
+    </div>
+  );
+}
+
+/** The bar's controls after the tabs: the status pill, Edit (result mode), Run/Stop, expand and the ⋯ menu. */
+function BarEnd() {
+  const app = useContext(AppContext);
+  const e = useContext(EmbedContext);
+  const s = app.session;
+  const running = () => s.settled().state === "running";
+  return (
+    <div class="controls end">
       <Show when={e.options.status === "bar"}>
         <StatusPill status={s.status()} />
       </Show>
-      <span class="spacer" />
       <Show when={e.mode() === "result"}>
         <button type="button" onClick={() => e.setMode("preview")}>
           <i class="i-lucide-code" aria-hidden="true" /> Edit
@@ -292,7 +306,7 @@ function EmbedBar(props: { drawer: Drawer }) {
         </Tip>
       </Show>
       <EmbedMenu />
-    </header>
+    </div>
   );
 }
 

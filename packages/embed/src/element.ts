@@ -46,6 +46,11 @@ dialog{position:static;display:block;margin:0;padding:0;border:0;width:auto;heig
 dialog:not([open]){display:none}
 dialog:modal{position:fixed;inset:0;margin:auto;width:min(1280px,calc(100vw - 48px));height:calc(100vh - 48px);border-radius:10px;overflow:hidden;box-shadow:0 24px 80px rgb(0 0 0/.5);overscroll-behavior:contain}
 dialog:modal .box{height:100%!important}
+.resize{position:absolute;right:0;bottom:-5px;left:0;z-index:3;height:10px;cursor:ns-resize;touch-action:none;outline:none}
+.resize[hidden],dialog:modal .resize{display:none}
+.resize::after{content:"";position:absolute;bottom:3px;left:calc(50% - 20px);width:40px;height:4px;border-radius:2px;background:color-mix(in srgb,currentColor 40%,transparent);opacity:0;transition:opacity .15s}
+.resize:hover::after,.resize:focus-visible::after,.resize[data-dragging]::after{opacity:1}
+.resize:focus-visible::after{background:Highlight}
 dialog::backdrop{background:rgb(0 0 0/.55)}
 .box{position:relative;overflow:hidden}
 iframe{position:absolute;inset:0;display:block;width:100%;height:100%;border:0}
@@ -65,6 +70,9 @@ pre{margin:0;padding:12px 16px;font:13px/1.5 var(--font-mono,ui-monospace,Menlo,
 @keyframes spin{to{transform:rotate(1turn)}}
 @media (prefers-reduced-motion:reduce){.spin{animation-duration:2.4s}}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}`;
+
+/** The most the handle makes an embed: most of the window, at least as much as `height="auto"` gets. */
+const maxHeight = () => Math.round(Math.max(640, innerHeight * 0.9));
 
 let warned = false;
 /** The page's `<bun-playground-defaults>` (the first one). Looked up each time: a client-side navigation may swap it. */
@@ -120,6 +128,16 @@ export class BunPlayground extends HTMLElement {
   #pending = new Map<number, Pending>();
   #id = 0;
   #io: IntersectionObserver | null = null;
+  /** While the poster shows, its content's size (fonts, page CSS, a request tab's panel), for `height="auto"`. */
+  #posterSizes = new ResizeObserver(() => !this.#isReady && !this.#poster.hidden && this.#sizeBox(this.#posterHeight()));
+  /** The handle under the box (`resize`): the reader's height, in place of the content's (`height="auto"`). */
+  #handle = document.createElement("div");
+  /** The height the reader set with the handle; null to follow the content. */
+  #manual: number | null = null;
+  /** `resize` (on unless `features` says `-resize`, or `setFeatures` turned it off). */
+  #resizable = true;
+  /** The content's height, as `height="auto"` last sized the box to it (the poster's, then the embed's). */
+  #autoHeight = 0;
   /** The frame's page said `boot`; until it does, a loaded frame is something else (see #start). */
   #booted = false;
   #listening = false;
@@ -140,7 +158,22 @@ export class BunPlayground extends HTMLElement {
     const style = document.createElement("style");
     style.textContent = CSS;
     this.#box.append(this.#poster, this.#overlay);
-    this.#dialog.append(this.#box);
+    this.#handle.className = "resize";
+    this.#handle.part.add("resize");
+    this.#handle.role = "separator";
+    this.#handle.tabIndex = 0;
+    this.#handle.ariaLabel = "Resize playground";
+    this.#handle.ariaOrientation = "horizontal";
+    this.#handle.addEventListener("pointerdown", (e) => this.#drag(e));
+    this.#handle.addEventListener("dblclick", () => this.#setManual(null));
+    this.#handle.addEventListener("keydown", (e) => {
+      const step = (e.shiftKey ? 100 : 20) * (e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0);
+      if (step) this.#setManual(this.#box.offsetHeight + step);
+      else if (e.key === "Enter") this.#setManual(null);
+      else return;
+      e.preventDefault();
+    });
+    this.#dialog.append(this.#box, this.#handle);
     this.#dialog.setAttribute("open", "");
     // Escape on the host page (focus outside the frame) closes the modal back into the page.
     this.#dialog.addEventListener("cancel", (e) => {
@@ -164,6 +197,7 @@ export class BunPlayground extends HTMLElement {
     if (!this.#listening) addEventListener("message", this.#onMessage), (this.#listening = true);
     this.#renderPoster();
     this.#sizeBox();
+    this.#watchPoster();
     const load = this.#get("load");
     if (this.#act) return;
     if (load === "eager") void this.activate();
@@ -181,6 +215,7 @@ export class BunPlayground extends HTMLElement {
     this.#lockPage(false);
     this.#io?.disconnect();
     this.#io = null;
+    this.#posterSizes.disconnect();
     removeEventListener("message", this.#onMessage);
     this.#listening = false;
   }
@@ -269,6 +304,7 @@ export class BunPlayground extends HTMLElement {
   }
   /** Turns features on or off. */
   setFeatures(features: Partial<Record<Feature, boolean>>) {
+    if ("resize" in features) (this.#resizable = !!features.resize), this.#sizeBox();
     return this.#call("setFeatures", features);
   }
   /** Sets the theme (auto, light, dark, or a theme family by its light variant). */
@@ -462,6 +498,13 @@ export class BunPlayground extends HTMLElement {
     return Math.max(this.#poster.scrollHeight, ...parts.map((e) => Math.ceil(e.getBoundingClientRect().bottom - top)));
   }
 
+  /** Sizes the box to the poster again whenever the poster's content changes size (see #posterSizes). */
+  #watchPoster() {
+    this.#posterSizes.disconnect();
+    for (const s of this.#poster.querySelectorAll("slot")) for (const e of s.assignedElements()) this.#posterSizes.observe(e);
+    for (const e of this.#poster.querySelectorAll(".def")) this.#posterSizes.observe(e);
+  }
+
   #sizeBox(auto?: number) {
     const h = this.#get("height") || HEIGHTS[this.#mode()]!;
     let css = h;
@@ -470,9 +513,50 @@ export class BunPlayground extends HTMLElement {
       // A poster is as tall as its content, so a one-line block keeps its Run button on it; the live embed gets at
       // least room for its bar and a line of output.
       const min = this.#isReady ? 120 : 0;
-      css = Math.min(640, Math.max(min, px)) + "px";
+      this.#autoHeight = Math.min(640, Math.max(min, px));
+      css = (this.#manual ?? this.#autoHeight) + "px";
     }
     this.#box.style.height = css;
+    this.#showHandle();
+    this.#handle.ariaValueMin = "120";
+    this.#handle.ariaValueMax = String(maxHeight());
+    this.#handle.ariaValueNow = String(this.#box.offsetHeight);
+  }
+
+  /** Only a live embed with `height="auto"` has the handle: a poster just shows its content. */
+  #showHandle() {
+    const off = /(^|[\s,])-resize(?=[\s,]|$)/.test(this.#get("features") ?? "") || !this.#resizable;
+    this.#handle.hidden = !this.#isReady || (this.#get("height") || HEIGHTS[this.#mode()]) !== "auto" || off;
+  }
+
+  /** The reader's height from the handle (between 120px and most of the window), or null for the content's again. */
+  #setManual(px: number | null) {
+    this.#manual = px === null ? null : Math.round(Math.min(maxHeight(), Math.max(120, px)));
+    this.#sizeBox(this.#autoHeight || undefined);
+  }
+
+  /** Dragging the handle: the box follows the pointer at once (no `::part(box)` transition). */
+  #drag(e: PointerEvent) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const handle = this.#handle;
+    const start = e.clientY;
+    const from = this.#box.offsetHeight;
+    handle.setPointerCapture(e.pointerId);
+    handle.toggleAttribute("data-dragging", true);
+    // Important: a page's `::part(box)` transition outranks a plain inline style from inside the shadow root.
+    this.#box.style.setProperty("transition", "none", "important");
+    const move = (m: PointerEvent) => this.#setManual(from + m.clientY - start);
+    const end = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", end);
+      handle.removeEventListener("pointercancel", end);
+      handle.removeAttribute("data-dragging");
+      this.#box.style.removeProperty("transition");
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", end);
+    handle.addEventListener("pointercancel", end);
   }
 
   #rebuild() {
@@ -484,6 +568,7 @@ export class BunPlayground extends HTMLElement {
     this.#newReady();
     this.#setLive(false);
     this.#poster.hidden = false;
+    this.#watchPoster();
     void this.activate();
   }
 
@@ -588,6 +673,8 @@ export class BunPlayground extends HTMLElement {
         .catch(() => {});
     } else if (event === "ready" || event === "unsupported") {
       this.#isReady = true;
+      this.#showHandle();
+      this.#posterSizes.disconnect();
       this.#frame.classList.remove("wait");
       this.#setLive(true);
       void this.#hidePoster(this.#frame);

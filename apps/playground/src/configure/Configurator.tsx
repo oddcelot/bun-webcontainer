@@ -63,6 +63,7 @@ const FEATURE_INFO: Record<Feature, string> = {
   close: "Close buttons on the tabs. On in full mode",
   git: "Git panel beside the file tree, and git in the terminal. 1 MB on first use",
   run: "Run button in the bar",
+  resize: "A handle under the embed to change its height (height=auto)",
 };
 
 type Option = { value: string; label: string; swatch?: string };

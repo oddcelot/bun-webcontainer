@@ -30,7 +30,7 @@ The element's attributes and the iframe's URL parameters share names.
 | `readonly` | boolean | `false` | The editor takes no edits. Run still works. |
 | `persist` | key | none | Keeps edits in the reader's browser under this key. Without it every load starts from the source. |
 | `expand` | empty, a mode, `false` | none | A button that opens the embed in a modal over the page. With a mode (`expand="full"`) it switches to that mode while open, with that mode's features plus your `features` (so `types` stays on, `-name` stays locked). While it's open the page behind is inert (no clicks, no focus) and doesn't scroll, and scrolling inside the embed doesn't carry over to it. Escape or the button closes it, and the embed is back inline as it was: its mode, features, layout and open tabs. |
-| `status` | `toast`, `bar` | `toast` | Where the run status shows: a toast over the panes' bottom-right corner that fades a few seconds after it settles (errors stay), or a pill in the bar. |
+| `status` | `toast`, `bar` | `toast` | Where the run status shows: a toast over the panes' bottom-right corner that fades a few seconds after it settles (errors stay), or a pill beside Run. |
 | `layout` | `side`, `stack` | `side` | Where the preview (or the console, in `console` mode) goes: beside the editor, or under it, e.g. `<bun-playground mode="preview" layout="stack" height="auto">`. Stacked, there's no file tree. With `height="auto"` the editor fits its code (3 to 30 lines), the preview fits its request bar, the request panel when it shows (its params or headers, or a body of one line up to 7em) and a response (under a body at least room for a short one, 200px in all; a page keeps 200px; dragging the handle under the body only moves room between the two), and the console gets 120px, up to the 640px cap; past it, or at another height, they share the height and the response scrolls. Frames narrower than 560px stack either way. Inline only: expanded (`expand`), the embed has its usual layout, file tree included. Changing it moves the panes without reloading (a playground older than that reloads the embed); without it, the project's [`runbun.json`](/guides/project-config/) may pick one. |
 | `example` | name | none | A bundled example. |
 | `repo` | `owner/repo[@ref]` | none | A public GitHub repo. |
@@ -38,7 +38,7 @@ The element's attributes and the iframe's URL parameters share names.
 | `library` | URL | none | Element only. Your own example library: a JSON file (see [Libraries](#libraries)) read on your page, once per URL for every embed. The embed gets a project button whose gallery lists only these projects. A `<script type="application/json" data-library>` child does the same inline. Set at load: changing it reloads the embed. |
 | `project` | a library project's `id` | the library's `open`, else the inline files if any, else the first project | Element only. The project to start with. Changing it opens that project in place. |
 | `load` | `eager`, `visible`, `click` | `visible` | Element only. When the embed starts. |
-| `height` | CSS length, `auto` | `code`: `auto`; `console`: `360px`; `preview`: `420px`; `full`: `600px`; `result`: `420px` | Element only. |
+| `height` | CSS length, `auto` | `code`: `auto`; `console`: `360px`; `preview`: `420px`; `full`: `600px`; `result`: `420px` | Element only. `auto` fits the content once: the poster's, then the running embed's (with a stacked preview, once its first response shows). After that, switching tabs, responses and edits don't change it; a taller response scrolls in its pane. Changing the mode, features, layout or project fits it again. |
 | `src` | URL | where `embed.js` came from; `https://runbun.dev/` from npm, or what `define({ src })` set | Element only. Another playground base URL. |
 | `title` | text | none | The iframe's title, for assistive technology. |
 
@@ -94,12 +94,13 @@ Each project loads in place of the last: the embed stays, and the project instal
 | `watch` | Restart the running program when an edit is saved, like `bun --watch`; also after a crash, and not while an open file has a syntax error | all | |
 | `close` | Close buttons on the editor's tabs (also middle-click, Delete and Ctrl/Cmd+W). Off, a reader can't close the example's tabs | `full` | |
 | `git` | A Git panel in place of the file tree (with `files`), and `git` in the terminal; see [Git](/guides/features/#git) | `full` | 1 MB on first use |
-| `run` | The bar's Run/Stop button. Off, Ctrl/Cmd+Enter, `autorun`, `watch` and `run()` still run the program | all | |
+| `resize` | A handle on the bottom edge (`height="auto"`, inline): drag it, or focus it and press ↑/↓ (Shift for bigger steps), to set the height by hand, 120px up to most of the window; double-click or Enter goes back to the content's height. The element's own; `setFeatures({ resize })` and `-resize` hide it | all | |
+| `run` | The Run/Stop button. Off, Ctrl/Cmd+Enter, `autorun`, `watch` and `run()` still run the program | all | |
 | `autosave` | An Auto-save switch over the editor: off, edits save on Ctrl/Cmd+S and before Run (switching it back on, or turning the feature off, saves what's waiting). Without it, edits save as you type | none | |
 
 Readers can switch features on or off from the **⋯** menu, except those you locked with `-name`.
 
-With `tabs` on, the Files button of a frame too narrow for the file tree starts the editor's tab bar. When the bar would hold only the **⋯** menu (`-run` with `tabs` on, `status="toast"`, no `library` or `expand`), there's no bar: the menu sits at the right end of the editor's tab bar.
+The embed's controls sit in the editor's tab bar: the Files button of a frame too narrow for the file tree and a library's project button before the tabs, and the status pill (`status="bar"`), Run/Stop, `expand` and the **⋯** menu after them. With `tabs` off, or in `result` mode, they're in a bar over the panes instead, which also names the open file.
 
 ## Methods
 
@@ -214,6 +215,8 @@ Names and values are CSS custom properties; anything that isn't a `--name` with 
 | `--accent` | Selection, focus rings, the Run button |
 | `--error`, `--warn`, `--info`, `--ok` | Status colors |
 | `--radius`, `--pad` | A pane's corner and the space inside it |
+| `--pane-border` | A 1px line around each pane (editor, preview, console, file tree), following `--radius`; default none. With `--canvas: transparent`, the panes are framed boxes on your page |
+| `--gutter` | The room between the panes and the embed's edge; default `4px`. `0px` puts the panes flush with the edge inline, for a page that frames the embed itself; the large view keeps 4px |
 | `--font-ui`, `--font-mono` | The UI and code fonts; load them with `fonts` |
 | `--control`, `--control-hover`, `--control-border` | Buttons and inputs |
 | `--tab-track`, `--tab-track-border`, `--tab-track-radius`, `--tab-track-pad` | A track behind the editor's and the preview's tab rows: its background, 1px border, corner and the space inside it. Unset, there's none. The padding doesn't make the bar taller |
@@ -239,6 +242,8 @@ The poster (shown until the embed is ready) is styled by CSS custom properties s
 If the embed isn't ready after 60 seconds, the spinner turns back into the button, as "Try again".
 
 Beyond these, style the button as `::part(play)` (also as "Try again") and the spinner as `::part(spinner)`, e.g. `bun-playground::part(play):hover { background: linear-gradient(90deg, #f472b6, #a78bfa); }`.
+
+The `resize` handle is `::part(resize)`, a 10px strip over the box's bottom edge with a grip that shows on hover and focus (`[data-dragging]` while dragged). Dragging sets the height at once; ↑/↓, Enter and double-click go through `::part(box)`'s transition, if it has one.
 
 To animate the swap from the poster to the running embed, style `::part(poster)`, `::part(frame)` (the iframe) and `::part(box)` (the box around both; its height is set inline, so it can transition). Once the embed is ready, the element is in the `live` state (`bun-playground:state(live)`): the poster, which sits above the frame, stops taking clicks, and the element hides it when its transitions have finished (at once without any). A blur and scale crossfade:
 

@@ -154,6 +154,7 @@ const embed = createRoot(() => {
     /** The host opened or closed its modal: an `expand=<mode>` embed switches to that mode meanwhile. */
     setExpanded(open: boolean) {
       setOpen(open);
+      document.documentElement.toggleAttribute("data-expanded", open);
       if (open) tabsBefore = { open: [...workspace.state.open], active: workspace.state.active };
       else {
         workspace.saveAll();
@@ -483,12 +484,12 @@ function wantedHeight() {
   // Read first, so that another file measures again, and (stacked) another preview tab, a response, or a switch
   // between page and response.
   const path = workspace.state.active;
-  if (stacked && embed.has("preview")) {
-    const tab = pg.previews.state.tabs.find((t) => t.id === pg.previews.state.active);
-    void [tab?.view, tab?.response, tab?.method, tab?.panel, tab?.section];
-  }
+  const tab = stacked && embed.has("preview") ? pg.previews.state.tabs.find((t) => t.id === pg.previews.state.active) : undefined;
+  void [tab?.view, tab?.response, tab?.method, tab?.panel, tab?.section];
   const below = embed.has("console") && !embed.has("preview") && embed.mode() === "code";
   const measured = measuredHeight(stacked, below);
+  // Measured with what the preview will show (a response, or a served page), or with no stacked preview: settled soon.
+  if (measured && (!tab || tab.response || (tab.view === "frame" && session.ports().length))) settleIn(500);
   if (measured) return (unmeasured = 0), (measuredOnce = true), measured;
   // The editor isn't laid out yet (it remounts when tabs come back from the modal): try again for a few frames, and
   // keep the height there is meanwhile rather than jump to the estimate.
@@ -497,7 +498,8 @@ function wantedHeight() {
   // Before the editor is laid out, an estimate. Each stacked row adds its height and the 4px grid gap.
   const lines = Math.min(Math.max((path ? (vfs.readText(path) ?? "") : "").split("\n").length, 3), 30);
   const rows = stacked ? (embed.has("preview") ? STACK_PREVIEW + 4 : 0) + (embed.has("console") ? STACK_CONSOLE + 4 : 0) : 0;
-  return 40 + (embed.has("tabs") || embed.has("autosave") ? 38 : 0) + lines * LINE + 24 + (below ? 160 : 0) + rows + (pg.canRun ? 0 : 44);
+  // The bar, or with tabs (and the bar's controls in their bar) the gap above the panes.
+  return (embed.has("tabs") ? 4 : 40) + (embed.has("tabs") || embed.has("autosave") ? 38 : 0) + lines * LINE + 24 + (below ? 160 : 0) + rows + (pg.canRun ? 0 : 44);
 }
 
 /**
@@ -579,7 +581,8 @@ function previewHeight(): number {
     const slack = shown ? Math.max(0, Number(body!.dataset.room ?? 0) - Number(body!.dataset.fit)) : 0;
     h = Math.max(STACK_PREVIEW, Math.ceil(chrome + (shown ? slack + Math.max(content, responseReserve()) : content)));
   }
-  document.getElementById("embed")?.style.setProperty("--stack-preview", `${h}px`);
+  // Settled, the row keeps its height and a taller response scrolls in it.
+  if (!settled) document.getElementById("embed")?.style.setProperty("--stack-preview", `${h}px`);
   return h;
 }
 /** A measurement on the next frame, however many asked for one in this: no jitter while a body is typed. */
@@ -593,6 +596,35 @@ function queueResize() {
   });
 }
 let lastHeight = 0;
+/**
+ * The height follows the content until it settles: half a second after a measurement with what the preview will show
+ * (wantedHeight). Settled, tab switches, responses and edits leave it as it is (the element's handle sizes it by hand);
+ * the mode, features, layout or project changing let it follow again.
+ */
+let settled = false;
+let settleAt = Infinity;
+let settleTimer: ReturnType<typeof setTimeout> | undefined;
+function settleIn(ms: number) {
+  if (settled || Date.now() + ms >= settleAt) return;
+  clearTimeout(settleTimer);
+  settleAt = Date.now() + ms;
+  settleTimer = setTimeout(() => (settled = true), ms);
+}
+function unsettle() {
+  clearTimeout(settleTimer);
+  settleAt = Infinity;
+  settled = false;
+}
+// Not the modal's mode (`expand=<mode>`): inline, the embed comes back as it was.
+let shape = "";
+createRoot(() =>
+  createEffect(
+    () => (embed.expanded() ? shape : [embed.mode(), embed.features().join(), embed.layout(), embed.project()].join("|")),
+    (next) => {
+      if (next !== shape) (shape = next), unsettle();
+    },
+  ),
+);
 const checkFit = () => embed.setFit(Math.abs(innerHeight - lastHeight) <= 1);
 // The frame changing size: fitted or not, and a measurement that waited for the frame (0 tall for a moment as the
 // modal closes) can be taken now. The height asked for doesn't depend on the frame's, so this doesn't loop.
@@ -602,7 +634,7 @@ addEventListener("resize", () => {
 });
 function sendResize(height: number) {
   // The modal sizes the frame itself; the inline height waits for the embed to come back (measured as it was).
-  if (height === lastHeight || untrack(embed.expanded)) return;
+  if (height === lastHeight || untrack(embed.expanded) || settled) return;
   lastHeight = height;
   emit("resize", { height });
   checkFit();
