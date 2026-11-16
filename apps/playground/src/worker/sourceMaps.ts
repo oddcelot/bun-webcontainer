@@ -147,8 +147,9 @@ export const CJS_WRAPPER = new Set(["__run", "__cjsModule", "require"]);
  */
 export function installStackTraces(root: () => string, read: (path: string) => string | undefined) {
   function frame(site: CallSite, first: boolean): string {
-    const file = site.getFileName();
-    const name = site.getFunctionName();
+    // Evaluated code names itself with `//# sourceURL=` (node:vm's filename option); its top level is no function.
+    const file = site.getFileName() || site.getScriptNameOrSourceURL?.();
+    const name = !site.getFileName() && file && site.getFunctionName() === "eval" ? null : site.getFunctionName();
     if (!file) return `${name || "<anonymous>"} (native)`;
     const url = file;
     const evaluatedTop = evaluated.get(url);
