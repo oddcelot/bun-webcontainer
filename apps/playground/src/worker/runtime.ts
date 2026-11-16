@@ -15,6 +15,7 @@ import { bunInspect, formatLog as formatValues, installWebInspect } from "./insp
 import { trackBodies } from "./bodies";
 import { keepRequestHeaders, withHeaders } from "./requestHeaders";
 import { fulfilled, tracked, trackedFn } from "./promises";
+import { createS3 } from "./s3";
 import { currentGeneration, hold, holdUntil, release, whenIdle } from "./loop";
 import { frameMapper, installStackTraces, previewSource } from "./sourceMaps";
 import { installDebugger, installNoopDebugger } from "./debugger";
@@ -30,6 +31,7 @@ import { HTMLRewriter } from "./htmlRewriterWasm";
 import { isProxy } from "./proxies";
 import { markdownWasm, xmlWasm } from "../transpiler";
 import { asyncError, codeError, fsError } from "./node/errors";
+import { mimeOf } from "./mime";
 import { hooks, type NodeSocket } from "./node/serve";
 import { flushDatabases } from "./node/sqlite";
 import nodePath from "./node/path";
@@ -788,40 +790,6 @@ function drained() {
   exit(Number(process.exitCode ?? 0) | 0);
 }
 
-const JS = "text/javascript;charset=utf-8";
-const MIME: Record<string, string> = {
-  js: JS,
-  mjs: JS,
-  cjs: JS,
-  ts: JS,
-  mts: JS,
-  cts: JS,
-  jsx: JS,
-  tsx: JS,
-  css: "text/css;charset=utf-8",
-  html: "text/html;charset=utf-8",
-  json: "application/json;charset=utf-8",
-  map: "application/json;charset=utf-8",
-  txt: "text/plain;charset=utf-8",
-  md: "text/markdown;charset=utf-8",
-  csv: "text/csv;charset=utf-8",
-  xml: "application/xml;charset=utf-8",
-  svg: "image/svg+xml",
-  png: "image/png",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  gif: "image/gif",
-  webp: "image/webp",
-  avif: "image/avif",
-  ico: "image/x-icon",
-  woff: "font/woff",
-  woff2: "font/woff2",
-  pdf: "application/pdf",
-  mp3: "audio/mpeg",
-  mp4: "video/mp4",
-  wasm: "application/wasm",
-};
-const mimeOf = (path: string) => MIME[path.slice(path.lastIndexOf(".") + 1)] ?? "";
 
 /**
  * `Bun.file`: a Blob over a project file. Reads go to the VFS each time, as Bun's are lazy; the Blob's own bytes
@@ -928,6 +896,10 @@ class BunFile extends Blob {
     };
   }
 }
+
+/** `Bun.S3Client`, `Bun.s3` and `s3://` URLs (s3.ts), on the worker's env and its (tracked) fetch. */
+const s3 = createS3({ env: () => env, fetch: () => globalThis.fetch, track: tracked });
+type S3File = InstanceType<typeof s3.S3File>;
 
 /** `Bun.stdout`/`Bun.stderr`: write targets that go to the console pane. */
 const stdout = new BunFile("/dev/stdout");
@@ -1076,6 +1048,7 @@ const loopback = new Set(["localhost", "127.0.0.1", "[::1]", "0.0.0.0"]);
 const fileFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = input instanceof Request ? input.url : String(input);
   if (!URL.canParse(url)) throw Object.assign(new TypeError("fetch() URL is invalid"), { code: "ERR_INVALID_URL" });
+  if (url.startsWith("s3:")) return s3.fetchUrl(url, init);
   if (!url.startsWith("file:")) {
     // A server this program started (Bun.serve, http.createServer) is answered in-process, as on a machine where
     // localhost reaches it; the browser's network can't. A child process's server lives in another worker: unreachable.
@@ -1259,10 +1232,13 @@ async function main() {
       order: semver.order,
       satisfies: semver.satisfies,
     },
-    file: (path: string | URL, opts?: { type?: string }) => new BunFile(path instanceof URL ? decodeURIComponent(path.pathname) : path, opts?.type),
+    file: (path: string | URL, opts?: { type?: string }) => (typeof path === "string" && path.startsWith("s3://") ? s3.fromUrl(path, opts) : new BunFile(path instanceof URL ? decodeURIComponent(path.pathname) : path, opts?.type)),
     // A string or bytes to a file is written before Bun.write returns, its promise already resolved (as in Bun);
     // anything to read first (a Blob, a Response, another file) settles later, as do errors.
-    write(dest: string | URL | BunFile, data: unknown) {
+    write(dest: string | URL | BunFile | S3File, data: unknown, options?: unknown) {
+      // An S3 file, or an s3:// URL with the options of S3Client#file.
+      if (s3.isS3File(dest)) return dest.write(data, options);
+      if (typeof dest === "string" && dest.startsWith("s3://")) return s3.fromUrl(dest, options).write(data);
       const out = directData(data);
       if (out !== undefined && dest !== stdout && dest !== stderr)
         try {
@@ -1290,6 +1266,8 @@ async function main() {
     resolveSync,
     resolve: async (specifier: string, from: string | URL) => resolveSync(specifier, from),
     Glob,
+    S3Client: s3.S3Client,
+    s3: s3.s3,
     // Wrapped so the functions are named `parse`/`stringify`, with Bun's lengths.
     YAML: { parse: (input: unknown) => parseData(dataText(input, "yaml"), "yaml"), stringify: (value: unknown, replacer?: unknown, space?: unknown) => yamlStringify(value, replacer, space) },
     TOML: { parse: (input: unknown) => parseData(dataText(input, "toml"), "toml"), stringify: (value: unknown, replacer?: unknown, _space?: unknown) => tomlStringify(value, replacer) },

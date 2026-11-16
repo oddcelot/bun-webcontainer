@@ -11,3 +11,5 @@ lits = "lits"      # literals
 ACCES = "ACCES"    # EACCES, the WASI errno (apps/playground/src/git/wasi.ts)
 rela = "rela"      # gix's rela_path
 styl = "styl"      # Stylus, a language in Expressive Code's groups (packages/astro/src/remark.ts)
+Algorithme = "Algorithme"  # Bun's misspelled alias of S3 list's checksumAlgorithm (apps/playground/src/worker/s3.ts)
+greather = "greather"      # Bun's expiresIn error message (apps/playground/src/worker/s3.ts)
