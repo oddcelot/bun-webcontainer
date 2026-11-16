@@ -76,6 +76,7 @@ moon run playground:check-examples                     # each of them installs a
 moon run playground:test-lockfile                      # the bun.lock an install writes = native bun install's (needs npm)
 moon run playground:test-sqlite                         # bun:sqlite (sql.js) vs native Bun: errors, safeIntegers, as(), deserialize (headless Chrome)
 moon run playground:test-processes                     # child processes (Bun.spawn, child_process, Bun.$) vs native Bun (headless Chrome)
+moon run playground:test-vm                        # node:vm (contexts over a `with` scope) vs native Bun (headless Chrome)
 scripts/setup-bun.ts                       # recreate bun/ (pinned commit + patches/bun/ via git am); bun/ is not tracked
 scripts/export-bun-patches.ts              # after committing in bun/ on wasm-experiment
 scripts/bun-upgrade.ts --check             # newer Bun release? do patches/bun/ still apply? (changes nothing)

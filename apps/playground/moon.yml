@@ -127,6 +127,14 @@ tasks:
     toolchains: ['bun']
     options:
       cache: false
+  test-vm:
+    # node:vm end to end (scripts/vm.ts): scripts/vm/cases.ts runs in the embed in headless Chrome and must print what
+    # native Bun prints, but for the differences the script lists (a context shares the worker's realm). Needs Chrome,
+    # so it isn't part of `test`.
+    command: 'bun scripts/vm.ts'
+    toolchains: ['bun']
+    options:
+      cache: false
   test-htmlrewriter:
     # HTMLRewriter end to end (scripts/htmlrewriter.ts): crates/htmlrewriter-wasm/cases.ts runs in the embed in headless
     # Chrome and each result must be native Bun's (expected.json). Needs Chrome, so it isn't part of `test`.
