@@ -121,7 +121,7 @@ console.log(`Listening on ${server.url}`);
 
 | Module | Status | Notes |
 |---|---|---|
-| `bun:sqlite` | 🟡 Partial | Built on sql.js. `Database` with `query`, `prepare`, `run`, `transaction`, `serialize`, `close`; statements with `all`, `get`, `values`, `run`, `iterate`. File databases are saved to the project. Missing: `Statement.as()`, `Database.deserialize`, `loadExtension`, `safeIntegers`, `SQLiteError`. |
+| `bun:sqlite` | 🟡 Partial | Built on sql.js. `Database` (`query` with its cache, `prepare`, `run`, `transaction` with `.immediate` and nested savepoints, `serialize`, `Database.deserialize`, `inTransaction`, `close`) and its options `strict`, `readonly`, `create` and `safeIntegers`; statements with `all`, `get`, `values`, `run`, `iterate`, `as(Class)`, `safeIntegers()`, `columnNames`, `paramsCount`, `finalize` and `toString()`. Errors are `SQLiteError` with `code`, `errno` and `byteOffset`; sql.js reports no extended result code, so it is worked out from the message (constraint failures get `SQLITE_CONSTRAINT_UNIQUE`, `_PRIMARYKEY`, `_NOTNULL`, `_CHECK`, `_FOREIGNKEY`; a trigger's `RAISE(ABORT)` reports `SQLITE_ERROR` instead of `SQLITE_CONSTRAINT_TRIGGER`). File databases are saved to the project. Missing: `declaredTypes`, `columnTypes`, `db.function`, `db.aggregate`, `onInsert`/`onUpdate`/`onDelete`, `fileControl`. `loadExtension` throws, as a Bun build without extension loading does: sql.js cannot load them. |
 | `bun:test` | 🟡 Partial | Run with `bun test` in the console. See [below](#buntest). |
 | `bun:ffi`, `bun:jsc` | ❌ Missing | |
 | `bun` | ✅ Works | `import { serve } from "bun"` and the default export are the `Bun` global. |
