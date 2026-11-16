@@ -104,3 +104,55 @@ export const firstLineLength = (text: string) => {
   const nl = text.indexOf("\n");
   return nl < 0 ? text.length : nl;
 };
+
+/**
+ * `mappings` with generated columns moved for text inserted into the printed code: `inserts` per generated line are
+ * `[column, length]` in column order (columns before the insert). A segment at or after an insert moves by its length.
+ */
+export function insertColumns(mappings: string, inserts: Map<number, [number, number][]>): string {
+  if (!inserts.size) return mappings;
+  const encode = (n: number) => {
+    let vlq = n < 0 ? (-n << 1) | 1 : n << 1;
+    let out = "";
+    do {
+      let digit = vlq & 31;
+      vlq >>>= 5;
+      if (vlq > 0) digit |= 32;
+      out += BASE64[digit];
+    } while (vlq > 0);
+    return out;
+  };
+  return mappings
+    .split(";")
+    .map((line, i) => {
+      const list = inserts.get(i);
+      if (!list || !line) return line;
+      let col = 0;
+      let prevNew = 0;
+      return line
+        .split(",")
+        .map((seg) => {
+          // The first VLQ is the column delta; the rest stays as it is.
+          let value = 0;
+          let shift = 0;
+          let end = 0;
+          for (; end < seg.length; end++) {
+            const digit = DIGITS[seg.charCodeAt(end)];
+            value |= (digit & 31) << shift;
+            shift += 5;
+            if (!(digit & 32)) {
+              end++;
+              break;
+            }
+          }
+          col += value & 1 ? -(value >>> 1) : value >>> 1;
+          let moved = col;
+          for (const [at, len] of list) if (at <= col) moved += len;
+          const out = encode(moved - prevNew) + seg.slice(end);
+          prevNew = moved;
+          return out;
+        })
+        .join(",");
+    })
+    .join(";");
+}

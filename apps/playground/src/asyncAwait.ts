@@ -7,8 +7,8 @@
 //   for await (… of y) { … } ->  { const __f = __alsSave(); try { for await (… of y) { __alsRestore(__f); … } } finally { __alsRestore(__f); } }
 //
 // A rejected `await` throws instead of returning, so the `catch` and `finally` blocks restore too; a `for await`
-// resumes before its body and after the loop. Everything is inserted within a line, so lines stay the transpiler's
-// (columns after an insert on a line move: stack traces are right to the line).
+// resumes before its body and after the loop. Everything is inserted within a line, so lines stay the transpiler's;
+// restoreContextMapped reports the inserts, for moving the source map's columns (sourceMap.ts, insertColumns).
 //
 // It reads Bun's printed output, not arbitrary source: `await` is followed by a space there and statements end in `;`.
 // When anything doesn't add up (unbalanced brackets) the code is returned as it came.
@@ -268,9 +268,18 @@ function forAwait(code: string, from: number): { bodyStart: number; end: number;
 
 let counter = 0;
 
+/** Text inserted into a line: `[original column, length]`, in column order. */
+export type Inserts = Map<number, [number, number][]>;
+
 /** `code` with every `await` (and the `try` and `for await` statements around them) restoring the context. */
 export function restoreContext(code: string): string {
-  if (!code.includes("await")) return code;
+  return restoreContextMapped(code).code;
+}
+
+/** `restoreContext`, and where it inserted text (per original line), to move a source map's columns by. */
+export function restoreContextMapped(code: string): { code: string; inserts: Inserts } {
+  const inserts: Inserts = new Map();
+  if (!code.includes("await")) return { code, inserts };
   const edits: Edit[] = [];
   const awaits: number[] = [];
   const tries: { start: number; body: readonly [number, number]; catchAt?: number; finallyAt?: number; end: number }[] = [];
@@ -304,7 +313,7 @@ export function restoreContext(code: string): string {
     }
     prev = l.kind === K.Id || l.kind === K.Punct ? l.text() : "";
   }
-  if (!awaits.length && !edits.length) return code;
+  if (!awaits.length && !edits.length) return { code, inserts };
   for (const t of tries) {
     // Only a try whose block awaits can resume somewhere else.
     const hasAwait = awaits.some((a) => a > t.body[0] && a < t.body[1]);
@@ -317,9 +326,19 @@ export function restoreContext(code: string): string {
   edits.sort((a, b) => a.at - b.at);
   let out = "";
   let last = 0;
+  let line = 0;
+  let lineStart = 0;
+  let scan = 0;
   for (const e of edits) {
     out += code.slice(last, e.at) + e.text;
     last = e.at;
+    for (let nl; (nl = code.indexOf("\n", scan)) >= 0 && nl < e.at; scan = nl + 1) {
+      line++;
+      lineStart = nl + 1;
+    }
+    const list = inserts.get(line) ?? [];
+    list.push([e.at - lineStart, e.text.length]);
+    inserts.set(line, list);
   }
-  return out + code.slice(last);
+  return { code: out + code.slice(last), inserts };
 }

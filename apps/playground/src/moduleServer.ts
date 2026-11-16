@@ -1,9 +1,9 @@
 import { BASE } from "./base";
 import { commonJSFacade, exportNames as commonJSExportNames, isCommonJS, JS_LIKE, moduleKindOf, reexports, requireRuntimeImports, stripDirname, wrapCommonJS, wrappedBodyLine } from "./cjs";
-import { firstLineLength, shiftFirstColumn } from "./sourceMap";
+import { firstLineLength, insertColumns, shiftFirstColumn } from "./sourceMap";
 import bunWrap from "./bunWrap.js?raw";
 import { loadTranspiler, type Resolver } from "./transpiler";
-import { restoreContext } from "./asyncAwait";
+import { restoreContextMapped } from "./asyncAwait";
 import { transpileCached } from "./transpileCache";
 import { instrumenting } from "./debugSession";
 import { tsconfigFor } from "./tsconfig";
@@ -382,13 +382,14 @@ async function serveCommonJS(vfs: VFS, path: string, onError: (msg: string) => v
   // The body is plain source: its `import("x")` calls still need their specifiers resolved.
   try {
     const [plain, mappings] = (await transpileCached(rewriteMeta(code, path, bun), `${path}.js`, tsconfigFor(vfs, path), resolver(vfs, dir), false, bun)).split("\0");
-    const js = bun ? restoreContext(plain) : plain;
+    const restored = bun ? restoreContextMapped(plain) : undefined;
+    const js = restored?.code ?? plain;
     // In the worker, its source map leads to the wrapper's lines, which are the file's (or the first transpile's, which
     // `inner` maps back) after a header (worker/sourceMaps.ts).
     if (mappings === undefined) return { status: 200, body: js };
     // Its probe table, on the wrapper's first line (before the file's), registered when the module loads.
     const head = probes ? `__dbg.file(${JSON.parse(probes).file},${JSON.stringify(path)},${probes});` : "";
-    return { status: 200, body: head + js + inlineSourceMap(path, mappings, { x_bwcLineOffset: wrappedBodyLine(code) - stripped, x_bwcInner: inner }) };
+    return { status: 200, body: head + js + inlineSourceMap(path, restored ? insertColumns(mappings, restored.inserts) : mappings, { x_bwcLineOffset: wrappedBodyLine(code) - stripped, x_bwcInner: inner }) };
   } catch (e) {
     if (e instanceof LazyMiss) throw e; // loaded and served again (withLoaded)
     const msg = `${path}: ${e instanceof Error ? e.message : String(e)}`;
@@ -530,7 +531,8 @@ async function serveModuleOnce(vfs: VFS, rawPath: string, onError: (msg: string)
     const debug = target === "bun" && instrumenting() && !/(^|\/)node_modules\//.test(path);
     const [plain, mappings, table] = (await transpileCached(src, path, tsconfigFor(vfs, path), resolver(vfs, dirname(path)), target === "bun", target === "bun", debug)).split("\0");
     // In the worker, each `await` keeps the AsyncLocalStorage context (asyncAwait.ts).
-    const transpiled = target === "bun" ? restoreContext(plain) : plain;
+    const restored = target === "bun" ? restoreContextMapped(plain) : { code: plain, inserts: new Map<number, [number, number][]>() };
+    const transpiled = restored.code;
     let code = transpiled;
     if (target === "bun") {
       const sync = syncEsm.get(path);
@@ -557,7 +559,7 @@ async function serveModuleOnce(vfs: VFS, rawPath: string, onError: (msg: string)
       // Its first import marks it as being imported (before its dependencies run), on the first line.
       body = `import ${JSON.stringify(`data:text/javascript,${encodeURIComponent(`globalThis.__esmImporting?.(${JSON.stringify("/" + path)})`)}`)};${body}`;
       // What was put before or changed at the start of the transpiler's first line moves that line's columns.
-      if (mappings !== undefined) body += inlineSourceMap(path, shiftFirstColumn(mappings, firstLineLength(body) - firstLineLength(transpiled)));
+      if (mappings !== undefined) body += inlineSourceMap(path, shiftFirstColumn(insertColumns(mappings, restored.inserts), firstLineLength(body) - firstLineLength(transpiled)));
     }
     return { status: 200, body };
   } catch (e) {
