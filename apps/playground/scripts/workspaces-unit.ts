@@ -2,6 +2,7 @@
 // (src/lockfile.ts staleInLock), and the VFS copy of a workspace in node_modules following its folder's edits.
 import { staleInLock } from "../src/lockfile";
 import { catalogRange, catalogsOf } from "../src/catalogs";
+import { overridesOf } from "../src/overrides";
 import { findWorkspaces, mirrorWorkspaces, packageDirs, vfsWorkspaces } from "../src/workspaces";
 import { VFS } from "@runbun/vfs";
 
@@ -40,6 +41,17 @@ eq("catalog: finds the default", [catalogRange(cats, "", "x"), catalogRange(cats
 eq("a named one", [catalogRange(cats, "n", "z"), catalogRange(cats, "n", "x"), catalogRange(cats, "none", "x")], ["3", undefined, undefined]);
 eq("catalog entry changed", staleInLock({ ...lock, catalog: { x: "1" } }, { dependencies: { a: "1" }, workspaces: ["a"], catalog: { x: "2" } }), ["catalog x"]);
 eq("catalog entry added", staleInLock(lock, { dependencies: { a: "1" }, workspaces: ["a"], catalogs: { n: { z: "1" } } }), ["catalog n/z"]);
+
+const ov = overridesOf({
+  dependencies: { ms: "^2" },
+  resolutions: { ignored: "1" },
+  overrides: { "//": "note", a: "1", "**/b": "^2", "@s/c": "$ms", d: "$missing", e: "", f: "-", g: "patch:x", "h@1": "2", "i>j": "3", "k/l": "4", m: { n: "5" } },
+});
+eq("flat overrides", ov.rules, { a: "1", b: "^2", "@s/c": "^2" });
+eq("scoped ones", ov.unsupported, ["h@1", "i>j", "k/l", "m"]);
+eq("resolutions only without overrides", overridesOf({ resolutions: { "**/x": "1" } }).rules, { x: "1" });
+eq("override changed", staleInLock({ ...lock, overrides: { a: "1" } }, { dependencies: { a: "1" }, overrides: { a: "2" } }), ["override a"]);
+eq("override added", staleInLock(lock, { dependencies: { a: "1" }, resolutions: { b: "1" } }), ["override b"]);
 
 const vfs = new VFS();
 vfs.write("package.json", JSON.stringify({ name: "root", workspaces: ["packages/*"] }));

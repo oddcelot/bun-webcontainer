@@ -3,6 +3,7 @@ import { splitPackage } from "./pkgStore";
 import { fetchTarball } from "./pkgCache";
 import { vfsWorkspaces } from "./workspaces";
 import { catalogChanges, catalogsOf } from "./catalogs";
+import { overridesOf } from "./overrides";
 
 type Log = (level: "log" | "error", text: string) => void;
 
@@ -31,11 +32,12 @@ type BunLock = {
   workspaces?: Record<string, Manifest>;
   catalog?: Deps;
   catalogs?: Record<string, Deps>;
+  overrides?: Record<string, unknown>;
   packages: Record<string, unknown[]>;
 };
 
 type Deps = Record<string, string>;
-type Manifest = { dependencies?: Deps; devDependencies?: Deps; optionalDependencies?: Deps; peerDependencies?: Deps; workspaces?: unknown; catalog?: unknown; catalogs?: unknown };
+type Manifest = { dependencies?: Deps; devDependencies?: Deps; optionalDependencies?: Deps; peerDependencies?: Deps; workspaces?: unknown; catalog?: unknown; catalogs?: unknown; overrides?: unknown; resolutions?: unknown };
 
 const allDeps = (m?: Manifest): Deps => ({ ...m?.peerDependencies, ...m?.devDependencies, ...m?.optionalDependencies, ...m?.dependencies });
 
@@ -43,6 +45,10 @@ const allDeps = (m?: Manifest): Deps => ({ ...m?.peerDependencies, ...m?.devDepe
 export function staleInLock(lock: BunLock, pkg: Manifest, workspaces?: { path: string; manifest: Manifest }[]): string[] {
   const differs = (want: Deps, locked: Deps) => [...new Set([...Object.keys(want), ...Object.keys(locked)])].filter((n) => locked[n] !== want[n]);
   const stale = differs(allDeps(pkg), allDeps(lock.workspaces?.[""]));
+  // An override added, removed or given another range.
+  const rules = overridesOf(pkg).rules;
+  const locked = Object.fromEntries(Object.entries(lock.overrides ?? {}).filter((e): e is [string, string] => typeof e[1] === "string"));
+  stale.push(...differs(rules, locked).map((n) => `override ${n}`));
   // A catalog entry added, removed or given another range (the workspaces keep the `catalog:` literal).
   for (const e of catalogChanges({ default: lock.catalog ?? {}, groups: lock.catalogs ?? {} }, catalogsOf(pkg))) stale.push(`catalog ${e}`);
   // A workspace added or removed, or one whose dependencies changed (named by its folder).
