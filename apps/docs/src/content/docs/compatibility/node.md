@@ -57,7 +57,7 @@ Built-ins import with or without the `node:` prefix. Labels are explained on the
 | `vm` | ⚪ Stub | |
 | `wasi` | ❌ Missing | |
 | `worker_threads` | 🟡 Partial | `new Worker(file)` (a path from the working directory or a `file:` URL, or code with `eval: true`) starts a thread in a worker of its own, on the project's files as they are when it starts: `workerData`, `argv`, `env` (a copy of `process.env` by default), `postMessage` both ways with transfers, `parentPort`, `isMainThread`, `threadId`, `getEnvironmentData`, the `online`, `message`, `error` and `exit` events, `terminate()` and `ref`/`unref`. An uncaught error in the thread is its `error` event and ends it with code 1. A thread listening on `parentPort` keeps running until it closes the port or is terminated, as in Bun. What it prints goes to the program's output (`worker.stdout` with `stdout: true`). `SHARE_ENV` gives a copy, not a shared `env`; no `resourceLimits`, `stdin` or `receiveMessageOnPort`. `MessageChannel` and `BroadcastChannel` are the browser's. The global Web `Worker` runs on the same threads: see [Bun APIs](/compatibility/bun/#importmeta-and-globals). |
-| `zlib` | 🟡 Partial | gzip, deflate (zlib and raw) and `unzip`: sync, callback and stream APIs, `crc32`, `constants`. Brotli functions throw. |
+| `zlib` | 🟡 Partial | gzip, deflate (zlib and raw), `unzip`, Brotli and zstd: sync, callback and stream APIs, `crc32`, `constants`. Brotli and zstd run in WebAssembly and compress a stream when it ends, so `flush()` emits nothing early; zstd reads only the compression level (`ZSTD_c_compressionLevel`) of its parameters, and writes no checksum or dictionary. The compressed bytes can differ from Node's but decompress anywhere. |
 
 Try a few of them:
 

@@ -11,6 +11,7 @@ JSC-independent Rust crates compiled to wasm64 (Memory64) plus JS shims for the 
 | `crates/fmt-wasm/` | `bun fmt` (`bun_format` through `bun_lint_driver`) as wasm64: `bun fmt --stdin-filepath` itself over the VFS through `bun_sys` imports, configs included; byte-identical to native `bun fmt` |
 | `crates/tsrs-ls-wasm/` | [tsrs](https://github.com/oxc-project/tsrs)'s language service (TypeScript 7 in Rust) as a long-lived wasm32-wasip1 module: the editor's type errors (and hovers), files pushed in incrementally |
 | `crates/semver-wasm/` | `bun_semver` as wasm64 |
+| `crates/compress-wasm/` | zstd and brotli (pure Rust) as wasm64, for `Bun.zstd*` and node:zlib |
 | `crates/sys-wasm/` | probe: `bun_sys` file ops on wasm64 through host imports over the playground VFS |
 | `crates/resolve-wasm/` | `bun_resolver` on wasm64 (`resolve_c`): relative/bare/exports/imports/tsconfig paths over the VFS via `bun_sys` imports; 0.9 MB, only `bun_sys.*` imports |
 | `crates/sys-host/` | defines the `bun_sys_host_*` symbols bun_sys declares: `bun_sys.*` wasm imports (feature `imports`) or `-ENOSYS` stubs |

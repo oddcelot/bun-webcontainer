@@ -87,6 +87,7 @@ scripts/vendor-astro-solid.ts --check      # withastro/astro#17891 merged? @astr
 # not bun/ or crates/tsrs-ls-wasm). Build one crate per cargo run: built together, features unify (sys-host `imports` into transpile-wasm).
 W="-Zbuild-std=std,panic_abort --target wasm64-unknown-unknown --release"
 (cd crates/semver-wasm && cargo build $W && node test.ts && node diff.ts)
+(cd crates/compress-wasm && cargo build $W && node test.ts)    # zstd + brotli (pure Rust) round-tripped with native Bun (node >= 24)
 (cd crates/transpile-wasm && cargo build $W && node test.ts)   # diff vs `bun build --no-bundle` on corpus/
 (cd crates/sys-wasm && cargo build $W && node test.ts)         # bun_sys over the VFS (node >= 24; bun lacks Memory64)
 (cd crates/resolve-wasm && cargo build $W && node test.ts)     # bun_resolver over the VFS vs bun (node >= 24); the playground resolves with it

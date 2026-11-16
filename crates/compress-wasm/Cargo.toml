@@ -1,0 +1,13 @@
+[package]
+name = "bun_compress_wasm"
+version = "0.0.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"]
+
+# Pure Rust, no C: wasm64-unknown-unknown has no libc for zstd-sys or brotli-sys to link. structured-zstd is a ruzstd
+# fork with the encoder levels ruzstd lacks (its Default/Better/Best are `unimplemented!()`); the kernels stay scalar.
+[dependencies]
+brotli = { version = "9", default-features = false, features = ["std"] }
+structured-zstd = { version = "0.4", default-features = false, features = ["std", "hash", "kernel-scalar"] }
