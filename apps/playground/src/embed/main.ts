@@ -497,7 +497,8 @@ function wantedHeight() {
   // Before the editor is laid out, an estimate. Each stacked row adds its height and the 4px grid gap.
   const lines = Math.min(Math.max((path ? (vfs.readText(path) ?? "") : "").split("\n").length, 3), 30);
   const rows = stacked ? (embed.has("preview") ? STACK_PREVIEW + 4 : 0) + (embed.has("console") ? STACK_CONSOLE + 4 : 0) : 0;
-  return 40 + (embed.has("tabs") || embed.has("autosave") ? 38 : 0) + lines * LINE + 24 + (below ? 160 : 0) + rows + (pg.canRun ? 0 : 44);
+  // The bar, or with tabs (and the bar's controls in their bar) the gap above the panes.
+  return (embed.has("tabs") ? 4 : 40) + (embed.has("tabs") || embed.has("autosave") ? 38 : 0) + lines * LINE + 24 + (below ? 160 : 0) + rows + (pg.canRun ? 0 : 44);
 }
 
 /**

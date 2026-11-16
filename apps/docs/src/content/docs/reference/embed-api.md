@@ -30,7 +30,7 @@ The element's attributes and the iframe's URL parameters share names.
 | `readonly` | boolean | `false` | The editor takes no edits. Run still works. |
 | `persist` | key | none | Keeps edits in the reader's browser under this key. Without it every load starts from the source. |
 | `expand` | empty, a mode, `false` | none | A button that opens the embed in a modal over the page. With a mode (`expand="full"`) it switches to that mode while open, with that mode's features plus your `features` (so `types` stays on, `-name` stays locked). While it's open the page behind is inert (no clicks, no focus) and doesn't scroll, and scrolling inside the embed doesn't carry over to it. Escape or the button closes it, and the embed is back inline as it was: its mode, features, layout and open tabs. |
-| `status` | `toast`, `bar` | `toast` | Where the run status shows: a toast over the panes' bottom-right corner that fades a few seconds after it settles (errors stay), or a pill in the bar. |
+| `status` | `toast`, `bar` | `toast` | Where the run status shows: a toast over the panes' bottom-right corner that fades a few seconds after it settles (errors stay), or a pill beside Run. |
 | `layout` | `side`, `stack` | `side` | Where the preview (or the console, in `console` mode) goes: beside the editor, or under it, e.g. `<bun-playground mode="preview" layout="stack" height="auto">`. Stacked, there's no file tree. With `height="auto"` the editor fits its code (3 to 30 lines), the preview fits its request bar, the request panel when it shows (its params or headers, or a body of one line up to 7em) and a response (under a body at least room for a short one, 200px in all; a page keeps 200px; dragging the handle under the body only moves room between the two), and the console gets 120px, up to the 640px cap; past it, or at another height, they share the height and the response scrolls. Frames narrower than 560px stack either way. Inline only: expanded (`expand`), the embed has its usual layout, file tree included. Changing it moves the panes without reloading (a playground older than that reloads the embed); without it, the project's [`runbun.json`](/guides/project-config/) may pick one. |
 | `example` | name | none | A bundled example. |
 | `repo` | `owner/repo[@ref]` | none | A public GitHub repo. |
@@ -94,12 +94,12 @@ Each project loads in place of the last: the embed stays, and the project instal
 | `watch` | Restart the running program when an edit is saved, like `bun --watch`; also after a crash, and not while an open file has a syntax error | all | |
 | `close` | Close buttons on the editor's tabs (also middle-click, Delete and Ctrl/Cmd+W). Off, a reader can't close the example's tabs | `full` | |
 | `git` | A Git panel in place of the file tree (with `files`), and `git` in the terminal; see [Git](/guides/features/#git) | `full` | 1 MB on first use |
-| `run` | The bar's Run/Stop button. Off, Ctrl/Cmd+Enter, `autorun`, `watch` and `run()` still run the program | all | |
+| `run` | The Run/Stop button. Off, Ctrl/Cmd+Enter, `autorun`, `watch` and `run()` still run the program | all | |
 | `autosave` | An Auto-save switch over the editor: off, edits save on Ctrl/Cmd+S and before Run (switching it back on, or turning the feature off, saves what's waiting). Without it, edits save as you type | none | |
 
 Readers can switch features on or off from the **⋯** menu, except those you locked with `-name`.
 
-With `tabs` on, the Files button of a frame too narrow for the file tree starts the editor's tab bar. When the bar would hold only the **⋯** menu (`-run` with `tabs` on, `status="toast"`, no `library` or `expand`), there's no bar: the menu sits at the right end of the editor's tab bar.
+The embed's controls sit in the editor's tab bar: the Files button of a frame too narrow for the file tree and a library's project button before the tabs, and the status pill (`status="bar"`), Run/Stop, `expand` and the **⋯** menu after them. With `tabs` off, or in `result` mode, they're in a bar over the panes instead, which also names the open file.
 
 ## Methods
 
