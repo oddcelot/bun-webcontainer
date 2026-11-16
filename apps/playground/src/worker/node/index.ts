@@ -25,6 +25,7 @@ import util from "./util";
 import worker_threads from "./worker_threads";
 import child_process from "./child_process";
 import zlib from "./zlib";
+import { withBrotliZstd } from "../compress";
 
 /** node:stream/web re-exports the web stream classes, which are globals here. */
 const streamWeb = Object.fromEntries(
@@ -34,8 +35,13 @@ const streamWeb = Object.fromEntries(
     .filter(([, v]) => v !== undefined),
 );
 
+// CompressionStream and DecompressionStream, with "brotli" and "zstd" too (compress.ts); the worker installs these as globals.
+export const compressionStreams: Record<string, unknown> = {};
+if (typeof CompressionStream !== "undefined") compressionStreams.CompressionStream = streamWeb.CompressionStream = withBrotliZstd(CompressionStream, true);
+if (typeof DecompressionStream !== "undefined") compressionStreams.DecompressionStream = streamWeb.DecompressionStream = withBrotliZstd(DecompressionStream, false);
+
 /** What `Bun` has; runtime.ts types the global against this list. */
-export const BUN_NAMES = ["version", "env", "gc", "main", "argv", "stdout", "stderr", "inspect", "deepEquals", "escapeHTML", "which", "spawn", "spawnSync", "sleep", "nanoseconds", "semver", "file", "write", "serve", "build", "CryptoHasher", "gzipSync", "gunzipSync", "deflateSync", "inflateSync", "hash", "Transpiler", "resolveSync", "resolve", "Glob", "YAML", "TOML", "JSONC", "JSON5", "password", "Cookie", "CookieMap", "sleepSync", "revision", "JSONL", "XML", "markdown", "$"] as const;
+export const BUN_NAMES = ["version", "env", "gc", "main", "argv", "stdout", "stderr", "inspect", "deepEquals", "escapeHTML", "which", "spawn", "spawnSync", "sleep", "nanoseconds", "semver", "file", "write", "serve", "build", "CryptoHasher", "gzipSync", "gunzipSync", "deflateSync", "inflateSync", "zstdCompress", "zstdCompressSync", "zstdDecompress", "zstdDecompressSync", "hash", "Transpiler", "resolveSync", "resolve", "Glob", "YAML", "TOML", "JSONC", "JSON5", "password", "Cookie", "CookieMap", "sleepSync", "revision", "JSONL", "XML", "markdown", "$"] as const;
 /** `import ... from "bun"`: the worker copies the `Bun` global in once it exists; the page only needs the names. */
 const bun: Record<string, unknown> = Object.fromEntries(BUN_NAMES.map((k) => [k, undefined]));
 

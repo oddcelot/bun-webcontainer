@@ -2,6 +2,7 @@ import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 const files = [
   ["../../../target/wasm64-unknown-unknown/release/bun_semver_wasm.wasm", "bun_semver_wasm.wasm"],
+  ["../../../target/wasm64-unknown-unknown/release/bun_compress_wasm.wasm", "bun_compress_wasm.wasm"],
   ["../../../target/wasm64-unknown-unknown/release/bun_transpile_wasm.wasm", "bun_transpile_wasm.wasm"],
   ["../../../target/wasm64-unknown-unknown/release/bun_bundle_wasm.wasm", "bun_bundle_wasm.wasm"],
   ["../../../target/wasm64-unknown-unknown/release/bun_resolve_wasm.wasm", "bun_resolve_wasm.wasm"],

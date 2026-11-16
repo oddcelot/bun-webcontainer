@@ -40,6 +40,7 @@ const WASM_CRATES: { dir: string; target: string; packages: string[] }[] = [
     target: "wasm64-unknown-unknown",
     packages: [
       "bun_semver_wasm",
+      "bun_compress_wasm",
       "bun_transpile_wasm",
       "bun_bundle_wasm",
       "bun_resolve_wasm",

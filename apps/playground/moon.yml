@@ -153,6 +153,7 @@ tasks:
       VITE_EDITOR_ORIGINS: 'https://runbun.dev,http://127.0.0.1:7357'
     deps:
       - 'semver-wasm:build'
+      - 'compress-wasm:build'
       - 'transpile-wasm:build'
       - 'bundle-wasm:build'
       - 'resolve-wasm:build'
@@ -171,6 +172,7 @@ tasks:
     preset: 'server'
     deps:
       - 'semver-wasm:build'
+      - 'compress-wasm:build'
       - 'transpile-wasm:build'
       - 'bundle-wasm:build'
       - 'resolve-wasm:build'
@@ -202,6 +204,7 @@ tasks:
       CANARY: '1'
     deps:
       - 'semver-wasm:build'
+      - 'compress-wasm:build'
       - 'transpile-wasm:build'
       - 'bundle-wasm:build'
       - 'resolve-wasm:build'

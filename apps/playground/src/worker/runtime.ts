@@ -3,7 +3,7 @@ import { loadResolver, parseData, parseDataFile, resolve } from "../resolver";
 import { loadSemver } from "../semver";
 import { dirname, norm, VFS, type FileData } from "@runbun/vfs";
 import { readConfig } from "../projectConfig";
-import { BUN_NAMES, builtins, installTimers, setExit, setFs, setRawStdio, setRequire, setStdio } from "./node";
+import { BUN_NAMES, builtins, compressionStreams, installTimers, setExit, setFs, setRawStdio, setRequire, setStdio } from "./node";
 import { bundle, type BundleConfig, type BundleLog } from "./bundler";
 import { setHostVfs } from "./hostPackages";
 import { hash } from "./hash";
@@ -36,6 +36,7 @@ import { isDeepStrictEqual } from "./node/util";
 import { failRunning, runTestFiles } from "./node/test";
 import { BUN_REVISION, BUN_VERSION } from "./bunVersion";
 import * as fflate from "fflate";
+import { bunZstdCompress, bunZstdCompressSync, bunZstdDecompress, bunZstdDecompressSync } from "./compress";
 import { createDollar } from "../shell/dollar";
 import { builtins as shellBuiltins } from "../shell/builtins";
 import { nodeFs as shellFs } from "../shell/nodeFs";
@@ -127,6 +128,7 @@ g.global ??= globalThis;
 setProxyCheck(isProxy);
 g.Buffer ??= (builtins.buffer as { Buffer: unknown }).Buffer;
 installTimers();
+Object.assign(globalThis, compressionStreams); // gzip, deflate-raw and also brotli, zstd
 
 /** One `Bun.serve` (or `http.Server#listen`). A program may start several: devframe adds one on port 0 for its RPC socket. */
 interface Instance {
@@ -1230,6 +1232,11 @@ async function main() {
     gunzipSync: (d: Compressible) => fflate.gunzipSync(compressible(d)),
     deflateSync: (d: Compressible, o?: { level?: number }) => fflate.deflateSync(compressible(d), level(o)),
     inflateSync: (d: Compressible) => fflate.inflateSync(compressible(d)),
+    // zstd runs in compress-wasm, instantiated on first use.
+    zstdCompressSync: bunZstdCompressSync,
+    zstdDecompressSync: bunZstdDecompressSync,
+    zstdCompress: trackedFn(bunZstdCompress),
+    zstdDecompress: trackedFn(bunZstdDecompress),
     Transpiler,
     resolveSync,
     resolve: async (specifier: string, from: string | URL) => resolveSync(specifier, from),
