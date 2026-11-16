@@ -150,6 +150,11 @@ export type Method = Request["method"];
 
 /** Embed → host, unsolicited. */
 export type Event =
+  /**
+   * The embed page's first script ran, before its module loads: a frame that says this but not `boot` is the embed
+   * failing to start, not another page. Embeds older than it don't send it.
+   */
+  | { event: "alive"; data: { version: number } }
   /** The page loaded and listens; with `?init=1` in its URL it waits for `init` before loading a project. */
   | { event: "boot"; data: { version: number } }
   | { event: "ready"; data: { version: number; bun: string; canRun: boolean; mode: Mode; features: Feature[] } }

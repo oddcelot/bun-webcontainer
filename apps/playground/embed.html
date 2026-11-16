@@ -2,6 +2,11 @@
 <html lang="en" data-embed>
   <head>
     <meta charset="UTF-8" />
+    <!-- `alive` (packages/embed/src/protocol.ts) before anything loads: the element knows this frame is the embed even when
+      its module then fails, and shows "Try again" instead of loading the frame again. -->
+    <script>
+      if (parent !== window) parent.postMessage({ bunPlayground: 1, event: "alive", data: { version: 1 } }, "*");
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Bun playground · runbun.dev</title>
     <meta name="robots" content="noindex" />
