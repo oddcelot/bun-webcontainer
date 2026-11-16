@@ -1,10 +1,11 @@
 import type { LazyData, VFS } from "@runbun/vfs";
 import { splitPackage } from "./pkgStore";
-import { fetchTarball } from "./pkgCache";
+import { fetchTarball, registryOf } from "./pkgCache";
+import { vfsWorkspaces } from "./workspaces";
+import { catalogChanges, catalogsOf } from "./catalogs";
+import { overridesOf } from "./overrides";
 
 type Log = (level: "log" | "error", text: string) => void;
-
-const NPM = "https://registry.npmjs.org";
 
 /** `bun.lock` is JSON plus trailing commas. Strips commas before `}`/`]` outside strings. */
 export function parseBunLock(text: string): BunLock {
@@ -27,19 +28,37 @@ export function parseBunLock(text: string): BunLock {
 type BunLock = {
   lockfileVersion: number;
   workspaces?: Record<string, Manifest>;
+  catalog?: Deps;
+  catalogs?: Record<string, Deps>;
+  overrides?: Record<string, unknown>;
   packages: Record<string, unknown[]>;
 };
 
 type Deps = Record<string, string>;
-type Manifest = { dependencies?: Deps; devDependencies?: Deps; optionalDependencies?: Deps; peerDependencies?: Deps };
+type Manifest = { dependencies?: Deps; devDependencies?: Deps; optionalDependencies?: Deps; peerDependencies?: Deps; workspaces?: unknown; catalog?: unknown; catalogs?: unknown; overrides?: unknown; resolutions?: unknown };
 
 const allDeps = (m?: Manifest): Deps => ({ ...m?.peerDependencies, ...m?.devDependencies, ...m?.optionalDependencies, ...m?.dependencies });
 
 /** The dependencies whose range in package.json isn't the one bun.lock recorded: changed, added or removed. */
-export function staleInLock(lock: BunLock, pkg: Manifest): string[] {
-  const want = allDeps(pkg);
-  const locked = allDeps(lock.workspaces?.[""]);
-  return [...new Set([...Object.keys(want), ...Object.keys(locked)])].filter((n) => locked[n] !== want[n]);
+export function staleInLock(lock: BunLock, pkg: Manifest, workspaces?: { path: string; manifest: Manifest }[]): string[] {
+  const differs = (want: Deps, locked: Deps) => [...new Set([...Object.keys(want), ...Object.keys(locked)])].filter((n) => locked[n] !== want[n]);
+  const stale = differs(allDeps(pkg), allDeps(lock.workspaces?.[""]));
+  // An override added, removed or given another range.
+  const rules = overridesOf(pkg).rules;
+  const locked = Object.fromEntries(Object.entries(lock.overrides ?? {}).filter((e): e is [string, string] => typeof e[1] === "string"));
+  stale.push(...differs(rules, locked).map((n) => `override ${n}`));
+  // A catalog entry added, removed or given another range (the workspaces keep the `catalog:` literal).
+  for (const e of catalogChanges({ default: lock.catalog ?? {}, groups: lock.catalogs ?? {} }, catalogsOf(pkg))) stale.push(`catalog ${e}`);
+  // A workspace added or removed, or one whose dependencies changed (named by its folder).
+  if (!workspaces) return stale;
+  const paths = new Set(workspaces.map((w) => w.path));
+  for (const path of Object.keys(lock.workspaces ?? {})) if (path && !paths.has(path)) stale.push(path);
+  for (const { path, manifest } of workspaces) {
+    const locked = lock.workspaces?.[path];
+    if (!locked) stale.push(path);
+    else if (differs(allDeps(manifest), allDeps(locked)).length) stale.push(path);
+  }
+  return stale;
 }
 
 /** `"a/@s/b/c"` → `["a", "@s/b", "c"]`: lockfile keys join the install path's package names with `/`. */
@@ -149,14 +168,22 @@ export async function gunzip(bytes: Uint8Array): Promise<Uint8Array> {
 /**
  * Installs exactly what `bun.lock` lists: every package at its locked version and install path
  * (nested keys go to nested `node_modules`), each tarball checked against its integrity hash.
- * npm packages, tarball URLs and `file:` folders or tarballs; git, workspace and link entries are reported and skipped.
+ * npm packages, tarball URLs, `file:` folders or tarballs and workspaces (copied to node_modules); git and link entries
+ * are reported and skipped.
  */
 export async function installFromBunLock(vfs: VFS, lockText: string, log: Log): Promise<number> {
   const lock = parseBunLock(lockText);
   if (lock.lockfileVersion > 2) log("error", `bun.lock: lockfileVersion ${lock.lockfileVersion} isn't supported yet`);
 
   const pkgText = vfs.readText("package.json");
-  const stale = pkgText ? staleInLock(lock, JSON.parse(pkgText)) : [];
+  const root = pkgText ? JSON.parse(pkgText) : undefined;
+  const stale = root ? staleInLock(lock, root, vfsWorkspaces(vfs, root)) : [];
+  // Where each workspace lives, by name: bun.lock keys a package that needs its own copy of a dependency by it.
+  const workspaceAt = new Map<string, string>();
+  for (const [key, entry] of Object.entries(lock.packages)) {
+    const id = typeof entry[0] === "string" ? parseIdent(entry[0]) : null;
+    if (id?.version.startsWith("workspace:")) workspaceAt.set(key, id.version.slice("workspace:".length));
+  }
   if (stale.length) log("error", `bun.lock doesn't match package.json (${stale.join(", ")}). Installing the locked versions.`);
 
   // Like Bun, only optional dependencies are dropped for a platform mismatch; a required one is still installed.
@@ -172,9 +199,9 @@ export async function installFromBunLock(vfs: VFS, lockText: string, log: Log): 
       if (!id) return log("error", `skip ${key}: unreadable entry`);
       const meta = entry.find((e) => !!e && typeof e === "object" && !Array.isArray(e)) as Parameters<typeof platformRestricted>[0];
       const res = id.version;
-      const kind = /^\d/.test(res) ? "npm" : /^https?:\/\//.test(res) ? "tarball" : res.startsWith("file:") ? "file" : undefined;
+      const kind = /^\d/.test(res) ? "npm" : /^https?:\/\//.test(res) ? "tarball" : res.startsWith("file:") ? "file" : res.startsWith("workspace:") ? "workspace" : undefined;
       if (!kind) {
-        const what = res.startsWith("workspace:") ? "workspaces" : res.startsWith("link:") ? "link: dependencies" : res.startsWith("root:") ? undefined : "git dependencies";
+        const what = res.startsWith("link:") ? "link: dependencies" : res.startsWith("root:") ? undefined : "git dependencies";
         if (what) log("error", `skipped ${key}@${res}: ${what} don't work in the browser`);
         return;
       }
@@ -182,14 +209,24 @@ export async function installFromBunLock(vfs: VFS, lockText: string, log: Log): 
         log("log", `- ${key}@${res} (optional, not for this platform)`);
         return;
       }
-      const dest = installPath(splitKey(key));
+      const names = splitKey(key);
+      const dest = installPath(names);
+      // A dependency a workspace needs its own copy of (`@m/lib/is-odd`) lives in the workspace's own node_modules, and
+      // also in the copy of the workspace under node_modules, which is where the others import it from.
+      const wsRoot = names.length > 1 ? workspaceAt.get(names[0]) : undefined;
+      const also = wsRoot === undefined ? undefined : `${wsRoot}/${installPath(names.slice(1))}`;
+      const put = (name: string, data: Parameters<VFS["write"]>[1]) => {
+        vfs.write(`${dest}/${name}`, data);
+        if (also) vfs.write(`${also}/${name}`, data);
+      };
       try {
-        if (kind === "file" && !/\.t(ar\.)?gz$/.test(res)) {
-          // A folder in the project: its files, without its own node_modules.
-          const from = res.slice(5).replace(/^\.\//, "").replace(/\/$/, "");
+        if (kind === "workspace" || (kind === "file" && !/\.t(ar\.)?gz$/.test(res))) {
+          // A folder in the project: its files, without its own node_modules. Workspaces have no symlink in the VFS:
+          // the copy is what `import "@m/lib"` finds.
+          const from = res.slice(kind === "workspace" ? 10 : 5).replace(/^\.\//, "").replace(/\/$/, "");
           const files = vfs.list(from).filter((p) => !p.slice(from.length + 1).split("/").includes("node_modules"));
           if (!files.some((p) => p === `${from}/package.json`)) throw new Error(`no package.json in ${from || "."}`);
-          for (const p of files) vfs.write(`${dest}/${p.slice(from.length + 1)}`, vfs.read(p)!);
+          for (const p of files) put(p.slice(from.length + 1), vfs.read(p)!);
         } else {
           let tgz: Uint8Array, url: string;
           if (kind === "file") {
@@ -201,12 +238,12 @@ export async function installFromBunLock(vfs: VFS, lockText: string, log: Log): 
             const integrity = kind === "npm" ? (entry[3] as string) : (entry[2] as string | undefined);
             const verify = typeof integrity === "string" && integrity ? (b: Uint8Array<ArrayBuffer>) => checkIntegrity(b, integrity) : undefined;
             const registry = typeof entry[1] === "string" ? entry[1] : "";
-            const base = (registry || NPM).replace(/\/$/, "");
+            const base = (registry || registryOf(id.name)).replace(/\/$/, "");
             url = kind === "tarball" ? res : registry.endsWith(".tgz") ? registry : `${base}/${id.name}/-/${id.name.split("/").pop()}-${res}.tgz`;
             tgz = await fetchTarball(url, verify);
           }
           // Kept as bytes, text included (see INSTALLED_AS_BYTES).
-          for (const { name, data } of packageFiles(await gunzip(tgz), url)) vfs.write(`${dest}/${name}`, data);
+          for (const { name, data } of packageFiles(await gunzip(tgz), url)) put(name, data);
         }
         installed++;
         log("log", `+ ${key}@${res}`);

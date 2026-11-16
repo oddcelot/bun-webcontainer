@@ -1,0 +1,20 @@
+{
+  "name": "refs",
+  "workspaces": {
+    "packages": [
+      "packages/*"
+    ],
+    "catalog": {
+      "is-odd": "^0.1.2"
+    }
+  },
+  "dependencies": {
+    "ms": "^2.0.0",
+    "is-even": "^1.0.0"
+  },
+  "overrides": {
+    "debug": "$ms",
+    "is-odd": "catalog:",
+    "is-number": "npm:is-number@^6.0.0"
+  }
+}

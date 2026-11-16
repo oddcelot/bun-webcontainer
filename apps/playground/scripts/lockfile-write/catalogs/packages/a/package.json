@@ -1,0 +1,10 @@
+{
+  "name": "a",
+  "dependencies": {
+    "is-odd": "catalog:",
+    "is-number": "catalog:extra"
+  },
+  "devDependencies": {
+    "ms": "catalog:default"
+  }
+}

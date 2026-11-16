@@ -1,0 +1,7 @@
+{
+  "name": "b",
+  "dependencies": {
+    "is-odd": "catalog:old",
+    "is-even": "catalog:default"
+  }
+}

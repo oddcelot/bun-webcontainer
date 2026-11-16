@@ -1,0 +1,17 @@
+{
+  "name": "res",
+  "dependencies": {
+    "is-even": "^1.0.0",
+    "ms": "^2.0.0",
+    "@types/node": "^20.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "resolutions": {
+    "**/is-odd": "~3.0.0",
+    "ms": "2.0.0",
+    "@types/node": "^22.0.0",
+    "**/undici-types": "6.21.0"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "ov",
+  "dependencies": {
+    "is-even": "^1.0.0",
+    "ms": "^2.0.0",
+    "debug": "^4.3.0"
+  },
+  "overrides": {
+    "is-odd": "3.0.0",
+    "ms": "2.1.2"
+  }
+}

@@ -1,4 +1,24 @@
 import { bucket, cachedSize, cacheEntry, needsRestamp, trimCache, type Bucket } from "./storage";
+import { authFor, parseNpmrc, registryFor, type Npmrc } from "./npmrc";
+
+/** The project's .npmrc (install.ts sets it before it fetches): which registry a package comes from, and the credentials for it. */
+let npmrc: Npmrc = parseNpmrc(undefined);
+export const setNpmrc = (rc: Npmrc) => void (npmrc = rc);
+export const registryOf = (name: string) => registryFor(npmrc, name);
+
+/**
+ * `fetch` for a registry: sends the project's credentials for that URL, if .npmrc has any (such a response isn't cached),
+ * and says what a failure of a registry other than npm's usually is: it didn't allow this page's origin (CORS).
+ */
+async function registryFetch(url: string, headers: Record<string, string> = {}): Promise<Response> {
+  const auth = authFor(npmrc, url);
+  try {
+    return await fetch(url, { headers: auth ? { ...headers, authorization: auth } : headers });
+  } catch (e) {
+    if (url.startsWith("https://registry.npmjs.org/")) throw e;
+    throw new Error(`${new URL(url).host} couldn't be reached: the registry must be up and allow cross-origin requests (CORS) from this page`, { cause: e });
+  }
+}
 
 /**
  * npm downloads, kept across projects and reloads like Bun's ~/.bun/install/cache. Tarballs are stored as they come:
@@ -32,7 +52,7 @@ function save({ b, cache }: Store, key: string, body: string | Uint8Array, heade
  * bytes too; a cached copy that fails it is fetched again.
  */
 export async function fetchTarball(url: string, verify?: (bytes: Bytes) => Promise<boolean>): Promise<Bytes> {
-  const s = await open();
+  const s = authFor(npmrc, url) === undefined ? await open() : undefined;
   const hit = await s?.cache.match(url).catch(() => undefined);
   if (s && hit) {
     const bytes = new Uint8Array(await hit.arrayBuffer());
@@ -41,7 +61,7 @@ export async function fetchTarball(url: string, verify?: (bytes: Bytes) => Promi
       return bytes;
     }
   }
-  const res = await fetch(url);
+  const res = await registryFetch(url);
   if (!res.ok) throw new Error(`tarball ${res.status}`);
   const bytes = new Uint8Array(await res.arrayBuffer());
   if (verify && !(await verify(bytes))) throw new Error("integrity check failed");
@@ -54,8 +74,8 @@ export async function fetchTarball(url: string, verify?: (bytes: Bytes) => Promi
  * an exact version; the cached one when offline.
  */
 export async function fetchPackument(name: string, range?: string): Promise<unknown> {
-  const url = `https://registry.npmjs.org/${name.replace("/", "%2f")}`;
-  const s = await open();
+  const url = `${registryFor(npmrc, name)}/${name.replace("/", "%2f")}`;
+  const s = authFor(npmrc, url) === undefined ? await open() : undefined;
   const hit = await s?.cache.match(url).catch(() => undefined);
   if (hit && Date.now() - Number(hit.headers.get(FETCHED) ?? 0) < PACKUMENT_TTL) return hit.json();
   if (hit && range !== undefined) {
@@ -64,7 +84,7 @@ export async function fetchPackument(name: string, range?: string): Promise<unkn
   }
   let res: Response;
   try {
-    res = await fetch(url, { headers: { accept: "application/vnd.npm.install-v1+json" } });
+    res = await registryFetch(url, { accept: "application/vnd.npm.install-v1+json" });
   } catch (e) {
     if (hit) return hit.json();
     throw e;
@@ -77,11 +97,11 @@ export async function fetchPackument(name: string, range?: string): Promise<unkn
 
 /** One version's full registry document (it has `libc`, which packuments leave out); it never changes once published. */
 export async function fetchVersion(name: string, version: string): Promise<unknown> {
-  const url = `https://registry.npmjs.org/${name.replace("/", "%2f")}/${version}`;
-  const s = await open();
+  const url = `${registryFor(npmrc, name)}/${name.replace("/", "%2f")}/${version}`;
+  const s = authFor(npmrc, url) === undefined ? await open() : undefined;
   const hit = await s?.cache.match(url).catch(() => undefined);
   if (hit) return hit.json();
-  const res = await fetch(url);
+  const res = await registryFetch(url);
   if (!res.ok) throw new Error(`registry ${res.status}`);
   const text = await res.text();
   if (s) save(s, url, text, { "content-type": "application/json" });

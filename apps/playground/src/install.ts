@@ -1,7 +1,9 @@
 import type { Semver } from "./semver";
 import { gunzip, installFromBunLock, installPath, packageFiles, parseBunLock, pruneNodeModules, splitKey, staleInLock, untar } from "./lockfile";
 import { lockedPackages, resolveProject, writeBunLock, type Manifest, type ResolveHost } from "./lockfileWrite";
-import { fetchPackument, fetchTarball, fetchVersion } from "./pkgCache";
+import { fetchPackument, fetchTarball, fetchVersion, setNpmrc } from "./pkgCache";
+import { parseNpmrc } from "./npmrc";
+import { packageDirs, vfsWorkspaces } from "./workspaces";
 import type { VFS } from "@runbun/vfs";
 
 type Log = (level: "log" | "error", text: string) => void;
@@ -37,6 +39,7 @@ function resolveHost(vfs: VFS, semver: Semver): ResolveHost {
       return text === undefined ? undefined : (JSON.parse(text) as Manifest);
     },
     version: async (name, version) => (await fetchVersion(name, version)) as Manifest,
+    packageDirs: () => packageDirs(vfs),
   };
 }
 
@@ -90,11 +93,15 @@ function installedPaths(lock: ReturnType<typeof parseBunLock>): Set<string> {
  * the bun.lock Bun would (native `bun install` takes it as is), and installs from that.
  */
 export async function bunInstall(vfs: VFS, semver: Semver, log: Log): Promise<number> {
+  // The registries and credentials of the project's .npmrc, for every fetch below.
+  const npmrc = parseNpmrc(vfs.readText(".npmrc"));
+  for (const w of npmrc.warnings) log("error", w);
+  setNpmrc(npmrc);
   let lock = vfs.readText("bun.lock");
   const text = vfs.readText("package.json");
   const pkg = text === undefined ? undefined : (JSON.parse(text) as Manifest);
   const old = lock === undefined ? undefined : parseBunLock(lock);
-  const stale = old && pkg ? staleInLock(old, pkg) : [];
+  const stale = old && pkg ? staleInLock(old, pkg, vfsWorkspaces(vfs, pkg)) : [];
   // Packages the lockfile no longer places are removed only once it holds every dependency.
   let complete = true;
   if (lock !== undefined && !stale.length) log("log", "Installing locked versions from bun.lock");

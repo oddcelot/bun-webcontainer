@@ -5,6 +5,7 @@
 import { mkdtempSync, readdirSync, readFileSync, writeFileSync, cpSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { parseNpmrc, registryFor } from "../src/npmrc";
 import { lockedPackages, resolveProject, writeBunLock, type Manifest, type ResolveHost } from "../src/lockfileWrite";
 
 const fixtures = new URL("./lockfile-write/", import.meta.url).pathname;
@@ -24,26 +25,43 @@ function untar(buf: Uint8Array): Map<string, Uint8Array> {
   return out;
 }
 
-function host(dir: string): ResolveHost {
+function host(dir: string, seen: string[] = []): ResolveHost {
+  const rc = parseNpmrc(existsSync(join(dir, ".npmrc")) ? readFileSync(join(dir, ".npmrc"), "utf8") : undefined);
+  const get = async (url: string, headers?: Record<string, string>) => {
+    seen.push(url);
+    return fetch(url, { headers });
+  };
   return {
     semver: { order: (a, b) => Bun.semver.order(a, b), satisfies: (v, r) => Bun.semver.satisfies(v, r) },
     async packument(name) {
-      const res = await fetch(`https://registry.npmjs.org/${name.replace("/", "%2f")}`, { headers: { accept: "application/vnd.npm.install-v1+json" } });
+      const res = await get(`${registryFor(rc, name)}/${name.replace("/", "%2f")}`, { accept: "application/vnd.npm.install-v1+json" });
       if (!res.ok) throw new Error(`${name}: ${res.status}`);
       return res.json();
     },
     async tarball(url) {
-      const bytes = new Uint8Array(await (await fetch(url)).arrayBuffer());
+      const bytes = new Uint8Array(await (await get(url)).arrayBuffer());
       const files = untar(Bun.gunzipSync(bytes));
       const pkg = [...files].find(([n]) => /^[^/]+\/package\.json$/.test(n));
       return { bytes, manifest: JSON.parse(new TextDecoder().decode(pkg![1])) };
     },
     async version(name, version) {
-      return (await fetch(`https://registry.npmjs.org/${name.replace("/", "%2f")}/${version}`)).json();
+      return (await get(`${registryFor(rc, name)}/${name.replace("/", "%2f")}/${version}`)).json();
     },
     folder(path) {
       const file = join(dir, path, "package.json");
       return existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as Manifest) : undefined;
+    },
+    packageDirs() {
+      const out: string[] = [];
+      const walk = (rel: string) => {
+        for (const e of readdirSync(join(dir, rel), { withFileTypes: true })) {
+          if (e.name === "node_modules" || e.name.startsWith(".")) continue;
+          if (e.isDirectory()) walk(rel ? `${rel}/${e.name}` : e.name);
+          else if (e.name === "package.json" && rel) out.push(rel);
+        }
+      };
+      walk("");
+      return out;
     },
   };
 }
@@ -52,9 +70,9 @@ function host(dir: string): ResolveHost {
 const parseLock = (text: string) => JSON.parse(text.replace(/,(\s*[}\]])/g, "$1"));
 
 /** Ours and native Bun's bun.lock for the project in `dir`, `locked`: the bun.lock both start from. */
-async function both(dir: string, locked?: string): Promise<[string, string, string[]]> {
+async function both(dir: string, locked?: string, seen: string[] = []): Promise<[string, string, string[]]> {
   const root = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")) as Manifest;
-  const resolved = await resolveProject(root, host(dir), locked ? lockedPackages(parseLock(locked).packages) : []);
+  const resolved = await resolveProject(root, host(dir, seen), locked ? lockedPackages(parseLock(locked).packages) : []);
   const native = Bun.spawnSync(["bun", "install", "--lockfile-only", "--ignore-scripts"], { cwd: dir, stderr: "pipe" });
   if (native.exitCode) throw new Error(`native bun install: ${native.stderr}`);
   return [writeBunLock(resolved), readFileSync(join(dir, "bun.lock"), "utf8"), resolved.problems];
@@ -68,12 +86,30 @@ function report(label: string, dir: string, ours: string, theirs: string): boole
   return false;
 }
 
+// A registry other than npm's for the projects with an .npmrc (`__REGISTRY__` in it is this server, test-registry.ts: npm's
+// own, relayed). A process of its own: native Bun is run with this one blocked.
+const registry = Bun.spawn(["bun", new URL("./test-registry.ts", import.meta.url).pathname], { stdout: "pipe", stderr: "inherit" });
+const port = Number((await registry.stdout.getReader().read().then((r) => new TextDecoder().decode(r.value))).match(/port (\d+)/)![1]);
+const proxy = { port, stop: () => registry.kill() };
+
 let failed = 0;
 for (const name of readdirSync(fixtures)) {
   const dir = mkdtempSync(join(tmpdir(), `lockfile-${name}-`));
   try {
     cpSync(join(fixtures, name), dir, { recursive: true });
-    const [ours, theirs, problems] = await both(dir);
+    if (existsSync(join(dir, ".npmrc"))) writeFileSync(join(dir, ".npmrc"), readFileSync(join(dir, ".npmrc"), "utf8").replaceAll("__REGISTRY__", `http://localhost:${proxy.port}`));
+    const seen: string[] = [];
+    const [ours, theirs, problems] = await both(dir, undefined, seen);
+    // Where we fetched from: a project's expected.json lists what must have come from the registry here (`here`) and
+    // from npm's (`npm`), by package name.
+    const expected = join(dir, "expected-registries.json");
+    if (existsSync(expected)) {
+      const { here = [], npm = [] } = JSON.parse(readFileSync(expected, "utf8")) as { here?: string[]; npm?: string[] };
+      const from = (base: string, pkg: string) => seen.some((u) => u.startsWith(`${base}/${pkg.replace("/", "%2f")}`));
+      for (const pkg of here) if (!from(`http://localhost:${proxy.port}`, pkg)) throw new Error(`${pkg} wasn't fetched from the project's registry`);
+      for (const pkg of npm) if (!from("https://registry.npmjs.org", pkg)) throw new Error(`${pkg} wasn't fetched from npm`);
+      rmSync(expected);
+    }
     if (problems.length) console.log(`${name}: problems: ${problems.join("; ")}`);
     if (!report(name, dir, ours, theirs)) {
       failed++;
@@ -95,6 +131,7 @@ for (const name of readdirSync(fixtures)) {
     rmSync(dir, { recursive: true, force: true });
   }
 }
+proxy.stop();
 if (failed) {
   console.log(`${failed} project(s) differ`);
   process.exit(1);

@@ -1,0 +1,1 @@
+{"name":"@m/core","version":"1.5.0","dependencies":{"is-odd":"~3.0.0"},"peerDependencies":{"is-number":"*"}}

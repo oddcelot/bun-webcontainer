@@ -38,9 +38,9 @@ tasks:
     # report ends: Stop, the watchdog, process.exit (scripts/runner-stop.ts), who the embed's `change` event says
     # changed a file (scripts/change-origin.ts), the worker's Requests keeping forbidden headers
     # (scripts/request-headers.ts), what `bun install` prunes from node_modules (scripts/install-prune.ts) and when it
-    # reuses a cached packument (scripts/packument-cache.ts), how runbun.json is read (scripts/project-config.ts) and
-    # Bun.hash against native bun (scripts/hash-compat.ts).
-    script: 'bun scripts/inspect-corpus/diff.ts && bun scripts/data-apis/jsonl.ts && bun scripts/data-apis/xml-stringify.ts && bun scripts/requests.ts && bun scripts/request-fields.ts && bun scripts/vfs-mirror.ts && bun scripts/test-results.ts && bun scripts/persist-skip.ts && bun scripts/runner-stop.ts && bun scripts/change-origin.ts && bun scripts/request-headers.ts && bun scripts/install-prune.ts && bun scripts/packument-cache.ts && bun scripts/project-config.ts && bun scripts/hash-compat.ts'
+    # reuses a cached packument (scripts/packument-cache.ts), how runbun.json is read (scripts/project-config.ts),
+    # Bun.hash against native bun (scripts/hash-compat.ts) and the workspace layout (scripts/workspaces-unit.ts).
+    script: 'bun scripts/inspect-corpus/diff.ts && bun scripts/data-apis/jsonl.ts && bun scripts/data-apis/xml-stringify.ts && bun scripts/requests.ts && bun scripts/request-fields.ts && bun scripts/vfs-mirror.ts && bun scripts/test-results.ts && bun scripts/persist-skip.ts && bun scripts/runner-stop.ts && bun scripts/change-origin.ts && bun scripts/request-headers.ts && bun scripts/install-prune.ts && bun scripts/packument-cache.ts && bun scripts/project-config.ts && bun scripts/hash-compat.ts && bun scripts/workspaces-unit.ts'
     toolchains: ['bun']
     inputs:
       - 'scripts/inspect-corpus/**/*'
@@ -68,6 +68,11 @@ tasks:
       - 'src/embed/changes.ts'
       - 'src/install.ts'
       - 'src/lockfileWrite.ts'
+      - 'src/workspaces.ts'
+      - 'src/catalogs.ts'
+      - 'src/overrides.ts'
+      - 'src/npmrc.ts'
+      - 'scripts/workspaces-unit.ts'
       - '/packages/vfs/vfs.ts'
       - 'scripts/request-headers.ts'
       - 'scripts/install-prune.ts'
@@ -178,6 +183,14 @@ tasks:
     # typed in the embed's console in headless Chrome, and print what native Bun prints for the same input; prompt()
     # runs on an isolated embedder and throws on one that isn't. Needs Chrome, so it isn't part of `test`.
     script: 'bun scripts/stdin.ts && bun scripts/stdin.ts --no-native --isolated'
+    toolchains: ['bun']
+    options:
+      cache: false
+  test-workspaces:
+    # A workspace monorepo end to end (scripts/workspaces.ts): installed in the embed in headless Chrome, an app imports a
+    # workspace package and an npm package and prints what native Bun prints for the project; the bun.lock written is
+    # native's. Needs Chrome and registry.npmjs.org, so it isn't part of `test`.
+    command: 'bun scripts/workspaces.ts'
     toolchains: ['bun']
     options:
       cache: false
