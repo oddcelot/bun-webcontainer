@@ -9,5 +9,6 @@ WRONLY = "WRONLY"  # O_WRONLY
 Flate = "Flate"    # fflate's FlateStreamHandler
 lits = "lits"      # literals
 ACCES = "ACCES"    # EACCES, the WASI errno (apps/playground/src/git/wasi.ts)
+als = "als"        # AsyncLocalStorage (scripts/als/, __alsSave in src/asyncAwait.ts)
 rela = "rela"      # gix's rela_path
 styl = "styl"      # Stylus, a language in Expressive Code's groups (packages/astro/src/remark.ts)

@@ -1,5 +1,6 @@
 import { Buffer } from "buffer";
 import EventEmitter from "events";
+import { capture, runIn } from "./asyncHooks";
 import { Server as NetServer, Socket } from "./net";
 import { hooks, upgradeRequests, type FetchHandler } from "./serve";
 import { Readable, Writable } from "./stream";
@@ -252,6 +253,8 @@ export class Server extends (NetServer as Any) {
   }
   onListen() {
     const handler: FetchHandler = async (req, bun) => {
+      // The request listeners run in the context `listen` was called in; the body's `await` below resumes outside it.
+      const context = capture();
       const addr = this.address();
       const socket = new Socket();
       socket.encrypted = this.encrypted;
@@ -270,7 +273,7 @@ export class Server extends (NetServer as Any) {
         res.once("close", () => {
           if (!res.finished) resolve(new Response(null, { status: 499 }));
         });
-        if (!this.emit("request", incoming, res)) resolve(new Response("No request listener", { status: 503 }));
+        if (!runIn(context, () => this.emit("request", incoming, res), undefined, [])) resolve(new Response("No request listener", { status: 503 }));
       }).catch((e) => new Response(String(e), { status: 500 }));
     };
     listeners.set(this, handler);

@@ -27,73 +27,7 @@ export const cluster = stubModule("cluster", "fork disconnect setupPrimary setup
 
 export const constants = {};
 
-class AsyncLocalStorage<T> {
-  private store: T | undefined;
-  getStore() {
-    return this.store;
-  }
-  run<R>(store: T, fn: (...a: unknown[]) => R, ...args: unknown[]): R {
-    const prev = this.store;
-    this.store = store;
-    try {
-      const r = fn(...args);
-      if (r instanceof Promise) {
-        // The store is only tracked synchronously: restore it once the call returns.
-      }
-      return r;
-    } finally {
-      this.store = prev;
-    }
-  }
-  exit<R>(fn: (...a: unknown[]) => R, ...args: unknown[]): R {
-    const prev = this.store;
-    this.store = undefined;
-    try {
-      return fn(...args);
-    } finally {
-      this.store = prev;
-    }
-  }
-  enterWith(store: T) {
-    this.store = store;
-  }
-  disable() {
-    this.store = undefined;
-  }
-  static bind<F extends Function>(fn: F): F {
-    return fn;
-  }
-  static snapshot() {
-    return <R>(fn: (...a: unknown[]) => R, ...args: unknown[]) => fn(...args);
-  }
-}
-
-class AsyncResource {
-  constructor(public type: string) {}
-  runInAsyncScope<R>(fn: (...a: unknown[]) => R, thisArg?: unknown, ...args: unknown[]): R {
-    return fn.apply(thisArg, args);
-  }
-  emitDestroy() {
-    return this;
-  }
-  asyncId = () => 1;
-  triggerAsyncId = () => 0;
-  bind<F extends Function>(fn: F): F {
-    return fn;
-  }
-  static bind<F extends Function>(fn: F): F {
-    return fn;
-  }
-}
-
-export const async_hooks = {
-  AsyncLocalStorage,
-  AsyncResource,
-  createHook: () => ({ enable() {}, disable() {} }),
-  executionAsyncId: () => 1,
-  triggerAsyncId: () => 0,
-  executionAsyncResource: () => ({}),
-};
+export { async_hooks } from "./asyncHooks";
 
 class Channel extends EventEmitter {
   hasSubscribers = false;

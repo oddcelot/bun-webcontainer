@@ -1,5 +1,6 @@
 import { hold, held, release } from "../loop";
 import { tracked } from "../promises";
+import { bindContext } from "./asyncHooks";
 
 const native = {
   setTimeout: globalThis.setTimeout.bind(globalThis),
@@ -25,8 +26,11 @@ class Timeout {
   ) {
     this.#start();
   }
+  /** A timer runs in the context that set it (also after `refresh`). */
+  #bound: Fn | undefined;
   #start() {
-    const { fn, args } = this;
+    const { args } = this;
+    const fn = (this.#bound ??= bindContext(this.fn));
     const run = () => {
       if (!this.repeat) this.#end();
       // Called as a plain function, so an error's stack doesn't show it as a Timeout method.

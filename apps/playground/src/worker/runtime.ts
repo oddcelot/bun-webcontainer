@@ -3,7 +3,7 @@ import { loadResolver, parseData, parseDataFile, resolve } from "../resolver";
 import { loadSemver } from "../semver";
 import { dirname, norm, VFS, type FileData } from "@runbun/vfs";
 import { readConfig } from "../projectConfig";
-import { BUN_NAMES, builtins, compressionStreams, installTimers, setExit, setFs, setRawStdio, setRequire, setStdio } from "./node";
+import { BUN_NAMES, builtins, compressionStreams, installAsyncContext, installTimers, setExit, setFs, setRawStdio, setRequire, setStdio } from "./node";
 import { bundle, type BundleConfig, type BundleLog } from "./bundler";
 import { setHostVfs } from "./hostPackages";
 import { hash } from "./hash";
@@ -30,6 +30,7 @@ import { HTMLRewriter } from "./htmlRewriterWasm";
 import { isProxy } from "./proxies";
 import { markdownWasm, xmlWasm } from "../transpiler";
 import { asyncError, codeError, fsError } from "./node/errors";
+import { capture, runIn } from "./node/asyncHooks";
 import { hooks, type NodeSocket } from "./node/serve";
 import { flushDatabases } from "./node/sqlite";
 import nodePath from "./node/path";
@@ -148,6 +149,7 @@ g.global ??= globalThis;
 setProxyCheck(isProxy);
 g.Buffer ??= (builtins.buffer as { Buffer: unknown }).Buffer;
 installTimers();
+installAsyncContext();
 hideXhr();
 Object.assign(globalThis, compressionStreams); // gzip, deflate-raw and also brotli, zstd
 
@@ -161,6 +163,8 @@ interface Instance {
   ephemeral: boolean;
   topics: Map<string, Set<ServerWebSocket>>;
   server: object;
+  /** The AsyncLocalStorage context `Bun.serve` was called in: its handlers run in it, as in Bun. */
+  context: ReturnType<typeof capture>;
 }
 
 const servers: Instance[] = [];
@@ -311,6 +315,7 @@ function createInstance(opts: ServeOptions): Instance {
     ephemeral: requested === 0,
     topics: new Map(),
     server: {},
+    context: capture(),
   };
   inst.server = {
     port,
@@ -635,7 +640,8 @@ async function dispatch(inst: Instance, req: Request): Promise<{ res: Response; 
 }
 
 async function route(inst: Instance, req: Request): Promise<Response> {
-  const { routes, handler, server } = inst;
+  const { routes, handler, server, context } = inst;
+  const call = (fn: (...a: any[]) => Response | Promise<Response>, ...args: unknown[]) => runIn<Response | Promise<Response>>(context, fn, undefined, args);
   const path = new URL(req.url).pathname;
   const asset = bundledAssets.get(path);
   if (asset && (req.method === "GET" || req.method === "HEAD")) return new Response(asset.body, { headers: { "content-type": asset.type } });
@@ -644,11 +650,11 @@ async function route(inst: Instance, req: Request): Promise<Response> {
     if (!params) continue;
     if (value instanceof Response) return value.clone();
     if (isHtmlImport(value)) return serveBundledHtml(value);
-    if (typeof value === "function") return value(routeRequest(req, params), server);
+    if (typeof value === "function") return call(value, routeRequest(req, params), server);
     const byMethod = value[req.method];
-    if (byMethod) return byMethod instanceof Response ? byMethod.clone() : byMethod(routeRequest(req, params), server);
+    if (byMethod) return byMethod instanceof Response ? byMethod.clone() : call(byMethod, routeRequest(req, params), server);
   }
-  if (handler) return handler(req, server);
+  if (handler) return call(handler, req, server);
   return new Response("Not Found", { status: 404 });
 }
 const fmt = (v: unknown): string => {
