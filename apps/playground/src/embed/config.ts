@@ -2,11 +2,11 @@ import { FEATURES, LAYOUTS, MODES, type Feature, type Layout, type Mode, type Op
 
 /** What each mode shows and turns on before the author's `features` list. */
 export const PRESETS: Record<Mode, readonly Feature[]> = {
-  code: ["console", "open", "watch", "run"],
-  console: ["console", "terminal", "open", "watch", "run"],
-  preview: ["tabs", "preview", "install", "open", "watch", "run"],
-  full: ["files", "tabs", "console", "preview", "format", "install", "terminal", "open", "watch", "close", "git", "run"],
-  result: ["preview", "open", "watch", "run"],
+  code: ["console", "open", "watch", "run", "resize"],
+  console: ["console", "terminal", "open", "watch", "run", "resize"],
+  preview: ["tabs", "preview", "install", "open", "watch", "run", "resize"],
+  full: ["files", "tabs", "console", "preview", "format", "install", "terminal", "open", "watch", "close", "git", "run", "resize"],
+  result: ["preview", "open", "watch", "run", "resize"],
 };
 
 /** What a feature costs to turn on, for the embed's menu. */

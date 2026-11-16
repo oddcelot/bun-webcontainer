@@ -38,7 +38,7 @@ The element's attributes and the iframe's URL parameters share names.
 | `library` | URL | none | Element only. Your own example library: a JSON file (see [Libraries](#libraries)) read on your page, once per URL for every embed. The embed gets a project button whose gallery lists only these projects. A `<script type="application/json" data-library>` child does the same inline. Set at load: changing it reloads the embed. |
 | `project` | a library project's `id` | the library's `open`, else the inline files if any, else the first project | Element only. The project to start with. Changing it opens that project in place. |
 | `load` | `eager`, `visible`, `click` | `visible` | Element only. When the embed starts. |
-| `height` | CSS length, `auto` | `code`: `auto`; `console`: `360px`; `preview`: `420px`; `full`: `600px`; `result`: `420px` | Element only. |
+| `height` | CSS length, `auto` | `code`: `auto`; `console`: `360px`; `preview`: `420px`; `full`: `600px`; `result`: `420px` | Element only. `auto` fits the content once: the poster's, then the running embed's (with a stacked preview, once its first response shows). After that, switching tabs, responses and edits don't change it; a taller response scrolls in its pane. Changing the mode, features, layout or project fits it again. |
 | `src` | URL | where `embed.js` came from; `https://runbun.dev/` from npm, or what `define({ src })` set | Element only. Another playground base URL. |
 | `title` | text | none | The iframe's title, for assistive technology. |
 
@@ -94,6 +94,7 @@ Each project loads in place of the last: the embed stays, and the project instal
 | `watch` | Restart the running program when an edit is saved, like `bun --watch`; also after a crash, and not while an open file has a syntax error | all | |
 | `close` | Close buttons on the editor's tabs (also middle-click, Delete and Ctrl/Cmd+W). Off, a reader can't close the example's tabs | `full` | |
 | `git` | A Git panel in place of the file tree (with `files`), and `git` in the terminal; see [Git](/guides/features/#git) | `full` | 1 MB on first use |
+| `resize` | A handle on the bottom edge (`height="auto"`, inline): drag it, or focus it and press ↑/↓ (Shift for bigger steps), to set the height by hand, 120px up to most of the window; double-click or Enter goes back to the content's height. The element's own; `setFeatures({ resize })` and `-resize` hide it | all | |
 | `run` | The Run/Stop button. Off, Ctrl/Cmd+Enter, `autorun`, `watch` and `run()` still run the program | all | |
 | `autosave` | An Auto-save switch over the editor: off, edits save on Ctrl/Cmd+S and before Run (switching it back on, or turning the feature off, saves what's waiting). Without it, edits save as you type | none | |
 
@@ -240,6 +241,8 @@ The poster (shown until the embed is ready) is styled by CSS custom properties s
 If the embed isn't ready after 60 seconds, the spinner turns back into the button, as "Try again".
 
 Beyond these, style the button as `::part(play)` (also as "Try again") and the spinner as `::part(spinner)`, e.g. `bun-playground::part(play):hover { background: linear-gradient(90deg, #f472b6, #a78bfa); }`.
+
+The `resize` handle is `::part(resize)`, a 10px strip over the box's bottom edge with a grip that shows on hover and focus (`[data-dragging]` while dragged). Dragging sets the height at once; ↑/↓, Enter and double-click go through `::part(box)`'s transition, if it has one.
 
 To animate the swap from the poster to the running embed, style `::part(poster)`, `::part(frame)` (the iframe) and `::part(box)` (the box around both; its height is set inline, so it can transition). Once the embed is ready, the element is in the `live` state (`bun-playground:state(live)`): the poster, which sits above the frame, stops taking clicks, and the element hides it when its transitions have finished (at once without any). A blur and scale crossfade:
 
