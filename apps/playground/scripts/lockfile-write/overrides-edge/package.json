@@ -1,0 +1,41 @@
+{
+  "name": "ovedge",
+  "workspaces": {
+    "packages": [
+      "packages/*"
+    ],
+    "catalog": {
+      "is-odd": "0.1.1"
+    },
+    "catalogs": {
+      "new": {
+        "is-number": "^6.0.0"
+      }
+    }
+  },
+  "dependencies": {
+    "is-even": "^1.0.0",
+    "debug": "catalog:",
+    "ms": "^2.0.0"
+  },
+  "overrides": {
+    "**/is-buffer": "1.1.5",
+    "is-even@npm:^1>is-odd": "catalog:",
+    "is-odd@^0.1.0": {
+      "is-number": "catalog:new"
+    },
+    "debug@catalog:": "4.3.4",
+    "a": {
+      "ms@*": "2.0.0",
+      "is-number@>=3.0.0-0 <4": "3.0.0"
+    },
+    "a@^2": {
+      "ms": "2.1.1"
+    },
+    "ms@^1": {
+      ".": "1.0.0"
+    },
+    "b": "workspace:*",
+    "kind-of@^3>is-buffer": "1.1.6"
+  }
+}
