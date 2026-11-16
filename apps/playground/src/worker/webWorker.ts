@@ -20,6 +20,14 @@ type Transfer = Transferable[] | StructuredSerializeOptions;
 type HandlerType = "message" | "error" | "messageerror";
 type Handler = ((this: WebWorker, e: Event) => unknown) | null;
 
+// The browser's Worker, before the runtime puts this class in its place (runtime.ts imports this module first).
+const NativeWorker = globalThis.Worker;
+/** Paths (on this origin) of the workers that host packages start (hostPackages.ts): the browser's own runs them. */
+const hostWorkers = new Set<string>();
+export function allowHostWorker(url: URL) {
+  hostWorkers.add(url.pathname);
+}
+
 /** `new CloseEvent` where there is one, an Event with its fields otherwise. */
 const closeEvent = (code: number) => {
   const init = { code, reason: code === 0 ? "Worker terminated normally" : "Worker exited abnormally", wasClean: code === 0 };
@@ -32,14 +40,21 @@ const errorText = (err: unknown) => {
 };
 
 export class WebWorker extends EventTarget {
-  readonly threadId: number;
-  #thread: Thread;
+  // Set unless the constructor hands back the browser's Worker (allowHostWorker).
+  readonly threadId!: number;
+  #thread!: Thread;
   #handlers: Record<HandlerType, Handler> = { message: null, error: null, messageerror: null };
   #registered = new Set<HandlerType>();
 
   constructor(url: string | URL, options: Options = {}) {
     super();
     const href = String(url);
+    // A host package's worker (rolldown's WASI threads): the playground's own file, not the project's. Only the
+    // listed paths of this origin: a project can't run any other URL this way.
+    if (NativeWorker && /^https?:/i.test(href)) {
+      const u = new URL(href);
+      if (u.origin === location.origin && hostWorkers.has(u.pathname)) return new NativeWorker(u, options) as unknown as WebWorker;
+    }
     if (/^[a-z][a-z\d+.-]+:/i.test(href) && !/^file:/i.test(href)) throw new TypeError(`Worker: only the project's files can run in a Worker here, not ${href.slice(0, 60)}`);
     this.#thread = new Thread(href, { argv: options.argv, env: options.env, workerData: options.workerData, name: options.name }, {
       message: (data, ports) => this.dispatchEvent(new MessageEvent("message", { data, ports: [...ports] })),
