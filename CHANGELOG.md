@@ -5,6 +5,15 @@ browser, its editor, and the docs at docs.runbun.dev. They release together at o
 `package.json`, tagged `v<version>`), organised by part. `@runbun/astro` keeps its own changelog in
 [packages/astro/CHANGELOG.md](./packages/astro/CHANGELOG.md).
 
+## 0.4.1 — 2026-11-16
+
+A small fix to the editor's tabs. Nothing needs action.
+
+### Editor
+
+- **Fixed** — **Tabs without a close button fit their name.** A tab that can't be closed is as wide as its name,
+  without the empty space for a ×.
+
 ## 0.4.0 — 2026-11-15
 
 The playground gets a step debugger: breakpoints on line numbers, the call stack and variables where a program stops,
