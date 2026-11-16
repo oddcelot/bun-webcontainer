@@ -174,7 +174,8 @@ Runs in the console (`bun install`, `bun add`, `bun remove`) and automatically w
 - ✅ Tarball URLs, `file:` folders and `npm:` aliases
 - ❌ No lifecycle scripts (`postinstall`, …)
 - ✅ Workspaces: `"workspaces"` in the root `package.json` (an array or `{ "packages": [...] }`, with `*`, `**`, `{a,b}` and `!` patterns), `workspace:*`, `workspace:^`, `workspace:~` and exact `workspace:` versions, and a plain range that a workspace's version satisfies. Every workspace's own dependencies install, and `bun.lock` is the one native Bun writes (the workspaces, hoisted packages, `<workspace>/<package>` entries for a version a workspace needs of its own). The VFS has no symlinks, so each workspace is copied to `node_modules/<name>` where native Bun links it: edits to its files are copied along, a changed `package.json` needs a new install
-- ❌ No git or `link:` dependencies (reported, and `bun.lock` isn't written then); no `file:` tarballs; no `overrides`, catalogs or `patchedDependencies`
+- ✅ Catalogs: `"dep": "catalog:"` and `"catalog:name"` in the root and the workspaces, from `catalog` and `catalogs` in the root `package.json` (or in its `workspaces` object, which Bun prefers), written to `bun.lock` as Bun writes them; a changed catalog entry updates the lockfile
+- ❌ No git or `link:` dependencies (reported, and `bun.lock` isn't written then); no `file:` tarballs; no `overrides` or `patchedDependencies`
 - ❌ Only `registry.npmjs.org`; `.npmrc` isn't read
 - ❌ Binary `bun.lockb`
 

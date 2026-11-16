@@ -1,0 +1,25 @@
+{
+  "name": "root",
+  "workspaces": [
+    "packages/*"
+  ],
+  "catalog": {
+    "ms": "2.0.0",
+    "is-odd": "^3.0.0",
+    "zzz": "^1.0.0", "is-buffer": "^1.1.0"
+  },
+  "catalogs": {
+    "old": {
+      "is-odd": "^0.1.2"
+    },
+    "extra": {
+      "is-number": "^6.0.0"
+    },
+    "default": {
+      "is-even": "^1.0.0"
+    }
+  },
+  "dependencies": {
+    "ms": "catalog:"
+  }
+}

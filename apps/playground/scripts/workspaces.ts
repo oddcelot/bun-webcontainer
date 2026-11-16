@@ -18,7 +18,7 @@ const EDITOR = `http://localhost:${PORT}`;
 const ENTRY = "packages/app/main.ts";
 
 const files: Record<string, string> = {
-  "package.json": JSON.stringify({ name: "mono", private: true, workspaces: ["packages/*"] }),
+  "package.json": JSON.stringify({ name: "mono", private: true, workspaces: ["packages/*"], catalog: { ms: "^2.1.3" } }),
   "packages/shared/package.json": JSON.stringify({ name: "@mono/shared", version: "1.0.0", main: "index.ts", dependencies: { "is-odd": "^3.0.0" } }),
   "packages/shared/index.ts": `import isOdd from "is-odd";\nimport { version } from "is-odd/package.json";\nexport const odd = (n: number) => isOdd(n);\nexport const oddVersion = version;\n`,
   "packages/ui/package.json": JSON.stringify({ name: "@mono/ui", version: "0.2.0", dependencies: { "@mono/shared": "workspace:^" } }),
@@ -26,7 +26,7 @@ const files: Record<string, string> = {
   "packages/app/package.json": JSON.stringify({
     name: "app",
     version: "1.0.0",
-    dependencies: { "@mono/ui": "workspace:*", "@mono/shared": "workspace:*", ms: "^2.1.3", "is-odd": "^0.1.2" },
+    dependencies: { "@mono/ui": "workspace:*", "@mono/shared": "workspace:*", ms: "catalog:", "is-odd": "^0.1.2" },
   }),
   [ENTRY]: `import { label } from "@mono/ui";
 import { oddVersion } from "@mono/shared";

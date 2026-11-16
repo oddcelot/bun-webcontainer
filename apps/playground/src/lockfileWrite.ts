@@ -6,13 +6,16 @@
  */
 import type { Semver } from "./semver";
 import { findWorkspaces, type Workspace } from "./workspaces";
+import { catalogRange, catalogsOf, type Catalogs } from "./catalogs";
 
 type Group = "dependencies" | "devDependencies" | "optionalDependencies" | "peerDependencies";
 const GROUPS: Group[] = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"];
 
 export type Manifest = {
   name?: string;
-  workspaces?: string[] | { packages?: string[] };
+  workspaces?: string[] | { packages?: string[]; catalog?: Record<string, string>; catalogs?: Record<string, Record<string, string>> };
+  catalog?: Record<string, string>;
+  catalogs?: Record<string, Record<string, string>>;
   version?: string;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
@@ -120,7 +123,7 @@ function pickVersion(doc: Packument, range: string, semver: Semver): string | un
   return best ?? deprecated;
 }
 
-export type Resolved = { root: Manifest; rootDeps: Dep[]; workspaces: Workspace[]; tree: Node[]; problems: string[] };
+export type Resolved = { root: Manifest; rootDeps: Dep[]; workspaces: Workspace[]; catalogs: Catalogs; tree: Node[]; problems: string[] };
 
 /** A range npm would take from a registry, which a workspace of a version that satisfies it serves instead. */
 const semverLike = (r: string) => /^[\s\d^~<>=*xX.|-]*$/.test(r);
@@ -154,9 +157,27 @@ export async function resolveProject(root: Manifest, host: ResolveHost, locked: 
     locked.find((p) => p.name === name && (p.kind === "tarball" ? p.resolution === range : p.version !== undefined && !isTarballUrl(range) && semver.satisfies(p.version, range)));
   const problems: string[] = [];
   const workspaces = findWorkspaces(root, host.packageDirs(), (dir) => host.folder(dir));
+  const catalogs = catalogsOf(root);
+  /** `catalog:` dependencies of the root and the workspaces take the range their catalog gives (`range`; the lock keeps the literal). */
+  const catalogged = (deps: Dep[]): Dep[] =>
+    deps.flatMap((d) => {
+      if (!d.range.startsWith("catalog:")) return [d];
+      const name = d.range.slice("catalog:".length).trim();
+      const range = catalogRange(catalogs, name, d.name);
+      if (range !== undefined) return [{ ...d, range }];
+      const known = name === "" || name === "default" ? Object.keys(catalogs.default).length + Object.keys(catalogs.groups.default ?? {}).length > 0 : name in catalogs.groups;
+      problems.push(
+        root.workspaces === undefined
+          ? `${d.name}@${d.range}: catalogs need a "workspaces" field in the root package.json`
+          : known
+            ? `${d.name}@${d.range}: not in catalog${name ? ` "${name}"` : ""}`
+            : `${d.name}@${d.range}: there is no catalog named "${name}" in the root package.json`,
+      );
+      return [];
+    });
   const wsPkgs = new Map<string, Pkg>();
   for (const { path, manifest } of workspaces) {
-    wsPkgs.set(manifest.name, { name: manifest.name, resolution: `workspace:${path}`, kind: "workspace", manifest, deps: depsOf(manifest, true) });
+    wsPkgs.set(manifest.name, { name: manifest.name, resolution: `workspace:${path}`, kind: "workspace", manifest, deps: catalogged(depsOf(manifest, true)) });
   }
   /** The workspace a dependency is: \`workspace:\` ones by name, others when the workspace's version satisfies the range. */
   const workspaceFor = (name: string, range: string, aliased: boolean): Pkg | undefined => {
@@ -281,7 +302,7 @@ export async function resolveProject(root: Manifest, host: ResolveHost, locked: 
   };
   // Workspaces come first in the root's dependencies (Behavior::cmp), by name.
   const wsDeps: Dep[] = [...wsPkgs.keys()].sort(byBytes).map((name) => ({ name, range: `workspace:${wsPkgs.get(name)!.resolution.slice(10)}`, group: "dependencies", optionalPeer: false }));
-  const topDeps = [...wsDeps, ...rootDeps];
+  const topDeps = [...wsDeps, ...catalogged(rootDeps)];
   for (const d of topDeps) enqueue(d, null);
   while (queue.length || peers.length) {
     if (!queue.length) queue.push(...peers.splice(0));
@@ -328,7 +349,7 @@ export async function resolveProject(root: Manifest, host: ResolveHost, locked: 
       tree.push({ pkg, path, depth: placeAt.depth + 1, parent: placeAt, placed: new Map() });
     }
   }
-  return { root, rootDeps, workspaces, tree, problems };
+  return { root, rootDeps, workspaces, catalogs, tree, problems };
 }
 
 /**
@@ -474,7 +495,7 @@ function entry(pkg: Pkg): string {
 }
 
 /** The bun.lock Bun writes for this tree. */
-export function writeBunLock({ root, rootDeps, workspaces, tree }: Resolved): string {
+export function writeBunLock({ root, rootDeps, workspaces, catalogs, tree }: Resolved): string {
   const lines = ["{", '  "lockfileVersion": 2,', '  "configVersion": 1,', '  "workspaces": {'];
   /** One `"workspaces"` member: the root (`""`) or a workspace folder. */
   const member = (key: string, m: Manifest, deps: Dep[], workspace: boolean) => {
@@ -497,6 +518,14 @@ export function writeBunLock({ root, rootDeps, workspaces, tree }: Resolved): st
   member("", root, rootDeps, false);
   for (const w of workspaces) member(w.path, w.manifest, depsOf(w.manifest, true), true);
   lines.push("  },");
+  const group = (map: Record<string, string>, indent: string) => Object.keys(map).sort(byBytes).map((n) => `${indent}${q(n)}: ${q(map[n])},`);
+  if (Object.keys(catalogs.default).length) lines.push('  "catalog": {', ...group(catalogs.default, "    "), "  },");
+  const named = Object.keys(catalogs.groups).sort(byBytes);
+  if (named.length) {
+    lines.push('  "catalogs": {');
+    for (const name of named) lines.push(`    ${q(name)}: {`, ...group(catalogs.groups[name], "      "), "    },");
+    lines.push("  },");
+  }
 
   // Nodes by depth, then path; each node's packages by name.
   const nodes = tree.slice(1).sort((a, b) => a.depth - b.depth || byBytes(a.parent!.path, b.parent!.path) || byBytes(a.path, b.path));

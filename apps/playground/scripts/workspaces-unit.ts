@@ -1,6 +1,7 @@
 // Which folders a root package.json's `workspaces` name (src/workspaces.ts), what makes bun.lock's workspaces stale
 // (src/lockfile.ts staleInLock), and the VFS copy of a workspace in node_modules following its folder's edits.
 import { staleInLock } from "../src/lockfile";
+import { catalogRange, catalogsOf } from "../src/catalogs";
 import { findWorkspaces, mirrorWorkspaces, packageDirs, vfsWorkspaces } from "../src/workspaces";
 import { VFS } from "@runbun/vfs";
 
@@ -30,6 +31,15 @@ eq("not asked about workspaces", staleInLock(lock, { dependencies: { a: "1" } })
 eq("workspace dependency changed", staleInLock(lock, { dependencies: { a: "1" } }, [{ ...x, manifest: { name: "x", dependencies: { b: "^2" } } }]), ["packages/x"]);
 eq("workspace added", staleInLock(lock, { dependencies: { a: "1" } }, [x, { path: "packages/y", manifest: { name: "y" } }]), ["packages/y"]);
 eq("workspace removed", staleInLock(lock, { dependencies: { a: "1" } }, []), ["packages/x"]);
+
+const cats = catalogsOf({ workspaces: { packages: ["a"], catalog: { x: "1", y: 2 }, catalogs: { n: { z: "3" }, default: { d: "4" } } }, catalog: { ignored: "9" } });
+eq("catalogs from the workspaces object", cats, { default: { x: "1" }, groups: { n: { z: "3" }, default: { d: "4" } } });
+eq("catalogs at the top", catalogsOf({ workspaces: ["a"], catalog: { x: "1" } }).default, { x: "1" });
+eq("no catalogs without workspaces", catalogsOf({ catalog: { x: "1" } }).default, {});
+eq("catalog: finds the default", [catalogRange(cats, "", "x"), catalogRange(cats, "", "d"), catalogRange(cats, "default", "x"), catalogRange(cats, "default", "d")], ["1", "4", "1", "4"]);
+eq("a named one", [catalogRange(cats, "n", "z"), catalogRange(cats, "n", "x"), catalogRange(cats, "none", "x")], ["3", undefined, undefined]);
+eq("catalog entry changed", staleInLock({ ...lock, catalog: { x: "1" } }, { dependencies: { a: "1" }, workspaces: ["a"], catalog: { x: "2" } }), ["catalog x"]);
+eq("catalog entry added", staleInLock(lock, { dependencies: { a: "1" }, workspaces: ["a"], catalogs: { n: { z: "1" } } }), ["catalog n/z"]);
 
 const vfs = new VFS();
 vfs.write("package.json", JSON.stringify({ name: "root", workspaces: ["packages/*"] }));

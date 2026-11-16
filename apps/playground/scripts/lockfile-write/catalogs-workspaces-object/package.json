@@ -1,0 +1,6 @@
+{
+  "name": "root",
+  "workspaces": { "packages": ["packages/*"], "catalog": { "ms": "^2.1.0", "odd": "npm:is-odd@^3.0.0" }, "catalogs": { "old": { "is-number": "~3.0.0" } } },
+  "catalog": { "ms": "1.0.0" },
+  "devDependencies": { "ms": "catalog:" }
+}
