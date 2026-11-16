@@ -20,3 +20,14 @@ tasks:
       - '@group(sources)'
     outputs:
       - '/target/wasm64-unknown-unknown/release/bun_crypto_wasm.wasm'
+  test:
+    # Node >= 24 (Memory64; bun lacks it) runs the playground's node:crypto shim over the module: its output for
+    # fixtures/crypto/cases.ts must equal native Bun's, and random ciphers, keys and signatures must agree with node's
+    # own crypto (which also has chacha20-poly1305 and the odd GCM IV lengths that Bun lacks).
+    command: 'node test.ts'
+    toolchains: ['node', 'bun']
+    deps: ['~:build']
+    inputs:
+      - '*.ts'
+      - '/apps/playground/src/worker/node/crypto*.ts'
+      - '/apps/playground/fixtures/crypto/*'
