@@ -177,7 +177,7 @@ Runs in the console (`bun install`, `bun add`, `bun remove`) and automatically w
 - ✅ Catalogs: `"dep": "catalog:"` and `"catalog:name"` in the root and the workspaces, from `catalog` and `catalogs` in the root `package.json` (or in its `workspaces` object, which Bun prefers), written to `bun.lock` as Bun writes them; a changed catalog entry updates the lockfile
 - 🟡 `overrides` (npm) and `resolutions` (yarn; Bun reads them only without `overrides`): a rule for a package name (also `**/name`) changes every dependency on it to the rule's version or range, `$name` and `catalog:` values included, and `bun.lock` gets the `overrides` section as Bun writes it. Scoped rules (`parent>child`, `parent/child`, `name@range` keys, nested objects) are reported and `bun.lock` isn't written then
 - ❌ No git or `link:` dependencies (reported, and `bun.lock` isn't written then); no `file:` tarballs; no `patchedDependencies`
-- ❌ Only `registry.npmjs.org`; `.npmrc` isn't read
+- 🟡 The project's `.npmrc` (next to `package.json`; not the home folder's, nor the environment): `registry=` and `@scope:registry=` choose where packages are fetched from, and `//host/path/:_authToken=` and `:_auth=` give the credentials sent to URLs under that host and path (never to another, and nothing fetched with them is cached). A registry has to answer cross-origin requests (CORS, `Authorization` included) to work from a page. `bun.lock` records a package's tarball URL when it isn't under `registry.npmjs.org`, as Bun does. A line that uses `${VAR}` is skipped and reported
 - ❌ Binary `bun.lockb`
 
 Missing packages install before the first run:

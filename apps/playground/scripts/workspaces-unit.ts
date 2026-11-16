@@ -3,6 +3,7 @@
 import { staleInLock } from "../src/lockfile";
 import { catalogRange, catalogsOf } from "../src/catalogs";
 import { overridesOf } from "../src/overrides";
+import { authFor, parseNpmrc, registryFor } from "../src/npmrc";
 import { findWorkspaces, mirrorWorkspaces, packageDirs, vfsWorkspaces } from "../src/workspaces";
 import { VFS } from "@runbun/vfs";
 
@@ -52,6 +53,21 @@ eq("scoped ones", ov.unsupported, ["h@1", "i>j", "k/l", "m"]);
 eq("resolutions only without overrides", overridesOf({ resolutions: { "**/x": "1" } }).rules, { x: "1" });
 eq("override changed", staleInLock({ ...lock, overrides: { a: "1" } }, { dependencies: { a: "1" }, overrides: { a: "2" } }), ["override a"]);
 eq("override added", staleInLock(lock, { dependencies: { a: "1" }, resolutions: { b: "1" } }), ["override b"]);
+
+const rc = parseNpmrc(`; comment
+# another
+registry = "https://reg.example.com/npm/"
+@acme:registry=https://acme.example.com/
+@bad:registry=ftp://nope
+//acme.example.com/:_authToken=tok
+//reg.example.com/npm/:_auth=dXNlcjpwdw==
+//reg.example.com/:_authToken=${"$"}{TOKEN}
+`);
+eq("default registry", registryFor(rc, "left-pad"), "https://reg.example.com/npm");
+eq("scoped registry", [registryFor(rc, "@acme/ui"), registryFor(rc, "@other/ui")], ["https://acme.example.com", "https://reg.example.com/npm"]);
+eq("no .npmrc", registryFor(parseNpmrc(undefined), "@acme/ui"), "https://registry.npmjs.org");
+eq("credentials by URL", [authFor(rc, "https://acme.example.com/@acme%2fui"), authFor(rc, "https://reg.example.com/npm/x/-/x-1.tgz"), authFor(rc, "https://reg.example.com/other"), authFor(rc, "https://registry.npmjs.org/x")], ["Bearer tok", "Basic dXNlcjpwdw==", undefined, undefined]);
+eq("what it can't read", rc.warnings, ["@bad:registry must be an http(s) URL".replace(/^/, ".npmrc: "), ".npmrc: //reg.example.com/:_authToken uses an environment variable, which the browser doesn't have"]);
 
 const vfs = new VFS();
 vfs.write("package.json", JSON.stringify({ name: "root", workspaces: ["packages/*"] }));

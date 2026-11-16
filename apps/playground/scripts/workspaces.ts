@@ -17,7 +17,14 @@ const HOST_PORT = 5281;
 const EDITOR = `http://localhost:${PORT}`;
 const ENTRY = "packages/app/main.ts";
 
+// A registry of its own that wants a token, for `@types` (the project's .npmrc names it and the token): a process of its
+// own, as native Bun is run with this script blocked.
+const registry = Bun.spawn(["bun", join(import.meta.dir, "test-registry.ts"), "--auth"], { stdout: "pipe", stderr: "inherit" });
+process.on("exit", () => registry.kill());
+const REGISTRY = `http://localhost:${Number((await registry.stdout.getReader().read().then((r) => new TextDecoder().decode(r.value))).match(/port (\d+)/)![1])}`;
+
 const files: Record<string, string> = {
+  ".npmrc": `@types:registry=${REGISTRY}/\n//${REGISTRY.slice("http://".length)}/:_authToken=secret\n`,
   "package.json": JSON.stringify({ name: "mono", private: true, workspaces: ["packages/*"], catalog: { ms: "^2.1.3" }, overrides: { ms: "2.1.2" } }),
   "packages/shared/package.json": JSON.stringify({ name: "@mono/shared", version: "1.0.0", main: "index.ts", dependencies: { "is-odd": "^3.0.0" } }),
   "packages/shared/index.ts": `import isOdd from "is-odd";\nimport { version } from "is-odd/package.json";\nexport const odd = (n: number) => isOdd(n);\nexport const oddVersion = version;\n`,
@@ -26,22 +33,24 @@ const files: Record<string, string> = {
   "packages/app/package.json": JSON.stringify({
     name: "app",
     version: "1.0.0",
-    dependencies: { "@mono/ui": "workspace:*", "@mono/shared": "workspace:*", ms: "catalog:", "is-odd": "^0.1.2" },
+    dependencies: { "@mono/ui": "workspace:*", "@mono/shared": "workspace:*", ms: "catalog:", "is-odd": "^0.1.2", "@types/ms": "^0.7.0" },
   }),
   [ENTRY]: `import { label } from "@mono/ui";
 import { oddVersion } from "@mono/shared";
 import ms from "ms";
 import { version as msVersion } from "ms/package.json";
 import { version as appOdd } from "is-odd/package.json";
+import { version as typesMs } from "@types/ms/package.json";
 console.log("label:", label(3), label(4));
 console.log("ms:", ms("2 days"), msVersion);
 console.log("shared is-odd:", oddVersion.split(".")[0]);
 console.log("app is-odd:", appOdd.split(".")[0] + "." + appOdd.split(".")[1]);
+console.log("types/ms:", typesMs.split(".").slice(0, 2).join("."));
 console.log("__end__");
 `,
 };
 
-const EXPECTED = ["label: odd:3 even:4", "ms: 172800000 2.1.2", "shared is-odd: 3", "app is-odd: 0.1", "__end__"];
+const EXPECTED = ["label: odd:3 even:4", "ms: 172800000 2.1.2", "shared is-odd: 3", "app is-odd: 0.1", "types/ms: 0.7", "__end__"];
 let bad = 0;
 const compare = (label: string, got: string[]) => {
   const wrong = EXPECTED.length !== got.length || EXPECTED.some((l, i) => l !== got[i]);

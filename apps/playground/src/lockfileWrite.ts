@@ -59,6 +59,8 @@ type Pkg = {
   resolution: string;
   kind: "npm" | "tarball" | "folder" | "workspace";
   version?: string;
+  /** An npm package's tarball URL: bun.lock writes it unless it is under registry.npmjs.org. */
+  registry?: string;
   integrity?: string;
   manifest: Manifest;
   deps: Dep[];
@@ -146,7 +148,7 @@ export function lockedPackages(packages: Record<string, unknown[]>): Pkg[] {
     const info = (entry.find((e) => !!e && typeof e === "object" && !Array.isArray(e)) ?? {}) as Manifest & { optionalPeers?: string[] };
     const manifest: Manifest = { ...info, peerDependenciesMeta: Object.fromEntries((info.optionalPeers ?? []).map((n) => [n, { optional: true }])) };
     const integrity = (kind === "npm" ? entry[3] : entry[2]) as string | undefined;
-    out.set(ident, { name, resolution, kind, version: kind === "npm" ? resolution : undefined, integrity, manifest, deps: depsOf(manifest, false), locked: true });
+    out.set(ident, { name, resolution, kind, version: kind === "npm" ? resolution : undefined, registry: kind === "npm" && typeof entry[1] === "string" ? entry[1] : undefined, integrity, manifest, deps: depsOf(manifest, false), locked: true });
   }
   return [...out.values()];
 }
@@ -297,7 +299,7 @@ export async function resolveProject(root: Manifest, host: ResolveHost, locked: 
       const libc = await host.version(realName, best).then((m) => m.libc, () => undefined);
       if (libc !== undefined) manifest = { ...manifest, libc };
     }
-    return add({ name: realName, resolution: best, kind: "npm", version: best, integrity: manifest.dist?.integrity, manifest, deps: depsOf(manifest, false) });
+    return add({ name: realName, resolution: best, kind: "npm", version: best, registry: manifest.dist?.tarball, integrity: manifest.dist?.integrity, manifest, deps: depsOf(manifest, false) });
   }
 
   // Resolution, in queue order: a package's dependencies queue up behind everything already queued. Peers come after
@@ -468,6 +470,8 @@ function negatableJson(set: Set<string>, names: string[]): string {
 }
 
 const q = (s: string) => JSON.stringify(s);
+/** Bun writes `""` for a tarball under this, the default registry, and the URL for any other. */
+const DEFAULT_REGISTRY_URL = "https://registry.npmjs.org/";
 
 function binJson(bin: Manifest["bin"]): string | undefined {
   if (!bin) return;
@@ -504,7 +508,7 @@ function info(pkg: Pkg): string {
 
 function entry(pkg: Pkg): string {
   const ident = q(`${pkg.name}@${pkg.resolution}`);
-  if (pkg.kind === "npm") return `[${ident}, "", ${info(pkg)}, ${q(pkg.integrity ?? "")}]`;
+  if (pkg.kind === "npm") return `[${ident}, ${q(pkg.registry && !pkg.registry.startsWith(DEFAULT_REGISTRY_URL) ? pkg.registry : "")}, ${info(pkg)}, ${q(pkg.integrity ?? "")}]`;
   if (pkg.kind === "workspace") return `[${ident}]`;
   if (pkg.kind === "tarball") return `[${ident}, ${info(pkg)}${pkg.integrity ? `, ${q(pkg.integrity)}` : ""}]`;
   return `[${ident}, ${info(pkg)}]`;

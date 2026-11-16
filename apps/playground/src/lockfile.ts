@@ -1,13 +1,11 @@
 import type { LazyData, VFS } from "@runbun/vfs";
 import { splitPackage } from "./pkgStore";
-import { fetchTarball } from "./pkgCache";
+import { fetchTarball, registryOf } from "./pkgCache";
 import { vfsWorkspaces } from "./workspaces";
 import { catalogChanges, catalogsOf } from "./catalogs";
 import { overridesOf } from "./overrides";
 
 type Log = (level: "log" | "error", text: string) => void;
-
-const NPM = "https://registry.npmjs.org";
 
 /** `bun.lock` is JSON plus trailing commas. Strips commas before `}`/`]` outside strings. */
 export function parseBunLock(text: string): BunLock {
@@ -240,7 +238,7 @@ export async function installFromBunLock(vfs: VFS, lockText: string, log: Log): 
             const integrity = kind === "npm" ? (entry[3] as string) : (entry[2] as string | undefined);
             const verify = typeof integrity === "string" && integrity ? (b: Uint8Array<ArrayBuffer>) => checkIntegrity(b, integrity) : undefined;
             const registry = typeof entry[1] === "string" ? entry[1] : "";
-            const base = (registry || NPM).replace(/\/$/, "");
+            const base = (registry || registryOf(id.name)).replace(/\/$/, "");
             url = kind === "tarball" ? res : registry.endsWith(".tgz") ? registry : `${base}/${id.name}/-/${id.name.split("/").pop()}-${res}.tgz`;
             tgz = await fetchTarball(url, verify);
           }
