@@ -8,6 +8,7 @@ import { bundle, type BundleConfig, type BundleLog } from "./bundler";
 import { setHostVfs } from "./hostPackages";
 import { hash } from "./hash";
 import { CryptoHasher } from "./node/crypto";
+import { setCryptoWasm } from "./node/cryptoWasm";
 import { Glob } from "./glob";
 import { installConsole, table } from "./console";
 import { bunInspect, formatLog as formatValues, installWebInspect } from "./inspect";
@@ -95,6 +96,18 @@ const has = (path: string) => vfs.files.has(path);
 const read = (path: string) => vfs.readText(path);
 setKernel(post, 1, has, read);
 g.__nodeBuiltins = builtins;
+// node:crypto's ciphers and keys (crypto-wasm): fetched and compiled synchronously on the first call that needs them, as
+// transpiler/index.ts does for Bun.Transpiler#transformSync. The worker's sync XHR is the only way to the bytes in a
+// synchronous API.
+setCryptoWasm(() => {
+  const xhr = new XMLHttpRequest();
+  xhr.open("GET", new URL(`${BASE}bun_crypto_wasm.wasm`, location.href), false);
+  xhr.responseType = "arraybuffer";
+  xhr.send();
+  if (xhr.status !== 200) throw new Error(`failed to load the crypto module: HTTP ${xhr.status}`);
+  return new WebAssembly.Module(xhr.response as ArrayBuffer);
+});
+
 /**
  * `import(url)` that the host Vite leaves alone: in dev it rewrites computed imports in the playground's own code to
  * add `?import`, and the same module imported statically elsewhere would load a second time.
