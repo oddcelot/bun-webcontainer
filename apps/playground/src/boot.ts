@@ -45,7 +45,7 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
    * Bun on this machine (`localUrl`, see localBun.ts) the program runs there, so the browser needs no WebAssembly.
    */
   const canRun = support.every((c) => c.ok || (!!localUrl && c.name.startsWith("WebAssembly")));
-  const logListeners = new Set<(level: string, text: string) => void>();
+  const logListeners = new Set<(level: string, text: string, partial: boolean) => void>();
   // The shell (see `start`) needs the runner, which comes later.
   let exec: ReturnType<typeof createShell> | undefined;
   const terminal = createConsole({
@@ -56,6 +56,8 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
       stop();
     },
     cwd: () => exec?.cwd() ?? "/",
+    // What is typed while the program reads its stdin (see `Runner.onStdinWait`); null is end of input (Ctrl+D).
+    onInput: (data) => runner?.stdin(data),
     onClear: () => clearConsole(),
     isFile: (path) => vfs.files.has(bare(path)),
     onLocation: (path, line, column) => workspace.openAt(bare(path), line, column),
@@ -79,10 +81,11 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
   let local: LocalBun | undefined;
   let semver: Semver | undefined;
 
-  function log(level: string, text: string) {
-    terminal.log(level, text);
-    session.countLine(level);
-    for (const fn of logListeners) fn(level, text);
+  function log(level: string, text: string, partial = false) {
+    terminal.log(level, text, partial);
+    // A partial line counts once it has ended.
+    if (!partial || text.includes("\n")) session.countLine(level);
+    for (const fn of logListeners) fn(level, text, partial);
   }
   reportStoreProblems((message) => log("warn", `[store] ${message}`));
   const cantRun = () => log("error", "this browser can't run code. See the banner above the editor.");
@@ -458,6 +461,7 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
     runner = next;
     runner.attach();
     runner.onExit = (code) => session.setStatus(exited(code));
+    runner.onStdinWait = (on) => terminal.reading(on);
     runner.onPorts = (ports, shown) => {
       session.setPorts(ports);
       session.setPreviewPort(shown);
@@ -590,8 +594,8 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
     previews,
     vfs,
     log,
-    /** Calls `fn` with every console line; returns the unsubscribe. */
-    onLog(fn: (level: string, text: string) => void) {
+    /** Calls `fn` with every console line (`partial`: text that ends mid-line, a prompt); returns the unsubscribe. */
+    onLog(fn: (level: string, text: string, partial: boolean) => void) {
       logListeners.add(fn);
       return () => void logListeners.delete(fn);
     },

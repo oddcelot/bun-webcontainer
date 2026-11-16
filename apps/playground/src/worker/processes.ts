@@ -277,6 +277,41 @@ const concat = (chunks: Uint8Array[]) => {
   return all;
 };
 
+/** Bytes `readLineSync` took off stdin past the end of the line it returned. */
+let carry = new Uint8Array(0);
+
+/**
+ * One line of stdin, read by blocking this program until the page sends it (the console's input; `prompt()` is this):
+ * without its newline, or null at the end of input. Needs the same isolation as a synchronous child. `api` names the
+ * caller for the error on a page that isn't isolated.
+ */
+export function readLineSync(api: string): string | null {
+  if (!canBlock()) throw new NotIsolatedError(api, "readline or `for await (const line of console)`");
+  let buf = carry;
+  carry = new Uint8Array(0);
+  let eof = false;
+  const newline = () => buf.indexOf(10);
+  // Id 0 is no child's: the relay hands this reader the stdin the page sends (syncChannel.ts).
+  const reader = new SyncReader(0, post);
+  post({ type: "stdin-wait", on: true });
+  try {
+    while (newline() < 0 && !eof) {
+      const part = reader.next();
+      if (!part) break;
+      if (part.kind === Part.Stdin) buf = concat([buf, part.bytes]);
+      else if (part.kind === Part.StdinEnd) eof = true;
+      else if (part.kind === Part.Vfs) applyVfs(decodeVfs(part.bytes));
+    }
+  } finally {
+    post({ type: "stdin-wait", on: false });
+    post({ type: "sync-close", id: 0 });
+  }
+  const at = newline();
+  if (at < 0) return buf.length ? new TextDecoder().decode(buf) : null;
+  carry = buf.slice(at + 1);
+  return new TextDecoder().decode(buf.subarray(0, at));
+}
+
 /**
  * Runs `argv` as a child process and waits for it. `api` and `instead` name the call and its async counterpart for
  * the error on a page that isn't isolated. Throws, like spawnChild, for a command that isn't there.

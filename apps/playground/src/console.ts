@@ -95,8 +95,10 @@ const TOKENS = /\x1b\[[0-9;]*[A-Za-z~]|\x1bO[A-Z]|[\s\S]/gu;
  * stack trace, an error) is a link when `isFile` knows the file; clicking it calls `onLocation`.
  */
 export function createConsole(
-  { onCommand, onInterrupt, onClear, isFile, onLocation, cwd = () => "/" }: {
+  { onCommand, onInput, onInterrupt, onClear, isFile, onLocation, cwd = () => "/" }: {
     onCommand: (line: string) => Promise<void>;
+    /** While the program reads its stdin (see `reading`), each entered line goes here as UTF-8 with its newline; null is Ctrl+D (end of input). */
+    onInput?: (data: Uint8Array | null) => void;
     /** The shell's folder, shown in the prompt. */
     cwd?: () => string;
     onInterrupt: () => void;
@@ -112,6 +114,10 @@ export function createConsole(
   let input = "";
   let cursor = 0;
   let busy = false;
+  /** The program is waiting for input on its stdin: Enter sends the line to it instead of running it as a command. */
+  let reading = false;
+  /** Output that ended mid-line (a prompt such as `Name? `), still on its row: what is typed continues it. */
+  let pending = "";
   const history: string[] = [];
   let recall = 0; // index into history; history.length = the line being typed
 
@@ -129,7 +135,7 @@ export function createConsole(
   };
   /** The prompt and the line typed so far, with the cursor where it is in the line (on whichever row that is). */
   const promptLine = () => {
-    const prompt = promptFor(cwd());
+    const prompt = prefix();
     const cols = term?.cols ?? 80;
     const total = width(prompt) + width(input);
     const at = width(prompt) + width(input.slice(0, cursor));
@@ -143,11 +149,30 @@ export function createConsole(
     drawnRow = row;
     return out;
   };
-  const redraw = () => !busy && term?.write(promptLine());
+  /** What starts the row being typed on: unfinished program output, else the shell's prompt (none while a command runs). */
+  const prefix = () => pending || (busy && !reading ? "" : promptFor(cwd()));
+  const live = () => !busy || reading;
+  const redraw = () => live() && term?.write(promptLine());
+
+  /** The typed line goes to the program's stdin, echoed in the output as a terminal would. */
+  function send(text: string, newline: boolean) {
+    const echo = text + (newline ? "\r\n" : "");
+    term?.write(erase() + pending + echo);
+    push(echo);
+    // Unfinished output stays on its row when the line was sent without its newline (Ctrl+D).
+    if (newline) pending = "";
+    else pending += text;
+    input = "";
+    cursor = 0;
+    onInput?.(new TextEncoder().encode(text + (newline ? "\n" : "")));
+    redraw();
+  }
 
   async function enter() {
+    if (reading) return send(input, true);
     const line = input.trim();
-    term?.write(erase() + promptFor(cwd()) + input + "\r\n");
+    term?.write(erase() + prefix() + input + "\r\n");
+    pending = "";
     input = "";
     cursor = 0;
     if (line && history.at(-1) !== line) history.push(line);
@@ -165,7 +190,20 @@ export function createConsole(
 
   function key(t: string) {
     if (t === "\r" || t === "\n") return void enter();
-    if (busy) return t === "\x03" && onInterrupt();
+    if (busy && !reading) return t === "\x03" && onInterrupt();
+    if (reading && t === "\x04") {
+      // Ctrl+D: what is typed goes as it is, and on an empty line it is the end of input.
+      if (input) return send(input, false);
+      onInput?.(null);
+      return;
+    }
+    if (reading && t === "\x03") {
+      term?.write(erase() + prefix() + input + "^C\r\n");
+      pending = "";
+      input = "";
+      cursor = 0;
+      return onInterrupt();
+    }
     switch (t) {
       case "\x7f": // Backspace
       case "\b":
@@ -202,7 +240,8 @@ export function createConsole(
         break;
       case "\x03": // Ctrl+C
         if (!input) onInterrupt();
-        term?.write(erase() + promptFor(cwd()) + input + "^C\r\n");
+        term?.write(erase() + prefix() + input + "^C\r\n");
+        pending = "";
         input = "";
         cursor = 0;
         break;
@@ -308,16 +347,40 @@ export function createConsole(
       };
       return (detach = off);
     },
-    log(level: string, text: string) {
-      const line = format(level, text);
+    /**
+     * `partial`: `text` is not a whole line (no newline after it): it stays on the row for what comes next, and what is
+     * typed meanwhile (see `reading`) goes after it.
+     */
+    log(level: string, text: string, partial = false) {
+      // A message ends an unfinished line: it starts on a row of its own.
+      if (level === "sys" && pending) text = "\n" + text;
+      const sgr = LEVEL_SGR[level];
+      const paint = (t: string) => (sgr && t ? `\x1b[${sgr}m${t}\x1b[0m` : t);
+      const line = partial ? paint(text) + (sgr ? "" : "\x1b[0m") : format(level, text);
       push(line);
+      // Above the prompt: clear its row (the unfinished output is part of it), print, draw it again.
+      const row = live() ? erase() + pending : "";
+      pending = !partial ? "" : text.includes("\n") ? paint(text.slice(text.lastIndexOf("\n") + 1)) : pending + paint(text);
       if (!term) return;
-      // Above the prompt: clear its row, print, draw it again.
-      term?.write((busy ? "" : erase()) + line);
+      term.write(row + line);
+      redraw();
+    },
+    /** Whether the program waits for input on its stdin: Enter sends the line to it, Ctrl+D ends the input. */
+    reading(on: boolean) {
+      if (on === reading) return;
+      reading = on;
+      // Not reading any more with a command still running: what was typed has nowhere to go.
+      if (!on && busy) {
+        input = "";
+        cursor = 0;
+        term?.write(erase() + pending);
+        return;
+      }
       redraw();
     },
     clear() {
       lines.length = 0;
+      pending = "";
       term?.clear();
       term?.write("\x1b[2J\x1b[H");
       drawnRow = 0;

@@ -160,7 +160,7 @@ export type Event =
   | { event: "ready"; data: { version: number; bun: string; canRun: boolean; mode: Mode; features: Feature[] } }
   | { event: "unsupported"; data: { checks: { name: string; ok: boolean; why: string }[] } }
   | { event: "status"; data: Status }
-  | { event: "console"; data: { level: string; text: string } }
+  | { event: "console"; data: { level: string; text: string; partial?: true } }
   /** `by` is missing from embeds older than it: count those changes as the reader's. */
   | { event: "change"; data: { path: string; removed: boolean; by?: ChangeBy } }
   | { event: "test"; data: TestResult }

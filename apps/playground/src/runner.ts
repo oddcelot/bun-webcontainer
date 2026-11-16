@@ -38,7 +38,8 @@ const DRAIN_TIMEOUT = 5000;
 /** What the console puts before the replaced program's lines while it is still around (see `swap`). */
 const PREVIOUS = "[previous] ";
 
-export type LogFn = (level: string, text: string) => void;
+/** `partial`: text that ends mid-line (a prompt written without its newline). */
+export type LogFn = (level: string, text: string, partial?: boolean) => void;
 
 /** What a `bun test` run found: failed tests in all, and per test file that ran (worker/node/test.ts TestOutcome). */
 export type TestResults = { failed: number; results?: { file: string; failed: number }[] };
@@ -75,6 +76,8 @@ export class Runner {
   onPorts?: (ports: number[], shown: number | undefined) => void;
   /** Each program's (and child process's) ports as it last reported them: a restart's new program reports before it takes over. */
   private ports = new WeakMap<Worker, number[]>();
+  /** Called when the program starts or stops waiting for input on its stdin: the console then sends what is typed to `stdin`. */
+  onStdinWait?: (on: boolean) => void;
   /** Child processes by their worker, and each program's children by the id it gave them. */
   private procs = new Map<Worker, Proc>();
   private kids = new WeakMap<Worker, Map<number, Proc>>();
@@ -382,6 +385,11 @@ export class Runner {
     await this.retire(flush);
   }
 
+  /** Text (UTF-8 bytes) for the program's stdin, or null to close it (end of input). */
+  stdin(data: Uint8Array | null) {
+    this.worker?.postMessage({ type: "stdin", data }, data ? [data.buffer] : []);
+  }
+
   /** Whether a program is running (answering previews or not). */
   get running(): boolean {
     return !!this.worker;
@@ -394,6 +402,7 @@ export class Runner {
     this.worker = undefined;
     this.abort = undefined;
     if (!worker) return;
+    this.onStdinWait?.(false);
     this.reportPorts();
     this.endPending(worker);
     this.dropSockets();
@@ -537,7 +546,14 @@ export class Runner {
     const previous = () => (this.worker === worker ? !!this.next : this.next?.worker !== worker);
     worker.onmessage = (e) => {
       const m = e.data;
-      if (m.type === "console") this.log(m.level, previous() ? PREVIOUS + m.text : m.text);
+      if (m.type === "console") this.log(m.level, previous() && !m.partial ? PREVIOUS + m.text : m.text, m.partial === true);
+      // The program reads its stdin (process.stdin, Bun.stdin, readline): the console's input goes to it (`stdin`).
+      else if (m.type === "stdin-wait") {
+        if (this.worker !== worker) return;
+        this.onStdinWait?.(m.on === true);
+        // A program waiting for input (top-level `await Bun.stdin.text()`) is up, however long the reader takes.
+        if (m.on) done({ kind: "ready" });
+      }
       // A WebSocket upgrade's Set-Cookie headers (an HTTP response's are read off its head in onSw).
       else if (m.type === "cookies") this.storeCookies(m.path, m.setCookies);
       else if (m.type === "ports") {

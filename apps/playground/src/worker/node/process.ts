@@ -1,7 +1,8 @@
 import EventEmitter from "events";
 import { BUN_VERSION } from "../bunVersion";
 
-type Sink = (level: "log" | "error", text: string) => void;
+/** `partial`: text that ends mid-line (no trailing newline), which the console keeps on its row for what comes next. */
+type Sink = (level: "log" | "error", text: string, partial?: boolean) => void;
 
 let sink: Sink = (level, text) => console[level](text);
 /** The worker routes stdout/stderr to its console pane. */
@@ -38,7 +39,9 @@ function stdio(fd: number, level: "log" | "error") {
       if (raw) raw(fd as 1 | 2, typeof chunk === "string" ? enc.encode(chunk) : Uint8Array.prototype.slice.call(chunk));
       else {
         const text = typeof chunk === "string" ? chunk : dec.decode(chunk);
-        sink(level, text.endsWith("\n") ? text.slice(0, -1) : text);
+        if (!text) return true;
+        if (text.endsWith("\n")) sink(level, text.slice(0, -1));
+        else sink(level, text, true);
       }
       if (typeof encoding === "function") queueMicrotask(encoding as () => void);
       else if (typeof cb === "function") queueMicrotask(cb as () => void);
