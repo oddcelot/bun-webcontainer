@@ -93,7 +93,12 @@ export class RemoteRunner extends Runner {
   }
 
   /** Native Bun reports failed tests in all, not per file (no `results`). */
-  override async runTests(files: string[]): Promise<TestResults> {
+  override async runTests(files: string[], args: string[] = []): Promise<TestResults> {
+    // The runner tests a copy of the project in a temp folder it then removes: updated snapshots would be lost.
+    if (args.length) {
+      this.out("error", `[local] bun test ${args.join(" ")}: snapshots update only in the browser; switch Local Bun off to update them.`);
+      return { failed: 1 };
+    }
     await this.start("", files);
     await this.current?.exited;
     return { failed: this.failed };
