@@ -177,7 +177,7 @@ describe("add", () => {
 | `import.meta.dir`, `file`, `path`, `main`, `env` | ✅ Works | `env` is `process.env`. In browser code (HTML imports), only `url`, `dirname` and `filename` are filled in. |
 | `import.meta.resolve` | ✅ Works | As in Bun: a package resolves to its file's `file:///<path>` URL (or throws a `ResolveMessage`), a built-in to `node:x`, and a path is joined to the module's URL as written. Server code only; browser code (HTML imports) gets the browser's own, which returns the served URL. |
 | `import(expr)` with a computed path | ✅ Works | |
-| `fetch("file:///…")` | ✅ Works | Reads project files. Relative URLs throw. Other URLs go to the network, subject to CORS. |
+| `fetch("file:///…")` | ✅ Works | Reads project files. Relative URLs throw. `http://localhost:<port>` (and `127.0.0.1`) reaches a server this program started, `Bun.serve` or `http.createServer`; a child process's server isn't reachable. Other URLs go to the network, subject to CORS. |
 | `Headers#toJSON` | ✅ Works | As in Bun: a plain object of lower-cased names, values joined with `, `, Set-Cookie as an array. |
 | `new Request()` headers | ✅ Works | As in Bun, `request.headers` keeps Cookie, Host, Origin, Referer and Content-Length (a browser drops them), through `clone()` and `new Request(request)` too, so `app.handle(new Request(url, { headers: { cookie } }))` sees its cookies. `fetch()` still sends only what the browser allows. |
 | `process`, `Buffer`, `global`, timers | ✅ Works | See [Node built-ins](/compatibility/node/). |

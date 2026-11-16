@@ -1025,10 +1025,23 @@ async function build(opts: BuildOptions) {
  * A relative URL is invalid, as in Bun: the worker's own URL would make it a request to the playground.
  */
 const networkFetch = globalThis.fetch;
+const loopback = new Set(["localhost", "127.0.0.1", "[::1]", "0.0.0.0"]);
 const fileFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = input instanceof Request ? input.url : String(input);
   if (!URL.canParse(url)) throw Object.assign(new TypeError("fetch() URL is invalid"), { code: "ERR_INVALID_URL" });
-  if (!url.startsWith("file:")) return networkFetch(input, withHeaders(input, init));
+  if (!url.startsWith("file:")) {
+    // A server this program started (Bun.serve, http.createServer) is answered in-process, as on a machine where
+    // localhost reaches it; the browser's network can't. A child process's server lives in another worker: unreachable.
+    const u = new URL(url);
+    const inst = loopback.has(u.hostname) && u.protocol === "http:" ? servers.find((s) => s.port === Number(u.port || 80)) : undefined;
+    if (inst) {
+      const req = new Request(input, init);
+      const { res, setCookies } = await dispatch(inst, req);
+      // What a client of Bun.serve gets: its headers (the implicit content-type, Set-Cookie), no body for HEAD.
+      return new Response(req.method === "HEAD" ? null : res.body, { status: res.status, statusText: res.statusText, headers: servedHeaders(res, setCookies) });
+    }
+    return networkFetch(input, withHeaders(input, init));
+  }
   const path = norm(decodeURIComponent(new URL(url).pathname));
   const data = vfs.readBytes(path);
   if (data === undefined) throw new TypeError(`fetch failed: no such file /${path}`);
