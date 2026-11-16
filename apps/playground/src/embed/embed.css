@@ -5,6 +5,9 @@
 /* The large view fills the host's modal: under a see-through --canvas (a page's inline look), the theme's own canvas,
    so the page doesn't show between the panes. A solid --canvas covers it (body draws it over html). */
 :root[data-expanded] { background: color-mix(in srgb, var(--fg) 7%, var(--panel)); }
+/* --gutter: the room between the panes and the embed's edge (4px). A page that frames the embed itself can take it to
+   0 inline; the large view keeps it, since nothing frames it there. */
+:root[data-expanded] #embed { --gutter: 4px; }
 #embed-bar { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 5px 6px 5px 10px; white-space: nowrap; }
 #embed .controls { display: flex; flex: 0 1 auto; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; }
 #embed .controls.end { margin-left: auto; }
@@ -18,7 +21,7 @@
 /* Buttons keep their size; the project's name, the file's and the status shrink. The tabs keep room for part of one. */
 #embed .controls > :not(.project, .file, #status) { flex: none; }
 #embed .tabs-bar > .tabs { min-width: 4rem; }
-#embed[data-barless] #embed-main { padding-top: 4px; }
+#embed[data-barless] #embed-main { padding-top: var(--gutter, 4px); }
 #embed .controls .file { min-width: 0; overflow: hidden; text-overflow: ellipsis; font: 12px var(--font-mono); }
 /* The library's project button (EmbedApp.tsx ProjectButton): the open project's logo and name. */
 #embed .controls .project {
@@ -49,7 +52,7 @@
 .embed-menu .separator { height: 1px; margin: 4px; border: 0; background: var(--control-border); }
 
 /* Panes on a grid. Default (code mode): the editor, the console under it. The --vars are sizes a reader dragged (ui/EmbedSplit.tsx). */
-#embed-main { position: relative; flex: 1; min-height: 0; display: grid; gap: 4px; padding: 0 4px 4px; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: "editor"; }
+#embed-main { position: relative; flex: 1; min-height: 0; display: grid; gap: 4px; padding: 0 var(--gutter, 4px) var(--gutter, 4px); grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: "editor"; }
 #embed-main > .pane { min-width: 0; min-height: 0; overflow: hidden; border-radius: var(--radius); background: var(--bg); }
 #embed-main > .pane[hidden] { display: none; }
 /* --pane-border: a 1px edge around each pane, over its content (tab rows, the editor) and inside its size; the drawer

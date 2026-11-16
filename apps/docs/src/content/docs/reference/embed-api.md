@@ -216,6 +216,7 @@ Names and values are CSS custom properties; anything that isn't a `--name` with 
 | `--error`, `--warn`, `--info`, `--ok` | Status colors |
 | `--radius`, `--pad` | A pane's corner and the space inside it |
 | `--pane-border` | A 1px line around each pane (editor, preview, console, file tree), following `--radius`; default none. With `--canvas: transparent`, the panes are framed boxes on your page |
+| `--gutter` | The room between the panes and the embed's edge; default `4px`. `0px` puts the panes flush with the edge inline, for a page that frames the embed itself; the large view keeps 4px |
 | `--font-ui`, `--font-mono` | The UI and code fonts; load them with `fonts` |
 | `--control`, `--control-hover`, `--control-border` | Buttons and inputs |
 | `--tab-track`, `--tab-track-border`, `--tab-track-radius`, `--tab-track-pad` | A track behind the editor's and the preview's tab rows: its background, 1px border, corner and the space inside it. Unset, there's none. The padding doesn't make the bar taller |
