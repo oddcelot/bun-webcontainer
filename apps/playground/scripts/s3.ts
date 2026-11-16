@@ -84,7 +84,7 @@ void (async () => {
   const get = c.presign("hello.txt", { expiresIn: 60 });
   await show("presign get", async () => [mask(get), (await (await fetch(get)).text())]);
   const put = c.presign("presigned.txt", { method: "PUT", expiresIn: 60, type: "text/plain" });
-  await show("presign put", async () => { const r = await fetch(put, { method: "PUT", body: "via presign" }); return [mask(put), r.status, await c.file("presigned.txt").text()]; });
+  await show("presign put", async () => { const r = await fetch(put, { method: "PUT", body: new TextEncoder().encode("via presign") }); return [mask(put), r.status, await c.file("presigned.txt").text()]; });
   await show("presign options", () => mask(c.presign("a b.txt", { acl: "public-read", storageClass: "STANDARD_IA", contentDisposition: "attachment; filename=x", type: "text/plain", expiresIn: 5 })));
   await show("file.presign", () => mask(c.file("hello.txt").presign({ expiresIn: 10 })));
   await show("presign token", () => mask(new Bun.S3Client({ accessKeyId: "a", secretAccessKey: "b", bucket: "b", sessionToken: "tok/+=" }).presign("k")));
@@ -103,7 +103,7 @@ void (async () => {
   await show("Bun.write s3 from s3", () => Bun.write(c.file("bw2.txt"), c.file("bw.txt")));
   await show("fetch s3 get", async () => { const r = await fetch("s3://env2.txt"); return [r.status, await r.text()]; });
   await show("fetch s3 missing", async () => { const r = await fetch("s3://nope.txt"); return [r.status, r.statusText]; });
-  await show("fetch s3 put", async () => { const r = await fetch("s3://fetched.txt", { method: "PUT", body: "put by fetch" }); return [r.status, await Bun.s3.file("fetched.txt").text()]; });
+  await show("fetch s3 put", async () => { const r = await fetch("s3://fetched.txt", { method: "PUT", body: new TextEncoder().encode("put by fetch") }); return [r.status, await Bun.s3.file("fetched.txt").text()]; });
   await show("fetch s3 head", async () => (await fetch("s3://fetched.txt", { method: "HEAD" })).status);
   await show("fetch s3 delete", async () => (await fetch("s3://fetched.txt", { method: "DELETE" })).status);
   await show("static", async () => [await Bun.S3Client.write("st.txt", "static"), await Bun.S3Client.exists("st.txt"), await Bun.S3Client.size("st.txt"), await Bun.S3Client.file("st.txt").text(), await Bun.S3Client.unlink("st.txt")]);
@@ -120,9 +120,9 @@ const requests = (log: Recorded[]) =>
       method: r.method,
       path: r.path,
       query: r.query.replace(/X-Amz-(Date|Signature)=[^&]+/g, "X-Amz-$1=X"),
-      auth: r.auth,
+      auth: r.auth.replace(/\d{8}T\d{6}Z/g, "DATE"),
       signed: /SignedHeaders=([^,]+)/.exec(r.headers.authorization ?? "")?.[1] ?? "",
-      headers: Object.fromEntries(Object.entries(r.headers).filter(([k]) => ["content-type", "content-disposition", "content-encoding", "content-length", "range"].includes(k) || (k.startsWith("x-amz-") && k !== "x-amz-date"))),
+      headers: Object.fromEntries(Object.entries(r.headers).filter(([k, v]) => !(k === "content-length" && v === "0") && ["content-type", "content-disposition", "content-encoding", "content-length", "range"].includes(k) || (k.startsWith("x-amz-") && k !== "x-amz-date"))),
     }))
     .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
 
@@ -181,7 +181,7 @@ const host = Bun.serve({
   port: HOST_PORT,
   fetch: () =>
     new Response(
-      `<!doctype html><body><iframe id="f" style="width:900px;height:600px" src="${EDITOR}/embed?init=1&mode=console"></iframe>
+      `<!doctype html><meta charset="utf-8"><body><iframe id="f" style="width:900px;height:600px" src="${EDITOR}/embed?init=1&mode=console"></iframe>
 <script>
   window.lines = []; window.events = [];
   const files = ${JSON.stringify(files)};
@@ -230,7 +230,9 @@ try {
     else compare("playground output", got, wantLines);
     if (bad && start < 0) console.error(all.join("\n"));
     if (!process.argv.includes("--no-native")) compare("requests the server saw", requests(mock.log), wantRequests);
-    for (const r of mock.log) if (r.auth !== "ok") (bad++, console.error(`✗ the server refused ${r.method} ${r.path}${r.query}: ${r.auth.split("\n")[0]}`));
+    const refused = (l: Recorded[]) => l.filter((r) => r.auth !== "ok").length;
+    // Native Bun is refused for the wrong secret on purpose, once.
+    if (!process.argv.includes("--no-native") && refused(mock.log) !== wantRequests.filter((r) => r.auth !== "ok").length) (bad++, console.error(`✗ the server refused ${refused(mock.log)} requests, native Bun's run ${wantRequests.filter((r) => r.auth !== "ok").length}`));
     for (const c of crashes) (bad++, console.error(`✗ page error: ${c}`));
   } finally {
     await browser.close();
