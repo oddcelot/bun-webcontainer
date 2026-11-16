@@ -5,6 +5,23 @@ browser, its editor, and the docs at docs.runbun.dev. They release together at o
 `package.json`, tagged `v<version>`), organised by part. `@runbun/astro` keeps its own changelog in
 [packages/astro/CHANGELOG.md](./packages/astro/CHANGELOG.md).
 
+## 0.4.2 — 2026-11-16
+
+Embedded playgrounds start faster and fail less on the way: a test run no longer leaves the preview without a server,
+the playground's scripts stay cached between visits, and pinned packages install from the cache. Nothing needs action.
+
+### Playground
+
+- **Changed** — **Faster repeat visits.** The playground's scripts and styles are cached for a year: a page that loads
+  an embed again doesn't ask for them again.
+- **Fixed** — **Previews don't fail across a test run.** A request sent while `bun test` runs next to a running server
+  waits for that server to be back instead of answering "No server running".
+
+### Toolchain
+
+- **Changed** — **Pinned dependencies install without asking the registry.** Package metadata cached earlier is reused
+  past its 5 minutes when a project asks for an exact version it already lists.
+
 ## 0.4.1 — 2026-11-16
 
 A small fix to the editor's tabs. Nothing needs action.
