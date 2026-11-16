@@ -1003,14 +1003,9 @@ export function createS3(deps: Deps) {
     const conf = withOptions(envConf(deps.env()), init?.s3);
     const path = unscheme(url);
     let body: Uint8Array<ArrayBuffer> | undefined;
-    let type: string | undefined;
-    if (method === "PUT" && init?.body != null) {
-      const req = new Request("http://x/", { method: "POST", body: init.body });
-      type = req.headers.get("content-type") ?? undefined;
-      body = new Uint8Array(await req.arrayBuffer());
-    }
+    if (method === "PUT" && init?.body != null) body = new Uint8Array(await new Request("http://x/", { method: "POST", body: init.body }).arrayBuffer());
     const headers = new Headers(init?.headers);
-    return http(conf, { method: method as SignOptions["method"], path }, { body, contentType: headers.get("content-type") ?? type ?? (method === "PUT" ? "application/octet-stream" : undefined) }, path);
+    return http(conf, { method: method as SignOptions["method"], path }, { body, contentType: headers.get("content-type") ?? undefined }, path);
   }
 
   return { S3Client, S3File, s3, fromUrl, fetchUrl, upload, isS3File: (v: unknown): v is InstanceType<typeof S3File> => v instanceof S3File };
