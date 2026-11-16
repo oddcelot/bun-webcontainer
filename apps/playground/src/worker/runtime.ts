@@ -42,7 +42,7 @@ import { nodeFs as shellFs } from "../shell/nodeFs";
 import { loadShellWasm } from "../shell/load";
 import { FILE_PATH } from "../shell/parse";
 import { Buffer } from "./node/buffer";
-import { Readable } from "./node/stream";
+import { consoleLines, installDialogs, pushStdin, setStdinPost, StdinFile, stdinStream } from "./stdin";
 import { Shell as ShellInterpreter, ShellEnv, type Command as ShellCommand, type Reader } from "../shell/interp";
 import { templateSource } from "../shell/parse";
 import { childByPid, launchOf, onProcMessage, setKernel, setSyncVfs, signalName, SIGNALS, spawnChild, type Child } from "./processes";
@@ -90,7 +90,10 @@ if (typeof SharedArrayBuffer === "function" && crossOriginIsolated)
   };
 setHostVfs(vfs);
 setFs(vfs, (op, ...args) => post({ type: "vfs", op, args }));
-setStdio((level, text) => post({ type: "console", level, text }));
+process.stdin = stdinStream;
+setStdinPost(post, true);
+installDialogs(g, (text) => void process.stdout.write(text));
+setStdio((level, text, partial) => post({ type: "console", level, text, partial }));
 const has = (path: string) => vfs.files.has(path);
 const read = (path: string) => vfs.readText(path);
 setKernel(post, 1, has, read);
@@ -644,6 +647,8 @@ installConsole(
   frameMapper(() => new URL(VFS_ROOT, location.href).href),
   previewSource((path) => vfs.readText(path)),
 );
+// Bun's console is an AsyncIterable of stdin's lines.
+Object.defineProperty(console, Symbol.asyncIterator, { value: consoleLines, configurable: true, writable: true });
 // error.stack itself, as Bun's reads (V8 only).
 installStackTraces(() => new URL(VFS_ROOT, location.href).href, (path) => vfs.readText(path));
 // Instrumented modules served to a process that isn't the debug run (a child process during one) find a __dbg too.
@@ -1137,16 +1142,6 @@ function externalCommand(name: string, cwd: string): ShellCommand | undefined {
   };
 }
 
-/** A child process's stdin: what its parent writes, until the parent closes it. Reading it holds the program, as an open pipe does. */
-function childStdin() {
-  const stdin = Object.assign(new Readable({ read() {} }), { fd: 0, isTTY: false, setRawMode: () => stdin, ref() {}, unref() {} });
-  stdin.on("newListener", (event: string) => {
-    if ((event === "data" || event === "readable") && !stdin.readableEnded) hold(stdin);
-  });
-  stdin.on("end", () => release(stdin));
-  return stdin;
-}
-
 /** A signal sent to this program (a parent's kill, process.kill): its listeners get it, else it ends the program. */
 function signal(name: string) {
   if (halted) return;
@@ -1189,6 +1184,7 @@ async function main() {
     argv: process.argv,
     stdout,
     stderr,
+    stdin: new StdinFile(),
     inspect: Object.assign(bunInspect, {
       // `Bun.inspect.table(data, properties?, options?)`: console.table's box as a string, nested values collapsed.
       table: (data: unknown, properties?: unknown) => (typeof data === "object" && data !== null ? table(data, Array.isArray(properties) ? properties.map(String) : undefined, 5) + "\n" : ""),
@@ -1332,12 +1328,11 @@ self.addEventListener("message", (e: MessageEvent) => {
 });
 
 // The page's reports about this program's children, and what its parent sends it as a child itself. The stdin a
-// parent writes can arrive before "start" is through (it waits for the wasm): it waits in the stream.
-const stdinStream = childStdin();
+// parent writes (or the console, for the main program) can arrive before "start" is through (it waits for the wasm): it waits in the stream.
 self.addEventListener("message", (e: MessageEvent) => {
   const m = e.data;
   if (m.type === "proc") onProcMessage(m);
-  else if (m.type === "stdin") stdinStream.push(m.data === null ? null : Buffer.from(m.data));
+  else if (m.type === "stdin") pushStdin(m.data);
   else if (m.type === "signal") signal(m.signal);
   else if (m.type === "taken") taken = new Set(m.ports);
 });
@@ -1399,7 +1394,7 @@ self.addEventListener("message", async (e: MessageEvent) => {
     process.chdir(proc.cwd);
     setKernel(post, proc.pid, has, read);
     setRawStdio((fd, data) => post({ type: "stdio", fd, data }, [data.buffer]));
-    process.stdin = stdinStream;
+    setStdinPost(post, false);
     const thread = e.data.thread as ThreadInfo | undefined;
     if (thread) {
       // A worker_threads thread: the process's ids, not a child's of its own.

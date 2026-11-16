@@ -37,7 +37,7 @@ function emit<E extends Event["event"]>(event: E, data: Extract<Event, { event: 
 }
 
 // Every console line goes to the host, from the first: loading the project logs too (restored files, storage warnings).
-pg.onLog((level, text) => emit("console", { level, text }));
+pg.onLog((level, text, partial) => emit("console", partial ? { level, text, partial } : { level, text }));
 
 let receiveInit!: (p: Extract<Request, { method: "init" }>["params"]) => void;
 const initReceived = new Promise<Extract<Request, { method: "init" }>["params"]>((r) => (receiveInit = r));

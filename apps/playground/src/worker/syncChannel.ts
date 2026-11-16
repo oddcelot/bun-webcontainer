@@ -17,8 +17,8 @@ const HEAD = 16;
 /** How many bytes go over at once. */
 export const SYNC_WINDOW = 256 * 1024;
 
-/** A part's kind: the child's stdout or stderr, a file change, its exit (JSON `{ code, signal }`). */
-export const Part = { Stdout: 1, Stderr: 2, Vfs: 3, Exit: 4 } as const;
+/** A part's kind: the child's stdout or stderr, a file change, its exit (JSON `{ code, signal }`); for `prompt()`, bytes for stdin, or its end. */
+export const Part = { Stdout: 1, Stderr: 2, Vfs: 3, Exit: 4, Stdin: 5, StdinEnd: 6 } as const;
 export type Part = (typeof Part)[keyof typeof Part];
 
 export type SyncOpen = { type: "sync-open"; id: number; sab: SharedArrayBuffer };
@@ -63,6 +63,11 @@ export class SyncRelay {
       this.open = { id: msg.id, ctl: new Int32Array(sab, 0, HEAD / 4), data: new Uint8Array(sab, HEAD), queue: [], busy: false, ended: false };
       return true;
     }
+    // A reader that is done (a `prompt()` got its line): what comes next goes to the Worker as messages again.
+    if (msg?.type === "sync-close") {
+      if (this.open && msg.id === this.open.id) this.open = undefined;
+      return true;
+    }
     if (msg?.type === "sync-ack") {
       const o = this.open;
       if (!o || msg.id !== o.id) return true;
@@ -79,7 +84,9 @@ export class SyncRelay {
     const o = this.open;
     // Once its exit is on the way the program stops reading: later messages wait in its queue as usual.
     if (!o || o.ended) return false;
-    const msg = m as { type?: string; id?: number; ev?: string; fd?: number; data?: Uint8Array; code?: number; signal?: string | null };
+    const msg = m as { type?: string; id?: number; ev?: string; fd?: number; data?: Uint8Array | null; code?: number; signal?: string | null };
+    // The console's input for a program blocked in `prompt()` (reader 0): bytes, or null for its end.
+    if (msg?.type === "stdin" && o.id === 0) return this.push(msg.data ? Part.Stdin : Part.StdinEnd, msg.data ?? new Uint8Array(0)), true;
     if (msg?.type === "proc" && msg.id === o.id) {
       if (msg.ev === "out") this.push(msg.fd === 2 ? Part.Stderr : Part.Stdout, msg.data!);
       else if (msg.ev === "exit") {
