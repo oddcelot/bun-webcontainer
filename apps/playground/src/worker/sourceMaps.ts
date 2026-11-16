@@ -5,6 +5,7 @@
 // - code the worker runs with `new Function` (CommonJS it requires, ES modules it runs itself: node/module.ts) is
 //   registered with its mappings and the lines V8 puts before a function's body.
 import { decodeMappings, originalPosition, type Mappings } from "../sourceMap";
+import { XHR } from "./xhr";
 
 const MAP_PREFIX = "\n//# sourceMappingURL=data:application/json;base64,";
 
@@ -32,7 +33,7 @@ function servedLocator(url: string): Locate | null {
   if (l !== undefined) return l;
   l = null;
   try {
-    const xhr = new XMLHttpRequest();
+    const xhr = new XHR();
     xhr.open("GET", url, false);
     xhr.send();
     const text = xhr.status === 200 ? xhr.responseText : "";

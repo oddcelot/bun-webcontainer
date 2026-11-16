@@ -2,6 +2,7 @@
 // module is fetched (a synchronous XHR, which a worker may do) and instantiated on the first call, not at boot.
 // Compressed bytes differ from native Bun's encoders'; they decode with any zstd or brotli decoder.
 import { BASE } from "../base";
+import { XHR } from "./xhr";
 import { Buffer } from "./node/buffer";
 import { brotliConstants } from "./node/zlibConstants";
 
@@ -23,7 +24,7 @@ let exports: Exports | undefined;
 /** One instance per worker (a tab gets only about 60 wasm64 memories, see resolver.ts), made on first use. */
 function wasm(): Exports {
   if (exports) return exports;
-  const xhr = new XMLHttpRequest();
+  const xhr = new XHR();
   xhr.open("GET", new URL(`${BASE}bun_compress_wasm.wasm`, location.href).href, false);
   xhr.responseType = "arraybuffer";
   xhr.send();

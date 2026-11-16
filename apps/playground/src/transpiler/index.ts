@@ -1,4 +1,5 @@
 import { BASE } from "../base";
+import { XHR } from "../worker/xhr";
 import { FLAGS, LOADER_NUMBERS, type RuntimeOptions } from "./options";
 
 // Bun's own transpiler (bun_js_parser + bun_js_printer) compiled to wasm64; see crates/transpile-wasm.
@@ -122,7 +123,7 @@ async function load(): Promise<Exports> {
  */
 function loadSync(): Exports {
   if (loaded) return loaded;
-  const xhr = new XMLHttpRequest();
+  const xhr = new XHR();
   xhr.open("GET", wasmUrl(), false);
   xhr.responseType = "arraybuffer";
   xhr.send();

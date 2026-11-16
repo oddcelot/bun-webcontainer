@@ -53,6 +53,7 @@ import { spawn as bunSpawn, spawnSync as bunSpawnSync } from "./spawn";
 import { setThread, threadEnd, threadError, type ThreadInfo } from "./node/worker_threads";
 import { WebWorker } from "./webWorker";
 import { isShellCommand } from "../scripts";
+import { hideXhr, XHR } from "./xhr";
 
 type Handler = (req: Request, server: unknown) => Response | Promise<Response>;
 type HtmlImport = { __htmlImport: string };
@@ -102,7 +103,7 @@ g.__nodeBuiltins = builtins;
 // transpiler/index.ts does for Bun.Transpiler#transformSync. The worker's sync XHR is the only way to the bytes in a
 // synchronous API.
 setCryptoWasm(() => {
-  const xhr = new XMLHttpRequest();
+  const xhr = new XHR();
   xhr.open("GET", new URL(`${BASE}bun_crypto_wasm.wasm`, location.href), false);
   xhr.responseType = "arraybuffer";
   xhr.send();
@@ -144,6 +145,7 @@ g.global ??= globalThis;
 setProxyCheck(isProxy);
 g.Buffer ??= (builtins.buffer as { Buffer: unknown }).Buffer;
 installTimers();
+hideXhr();
 Object.assign(globalThis, compressionStreams); // gzip, deflate-raw and also brotli, zstd
 
 /** One `Bun.serve` (or `http.Server#listen`). A program may start several: devframe adds one on port 0 for its RPC socket. */
