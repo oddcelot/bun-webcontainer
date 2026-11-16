@@ -1,7 +1,7 @@
 import assert from "./assert";
 import buffer from "./buffer";
 import crypto from "./crypto";
-import { diagnostics_channel, async_hooks, cluster, constants, dns, http2, inspector, readline, tls, v8, vm } from "./stubs";
+import { diagnostics_channel, async_hooks, cluster, constants, dns, http2, inspector, tls, v8, vm } from "./stubs";
 import events from "./events";
 import fs from "./fs";
 import http, { https } from "./http";
@@ -15,6 +15,7 @@ import path from "./path";
 import perf_hooks from "./perf_hooks";
 import process from "./process";
 import punycode from "./punycode";
+import readline, { promises as readlinePromises } from "./readline";
 import querystring from "./querystring";
 import stream, { promises as streamPromises } from "./stream";
 import string_decoder from "./string_decoder";
@@ -35,7 +36,7 @@ const streamWeb = Object.fromEntries(
 );
 
 /** What `Bun` has; runtime.ts types the global against this list. */
-export const BUN_NAMES = ["version", "env", "gc", "main", "argv", "stdout", "stderr", "inspect", "deepEquals", "escapeHTML", "which", "spawn", "spawnSync", "sleep", "nanoseconds", "semver", "file", "write", "serve", "build", "CryptoHasher", "gzipSync", "gunzipSync", "deflateSync", "inflateSync", "hash", "Transpiler", "resolveSync", "resolve", "Glob", "YAML", "TOML", "JSONC", "JSON5", "password", "Cookie", "CookieMap", "sleepSync", "revision", "JSONL", "XML", "markdown", "$"] as const;
+export const BUN_NAMES = ["version", "env", "gc", "main", "argv", "stdout", "stderr", "stdin", "inspect", "deepEquals", "escapeHTML", "which", "spawn", "spawnSync", "sleep", "nanoseconds", "semver", "file", "write", "serve", "build", "CryptoHasher", "gzipSync", "gunzipSync", "deflateSync", "inflateSync", "hash", "Transpiler", "resolveSync", "resolve", "Glob", "YAML", "TOML", "JSONC", "JSON5", "password", "Cookie", "CookieMap", "sleepSync", "revision", "JSONL", "XML", "markdown", "$"] as const;
 /** `import ... from "bun"`: the worker copies the `Bun` global in once it exists; the page only needs the names. */
 const bun: Record<string, unknown> = Object.fromEntries(BUN_NAMES.map((k) => [k, undefined]));
 
@@ -70,7 +71,7 @@ export const builtins: Record<string, object> = {
   punycode,
   querystring,
   readline,
-  "readline/promises": readline.promises as object,
+  "readline/promises": readlinePromises,
   stream,
   "stream/promises": streamPromises,
   "stream/web": streamWeb,
