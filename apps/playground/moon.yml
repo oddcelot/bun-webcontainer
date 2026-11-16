@@ -194,6 +194,13 @@ tasks:
     toolchains: ['bun']
     options:
       cache: false
+  test-esm-require:
+    # `require` in an ES module (scripts/esm-require.ts): `require.resolve`, `.paths`, `.cache` and `import.meta.require`
+    # in the embed in headless Chrome, against native Bun's output. Needs Chrome, so it isn't part of `test`.
+    script: 'bun scripts/esm-require.ts'
+    toolchains: ['bun']
+    options:
+      cache: false
   test-errors:
     # Errors as programs see and print them (scripts/errors.ts): `error.stack`'s names, paths and columns, uncaught
     # errors' source previews, I/O errors and promise states in the embed in headless Chrome, against native Bun's

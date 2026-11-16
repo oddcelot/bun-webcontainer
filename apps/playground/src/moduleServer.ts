@@ -129,14 +129,14 @@ function hoistMetaRequire(vfs: VFS, code: string, path: string, dir: string, url
   const imports = specs.map((s, i) => `import * as __mr${i} from ${JSON.stringify(url(s))};`).join("");
   const table = specs.map((s, i) => `${JSON.stringify(s)}: __mr${i}`).join(", ");
   // On the module's first line, so the line numbers in its stack traces stay as they are.
-  return `${imports}const __metaRequire = ((t, b) => (id) => {
+  return `${imports}const __metaRequire = ((t, b) => (r => globalThis.__decorateRequire?.(r, ${JSON.stringify("/" + path)}) ?? r)((id) => {
   const n = String(id).replace(/^node:/, "");
   if (n in b) return b[n];
   if (id in t) return "__cjs" in t[id] ? t[id].__cjs : t[id];
   if ("bun:" + id in b) return b["bun:" + id];
   if (globalThis.__cjsRequire) return globalThis.__cjsRequire(id, ${JSON.stringify("/" + path)});
   throw new Error("Can't require " + JSON.stringify(id) + ". Only installed packages and built-ins work, with a literal name.");
-})({ ${table} }, globalThis.__nodeBuiltins);`.replace(/\n\s*/g, " ") + code.replace(/\bimport\.meta\.require\b/g, "__metaRequire");
+}))({ ${table} }, globalThis.__nodeBuiltins);`.replace(/\n\s*/g, " ") + code.replace(/\bimport\.meta\.require\b/g, "__metaRequire");
 }
 
 /** `import`/`export ... from` statements' specifiers (not `import type`), as a rough scan. */
