@@ -154,6 +154,7 @@ const embed = createRoot(() => {
     /** The host opened or closed its modal: an `expand=<mode>` embed switches to that mode meanwhile. */
     setExpanded(open: boolean) {
       setOpen(open);
+      document.documentElement.toggleAttribute("data-expanded", open);
       if (open) tabsBefore = { open: [...workspace.state.open], active: workspace.state.active };
       else {
         workspace.saveAll();

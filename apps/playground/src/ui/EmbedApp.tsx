@@ -119,7 +119,8 @@ export function EmbedApp() {
     };
   });
   // Where the editor shows its tab bar, the bar's controls are in it, and there's no bar.
-  const barless = () => editor() && has("tabs");
+  // The large view has room for its own bar.
+  const barless = () => editor() && has("tabs") && !e.expanded();
   const showTree = sticky(() => tree() || drawer());
   const showPreview = sticky(() => has("preview"));
   const showConsole = sticky(() => has("console"));
