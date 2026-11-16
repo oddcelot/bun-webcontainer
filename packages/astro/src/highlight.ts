@@ -395,15 +395,6 @@ ${Array.from({ length: 12 }, (_, i) => `  &:has(> .runbun-requests-tablist > lab
     position: relative;
     isolation: isolate;
     anchor-scope: --runbun-tab;
-    & > label:has(input:checked) {
-      anchor-name: --runbun-tab;
-      border-bottom-color: transparent;
-      background: none;
-      box-shadow: none;
-      &::after {
-        content: none;
-      }
-    }
     &::before,
     &::after {
       content: "";
@@ -432,6 +423,16 @@ ${Array.from({ length: 12 }, (_, i) => `  &:has(> .runbun-requests-tablist > lab
       height: 2px;
       border-radius: 1px 1px 0 0;
       background: var(--_mark);
+    }
+  }
+  /* The checked tab draws nothing of its own: as specific as the rows' own rules (.runbun-requests > … label), and after. */
+  :is(.runbun-tabs > .runbun-tablist, .runbun-requests > .runbun-requests-tablist) > label:has(input:checked) {
+    anchor-name: --runbun-tab;
+    border-bottom-color: transparent;
+    background: none;
+    box-shadow: none;
+    &::after {
+      content: none;
     }
   }
   /* A file group's tabs: an underline the tab's width, no fill. A poster's requests: the live preview's. */
