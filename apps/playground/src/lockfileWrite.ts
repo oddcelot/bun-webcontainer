@@ -7,7 +7,7 @@
 import type { Semver } from "./semver";
 import { findWorkspaces, type Workspace } from "./workspaces";
 import { catalogRange, catalogsOf, type Catalogs } from "./catalogs";
-import { overridesOf } from "./overrides";
+import { overrideLines, overridesOf, type Overrides } from "./overrides";
 
 type Group = "dependencies" | "devDependencies" | "optionalDependencies" | "peerDependencies";
 const GROUPS: Group[] = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"];
@@ -52,7 +52,7 @@ export type ResolveHost = {
 const nameSuggestsLibc = (name: string) => /linux|musl|glibc/.test(name);
 
 /** `range` is what package.json says (bun.lock keeps it); `use`, when set, is the range a catalog gave it. */
-type Dep = { name: string; range: string; use?: string; group: Group; optionalPeer: boolean };
+type Dep = { name: string; range: string; use?: string; group: Group; optionalPeer: boolean; /** The root's entry for a workspace, which no override reaches. */ workspace?: boolean };
 type Pkg = {
   name: string;
   /** What follows `name@` in bun.lock: a version, a tarball URL, `file:<path>` or `workspace:<path>`. */
@@ -127,7 +127,7 @@ function pickVersion(doc: Packument, range: string, semver: Semver): string | un
   return best ?? deprecated;
 }
 
-export type Resolved = { root: Manifest; rootDeps: Dep[]; workspaces: Workspace[]; catalogs: Catalogs; overrides: Record<string, string>; tree: Node[]; problems: string[] };
+export type Resolved = { root: Manifest; rootDeps: Dep[]; workspaces: Workspace[]; catalogs: Catalogs; overrides: Overrides; tree: Node[]; problems: string[] };
 
 /** A range npm would take from a registry, which a workspace of a version that satisfies it serves instead. */
 const semverLike = (r: string) => /^[\s\d^~<>=*xX.|-]*$/.test(r);
@@ -163,12 +163,14 @@ export async function resolveProject(root: Manifest, host: ResolveHost, locked: 
   const workspaces = findWorkspaces(root, host.packageDirs(), (dir) => host.folder(dir));
   const catalogs = catalogsOf(root);
   /** `catalog:` dependencies of the root and the workspaces take the range their catalog gives (`range`; the lock keeps the literal). */
-  const catalogged = (deps: Dep[]): Dep[] =>
+  /** `owner` is the package they belong to: a rule for such a dependency wins over a catalog that lacks it. */
+  const catalogged = (deps: Dep[], owner: { name: string; version?: string }): Dep[] =>
     deps.flatMap((d) => {
       if (!d.range.startsWith("catalog:")) return [d];
       const name = d.range.slice("catalog:".length).trim();
       const range = catalogRange(catalogs, name, d.name);
       if (range !== undefined) return [{ ...d, use: range }];
+      if (overrides.lookup(d, owner, semver) !== undefined) return [d];
       const known = name === "" || name === "default" ? Object.keys(catalogs.default).length + Object.keys(catalogs.groups.default ?? {}).length > 0 : name in catalogs.groups;
       problems.push(
         root.workspaces === undefined
@@ -179,20 +181,33 @@ export async function resolveProject(root: Manifest, host: ResolveHost, locked: 
       );
       return [];
     });
-  const overrides = overridesOf(root);
-  for (const key of overrides.unsupported) problems.push(`"${key}" in overrides or resolutions: scoped rules don't work in the browser yet`);
-  /** What each overridden name asks for instead (a `catalog:` value through its catalog). */
-  const overridden = new Map<string, string>();
-  for (const [name, value] of Object.entries(overrides.rules)) {
-    const range = value.startsWith("catalog:") ? catalogRange(catalogs, value.slice("catalog:".length).trim(), name) : value;
-    if (range === undefined) problems.push(`${name}@${value}: not in the catalog`);
-    else overridden.set(name, range);
+  const overrides = overridesOf(root, workspaces.map((w) => w.manifest));
+  problems.push(...overrides.errors);
+  /** What an override's value asks for: a `catalog:` one through its catalog. */
+  const valueRange = (name: string, value: string) => (value.startsWith("catalog:") ? catalogRange(catalogs, value.slice("catalog:".length).trim(), name) : value);
+  for (const [name, value] of [...Object.entries(overrides.rules), ...overrides.scoped.map((r) => [r.target.name, r.value] as const)]) {
+    if (valueRange(name, value) === undefined) problems.push(`${name}@${value}: not in the catalog`);
   }
-  /** The range a dependency asks for: its override's, else its catalog's, else its own. */
-  const eff = (d: Dep) => overridden.get(d.name) ?? d.use ?? d.range;
+  const owners = new Map<Pkg | null, { name: string; version?: string }>();
+  const ownerOf = (from: Pkg | null) => {
+    let o = owners.get(from);
+    if (!o) owners.set(from, (o = !from ? { name: root.name ?? "" } : { name: from.name, version: from.kind === "npm" ? from.version : from.kind === "workspace" ? from.manifest.version : undefined }));
+    return o;
+  };
+  const asked = new Map<Dep, string>();
+  /** The range a dependency of `from` asks for: its override's, else its catalog's, else its own. */
+  const eff = (d: Dep, from: Pkg | null) => {
+    let r = asked.get(d);
+    if (r === undefined) {
+      const rule = d.workspace ? undefined : overrides.lookup(d, ownerOf(from), semver);
+      r = (rule === undefined ? undefined : valueRange(d.name, rule)) ?? d.use ?? d.range;
+      asked.set(d, r);
+    }
+    return r;
+  };
   const wsPkgs = new Map<string, Pkg>();
   for (const { path, manifest } of workspaces) {
-    wsPkgs.set(manifest.name, { name: manifest.name, resolution: `workspace:${path}`, kind: "workspace", manifest, deps: catalogged(depsOf(manifest, true)) });
+    wsPkgs.set(manifest.name, { name: manifest.name, resolution: `workspace:${path}`, kind: "workspace", manifest, deps: catalogged(depsOf(manifest, true), { name: manifest.name, version: manifest.version }) });
   }
   /** The workspace a dependency is: \`workspace:\` ones by name, others when the workspace's version satisfies the range. */
   const workspaceFor = (name: string, range: string, aliased: boolean): Pkg | undefined => {
@@ -231,7 +246,7 @@ export async function resolveProject(root: Manifest, host: ResolveHost, locked: 
   }
 
   async function resolve(dep: Dep, from: Pkg | null): Promise<Pkg | undefined> {
-    const want = eff(dep);
+    const want = eff(dep, from);
     const a = alias(want);
     const realName = a ? a[1] : dep.name;
     const range = a ? (a[2] ?? "latest") : want;
@@ -312,14 +327,14 @@ export async function resolveProject(root: Manifest, host: ResolveHost, locked: 
   const enqueue = (d: Dep, from: Pkg | null) => {
     if (d.optionalPeer) return;
     (d.group === "peerDependencies" && from ? peers : queue).push([d, from]);
-    const want = eff(d);
+    const want = eff(d, from);
     const a = alias(want);
     const r = a ? (a[2] ?? "") : want;
     if (!workspaceFor(a ? a[1] : d.name, r, !!a) && !r.startsWith("workspace:") && !unsupportedRange(r) && !isTarballUrl(r) && !/^file:|^\.{0,2}\//.test(r) && !keep(a ? a[1] : d.name, a ? (a[2] ?? "latest") : r)) doc(a ? a[1] : d.name, a ? (a[2] ?? "latest") : r);
   };
   // Workspaces come first in the root's dependencies (Behavior::cmp), by name.
-  const wsDeps: Dep[] = [...wsPkgs.keys()].sort(byBytes).map((name) => ({ name, range: `workspace:${wsPkgs.get(name)!.resolution.slice(10)}`, group: "dependencies", optionalPeer: false }));
-  const topDeps = [...wsDeps, ...catalogged(rootDeps)];
+  const wsDeps: Dep[] = [...wsPkgs.keys()].sort(byBytes).map((name) => ({ name, range: `workspace:${wsPkgs.get(name)!.resolution.slice(10)}`, group: "dependencies", optionalPeer: false, workspace: true }));
+  const topDeps = [...wsDeps, ...catalogged(rootDeps, { name: root.name ?? "" })];
   for (const d of topDeps) enqueue(d, null);
   while (queue.length || peers.length) {
     if (!queue.length) queue.push(...peers.splice(0));
@@ -328,7 +343,7 @@ export async function resolveProject(root: Manifest, host: ResolveHost, locked: 
     try {
       if (dep.group === "peerDependencies") {
         // A peer takes the version already resolved for that name, if one fits the range.
-        pkg = byName.get(dep.name)?.find((p) => p.version !== undefined && semver.satisfies(p.version, eff(dep)));
+        pkg = byName.get(dep.name)?.find((p) => p.version !== undefined && semver.satisfies(p.version, eff(dep, from)));
       }
       pkg ??= await resolve(dep, from);
     } catch (e) {
@@ -358,7 +373,7 @@ export async function resolveProject(root: Manifest, host: ResolveHost, locked: 
       if (!pkg) continue;
       let found: Pkg | undefined;
       for (let at: Node | null = node; at && !found; at = at.parent) found = at.placed.get(dep.name);
-      const fits = found && (found === pkg || (dep.group === "peerDependencies" && found.version !== undefined && semver.satisfies(found.version, eff(dep))));
+      const fits = found && (found === pkg || (dep.group === "peerDependencies" && found.version !== undefined && semver.satisfies(found.version, eff(dep, node.pkg))));
       if (fits || (found && node.placed.has(dep.name))) continue;
       const placeAt = found ? node : rootNode;
       placeAt.placed.set(dep.name, pkg);
@@ -366,7 +381,7 @@ export async function resolveProject(root: Manifest, host: ResolveHost, locked: 
       tree.push({ pkg, path, depth: placeAt.depth + 1, parent: placeAt, placed: new Map() });
     }
   }
-  return { root, rootDeps, workspaces, catalogs, overrides: overrides.rules, tree, problems };
+  return { root, rootDeps, workspaces, catalogs, overrides, tree, problems };
 }
 
 /**
@@ -375,7 +390,7 @@ export async function resolveProject(root: Manifest, host: ResolveHost, locked: 
  * remaining dependents first, the higher version on a tie. (Bun's pass is a fuller set cover; where they differ, the
  * lockfile is still valid and `bun install --frozen-lockfile` accepts it.)
  */
-function collapseVersions(resolutions: Map<Pkg | null, Map<string, Pkg>>, rootDeps: Dep[], semver: Semver, eff: (d: Dep) => string) {
+function collapseVersions(resolutions: Map<Pkg | null, Map<string, Pkg>>, rootDeps: Dep[], semver: Semver, eff: (d: Dep, from: Pkg | null) => string) {
   type Edge = { from: Pkg | null; key: string; range: string; fixed: boolean };
   const edges = new Map<string, Edge[]>();
   const versions = new Map<string, Map<string, Pkg>>();
@@ -384,8 +399,8 @@ function collapseVersions(resolutions: Map<Pkg | null, Map<string, Pkg>>, rootDe
       if (pkg.kind !== "npm") continue;
       const dep = (from ? from.deps : rootDeps).find((d) => d.name === key);
       if (!dep) continue;
-      const want = eff(dep);
-    const a = alias(want);
+      const want = eff(dep, from);
+      const a = alias(want);
       const range = a ? (a[2] ?? "latest") : want;
       const fixed = !from || from.kind === "workspace" || pkg.locked || dep.group === "peerDependencies" || !/^[\s\d^~<>=*xX.|-]+$/.test(range);
       edges.set(pkg.name, [...(edges.get(pkg.name) ?? []), { from, key, range, fixed }]);
@@ -516,7 +531,7 @@ function entry(pkg: Pkg): string {
 
 /** The bun.lock Bun writes for this tree. */
 export function writeBunLock({ root, rootDeps, workspaces, catalogs, overrides, tree }: Resolved): string {
-  const lines = ["{", '  "lockfileVersion": 2,', '  "configVersion": 1,', '  "workspaces": {'];
+  const lines = ["{", `  "lockfileVersion": ${overrides.scoped.length ? 3 : 2},`, '  "configVersion": 1,', '  "workspaces": {'];
   /** One `"workspaces"` member: the root (`""`) or a workspace folder. */
   const member = (key: string, m: Manifest, deps: Dep[], workspace: boolean) => {
     const body: string[] = [];
@@ -538,7 +553,7 @@ export function writeBunLock({ root, rootDeps, workspaces, catalogs, overrides, 
   member("", root, rootDeps, false);
   for (const w of workspaces) member(w.path, w.manifest, depsOf(w.manifest, true), true);
   lines.push("  },");
-  if (Object.keys(overrides).length) lines.push('  "overrides": {', ...Object.keys(overrides).sort(byBytes).map((n) => `    ${q(n)}: ${q(overrides[n])},`), "  },");
+  if (Object.keys(overrides.rules).length || overrides.scoped.length) lines.push('  "overrides": {', ...overrideLines(overrides), "  },");
   const group = (map: Record<string, string>, indent: string) => Object.keys(map).sort(byBytes).map((n) => `${indent}${q(n)}: ${q(map[n])},`);
   if (Object.keys(catalogs.default).length) lines.push('  "catalog": {', ...group(catalogs.default, "    "), "  },");
   const named = Object.keys(catalogs.groups).sort(byBytes);
