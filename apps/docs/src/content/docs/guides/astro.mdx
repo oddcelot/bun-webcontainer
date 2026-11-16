@@ -345,6 +345,8 @@ import { Playground } from "@runbun/astro/components";
 
 The blocks' look comes from CSS properties you can set: `--runbun-code-border`, `--runbun-code-radius`, `--runbun-code-font`, `--runbun-code-size`, `--runbun-code-caption-size` and `--runbun-code-line-height`.
 
+The tabs of a group's block and of a poster's requests take the embed's `--tab-*` properties from the page ([Theming](/reference/embed-api/#theming)): `--tab-selected`, `--tab-selected-border`, `--tab-radius`, `--tab-mark`, `--tab-hover`, `--tab-slide` and `--tab-slide-ease` (not the `--tab-track-*` ones). The open tab's fill and mark slide to the tab you pick and take its size (where the browser has `anchor-scope`; elsewhere they switch in place). Unset, a group's tabs keep their underline and the requests the preview's look. The embed gets its own through `vars`, so set the same values in both, e.g. on `:root` and in `<bun-playground-defaults vars>`.
+
 Every block, a fence's too before you press Run, has a Copy button in its top-right corner (`.runbun-copy`, `[data-copied]` for a moment after a copy). It shows on hover and focus, and always on touch screens. Style it with `--runbun-copy-bg`, `--runbun-copy-fg`, `--runbun-copy-border`, `--runbun-copy-radius` and `--runbun-copy-inset`, or the class:
 
 ```css

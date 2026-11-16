@@ -145,9 +145,10 @@ export const BLOCK_CSS = `
 .runbun-tabs{display:grid;border:1px solid var(--runbun-code-border,color-mix(in srgb,currentColor 15%,transparent));border-radius:var(--runbun-code-radius,8px);overflow:hidden;background:var(--hls-background);color:var(--hls-foreground)}
 .runbun-tabs>.runbun-code{grid-area:2/1;visibility:hidden;min-width:0;margin:0;border:0;border-radius:0}
 .runbun-tablist{grid-area:1/1;display:flex;overflow-x:auto;overflow-y:hidden;box-shadow:inset 0 -1px var(--runbun-code-border,color-mix(in srgb,currentColor 15%,transparent));font-family:var(--runbun-code-font,ui-monospace,monospace);font-size:var(--runbun-code-caption-size,.75rem)}
-.runbun-tablist label{position:relative;padding:.5rem 1rem;cursor:pointer;white-space:nowrap;opacity:.65;border-bottom:2px solid transparent}
+.runbun-tablist label{position:relative;padding:.5rem 1rem;cursor:pointer;white-space:nowrap;opacity:.65;border-bottom:2px solid transparent;border-radius:var(--tab-radius,0)}
 .runbun-tablist label:hover{opacity:.9}
-.runbun-tablist label:has(input:checked){opacity:1;border-bottom-color:currentColor}
+.runbun-tablist label:not(:has(input:checked)):hover{background:var(--tab-hover,none)}
+.runbun-tablist label:has(input:checked){opacity:1;border-bottom-color:var(--tab-mark,currentColor);background:var(--tab-selected,none);box-shadow:inset 0 0 0 1px var(--tab-selected-border,transparent)}
 .runbun-tablist label:has(input:focus-visible){outline:2px solid currentColor;outline-offset:-2px}
 .runbun-tablist input{position:absolute;opacity:0;pointer-events:none}
 .runbun-tabs:has(>.runbun-tablist>label:nth-of-type(1)>input:checked)>.runbun-code:nth-of-type(1){visibility:visible}
@@ -285,17 +286,20 @@ export const BLOCK_CSS = `
       align-items: center;
       gap: 6px;
       padding: 4px 10px;
-      border-radius: var(--runbun-tab-radius, 6px);
+      border-radius: var(--tab-radius, var(--runbun-tab-radius, 6px));
       white-space: nowrap;
       cursor: pointer;
       color: color-mix(in srgb, var(--hls-foreground) 65%, transparent);
       &:hover {
         color: var(--hls-foreground);
-        background: color-mix(in srgb, var(--hls-foreground) 9%, transparent);
+      }
+      &:not(:has(input:checked)):hover {
+        background: var(--tab-hover, color-mix(in srgb, var(--hls-foreground) 9%, transparent));
       }
       &:has(input:checked) {
         color: var(--hls-foreground);
-        background: color-mix(in srgb, var(--hls-foreground) 16%, transparent);
+        background: var(--tab-selected, color-mix(in srgb, var(--hls-foreground) 16%, transparent));
+        box-shadow: inset 0 0 0 1px var(--tab-selected-border, transparent);
         &::after {
           content: "";
           position: absolute;
@@ -304,7 +308,7 @@ export const BLOCK_CSS = `
           left: 7px;
           height: 2px;
           border-radius: 1px 1px 0 0;
-          background: var(--runbun-accent, currentColor);
+          background: var(--tab-mark, var(--runbun-accent, currentColor));
         }
       }
       &:has(input:focus-visible) {
@@ -381,5 +385,67 @@ export const BLOCK_CSS = `
     padding-bottom: 0.5rem;
   }
 ${Array.from({ length: 12 }, (_, i) => `  &:has(> .runbun-requests-tablist > label:nth-of-type(${i + 1}) > input:checked) > .runbun-request:nth-child(${i + 2}) {\n    visibility: visible;\n  }`).join("\n")}
+}
+/* Where anchors can be scoped to a row, the checked tab's fill and mark are one indicator in the row that slides to
+   the checked tab and takes its size, as the playground's tabs do (@runbun/ui css/tabs.css .tab-indicator), with their
+   --tab-* properties; elsewhere each checked tab draws its own. */
+@supports (anchor-scope: --a) {
+  :is(.runbun-tablist, .runbun-requests-tablist) {
+    --_slide: var(--tab-slide, 220ms) var(--tab-slide-ease, cubic-bezier(0.22, 1, 0.36, 1));
+    position: relative;
+    isolation: isolate;
+    anchor-scope: --runbun-tab;
+    & > label:has(input:checked) {
+      anchor-name: --runbun-tab;
+      border-bottom-color: transparent;
+      background: none;
+      box-shadow: none;
+      &::after {
+        content: none;
+      }
+    }
+    &::before,
+    &::after {
+      content: "";
+      position: absolute;
+      position-anchor: --runbun-tab;
+      z-index: -1;
+      pointer-events: none;
+      transition: left var(--_slide), width var(--_slide), top var(--_slide), height var(--_slide);
+      @media (prefers-reduced-motion: reduce) {
+        transition: none;
+      }
+    }
+    &::before {
+      top: anchor(top);
+      left: anchor(left);
+      width: anchor-size(width);
+      height: anchor-size(height);
+      border-radius: var(--_radius);
+      background: var(--_fill);
+      box-shadow: inset 0 0 0 1px var(--tab-selected-border, transparent);
+    }
+    &::after {
+      top: calc(anchor(bottom) - 2px);
+      left: calc(anchor(left) + var(--_inset));
+      width: calc(anchor-size(width) - 2 * var(--_inset));
+      height: 2px;
+      border-radius: 1px 1px 0 0;
+      background: var(--_mark);
+    }
+  }
+  /* A file group's tabs: an underline the tab's width, no fill. A poster's requests: the live preview's. */
+  .runbun-tablist {
+    --_fill: var(--tab-selected, transparent);
+    --_radius: var(--tab-radius, 0px);
+    --_mark: var(--tab-mark, currentColor);
+    --_inset: 0px;
+  }
+  .runbun-requests-tablist {
+    --_fill: var(--tab-selected, color-mix(in srgb, var(--hls-foreground) 16%, transparent));
+    --_radius: var(--tab-radius, var(--runbun-tab-radius, 6px));
+    --_mark: var(--tab-mark, var(--runbun-accent, currentColor));
+    --_inset: 7px;
+  }
 }
 `.trim();
