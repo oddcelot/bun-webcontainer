@@ -120,6 +120,8 @@ export class BunPlayground extends HTMLElement {
   #pending = new Map<number, Pending>();
   #id = 0;
   #io: IntersectionObserver | null = null;
+  /** While the poster shows, its content's size (fonts, page CSS, a request tab's panel), for `height="auto"`. */
+  #posterSizes = new ResizeObserver(() => !this.#isReady && !this.#poster.hidden && this.#sizeBox(this.#posterHeight()));
   /** The frame's page said `boot`; until it does, a loaded frame is something else (see #start). */
   #booted = false;
   #listening = false;
@@ -164,6 +166,7 @@ export class BunPlayground extends HTMLElement {
     if (!this.#listening) addEventListener("message", this.#onMessage), (this.#listening = true);
     this.#renderPoster();
     this.#sizeBox();
+    this.#watchPoster();
     const load = this.#get("load");
     if (this.#act) return;
     if (load === "eager") void this.activate();
@@ -181,6 +184,7 @@ export class BunPlayground extends HTMLElement {
     this.#lockPage(false);
     this.#io?.disconnect();
     this.#io = null;
+    this.#posterSizes.disconnect();
     removeEventListener("message", this.#onMessage);
     this.#listening = false;
   }
@@ -462,6 +466,13 @@ export class BunPlayground extends HTMLElement {
     return Math.max(this.#poster.scrollHeight, ...parts.map((e) => Math.ceil(e.getBoundingClientRect().bottom - top)));
   }
 
+  /** Sizes the box to the poster again whenever the poster's content changes size (see #posterSizes). */
+  #watchPoster() {
+    this.#posterSizes.disconnect();
+    for (const s of this.#poster.querySelectorAll("slot")) for (const e of s.assignedElements()) this.#posterSizes.observe(e);
+    for (const e of this.#poster.querySelectorAll(".def")) this.#posterSizes.observe(e);
+  }
+
   #sizeBox(auto?: number) {
     const h = this.#get("height") || HEIGHTS[this.#mode()]!;
     let css = h;
@@ -484,6 +495,7 @@ export class BunPlayground extends HTMLElement {
     this.#newReady();
     this.#setLive(false);
     this.#poster.hidden = false;
+    this.#watchPoster();
     void this.activate();
   }
 
@@ -588,6 +600,7 @@ export class BunPlayground extends HTMLElement {
         .catch(() => {});
     } else if (event === "ready" || event === "unsupported") {
       this.#isReady = true;
+      this.#posterSizes.disconnect();
       this.#frame.classList.remove("wait");
       this.#setLive(true);
       void this.#hidePoster(this.#frame);
