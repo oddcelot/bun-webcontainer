@@ -146,7 +146,9 @@ console.log(db.query("select * from todos where done = ?").all(0));
 - ✅ `mock()`, `spyOn()`, `jest.fn`, `jest.spyOn`
 - ✅ `expect` with `.not`, `.resolves`, `.rejects`, asymmetric matchers (`anything`, `any`, `objectContaining`, `arrayContaining`, `stringContaining`, `stringMatching`) and the common matchers (`toBe`, `toEqual`, `toStrictEqual`, `toThrow`, `toMatchObject`, `toHaveProperty`, `toHaveBeenCalledWith`, …), plus Bun's extras (`toBeEmpty`, `toBeOneOf`, `toSatisfy`, `toStartWith`, `toEndWith`, `toInclude`, `toBeArray`, `toBeString`, `toBeNumber`, `toBeFunction`, `toHaveReturned*`, …)
 - ✅ `expect.extend` (custom matchers with `this.isNot`, `this.promise`, `this.equals` and `this.utils`' `stringify`, `printReceived`, `printExpected`, `matcherHint`; async matchers and the `expect.<name>()` asymmetric form work too), `expect.assertions(n)` and `expect.hasAssertions()`
-- ❌ Snapshots, fake timers, `setSystemTime`, `mock.module`, `jest.mock`, coverage
+- ✅ Fake timers: `jest.useFakeTimers()` (also `{ now }`) and `useRealTimers`, `advanceTimersByTime`, `advanceTimersToNextTimer`, `runOnlyPendingTimers`, `runAllTimers`, `clearAllTimers`, `getTimerCount`, `isFakeTimers` and `now`, on `jest` and `vi`. `setTimeout`, `setInterval`, `Date` and `Bun.sleep` run on the fake clock; `setImmediate`, `process.nextTick` and `performance.now` stay real. As in Bun, the timers stay faked into the next test until `useRealTimers()`. `runAllTimers` stops with an error after 100000 timers (Bun loops on an interval nothing clears).
+- ✅ `setSystemTime(date | ms)` from `bun:test` or `jest`: `Date` is frozen at that time (or moves from it with fake timers); no argument restores the real time
+- ❌ Snapshots, `mock.module`, `jest.mock`, coverage
 - An uncaught error or unhandled rejection fails the test running at the time (whichever test's code threw it), as in Bun, and the run goes on.
 - Unknown matchers throw "is not supported here".
 - `bun test` takes name filters but no flags.

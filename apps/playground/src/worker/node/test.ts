@@ -1,3 +1,4 @@
+import { fakeTimers, real, resetFakeTimers } from "./fakeTimers";
 import { inspect, isDeepStrictEqual } from "./util";
 
 // `bun:test`: a compact Jest-style runner. Files register suites while they load; `runTestFiles` loads each file in
@@ -396,7 +397,8 @@ function spyOn<T extends object>(obj: T, key: keyof T & string): MockFn {
 mock.module = () => {
   throw new Error("mock.module() is not supported here");
 };
-const jest = { fn: mock, spyOn, mock: mock.module };
+const jest = { fn: mock, spyOn, mock: mock.module, ...fakeTimers };
+const vi = { fn: mock, spyOn, mock: mock.module, ...fakeTimers };
 
 // ---- registration ----
 
@@ -486,9 +488,9 @@ export function failRunning(err: unknown): boolean {
 /** Runs one callback with `done` support and a timeout. */
 function call(fn: Fn, timeout: number): Promise<void> {
   return new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => finish(new Error(`test timed out after ${timeout}ms`)), timeout);
+    const timer = real.setTimeout(() => finish(new Error(`test timed out after ${timeout}ms`)), timeout);
     const finish = (err?: unknown) => {
-      clearTimeout(timer);
+      real.clearTimeout(timer);
       if (failCurrent === finish) failCurrent = undefined;
       err ? reject(err) : resolve();
     };
@@ -586,6 +588,7 @@ export type TestOutcome = { failed: number; results: { file: string; failed: num
  */
 export async function runTestFiles(files: string[], load: (file: string) => Promise<unknown>, version: string): Promise<TestOutcome> {
   const t0 = performance.now();
+  resetFakeTimers();
   totals.pass = totals.fail = totals.skip = totals.todo = 0;
   expectCalls = 0;
   const results: TestOutcome["results"] = [];
@@ -614,6 +617,7 @@ export async function runTestFiles(files: string[], load: (file: string) => Prom
   else console.log(" 0 fail");
   console.log(` ${expectCalls} expect() calls`);
   console.log(`Ran ${n} test${n === 1 ? "" : "s"} across ${files.length} file${files.length === 1 ? "" : "s"}. ${dim(`[${ms(performance.now() - t0)}]`)}`);
+  resetFakeTimers();
   return { failed: totals.fail, results };
 }
 
@@ -625,6 +629,8 @@ export default {
   mock,
   spyOn,
   jest,
+  vi,
+  setSystemTime: fakeTimers.setSystemTime,
   beforeAll: hook("beforeAll"),
   beforeEach: hook("beforeEach"),
   afterEach: hook("afterEach"),
