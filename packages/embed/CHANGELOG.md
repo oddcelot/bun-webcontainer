@@ -4,6 +4,17 @@ Notable changes per release of `@runbun/embed`. Each release is tagged `embed-v<
 with its section. The element talks to the playground deployed at runbun.dev over the embed protocol (version 1),
 which only grows, so any release works with the live playground.
 
+## 0.8.0 — 2026-11-16
+
+A host can tell an install's changes from the reader's, and an embed that can't start says so at once. runbun.dev's
+`embed.js` has both already. Nothing needs action; a host that re-checks the reader's code on every `change` with
+`by: "reader"` stops checking twice on load without any change on its side.
+
+- **Added** — **`change` tells an install's bun.lock apart.** `by` is `"install"` when `bun install` writes bun.lock, so
+  a host that checks the reader's code on each change no longer checks again after the install a project runs on load.
+- **Fixed** — **A playground that fails to start says so sooner.** When the embed's page loads but its code fails, the
+  poster offers "Try again" right away instead of reloading the playground three times and waiting a minute.
+
 ## 0.7.0 — 2026-11-16
 
 One row over the code: Run, expand, the status pill and the ⋯ menu move into the editor's tab bar, and an embed can
