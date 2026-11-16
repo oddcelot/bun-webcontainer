@@ -1,0 +1,16 @@
+{
+  "name": "resy",
+  "dependencies": {
+    "is-even": "^1.0.0",
+    "debug": "^4.3.0"
+  },
+  "resolutions": {
+    "is-even/is-odd": "0.1.1",
+    "**/is-odd/is-number": "3.0.0",
+    "is-number/**/kind-of": "3.2.2",
+    "debug/ms": "2.1.2",
+    "**/nothing/nobody": "1.0.0",
+    "a/b/c": "1.0.0",
+    "nested": { "is-odd": "3.0.1" }
+  }
+}
