@@ -141,11 +141,12 @@ console.log(db.query("select * from todos where done = ?").all(0));
 
 ### `bun:test`
 
-- ✅ `test`/`it`/`describe` with `.skip`, `.only`, `.todo`, `.each`, `.if`, `.skipIf`, `.todoIf`
+- ✅ `test`/`it`/`describe` with `.skip`, `.only`, `.todo`, `.each`, `.if`, `.skipIf`, `.todoIf`, `.failing` (passes when the test throws, fails with Bun's message when it doesn't), and `.concurrent`/`.serial` (accepted; tests run one after another)
 - ✅ `beforeAll`, `beforeEach`, `afterEach`, `afterAll`, `setDefaultTimeout`
 - ✅ `mock()`, `spyOn()`, `jest.fn`, `jest.spyOn`
 - ✅ `expect` with `.not`, `.resolves`, `.rejects`, asymmetric matchers (`anything`, `any`, `objectContaining`, `arrayContaining`, `stringContaining`, `stringMatching`) and the common matchers (`toBe`, `toEqual`, `toStrictEqual`, `toThrow`, `toMatchObject`, `toHaveProperty`, `toHaveBeenCalledWith`, …), plus Bun's extras (`toBeEmpty`, `toBeOneOf`, `toSatisfy`, `toStartWith`, `toEndWith`, `toInclude`, `toBeArray`, `toBeString`, `toBeNumber`, `toBeFunction`, `toHaveReturned*`, …)
-- ❌ Snapshots, fake timers, `setSystemTime`, `mock.module`, `jest.mock`, `expect.extend`, `expect.assertions`, coverage, `test.concurrent`, `test.failing`
+- ✅ `expect.extend` (custom matchers with `this.isNot`, `this.promise`, `this.equals` and `this.utils`' `stringify`, `printReceived`, `printExpected`, `matcherHint`; async matchers and the `expect.<name>()` asymmetric form work too), `expect.assertions(n)` and `expect.hasAssertions()`
+- ❌ Snapshots, fake timers, `setSystemTime`, `mock.module`, `jest.mock`, coverage
 - An uncaught error or unhandled rejection fails the test running at the time (whichever test's code threw it), as in Bun, and the run goes on.
 - Unknown matchers throw "is not supported here".
 - `bun test` takes name filters but no flags.

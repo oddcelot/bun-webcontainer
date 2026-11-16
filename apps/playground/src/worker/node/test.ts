@@ -1,11 +1,12 @@
 import { inspect, isDeepStrictEqual } from "./util";
 
 // `bun:test`: a compact Jest-style runner. Files register suites while they load; `runTestFiles` loads each file in
-// turn, runs what it registered and reports in the style of `bun test`. Not supported: snapshots, fake timers,
-// mock.module, expect.extend, expect.assertions, coverage, --watch.
+// turn, runs what it registered and reports in the style of `bun test`. Not supported: coverage, --watch.
 
 type Fn = (done?: (err?: unknown) => void) => unknown;
-type Case = { kind: "case"; name: string; fn: Fn; mode: Mode; timeout: number };
+type Case = { kind: "case"; name: string; fn: Fn; mode: Mode; timeout: number; failing: boolean };
+/** What `test.skip.failing` and friends have said so far: the mode, and `.failing`. `.concurrent` and `.serial` change nothing here (tests run in turn). */
+type Flags = { mode: Mode; failing: boolean };
 type Suite = { kind: "suite"; name: string; parent?: Suite; items: (Suite | Case)[]; mode: Mode; hooks: Record<Hook, Fn[]> };
 type Mode = "run" | "skip" | "todo" | "only";
 type Hook = "beforeAll" | "beforeEach" | "afterEach" | "afterAll";
@@ -94,8 +95,8 @@ function subset(obj: unknown, sub: unknown): boolean {
 
 // ---- matchers ----
 
-type Result = { pass: boolean; expected?: unknown; received?: unknown; label?: string; rlabel?: string; diff?: boolean; noArg?: boolean };
-type Ctx = { mode?: "resolves" | "rejects" };
+type Result = { pass: boolean; expected?: unknown; received?: unknown; label?: string; rlabel?: string; diff?: boolean; noArg?: boolean; custom?: { args: string; message: string } };
+type Ctx = { mode?: "resolves" | "rejects"; not?: boolean };
 const num = (v: unknown, name: string) => {
   if (typeof v !== "number" && typeof v !== "bigint") throw new TypeError(`expect(received).${name}(): received value must be a number or bigint`);
   return v;
@@ -109,7 +110,7 @@ const callsOf = (v: unknown): Call[] => {
   return m.calls.map((args) => ({ args }));
 };
 
-const matchers: Record<string, (r: any, ...a: any[]) => Result | ((ctx: Ctx) => Result)> = {
+const matchers: Record<string, (r: any, ...a: any[]) => Result | ((ctx: Ctx) => Result | Promise<Result>)> = {
   toBe: (r, e) => ({ pass: Object.is(r, e), expected: e, received: r }),
   toEqual: (r, e) => ({ pass: equals(r, e), expected: e, received: r, diff: true }),
   toStrictEqual: (r, e) => ({ pass: equals(r, e, true), expected: e, received: r, diff: true }),
@@ -196,11 +197,17 @@ Object.assign(matchers, {
   toHaveNthReturnedWith: (r: unknown, n: number, e: unknown) => ({ pass: equals(returnsOf(r)[n - 1], e), expected: e, received: returnsOf(r)[n - 1] }),
 });
 
-function check(name: string, recv: unknown, args: unknown[], not: boolean, ctx: Ctx) {
+function check(name: string, recv: unknown, args: unknown[], not: boolean, ctx: Ctx): void | Promise<void> {
   expectCalls++;
-  let res = matchers[name](recv, ...args);
-  if (typeof res === "function") res = res(ctx);
+  testAssertions++;
+  const res = matchers[name](recv, ...args);
+  const out = typeof res === "function" ? res({ ...ctx, not }) : res;
+  return out instanceof Promise ? out.then((r) => verdict(name, args, not, ctx, r)) : verdict(name, args, not, ctx, out);
+}
+
+function verdict(name: string, args: unknown[], not: boolean, ctx: Ctx, res: Result) {
   if (res.pass !== not) return;
+  if (res.custom) throw new ExpectError(`expect(received).${name}(${res.custom.args})\n\n${res.custom.message}`);
   const sig = `expect(${ctx.mode ? `received).${ctx.mode}` : "received)"}${not ? ".not" : ""}.${name}(${args.length ? "expected" : ""})`;
   let detail: string;
   const label = res.label ?? "Expected";
@@ -213,6 +220,10 @@ function check(name: string, recv: unknown, args: unknown[], not: boolean, ctx: 
 
 class ExpectError extends Error {
   name = "ExpectError";
+}
+
+class AssertionError extends Error {
+  name = "AssertionError";
 }
 
 function makeExpect(actual: unknown, not = false, mode?: Ctx["mode"]): object {
@@ -229,11 +240,11 @@ function makeExpect(actual: unknown, not = false, mode?: Ctx["mode"]): object {
           return Promise.resolve(actual).then(
             (v) => {
               if (mode === "rejects") throw new ExpectError("Expected promise that rejects\nReceived promise that resolved");
-              check(name, v, args, not, { mode });
+              return check(name, v, args, not, { mode });
             },
             (e) => {
               if (mode === "resolves") throw new ExpectError(`Expected promise that resolves\nReceived promise that rejected: ${pretty(e)}`);
-              check(name, e, args, not, { mode });
+              return check(name, e, args, not, { mode });
             },
           );
         };
@@ -242,10 +253,89 @@ function makeExpect(actual: unknown, not = false, mode?: Ctx["mode"]): object {
   );
 }
 
+// ---- expect.extend, expect.assertions ----
+
+/** The matcher's parameters after the received value, as Bun prints them in the failure's first line: `(lo, hi)`. */
+function argNames(fn: Function): string {
+  const src = Function.prototype.toString.call(fn);
+  const open = src.indexOf("(");
+  let depth = 0;
+  let end = open;
+  for (; end < src.length; end++) {
+    if ("([{".includes(src[end])) depth++;
+    else if (")]}".includes(src[end]) && --depth === 0) break;
+  }
+  const parts: string[] = [];
+  let part = "";
+  depth = 0;
+  for (const ch of src.slice(open + 1, end)) {
+    if ("([{".includes(ch)) depth++;
+    else if (")]}".includes(ch)) depth--;
+    if (ch === "," && depth === 0) (parts.push(part), (part = ""));
+    else part += ch;
+  }
+  if (part.trim()) parts.push(part);
+  return parts
+    .slice(1)
+    .map((x) => x.replace(/=[^]*$/, "").trim())
+    .join(", ");
+}
+
+/** Bun's `pretty-format` look, as `this.utils.stringify` prints: plain keys, one entry per line, trailing commas. */
+function stringify(v: unknown, ind = "", seen: unknown[] = []): string {
+  if (typeof v === "string") return JSON.stringify(v);
+  if (typeof v !== "object" || v === null) return typeof v === "function" ? `[Function ${v.name || "anonymous"}]` : typeof v === "bigint" ? `${v}n` : String(v);
+  if (seen.includes(v)) return "[Circular]";
+  const proto = Object.getPrototypeOf(v);
+  const isArr = Array.isArray(v);
+  if (!isArr && proto !== Object.prototype && proto !== null) return inspect(v, { depth: 2 });
+  const inner = [...seen, v];
+  const entries = isArr ? (v as unknown[]).map((x) => stringify(x, ind + "  ", inner)) : Object.keys(v).map((k) => `${k}: ${stringify((v as Record<string, unknown>)[k], ind + "  ", inner)}`);
+  const [open, close] = isArr ? ["[", "]"] : ["{", "}"];
+  return entries.length ? `${open}\n${entries.map((e) => `${ind}  ${e},\n`).join("")}${ind}${close}` : `${open}${close}`;
+}
+
+/** `this.utils` of a custom matcher: the printing helpers of Jest's `expect-utils` that matchers use most. */
+const matcherUtils = {
+  stringify: (v: unknown) => stringify(v),
+  printReceived: (v: unknown) => stringify(v),
+  printExpected: (v: unknown) => stringify(v),
+  matcherHint: (name: string, received = "received", expected = "expected", opts?: { isNot?: boolean; promise?: string }) =>
+    `expect(${received})${opts?.promise ? `.${opts.promise}` : ""}${opts?.isNot ? ".not" : ""}.${name}(${expected})`,
+  diff: (a: unknown, b: unknown) => (typeof a === "object" && a !== null ? diff(a, b) : null),
+  equals: (a: unknown, b: unknown) => equals(a, b),
+};
+
+function extend(defs: Record<string, Function>) {
+  for (const [name, fn] of Object.entries(defs)) {
+    if (typeof fn !== "function") throw new TypeError(`expect.extend: \`${name}\` is not a valid matcher. Must be a function, is "${typeof fn}"`);
+    const names = argNames(fn);
+    const self = (ctx: Ctx) => ({ isNot: !!ctx.not, promise: ctx.mode ?? "", equals: (a: unknown, b: unknown) => equals(a, b), utils: matcherUtils });
+    matchers[name] = (r, ...a) => (ctx) => {
+      const settle = (v: { pass: boolean; message?: string | (() => string) }): Result => {
+        if (typeof v !== "object" || v === null || typeof v.pass !== "boolean") throw new TypeError("Unexpected return from matcher function.\nMatcher functions should return an object in the following format:\n  {message?: string | function, pass: boolean}");
+        const msg = typeof v.message === "function" ? v.message() : v.message;
+        return { pass: v.pass, custom: { args: names, message: msg ?? "No message was specified for this matcher." } };
+      };
+      const v = fn.call(self(ctx), r, ...a);
+      return v instanceof Promise ? v.then(settle) : settle(v);
+    };
+    (expect as unknown as Record<string, unknown>)[name] = (...a: unknown[]) => new Asym(`Custom<${name}>`, (v) => !!(matchers[name](v, ...a) as (c: Ctx) => Result)({}).pass);
+  }
+}
+
+/** Assertions the running test made so far, and what `expect.assertions` / `hasAssertions` asked of it. */
+let testAssertions = 0;
+let expectedAssertions: number | undefined;
+let needAssertions = false;
+
 const expect = Object.assign((actual: unknown) => makeExpect(actual) as Record<string, any>, {
   anything: () => new Asym("Anything", (v) => v !== null && v !== undefined),
   any: (c: Function) =>
     new Asym(`Any<${c.name}>`, (v) => (c === String ? typeof v === "string" : c === Number ? typeof v === "number" : c === Boolean ? typeof v === "boolean" : c === Function ? typeof v === "function" : v instanceof c)),
+  extend,
+  assertions: (n: number) => void (expectedAssertions = n),
+  hasAssertions: () => void (needAssertions = true),
   objectContaining: (o: object) => new Asym("ObjectContaining", (v) => subset(v, o)),
   arrayContaining: (a: unknown[]) => new Asym("ArrayContaining", (v) => Array.isArray(v) && a.every((x) => v.some((y) => equals(y, x)))),
   stringContaining: (s: string) => new Asym(`StringContaining ${JSON.stringify(s)}`, (v) => typeof v === "string" && v.includes(s)),
@@ -318,13 +408,13 @@ function title(t: string, row: unknown, idx: number): string {
   return out;
 }
 
-function defineTest(name: string, fn: Fn | undefined, mode: Mode, opts?: number | { timeout?: number }) {
+function defineTest(name: string, fn: Fn | undefined, flags: Flags, opts?: number | { timeout?: number }) {
   const timeout = typeof opts === "number" ? opts : (opts?.timeout ?? defaultTimeout);
-  current.items.push({ kind: "case", name, fn: fn ?? (() => {}), mode: fn || mode === "todo" ? mode : "todo", timeout });
+  current.items.push({ kind: "case", name, fn: fn ?? (() => {}), mode: fn || flags.mode === "todo" ? flags.mode : "todo", timeout, failing: flags.failing });
 }
 
-function defineSuite(name: string, fn: () => void, mode: Mode) {
-  const s = newSuite(name, current, mode);
+function defineSuite(name: string, fn: () => void, flags: Flags) {
+  const s = newSuite(name, current, flags.mode);
   current.items.push(s);
   const prev = current;
   current = s;
@@ -335,24 +425,41 @@ function defineSuite(name: string, fn: () => void, mode: Mode) {
   }
 }
 
-/** `test`/`describe` with `.skip`, `.only`, `.todo`, `.each`, `.if`, `.skipIf`. */
-function api<A extends unknown[]>(define: (name: string, fn: any, mode: Mode, ...rest: A) => void) {
-  const base = (mode: Mode) => (name: string, fn: any, ...rest: A) => define(name, fn, mode, ...rest);
-  const each = (mode: Mode) => (rows: unknown[]) => (name: string, fn: (...a: any[]) => unknown, ...rest: A) =>
-    rows.forEach((row, i) => define(title(name, row, i), Array.isArray(row) ? () => fn(...row) : () => fn(row), mode, ...rest));
-  return Object.assign(base("run"), {
-    skip: base("skip"),
-    only: base("only"),
-    todo: base("todo"),
-    each: each("run"),
-    if: (c: boolean) => (c ? base("run") : base("skip")),
-    skipIf: (c: boolean) => (c ? base("skip") : base("run")),
-    todoIf: (c: boolean) => (c ? base("todo") : base("run")),
-  });
+/**
+ * `test`/`describe` with `.skip`, `.only`, `.todo`, `.failing`, `.concurrent`, `.serial` (each chaining into the others),
+ * `.each`, `.if`, `.skipIf`, `.todoIf`.
+ */
+function api<A extends unknown[]>(define: (name: string, fn: any, flags: Flags, ...rest: A) => void) {
+  const make = (flags: Flags): any => {
+    const mode = (m: Mode) => make({ ...flags, mode: m });
+    const call = (name: string, fn: any, ...rest: A) => define(name, fn, flags, ...rest);
+    const each = (rows: unknown[]) => (name: string, fn: (...a: any[]) => unknown, ...rest: A) =>
+      rows.forEach((row, i) => define(title(name, row, i), Array.isArray(row) ? () => fn(...row) : () => fn(row), flags, ...rest));
+    const lazy = (get: () => unknown) => ({ get, enumerable: true });
+    return Object.defineProperties(call, {
+      skip: lazy(() => mode("skip")),
+      only: lazy(() => mode("only")),
+      todo: lazy(() => mode("todo")),
+      failing: lazy(() => make({ ...flags, failing: true })),
+      concurrent: lazy(() => make(flags)),
+      serial: lazy(() => make(flags)),
+      each: { value: each },
+      if: { value: (c: boolean) => (c ? make(flags) : mode("skip")) },
+      skipIf: { value: (c: boolean) => (c ? mode("skip") : make(flags)) },
+      todoIf: { value: (c: boolean) => (c ? mode("todo") : make(flags)) },
+    });
+  };
+  return make({ mode: "run", failing: false });
 }
 
-const test = api(defineTest as (name: string, fn: any, mode: Mode, opts?: number | { timeout?: number }) => void);
-const describe = api(defineSuite as (name: string, fn: any, mode: Mode) => void);
+type Api = {
+  (name: string, fn?: any, ...rest: any[]): void;
+  skip: Api; only: Api; todo: Api; failing: Api; concurrent: Api; serial: Api;
+  each: (rows: unknown[]) => (name: string, fn: (...a: any[]) => unknown, ...rest: any[]) => void;
+  if: (c: boolean) => Api; skipIf: (c: boolean) => Api; todoIf: (c: boolean) => Api;
+};
+const test: Api = api(defineTest);
+const describe: Api = api(defineSuite);
 const hook = (h: Hook) => (fn: Fn) => void current.hooks[h].push(fn);
 
 // ---- running ----
@@ -400,7 +507,7 @@ const totals: Totals = { pass: 0, fail: 0, skip: 0, todo: 0 };
 
 function failure(e: unknown): string {
   if (e instanceof ExpectError) return `error: ${e.message}`;
-  if (e instanceof Error) return `error: ${e.message}`;
+  if (e instanceof Error) return e.name === "Error" ? `error: ${e.message}` : `${e.name}: ${e.message}`;
   return `error: ${pretty(e)}`;
 }
 
@@ -431,12 +538,24 @@ async function runSuite(s: Suite, only: boolean, skipAll: boolean) {
     const t0 = performance.now();
     let err: unknown;
     let failed = false;
+    testAssertions = 0;
+    expectedAssertions = undefined;
+    needAssertions = false;
+    let threw = false;
     try {
       for (const a of ancestors) if (!started && a === s) for (const h of a.hooks.beforeAll) await call(h, defaultTimeout);
       started = true;
       for (const a of ancestors) for (const h of a.hooks.beforeEach) await call(h, defaultTimeout);
       try {
         await call(item.fn, item.timeout);
+        if (expectedAssertions !== undefined && testAssertions !== expectedAssertions) {
+          throw new AssertionError(`expected ${expectedAssertions} assertion${expectedAssertions === 1 ? "" : "s"}, but test ended with ${testAssertions} assertion${testAssertions === 1 ? "" : "s"}`);
+        }
+        if (needAssertions && testAssertions === 0) throw new AssertionError("received 0 assertions, but expected at least one assertion to be called");
+      } catch (e) {
+        // `.failing`: the test is meant to throw; the afterEach hooks run all the same.
+        if (!item.failing) throw e;
+        threw = true;
       } finally {
         for (const a of [...ancestors].reverse()) for (const h of a.hooks.afterEach) await call(h, defaultTimeout);
       }
@@ -444,7 +563,10 @@ async function runSuite(s: Suite, only: boolean, skipAll: boolean) {
       (failed = true), (err = e);
     }
     const time = dim(`[${ms(performance.now() - t0)}]`);
-    if (failed) {
+    if (item.failing && !threw && !failed) {
+      totals.fail++;
+      console.error(`\x1b[31m✗\x1b[0m\x1b[31m ${label(item)}\x1b[0m\n  ^ this test is marked as failing but it passed. Remove \`.failing\` if tested behavior now works`);
+    } else if (failed) {
       totals.fail++;
       console.error(`${failure(err)}\n\x1b[31m✗\x1b[0m\x1b[31m ${label(item)}\x1b[0m ${time}`);
     } else {

@@ -119,6 +119,14 @@ tasks:
     toolchains: ['bun']
     options:
       cache: false
+  test-bun-test:
+    # `bun:test` end to end (scripts/bun-test.ts): the files of fixtures/bun-test run through the console's `bun test`
+    # in headless Chrome, and its summary, failures and snapshot files are compared with native `bun test`'s for the
+    # same files. Needs Chrome, so it isn't part of `test`.
+    command: 'bun scripts/bun-test.ts'
+    toolchains: ['bun']
+    options:
+      cache: false
   test-errors:
     # Errors as programs see and print them (scripts/errors.ts): `error.stack`'s names, paths and columns, uncaught
     # errors' source previews, I/O errors and promise states in the embed in headless Chrome, against native Bun's
