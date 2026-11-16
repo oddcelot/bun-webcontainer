@@ -1,0 +1,8 @@
+{
+  "name": "@mono/config",
+  "version": "2.0.0",
+  "bin": "./cli.js",
+  "optionalDependencies": {
+    "is-odd": "^0.1.0"
+  }
+}

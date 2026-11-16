@@ -87,6 +87,7 @@ const resolved = await resolveProject(
       throw new Error("no tarballs here");
     },
     folder: () => undefined,
+    packageDirs: () => [],
     version: async () => ({}),
   },
 );

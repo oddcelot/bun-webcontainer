@@ -173,7 +173,8 @@ Runs in the console (`bun install`, `bun add`, `bun remove`) and automatically w
 - ✅ A package cache shared by all projects, kept across reloads: a downloaded tarball isn't downloaded again, and package metadata is reused for 5 minutes, as in Bun. Past that, it is still reused when the first dependency on that package in an install names an exact version (`"1.2.3"`) the cached metadata lists; other ranges of the package in the same install then resolve against it too. One it can't satisfy fetches the metadata again; one it can may get an older matching version than a fresh fetch would. `bun pm cache` shows its size, `bun pm cache rm` clears it.
 - ✅ Tarball URLs, `file:` folders and `npm:` aliases
 - ❌ No lifecycle scripts (`postinstall`, …)
-- ❌ No git, `link:` or `workspace:` dependencies (reported, and `bun.lock` isn't written then); no `file:` tarballs; no `overrides`, catalogs or `patchedDependencies`
+- ✅ Workspaces: `"workspaces"` in the root `package.json` (an array or `{ "packages": [...] }`, with `*`, `**`, `{a,b}` and `!` patterns), `workspace:*`, `workspace:^`, `workspace:~` and exact `workspace:` versions, and a plain range that a workspace's version satisfies. Every workspace's own dependencies install, and `bun.lock` is the one native Bun writes (the workspaces, hoisted packages, `<workspace>/<package>` entries for a version a workspace needs of its own). The VFS has no symlinks, so each workspace is copied to `node_modules/<name>` where native Bun links it: edits to its files are copied along, a changed `package.json` needs a new install
+- ❌ No git or `link:` dependencies (reported, and `bun.lock` isn't written then); no `file:` tarballs; no `overrides`, catalogs or `patchedDependencies`
 - ❌ Only `registry.npmjs.org`; `.npmrc` isn't read
 - ❌ Binary `bun.lockb`
 

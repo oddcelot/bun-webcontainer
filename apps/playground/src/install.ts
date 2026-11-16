@@ -2,6 +2,7 @@ import type { Semver } from "./semver";
 import { gunzip, installFromBunLock, installPath, packageFiles, parseBunLock, pruneNodeModules, splitKey, staleInLock, untar } from "./lockfile";
 import { lockedPackages, resolveProject, writeBunLock, type Manifest, type ResolveHost } from "./lockfileWrite";
 import { fetchPackument, fetchTarball, fetchVersion } from "./pkgCache";
+import { packageDirs, vfsWorkspaces } from "./workspaces";
 import type { VFS } from "@runbun/vfs";
 
 type Log = (level: "log" | "error", text: string) => void;
@@ -37,6 +38,7 @@ function resolveHost(vfs: VFS, semver: Semver): ResolveHost {
       return text === undefined ? undefined : (JSON.parse(text) as Manifest);
     },
     version: async (name, version) => (await fetchVersion(name, version)) as Manifest,
+    packageDirs: () => packageDirs(vfs),
   };
 }
 
@@ -94,7 +96,7 @@ export async function bunInstall(vfs: VFS, semver: Semver, log: Log): Promise<nu
   const text = vfs.readText("package.json");
   const pkg = text === undefined ? undefined : (JSON.parse(text) as Manifest);
   const old = lock === undefined ? undefined : parseBunLock(lock);
-  const stale = old && pkg ? staleInLock(old, pkg) : [];
+  const stale = old && pkg ? staleInLock(old, pkg, vfsWorkspaces(vfs, pkg)) : [];
   // Packages the lockfile no longer places are removed only once it holds every dependency.
   let complete = true;
   if (lock !== undefined && !stale.length) log("log", "Installing locked versions from bun.lock");

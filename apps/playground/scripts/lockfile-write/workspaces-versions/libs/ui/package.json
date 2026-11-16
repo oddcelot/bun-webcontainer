@@ -1,0 +1,12 @@
+{
+  "name": "@mono/ui",
+  "version": "2.3.4",
+  "dependencies": {
+    "@mono/config": "workspace:2.0.0",
+    "ms": "^2.1.0",
+    "is-odd": "^3.0.0"
+  },
+  "devDependencies": {
+    "is-number": "^6.0.0"
+  }
+}

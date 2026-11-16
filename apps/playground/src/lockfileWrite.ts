@@ -2,15 +2,17 @@
  * `bun install` without a bun.lock: resolves package.json the way Bun does and writes the bun.lock Bun would, which
  * `installFromBunLock` then installs. Ported from bun/src/install: version choice (npm.rs `find_best_version`), reuse
  * of a resolved version (lockfile.rs `find_package_id`), hoisting (lockfile/Tree.rs `hoist_dependency`) and the text
- * format (lockfile/bun.lock.rs). Overrides, catalogs, patches, trustedDependencies and workspaces are not covered.
+ * format (lockfile/bun.lock.rs). Overrides, catalogs, patches and trustedDependencies are not covered.
  */
 import type { Semver } from "./semver";
+import { findWorkspaces, type Workspace } from "./workspaces";
 
 type Group = "dependencies" | "devDependencies" | "optionalDependencies" | "peerDependencies";
 const GROUPS: Group[] = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"];
 
 export type Manifest = {
   name?: string;
+  workspaces?: string[] | { packages?: string[] };
   version?: string;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
@@ -36,6 +38,8 @@ export type ResolveHost = {
   tarball(url: string): Promise<{ bytes: Uint8Array<ArrayBuffer>; manifest: Manifest }>;
   /** A folder's package.json in the project, or undefined. */
   folder(path: string): Manifest | undefined;
+  /** Every folder of the project with a package.json (none under node_modules): where the root's `workspaces` look. */
+  packageDirs(): string[];
   /** One version's full registry document: only it has `libc` (abbreviated packuments leave it out). */
   version(name: string, version: string): Promise<Manifest>;
 };
@@ -46,9 +50,9 @@ const nameSuggestsLibc = (name: string) => /linux|musl|glibc/.test(name);
 type Dep = { name: string; range: string; group: Group; optionalPeer: boolean };
 type Pkg = {
   name: string;
-  /** What follows `name@` in bun.lock: a version, a tarball URL, or `file:<path>`. */
+  /** What follows `name@` in bun.lock: a version, a tarball URL, `file:<path>` or `workspace:<path>`. */
   resolution: string;
-  kind: "npm" | "tarball" | "folder";
+  kind: "npm" | "tarball" | "folder" | "workspace";
   version?: string;
   integrity?: string;
   manifest: Manifest;
@@ -90,7 +94,6 @@ const alias = (r: string) => (r.match(/^npm:((?:@[^/]+\/)?[^@]+)(?:@(.*))?$/) ??
 
 /** Why a range can't be resolved here, or undefined if it can. */
 export function unsupportedRange(range: string): string | undefined {
-  if (/^workspace:/.test(range)) return "workspaces";
   if (/^link:/.test(range)) return "link: dependencies";
   if (/^file:.*\.t(ar\.)?gz$/.test(range)) return "file: tarballs";
   if (/^(git\+|git:|github:|gitlab:|bitbucket:)/.test(range) || /^[\w.-]+\/[\w.-]+(#.*)?$/.test(range)) return "git dependencies";
@@ -117,7 +120,10 @@ function pickVersion(doc: Packument, range: string, semver: Semver): string | un
   return best ?? deprecated;
 }
 
-export type Resolved = { root: Manifest; rootDeps: Dep[]; tree: Node[]; problems: string[] };
+export type Resolved = { root: Manifest; rootDeps: Dep[]; workspaces: Workspace[]; tree: Node[]; problems: string[] };
+
+/** A range npm would take from a registry, which a workspace of a version that satisfies it serves instead. */
+const semverLike = (r: string) => /^[\s\d^~<>=*xX.|-]*$/.test(r);
 
 /**
  * The packages of an existing bun.lock (`packages` of `parseBunLock`), which a dependency keeps when its range still
@@ -147,6 +153,19 @@ export async function resolveProject(root: Manifest, host: ResolveHost, locked: 
   const keep = (name: string, range: string) =>
     locked.find((p) => p.name === name && (p.kind === "tarball" ? p.resolution === range : p.version !== undefined && !isTarballUrl(range) && semver.satisfies(p.version, range)));
   const problems: string[] = [];
+  const workspaces = findWorkspaces(root, host.packageDirs(), (dir) => host.folder(dir));
+  const wsPkgs = new Map<string, Pkg>();
+  for (const { path, manifest } of workspaces) {
+    wsPkgs.set(manifest.name, { name: manifest.name, resolution: `workspace:${path}`, kind: "workspace", manifest, deps: depsOf(manifest, true) });
+  }
+  /** The workspace a dependency is: \`workspace:\` ones by name, others when the workspace's version satisfies the range. */
+  const workspaceFor = (name: string, range: string, aliased: boolean): Pkg | undefined => {
+    const pkg = wsPkgs.get(name);
+    if (!pkg || aliased) return;
+    if (range.startsWith("workspace:")) return pkg;
+    const v = pkg.manifest.version;
+    return v && semverLike(range) && semver.satisfies(v, range) ? pkg : undefined;
+  };
   const byName = new Map<string, Pkg[]>();
   const byResolution = new Map<string, Pkg>();
   const pinned = new Set<string>();
@@ -179,6 +198,21 @@ export async function resolveProject(root: Manifest, host: ResolveHost, locked: 
     const a = alias(dep.range);
     const realName = a ? a[1] : dep.name;
     const range = a ? (a[2] ?? "latest") : dep.range;
+    const ws = workspaceFor(realName, range, !!a);
+    if (ws) {
+      const want = range.replace(/^workspace:/, "");
+      const v = ws.manifest.version;
+      // `workspace:*`, `^` and `~` take whatever version the workspace has; an exact or ranged one must fit.
+      if (v && !/^[*^~]?$/.test(want) && semverLike(want) && !semver.satisfies(v, want)) {
+        problems.push(`${dep.name}@${dep.range}: workspace ${ws.name} is at ${v}`);
+        return;
+      }
+      return ws;
+    }
+    if (range.startsWith("workspace:")) {
+      problems.push(`${dep.name}@${dep.range}: no workspace named ${realName}`);
+      return;
+    }
     const why = unsupportedRange(range);
     if (why) {
       problems.push(`${dep.name}@${dep.range}: ${why} don't work in the browser`);
@@ -243,9 +277,12 @@ export async function resolveProject(root: Manifest, host: ResolveHost, locked: 
     (d.group === "peerDependencies" && from ? peers : queue).push([d, from]);
     const a = alias(d.range);
     const r = a ? (a[2] ?? "") : d.range;
-    if (!unsupportedRange(r) && !isTarballUrl(r) && !/^file:|^\.{0,2}\//.test(r) && !keep(a ? a[1] : d.name, a ? (a[2] ?? "latest") : r)) doc(a ? a[1] : d.name, a ? (a[2] ?? "latest") : r);
+    if (!workspaceFor(a ? a[1] : d.name, r, !!a) && !r.startsWith("workspace:") && !unsupportedRange(r) && !isTarballUrl(r) && !/^file:|^\.{0,2}\//.test(r) && !keep(a ? a[1] : d.name, a ? (a[2] ?? "latest") : r)) doc(a ? a[1] : d.name, a ? (a[2] ?? "latest") : r);
   };
-  for (const d of rootDeps) enqueue(d, null);
+  // Workspaces come first in the root's dependencies (Behavior::cmp), by name.
+  const wsDeps: Dep[] = [...wsPkgs.keys()].sort(byBytes).map((name) => ({ name, range: `workspace:${wsPkgs.get(name)!.resolution.slice(10)}`, group: "dependencies", optionalPeer: false }));
+  const topDeps = [...wsDeps, ...rootDeps];
+  for (const d of topDeps) enqueue(d, null);
   while (queue.length || peers.length) {
     if (!queue.length) queue.push(...peers.splice(0));
     const [dep, from] = queue.shift()!;
@@ -269,7 +306,7 @@ export async function resolveProject(root: Manifest, host: ResolveHost, locked: 
     }
   }
 
-  collapseVersions(resolutions, rootDeps, semver);
+  collapseVersions(resolutions, topDeps, semver);
 
   // The tree: breadth first from the root. A dependency goes to the root unless a different package of that name is
   // already on the way up; then it stays in its dependent's node_modules.
@@ -277,7 +314,7 @@ export async function resolveProject(root: Manifest, host: ResolveHost, locked: 
   const tree: Node[] = [rootNode];
   for (let i = 0; i < tree.length; i++) {
     const node = tree[i];
-    const deps = node.pkg ? node.pkg.deps : rootDeps;
+    const deps = node.pkg ? node.pkg.deps : topDeps;
     for (const dep of deps) {
       const pkg = resolutions.get(node.pkg)?.get(dep.name);
       if (!pkg) continue;
@@ -291,7 +328,7 @@ export async function resolveProject(root: Manifest, host: ResolveHost, locked: 
       tree.push({ pkg, path, depth: placeAt.depth + 1, parent: placeAt, placed: new Map() });
     }
   }
-  return { root, rootDeps, tree, problems };
+  return { root, rootDeps, workspaces, tree, problems };
 }
 
 /**
@@ -311,7 +348,7 @@ function collapseVersions(resolutions: Map<Pkg | null, Map<string, Pkg>>, rootDe
       if (!dep) continue;
       const a = alias(dep.range);
       const range = a ? (a[2] ?? "latest") : dep.range;
-      const fixed = !from || pkg.locked || dep.group === "peerDependencies" || !/^[\s\d^~<>=*xX.|-]+$/.test(range);
+      const fixed = !from || from.kind === "workspace" || pkg.locked || dep.group === "peerDependencies" || !/^[\s\d^~<>=*xX.|-]+$/.test(range);
       edges.set(pkg.name, [...(edges.get(pkg.name) ?? []), { from, key, range, fixed }]);
       let v = versions.get(pkg.name);
       if (!v) versions.set(pkg.name, (v = new Map()));
@@ -431,23 +468,35 @@ function info(pkg: Pkg): string {
 function entry(pkg: Pkg): string {
   const ident = q(`${pkg.name}@${pkg.resolution}`);
   if (pkg.kind === "npm") return `[${ident}, "", ${info(pkg)}, ${q(pkg.integrity ?? "")}]`;
+  if (pkg.kind === "workspace") return `[${ident}]`;
   if (pkg.kind === "tarball") return `[${ident}, ${info(pkg)}${pkg.integrity ? `, ${q(pkg.integrity)}` : ""}]`;
   return `[${ident}, ${info(pkg)}]`;
 }
 
 /** The bun.lock Bun writes for this tree. */
-export function writeBunLock({ root, rootDeps, tree }: Resolved): string {
-  const lines = ["{", '  "lockfileVersion": 2,', '  "configVersion": 1,', '  "workspaces": {', '    "": {'];
-  const body: string[] = [];
-  if (root.name) body.push(`      "name": ${q(root.name)}`);
-  const sorted = [...rootDeps].sort((a, b) => byBytes(a.name, b.name));
-  for (const group of GROUPS) {
-    const inGroup = sorted.filter((d) => d.group === group);
-    if (!inGroup.length) continue;
-    body.push(`      ${q(group)}: {\n${inGroup.map((d) => `        ${q(d.name)}: ${q(d.range)},\n`).join("")}      }`);
-  }
-  if (body.length) lines.push(body.join(",\n") + ",");
-  lines.push("    },", "  },");
+export function writeBunLock({ root, rootDeps, workspaces, tree }: Resolved): string {
+  const lines = ["{", '  "lockfileVersion": 2,', '  "configVersion": 1,', '  "workspaces": {'];
+  /** One `"workspaces"` member: the root (`""`) or a workspace folder. */
+  const member = (key: string, m: Manifest, deps: Dep[], workspace: boolean) => {
+    const body: string[] = [];
+    if (m.name) body.push(`      "name": ${q(m.name)}`);
+    if (workspace && m.version) body.push(`      "version": ${q(m.version)}`);
+    const bin = workspace && m.bin;
+    if (bin && typeof bin === "string") body.push(`      "bin": ${q(bin)}`);
+    else if (bin && Object.keys(bin).length) body.push(`      "bin": {\n${Object.entries(bin).map(([k, v]) => `        ${q(k)}: ${q(v)},\n`).join("")}      }`);
+    const sorted = [...deps].sort((a, b) => byBytes(a.name, b.name));
+    for (const group of GROUPS) {
+      const inGroup = sorted.filter((d) => d.group === group);
+      if (!inGroup.length) continue;
+      body.push(`      ${q(group)}: {\n${inGroup.map((d) => `        ${q(d.name)}: ${q(d.range)},\n`).join("")}      }`);
+    }
+    lines.push(`    ${q(key)}: {`);
+    if (body.length) lines.push(body.join(",\n") + ",");
+    lines.push("    },");
+  };
+  member("", root, rootDeps, false);
+  for (const w of workspaces) member(w.path, w.manifest, depsOf(w.manifest, true), true);
+  lines.push("  },");
 
   // Nodes by depth, then path; each node's packages by name.
   const nodes = tree.slice(1).sort((a, b) => a.depth - b.depth || byBytes(a.parent!.path, b.parent!.path) || byBytes(a.path, b.path));

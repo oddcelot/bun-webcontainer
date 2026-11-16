@@ -1,5 +1,6 @@
 import { createEffect, createRoot, createSignal } from "solid-js";
 import { BASE } from "./base";
+import { mirrorWorkspaces, vfsWorkspaces } from "./workspaces";
 import { createConsole } from "./console";
 import { CHECKED, diagnose } from "./diagnostics";
 import { attachStore, reportStoreProblems } from "./pkgStore";
@@ -69,6 +70,7 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
   const [localState, setLocalState] = createSignal<LocalState>(localUrl ? "connecting" : "none");
   const [localInfo, setLocalInfo] = createSignal<{ bun: string; sandbox: string }>();
   const vfs = new VFS();
+  mirrorWorkspaces(vfs);
   attachStore(vfs);
   // The Git panel's state; git.wasm loads when it first has something to read (git/store.ts).
   const gitStore = createRoot(() => createGit(vfs, { enabled: git ?? (() => true), log: (level, text) => log(level, text), beforeRun: () => workspace.saveAll() }));
@@ -347,8 +349,9 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
   /** Like StackBlitz: install on load when a dependency is missing from node_modules. */
   function missingDeps(): boolean {
     try {
-      const pkg = JSON.parse(vfs.readText("package.json") ?? "{}") as { dependencies?: Record<string, string> };
-      return Object.keys(pkg.dependencies ?? {}).some((n) => !vfs.files.has(`node_modules/${n}/package.json`));
+      const pkg = JSON.parse(vfs.readText("package.json") ?? "{}") as { dependencies?: Record<string, string>; workspaces?: string[] };
+      const manifests = [pkg, ...vfsWorkspaces(vfs, pkg).map((w) => w.manifest)];
+      return manifests.some((m) => Object.keys(m.dependencies ?? {}).some((n) => !vfs.files.has(`node_modules/${n}/package.json`)));
     } catch {
       return false;
     }

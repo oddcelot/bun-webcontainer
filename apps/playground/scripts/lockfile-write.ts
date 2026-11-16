@@ -45,6 +45,18 @@ function host(dir: string): ResolveHost {
       const file = join(dir, path, "package.json");
       return existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as Manifest) : undefined;
     },
+    packageDirs() {
+      const out: string[] = [];
+      const walk = (rel: string) => {
+        for (const e of readdirSync(join(dir, rel), { withFileTypes: true })) {
+          if (e.name === "node_modules" || e.name.startsWith(".")) continue;
+          if (e.isDirectory()) walk(rel ? `${rel}/${e.name}` : e.name);
+          else if (e.name === "package.json" && rel) out.push(rel);
+        }
+      };
+      walk("");
+      return out;
+    },
   };
 }
 

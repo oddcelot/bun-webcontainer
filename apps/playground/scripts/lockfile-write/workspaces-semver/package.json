@@ -1,0 +1,1 @@
+{"name":"root","workspaces":["packages/*"],"dependencies":{"@m/lib":"^1.0.0"}}
