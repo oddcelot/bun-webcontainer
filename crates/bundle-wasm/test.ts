@@ -1,7 +1,7 @@
 // Runs the bundle-wasm module against a playground-VFS fixture through the `bun_sys` host imports and,
 // if `bun` is on PATH, compares the output with native `bun build` over the same fixture on disk.
 // Run with node >= 24 (Memory64 + native .ts type stripping; bun lacks Memory64):  node test.ts
-import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
@@ -39,6 +39,17 @@ console.log("other", greet("o"));
   "src/assets.ts": "import d from './data.json'; import './styles.css'; import txt from './note.txt' with { type: 'text' }; console.log(d, txt);",
   "src/index.html": '<html><head><link rel="stylesheet" href="./styles.css"></head><body><script type="module" src="./greet-main.ts"></script></body></html>',
   "src/greet-main.ts": "import { greet } from './greet'; console.log(greet('html'));",
+  ".env": "FROM_DOTENV=dot\n",
+  "src/env.ts": "console.log(process.env.PUBLIC_A, process.env.PUBLIC_B, process.env.SECRET_C, process.env.MISSING, process.env.FROM_DOTENV);\n",
+  "src/drop.ts": "debugger;\nconsole.log('a');\nconsole.error('b');\nconst r = console.warn('c');\nfunction f() { debugger; return Math.random(); }\nexport { r, f };\nassert.strictEqual(1, 1);\n",
+  "src/loader.ts": "import a from './note.custom'; import b from './data.weird'; import c from './pic.bin'; import d from './more.cfg';\nconsole.log(a, b, c, d);\n",
+  "src/note.custom": "hello custom\n",
+  "src/data.weird": '{"a": [1, 2]}',
+  "src/pic.bin": "BINARY",
+  "src/more.cfg": 'k = "v"\n',
+  "src/pkgs.ts": "import { sum } from 'mathlib';\nimport { greet } from './greet';\nconsole.log(sum(1, 2), greet('p'));\n",
+  "src/a/x.ts": "import { greet } from '../greet';\nconsole.log('x', greet('x'));\n",
+  "src/b/y.ts": "console.log('y');\n",
   "node_modules/mathlib/package.json": JSON.stringify({
     name: "mathlib",
     version: "1.0.0",
@@ -170,6 +181,35 @@ compareOutdir("css entry", ["src/styles.css"], {});
 compareOutdir("json/text/css imports from ts", ["src/assets.ts"], {});
 compareOutdir("html entry", ["src/index.html"], {});
 compareOutdir("html entry, minified", ["src/index.html"], { minify: true }, ["--minify"]);
+
+// Options beyond the basics: each against native `bun build` over the same files (env: native sees the same variables).
+const ENV = { PUBLIC_A: "pa", PUBLIC_B: "p\"b'\\", SECRET_C: "shh" };
+function compareOptions(name: string, entries: string[], config: Record<string, unknown>, flags: string[], env: Record<string, string> = {}) {
+  test(`${name}: wasm == native bun build`, () => {
+    const r = wasmBundle({ entryPoints: entries, outdir: "out", format: "esm", target: "browser", envVars: env, ...config });
+    assert.ok(r.success, JSON.stringify(r.logs));
+    if (!hasBun) return;
+    rmSync(join(disk, "out"), { recursive: true, force: true });
+    const n = spawnSync("bun", ["build", ...entries, "--outdir=out", "--target=browser", "--format=esm", ...flags], { cwd: disk, encoding: "utf8", env: { PATH: process.env.PATH!, ...env } });
+    assert.equal(n.status, 0, n.stderr);
+    assert.equal(r.outputs.length, readdirSync(join(disk, "out"), { recursive: true, withFileTypes: true }).filter((e) => e.isFile()).length, "output count");
+    for (const o of r.outputs) assert.equal(norm(o.contents), norm(readFileSync(join(disk, "out", o.path), "utf8")), o.path);
+  });
+}
+compareOptions("env unset (nothing inlined)", ["src/env.ts"], {}, [], ENV);
+compareOptions("env inline", ["src/env.ts"], { env: "inline" }, ["--env=inline"], ENV);
+compareOptions("env PUBLIC_*", ["src/env.ts"], { env: "PUBLIC_*" }, ["--env=PUBLIC_*"], ENV);
+compareOptions("env disable (CLI: loaded, not inlined)", ["src/env.ts"], { env: "load-only" }, ["--env=disable"], ENV);
+compareOptions("drop console + debugger", ["src/drop.ts"], { drop: ["console", "debugger"] }, ["--drop=console", "--drop=debugger"]);
+compareOptions("drop console, minified", ["src/drop.ts"], { drop: ["console"], minify: true }, ["--drop=console", "--minify"]);
+compareOptions("drop assert", ["src/drop.ts"], { drop: ["assert"] }, ["--drop=assert"]);
+compareOptions("loader", ["src/loader.ts"], { loader: { ".custom": "text", ".weird": "json", ".bin": "file", ".cfg": "toml" } }, ["--loader=.custom:text", "--loader=.weird:json", "--loader=.bin:file", "--loader=.cfg:toml"]);
+compareOptions("loader: dataurl and base64", ["src/loader.ts"], { loader: { ".custom": "dataurl", ".weird": "text", ".bin": "base64", ".cfg": "text" } }, ["--loader=.custom:dataurl", "--loader=.weird:text", "--loader=.bin:base64", "--loader=.cfg:text"]);
+compareOptions("packages: bundle (default)", ["src/pkgs.ts"], {}, []);
+compareOptions("packages: external", ["src/pkgs.ts"], { packages: "external" }, ["--packages=external"]);
+compareOptions("root: default (common dir)", ["src/a/x.ts", "src/b/y.ts"], {}, []);
+compareOptions("root: src", ["src/a/x.ts", "src/b/y.ts"], { rootDir: "/src" }, ["--root=src"]);
+compareOptions("root: project root", ["src/a/x.ts", "src/b/y.ts"], { rootDir: "/" }, ["--root=."]);
 
 test("write: true writes into the VFS and returns no contents", () => {
   const r = wasmBundle({ entryPoints: ["src/greet.ts"], outdir: "/wrote", write: true });

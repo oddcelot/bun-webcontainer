@@ -981,6 +981,13 @@ type BuildOptions = {
   conditions?: string[] | string;
   banner?: string;
   footer?: string;
+  /** File extension (with the dot) to loader: `{ ".txt": "text" }`. */
+  loader?: Record<string, string>;
+  /** `true`/`"inline"` inlines every variable, `"PUBLIC_*"` those with the prefix, `false`/`"disable"` none. */
+  env?: boolean | number | null | "inline" | "disable" | `${string}*`;
+  packages?: "bundle" | "external";
+  drop?: string[];
+  root?: string;
   plugins?: unknown[];
   throw?: boolean;
 };
@@ -988,6 +995,14 @@ type BuildOptions = {
 const buildLog = (l: BundleLog) =>
   Object.assign(new Error(l.message), { name: "BuildMessage", level: l.level, message: l.message, position: l.file ? { file: l.file, line: l.line, column: l.column } : null });
 const formatLog = (l: BundleLog) => `${l.level}: ${l.message}${l.file ? `\n    at ${l.file}:${l.line}:${l.column}` : ""}`;
+
+/** `Bun.build`'s `env` as the bundler takes it, with the worker's `process.env` as the variables it reads. */
+function buildEnv(e: BuildOptions["env"]): Pick<BundleConfig, "env" | "envVars"> {
+  if (e === undefined || e === null || e === false || e === 0 || e === "disable") return {};
+  if (e === true || e === 1 || e === "inline") return { env: "inline", envVars: env };
+  if (typeof e === "string" && e.includes("*")) return { env: e, envVars: env };
+  throw codeError(TypeError, "ERR_INVALID_ARG_VALUE", "env must be 'inline', 'disable', or a string with a '*' character");
+}
 
 /**
  * `Bun.build` through Bun's own bundler (compiled to wasm, see bundler.ts). Outputs are Blobs in memory; with
@@ -997,6 +1012,8 @@ const formatLog = (l: BundleLog) => `${l.level}: ${l.message}${l.file ? `\n    a
 async function build(opts: BuildOptions) {
   // Plugins run JS inside the bundler; the wasm build has none of that (its stand-ins panic), so fail up front.
   if (opts.plugins?.length) throw new TypeError("Bun.build: plugins are not supported in the browser");
+  for (const ext of Object.keys(opts.loader ?? {}))
+    if (ext.length < 2 || !ext.startsWith(".")) throw new TypeError("loader property names must be file extensions, such as '.txt'");
   const entryPoints = (opts.entrypoints ?? []).map((e) => "/" + norm(nodePath.resolve(e.startsWith("file:") ? new URL(e).pathname : e)));
   const sm = opts.sourcemap;
   const config: BundleConfig = {
@@ -1014,6 +1031,11 @@ async function build(opts: BuildOptions) {
     publicPath: opts.publicPath,
     banner: opts.banner,
     footer: opts.footer,
+    loader: opts.loader,
+    packages: opts.packages,
+    drop: opts.drop,
+    rootDir: opts.root === undefined ? undefined : "/" + norm(nodePath.resolve(opts.root)),
+    ...buildEnv(opts.env),
   };
   const outdir = opts.outdir ? "/" + norm(nodePath.resolve(opts.outdir)) : undefined;
   if (outdir) config.outdir = outdir;

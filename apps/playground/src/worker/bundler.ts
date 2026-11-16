@@ -19,6 +19,15 @@ export interface BundleConfig {
   publicPath?: string;
   banner?: string;
   footer?: string;
+  /** File extension (with the dot) to loader name. */
+  loader?: Record<string, string>;
+  packages?: "bundle" | "external";
+  drop?: string[];
+  rootDir?: string;
+  /** `"inline"`, `"disable"` or a `"PREFIX*"`; unset reads and inlines nothing. */
+  env?: string;
+  /** The variables `env` may inline (the wasm has no process environment of its own). */
+  envVars?: Record<string, string>;
 }
 
 export interface BundleLog {

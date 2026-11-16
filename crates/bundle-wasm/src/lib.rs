@@ -8,7 +8,10 @@
 //! Config JSON (all optional except `entryPoints`):
 //! `{cwd, entryPoints[], target: "browser"|"bun"|"node", format: "esm"|"cjs"|"iife", minify:
 //!   bool | {whitespace, syntax, identifiers}, splitting, outdir, write (default false: outputs are returned in memory), external[], define{}, conditions[],
-//!   sourcemap: "none"|"inline"|"external"|"linked", naming{entry,chunk,asset}, publicPath, banner, footer}`
+//!   sourcemap: "none"|"inline"|"external"|"linked", naming{entry,chunk,asset}, publicPath, banner, footer,
+//!   loader{".ext": "js"|"jsx"|"ts"|"tsx"|"css"|"file"|"json"|"toml"|"wasm"|"napi"|"base64"|"dataurl"|"text"|"html"|..},
+//!   packages: "bundle"|"external", drop[], rootDir, env: "inline"|"disable"|"PREFIX*" (`Bun.build`'s; "load-only" is the
+//!   CLI's `--env=disable`), envVars{} (the process env: the wasm has none of its own)}`
 //! Result JSON: `{success, outputs: [{path, kind, loader, hash, contents, encoding?}], logs: [{level,
 //!   message, file, line, column}]}`. `contents` is text, or base64 with `encoding: "base64"` when the
 //!   output isn't valid UTF-8 (images, wasm and other binary assets).
@@ -91,6 +94,20 @@ pub fn bundle(config: &str) -> String {
         Some("linked") => api::SourceMapMode::Linked,
         _ => api::SourceMapMode::None,
     });
+    if let Some(l) = cfg.get("loader").and_then(Value::as_object) {
+        let (mut extensions, mut loaders) = (Vec::new(), Vec::new());
+        for (ext, name) in l {
+            if let Some(loader) = name.as_str().and_then(|n| bun_options_types::LOADER_API_NAMES.get(n.as_bytes()).copied()) {
+                extensions.push(Box::<[u8]>::from(ext.as_bytes()));
+                loaders.push(loader);
+            }
+        }
+        args.loaders = Some(api::LoaderMap { extensions, loaders });
+    }
+    if cfg.get("packages").and_then(Value::as_str) == Some("external") {
+        args.packages = Some(api::PackagesMode::External);
+    }
+    args.drop = strs(&cfg, "drop");
     if let Some(d) = cfg.get("define").and_then(Value::as_object) {
         args.define = Some(api::StringMap {
             keys: d.keys().map(|k| Box::<[u8]>::from(k.as_bytes())).collect(),
@@ -175,6 +192,26 @@ fn run(
     };
     t.options.root_dir = root;
     t.options.no_macros = true;
+    // `Bun.build`'s `env` (the CLI's `--env`); unset is `Disable`: nothing is read or inlined.
+    let (behavior, prefix) = match cfg.get("env").and_then(Value::as_str) {
+        // The CLI's `--env=disable`: .env files and the process env are loaded, nothing is inlined.
+        Some("load-only") => (bun_dotenv::DotEnvBehavior::LoadAllWithoutInlining, &b""[..]),
+        Some(e) => match bun_dotenv::DotEnvBehavior::parse_str(e.as_bytes()) {
+            Ok((b, p)) => (b, p.unwrap_or(b"")),
+            Err(()) => (bun_dotenv::DotEnvBehavior::Disable, &b""[..]),
+        },
+        None => (bun_dotenv::DotEnvBehavior::Disable, &b""[..]),
+    };
+    t.options.env.behavior = behavior;
+    t.options.env.prefix = prefix.into();
+    if let Some(vars) = cfg.get("envVars").and_then(Value::as_object) {
+        let env = t.env_mut();
+        for (k, v) in vars {
+            if let Some(v) = v.as_str() {
+                env.map.put(k.as_bytes(), v.as_bytes())?;
+            }
+        }
+    }
     t.options.compile_mode = options::CompileMode::None;
     if !t.options.production {
         t.options.conditions.append_slice(&[b"development" as &[u8]])?;
