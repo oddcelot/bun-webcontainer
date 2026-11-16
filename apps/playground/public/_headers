@@ -6,6 +6,10 @@
   Cross-Origin-Embedder-Policy: credentialless
   Origin-Agent-Cluster: ?1
 
+# Vite's output: every file under /assets/ is named by its content hash (vite.config.ts), so it never changes.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
 # The embed (runbun.dev/embed, framed by other sites) and the <bun-playground> element they load as a module script.
 /embed
   Cross-Origin-Resource-Policy: cross-origin

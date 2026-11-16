@@ -59,6 +59,11 @@ export class Runner {
   /** Counts Stops and restarts, so a `swap` still on its way can tell that something came after it. */
   private epoch = 0;
   protected ready: Promise<void> = Promise.resolve();
+  /**
+   * Set while a server that `bun test` replaced is started again after the test (boot.ts runTests): preview requests
+   * wait for it instead of finding no server between the test's end and that start. Settles either way.
+   */
+  restoring?: Promise<void>;
   /** The exit code of the last started program once it ended itself (`process.exit`, an uncaught error). */
   exitCode: number | undefined;
   /** Called when a program that had started ends itself (one that ends while starting sets `exitCode` instead). */
@@ -223,7 +228,7 @@ export class Runner {
         port.postMessage(textResponse(500, String(err)));
       }
     } else if (m.type === "preview") {
-      await this.ready;
+      await this.serverUp();
       const { base, ...req } = m.req;
       const headers = await this.withCookies(req.path, req.headers, base);
       if (!this.serving()) return sendText(port, 503, "No server running. Press Run.");
@@ -249,13 +254,23 @@ export class Runner {
       port.onmessage = ({ data }) => port1.postMessage(data);
       this.forward({ ...req, headers }, port2);
     } else if (m.type === "ws") {
-      await this.ready;
+      await this.serverUp();
       const { base, ...ws } = m;
       const headers = await this.withCookies(m.path, m.headers, base);
       if (!this.worker) return port.postMessage({ type: "close", code: 1011, reason: "No server running" });
       const to = this.route(ws.port);
       to.worker.postMessage({ ...ws, headers, port: to.port }, [port]);
     }
+  }
+
+  /** Until the start under way has settled: again for one that replaced it meanwhile, and after `restoring`. */
+  private async serverUp() {
+    let ready: Promise<void>;
+    do {
+      ready = this.ready;
+      await ready;
+      await this.restoring;
+    } while (ready !== this.ready);
   }
 
   /** Whether a program is there to answer preview requests. */

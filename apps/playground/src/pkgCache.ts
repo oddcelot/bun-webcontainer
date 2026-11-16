@@ -13,7 +13,10 @@ const open = () =>
     .then(async (b) => ({ b, cache: await b.caches.open("npm") }))
     .catch(() => undefined));
 
-/** Like Bun's manifest cache: a packument is used for 5 minutes before it's fetched again. */
+/**
+ * Like Bun's manifest cache: a packument is used for 5 minutes before it's fetched again, or for as long as it's there
+ * when the version asked for is in it (a published version never changes).
+ */
 const PACKUMENT_TTL = 5 * 60 * 1000;
 const FETCHED = "x-bwc-fetched";
 
@@ -46,12 +49,19 @@ export async function fetchTarball(url: string, verify?: (bytes: Bytes) => Promi
   return bytes;
 }
 
-/** A packument (abbreviated, as `bun install` asks for), cached for a few minutes; the cached one when offline. */
-export async function fetchPackument(name: string): Promise<unknown> {
+/**
+ * A packument (abbreviated, as `bun install` asks for), cached for a few minutes, or while it has `range` when that is
+ * an exact version; the cached one when offline.
+ */
+export async function fetchPackument(name: string, range?: string): Promise<unknown> {
   const url = `https://registry.npmjs.org/${name.replace("/", "%2f")}`;
   const s = await open();
   const hit = await s?.cache.match(url).catch(() => undefined);
   if (hit && Date.now() - Number(hit.headers.get(FETCHED) ?? 0) < PACKUMENT_TTL) return hit.json();
+  if (hit && range !== undefined) {
+    const doc = (await hit.clone().json().catch(() => undefined)) as { versions?: Record<string, unknown> } | undefined;
+    if (doc?.versions && Object.hasOwn(doc.versions, range)) return doc;
+  }
   let res: Response;
   try {
     res = await fetch(url, { headers: { accept: "application/vnd.npm.install-v1+json" } });

@@ -140,6 +140,8 @@ export class BunPlayground extends HTMLElement {
   #autoHeight = 0;
   /** The frame's page said `boot`; until it does, a loaded frame is something else (see #start). */
   #booted = false;
+  /** The frame's page said `alive`: it is the embed, whether or not it gets to `boot`. */
+  #alive = false;
   #listening = false;
   #startTimer: ReturnType<typeof setTimeout> | undefined;
   /** The page's own `overflow` on <html> while the modal locks its scrolling; null when it doesn't. */
@@ -579,12 +581,7 @@ export class BunPlayground extends HTMLElement {
     if (btn) btn.textContent = "▶ Run";
     // No `ready` in time: the button comes back to try again (a late `ready` still shows the embed).
     clearTimeout(this.#startTimer);
-    this.#startTimer = setTimeout(() => {
-      if (this.#isReady) return;
-      this.#poster.removeAttribute("data-starting");
-      this.#poster.toggleAttribute("data-failed", true);
-      if (btn) btn.textContent = "↻ Try again";
-    }, START_TIMEOUT);
+    this.#startTimer = setTimeout(() => this.#isReady || this.#failed(), START_TIMEOUT);
     // Said once it's shown, so screen readers announce it.
     const sr = this.#poster.querySelector(".spin .sr");
     if (sr) sr.textContent = "Starting…";
@@ -601,11 +598,15 @@ export class BunPlayground extends HTMLElement {
     f.src = url.href;
     // A service worker from before the embed existed sends the frame to its preview page instead (it's updated by that
     // very navigation): a frame that loads without saying `boot` loads again, a few times, as the new worker takes over.
+    // One that said `alive` is the embed whose module failed: loading it again won't help, so it fails at once.
     this.#booted = false;
+    this.#alive = false;
     let retries = 0;
     f.addEventListener("load", () => {
       setTimeout(() => {
-        if (this.#booted || this.#frame !== f || retries >= 3) return;
+        if (this.#booted || this.#frame !== f) return;
+        if (this.#alive) return this.#failed();
+        if (retries >= 3) return;
         retries++;
         f.src = url.href;
       }, 1500 * (retries + 1));
@@ -613,6 +614,15 @@ export class BunPlayground extends HTMLElement {
     this.#frame = f;
     this.#box.append(f);
     return this.#ready;
+  }
+
+  /** The embed didn't start: the poster's button offers to try again. */
+  #failed() {
+    clearTimeout(this.#startTimer);
+    this.#poster.removeAttribute("data-starting");
+    this.#poster.toggleAttribute("data-failed", true);
+    const btn = this.#poster.querySelector(".play");
+    if (btn) btn.textContent = "↻ Try again";
   }
 
   /** `:state(live)` on or off. Older browsers know only `--live` (or no states): there, no state, as before. */
@@ -664,6 +674,7 @@ export class BunPlayground extends HTMLElement {
     const { event, data } = d as Event;
     // The embed's expand button: the element opens or closes the modal and announces it itself.
     if (event === "expand") return void this.#setExpanded(data.open);
+    if (event === "alive") return void (this.#alive = true);
     if (event === "boot") {
       this.#booted = true;
       // Generated files are hidden too, for embeds older than `generated`: there they at least stay out of the tabs.

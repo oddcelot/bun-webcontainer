@@ -212,20 +212,29 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
     if (runner instanceof RemoteRunner && !(await mayRunNative())) return { failed: 0 };
     workspace.saveAll();
     const wasRunning = session.settled().state === "running";
+    // Previews sent meanwhile wait for the server to be back, not just for the test to end.
+    const testRunner = runner;
+    let restored = () => {};
+    if (wasRunning) testRunner.restoring = new Promise<void>((r) => (restored = r));
     let tested: TestResults = { failed: 0 };
     testing = true;
     stoppedTest = false;
     try {
-      await session.task("run", "Testing…", async (): Promise<Status> => {
-        tested = await runner!.runTests(files);
-        const { failed } = tested;
-        if (stoppedTest) return { state: "idle", text: "Stopped" };
-        return failed ? { state: "error", text: `${failed} test${failed === 1 ? "" : "s"} failed` } : { state: "idle", text: "Tests passed" };
-      });
+      try {
+        await session.task("run", "Testing…", async (): Promise<Status> => {
+          tested = await runner!.runTests(files);
+          const { failed } = tested;
+          if (stoppedTest) return { state: "idle", text: "Stopped" };
+          return failed ? { state: "error", text: `${failed} test${failed === 1 ? "" : "s"} failed` } : { state: "idle", text: "Tests passed" };
+        });
+      } finally {
+        testing = false;
+      }
+      if (wasRunning && !stoppedTest) await startRun(lastEntry, lastArgs);
     } finally {
-      testing = false;
+      testRunner.restoring = undefined;
+      restored();
     }
-    if (wasRunning && !stoppedTest) await startRun(lastEntry, lastArgs);
     return tested;
   }
 

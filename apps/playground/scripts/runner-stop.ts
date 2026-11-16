@@ -27,10 +27,13 @@ class FakeWorker {
   onmessage?: (e: { data: unknown }) => void;
   onerror?: (e: unknown) => void;
   terminated = false;
+  /** The types of the messages it was sent. */
+  got: string[] = [];
   constructor() {
     workers.push(this);
   }
   postMessage(m: { type: string }) {
+    this.got.push(m.type);
     if (m.type === "start") queueMicrotask(() => answer(this));
   }
   send(data: unknown) {
@@ -98,6 +101,33 @@ await new Promise((r) => realTimeout(r, 10));
 answer = (w) => w.send({ type: "ready" });
 await within(runner.start("index.ts"));
 eq("a replaced start settles", await within(first.then(() => "settled")), "settled");
+await runner.stop();
+
+// A preview sent while `bun test` replaced a running server waits for the server boot.ts starts again after it
+// (`restoring`), instead of finding none in between and answering "No server running".
+answer = (w) => w.send({ type: "ready" });
+await within(runner.start("index.ts"));
+runner.attach();
+let restored = () => {};
+runner.restoring = new Promise<void>((r) => (restored = r));
+answer = (w) => realTimeout(() => w.send({ type: "ready", failed: 0, results: [] }), 20);
+const testing = runner.runTests(["a.test.ts"]);
+await new Promise((r) => realTimeout(r, 5));
+const answered: unknown[] = [];
+(navigator.serviceWorker as ServiceWorkerContainer).onmessage!({
+  data: { type: "preview", req: { path: "/", method: "GET", headers: [], body: null } },
+  ports: [{ postMessage: (d: unknown) => answered.push(d) }],
+} as never);
+await within(testing);
+await new Promise((r) => realTimeout(r, 20));
+eq("between the test and the restart, the preview still waits", answered, []);
+answer = (w) => w.send({ type: "ready" });
+await within(runner.start("index.ts"));
+runner.restoring = undefined;
+restored();
+await new Promise((r) => realTimeout(r, 20));
+eq("the restarted server gets it", workers.at(-1)!.got.includes("request"), true);
+eq("and no 503 went back", answered, []);
 await runner.stop();
 
 if (bad) process.exit(1);

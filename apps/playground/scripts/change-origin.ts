@@ -1,5 +1,5 @@
 // Who the embed's `change` event says changed a file (src/embed/changes.ts, src/runner.ts): a host that grades the
-// reader's code on each change skips the program's and its own, so a program that writes a file as it starts, which a
+// reader's code on each change skips the program's, an install's and its own, so a program that writes a file as it starts, which a
 // grade restarts, must not read as the reader's or the grading never stops. A write that leaves a file as it was is no
 // change at all. Run with bun: `bun scripts/change-origin.ts`. Exits 1 on a mismatch.
 import { VFS } from "@runbun/vfs";
@@ -14,7 +14,7 @@ const eq = (what: string, got: unknown, want: unknown) => {
 Bun.plugin({
   name: "runner-deps",
   setup(b) {
-    const stub = "export const resetSyncEsm = () => {}, serveModule = () => {}, vfsRoot = () => '/', serveLazyRead = () => {};";
+    const stub = "export const resetSyncEsm = () => {}, serveModule = () => {}, vfsRoot = () => '/', serveLazyRead = () => {}, splitPackage = () => {};";
     b.onLoad({ filter: /\/src\/(moduleServer|pkgStore)\.ts$/ }, () => ({ contents: stub, loader: "js" }));
   },
 });
@@ -52,6 +52,7 @@ Object.assign(globalThis, {
 
 const { Runner } = await import("../src/runner.ts");
 const { watchChanges } = await import("../src/embed/changes.ts");
+const install = await import("../src/install.ts");
 
 const vfs = new VFS();
 vfs.write("index.ts", "console.log(1);\n");
@@ -59,7 +60,7 @@ vfs.write("check.test.ts", "// the host's\n");
 const runner = new Runner(vfs, () => {});
 let events: unknown[] = [];
 const generated = new Set(["check.test.ts"]);
-const asHost = watchChanges(vfs, () => runner.applying, (path) => path.startsWith("node_modules/") || generated.has(path), (d) => events.push(d));
+const asHost = watchChanges(vfs, () => runner.applying, () => install.installWriting, (path) => path.startsWith("node_modules/") || generated.has(path), (d) => events.push(d));
 const take = () => [events, (events = [])][0];
 const program = (op: string, ...args: unknown[]) => FakeWorker.last.send({ type: "vfs", op, args });
 
@@ -110,6 +111,15 @@ await runner.stop();
 FakeWorker.onStart = () => program("write", "fixture.json", "{}");
 await runner.runTests(["a.test.ts"]);
 eq("a test's writes are the program's", take(), [{ path: "fixture.json", removed: false, by: "program" }]);
+
+// An install's bun.lock: a host that grades on the reader's changes skips it, or the install a project runs on load
+// sets off a second grade. A project without dependencies resolves without the registry.
+vfs.write("package.json", '{ "name": "app" }\n');
+take();
+await install.bunInstall(vfs, {} as never, () => {});
+eq("an install's bun.lock is the install's", take(), [{ path: "bun.lock", removed: false, by: "install" }]);
+vfs.write("bun.lock", "{}\n");
+eq("after it, the reader's again", take(), [{ path: "bun.lock", removed: false, by: "reader" }]);
 
 if (bad) process.exit(1);
 console.log("change origin: ok");
