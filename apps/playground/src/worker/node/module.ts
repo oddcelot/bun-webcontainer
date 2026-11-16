@@ -336,10 +336,11 @@ export function createModule(registry: Record<string, object>) {
   // For wrapped CommonJS (cjs.ts wrapCommonJS) and served JSON: one cache, and computed requires.
   hooks.load = load;
   hooks.require = requireFrom;
+  hooks.decorate = decorate;
   return Module;
 }
 
-const hooks: { load?: (file: string, run: (m: CjsModule) => void, req: Require) => CjsModule; require?: (id: string, from: string) => unknown } = {};
+const hooks: { load?: (file: string, run: (m: CjsModule) => void, req: Require) => CjsModule; require?: (id: string, from: string) => unknown; decorate?: (req: Require, from: string) => Require } = {};
 
 /** `import(x)` in CommonJS the worker runs: through the worker's `__dynamicImport`, from the module's `file:` URL. */
 function dynamicImports(code: string, file: string): string {
@@ -362,6 +363,8 @@ export function setRequire(v: VFS, fn: (spec: string, dir: string) => string | n
   const g = globalThis as Record<string, unknown>;
   g.__cjsLoad = hooks.load;
   g.__cjsRequire = hooks.require;
+  // `require.resolve` & co. on the `require` of an ES module (moduleServer.ts hoistMetaRequire).
+  g.__decorateRequire = (req: Require, from: string) => hooks.decorate?.(req, from) ?? req;
   g.__esmLoaded = (file: string, ns: object) => {
     esModules[file] = ns;
     importing.delete(file);
