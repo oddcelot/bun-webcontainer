@@ -63,6 +63,8 @@ tasks:
       - 'src/runner.ts'
       - 'scripts/change-origin.ts'
       - 'src/embed/changes.ts'
+      - 'src/install.ts'
+      - 'src/lockfileWrite.ts'
       - '/packages/vfs/vfs.ts'
       - 'scripts/request-headers.ts'
       - 'scripts/install-prune.ts'

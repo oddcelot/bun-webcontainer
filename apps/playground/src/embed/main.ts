@@ -14,6 +14,7 @@ import { mountEmbed } from "./mount";
 import { parseRequests } from "./requests";
 import { readConfig, type ProjectConfig } from "../projectConfig";
 import { watchChanges } from "./changes";
+import { installWriting } from "../install";
 import { responseReserve } from "../preview";
 import { isMessage, TAG, VERSION, type Event, type Feature, type Layout, type LibraryProject, type Mode, type Options, type Request } from "@runbun/embed/protocol";
 import { VFS } from "@runbun/vfs";
@@ -459,7 +460,7 @@ addEventListener("keydown", (e) => {
   embed.requestExpand(false);
 });
 
-const asHost = watchChanges(vfs, () => pg.programWriting, (path) => SKIP.test(path) || generated.has(path), (data) => {
+const asHost = watchChanges(vfs, () => pg.programWriting, () => installWriting, (path) => SKIP.test(path) || generated.has(path), (data) => {
   // bun.lock is install's.
   if (data.by === "reader" && data.path !== "bun.lock" && !edited) setEdited(persistKey(untrack(embed.project)), true);
   emit("change", data);

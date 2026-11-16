@@ -5,6 +5,9 @@ import { fetchPackument, fetchTarball, fetchVersion } from "./pkgCache";
 import type { VFS } from "@runbun/vfs";
 
 type Log = (level: "log" | "error", text: string) => void;
+
+/** True while an install writes bun.lock, so the embed tells its change from the reader's (embed/changes.ts). */
+export let installWriting = false;
 type Packument = { "dist-tags"?: Record<string, string>; versions: Record<string, Manifest> };
 
 /**
@@ -105,7 +108,12 @@ export async function bunInstall(vfs: VFS, semver: Semver, log: Log): Promise<nu
     complete = !resolved.problems.length;
     if (!complete) log("error", `couldn't ${old ? "update" : "save"} bun.lock, some dependencies didn't resolve`);
     else {
-      vfs.write("bun.lock", lock);
+      installWriting = true;
+      try {
+        vfs.write("bun.lock", lock);
+      } finally {
+        installWriting = false;
+      }
       log("log", "Saved bun.lock");
     }
   }

@@ -102,9 +102,10 @@ export type TestResult = { failed: number; results?: { file: string; failed: num
 
 /**
  * Who changed a file (the `change` event): "reader" in the editor, the file tree or the console; "program" the code
- * running (`run` or `test`); "host" with `writeFile` or `removeFile`.
+ * running (`run` or `test`); "host" with `writeFile` or `removeFile`; "install" `bun install` (bun.lock). Embeds older
+ * than "install" say "reader" for an install's changes.
  */
-export type ChangeBy = "reader" | "program" | "host";
+export type ChangeBy = "reader" | "program" | "host" | "install";
 
 /** Host → embed. Each gets a reply with the same `id`: `{ id, result }` or `{ id, error }`. */
 export type Request =
