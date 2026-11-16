@@ -119,6 +119,14 @@ tasks:
     toolchains: ['bun']
     options:
       cache: false
+  test-stdin:
+    # The console as a program's stdin (scripts/stdin.ts): readline, process.stdin, Bun.stdin and `console` read what is
+    # typed in the embed's console in headless Chrome, and print what native Bun prints for the same input; prompt()
+    # runs on an isolated embedder and throws on one that isn't. Needs Chrome, so it isn't part of `test`.
+    script: 'bun scripts/stdin.ts && bun scripts/stdin.ts --no-native --isolated'
+    toolchains: ['bun']
+    options:
+      cache: false
   test-errors:
     # Errors as programs see and print them (scripts/errors.ts): `error.stack`'s names, paths and columns, uncaught
     # errors' source previews, I/O errors and promise states in the embed in headless Chrome, against native Bun's
