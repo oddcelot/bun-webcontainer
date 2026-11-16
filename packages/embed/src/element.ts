@@ -517,11 +517,16 @@ export class BunPlayground extends HTMLElement {
       css = (this.#manual ?? this.#autoHeight) + "px";
     }
     this.#box.style.height = css;
-    const off = /(^|[\s,])-resize(?=[\s,]|$)/.test(this.#get("features") ?? "") || !this.#resizable;
-    this.#handle.hidden = h !== "auto" || off;
+    this.#showHandle();
     this.#handle.ariaValueMin = "120";
     this.#handle.ariaValueMax = String(maxHeight());
     this.#handle.ariaValueNow = String(this.#box.offsetHeight);
+  }
+
+  /** Only a live embed with `height="auto"` has the handle: a poster just shows its content. */
+  #showHandle() {
+    const off = /(^|[\s,])-resize(?=[\s,]|$)/.test(this.#get("features") ?? "") || !this.#resizable;
+    this.#handle.hidden = !this.#isReady || (this.#get("height") || HEIGHTS[this.#mode()]) !== "auto" || off;
   }
 
   /** The reader's height from the handle (between 120px and most of the window), or null for the content's again. */
@@ -539,14 +544,15 @@ export class BunPlayground extends HTMLElement {
     const from = this.#box.offsetHeight;
     handle.setPointerCapture(e.pointerId);
     handle.toggleAttribute("data-dragging", true);
-    this.#box.style.transition = "none";
+    // Important: a page's `::part(box)` transition outranks a plain inline style from inside the shadow root.
+    this.#box.style.setProperty("transition", "none", "important");
     const move = (m: PointerEvent) => this.#setManual(from + m.clientY - start);
     const end = () => {
       handle.removeEventListener("pointermove", move);
       handle.removeEventListener("pointerup", end);
       handle.removeEventListener("pointercancel", end);
       handle.removeAttribute("data-dragging");
-      this.#box.style.transition = "";
+      this.#box.style.removeProperty("transition");
     };
     handle.addEventListener("pointermove", move);
     handle.addEventListener("pointerup", end);
@@ -667,6 +673,7 @@ export class BunPlayground extends HTMLElement {
         .catch(() => {});
     } else if (event === "ready" || event === "unsupported") {
       this.#isReady = true;
+      this.#showHandle();
       this.#posterSizes.disconnect();
       this.#frame.classList.remove("wait");
       this.#setLive(true);
