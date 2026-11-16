@@ -1,4 +1,5 @@
 import { fakeTimers, real, resetFakeTimers } from "./fakeTimers";
+import { dedent, serialize, SnapshotFile, withMatchers, type SnapshotCounts, type SnapshotIO } from "./snapshot";
 import { inspect, isDeepStrictEqual } from "./util";
 
 // `bun:test`: a compact Jest-style runner. Files register suites while they load; `runTestFiles` loads each file in
@@ -36,10 +37,13 @@ function pretty(v: unknown, ind = "", seen: unknown[] = []): string {
   return entries.length ? `${open}\n${entries.map((e) => `${ind}  ${e},\n`).join("")}${ind}${close}` : open + close;
 }
 
-/** `- Expected  - n` / `+ Received  + n` and the lines around the changes, from a line-level LCS. */
-function diff(expected: unknown, received: unknown): string {
-  const a = pretty(expected).split("\n");
-  const b = pretty(received).split("\n");
+/**
+ * Bun's line diff of two texts: hunks (`@@ -2,3 +2,6 @@`) with a line of context around each change, then the
+ * `- Expected  - n` / `+ Received  + n` totals. From a line-level LCS.
+ */
+function diffText(expectedText: string, receivedText: string): string {
+  const a = expectedText.split("\n");
+  const b = receivedText.split("\n");
   const lcs = Array.from({ length: a.length + 1 }, () => new Array<number>(b.length + 1).fill(0));
   for (let i = a.length - 1; i >= 0; i--) for (let j = b.length - 1; j >= 0; j--) lcs[i][j] = a[i] === b[j] ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
   const out: { sign: " " | "-" | "+"; text: string }[] = [];
@@ -50,16 +54,37 @@ function diff(expected: unknown, received: unknown): string {
     else if (i < a.length && (j === b.length || lcs[i + 1][j] >= lcs[i][j + 1])) out.push({ sign: "-", text: a[i++] });
     else out.push({ sign: "+", text: b[j++] });
   }
-  const keep = out.map((l, k) => l.sign !== " " || out.slice(Math.max(0, k - 2), k + 3).some((x) => x.sign !== " "));
-  const lines: string[] = [];
-  out.forEach((l, k) => {
-    if (keep[k]) lines.push(`${l.sign} ${l.text}`);
-    else if (keep[k - 1]) lines.push("  ...");
-  });
+  const keep = out.map((l, k) => l.sign !== " " || out[k - 1]?.sign !== undefined && out[k - 1].sign !== " " || (out[k + 1] !== undefined && out[k + 1].sign !== " "));
+  const hunks: string[] = [];
+  let k = 0;
+  let oldLine = 1;
+  let newLine = 1;
+  while (k < out.length) {
+    if (!keep[k]) {
+      oldLine++;
+      newLine++;
+      k++;
+      continue;
+    }
+    const startOld = oldLine;
+    const startNew = newLine;
+    let nOld = 0;
+    let nNew = 0;
+    const lines: string[] = [];
+    for (; k < out.length && keep[k]; k++) {
+      lines.push(`${out[k].sign} ${out[k].text}`);
+      if (out[k].sign !== "+") nOld++;
+      if (out[k].sign !== "-") nNew++;
+    }
+    oldLine += nOld;
+    newLine += nNew;
+    hunks.push(`@@ -${startOld},${nOld} +${startNew},${nNew} @@\n${lines.join("\n")}`);
+  }
   const minus = out.filter((l) => l.sign === "-").length;
   const plus = out.filter((l) => l.sign === "+").length;
-  return `- Expected  - ${minus}\n+ Received  + ${plus}\n\n${lines.join("\n")}`;
+  return `${hunks.join("\n")}\n\n- Expected  - ${minus}\n+ Received  + ${plus}`;
 }
+const diff = (expected: unknown, received: unknown) => diffText(pretty(expected), pretty(received));
 
 // ---- equality ----
 
@@ -197,6 +222,77 @@ Object.assign(matchers, {
   toHaveLastReturnedWith: (r: unknown, e: unknown) => ({ pass: equals(returnsOf(r).at(-1), e), expected: e, received: returnsOf(r).at(-1) }),
   toHaveNthReturnedWith: (r: unknown, n: number, e: unknown) => ({ pass: equals(returnsOf(r)[n - 1], e), expected: e, received: returnsOf(r)[n - 1] }),
 });
+
+// ---- snapshots ----
+
+/** The test file being run, its snapshots, and the name of the test running (`describe` names and its own, by spaces). */
+let snapshots: SnapshotFile | undefined;
+let testName = "";
+const snapCounts: SnapshotCounts = { passed: 0, added: 0, failed: 0 };
+const isCI = () => {
+  const v = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.CI;
+  return !!v && v !== "false" && v !== "0";
+};
+
+/** The line and column of the project file's frame in the stack (the test's call of the matcher). */
+function callSite(file: string): [number, number] | undefined {
+  for (const line of (new Error().stack ?? "").split("\n")) {
+    const m = /(\/[^\s()]*?):(\d+):(\d+)\)?$/.exec(line);
+    if (m && m[1] === `/${file}`) return [+m[2], +m[3]];
+  }
+}
+
+function snapshotMatcher(name: "toMatchSnapshot" | "toMatchInlineSnapshot") {
+  const inline = name === "toMatchInlineSnapshot";
+  return (r: unknown, ...a: unknown[]) =>
+    (ctx: Ctx): Result => {
+      const fail = (message: string): never => {
+        throw new ExpectError(`expect(received).${ctx.not ? "not." : ""}${name}(${ctx.not ? "" : "expected"})\n\n${message}`);
+      };
+      const refused = (what: string, tail: string): never => {
+        throw new ExpectError(`${what} creation is disabled in CI environments unless --update-snapshots is used\nTo override, set the environment variable CI=false.\n\n${tail}`);
+      };
+      const received = (v: string) => `Received:${v.includes("\n") ? "\n" : " "}${v}`;
+      if (ctx.not) fail("Matcher error: Snapshot matchers cannot be used with not");
+      if (!snapshots) throw new Error("Snapshot matchers cannot be used outside of a test");
+      // (properties?, hint) or (properties?, inline snapshot), where a string first is the hint or snapshot itself.
+      const props = typeof a[0] === "object" && a[0] !== null ? a[0] : undefined;
+      const text = props !== undefined ? a[1] : a[0];
+      if (props !== undefined && !subset(r, props)) return { pass: false, custom: { args: "propertyMatchers", message: `Expected propertyMatchers to match properties from received object\n\nReceived: ${stringify(r)}` } };
+      const value = serialize(props !== undefined ? withMatchers(r, props) : r);
+      const show = (v: string) => (v.includes("\n") ? `\n${v}\n` : v);
+      const mismatch = (expected: string) =>
+        value.includes("\n") || expected.includes("\n") ? diffText(show(expected), show(value)) : `Expected: ${expected}\nReceived: ${value}\n`;
+      const ci = isCI();
+      if (inline) {
+        const site = callSite(snapshots.file);
+        if (typeof text !== "string") {
+          if (ci && !update) refused("Inline snapshot", received(value));
+          snapCounts.added++;
+          if (site) snapshots.rewriteInline(site[0], site[1], value);
+          return { pass: true };
+        }
+        const expected = dedent(text);
+        if (expected === value) return (snapCounts.passed++, { pass: true });
+        if (update) {
+          snapCounts.passed++;
+          if (site) snapshots.rewriteInline(site[0], site[1], value);
+          return { pass: true };
+        }
+        snapCounts.failed++;
+        return { pass: false, custom: { args: "expected", message: mismatch(expected) } };
+      }
+      const key = snapshots.key(testName, typeof text === "string" ? text : undefined);
+      const res = snapshots.check(key, value, ci);
+      if (res === "ok") return { pass: true };
+      if (res === "ci") return refused("Snapshot", `Snapshot name: ${JSON.stringify(key)}\n${received(value)}`);
+      return { pass: false, custom: { args: "expected", message: mismatch(res.expected) } };
+    };
+}
+matchers.toMatchSnapshot = snapshotMatcher("toMatchSnapshot");
+matchers.toMatchInlineSnapshot = snapshotMatcher("toMatchInlineSnapshot");
+/** `bun test --update-snapshots`: new values replace the snapshots that differ. */
+let update = false;
 
 function check(name: string, recv: unknown, args: unknown[], not: boolean, ctx: Ctx): void | Promise<void> {
   expectCalls++;
@@ -537,6 +633,7 @@ async function runSuite(s: Suite, only: boolean, skipAll: boolean) {
       console.log(`\x1b[35m✎\x1b[0m ${label(item)} ${dim("[todo]")}`);
       continue;
     }
+    testName = [...names(s), item.name].join(" ");
     const t0 = performance.now();
     let err: unknown;
     let failed = false;
@@ -579,6 +676,18 @@ async function runSuite(s: Suite, only: boolean, skipAll: boolean) {
   if (started) for (const h of s.hooks.afterAll) await call(h, defaultTimeout).catch((e) => ((totals.fail++), console.error(`${failure(e)}\n\x1b[31m✗\x1b[0m\x1b[31m ${names(s).join(" > ")} (afterAll)\x1b[0m`)));
 }
 
+/** Snapshot files in the project, through the worker's `fs`. */
+async function fsIO(): Promise<SnapshotIO> {
+  const { default: fs } = await import("./fs");
+  return {
+    read: (p) => (fs.existsSync(`/${p}`) ? (fs.readFileSync(`/${p}`, "utf8") as string) : undefined),
+    write: (p, text) => {
+      fs.mkdirSync(`/${p}`.replace(/\/[^/]*$/, "") || "/", { recursive: true });
+      fs.writeFileSync(`/${p}`, text);
+    },
+  };
+}
+
 /** Failed tests in all, and per file in the order they ran. */
 export type TestOutcome = { failed: number; results: { file: string; failed: number }[] };
 
@@ -586,7 +695,10 @@ export type TestOutcome = { failed: number; results: { file: string; failed: num
  * Loads each file (its top level registers suites in `bun:test`), runs it and prints Bun's report.
  * Resolves to the number of failed tests, in all and per file (import errors count as failures).
  */
-export async function runTestFiles(files: string[], load: (file: string) => Promise<unknown>, version: string): Promise<TestOutcome> {
+export async function runTestFiles(files: string[], load: (file: string) => Promise<unknown>, version: string, opts: { update?: boolean; io?: SnapshotIO } = {}): Promise<TestOutcome> {
+  update = !!opts.update;
+  snapCounts.passed = snapCounts.added = snapCounts.failed = 0;
+  const io = opts.io ?? (await fsIO());
   const t0 = performance.now();
   resetFakeTimers();
   totals.pass = totals.fail = totals.skip = totals.todo = 0;
@@ -596,6 +708,7 @@ export async function runTestFiles(files: string[], load: (file: string) => Prom
   for (const file of files) {
     console.log(`\n${file}:`);
     root = current = newSuite("");
+    snapshots = new SnapshotFile(io, file, update, snapCounts);
     const before = totals.fail;
     try {
       await load(file);
@@ -606,6 +719,7 @@ export async function runTestFiles(files: string[], load: (file: string) => Prom
       continue;
     }
     await runSuite(root, hasOnly(root), false);
+    snapshots.flush();
     results.push({ file, failed: totals.fail - before });
   }
   const n = totals.pass + totals.fail + totals.skip + totals.todo;
@@ -615,6 +729,11 @@ export async function runTestFiles(files: string[], load: (file: string) => Prom
   for (const [c, w] of [[totals.skip, "skip"], [totals.todo, "todo"]] as const) if (c) console.log(row(c, w));
   if (totals.fail) console.error(` ${totals.fail} fail`);
   else console.log(" 0 fail");
+  const { passed, added, failed } = snapCounts;
+  if (passed + added + failed) {
+    const parts = [passed && `${passed} passed`, added && (passed || failed ? `${added} added` : `+${added} added`), failed && `${failed} failed`].filter(Boolean);
+    console.log(`snapshots: ${parts.join(", ")}`);
+  }
   console.log(` ${expectCalls} expect() calls`);
   console.log(`Ran ${n} test${n === 1 ? "" : "s"} across ${files.length} file${files.length === 1 ? "" : "s"}. ${dim(`[${ms(performance.now() - t0)}]`)}`);
   resetFakeTimers();

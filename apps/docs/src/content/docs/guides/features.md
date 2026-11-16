@@ -59,7 +59,7 @@ A terminal with colors, clickable links, history (<kbd>↑</kbd>/<kbd>↓</kbd>)
 | Command | Does |
 |---|---|
 | `bun run <script\|file>`, `bun <file>` | Run a `package.json` script or a file |
-| `bun test [filter…]` | Run `*.test.*` / `*.spec.*` files with [`bun:test`](/compatibility/bun/#buntest) |
+| `bun test [-u] [filter…]` | Run `*.test.*` / `*.spec.*` files with [`bun:test`](/compatibility/bun/#buntest) |
 | `bun install` (`i`) | Install dependencies |
 | `bun add <pkg[@range]> [-d]` (`a`) | Add a dependency |
 | `bun remove <pkg>` (`rm`) | Remove a dependency |

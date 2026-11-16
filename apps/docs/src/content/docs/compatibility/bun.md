@@ -148,10 +148,11 @@ console.log(db.query("select * from todos where done = ?").all(0));
 - ✅ `expect.extend` (custom matchers with `this.isNot`, `this.promise`, `this.equals` and `this.utils`' `stringify`, `printReceived`, `printExpected`, `matcherHint`; async matchers and the `expect.<name>()` asymmetric form work too), `expect.assertions(n)` and `expect.hasAssertions()`
 - ✅ Fake timers: `jest.useFakeTimers()` (also `{ now }`) and `useRealTimers`, `advanceTimersByTime`, `advanceTimersToNextTimer`, `runOnlyPendingTimers`, `runAllTimers`, `clearAllTimers`, `getTimerCount`, `isFakeTimers` and `now`, on `jest` and `vi`. `setTimeout`, `setInterval`, `Date` and `Bun.sleep` run on the fake clock; `setImmediate`, `process.nextTick` and `performance.now` stay real. As in Bun, the timers stay faked into the next test until `useRealTimers()`. `runAllTimers` stops with an error after 100000 timers (Bun loops on an interval nothing clears).
 - ✅ `setSystemTime(date | ms)` from `bun:test` or `jest`: `Date` is frozen at that time (or moves from it with fake timers); no argument restores the real time
-- ❌ Snapshots, `mock.module`, `jest.mock`, coverage
+- ✅ Snapshots: `toMatchSnapshot` (with a hint and property matchers) writes `__snapshots__/<file>.snap` in the project in Bun's format, byte for byte, and `toMatchInlineSnapshot` compares and fills in the call's snapshot in the test file. New snapshots are written unless the `CI` environment variable is set (in `runbun.json`'s `env`), where they fail as in Bun; `bun test -u` (`--update-snapshots`) rewrites the ones that differ. Serializing follows Bun's for plain values, arrays, Map, Set, Date, RegExp, errors, class instances and typed arrays; odd built-ins (`Math`, `Promise`, getters) can print differently. The `snapshots:` totals line is approximate.
+- ❌ `mock.module`, `jest.mock`, coverage
 - An uncaught error or unhandled rejection fails the test running at the time (whichever test's code threw it), as in Bun, and the run goes on.
 - Unknown matchers throw "is not supported here".
-- `bun test` takes name filters but no flags.
+- `bun test` takes name filters and `-u` / `--update-snapshots`, no other flags.
 
 Type `bun test` in the console to run this one:
 

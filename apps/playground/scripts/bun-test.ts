@@ -19,7 +19,14 @@ const EDITOR = `http://localhost:${PORT}`;
 
 /** Each step: the arguments of `bun test`, then optional edits to the project before it (path to new text, null removes). */
 type Step = { args: string[]; edit?: Record<string, string | null>; env?: Record<string, string>; expectFail?: string[] };
-const STEPS: Step[] = [{ args: [] }];
+// The snapshots are written in the first step; the second finds them all; `-u` rewrites the files; CI forbids new ones.
+const CI_ON = { "runbun.json": JSON.stringify({ env: { CI: "1" } }) };
+const STEPS: Step[] = [
+  { args: [] },
+  { args: [] },
+  { args: ["-u"] },
+  { args: [], env: { CI: "1" }, edit: { "__snapshots__/snapshot.test.ts.snap": null, ...CI_ON } },
+];
 
 // What differs on purpose, by "file :: test": only that it fails on both sides is compared.
 const ONLY_FAILS = new Set(["extend.test.ts :: unknown matcher"]);
@@ -60,8 +67,12 @@ function digest(lines: string[]) {
       file = m[1];
       last = undefined;
     } else if ((m = line.match(/^\s*(\d+ (?:pass|fail|skip|todo|expect\(\) calls))$/))) summary.push(m[1]);
+    else if ((m = line.match(/^\s*\d+ snapshots?, (\d+ expect\(\) calls)$/))) summary.push(m[1]);
+    else if (/^snapshots: /.test(line)) {
+      /* the counts differ a little: not compared */
+    }
     else if ((m = line.match(/^Ran (\d+ tests? across \d+ files?)\.?/))) summary.push(m[1].replace("tests ", "test ").replace("files", "file"));
-    else if (/^\s*\d+ \| /.test(line) || /^\s+\^+$/.test(line) || /^\s+at /.test(line) || /^(\(pass\)|\(skip\)|\(todo\)|✓|»|✎|bun test v)/.test(line) || !line.trim()) {
+    else if (/^\s*\d+ \|/.test(line) || /^\s+\^+$/.test(line) || /^\s+at /.test(line) || /^(\(pass\)|\(skip\)|\(todo\)|✓|»|✎|bun test v)/.test(line) || !line.trim()) {
       /* decoration */
     } else buf.push(line.trim());
     if (!/^\s+\^ /.test(line) && !/^(?:\(fail\)|✗) /.test(line)) last = undefined;
@@ -88,7 +99,11 @@ function compare(label: string, got: ReturnType<typeof digest>, want: ReturnType
 }
 
 /** Files under `dir` as the run left them, `__snapshots__` only. */
-const snaps = (all: Record<string, string>) => Object.fromEntries(Object.entries(all).filter(([p]) => p.includes("__snapshots__")));
+const snaps = (all: Record<string, string>) => Object.fromEntries(Object.entries(all).filter(([p]) => isTracked(p)));
+/** What a run can write: snapshot files, and test files whose inline snapshots it fills in. */
+function isTracked(p: string) {
+  return p.includes("__snapshots__") || /\.test\.ts$/.test(p);
+}
 
 function compareSnaps(label: string, got: Record<string, string>, want: Record<string, string>) {
   const g = snaps(got);
@@ -97,10 +112,14 @@ function compareSnaps(label: string, got: Record<string, string>, want: Record<s
   for (const k of new Set([...Object.keys(g), ...Object.keys(w)])) {
     if (g[k] === w[k]) continue;
     wrong++;
-    console.error(`✗ ${label}: ${k}\n  got  ${JSON.stringify(g[k])}\n  want ${JSON.stringify(w[k])}`);
+    // Where they part, not the whole files.
+    let at = 0;
+    while (at < (g[k] ?? "").length && g[k]![at] === (w[k] ?? "")[at]) at++;
+    const around = (t: string | undefined) => JSON.stringify(t === undefined ? t : t.slice(Math.max(0, at - 60), at + 120));
+    console.error(`✗ ${label}: ${k} (differs at ${at})\n  got  ${around(g[k])}\n  want ${around(w[k])}`);
   }
   bad += wrong;
-  if (!wrong && Object.keys(w).length) console.log(`✓ ${label}: ${Object.keys(w).length} snapshot file(s) identical`);
+  if (!wrong && Object.keys(w).length) console.log(`✓ ${label}: ${Object.keys(w).length} file(s) identical`);
 }
 
 function applyEdit(project: Record<string, string>, edit?: Step["edit"]) {
@@ -168,7 +187,7 @@ const host = Bun.serve({
     if (d.event === "console") window.lines.push(...d.data.text.split("\\n"));
   });
 </script>`,
-      { headers: { "content-type": "text/html" } },
+      { headers: { "content-type": "text/html; charset=utf-8" } },
     ),
 });
 type W = { lines: string[]; events: string[]; rpc: (m: string, p?: unknown) => Promise<unknown> };
@@ -206,7 +225,7 @@ try {
       if (native[i]) {
         const listed = (await page.evaluate(() => (window as unknown as W).rpc("listFiles"))) as string[];
         const have: Record<string, string> = {};
-        for (const p of listed) if (p.includes("__snapshots__")) have[p] = (await page.evaluate((path) => (window as unknown as W).rpc("readFile", { path }), p)) as string;
+        for (const p of listed) if (isTracked(p)) have[p] = (await page.evaluate((path) => (window as unknown as W).rpc("readFile", { path }), p)) as string;
         compareSnaps(`${label} snapshots`, have, native[i].files);
       }
       if (bad && process.env.DEBUG) console.error(lines.join("\n"));
