@@ -1,0 +1,1 @@
+{ "name": "als", "type": "module", "dependencies": { "hono": "4.13.19" } }

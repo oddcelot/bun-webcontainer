@@ -39,8 +39,8 @@ tasks:
     # changed a file (scripts/change-origin.ts), the worker's Requests keeping forbidden headers
     # (scripts/request-headers.ts), what `bun install` prunes from node_modules (scripts/install-prune.ts) and when it
     # reuses a cached packument (scripts/packument-cache.ts), how runbun.json is read (scripts/project-config.ts),
-    # Bun.hash against native bun (scripts/hash-compat.ts) and the workspace layout (scripts/workspaces-unit.ts).
-    script: 'bun scripts/inspect-corpus/diff.ts && bun scripts/data-apis/jsonl.ts && bun scripts/data-apis/xml-stringify.ts && bun scripts/requests.ts && bun scripts/request-fields.ts && bun scripts/vfs-mirror.ts && bun scripts/test-results.ts && bun scripts/persist-skip.ts && bun scripts/runner-stop.ts && bun scripts/change-origin.ts && bun scripts/request-headers.ts && bun scripts/install-prune.ts && bun scripts/packument-cache.ts && bun scripts/project-config.ts && bun scripts/hash-compat.ts && bun scripts/workspaces-unit.ts'
+    # Bun.hash against native bun (scripts/hash-compat.ts) and the workspace layout (scripts/workspaces-unit.ts), and the source pass that keeps AsyncLocalStorage across await (scripts/async-await.ts).
+    script: 'bun scripts/inspect-corpus/diff.ts && bun scripts/data-apis/jsonl.ts && bun scripts/data-apis/xml-stringify.ts && bun scripts/requests.ts && bun scripts/request-fields.ts && bun scripts/vfs-mirror.ts && bun scripts/test-results.ts && bun scripts/persist-skip.ts && bun scripts/runner-stop.ts && bun scripts/change-origin.ts && bun scripts/request-headers.ts && bun scripts/install-prune.ts && bun scripts/packument-cache.ts && bun scripts/project-config.ts && bun scripts/hash-compat.ts && bun scripts/workspaces-unit.ts && bun scripts/async-await.ts'
     toolchains: ['bun']
     inputs:
       - 'scripts/inspect-corpus/**/*'
@@ -81,6 +81,9 @@ tasks:
       - 'src/pkgCache.ts'
       - 'src/storage.ts'
       - 'src/worker/requestHeaders.ts'
+      - 'scripts/async-await.ts'
+      - 'src/asyncAwait.ts'
+      - 'src/worker/node/asyncHooks.ts'
   test-git:
     # The WASI host over the VFS (src/git/wasi.ts): its edge cases, then crates/git-wasm's git.wasm committing into a
     # VFS whose .git native git then checks (fsck, log, status); the git worker's copy of the project (mirror.ts) staying
@@ -124,6 +127,14 @@ tasks:
     # prints for it; the synchronous calls run on an isolated embedder (on both origins) and throw on one that isn't.
     # Needs Chrome, so it isn't part of `test`.
     script: 'bun scripts/processes.ts && bun scripts/processes.ts --no-native --isolated && bun scripts/processes.ts --no-native --content-origin --isolated'
+    toolchains: ['bun']
+    options:
+      cache: false
+  test-als:
+    # AsyncLocalStorage end to end (scripts/als.ts): scripts/als/ runs in the embed in headless Chrome (a Bun.serve one
+    # through the preview, a Hono app with contextStorage() installed from npm) and prints what native Bun prints for it.
+    # Needs Chrome and the network, so it isn't part of `test`.
+    command: 'bun scripts/als.ts'
     toolchains: ['bun']
     options:
       cache: false
