@@ -1,9 +1,13 @@
-// axios's node adapter (node:http underneath) against a Bun.serve of the same program.
-const base = require("axios");
+// axios's default adapter (node:http underneath) against a Bun.serve of the same program. `import` and `require` must
+// both reach axios's node build, and Bun has no XMLHttpRequest, so axios picks its http adapter.
+console.log("start");
+import axios from "axios";
+const req = require("axios");
 
-// The "http" adapter is axios's node one. By default the worker's XMLHttpRequest makes axios pick its xhr adapter
-// (Bun has none), which is the browser's network, not node:http.
-const axios = base.create({ adapter: "http" });
+console.log("globals:", typeof XMLHttpRequest, typeof window, typeof document);
+console.log("import:", import.meta.resolve("axios").split("/node_modules/")[1]);
+console.log("adapters:", JSON.stringify(axios.defaults.adapter), typeof axios.getAdapter("http"));
+console.log("same:", typeof req.get, req.defaults.adapter.join());
 
 const server = Bun.serve({
   port: 3012,

@@ -6,6 +6,7 @@ import { dataFormat, parseDataFile } from "../../resolver";
 import { transpileSync, transpileSyncEsm } from "../../transpiler";
 import { FUNCTION_HEADER_LINES, registerSource } from "../sourceMaps";
 import { tsconfigFor } from "../../tsconfig";
+import { XHR } from "../xhr";
 
 /** The step debugger's global in a debug run (worker/debugger.ts; read here, not imported: the page loads this file too). */
 const debug = () => (globalThis as { __dbg?: { active?: boolean; file(id: number, path: string, table: unknown): void } }).__dbg;
@@ -66,7 +67,7 @@ const importing = new Set<string>();
  */
 function tellPage(what: "claim" | "done" | "fail" | "mock", file: string, names?: string[]): boolean {
   if (!vfsRoot) return true;
-  const xhr = new XMLHttpRequest();
+  const xhr = new XHR();
   // The names as one path segment: the service worker decodes the path once.
   const arg = names ? `/${encodeURIComponent(encodeURIComponent(JSON.stringify(names)))}` : "";
   xhr.open("GET", `${vfsRoot()}__esmsync/${what}${arg}${file}`, false);
