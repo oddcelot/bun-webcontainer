@@ -119,6 +119,16 @@ tasks:
     toolchains: ['bun']
     options:
       cache: false
+  test-compress:
+    # zstd and brotli end to end (scripts/compress.ts): fixtures/compress runs in the embed in headless Chrome (Bun.zstd*,
+    # node:zlib's brotli and zstd, CompressionStream) and prints what native Bun prints for it; data native Bun
+    # compressed decompresses there, and what the playground compresses decompresses in native Bun. Needs Chrome.
+    command: 'bun scripts/compress.ts'
+    toolchains: ['bun']
+    deps:
+      - 'compress-wasm:build'
+    options:
+      cache: false
   test-errors:
     # Errors as programs see and print them (scripts/errors.ts): `error.stack`'s names, paths and columns, uncaught
     # errors' source previews, I/O errors and promise states in the embed in headless Chrome, against native Bun's
