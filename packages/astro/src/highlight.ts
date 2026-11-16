@@ -369,9 +369,15 @@ export const BLOCK_CSS = `
     font-size: var(--runbun-code-size, 0.875rem);
     line-height: var(--runbun-code-line-height, 1.6);
   }
-  & .runbun-request-headers,
-  & .runbun-request-body {
-    border-bottom: 1px solid var(--runbun-code-border, color-mix(in srgb, currentColor 15%, transparent));
+  /* What's sent (headers, body) sits in a sunken box, so it reads apart from the response under it, which doesn't.
+     --runbun-request-bg and --runbun-request-radius restyle the box. */
+  & :is(.runbun-request-headers, .runbun-request-body) pre {
+    margin: 0.375rem 0.75rem 0.25rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--runbun-code-border, color-mix(in srgb, currentColor 15%, transparent));
+    border-radius: var(--runbun-request-radius, 6px);
+    /* An image layer: the highlighter writes the block's background-color inline. */
+    background-image: linear-gradient(var(--runbun-request-bg, color-mix(in srgb, currentColor 5%, transparent)) 0 0);
   }
   & .runbun-request-label,
   & .runbun-response-pending {
