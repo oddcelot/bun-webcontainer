@@ -119,6 +119,16 @@ tasks:
     toolchains: ['bun']
     options:
       cache: false
+  test-crypto:
+    # node:crypto's ciphers, keys and signatures end to end (scripts/crypto.ts): fixtures/crypto runs in the embed in
+    # headless Chrome and prints what native Bun prints; then jsonwebtoken (RS256, PS256, ES256, HS256) is installed
+    # and checked the same way (needs the npm registry). Needs Chrome, so it isn't part of `test`.
+    command: 'bun scripts/crypto.ts'
+    toolchains: ['bun']
+    deps:
+      - 'crypto-wasm:build'
+    options:
+      cache: false
   test-errors:
     # Errors as programs see and print them (scripts/errors.ts): `error.stack`'s names, paths and columns, uncaught
     # errors' source previews, I/O errors and promise states in the embed in headless Chrome, against native Bun's
