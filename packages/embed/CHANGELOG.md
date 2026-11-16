@@ -4,6 +4,28 @@ Notable changes per release of `@runbun/embed`. Each release is tagged `embed-v<
 with its section. The element talks to the playground deployed at runbun.dev over the embed protocol (version 1),
 which only grows, so any release works with the live playground.
 
+## 0.7.0 — 2026-11-16
+
+One row over the code: Run, expand, the status pill and the ⋯ menu move into the editor's tab bar, and an embed can
+frame its panes and set the room around them, to sit on a page that styles it. `height="auto"` now fits once and a
+handle sizes the embed by hand. runbun.dev's `embed.js` has all of it already. Nothing needs action, but an embed with
+`height="auto"` no longer grows with its content after it loads; drag or double-click the handle to fit it again.
+
+- **Added** — **Framed panes.** `vars` takes `--pane-border`, a line around each pane; with `--canvas: transparent`
+  the editor and the preview are separate boxes on your page.
+- **Added** — **Set the room around the panes.** `--gutter` (default 4px) is the space between the panes and the
+  embed's edge; `0px` puts them flush inline, for a page that frames the embed itself. The large view keeps 4px.
+- **Changed** — **One row over the code.** Run/Stop, the expand button, the status pill and the ⋯ menu sit in the
+  editor's tab bar instead of a bar above it. Embeds with `features="-tabs"` and `mode="result"` keep the bar.
+- **Changed** — **Steady heights, and a handle to change them.** With `height="auto"`, the embed fits its content once
+  and no longer jumps as you switch tabs; drag the handle under it (or focus it and use the arrow keys) to make it
+  taller or shorter, and double-click it to fit again. `features="-resize"` hides the handle; style it with
+  `::part(resize)`.
+- **Changed** — **The large view keeps its own bar.** Expanded, the controls sit in a bar over a solid background,
+  even when `--canvas` is transparent. Inline, the last control's corner follows the pane's radius.
+- **Fixed** — **Posters no longer scroll when their content grows.** With `height="auto"`, the box keeps fitting the
+  poster when fonts load or page styles change its size before Run.
+
 ## 0.6.0 — 2026-11-15
 
 A quieter frame: an embed can drop its Run button, and with it the whole bar, for pages that only show code. Reset
