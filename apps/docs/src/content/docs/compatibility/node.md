@@ -27,8 +27,8 @@ Built-ins import with or without the `node:` prefix. Labels are explained on the
 | `domain` | ❌ Missing | |
 | `events` | ✅ Works | `EventEmitter`, `once`, `on`, with `AbortSignal`. |
 | `fs`, `fs/promises` | 🟡 Partial | Sync, callback and promise APIs over the project's files: read/write/append, `stat`, `readdir` (with `Dirent`), `mkdir`, `rm`, `rename`, `copyFile`, `cp`, file descriptors, `FileHandle`, read/write streams. `watch` (also recursive) and `watchFile` fire on changes. No symlinks or hard links; `chmod`/`chown` do nothing; `fs/promises` `watch` never yields. |
-| `http` | 🟡 Partial | `createServer().listen()` serves the [preview](/guides/features/#preview): streamed responses, cookies, WebSocket `upgrade`. `http.request`/`http.get` throw; use `fetch`. |
-| `https` | 🟡 Partial | Like `http`; no TLS. |
+| `http` | 🟡 Partial | `createServer().listen()` serves the [preview](/guides/features/#preview): streamed responses, cookies, WebSocket `upgrade`. `http.request`/`http.get` (a `ClientRequest` over `fetch`, an `IncomingMessage` streaming the body; `timeout`, `signal`, `auth`, `abort()`; `agent` is accepted and ignored) reach this program's own servers on `localhost` and, for other hosts, follow the browser's CORS rules. Redirects are followed, the request body is sent when `end()` is called, and every network failure is `ECONNREFUSED` (the browser doesn't say why). A child process's server isn't reachable. axios works through `require("axios")`'s node build, not `import`, which resolves to its browser build. |
+| `https` | 🟡 Partial | Like `http`, including `https.request`/`https.get` (the browser does the TLS); a server has no TLS. |
 | `http2` | ⚪ Stub | |
 | `inspector` | ⚪ Stub | |
 | `module` | 🟡 Partial | `builtinModules`, `isBuiltin`. `createRequire` loads built-ins, project files and installed packages with Bun's resolver, computed specifiers too, and has `require.resolve`, `require.cache` and `require.main`; `require()` of an ES module loads it synchronously, with limits (see [Toolchain](/compatibility/toolchain/#commonjs-and-require)). |
