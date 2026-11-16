@@ -39,8 +39,10 @@ tasks:
     # changed a file (scripts/change-origin.ts), the worker's Requests keeping forbidden headers
     # (scripts/request-headers.ts), what `bun install` prunes from node_modules (scripts/install-prune.ts) and when it
     # reuses a cached packument (scripts/packument-cache.ts), how runbun.json is read (scripts/project-config.ts),
-    # Bun.hash against native bun (scripts/hash-compat.ts) and the workspace layout (scripts/workspaces-unit.ts), and the source pass that keeps AsyncLocalStorage across await (scripts/async-await.ts).
-    script: 'bun scripts/inspect-corpus/diff.ts && bun scripts/data-apis/jsonl.ts && bun scripts/data-apis/xml-stringify.ts && bun scripts/requests.ts && bun scripts/request-fields.ts && bun scripts/vfs-mirror.ts && bun scripts/test-results.ts && bun scripts/persist-skip.ts && bun scripts/runner-stop.ts && bun scripts/change-origin.ts && bun scripts/request-headers.ts && bun scripts/install-prune.ts && bun scripts/packument-cache.ts && bun scripts/project-config.ts && bun scripts/hash-compat.ts && bun scripts/workspaces-unit.ts && bun scripts/async-await.ts'
+    # Bun.hash against native bun (scripts/hash-compat.ts), the workspace layout (scripts/workspaces-unit.ts), the source
+    # pass that keeps AsyncLocalStorage across await (scripts/async-await.ts) and S3 signing and operations against
+    # native bun on a local S3 (scripts/s3-signing.ts; scripts/s3.ts is the browser run).
+    script: 'bun scripts/inspect-corpus/diff.ts && bun scripts/data-apis/jsonl.ts && bun scripts/data-apis/xml-stringify.ts && bun scripts/requests.ts && bun scripts/request-fields.ts && bun scripts/vfs-mirror.ts && bun scripts/test-results.ts && bun scripts/persist-skip.ts && bun scripts/runner-stop.ts && bun scripts/change-origin.ts && bun scripts/request-headers.ts && bun scripts/install-prune.ts && bun scripts/packument-cache.ts && bun scripts/project-config.ts && bun scripts/hash-compat.ts && bun scripts/workspaces-unit.ts && bun scripts/async-await.ts && bun scripts/s3-signing.ts'
     toolchains: ['bun']
     inputs:
       - 'scripts/inspect-corpus/**/*'
@@ -73,6 +75,10 @@ tasks:
       - 'src/overrides.ts'
       - 'src/npmrc.ts'
       - 'scripts/workspaces-unit.ts'
+      - 'scripts/s3-signing.ts'
+      - 'scripts/s3/**/*'
+      - 'src/worker/s3.ts'
+      - 'src/worker/mime.ts'
       - '/packages/vfs/vfs.ts'
       - 'scripts/request-headers.ts'
       - 'scripts/install-prune.ts'
