@@ -141,5 +141,7 @@ const process: Record<string, any> = Object.assign(new EventEmitter(), {
     exitHook(Number(process.exitCode ?? 0) | 0);
   },
 });
+// `Object.prototype.toString.call(process)` is "[object process]", which axios and others test to detect Node.
+Object.defineProperty(process, Symbol.toStringTag, { value: "process", configurable: true });
 
 export default process;
