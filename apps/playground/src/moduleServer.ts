@@ -3,6 +3,7 @@ import { commonJSFacade, exportNames as commonJSExportNames, isCommonJS, JS_LIKE
 import { firstLineLength, shiftFirstColumn } from "./sourceMap";
 import bunWrap from "./bunWrap.js?raw";
 import { loadTranspiler, type Resolver } from "./transpiler";
+import { restoreContext } from "./asyncAwait";
 import { transpileCached } from "./transpileCache";
 import { instrumenting } from "./debugSession";
 import { tsconfigFor } from "./tsconfig";
@@ -380,7 +381,8 @@ async function serveCommonJS(vfs: VFS, path: string, onError: (msg: string) => v
   });
   // The body is plain source: its `import("x")` calls still need their specifiers resolved.
   try {
-    const [js, mappings] = (await transpileCached(rewriteMeta(code, path, bun), `${path}.js`, tsconfigFor(vfs, path), resolver(vfs, dir), false, bun)).split("\0");
+    const [plain, mappings] = (await transpileCached(rewriteMeta(code, path, bun), `${path}.js`, tsconfigFor(vfs, path), resolver(vfs, dir), false, bun)).split("\0");
+    const js = bun ? restoreContext(plain) : plain;
     // In the worker, its source map leads to the wrapper's lines, which are the file's (or the first transpile's, which
     // `inner` maps back) after a header (worker/sourceMaps.ts).
     if (mappings === undefined) return { status: 200, body: js };
@@ -526,7 +528,9 @@ async function serveModuleOnce(vfs: VFS, rawPath: string, onError: (msg: string)
     // In the worker, with a source map: its error printer maps stack frames back to the file's lines (worker/sourceMaps.ts).
     // In a debug run, the project's own files call the step debugger before each statement (worker/debugger.ts).
     const debug = target === "bun" && instrumenting() && !/(^|\/)node_modules\//.test(path);
-    const [transpiled, mappings, table] = (await transpileCached(src, path, tsconfigFor(vfs, path), resolver(vfs, dirname(path)), target === "bun", target === "bun", debug)).split("\0");
+    const [plain, mappings, table] = (await transpileCached(src, path, tsconfigFor(vfs, path), resolver(vfs, dirname(path)), target === "bun", target === "bun", debug)).split("\0");
+    // In the worker, each `await` keeps the AsyncLocalStorage context (asyncAwait.ts).
+    const transpiled = target === "bun" ? restoreContext(plain) : plain;
     let code = transpiled;
     if (target === "bun") {
       const sync = syncEsm.get(path);
