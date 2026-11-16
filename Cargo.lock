@@ -510,6 +510,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "bun_htmlrewriter_wasm"
+version = "0.0.0"
+dependencies = [
+ "lol_html",
+]
+
+[[package]]
 name = "bun_http_types"
 version = "0.0.0"
 dependencies = [

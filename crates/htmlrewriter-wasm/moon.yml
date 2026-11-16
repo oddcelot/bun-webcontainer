@@ -1,0 +1,14 @@
+$schema: 'https://moonrepo.dev/schemas/project.json'
+
+language: 'rust'
+tags: ['wasm64']
+
+tasks:
+  build:
+    outputs:
+      - '/target/wasm64-unknown-unknown/release/bun_htmlrewriter_wasm.wasm'
+  test:
+    # test.ts runs the wasm under the playground's host (src/worker/htmlRewriter.ts) and diffs against native Bun.
+    inputs:
+      - 'expected.json'
+      - '/apps/playground/src/worker/htmlRewriter.ts'

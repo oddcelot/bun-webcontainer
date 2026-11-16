@@ -1,0 +1,12 @@
+[package]
+name = "bun_htmlrewriter_wasm"
+version = "0.0.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# Bun's fork of Cloudflare's lol-html (adds handler suspension, which async handlers use): the crate Bun's
+# HTMLRewriter wraps. bun/vendor/lolhtml is fetched by Bun's own build (scripts/build/deps/lolhtml.ts).
+lol_html = { path = "../../bun/vendor/lolhtml" }

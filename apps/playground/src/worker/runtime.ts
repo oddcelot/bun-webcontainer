@@ -25,6 +25,7 @@ import { Transpiler } from "./transpiler";
 import { makeJSONL } from "./jsonl";
 import { makeMarkdown } from "./markdown";
 import { makeXML, setProxyCheck } from "./xml";
+import { HTMLRewriter } from "./htmlRewriterWasm";
 import { isProxy } from "./proxies";
 import { markdownWasm, xmlWasm } from "../transpiler";
 import { asyncError, codeError, fsError } from "./node/errors";
@@ -123,6 +124,8 @@ g.__parseDataFile = parseDataFile;
 g.process = process;
 // Bun's Worker, on the process kernel (the browser's own can't load the project's files).
 g.Worker = WebWorker;
+// lol-html (wasm, loaded on first use). A global only, not a `Bun` member, as in Bun.
+g.HTMLRewriter = HTMLRewriter;
 g.global ??= globalThis;
 setProxyCheck(isProxy);
 g.Buffer ??= (builtins.buffer as { Buffer: unknown }).Buffer;

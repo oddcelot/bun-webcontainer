@@ -50,7 +50,7 @@ Reported version: `Bun.version` is `1.4.4-browser`. Labels are explained on the 
 | `Bun.markdown` | ✅ Works | Bun's Markdown parser and renderers (`bun_md`, in the transpiler's wasm, loaded on first use): `html` and `ansi` (themes, wrapping at `columns`; `light` defaults from `COLORFGBG`, which the playground doesn't set) give Bun's output, with Bun's options. `render` calls the callbacks with Bun's children and metadata, in Bun's order; `react` returns React elements (`react.transitional.element`, or `react.element` with `reactVersion` 18 or lower) with the components given. |
 | `Bun.Cookie`, `Bun.CookieMap` | ✅ Works | A port of Bun's: parsing, `set`/`delete`/`get`, `toSetCookieHeaders`, `toJSON`, iteration, `serialize`, with Bun's validation and errors. Route handlers get one as [`req.cookies`](#bunserve). |
 | `Bun.plugin`, `Bun.FileSystemRouter`, `Bun.mmap` | ❌ Missing | |
-| `HTMLRewriter` | ❌ Missing | |
+| `HTMLRewriter` | 🟡 Partial | Bun's own `lol-html` (`HTMLRewriter` is a global, as in Bun), compiled to wasm and loaded on first use: `on` (selectors, `element`, `comments` and `text` handlers), `onDocument` (`doctype`, `comments`, `text`, `end`), and the wrappers with all their methods and Bun's errors (`HTMLRewriterError`). `transform` takes a `Response` (a `Response` back, rewritten as its body is read; async handlers are awaited, the rewrite waits on them), a string (a string back) or an `ArrayBuffer`, typed array or `DataView` (an `ArrayBuffer` back), and not a `Blob`, as in Bun. A handler on a string or buffer input cannot return a promise: Bun still allows one that settles within a microtask, here it fails the rewrite with a `TypeError` (pass a `Response` instead). |
 
 Try a few of them:
 

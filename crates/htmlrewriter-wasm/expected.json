@@ -1,0 +1,868 @@
+{
+  "input: string returns a string": {
+    "value": [
+      "string",
+      "<p a=\"1\">x</p>"
+    ]
+  },
+  "input: ArrayBuffer returns an ArrayBuffer": {
+    "value": [
+      true,
+      "<p>y</p>"
+    ]
+  },
+  "input: Uint8Array returns an ArrayBuffer": {
+    "value": [
+      true,
+      "<p>y</p>"
+    ]
+  },
+  "input: DataView returns an ArrayBuffer (byteOffset and byteLength honoured)": {
+    "value": [
+      true,
+      "<p>y</p>"
+    ]
+  },
+  "input: Blob is not accepted": {
+    "error": [
+      "TypeError",
+      "TypeError",
+      "Expected Response or Body"
+    ]
+  },
+  "input: number is not accepted": {
+    "error": [
+      "TypeError",
+      "TypeError",
+      "Expected Response or Body"
+    ]
+  },
+  "input: Symbol is not accepted": {
+    "error": [
+      "TypeError",
+      "TypeError",
+      "Expected Response or Body"
+    ]
+  },
+  "input: no argument": {
+    "error": [
+      "TypeError",
+      "TypeError",
+      "Missing argument"
+    ]
+  },
+  "input: Response keeps status and headers": {
+    "value": [
+      201,
+      "Made",
+      "z",
+      "text/html",
+      "<p a=\"1\">x</p>"
+    ]
+  },
+  "input: Response body is used, a second transform throws": {
+    "value": [
+      true,
+      "TypeError",
+      "Response body already used"
+    ]
+  },
+  "input: empty body": {
+    "value": "\"\""
+  },
+  "input: chunks split inside a tag and a text": {
+    "value": "<p a=\"1\">x</p><p a=\"1\">y</p>"
+  },
+  "input: a token spanning many chunks": {
+    "value": "<a href=\"https://example.com/x\" n=\"https://example.com/x\">link</a>"
+  },
+  "handlers: element class instance as the handler object": {
+    "value": "<p>new</p>"
+  },
+  "handlers: this is the handler object": {
+    "value": true
+  },
+  "handlers: element must be a function": {
+    "error": [
+      "TypeError",
+      "TypeError",
+      "element must be a function"
+    ]
+  },
+  "handlers: element of a number": {
+    "error": [
+      "TypeError",
+      "TypeError",
+      "element must be a function"
+    ]
+  },
+  "handlers: on without handlers": {
+    "error": [
+      "TypeError",
+      "TypeError",
+      "Expected object"
+    ]
+  },
+  "handlers: on with one argument": {
+    "error": [
+      "TypeError",
+      "TypeError",
+      "Missing argument"
+    ]
+  },
+  "handlers: on without selector": {
+    "error": [
+      "TypeError",
+      "TypeError",
+      "Expected string"
+    ]
+  },
+  "handlers: onDocument of a number": {
+    "error": [
+      "TypeError",
+      "TypeError",
+      "Expected object"
+    ]
+  },
+  "handlers: invalid selector": {
+    "error": [
+      "Error",
+      "HTMLRewriterError",
+      "Dangling combinator in selector."
+    ]
+  },
+  "handlers: invalid selector name": {
+    "value": [
+      "Error",
+      "HTMLRewriterError"
+    ]
+  },
+  "handlers: a handler that throws, string input": {
+    "error": [
+      "Error",
+      "Error",
+      "test"
+    ]
+  },
+  "handlers: a handler that throws rejects the body": {
+    "error": [
+      "Error",
+      "Error",
+      "test"
+    ]
+  },
+  "handlers: a handler that returns an Error rejects the body": {
+    "error": [
+      "Error",
+      "Error",
+      "returned, not thrown"
+    ]
+  },
+  "handlers: later handlers do not run after a throw": {
+    "value": [
+      "a"
+    ]
+  },
+  "handlers: registrations apply to every transform": {
+    "value": [
+      "<p a=\"1\">x</p>",
+      "<p a=\"1\">y</p>"
+    ]
+  },
+  "handlers: on() inside a handler applies to the next transform": {
+    "value": [
+      "<div>div</div><span>span</span><div>div</div><span>span</span>",
+      "<div>div</div><span n=\"7\">span</span><div>div</div><span n=\"7\">span</span>"
+    ]
+  },
+  "handlers: each selector keeps its own handlers, also after a rejected on()": {
+    "value": "<p data-i=\"11\">text 11</p><p data-i=\"10\">element 10</p><p data-i=\"9\">text 9</p><p data-i=\"8\">element 8</p><p data-i=\"7\">text 7</p><p data-i=\"6\">element 6</p><p data-i=\"5\">text 5</p><p data-i=\"4\">element 4</p><p data-i=\"3\">text 3</p><p data-i=\"2\">element 2</p><p data-i=\"1\">text 1</p><p data-i=\"0\">element 0</p>"
+  },
+  "handlers: a selector nested too deeply": {
+    "value": [
+      "Selector is nested too deeply.",
+      "Selector is nested too deeply.",
+      "Selector is nested too deeply.",
+      "Selector is nested too deeply.",
+      "Selector is nested too deeply.",
+      "ok"
+    ]
+  },
+  "async: replacement after a timer": {
+    "value": "<span>replace</span>"
+  },
+  "async: mutations before and after the await": {
+    "value": "<div before=\"1\" after=\"2\" id=\"x\">inner</div>"
+  },
+  "async: handlers run in document order": {
+    "value": [
+      "<i id=\"0\">0</i><i id=\"1\">1</i><i id=\"2\">2</i>",
+      [
+        "start 0",
+        "end 0",
+        "start 1",
+        "end 1",
+        "start 2",
+        "end 2"
+      ]
+    ]
+  },
+  "async: an attribute iterator from before the await keeps working": {
+    "value": [
+      "<div a=\"1\" b=\"2\" c=\"3\">x</div>",
+      [
+        [
+          "a",
+          "1"
+        ],
+        [
+          "b",
+          "2"
+        ],
+        [
+          "c",
+          "3"
+        ],
+        true
+      ]
+    ]
+  },
+  "async: the next handler for the same element runs after the previous one's await": {
+    "value": "<div a=\"\" b=\"\"></div>"
+  },
+  "async: element removed after the await suppresses its content": {
+    "value": "ab"
+  },
+  "async: text handler": {
+    "value": "<div>HELLO</div>world"
+  },
+  "async: text handler on lastInTextNode": {
+    "value": "<div>hello|</div>"
+  },
+  "async: comments, doctype and document end handlers": {
+    "value": "[c]body<!--end-->"
+  },
+  "async: onEndTag handler": {
+    "value": "<p>x!</p>"
+  },
+  "async: onEndTag registered after an await": {
+    "value": "<p>x!</p>"
+  },
+  "async: rejection rejects the body": {
+    "error": [
+      "Error",
+      "Error",
+      "rej"
+    ]
+  },
+  "async: rejection with no real await": {
+    "error": [
+      "Error",
+      "Error",
+      "rej2"
+    ]
+  },
+  "async: a microtask-only handler after a suspending one": {
+    "value": "<p a=\"1\" b=\"2\">x</p>"
+  },
+  "async: chunked input with async handlers": {
+    "value": "<p id=\"1\" n=\"1\">a</p><p id=\"2\" n=\"2\">b</p><p id=\"3\" n=\"3\">c</p>"
+  },
+  "async: chained transforms": {
+    "value": "<p one=\"1\" two=\"2\">x</p>"
+  },
+  "async: string input with a handler that waits for a timer": {
+    "value": [
+      "TypeError",
+      "HTMLRewriter.transform() cannot synchronously return a string beca"
+    ]
+  },
+  "element: tagName, selfClosing, canHaveContent": {
+    "value": {
+      "p": [
+        false,
+        true,
+        "http://www.w3.org/1999/xhtml"
+      ],
+      "br": [
+        false,
+        false,
+        "http://www.w3.org/1999/xhtml"
+      ],
+      "div": [
+        true,
+        true,
+        "http://www.w3.org/1999/xhtml"
+      ],
+      "svg": [
+        false,
+        true,
+        "http://www.w3.org/2000/svg"
+      ],
+      "circle": [
+        true,
+        false,
+        "http://www.w3.org/2000/svg"
+      ]
+    }
+  },
+  "element: tagName renames the start and end tag": {
+    "value": "<section>hi</section>"
+  },
+  "element: tagName with a forbidden character": {
+    "error": [
+      "Error",
+      "HTMLRewriterError",
+      "` ` character is forbidden in the tag name"
+    ]
+  },
+  "element: attributes iterate in order": {
+    "value": [
+      "<div first second=\"alrihgt\" third=\"123\" fourth=5 fifth=helloooo>hello</div>",
+      [
+        [
+          "first",
+          ""
+        ],
+        [
+          "second",
+          "alrihgt"
+        ],
+        [
+          "third",
+          "123"
+        ],
+        [
+          "fourth",
+          "5"
+        ],
+        [
+          "fifth",
+          "helloooo"
+        ]
+      ]
+    ]
+  },
+  "element: attribute names are lowercased": {
+    "value": [
+      [
+        [
+          "data-x",
+          "1"
+        ]
+      ],
+      "1",
+      true
+    ]
+  },
+  "element: attribute iterator is detached after the handler returns": {
+    "value": [
+      [
+        [
+          "a",
+          "1"
+        ],
+        [
+          "b",
+          "2"
+        ],
+        [
+          "c",
+          "3"
+        ]
+      ],
+      {
+        "done": true
+      },
+      {
+        "done": true
+      },
+      []
+    ]
+  },
+  "element: attribute iterator is detached when attributes are mutated": {
+    "value": [
+      {
+        "done": true
+      },
+      {
+        "done": true
+      },
+      [
+        [
+          "b",
+          "2"
+        ],
+        [
+          "c",
+          "3"
+        ],
+        [
+          "x",
+          "9"
+        ]
+      ]
+    ]
+  },
+  "element: attribute iterator's Symbol.iterator": {
+    "value": {
+      "name": "[Symbol.iterator]",
+      "length": 0,
+      "writable": true,
+      "enumerable": false,
+      "configurable": true
+    }
+  },
+  "element: empty and absent attributes": {
+    "value": {
+      "explicitEmpty": "",
+      "boolean": "",
+      "valued": "v",
+      "absent": null,
+      "has": [
+        true,
+        true,
+        false
+      ]
+    }
+  },
+  "element: set and remove attributes": {
+    "value": "<div a=\"new\" c=\"3\" x=\"\">t</div>"
+  },
+  "element: non-ASCII attribute values": {
+    "value": "Šžõäöü"
+  },
+  "element: setAttribute with a forbidden name": {
+    "error": [
+      "Error",
+      "HTMLRewriterError",
+      "` ` character is forbidden in the attribute name"
+    ]
+  },
+  "element: setAttribute with an empty name": {
+    "error": [
+      "Error",
+      "HTMLRewriterError",
+      "Attribute name can't be empty."
+    ]
+  },
+  "element: setAttribute failure leaves the element unchanged": {
+    "value": [
+      [
+        [
+          "x",
+          "1"
+        ]
+      ],
+      "<div x=\"1\">t</div>"
+    ]
+  },
+  "element: prepend and append": {
+    "value": "<p><span>prepend html</span>&lt;span&gt;prepend&lt;/span&gt;test&lt;span&gt;append&lt;/span&gt;<span>append html</span></p>"
+  },
+  "element: before and after": {
+    "value": "&lt;b&gt;b&lt;/b&gt;<b>b</b><p>test</p>&lt;i&gt;a&lt;/i&gt;<i>a</i>"
+  },
+  "element: replace": {
+    "value": [
+      "&lt;span&gt;r&lt;/span&gt;!",
+      "<span>r</span>!"
+    ]
+  },
+  "element: setInnerContent": {
+    "value": [
+      "<p>&lt;span&gt;replace&lt;/span&gt;</p>",
+      "<p><span>replace</span></p>",
+      "<p></p>"
+    ]
+  },
+  "element: remove and removeAndKeepContent": {
+    "value": [
+      "ab",
+      "atestb",
+      "<b>x</b>"
+    ]
+  },
+  "element: removed": {
+    "value": [
+      false,
+      true
+    ]
+  },
+  "element: chained calls return the element": {
+    "value": true
+  },
+  "element: a content argument that is not a string": {
+    "value": "5<p>xtrue</p>obj"
+  },
+  "element: before() without content": {
+    "value": [
+      "TypeError",
+      "ERR_INVALID_ARG_TYPE",
+      "Expected string"
+    ]
+  },
+  "element: onEndTag": {
+    "value": "<p>x&lt;!--</p>--&gt;"
+  },
+  "element: onEndTag name": {
+    "value": [
+      "<p>hi</div>",
+      "<p>hi"
+    ]
+  },
+  "element: a second onEndTag replaces the first": {
+    "value": "<p>xB</p>"
+  },
+  "element: onEndTag from two handlers on one element": {
+    "value": "<p>x2</p>"
+  },
+  "element: onEndTag of a void element": {
+    "error": [
+      "Error",
+      "HTMLRewriterError",
+      "No end tag."
+    ]
+  },
+  "element: onEndTag with a non-function": {
+    "value": [
+      "TypeError",
+      "Expected a function"
+    ]
+  },
+  "detached: a stashed element answers nothing": {
+    "value": [
+      null,
+      null,
+      null,
+      false,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "detached: setters do nothing and never coerce": {
+    "value": [
+      [],
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "detached: a missing argument is an undefined one": {
+    "value": [
+      true,
+      {
+        "element.before()": {
+          "name": "TypeError",
+          "code": "ERR_INVALID_ARG_TYPE",
+          "message": "Expected string"
+        },
+        "element.after()": {
+          "name": "TypeError",
+          "code": "ERR_INVALID_ARG_TYPE",
+          "message": "Expected string"
+        },
+        "element.replace()": {
+          "name": "TypeError",
+          "code": "ERR_INVALID_ARG_TYPE",
+          "message": "Expected string"
+        },
+        "element.prepend()": {
+          "name": "TypeError",
+          "code": "ERR_INVALID_ARG_TYPE",
+          "message": "Expected string"
+        },
+        "element.append()": {
+          "name": "TypeError",
+          "code": "ERR_INVALID_ARG_TYPE",
+          "message": "Expected string"
+        },
+        "element.setInnerContent()": {
+          "name": "TypeError",
+          "code": "ERR_INVALID_ARG_TYPE",
+          "message": "Expected string"
+        },
+        "element.getAttribute()": {
+          "name": "TypeError",
+          "code": "ERR_INVALID_ARG_TYPE",
+          "message": "Expected string"
+        },
+        "element.hasAttribute()": {
+          "name": "TypeError",
+          "code": "ERR_INVALID_ARG_TYPE",
+          "message": "Expected string"
+        },
+        "element.removeAttribute()": {
+          "name": "TypeError",
+          "code": "ERR_INVALID_ARG_TYPE",
+          "message": "Expected string"
+        },
+        "element.setAttribute()": {
+          "name": "TypeError",
+          "code": "ERR_INVALID_ARG_TYPE",
+          "message": "Expected string"
+        },
+        "element.onEndTag()": {
+          "name": "TypeError",
+          "message": "Expected a function"
+        },
+        "element.setAttribute(a)": {
+          "name": "TypeError",
+          "code": "ERR_INVALID_ARG_TYPE",
+          "message": "Expected string"
+        },
+        "text.before()": {
+          "name": "TypeError",
+          "code": "ERR_INVALID_ARG_TYPE",
+          "message": "Expected string"
+        },
+        "text.after()": {
+          "name": "TypeError",
+          "code": "ERR_INVALID_ARG_TYPE",
+          "message": "Expected string"
+        },
+        "text.replace()": {
+          "name": "TypeError",
+          "code": "ERR_INVALID_ARG_TYPE",
+          "message": "Expected string"
+        },
+        "comment.before()": {
+          "name": "TypeError",
+          "code": "ERR_INVALID_ARG_TYPE",
+          "message": "Expected string"
+        },
+        "comment.after()": {
+          "name": "TypeError",
+          "code": "ERR_INVALID_ARG_TYPE",
+          "message": "Expected string"
+        },
+        "comment.replace()": {
+          "name": "TypeError",
+          "code": "ERR_INVALID_ARG_TYPE",
+          "message": "Expected string"
+        },
+        "endTag.before()": {
+          "name": "TypeError",
+          "code": "ERR_INVALID_ARG_TYPE",
+          "message": "Expected string"
+        },
+        "endTag.after()": {
+          "name": "TypeError",
+          "code": "ERR_INVALID_ARG_TYPE",
+          "message": "Expected string"
+        },
+        "end.append()": {
+          "name": "TypeError",
+          "code": "ERR_INVALID_ARG_TYPE",
+          "message": "Expected string"
+        }
+      }
+    ]
+  },
+  "text: chunks and lastInTextNode": {
+    "value": [
+      [
+        "Lorem ipsum!",
+        false,
+        false
+      ],
+      [
+        "",
+        true,
+        false
+      ]
+    ]
+  },
+  "text: a text node split across chunks": {
+    "value": [
+      [
+        "Lor",
+        false
+      ],
+      [
+        "em ip",
+        false
+      ],
+      [
+        "sum",
+        false
+      ],
+      [
+        "",
+        true
+      ]
+    ]
+  },
+  "text: replace, before, after, remove": {
+    "value": [
+      "<p>&lt;b&gt;new&lt;/b&gt;</p>",
+      "<p><b>new</b></p>",
+      "<p>[old]</p>",
+      "<p></p>"
+    ]
+  },
+  "comments: mutations": {
+    "value": [
+      "<p>&lt;span&gt;before&lt;/span&gt;<span>before html</span><!--test--><span>after html</span>&lt;span&gt;after&lt;/span&gt;</p>",
+      "<p>&lt;span&gt;replace&lt;/span&gt;</p>",
+      "<p><span>replace</span></p>",
+      "<p></p>"
+    ]
+  },
+  "comments: text property": {
+    "value": [
+      "<p><!--new--></p>",
+      [
+        false,
+        "test",
+        "new"
+      ]
+    ]
+  },
+  "comments: text setter coerces with ToString, which may re-enter": {
+    "value": "<p>A<!--B--></p>"
+  },
+  "comments: text with a closing sequence": {
+    "error": [
+      "Error",
+      "HTMLRewriterError",
+      "Comment text shouldn't contain comment closing sequence (`-->`)."
+    ]
+  },
+  "document: comments and text": {
+    "value": [
+      [
+        "text",
+        "a",
+        false
+      ],
+      [
+        "text",
+        "",
+        true
+      ],
+      [
+        "comment",
+        "c"
+      ],
+      [
+        "text",
+        "d",
+        false
+      ],
+      [
+        "text",
+        "",
+        true
+      ]
+    ]
+  },
+  "document: doctype fields": {
+    "value": [
+      {
+        "name": "html",
+        "publicId": null,
+        "systemId": null,
+        "removed": false
+      },
+      {
+        "name": "html",
+        "publicId": "",
+        "systemId": "",
+        "removed": false
+      },
+      {
+        "name": "html",
+        "publicId": "-//W3C//DTD HTML 4.01//EN",
+        "systemId": "http://www.w3.org/TR/html4/strict.dtd",
+        "removed": false
+      }
+    ]
+  },
+  "document: doctype remove": {
+    "value": "<p>x</p>"
+  },
+  "document: end append": {
+    "value": [
+      "<p>x</p><!--end-->",
+      "<p>x&lt;/p&gt;<b>"
+    ]
+  },
+  "document: handlers in registration order": {
+    "value": [
+      "p",
+      "doc1",
+      "doc2",
+      "p",
+      "doc1",
+      "doc2"
+    ]
+  },
+  "selectors": {
+    "value": [
+      "<h1>new</h1><p>new</p>",
+      "<div><p>1</p><p>new</p><p>3</p></div>",
+      "<div><p>new</p><p>2</p><p>3</p></div>",
+      "<div><p>1</p><h1>2</h1><p>new</p><h1>4</h1><p>5</p></div>",
+      "<div><h1>1</h1><p>new</p><p>3</p></div>",
+      "<div><p>1</p><p>new</p><p>new</p></div>",
+      "<p class=\"red\">new</p><p>2</p>",
+      "<h1 id=\"header\">new</h1><h1>2</h1>",
+      "<p data-test>new</p><p>2</p>",
+      "<p data-test=\"one\">new</p><p data-test=\"two\">2</p>",
+      "<p data-test=\"one\">new</p><p data-test=\"OnE\">new</p><p data-test=\"two\">3</p>",
+      "<p data-test=\"one\">new</p><p data-test=\"OnE\">2</p><p data-test=\"two\">3</p>",
+      "<p data-test=\"one two three\">new</p><p data-test=\"one two\">new</p><p data-test=\"one\">3</p>",
+      "<p data-test=\"a1\">new</p><p data-test=\"a2\">new</p><p data-test=\"b1\">3</p>",
+      "<p data-test=\"a1\">new</p><p data-test=\"a2\">2</p><p data-test=\"b1\">new</p>",
+      "<p data-test=\"abc\">new</p><p data-test=\"ab\">new</p><p data-test=\"a\">3</p>",
+      "<p data-test=\"a\">new</p><p data-test=\"a-1\">new</p><p data-test=\"a2\">3</p>",
+      "<div><h1><span>new</span></h1><span>new</span><b>3</b></div>",
+      "<div><h1><span>1</span></h1><span>new</span><b>3</b></div>",
+      "<a>new</a><b>new</b><i>3</i>"
+    ]
+  },
+  "selectors: many selectors with parentheses in a string": {
+    "value": "<i></i>"
+  },
+  "output: text() twice concurrently is one body": {
+    "value": [
+      "<p>y</p>",
+      "TypeError"
+    ]
+  },
+  "output: a repeated transform in a loop": {
+    "value": "<div>new</div>"
+  },
+  "output: a large document": {
+    "value": [
+      2000,
+      78685,
+      "<table><tr><td id=\"0\" n=\"0\">0</td></tr><tr><td id=\"1\" n=\"1\">1</td></tr><tr><td i",
+      "8</td></tr><tr><td id=\"1999\" n=\"1999\">1999</td></tr></table>"
+    ]
+  },
+  "output: toString tag": {
+    "value": [
+      "[object HTMLRewriter]",
+      [
+        "constructor",
+        "on",
+        "onDocument",
+        "transform"
+      ]
+    ]
+  },
+  "output: BOM is kept": {
+    "value": "\"<p a=\\\"1\\\">x</p>\""
+  }
+}
