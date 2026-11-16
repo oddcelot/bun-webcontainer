@@ -3,6 +3,17 @@
 Notable changes per release of `@runbun/astro`. Each release is tagged `astro-v<version>` and has a GitHub Release
 with its section.
 
+## 0.5.0 — 2026-11-16
+
+Static blocks look more like the live embed: tabbed groups and a poster's request tabs take the page's `--tab-*`
+properties and slide between tabs as the playground's do, and a poster's requests set what's sent apart from the
+response. Nothing needs action to upgrade.
+
+- **Added** — **Tabs that slide and follow your theme.** A group's tabs and a poster's request tabs take the embed's
+  `--tab-*` properties from the page, and the open tab's look slides to the next one, as the playground's tabs do.
+- **Changed** — **Requests read apart from their responses.** In a poster's preset requests, what's sent (headers,
+  body) sits in an inset box; `--runbun-request-bg` and `--runbun-request-radius` restyle it.
+
 ## 0.4.0 — 2026-11-13
 
 `<Playground>` can carry files that belong to the page, such as the tests a lesson checks a reader's code with, and
