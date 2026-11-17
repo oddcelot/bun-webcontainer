@@ -64,22 +64,38 @@ pub fn commit(ctx: &Ctx, args: &[String]) -> Res {
             _ => {}
         }
     }
+    let merging = crate::status::merging();
+    if amend && merging {
+        return fatal("You are in the middle of a merge -- cannot amend.");
+    }
     let prev = if amend {
         Some(ctx.repo.head_commit().or_else(|_| fatal("You have nothing to amend."))?)
     } else {
         None
     };
-    if msgs.is_empty() && prev.is_none() {
+    // a merge in progress: its other parents and its prepared message (as `--no-edit` takes it)
+    let (merge_heads, merge_msg) = if merging { crate::merge::merge_heads()? } else { (Vec::new(), None) };
+    if msgs.is_empty() && prev.is_none() && merge_msg.is_none() {
         return fatal("no commit message given: use -m <msg>");
     }
     if all {
         index::stage(ctx, &Specs::new(&[]), false)?;
     }
     let idx = load_index(ctx)?;
+    let conflicts = crate::status::unmerged(&idx);
+    if !conflicts.is_empty() {
+        for p in conflicts.keys() {
+            out(&format!("U\t{}\n", p.to_str_lossy()));
+        }
+        return Err(Exit {
+            code: 128,
+            msg: "error: Committing is not possible because you have unmerged files.\nhint: Fix them up in the work tree, and then use 'git add/rm <file>'\nhint: as appropriate to mark resolution and make a commit.\nfatal: Exiting because of an unresolved conflict.".into(),
+        });
+    }
     let (head, flat) = (flat_head(ctx)?, flat_index(&idx));
     let parents: Vec<ObjectId> = match &prev {
         Some(p) => p.parent_ids().map(|i| i.detach()).collect(),
-        None => ctx.repo.head_id().ok().map(|i| i.detach()).into_iter().collect(),
+        None => ctx.repo.head_id().ok().map(|i| i.detach()).into_iter().chain(merge_heads.iter().copied()).collect(),
     };
     // what the summary is relative to: the commit's parent when amending
     let base = match (&prev, parents.first()) {
@@ -87,34 +103,34 @@ pub fn commit(ctx: &Ctx, args: &[String]) -> Res {
         (Some(_), None) => Default::default(),
         _ => head.clone(),
     };
-    if head == flat && !allow_empty && !amend {
+    if head == flat && !allow_empty && !amend && !merging {
         let st: Status = compute(ctx)?;
         out(&long(ctx, &st)?);
         return Ok(1);
     }
 
-    let mut editor = ctx.repo.edit_tree(ctx.repo.empty_tree().id)?;
-    for (path, (mode, id)) in &flat {
-        let kind = match mode & 0o170000 {
-            0o120000 => EntryKind::Link,
-            0o160000 => EntryKind::Commit,
-            _ if mode & 0o111 != 0 => EntryKind::BlobExecutable,
-            _ => EntryKind::Blob,
-        };
-        editor.upsert(path.as_bstr(), kind, *id)?;
-    }
-    let tree = editor.write()?.detach();
+    let tree = write_tree(ctx, &flat)?;
 
     let (name, email) = identity(ctx);
     let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
     let sig = gix::actor::Signature { name: name.as_str().into(), email: email.as_str().into(), time: gix::date::Time::new(secs, 0) };
     let (mut b1, mut b2) = (gix::date::parse::TimeBuf::default(), gix::date::parse::TimeBuf::default());
-    let mut message = match &prev {
-        Some(p) if msgs.is_empty() => p.message_raw_sloppy().to_str_lossy().into_owned(),
+    let mut message = match (&prev, &merge_msg) {
+        (Some(p), _) if msgs.is_empty() => p.message_raw_sloppy().to_str_lossy().into_owned(),
+        (_, Some(m)) if msgs.is_empty() => m.trim_end().to_string(),
         _ => msgs.join("\n\n"),
     };
     if !message.ends_with('\n') {
         message.push('\n');
+    }
+    if merging {
+        let id = ctx.repo.new_commit_as(sig.to_ref(&mut b1), sig.to_ref(&mut b2), message.as_str(), tree, parents.clone())?.id;
+        let summary = message.lines().next().unwrap_or("");
+        move_head(ctx, id, &format!("commit (merge): {summary}"))?;
+        crate::merge::clear_state();
+        // like git, a merge commit's summary has no diffstat
+        out(&format!("[{} {}] {summary}\n", branch_name(ctx)?, short(id)));
+        return Ok(0);
     }
     let id = match &prev {
         Some(p) => {
@@ -162,6 +178,28 @@ pub fn commit(ctx: &Ctx, args: &[String]) -> Res {
         out(&l);
     }
     Ok(0)
+}
+
+/// Write a flat path map as a tree.
+pub fn write_tree(ctx: &Ctx, flat: &crate::status::Flat) -> Result<ObjectId, Exit> {
+    let mut editor = ctx.repo.edit_tree(ctx.repo.empty_tree().id)?;
+    for (path, (mode, id)) in flat {
+        let kind = match mode & 0o170000 {
+            0o120000 => EntryKind::Link,
+            0o160000 => EntryKind::Commit,
+            _ if mode & 0o111 != 0 => EntryKind::BlobExecutable,
+            _ => EntryKind::Blob,
+        };
+        editor.upsert(path.as_bstr(), kind, *id)?;
+    }
+    Ok(editor.write()?.detach())
+}
+
+/// The configured identity, now (UTC), as git writes it in commits and tags.
+pub fn signature(ctx: &Ctx) -> gix::actor::Signature {
+    let (name, email) = identity(ctx);
+    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
+    gix::actor::Signature { name: name.as_str().into(), email: email.as_str().into(), time: gix::date::Time::new(secs, 0) }
 }
 
 pub fn format_commit(ctx: &Ctx, c: &gix::Commit<'_>, oneline: bool) -> Result<String, crate::Exit> {

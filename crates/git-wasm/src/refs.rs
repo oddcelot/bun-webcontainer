@@ -66,6 +66,19 @@ pub fn show(ctx: &Ctx, args: &[String]) -> Res {
     let Some(c) = commit_of(ctx, &spec) else {
         return fatal(format!("ambiguous argument '{spec}': unknown revision or path not in the working tree."));
     };
+    // an annotated tag: its header and message first
+    if let Some(Ok(obj)) = ctx.repo.rev_parse_single(spec.as_str()).ok().map(|id| id.object()) {
+        if obj.kind == gix::object::Kind::Tag {
+            let tag = obj.into_tag();
+            let t = tag.decode()?;
+            out(&format!("tag {}\n", t.name.to_str_lossy()));
+            if let Some(who) = t.tagger()? {
+                let date = who.time()?.format_or_unix(gix::date::time::format::DEFAULT);
+                out(&format!("Tagger: {} <{}>\nDate:   {date}\n", who.name.to_str_lossy(), who.email.to_str_lossy()));
+            }
+            out(&format!("\n{}\n", t.message.to_str_lossy()));
+        }
+    }
     out(&format_commit(ctx, &c, false)?);
     let old = match c.parent_ids().next() {
         Some(p) => flat_tree(ctx, ctx.repo.find_commit(p)?.tree_id()?.detach())?,

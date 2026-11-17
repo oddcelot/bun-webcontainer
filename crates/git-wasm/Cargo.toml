@@ -9,7 +9,7 @@ name = "git"
 path = "src/main.rs"
 
 [dependencies]
-gix = { version = "0.90", default-features = false, features = ["sha1", "basic", "status", "dirwalk", "blocking-network-client"] }
+gix = { version = "0.90", default-features = false, features = ["sha1", "basic", "status", "dirwalk", "blocking-network-client", "merge"] }
 gix-transport = { version = "0.62", default-features = false, features = ["http-client"] }
 gix-error = "0.5"
 
