@@ -1,0 +1,7 @@
+# Test fixtures, not secrets: throwaway keys generated for the node:crypto tests (fixtures/crypto/data.ts) and the
+# password of the local Docker Postgres that scripts/sql.ts --native starts.
+a3daf8803b66c9deffc07c487b5e713c885a5b8d:apps/playground/scripts/sql.ts:generic-credential-uri:27
+fda15a64946dbc17db242ecb1612a411f3959355:apps/playground/fixtures/crypto/data.ts:private-key:3
+fda15a64946dbc17db242ecb1612a411f3959355:apps/playground/fixtures/crypto/data.ts:private-key:4
+fda15a64946dbc17db242ecb1612a411f3959355:apps/playground/fixtures/crypto/data.ts:private-key:5
+fda15a64946dbc17db242ecb1612a411f3959355:apps/playground/fixtures/crypto/data.ts:private-key:6
