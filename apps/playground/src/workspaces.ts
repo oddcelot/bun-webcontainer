@@ -5,6 +5,7 @@
  */
 import type { VFS } from "@runbun/vfs";
 import type { Manifest } from "./lockfileWrite";
+import { LINKS, links } from "./links";
 
 export type Workspace = { path: string; manifest: Manifest & { name: string } };
 
@@ -64,13 +65,14 @@ export const packageDirs = (vfs: Pick<VFS, "files">): string[] =>
   [...vfs.files.keys()].filter((p) => p.endsWith("/package.json") && !p.split("/").includes("node_modules")).map((p) => p.slice(0, -"/package.json".length));
 
 /**
- * Keeps each installed workspace's copy in node_modules (the VFS has no symlinks) equal to its folder: a file saved,
- * created or removed in a workspace is saved, created or removed in `node_modules/<name>` too. Only for workspaces that
- * have a copy (an install made it), and never for what is itself under node_modules.
+ * Keeps each installed workspace's (and `link:` folder's) copy in node_modules (the VFS has no symlinks) equal to its
+ * folder: a file saved, created or removed in a workspace is saved, created or removed in `node_modules/<name>` too. Only
+ * for workspaces that have a copy (an install made it), and never for what is itself under node_modules.
  */
 export function mirrorWorkspaces(vfs: VFS) {
-  let known: Workspace[] | undefined;
+  let known: { path: string; manifest: { name: string } }[] | undefined;
   vfs.onChange(({ path, removed }) => {
+    if (path === LINKS) known = undefined;
     if (path.split("/").includes("node_modules")) return;
     if (path === "package.json" || /(^|\/)package\.json$/.test(path)) known = undefined;
     if (known === undefined) {
@@ -80,6 +82,8 @@ export function mirrorWorkspaces(vfs: VFS) {
       } catch {
         known = [];
       }
+      // `bun link`ed folders too: a `link:` dependency is a symlink in native Bun.
+      for (const [name, dir] of Object.entries(links(vfs))) known.push({ path: dir, manifest: { name } });
     }
     for (const { path: dir, manifest } of known) {
       if (!path.startsWith(`${dir}/`) || !vfs.files.has(`node_modules/${manifest.name}/package.json`)) continue;

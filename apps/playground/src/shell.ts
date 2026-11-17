@@ -8,6 +8,7 @@ import { git as runGit } from "./git/git";
 import { builtins } from "./shell/builtins";
 import { EMPTY, Shell, ShellEnv, vfsFs, type Command as ShellCommand, type CommandCtx, type Writer } from "./shell/interp";
 import { loadShellWasm } from "./shell/load";
+import { links, setLink } from "./links";
 import { binCommand, isTestFile, scriptChecks, scriptEntry, shellCommand, type Pkg } from "./scripts";
 
 type Log = (level: string, text: string) => void;
@@ -43,6 +44,8 @@ bun test [-u] [filter...]  run test files (stops the server); -u updates snapsho
 bun install, bun i     install dependencies
 bun add <pkg> [-d]     add (dev) dependencies
 bun remove <pkg>       remove dependencies
+bun link [pkg]         register this folder's package, or depend on one registered (link:)
+bun unlink             forget this folder's registration
 bun pm cache [rm]      show or clear the package cache
 bun fmt [-c] [path...]  format (or --check) files like Prettier, with the project's configs
 bun check [path...]    type check with Bun's TypeScript 7 checker (tsconfig.json, @types)
@@ -185,6 +188,33 @@ export function createShell(host: ShellHost) {
     const mb = (n: number) => (n / 2 ** 20).toFixed(1);
     log("log", `${tarballs} tarballs, ${packuments} manifests, ${mb(bytes)} MB in browser storage`);
     if (store.entries) log("log", `${store.entries} large package files, ${mb(store.bytes)} MB (unpacked on demand)`);
+  }
+
+  /**
+   * `bun link` in a package's folder registers it (links.ts); `bun link <name>` depends on a registered one
+   * (`"name": "link:name"`, always saved to package.json here) and installs it. `bun unlink` forgets the folder's.
+   */
+  async function link(args: string[], dir: string, unlink = false) {
+    const names = args.filter((a) => !a.startsWith("-"));
+    if (!names.length || unlink) {
+      const pkg = vfs.readText(dir ? `${dir}/package.json` : "package.json");
+      const name = (pkg && (JSON.parse(pkg) as { name?: string }).name) || undefined;
+      if (!name) return fail(`error: ${pkg ? "package.json has no name" : `no package.json in /${dir}`}`);
+      if (unlink) {
+        if (links(vfs)[name] === undefined) return fail(`error: package "${name}" is not linked`);
+        setLink(vfs, name, undefined);
+        return log("log", `success: unlinked package "${name}"`);
+      }
+      setLink(vfs, name, dir);
+      return log("log", `Success! Registered "${name}"\n\nTo use ${name} in a project, run:\n  bun link ${name}\n\nOr add it in dependencies in your package.json file:\n  "${name}": "link:${name}"`);
+    }
+    const registered = links(vfs);
+    const missing = names.find((n) => registered[n] === undefined);
+    if (missing) return fail(`error: package "${missing}" is not linked`);
+    const pkg = readPkg();
+    if (!pkg) return;
+    writePkg({ ...pkg, dependencies: { ...pkg.dependencies, ...Object.fromEntries(names.map((n) => [n, `link:${n}`])) } });
+    await host.install();
   }
 
   async function remove(names: string[]) {
@@ -345,6 +375,7 @@ export function createShell(host: ShellHost) {
       if (sub === "fmt") return await fmt(rest);
       if (sub === "check") return await check(rest);
       if (sub === "pm") return await pm(rest);
+      if (sub === "link" || sub === "unlink") return await link(rest, projectPath(ctx, "."), sub === "unlink");
       if (vfs.files.has(projectPath(ctx, sub))) return await runTarget(projectPath(ctx, sub), withCheck);
       fail(`bun ${sub}: not available here (try "help")`);
     }),

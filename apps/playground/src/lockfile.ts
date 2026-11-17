@@ -4,6 +4,10 @@ import { fetchTarball, registryOf } from "./pkgCache";
 import { vfsWorkspaces } from "./workspaces";
 import { catalogChanges, catalogsOf } from "./catalogs";
 import { flattenOverrides, overridesInLock, overridesOf } from "./overrides";
+import { lockedGitHub, tarballPath, type GitHubDep } from "./gitDeps";
+import { links } from "./links";
+import { BASE } from "./base";
+import { untar } from "./tar";
 
 type Log = (level: "log" | "error", text: string) => void;
 
@@ -123,22 +127,7 @@ async function checkIntegrity(bytes: Uint8Array<ArrayBuffer>, integrity: string)
   return btoa(String.fromCharCode(...digest)) === expected;
 }
 
-export function* untar(buf: Uint8Array): Generator<{ name: string; data: Uint8Array }> {
-  const dec = new TextDecoder();
-  let off = 0;
-  while (off + 512 <= buf.length) {
-    const h = buf.subarray(off, off + 512);
-    if (h[0] === 0) break;
-    const str = (a: number, b: number) => dec.decode(h.subarray(a, b)).split("\0")[0];
-    let name = str(0, 100);
-    if (str(257, 262) === "ustar" && str(345, 500)) name = `${str(345, 500)}/${name}`;
-    const size = parseInt(str(124, 136).trim() || "0", 8);
-    const type = h[156] ? String.fromCharCode(h[156]) : "0";
-    off += 512;
-    if (type === "0") yield { name, data: buf.subarray(off, off + size) };
-    off += Math.ceil(size / 512) * 512;
-  }
-}
+export { untar };
 
 /**
  * A package tarball's files (gunzipped), paths without the leading `package/`, as bytes in one block of shared memory
@@ -154,6 +143,33 @@ export function packageFiles(tar: Uint8Array, url: string): { name: string; data
   return splitPackage(files, url);
 }
 
+const TARBALL = /\.t(ar\.)?gz$/;
+
+/** The kind of a bun.lock resolution (what follows `name@`): a tarball in the project is written down by its path. */
+export function resolutionKind(res: string): "npm" | "tarball" | "file" | "link" | "workspace" | "git" | "root" {
+  if (/^\d/.test(res)) return "npm";
+  if (/^https?:\/\//.test(res)) return "tarball";
+  if (res.startsWith("workspace:")) return "workspace";
+  if (res.startsWith("link:")) return "link";
+  if (res.startsWith("root:")) return "root";
+  if (res.startsWith("file:") || (TARBALL.test(res) && !/^(github:|git\+|git:)/.test(res))) return "file";
+  return "git";
+}
+
+/** `a/./b/../c` → `a/c`. */
+function normalize(path: string): string {
+  const out: string[] = [];
+  for (const s of path.split("/")) {
+    if (s === "" || s === ".") continue;
+    if (s === "..") out.pop();
+    else out.push(s);
+  }
+  return out.join("/");
+}
+
+/** The tarball of a GitHub repository at a ref, through the playground's git proxy (worker/gitProxy.ts). */
+export const githubTarballUrl = (dep: GitHubDep) => new URL(`${BASE}git-proxy/codeload.github.com/${tarballPath(dep)}`, location.href).href;
+
 /**
  * INSTALLED_AS_BYTES: installed files go into the VFS as the tarball's bytes, not decoded to strings. V8 stores a
  * string with any character above U+00FF at 2 bytes per character, which made 249 MB of Next.js + MUI cost 390 MB in
@@ -165,10 +181,40 @@ export async function gunzip(bytes: Uint8Array): Promise<Uint8Array> {
 }
 
 /**
+ * The tarball (gzipped) of a bun.lock package that comes as one, and the URL it is kept under: npm's or another
+ * registry's, a tarball URL, GitHub's, or one in the project (by its path from the project, or from the `file:` folder
+ * of `folders` that depends on it).
+ */
+async function packageTarball(vfs: Pick<VFS, "files" | "readBytes">, id: { name: string; version: string }, entry: unknown[], folders: string[]): Promise<{ tgz: Uint8Array; url: string }> {
+  const res = id.version;
+  const kind = resolutionKind(res);
+  const gh = kind === "git" ? lockedGitHub(res) : undefined;
+  if (kind === "file") {
+    const path = res.replace(/^file:/, "");
+    const url = [normalize(path), ...folders.map((dir) => normalize(`${dir}/${path}`))].find((p) => vfs.files.has(p)) ?? normalize(path);
+    const bytes = vfs.readBytes(url);
+    if (!bytes) throw new Error(`no file ${url}`);
+    return { tgz: bytes, url };
+  }
+  if (gh) {
+    const integrity = entry[3];
+    const url = githubTarballUrl(gh);
+    return { tgz: await fetchTarball(url, typeof integrity === "string" && integrity ? (b) => checkIntegrity(b, integrity) : undefined), url };
+  }
+  if (kind !== "npm" && kind !== "tarball") throw new Error(`${id.name}@${res} isn't a tarball`);
+  const integrity = kind === "npm" ? (entry[3] as string) : (entry[2] as string | undefined);
+  const verify = typeof integrity === "string" && integrity ? (b: Uint8Array<ArrayBuffer>) => checkIntegrity(b, integrity) : undefined;
+  const registry = typeof entry[1] === "string" ? entry[1] : "";
+  const base = (registry || registryOf(id.name)).replace(/\/$/, "");
+  const url = kind === "tarball" ? res : registry.endsWith(".tgz") ? registry : `${base}/${id.name}/-/${id.name.split("/").pop()}-${res}.tgz`;
+  return { tgz: await fetchTarball(url, verify), url };
+}
+
+/**
  * Installs exactly what `bun.lock` lists: every package at its locked version and install path
  * (nested keys go to nested `node_modules`), each tarball checked against its integrity hash.
- * npm packages, tarball URLs, `file:` folders or tarballs and workspaces (copied to node_modules); git and link entries
- * are reported and skipped.
+ * npm packages, tarball URLs, GitHub tarballs, `file:` folders or tarballs, and workspaces and `link:` folders (copied
+ * to node_modules); other git entries are reported and skipped.
  */
 export async function installFromBunLock(vfs: VFS, lockText: string, log: Log): Promise<number> {
   const lock = parseBunLock(lockText);
@@ -184,6 +230,11 @@ export async function installFromBunLock(vfs: VFS, lockText: string, log: Log): 
     if (id?.version.startsWith("workspace:")) workspaceAt.set(key, id.version.slice("workspace:".length));
   }
   if (stale.length) log("error", `bun.lock doesn't match package.json (${stale.join(", ")}). Installing the locked versions.`);
+  // The `file:` folders: a tarball one of them depends on is written down by its path from that folder.
+  const folders = Object.values(lock.packages).flatMap((e) => {
+    const res = typeof e[0] === "string" ? parseIdent(e[0])?.version : undefined;
+    return res?.startsWith("file:") && !TARBALL.test(res) ? [res.slice(5)] : [];
+  });
 
   // Like Bun, only optional dependencies are dropped for a platform mismatch; a required one is still installed.
   const optional = new Set<string>();
@@ -198,12 +249,10 @@ export async function installFromBunLock(vfs: VFS, lockText: string, log: Log): 
       if (!id) return log("error", `skip ${key}: unreadable entry`);
       const meta = entry.find((e) => !!e && typeof e === "object" && !Array.isArray(e)) as Parameters<typeof platformRestricted>[0];
       const res = id.version;
-      const kind = /^\d/.test(res) ? "npm" : /^https?:\/\//.test(res) ? "tarball" : res.startsWith("file:") ? "file" : res.startsWith("workspace:") ? "workspace" : undefined;
-      if (!kind) {
-        const what = res.startsWith("link:") ? "link: dependencies" : res.startsWith("root:") ? undefined : "git dependencies";
-        if (what) log("error", `skipped ${key}@${res}: ${what} don't work in the browser`);
-        return;
-      }
+      const kind = resolutionKind(res);
+      if (kind === "root") return;
+      const gh = kind === "git" ? lockedGitHub(res) : undefined;
+      if (kind === "git" && !gh) return log("error", `skipped ${key}@${res}: git dependencies other than GitHub's need a git clone, which doesn't work in the browser`);
       if (platformRestricted(meta) && optional.has(splitKey(key).at(-1)!)) {
         log("log", `- ${key}@${res} (optional, not for this platform)`);
         return;
@@ -219,28 +268,17 @@ export async function installFromBunLock(vfs: VFS, lockText: string, log: Log): 
         if (also) vfs.write(`${also}/${name}`, data);
       };
       try {
-        if (kind === "workspace" || (kind === "file" && !/\.t(ar\.)?gz$/.test(res))) {
-          // A folder in the project: its files, without its own node_modules. Workspaces have no symlink in the VFS:
-          // the copy is what `import "@m/lib"` finds.
-          const from = res.slice(kind === "workspace" ? 10 : 5).replace(/^\.\//, "").replace(/\/$/, "");
+        if (kind === "workspace" || kind === "link" || (kind === "file" && !TARBALL.test(res))) {
+          // A folder in the project: its files, without its own node_modules. Workspaces and links have no symlink in
+          // the VFS: the copy is what `import "@m/lib"` finds.
+          const linked = kind === "link" ? links(vfs)[res.slice(5)] : undefined;
+          if (kind === "link" && linked === undefined) throw new Error(`package "${res.slice(5)}" is not linked (run \`bun link\` in its folder first)`);
+          const from = (linked ?? res.slice(kind === "workspace" ? 10 : 5)).replace(/^\.\//, "").replace(/\/$/, "");
           const files = vfs.list(from).filter((p) => !p.slice(from.length + 1).split("/").includes("node_modules"));
           if (!files.some((p) => p === `${from}/package.json`)) throw new Error(`no package.json in ${from || "."}`);
           for (const p of files) put(p.slice(from.length + 1), vfs.read(p)!);
         } else {
-          let tgz: Uint8Array, url: string;
-          if (kind === "file") {
-            url = res.slice(5).replace(/^\.\//, "");
-            const bytes = vfs.readBytes(url);
-            if (!bytes) throw new Error(`no file ${url}`);
-            tgz = bytes;
-          } else {
-            const integrity = kind === "npm" ? (entry[3] as string) : (entry[2] as string | undefined);
-            const verify = typeof integrity === "string" && integrity ? (b: Uint8Array<ArrayBuffer>) => checkIntegrity(b, integrity) : undefined;
-            const registry = typeof entry[1] === "string" ? entry[1] : "";
-            const base = (registry || registryOf(id.name)).replace(/\/$/, "");
-            url = kind === "tarball" ? res : registry.endsWith(".tgz") ? registry : `${base}/${id.name}/-/${id.name.split("/").pop()}-${res}.tgz`;
-            tgz = await fetchTarball(url, verify);
-          }
+          const { tgz, url } = await packageTarball(vfs, id, entry, folders);
           // Kept as bytes, text included (see INSTALLED_AS_BYTES).
           for (const { name, data } of packageFiles(await gunzip(tgz), url)) put(name, data);
         }

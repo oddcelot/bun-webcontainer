@@ -1,7 +1,9 @@
 import type { Semver } from "./semver";
-import { gunzip, installFromBunLock, installPath, packageFiles, parseBunLock, pruneNodeModules, splitKey, staleInLock, untar } from "./lockfile";
+import { githubTarballUrl, gunzip, installFromBunLock, installPath, packageFiles, parseBunLock, pruneNodeModules, splitKey, staleInLock, untar } from "./lockfile";
 import { lockedPackages, resolveProject, writeBunLock, type Manifest, type ResolveHost } from "./lockfileWrite";
-import { fetchPackument, fetchTarball, fetchVersion, setNpmrc } from "./pkgCache";
+import { cacheTarball, fetchPackument, fetchTarball, fetchVersion, setNpmrc } from "./pkgCache";
+import { tarballRoot } from "./gitDeps";
+import { links } from "./links";
 import { parseNpmrc } from "./npmrc";
 import { packageDirs, vfsWorkspaces } from "./workspaces";
 import type { VFS } from "@runbun/vfs";
@@ -40,6 +42,23 @@ function resolveHost(vfs: VFS, semver: Semver): ResolveHost {
     },
     version: async (name, version) => (await fetchVersion(name, version)) as Manifest,
     packageDirs: () => packageDirs(vfs),
+    file: (path) => {
+      const bytes = vfs.readBytes(path);
+      return bytes && new Uint8Array(bytes);
+    },
+    link: (name) => links(vfs)[name],
+    async github(dep) {
+      const res = await fetch(githubTarballUrl(dep)).catch((e) => {
+        throw new Error(`couldn't reach GitHub through the playground's git proxy: ${e instanceof Error ? e.message : e}`);
+      });
+      if (!res.ok) throw new Error((await res.text()).trim() || `GitHub answered ${res.status}`);
+      const bytes = new Uint8Array(await res.arrayBuffer());
+      // Kept as the commit's tarball, which the install fetches next.
+      const root = tarballRoot(await gunzip(bytes));
+      if (root) await cacheTarball(githubTarballUrl({ ...dep, ref: root.commit }), bytes);
+      return bytes;
+    },
+    gunzip,
   };
 }
 
@@ -108,7 +127,9 @@ export async function bunInstall(vfs: VFS, semver: Semver, log: Log): Promise<nu
   else {
     if (!pkg) throw new Error("no package.json");
     log("log", stale.length ? `package.json changed ${stale.join(", ")}. Updating bun.lock` : "Resolving dependencies");
-    const resolved = await resolveProject(pkg, resolveHost(vfs, semver), old ? lockedPackages(old.packages) : []);
+    const lockedRoot = old?.workspaces?.[""] as Record<string, Record<string, string> | undefined> | undefined;
+    const lockedRanges = { ...lockedRoot?.devDependencies, ...lockedRoot?.optionalDependencies, ...lockedRoot?.dependencies };
+    const resolved = await resolveProject(pkg, resolveHost(vfs, semver), old ? lockedPackages(old.packages) : [], lockedRanges);
     for (const p of resolved.problems) log("error", p);
     lock = writeBunLock(resolved);
     // A bun.lock without some of the dependencies would be wrong for native Bun too.
