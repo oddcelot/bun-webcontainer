@@ -211,6 +211,12 @@ const size = (m: WsPayload) => (typeof m === "string" ? new TextEncoder().encode
 const bytesOf = (m: Exclude<WsPayload, string>) =>
   m instanceof ArrayBuffer ? m.slice(0) : (m.buffer.slice(m.byteOffset, m.byteOffset + m.byteLength) as ArrayBuffer);
 
+/** What Bun sends for a message: bytes, else the value as a string (a number, an object); nothing is an error. */
+const wsPayload = (m: unknown): WsPayload => {
+  if (m === null || m === undefined) throw new TypeError("send requires a non-empty message");
+  return typeof m === "string" || m instanceof ArrayBuffer || ArrayBuffer.isView(m) ? m : String(m);
+};
+
 /** Bun's `ServerWebSocket`, talking to the page's `WebSocket` over a MessagePort (see previewWebSocket in swPage.ts). */
 class ServerWebSocket {
   readyState = 1;
@@ -223,6 +229,7 @@ class ServerWebSocket {
     public data: unknown,
   ) {}
   send(message: WsPayload) {
+    message = wsPayload(message);
     if (this.readyState !== 1) return 0;
     const data = typeof message === "string" ? message : bytesOf(message);
     this.port.postMessage({ type: "message", data }, typeof data === "string" ? [] : [data]);
@@ -235,6 +242,7 @@ class ServerWebSocket {
     return this.send(message);
   }
   publish(topic: string, message: WsPayload) {
+    message = wsPayload(message);
     for (const ws of this.inst.topics.get(topic) ?? []) if (ws !== this) ws.send(message);
     return size(message);
   }
@@ -346,6 +354,7 @@ function createInstance(opts: ServeOptions): Instance {
       return true;
     },
     publish(topic: string, message: WsPayload) {
+      message = wsPayload(message);
       const subs = inst.topics.get(topic);
       for (const ws of subs ?? []) ws.send(message);
       return subs?.size ? size(message) : 0;
