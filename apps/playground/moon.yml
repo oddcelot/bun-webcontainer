@@ -214,6 +214,14 @@ tasks:
       - 'crypto-wasm:build'
     options:
       cache: false
+  test-elysia:
+    # Elysia 2 as a baseline (scripts/elysia.ts): fixtures/elysia2 (routing, validation, hooks, plugins, cookies, files,
+    # streams, WebSocket, Eden, the @elysia/* plugins) is installed from npm and run in the embed in headless Chrome,
+    # and each case must print what native Bun prints. Needs Chrome and the npm registry, so it isn't part of `test`.
+    command: 'bun scripts/elysia.ts'
+    toolchains: ['bun']
+    options:
+      cache: false
   test-compress:
     # zstd and brotli end to end (scripts/compress.ts): fixtures/compress runs in the embed in headless Chrome (Bun.zstd*,
     # node:zlib's brotli and zstd, CompressionStream) and prints what native Bun prints for it; data native Bun

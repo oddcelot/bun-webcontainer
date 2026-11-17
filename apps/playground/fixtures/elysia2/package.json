@@ -1,0 +1,15 @@
+{
+  "name": "elysia2-baseline",
+  "private": true,
+  "module": "main.ts",
+  "dependencies": {
+    "@elysia/bearer": "2.0.0-rc.0",
+    "@elysia/cors": "2.0.0-rc.1",
+    "@elysia/eden": "2.0.0-rc.1",
+    "@elysia/jwt": "2.0.0-rc.0",
+    "@elysia/openapi": "2.0.0-rc.1",
+    "@elysia/static": "2.0.0-rc.0",
+    "elysia": "2.0.0-rc.4",
+    "zod": "4.6.7"
+  }
+}
