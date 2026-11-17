@@ -10,6 +10,7 @@ import { hash } from "./hash";
 import { CryptoHasher } from "./node/crypto";
 import { setCryptoWasm } from "./node/cryptoWasm";
 import { Glob } from "./glob";
+import { FileSystemRouter } from "./fileSystemRouter";
 import { installConsole, table } from "./console";
 import { bunInspect, formatLog as formatValues, installWebInspect } from "./inspect";
 import { trackBodies } from "./bodies";
@@ -1500,6 +1501,7 @@ async function main() {
     resolveSync,
     resolve: async (specifier: string, from: string | URL) => resolveSync(specifier, from),
     Glob,
+    FileSystemRouter,
     S3Client: s3.S3Client,
     s3: s3.s3,
     sql,

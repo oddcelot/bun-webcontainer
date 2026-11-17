@@ -157,6 +157,13 @@ tasks:
     toolchains: ['bun']
     options:
       cache: false
+  test-bun-apis:
+    # Bun APIs implemented in JS end to end (scripts/bun-apis.ts): the project in scripts/bun-apis/ runs in the embed in
+    # headless Chrome and must print what native Bun prints for it. Needs Chrome, so it isn't part of `test`.
+    command: 'bun scripts/bun-apis.ts'
+    toolchains: ['bun']
+    options:
+      cache: false
   test-als:
     # AsyncLocalStorage end to end (scripts/als.ts): scripts/als/ runs in the embed in headless Chrome (a Bun.serve one
     # through the preview, a Hono app with contextStorage() installed from npm) and prints what native Bun prints for it.
