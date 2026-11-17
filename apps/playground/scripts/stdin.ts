@@ -30,7 +30,7 @@ const cases: Case[] = [
     name: "readline question",
     file: "question.ts",
     code: `import readline from "node:readline";
-const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: false });
 rl.question("Name? ", (name) => {
   console.log("Hello " + name);
   rl.question("Age? ", (age) => {
@@ -46,7 +46,7 @@ rl.on("close", () => console.log("closed"));`,
     name: "readline/promises question",
     file: "promises.ts",
     code: `import { createInterface } from "node:readline/promises";
-const rl = createInterface({ input: process.stdin, output: process.stdout });
+const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: false });
 const a = await rl.question("a? ");
 const b = await rl.question("b? ");
 console.log(Number(a) + Number(b));
@@ -59,7 +59,7 @@ console.log("done");`,
     name: "readline line and close events, prompt()",
     file: "events.ts",
     code: `import * as readline from "node:readline";
-const rl = readline.createInterface({ input: process.stdin, output: process.stdout, prompt: "> " });
+const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: false, prompt: "> " });
 rl.setPrompt("$ ");
 console.log(rl.getPrompt() === "$ ");
 rl.prompt();

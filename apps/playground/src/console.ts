@@ -95,10 +95,12 @@ const TOKENS = /\x1b\[[0-9;]*[A-Za-z~]|\x1bO[A-Z]|[\s\S]/gu;
  * stack trace, an error) is a link when `isFile` knows the file; clicking it calls `onLocation`.
  */
 export function createConsole(
-  { onCommand, onInput, onInterrupt, onClear, isFile, onLocation, cwd = () => "/" }: {
+  { onCommand, onInput, onResize, onInterrupt, onClear, isFile, onLocation, cwd = () => "/" }: {
     onCommand: (line: string) => Promise<void>;
     /** While the program reads its stdin (see `reading`), each entered line goes here as UTF-8 with its newline; null is Ctrl+D (end of input). */
     onInput?: (data: Uint8Array | null) => void;
+    /** The terminal's size in characters, when it opens and each time it changes. */
+    onResize?: (cols: number, rows: number) => void;
     /** The shell's folder, shown in the prompt. */
     cwd?: () => string;
     onInterrupt: () => void;
@@ -116,6 +118,11 @@ export function createConsole(
   let busy = false;
   /** The program is waiting for input on its stdin: Enter sends the line to it instead of running it as a command. */
   let reading = false;
+  /**
+   * The program put stdin in raw mode (`process.stdin.setRawMode(true)`), as a TUI does: every key goes to it as the bytes
+   * a terminal sends, at once, with no line editing and no echo (Ctrl+C and Ctrl+D too), and its output is written as it is.
+   */
+  let raw = false;
   /** Output that ended mid-line (a prompt such as `Name? `), still on its row: what is typed continues it. */
   let pending = "";
   const history: string[] = [];
@@ -151,7 +158,7 @@ export function createConsole(
   };
   /** What starts the row being typed on: unfinished program output, else the shell's prompt (none while a command runs). */
   const prefix = () => pending || (busy && !reading ? "" : promptFor(cwd()));
-  const live = () => !busy || reading;
+  const live = () => !raw && (!busy || reading);
   const redraw = () => live() && term?.write(promptLine());
 
   /** The typed line goes to the program's stdin, echoed in the output as a terminal would. */
@@ -307,8 +314,12 @@ export function createConsole(
     resize = new ResizeObserver(() => fit.fit());
     resize.observe(el);
     next.onData((data) => {
+      // Raw mode: the bytes the terminal sends, as they are (a paste too), with nothing handled here.
+      if (raw) return onInput?.(new TextEncoder().encode(data));
       for (const [t] of data.matchAll(TOKENS)) key(t);
     });
+    next.onResize(({ cols, rows }) => onResize?.(cols, rows));
+    onResize?.(next.cols, next.rows);
     // The transcript replays into every terminal that opens, so output logged before it (or into one that
     // was replaced) isn't lost.
     if (lines.length) next.write(lines.join(""));
@@ -352,6 +363,14 @@ export function createConsole(
      * typed meanwhile (see `reading`) goes after it.
      */
     log(level: string, text: string, partial = false) {
+      if (raw) {
+        // The program draws the screen itself: its text as it wrote it (a reset after each write would cut off its colors).
+        const sgr = LEVEL_SGR[level];
+        const out = (sgr && text ? `\x1b[${sgr}m${text}\x1b[0m` : text) + (partial ? "" : "\r\n");
+        push(out);
+        term?.write(out);
+        return;
+      }
       // A message ends an unfinished line: it starts on a row of its own.
       if (level === "sys" && pending) text = "\n" + text;
       const sgr = LEVEL_SGR[level];
@@ -369,6 +388,7 @@ export function createConsole(
     reading(on: boolean) {
       if (on === reading) return;
       reading = on;
+      if (raw) return;
       // Not reading any more with a command still running: what was typed has nowhere to go.
       if (!on && busy) {
         input = "";
@@ -376,6 +396,26 @@ export function createConsole(
         term?.write(erase() + pending);
         return;
       }
+      redraw();
+    },
+    /** Whether the program reads raw keys (see `raw`). Leaving raw mode puts the cursor back and the prompt after the output. */
+    rawMode(on: boolean) {
+      if (on === raw) return;
+      if (on) {
+        // What was typed ahead is dropped; the row the prompt was on stays as the program's output continues it.
+        term?.write(erase() + pending);
+        input = "";
+        cursor = 0;
+        pending = "";
+        raw = true;
+        return;
+      }
+      raw = false;
+      // Cursor shown and colors reset, as a terminal does when the program that changed them is gone; the prompt starts a row.
+      const out = "\x1b[?25h\x1b[0m" + (term && term.buffer.active.cursorX > 0 ? "\r\n" : "");
+      push(out);
+      term?.write(out);
+      drawnRow = 0;
       redraw();
     },
     clear() {

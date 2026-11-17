@@ -37,6 +37,7 @@ import { hooks, type NodeSocket } from "./node/serve";
 import { flushDatabases } from "./node/sqlite";
 import nodePath from "./node/path";
 import process, { env } from "./node/process";
+import { enableTTY, resizeTTY } from "./node/tty";
 import { isDeepStrictEqual } from "./node/util";
 import { failRunning, runTestFiles } from "./node/test";
 import { BUN_REVISION, BUN_VERSION } from "./bunVersion";
@@ -1377,6 +1378,7 @@ self.addEventListener("message", (e: MessageEvent) => {
   const m = e.data;
   if (m.type === "proc") onProcMessage(m);
   else if (m.type === "stdin") pushStdin(m.data);
+  else if (m.type === "tty") resizeTTY(m.cols, m.rows);
   else if (m.type === "signal") signal(m.signal);
   else if (m.type === "taken") taken = new Set(m.ports);
 });
@@ -1452,7 +1454,11 @@ self.addEventListener("message", async (e: MessageEvent) => {
     }
   }
   // runbun.json's `env`, over the defaults: runs, restarts on save and tests (the page logs what's wrong with the file).
-  else Object.assign(env, readConfig((path) => vfs.readText(path)).env);
+  else {
+    Object.assign(env, readConfig((path) => vfs.readText(path)).env);
+    // The console is this program's terminal (a test run's output is not a terminal's).
+    if (!e.data.tests) enableTTY(e.data.tty?.cols, e.data.tty?.rows);
+  }
   if (e.data.tests) {
     testing = true;
     // `bun test`: load and run each file instead of an entry.

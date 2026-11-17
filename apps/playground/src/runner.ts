@@ -78,6 +78,10 @@ export class Runner {
   private ports = new WeakMap<Worker, number[]>();
   /** Called when the program starts or stops waiting for input on its stdin: the console then sends what is typed to `stdin`. */
   onStdinWait?: (on: boolean) => void;
+  /** Called when the program switches its stdin to raw mode (`process.stdin.setRawMode`) or back: the console then sends each key as typed. */
+  onStdinRaw?: (on: boolean) => void;
+  /** The console's size in characters: what `process.stdout.columns` and `rows` report. */
+  private ttySize = { cols: 80, rows: 24 };
   /** Child processes by their worker, and each program's children by the id it gave them. */
   private procs = new Map<Worker, Proc>();
   private kids = new WeakMap<Worker, Map<number, Proc>>();
@@ -390,6 +394,12 @@ export class Runner {
     this.worker?.postMessage({ type: "stdin", data }, data ? [data.buffer] : []);
   }
 
+  /** The console's terminal changed size (or opened): the program's stdout reports it. */
+  resize(cols: number, rows: number) {
+    this.ttySize = { cols, rows };
+    this.worker?.postMessage({ type: "tty", cols, rows });
+  }
+
   /** Whether a program is running (answering previews or not). */
   get running(): boolean {
     return !!this.worker;
@@ -554,6 +564,9 @@ export class Runner {
         // A program waiting for input (top-level `await Bun.stdin.text()`) is up, however long the reader takes.
         if (m.on) done({ kind: "ready" });
       }
+      else if (m.type === "stdin-raw") {
+        if (this.worker === worker) this.onStdinRaw?.(m.on === true);
+      }
       // A WebSocket upgrade's Set-Cookie headers (an HTTP response's are read off its head in onSw).
       else if (m.type === "cookies") this.storeCookies(m.path, m.setCookies);
       else if (m.type === "ports") {
@@ -580,7 +593,7 @@ export class Runner {
       this.log("error", `worker error: ${e.message}`);
       done({ kind: "error", message: e.message });
     };
-    worker.postMessage({ type: "start", entry, args, tests, files: this.vfs.files, dirs: this.vfs.dirs, vfsRoot: vfsRoot(), debug });
+    worker.postMessage({ type: "start", entry, args, tests, files: this.vfs.files, dirs: this.vfs.dirs, vfsRoot: vfsRoot(), debug, tty: this.ttySize });
     const cancel = () => {
       this.end(worker);
       if (this.next?.worker === worker) this.next = undefined;

@@ -136,6 +136,15 @@ tasks:
     toolchains: ['bun']
     options:
       cache: false
+  test-tty:
+    # The console as a terminal end to end (scripts/tty.ts): programs that use raw mode (`setRawMode`, keypress events,
+    # readline's terminal mode, @clack/prompts from npm) run in the embed in headless Chrome, the script presses keys, and
+    # what they print is what native Bun prints on a pty; the select must also update in place on the console's screen.
+    # Needs Chrome and the network, so it isn't part of `test`.
+    command: 'bun scripts/tty.ts'
+    toolchains: ['bun']
+    options:
+      cache: false
   test-vm:
     # node:vm end to end (scripts/vm.ts): scripts/vm/cases.ts runs in the embed in headless Chrome and must print what
     # native Bun prints, but for the differences the script lists (a context shares the worker's realm). Needs Chrome,

@@ -1,5 +1,6 @@
 import EventEmitter from "events";
 import { BUN_VERSION } from "../bunVersion";
+import { onTTYResize, WriteStream } from "./tty";
 
 /** `partial`: text that ends mid-line (no trailing newline), which the console keeps on its row for what comes next. */
 type Sink = (level: "log" | "error", text: string, partial?: boolean) => void;
@@ -27,13 +28,11 @@ export function setExit(fn: (code: number) => never) {
 const dec = new TextDecoder();
 const enc = new TextEncoder();
 
+/** stdout and stderr, a `tty.WriteStream`: isTTY, columns, rows and colors come from tty.ts (a pipe's, in a child process). */
 function stdio(fd: number, level: "log" | "error") {
-  return Object.assign(new EventEmitter(), {
+  const stream = Object.assign(new WriteStream(), {
     fd,
-    isTTY: false,
     writable: true,
-    columns: 80,
-    rows: 24,
     write(chunk: string | Uint8Array, encoding?: unknown, cb?: unknown) {
       // A copy (a Buffer's slice is a view), which goes to the page as is.
       if (raw) raw(fd as 1 | 2, typeof chunk === "string" ? enc.encode(chunk) : Uint8Array.prototype.slice.call(chunk));
@@ -51,12 +50,11 @@ function stdio(fd: number, level: "log" | "error") {
     cork() {},
     uncork() {},
     setEncoding() {},
-    getColorDepth: () => 1,
-    hasColors: () => false,
-    getWindowSize: () => [80, 24],
     ref() {},
     unref() {},
   });
+  onTTYResize(() => void stream.emit("resize"));
+  return stream;
 }
 
 const stdin = Object.assign(new EventEmitter(), {

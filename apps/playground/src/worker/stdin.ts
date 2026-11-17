@@ -1,6 +1,6 @@
 import { hold, release } from "./loop";
 import { Buffer } from "./node/buffer";
-import { Readable } from "./node/stream";
+import { ReadStream, ttyState } from "./node/tty";
 import { readLineSync } from "./processes";
 
 // The program's stdin: one source behind process.stdin, Bun.stdin and `for await (const line of console)`. What the
@@ -17,7 +17,19 @@ export function setStdinPost(fn: (msg: unknown) => void, tellPage: boolean) {
 }
 
 export const stdinStream = (() => {
-  const stdin = Object.assign(new Readable({ read() {} }), { fd: 0, isTTY: false, setRawMode: () => stdin, ref() {}, unref() {} });
+  const stdin = Object.assign(new ReadStream(), {
+    // On the console's terminal, raw mode sends each key as it is typed (the page, runner.ts `stdin-raw`): no line
+    // editing, no echo, Ctrl+C and Ctrl+D as bytes. A pipe has no modes, so it is a no-op there.
+    setRawMode: (mode: boolean) => {
+      if (!ttyState.on) return stdin;
+      const on = !!mode;
+      if (on !== stdin.isRaw && notify) post({ type: "stdin-raw", on });
+      stdin.isRaw = on;
+      return stdin;
+    },
+    ref() {},
+    unref() {},
+  });
   let waiting = false;
   let paused = false;
   /** Whether something reads it: a `data` or `readable` listener (an async iterator is one), not paused, not at its end. */
