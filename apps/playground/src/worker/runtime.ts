@@ -1767,6 +1767,25 @@ async function runScript(script: string, args: string[], child: boolean) {
   }
 }
 
+/**
+ * The modules bunfig.toml (in the working directory, as Bun reads it) preloads: `preload` for a run, `[test] preload`
+ * for `bun test`, a path or a list, each resolved from that directory (a bare name is a package). Their VFS paths;
+ * throws Bun's error for one that doesn't resolve.
+ */
+function bunfigPreloads(test: boolean): string[] {
+  const dir = norm(process.cwd());
+  const text = vfs.readText(dir ? `${dir}/bunfig.toml` : "bunfig.toml");
+  if (text === undefined) return [];
+  const config = parseData(text, "toml") as { preload?: unknown; test?: { preload?: unknown } } | null;
+  const list = test ? config?.test?.preload : config?.preload;
+  const specs = typeof list === "string" ? [list] : Array.isArray(list) ? list.filter((s): s is string => typeof s === "string") : [];
+  return specs.map((spec) => {
+    const path = resolve(spec, dir, "import", "bun");
+    if (path === null) throw new Error(`preload not found "${spec}"`);
+    return path;
+  });
+}
+
 self.addEventListener("message", async (e: MessageEvent) => {
   if (e.data.type !== "start") return;
   if (e.data.vfsRoot) VFS_ROOT = e.data.vfsRoot;
@@ -1818,7 +1837,7 @@ self.addEventListener("message", async (e: MessageEvent) => {
   if (e.data.tests) {
     testing = true;
     // `bun test`: load and run each file instead of an entry.
-    const { failed, results } = await runTestFiles(e.data.tests, (f) => importUrl(`${VFS_ROOT}${f}`), (g.Bun as { version: string }).version, { update: ((e.data.args as string[] | undefined) ?? []).some((a) => a === "-u" || a === "--update-snapshots") }).catch((err) => (post({ type: "console", level: "error", text: fmt(err) }), { failed: 1, results: undefined }));
+    const { failed, results } = await runTestFiles(e.data.tests, (f) => importUrl(`${VFS_ROOT}${f}`), (g.Bun as { version: string }).version, { update: ((e.data.args as string[] | undefined) ?? []).some((a) => a === "-u" || a === "--update-snapshots"), preload: () => bunfigPreloads(true) }).catch((err) => (post({ type: "console", level: "error", text: fmt(err) }), { failed: 1, results: undefined }));
     post({ type: "ready", failed, results });
     return;
   }
@@ -1832,6 +1851,18 @@ self.addEventListener("message", async (e: MessageEvent) => {
   process.argv.splice(2, Infinity, ...((e.data.args as string[] | undefined) ?? []));
   try {
     const code = (e.data.thread as ThreadInfo | undefined)?.eval;
+    // bunfig.toml's `preload`, in order, before the entry (its runtime plugins apply to the entry's imports). Not in
+    // a worker_threads thread, which is no new `bun` process.
+    if (!e.data.thread) {
+      let preloads: string[] = [];
+      try {
+        preloads = bunfigPreloads(false);
+      } catch (err) {
+        post({ type: "console", level: "error", text: `error: ${err instanceof Error ? err.message : String(err)}` });
+        halt(1);
+      }
+      for (const p of preloads) await importUrl(`${VFS_ROOT}${p}`);
+    }
     // A .cjs/.mjs program by moduleServer.ts's ENTRY_PREFIX: served as its extension makes it, as Bun runs one.
     const entryUrl = `${VFS_ROOT}${/\.[cm][jt]s$/.test(e.data.entry) ? "__entry/" : ""}${e.data.entry}`;
     const mod = (code !== undefined ? evalThread(code) : await importUrl(entryUrl)) as { default?: ServeOptions };

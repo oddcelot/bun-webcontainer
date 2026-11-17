@@ -722,7 +722,7 @@ export type TestOutcome = { failed: number; results: { file: string; failed: num
  * Loads each file (its top level registers suites in `bun:test`), runs it and prints Bun's report.
  * Resolves to the number of failed tests, in all and per file (import errors count as failures).
  */
-export async function runTestFiles(files: string[], load: (file: string) => Promise<unknown>, version: string, opts: { update?: boolean; io?: SnapshotIO } = {}): Promise<TestOutcome> {
+export async function runTestFiles(files: string[], load: (file: string) => Promise<unknown>, version: string, opts: { update?: boolean; io?: SnapshotIO; preload?: () => string[] } = {}): Promise<TestOutcome> {
   update = !!opts.update;
   snapCounts.passed = snapCounts.added = snapCounts.failed = 0;
   const io = opts.io ?? (await fsIO());
@@ -732,13 +732,32 @@ export async function runTestFiles(files: string[], load: (file: string) => Prom
   expectCalls = 0;
   const results: TestOutcome["results"] = [];
   console.log(`bun test v${version.replace(/-.*/, "")}`);
+  // bunfig.toml's `[test] preload`: resolved up front, run with the first file. Its hooks are global: `beforeEach` and
+  // `afterEach` around every test, `beforeAll` before the first file's tests, `afterAll` after the last file's.
+  let preloads: string[] = [];
+  try {
+    preloads = opts.preload?.() ?? [];
+  } catch (e) {
+    console.error(`error: ${e instanceof Error ? e.message : String(e)}`);
+    return { failed: 1, results };
+  }
+  const global = newSuite("");
+  let globalStarted = false;
+  const globalHook = (hook: "beforeAll" | "afterAll") =>
+    (async () => {
+      for (const h of global.hooks[hook]) await call(h, defaultTimeout);
+    })().catch((e) => (totals.fail++, console.error(`${failure(e)}\n\x1b[31m✗\x1b[0m\x1b[31m (${hook})\x1b[0m`)));
   for (const file of files) {
     console.log(`\n${file}:`);
     currentFile = file;
-    root = current = newSuite("");
     snapshots = new SnapshotFile(io, file, update, snapCounts);
     const before = totals.fail;
     try {
+      if (preloads.length) {
+        root = current = global;
+        for (const p of preloads.splice(0)) await load(p);
+      }
+      root = current = newSuite("", global);
       await load(file);
     } catch (e) {
       totals.fail++;
@@ -746,10 +765,12 @@ export async function runTestFiles(files: string[], load: (file: string) => Prom
       results.push({ file, failed: 1 });
       continue;
     }
+    if (!globalStarted) (globalStarted = true), await globalHook("beforeAll");
     await runSuite(root, hasOnly(root), false);
     snapshots.flush();
     results.push({ file, failed: totals.fail - before });
   }
+  if (globalStarted) await globalHook("afterAll");
   const n = totals.pass + totals.fail + totals.skip + totals.todo;
   const row = (count: number, word: string) => (count ? ` ${count} ${word}` : "");
   console.log("");

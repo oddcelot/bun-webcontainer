@@ -13,8 +13,8 @@ import puppeteer from "puppeteer-core";
 
 const app = join(import.meta.dir, "..");
 const fixtures = join(app, "fixtures/bun-test");
-const PORT = 5220;
-const HOST_PORT = 5221;
+const PORT = Number(process.env.EDITOR_PORT ?? 5220);
+const HOST_PORT = Number(process.env.HOST_PORT ?? 5221);
 const EDITOR = `http://localhost:${PORT}`;
 
 /** Each step: the arguments of `bun test`, then optional edits to the project before it (path to new text, null removes). */
