@@ -1,7 +1,8 @@
 import assert from "./assert";
 import buffer from "./buffer";
 import crypto from "./crypto";
-import { diagnostics_channel, async_hooks, cluster, constants, dns, http2, inspector, tls, v8 } from "./stubs";
+import diagnostics_channel from "./diagnosticsChannel";
+import { async_hooks, cluster, constants, dns, http2, inspector, tls, v8 } from "./stubs";
 import vm from "./vm";
 import events from "./events";
 import fs from "./fs";

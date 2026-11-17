@@ -1,4 +1,3 @@
-import EventEmitter from "events";
 import { stubModule } from "./errors";
 
 const lookup = (host: string, opts?: unknown, cb?: (...a: unknown[]) => void) => {
@@ -28,29 +27,3 @@ export const cluster = stubModule("cluster", "fork disconnect setupPrimary setup
 export const constants = {};
 
 export { async_hooks } from "./asyncHooks";
-
-class Channel extends EventEmitter {
-  hasSubscribers = false;
-  constructor(readonly name: string) {
-    super();
-  }
-  publish() {}
-  subscribe() {}
-  unsubscribe() {
-    return false;
-  }
-  bindStore() {}
-  unbindStore() {}
-  runStores<R>(_data: unknown, fn: (...a: unknown[]) => R, thisArg?: unknown, ...args: unknown[]): R {
-    return fn.apply(thisArg, args);
-  }
-}
-
-export const diagnostics_channel = {
-  channel: (name: string) => new Channel(name),
-  hasSubscribers: () => false,
-  subscribe() {},
-  unsubscribe: () => false,
-  tracingChannel: (name: string) => ({ start: new Channel(name + ":start"), end: new Channel(name + ":end"), asyncStart: new Channel(name + ":asyncStart"), asyncEnd: new Channel(name + ":asyncEnd"), error: new Channel(name + ":error"), hasSubscribers: false, subscribe() {}, unsubscribe: () => false, traceSync: <R>(fn: (...a: unknown[]) => R, _ctx?: unknown, thisArg?: unknown, ...args: unknown[]) => fn.apply(thisArg, args), tracePromise: <R>(fn: (...a: unknown[]) => R, _ctx?: unknown, thisArg?: unknown, ...args: unknown[]) => fn.apply(thisArg, args), traceCallback: <R>(fn: (...a: unknown[]) => R, _pos?: unknown, _ctx?: unknown, thisArg?: unknown, ...args: unknown[]) => fn.apply(thisArg, args) }),
-  Channel,
-};
