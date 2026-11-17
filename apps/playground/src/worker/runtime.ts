@@ -35,6 +35,7 @@ import { capture, runIn } from "./node/asyncHooks";
 import { mimeOf } from "./mime";
 import { hooks, type NodeSocket } from "./node/serve";
 import { flushDatabases } from "./node/sqlite";
+import { SQL, flushSql, sql } from "./sql";
 import nodePath from "./node/path";
 import process, { env } from "./node/process";
 import { enableTTY, resizeTTY } from "./node/tty";
@@ -735,6 +736,7 @@ function halt(code: number, signal?: string): never {
     halted = true;
     try {
       flushDatabases();
+      flushSql();
     } catch (err) {
       post({ type: "console", level: "error", text: fmt(err) });
     }
@@ -1275,6 +1277,8 @@ async function main() {
     Glob,
     S3Client: s3.S3Client,
     s3: s3.s3,
+    sql,
+    SQL,
     // Wrapped so the functions are named `parse`/`stringify`, with Bun's lengths.
     YAML: { parse: (input: unknown) => parseData(dataText(input, "yaml"), "yaml"), stringify: (value: unknown, replacer?: unknown, space?: unknown) => yamlStringify(value, replacer, space) },
     TOML: { parse: (input: unknown) => parseData(dataText(input, "toml"), "toml"), stringify: (value: unknown, replacer?: unknown, _space?: unknown) => tomlStringify(value, replacer) },
@@ -1353,6 +1357,7 @@ self.addEventListener("message", (e: MessageEvent) => {
   if (e.data?.type !== "flush") return;
   try {
     flushDatabases();
+    flushSql();
   } catch (err) {
     post({ type: "console", level: "error", text: fmt(err) });
   }

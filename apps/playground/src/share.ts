@@ -5,7 +5,7 @@ import type { VFS } from "@runbun/vfs";
 // The hash never reaches the server, so nothing is uploaded or stored; opening the link installs as usual.
 
 const PREFIX = "#code=";
-const SKIP = /(^|\/)(node_modules|\.git)\//;
+const SKIP = /(^|\/)(node_modules|\.git|\.runbun\/pglite)\//;
 type Payload = { v: 1; files: Record<string, string> };
 
 async function pipe(bytes: Uint8Array, stream: CompressionStream | DecompressionStream): Promise<Uint8Array> {

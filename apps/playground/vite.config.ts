@@ -10,7 +10,7 @@ import { rolldown, type OutputBundle } from "rolldown";
 import { defaultClientConditions, defineConfig, runnerImport, type Plugin } from "vite";
 import { BUN_VERSION } from "./src/worker/bunVersion";
 import type { AuthEnv } from "./worker/auth";
-import { npmNotice, npmPackageDir, render, rustNotices } from "./scripts/licenses";
+import { npmNotice, npmPackageDir, postgresNotice, render, rustNotices } from "./scripts/licenses";
 
 const isolation = {
   "Cross-Origin-Opener-Policy": "same-origin",
@@ -90,6 +90,40 @@ function emnapiNotNode(): Plugin {
     enforce: "pre",
     transform(code, id) {
       if (/@emnapi\/(core|wasi-threads)\/dist\/[^/]+\.js/.test(id)) return code.replace(/typeof process === 'object' && process !== null &&/g, "false &&");
+    },
+  };
+}
+
+/**
+ * PGlite (Bun.sql's Postgres, worker/sql.ts) takes its environment for Node when `process.versions.node` is a string, which
+ * the worker's `process` shim says: it would then `require("node:fs")` and read the data files from disk. Its three tests are
+ * patched to false here. The package is pinned; an upgrade that moves them fails the build instead of the first query.
+ */
+function pgliteNotNode(): Plugin {
+  const patches: [string, string][] = [
+    ['ENVIRONMENT_IS_NODE=globalThis.process?.versions?.node&&globalThis.process?.type!="renderer"', "ENVIRONMENT_IS_NODE=false"],
+    ['var r=globalThis.process&&globalThis.process.versions&&globalThis.process.versions.node&&globalThis.process.type!="renderer"', "var r=false"],
+    ['s=typeof process=="object"&&typeof process.versions=="object"&&typeof process.versions.node=="string"&&!m()', "s=false"],
+  ];
+  const hit = new Set<number>();
+  let seen = false;
+  let building = false;
+  return {
+    name: "pglite-not-node",
+    enforce: "pre",
+    configResolved: (config) => void (building = config.command === "build"),
+    transform(code, id) {
+      if (!/@electric-sql\/pglite\/dist\/chunk-[^/]+\.js/.test(id)) return;
+      seen = true;
+      patches.forEach(([from, to], i) => {
+        if (!code.includes(from)) return;
+        hit.add(i);
+        code = code.replaceAll(from, to);
+      });
+      return code;
+    },
+    buildEnd() {
+      if (building && seen && hit.size < patches.length) throw new Error(`pglite-not-node: PGlite's Node checks moved (patched ${[...hit]} of 0..${patches.length - 1}): update vite.config.ts`);
     },
   };
 }
@@ -337,7 +371,9 @@ function thirdPartyLicenses(): Plugin {
     generateBundle(_, out) {
       notePackages(out);
       const npm = [...bundledPackages].flatMap((dir) => npmNotice(dir) ?? []);
-      this.emitFile({ type: "asset", fileName: "third-party-licenses.txt", source: render([...npm, ...rustNotices(BUN_VERSION)]) });
+      // Postgres itself is inside PGlite's wasm: shipped whenever the package is.
+      const postgres = [...bundledPackages].some((dir) => dir.endsWith(join("@electric-sql", "pglite"))) ? [postgresNotice()] : [];
+      this.emitFile({ type: "asset", fileName: "third-party-licenses.txt", source: render([...npm, ...postgres, ...rustNotices(BUN_VERSION)]) });
     },
   };
 }
@@ -371,7 +407,7 @@ export default defineConfig(({ mode }) => ({
     // CANARY=1 (playground:deploy-canary) shows the canary badge (src/canary.ts).
     "import.meta.env.CANARY": JSON.stringify(process.env.CANARY === "1"),
   },
-  plugins: [examplesSubmodule(), configSchema(), UnoCSS(), solid(), hostPackageNames(), emnapiNotNode(), docsLink(docsUrl(mode)), embedRoutes(), originHeaders(), serviceWorker(), workerRoutesDev(), thirdPartyLicenses()],
+  plugins: [examplesSubmodule(), configSchema(), UnoCSS(), solid(), hostPackageNames(), emnapiNotNode(), pgliteNotNode(), docsLink(docsUrl(mode)), embedRoutes(), originHeaders(), serviceWorker(), workerRoutesDev(), thirdPartyLicenses()],
   build: {
     target: "esnext",
     rollupOptions: {
@@ -381,7 +417,7 @@ export default defineConfig(({ mode }) => ({
     },
   },
   // In builds, worker bundles (the runtime and rolldown's wasi worker) only get worker.plugins.
-  worker: { format: "es", plugins: () => [emnapiNotNode(), workerPackages()] },
+  worker: { format: "es", plugins: () => [emnapiNotNode(), pgliteNotNode(), workerPackages()] },
   // Vite's default `localhost` bind may be ::1 only. As a content origin (src/contentOrigin.ts: run.runbun.localhost next to
   // the editor at runbun.localhost) the server listens on 127.0.0.1, which every *.localhost name reaches (browsers resolve
   // them to loopback and try IPv4); Vite's Host check is told to accept those names.
@@ -391,7 +427,7 @@ export default defineConfig(({ mode }) => ({
   // folder invalidate each other's files (504 "Outdated Optimize Dep" on every load).
   cacheDir: process.env.VITE_CACHE_DIR || undefined,
   optimizeDeps: {
-    exclude: ["@rolldown/browser", "@napi-rs/wasm-runtime", "@emnapi/core", "@emnapi/runtime", "@emnapi/wasi-threads"],
+    exclude: ["@rolldown/browser", "@napi-rs/wasm-runtime", "@emnapi/core", "@emnapi/runtime", "@emnapi/wasi-threads", "@electric-sql/pglite"],
     // Imported on first use (a .json file opened, src/jsonLanguage.ts): found then, its optimizing would reload the page.
     include: ["vscode-json-languageservice"],
   },
