@@ -20,10 +20,31 @@
     }
   },
   "overrides": {
-    "fflate": "0.8.3"
+    "fflate": "0.8.3",
+    "@solid-primitives/a11y": "1.0.0",
+    "@solid-primitives/controlled-signal": "1.0.0",
+    "@solid-primitives/event-listener": "3.0.0",
+    "@solid-primitives/focus": "1.0.0",
+    "@solid-primitives/form": "1.0.0",
+    "@solid-primitives/i18n": "3.0.0",
+    "@solid-primitives/interaction": "1.0.0",
+    "@solid-primitives/keyboard": "2.0.0",
+    "@solid-primitives/keyed": "3.0.0",
+    "@solid-primitives/map": "1.0.0",
+    "@solid-primitives/media": "4.0.0",
+    "@solid-primitives/platform": "1.0.0",
+    "@solid-primitives/presence": "1.0.0",
+    "@solid-primitives/props": "4.0.0",
+    "@solid-primitives/refs": "3.0.0",
+    "@solid-primitives/resize-observer": "4.0.0",
+    "@solid-primitives/rootless": "2.0.0",
+    "@solid-primitives/scroll": "3.0.0",
+    "@solid-primitives/static-store": "1.0.0",
+    "@solid-primitives/trigger": "3.0.0",
+    "@solid-primitives/upload": "1.0.0",
+    "@solid-primitives/utils": "7.0.0"
   },
   "patchedDependencies": {
-    "@solid-primitives/presence@1.0.0-next.2": "patches/npm/@solid-primitives%2Fpresence@1.0.0-next.2.patch",
     "@kobalte/core@2.0.0-alpha.4": "patches/npm/@kobalte%2Fcore@2.0.0-alpha.4.patch"
   },
   "devDependencies": {
