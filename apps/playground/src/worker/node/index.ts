@@ -2,7 +2,9 @@ import assert from "./assert";
 import buffer from "./buffer";
 import crypto from "./crypto";
 import diagnostics_channel from "./diagnosticsChannel";
-import { async_hooks, cluster, constants, dns, http2, inspector, tls } from "./stubs";
+import { async_hooks, cluster, dgram, dns, http2, repl, tls, trace_events, wasi } from "./stubs";
+import domain from "./domain";
+import inspector, { inspectorPromises } from "./inspector";
 import v8 from "./v8";
 import vm from "./vm";
 import events from "./events";
@@ -51,6 +53,9 @@ export const BUN_NAMES = ["version", "env", "gc", "main", "argv", "stdout", "std
 /** `import ... from "bun"`: the worker copies the `Bun` global in once it exists; the page only needs the names. */
 const bun: Record<string, unknown> = Object.fromEntries(BUN_NAMES.map((k) => [k, undefined]));
 
+/** node:constants, the deprecated module: os.constants' groups, then fs's and crypto's, flattened as in Node and Bun. */
+const constants = { ...os.constants.dlopen, ...os.constants.errno, ...os.constants.priority, ...os.constants.signals, ...fs.constants, ...(crypto as { constants: object }).constants };
+
 /** Node built-ins by specifier (without `node:`). Evaluating this must have no side effects: the page imports it for export names. */
 export const builtins: Record<string, object> = {
   assert,
@@ -62,9 +67,11 @@ export const builtins: Record<string, object> = {
   console: globalThis.console,
   constants,
   crypto,
+  dgram,
   diagnostics_channel,
   dns,
   "dns/promises": dns.promises as object,
+  domain,
   events,
   fs,
   "fs/promises": fs.promises,
@@ -72,6 +79,7 @@ export const builtins: Record<string, object> = {
   http2,
   https,
   inspector,
+  "inspector/promises": inspectorPromises,
   module: undefined as unknown as object,
   net,
   os,
@@ -83,6 +91,7 @@ export const builtins: Record<string, object> = {
   querystring,
   readline,
   "readline/promises": readlinePromises,
+  repl,
   stream,
   "stream/promises": streamPromises,
   "stream/web": streamWeb,
@@ -91,12 +100,14 @@ export const builtins: Record<string, object> = {
   timers,
   "timers/promises": timersPromises,
   tls,
+  trace_events,
   tty,
   url,
   util,
   "util/types": util.types,
   v8,
   vm,
+  wasi,
   bun,
   sqlite: nodeSqlite,
   "bun:sqlite": sqlite,
