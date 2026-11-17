@@ -4,6 +4,15 @@ Notable changes per release of `@runbun/connect`, the local runner for runbun.de
 `connect-v<version>` and has a GitHub Release with its section. The runner talks to the playground over its own
 protocol (`src/protocol.ts`); the deployed runbun.dev and the runner from npm can differ in version.
 
+## 0.3.0 — 2026-11-17
+
+`bun test -u` works with Local Bun: the runner sends the snapshots a test run wrote back to the playground. Nothing
+needs action to upgrade; the playground asks older runners to update when you use `-u`.
+
+- **Added** — **`bun test -u` can update snapshots.** A test run now sends back the snapshot files and inline-snapshot
+  edits it made, so the playground can put them in the project. Nothing else leaves the run's folder: links, binary
+  and oversized files and paths outside the project stay behind.
+
 ## 0.2.0 — 2026-11-15
 
 Projects can set environment variables for their runs: the `env` in a project's runbun.json now reaches programs run
