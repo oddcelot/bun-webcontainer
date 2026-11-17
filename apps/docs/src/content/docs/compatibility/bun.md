@@ -80,7 +80,7 @@ Servers answer requests from the [preview](/guides/features/#preview), not from 
 | `fetch(req, server)` | ✅ Works | |
 | `routes` | ✅ Works | Exact paths, `:param` (in `req.params`), trailing `*`, per-method handlers (a HEAD to a route with only `GET` gets its response without the body), static `Response`s. Globs in the middle of a path (`/a/*/b`) don't match. |
 | HTML imports in `routes` | ✅ Works | `import page from "./index.html"` is bundled with Bun's bundler. Assets are served under `/_bun/`, with inline source maps, so DevTools shows the original source. Rebuilt after any file change. No HMR. |
-| WebSockets | ✅ Works | `server.upgrade(req, { data, headers })` (of `headers`, only Set-Cookie has an effect: the page's socket never sees the others), `open`/`message`/`close`/`drain`, `send`, `publish`, `subscribe`, `cork`, `close`. `ping`/`pong` do nothing. Only the preview page can connect. |
+| WebSockets | ✅ Works | `server.upgrade(req, { data, headers })` (of `headers`, only Set-Cookie has an effect: the page's socket never sees the others), `open`/`message`/`close`/`drain`, `send`, `publish`, `subscribe`, `cork`, `close`. `ping`/`pong` do nothing. The preview page connects, and so does the program itself: `new WebSocket("ws://localhost:<port>")` to one of its own servers connects in-process, as Bun's client does (binary messages as Buffers by default, `binaryType` `"arraybuffer"` or `"blob"`). A child process's server isn't reachable that way. |
 | `server.publish`, `subscriberCount`, `pendingWebSockets` | ✅ Works | |
 | `server.reload`, `server.stop` | ✅ Works | |
 | `server.url`, `port`, `hostname` | ✅ Works | `port: 0` picks a port from 40001. |

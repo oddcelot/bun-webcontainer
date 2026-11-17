@@ -137,7 +137,7 @@ When your code starts a server (`Bun.serve`, `node:http`, or `export default { f
 - **Tabs:** several previews at once. <kbd>Cmd</kbd>-click (<kbd>Ctrl</kbd>-click off macOS) or middle-click a link in a page to open it in a new preview tab in the background; add <kbd>Shift</kbd> to switch to it.
 - **Open in a new tab:** the page gets its own browser tab, still served by the playground (keep the playground tab open).
 - **Requests stay inside:** `fetch("/api/x")`, links, forms and redirects from the preview page reach your server.
-- **WebSockets:** the preview page's `WebSocket` connects to your server (`Bun.serve` `upgrade`, `node:http` `upgrade`, the `ws` package). `localhost:<port>` URLs pick the server on that port.
+- **WebSockets:** the preview page's `WebSocket` connects to your server (`Bun.serve` `upgrade`, `node:http` `upgrade`, the `ws` package). `localhost:<port>` URLs pick the server on that port. The program's own `new WebSocket("ws://localhost:<port>")` reaches its servers too.
 - **Streaming:** streamed responses and Server-Sent Events arrive as they're sent.
 - **Cookies:** kept in the browser across restarts, where the preview's scripts read and set them with `document.cookie` and DevTools lists them (HttpOnly ones stay hidden from scripts and DevTools); see them with `cookies`.
 - **HTML imports:** `import page from "./index.html"` in `Bun.serve` routes is bundled with Bun's bundler.

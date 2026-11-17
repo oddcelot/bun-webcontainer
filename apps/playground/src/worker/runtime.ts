@@ -60,6 +60,7 @@ import { WebWorker } from "./webWorker";
 import { isShellCommand } from "../scripts";
 import { hideXhr, XHR } from "./xhr";
 import { randomUUIDv7 } from "./uuid";
+import { loopbackWebSocket } from "./loopbackSocket";
 
 type Handler = (req: Request, server: unknown) => Response | Promise<Response>;
 type HtmlImport = { __htmlImport: string };
@@ -541,29 +542,35 @@ function asPageOrigin(value: string): string {
   return page + (prefix ? rest.slice(prefix.length) || "/" : rest);
 }
 
-/** A page's WebSocket: a GET with `upgrade: websocket` through the server's handler, which may accept it. */
-async function openSocket(inst: Instance, port: MessagePort, path: string, headers: [string, string][]) {
+/**
+ * A page's WebSocket: a GET with `upgrade: websocket` through the server's handler, which may accept it. With `url`,
+ * the program's own WebSocket (loopbackSocket.ts) to that URL: its cookies are its own, not the preview's.
+ */
+async function openSocket(inst: Instance, port: MessagePort, path: string, headers: [string, string][], url?: string) {
   const key = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16))));
-  const req = serverRequest(path, {}, [...headers, ["upgrade", "websocket"], ["connection", "Upgrade"], ["sec-websocket-version", "13"], ["sec-websocket-key", key]]);
+  const all: [string, string][] = [...headers, ["upgrade", "websocket"], ["connection", "Upgrade"], ["sec-websocket-version", "13"], ["sec-websocket-key", key]];
+  const req = url ? new Request(url.replace(/^ws/, "http"), { headers: all }) : serverRequest(path, {}, all);
+  const toJar = (setCookies: string[]) => !url && setCookies.length && post({ type: "cookies", path, setCookies });
   let ws: ServerWebSocket | undefined;
+  let status: number | undefined;
   upgrades.set(req, (data, setCookies) => {
     ws = new ServerWebSocket(port, inst, data);
     // The page's WebSocket never sees the 101's headers: its cookies go to the preview's cookie jar (runner.ts),
     // before the socket opens, so the page's next request carries them.
-    if (setCookies.length) post({ type: "cookies", path, setCookies });
+    toJar(setCookies);
   });
   try {
     const { res, setCookies } = await dispatch(inst, req);
     // Not upgraded: as in Bun, the handler's Response goes back with its Set-Cookie headers, then those of what it
     // set or deleted in `req.cookies`. The page's socket only fails; the cookies go to the jar all the same.
-    const all = ws ? [] : [...(res instanceof Response ? res.headers.getSetCookie() : []), ...setCookies];
-    if (all.length) post({ type: "cookies", path, setCookies: all });
+    if (!ws) toJar([...(res instanceof Response ? res.headers.getSetCookie() : []), ...setCookies]);
+    if (!ws && res instanceof Response) status = res.status;
   } catch (err) {
     console.error(err);
   }
   upgrades.delete(req);
   if (!ws) {
-    port.postMessage({ type: "close", code: 1006, reason: "" });
+    port.postMessage({ type: "close", code: 1006, reason: "", status });
     return port.close();
   }
   const socket = ws;
@@ -1293,14 +1300,20 @@ globalThis.fetch = trackedFn(function fetch(input: RequestInfo | URL, init?: Req
 }) as typeof fetch;
 
 /** The browser's WebSocket client, holding the program while it is connecting or open (loop.ts), as Bun's does. */
-if (typeof globalThis.WebSocket === "function")
-  globalThis.WebSocket = class WebSocket extends globalThis.WebSocket {
+if (typeof globalThis.WebSocket === "function") {
+  const BrowserWebSocket = class WebSocket extends globalThis.WebSocket {
     constructor(url: string | URL, protocols?: string | string[]) {
       super(url, protocols);
       hold(this);
       this.addEventListener("close", () => release(this));
     }
   };
+  // `ws://localhost:<port>` to a server of this program connects in-process, as `fetch` does over http.
+  globalThis.WebSocket = loopbackWebSocket(BrowserWebSocket, (url) => {
+    const inst = ownServer(url.href.replace(/^ws/, "http"));
+    return inst && ((headers, port) => void openSocket(inst, port, url.pathname + url.search, headers, url.href));
+  });
+}
 
 const HTML_ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#x27;" };
 /** `Bun.escapeHTML`: like Bun's, non-strings are stringified first. */

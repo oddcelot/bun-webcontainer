@@ -254,5 +254,69 @@ if (Bun.env.NET) {
       });
   });
 }
+// A WebSocket to this program's own server, as Bun's client connects to it.
+const sockets = Bun.serve({
+  port: 3012,
+  fetch(req, srv) {
+    if (new URL(req.url).pathname === "/refuse") return new Response("no", { status: 400 });
+    const data = { url: req.url, protocol: req.headers.get("sec-websocket-protocol"), host: req.headers.get("host") };
+    if (!srv.upgrade(req, { data })) return new Response("plain");
+  },
+  websocket: {
+    open(ws) {
+      ws.send(JSON.stringify(ws.data));
+      ws.send(new Uint8Array([1, 2]));
+      ws.send(7 as never);
+    },
+    message(ws, m) {
+      if (m === "close") ws.close(4001, "server bye");
+      else ws.send(typeof m === "string" ? `echo ${m}` : `bin ${m.constructor.name} ${m.byteLength}`);
+    },
+    close(_ws, code, reason) {
+      log("server close:", code, JSON.stringify(reason));
+    },
+  },
+});
+const wsEvents = (ws: WebSocket, ms = 300) =>
+  new Promise<string[]>((resolve) => {
+    const events: string[] = [];
+    ws.onopen = () => events.push(`open ${ws.readyState} ${JSON.stringify(ws.protocol)}`);
+    ws.onmessage = (e) => events.push(`message ${typeof e.data === "string" ? e.data : `${e.data.constructor.name} ${e.data.byteLength ?? e.data.size}`} ${e.origin}`);
+    ws.onerror = () => events.push("error");
+    ws.onclose = (e) => events.push(`close ${e.code} ${JSON.stringify(e.reason)} ${e.wasClean} ${ws.readyState}`);
+    setTimeout(() => resolve(events), ms);
+  });
+{
+  const ws = new WebSocket("ws://localhost:3012/a?x=1", ["p1", "p2"]);
+  log("ws:", ws.readyState, ws.binaryType, ws.url, JSON.stringify(ws.protocol), ws instanceof WebSocket);
+  const events = wsEvents(ws);
+  ws.addEventListener("open", () => {
+    ws.send("hi");
+    ws.send(new Uint8Array([9, 9, 9]));
+    ws.send(new Blob(["blob"]));
+    ws.send("close");
+  });
+  for (const e of await events) log("ws event:", e);
+}
+{
+  const ws = new WebSocket("ws://localhost:3012/b");
+  ws.binaryType = "arraybuffer";
+  const events = wsEvents(ws);
+  ws.addEventListener("open", () => (ws.close(), log("ws after close():", ws.readyState)));
+  for (const e of await events) log("ws arraybuffer event:", e);
+}
+for (const e of await wsEvents(new WebSocket("ws://localhost:3012/refuse"))) log("ws refused:", e);
+log("ws send while connecting:", (() => {
+  const ws = new WebSocket("ws://localhost:3012/c");
+  try {
+    ws.send("x");
+  } catch (e: any) {
+    return e.name;
+  } finally {
+    ws.close();
+  }
+})());
+await Bun.sleep(100);
+sockets.stop(true);
 server.stop(true);
 log("__end__");
