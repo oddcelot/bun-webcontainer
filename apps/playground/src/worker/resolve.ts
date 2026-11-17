@@ -1,7 +1,7 @@
 // `Bun.resolveSync`, `Bun.resolve` and `import.meta.resolve` over the VFS, with Bun's resolver (resolve-wasm, loaded by
 // runtime.ts). Paths are VFS paths with a leading `/`, as `import.meta.path` has them.
 import { resolve } from "../resolver";
-import { builtins } from "./node";
+import { builtinName } from "./node";
 import nodePath from "./node/path";
 import process from "./node/process";
 import { fileURLToPath, pathToFileURL } from "./node/url";
@@ -26,8 +26,8 @@ const isPath = (spec: string) => /^(\.\.?(\/|$)|\/|file:)/.test(spec);
 
 /** `fs` -> `node:fs`, `bun:sqlite`, `bun`: what Bun resolves a built-in to, or undefined. */
 function builtin(spec: string): string | undefined {
-  const name = spec.replace(/^node:/, "");
-  if (!(name in builtins)) return undefined;
+  const name = builtinName(spec);
+  if (name === undefined) return undefined;
   return name === "bun" || name.startsWith("bun:") ? name : `node:${name}`;
 }
 

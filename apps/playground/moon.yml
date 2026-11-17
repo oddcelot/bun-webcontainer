@@ -164,6 +164,14 @@ tasks:
     toolchains: ['bun']
     options:
       cache: false
+  test-node-apis:
+    # Node modules emulated in JavaScript (diagnostics_channel, sqlite, v8, constants, domain, ...) end to end
+    # (scripts/node-apis.ts): scripts/node-apis/main.ts runs in the embed in headless Chrome and must print what native
+    # Bun prints. Needs Chrome, so it isn't part of `test`.
+    command: 'bun scripts/node-apis.ts'
+    toolchains: ['bun']
+    options:
+      cache: false
   test-als:
     # AsyncLocalStorage end to end (scripts/als.ts): scripts/als/ runs in the embed in headless Chrome (a Bun.serve one
     # through the preview, a Hono app with contextStorage() installed from npm) and prints what native Bun prints for it.

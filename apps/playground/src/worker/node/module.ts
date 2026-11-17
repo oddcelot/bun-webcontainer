@@ -131,9 +131,9 @@ const nodeModulePaths = (dir: string) => {
 };
 
 /** `node:module` needs the registry (for createRequire, builtinModules), so it is built by index.ts. */
-export function createModule(registry: Record<string, object>) {
-  const name = (id: string) => id.replace(/^node:/, "");
-  const isBuiltin = (id: string) => name(id) in registry;
+export function createModule(registry: Record<string, object>, builtinName: (spec: string) => string | undefined, builtinModules: () => string[]) {
+  const name = (id: string) => builtinName(id) ?? id;
+  const isBuiltin = (id: string) => builtinName(String(id)) !== undefined;
 
   /** The CommonJS module at `file`: from the cache, else made, cached and run (`run` fills in its exports). */
   function load(file: string, run: (m: CjsModule) => void, req: Require): CjsModule {
@@ -347,7 +347,7 @@ export function createModule(registry: Record<string, object>) {
 
   const Module = Object.assign(function Module() {}, {
     createRequire,
-    builtinModules: Object.keys(registry),
+    builtinModules: builtinModules(),
     isBuiltin,
     register() {},
     registerHooks: () => ({ deregister() {} }),

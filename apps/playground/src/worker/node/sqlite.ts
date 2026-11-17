@@ -79,7 +79,7 @@ const CODES: Record<number, string> = {
 const utf8 = new TextEncoder();
 
 /** The result code of an error sql.js threw (it only keeps sqlite3_errmsg): the extended one for constraints. */
-function classify(message: string, db: SqlJsDb | undefined): number {
+export function classify(message: string, db: SqlJsDb | undefined): number {
   const unique = /^UNIQUE constraint failed: (.+)$/.exec(message);
   if (unique) {
     // A PRIMARY KEY violation has the same message; it is one when the failed columns are the table's key
@@ -125,7 +125,7 @@ function cantOpen(): SQLiteError {
 
 // --- parameters --------------------------------------------------------------------------------------------------
 
-interface Param {
+export interface Param {
   /** The token as written (`?`, `?3`, `$a`, `:a`, `@a`). */
   text: string;
   start: number;
@@ -137,7 +137,7 @@ interface Param {
 }
 
 /** The parameter tokens of `sql`, skipping strings, quoted identifiers and comments, numbered as SQLite numbers them. */
-function paramTokens(sql: string): { params: Param[]; count: number } {
+export function paramTokens(sql: string): { params: Param[]; count: number } {
   const params: Param[] = [];
   const named = new Map<string, number>();
   let count = 0;

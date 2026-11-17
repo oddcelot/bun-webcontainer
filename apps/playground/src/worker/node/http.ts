@@ -1,6 +1,7 @@
 import { Buffer } from "buffer";
 import EventEmitter from "events";
 import { capture, runIn } from "./asyncHooks";
+import dc from "./diagnosticsChannel";
 import { Server as NetServer, Socket } from "./net";
 import { hooks, upgradeRequests, type FetchHandler } from "./serve";
 import { Readable, Writable } from "./stream";
@@ -9,6 +10,12 @@ type Any = any;
 
 export const STATUS_CODES: Record<number, string> = { 100: "Continue", 101: "Switching Protocols", 102: "Processing", 103: "Early Hints", 200: "OK", 201: "Created", 202: "Accepted", 203: "Non-Authoritative Information", 204: "No Content", 205: "Reset Content", 206: "Partial Content", 300: "Multiple Choices", 301: "Moved Permanently", 302: "Found", 303: "See Other", 304: "Not Modified", 307: "Temporary Redirect", 308: "Permanent Redirect", 400: "Bad Request", 401: "Unauthorized", 402: "Payment Required", 403: "Forbidden", 404: "Not Found", 405: "Method Not Allowed", 406: "Not Acceptable", 408: "Request Timeout", 409: "Conflict", 410: "Gone", 411: "Length Required", 412: "Precondition Failed", 413: "Payload Too Large", 414: "URI Too Long", 415: "Unsupported Media Type", 416: "Range Not Satisfiable", 417: "Expectation Failed", 418: "I'm a Teapot", 421: "Misdirected Request", 422: "Unprocessable Entity", 426: "Upgrade Required", 428: "Precondition Required", 429: "Too Many Requests", 431: "Request Header Fields Too Large", 451: "Unavailable For Legal Reasons", 500: "Internal Server Error", 501: "Not Implemented", 502: "Bad Gateway", 503: "Service Unavailable", 504: "Gateway Timeout", 505: "HTTP Version Not Supported" };
 export const METHODS = ["ACL", "BIND", "CHECKOUT", "CONNECT", "COPY", "DELETE", "GET", "HEAD", "LINK", "LOCK", "M-SEARCH", "MERGE", "MKACTIVITY", "MKCALENDAR", "MKCOL", "MOVE", "NOTIFY", "OPTIONS", "PATCH", "POST", "PROPFIND", "PROPPATCH", "PURGE", "PUT", "QUERY", "REBIND", "REPORT", "SEARCH", "SOURCE", "SUBSCRIBE", "TRACE", "UNBIND", "UNLINK", "UNLOCK", "UNSUBSCRIBE"];
+
+// The diagnostics channels Bun's http client publishes (Bun publishes none for the server).
+const onRequestCreated = dc.channel("http.client.request.created");
+const onRequestStart = dc.channel("http.client.request.start");
+const onRequestError = dc.channel("http.client.request.error");
+const onResponseFinish = dc.channel("http.client.response.finish");
 
 const TOKEN = /^[\^_`a-zA-Z\-0-9!#$%&'*+.|~]+$/;
 const nullBody = (s: number) => s === 101 || s === 204 || s === 205 || s === 304 || (s >= 100 && s < 200);
@@ -417,6 +424,7 @@ export class ClientRequest extends (OutgoingMessage as Any) {
     }
     if (o.timeout) this.setTimeout(o.timeout);
     queueMicrotask(() => this.emit("socket", this.socket));
+    if (onRequestCreated.hasSubscribers) onRequestCreated.publish({ request: this });
   }
   setTimeout(ms: number, cb?: () => void) {
     if (cb) this.once("timeout", cb);
@@ -442,6 +450,7 @@ export class ClientRequest extends (OutgoingMessage as Any) {
     cb();
   }
   _final(cb: () => void) {
+    if (onRequestStart.hasSubscribers) onRequestStart.publish({ request: this });
     cb();
     this.send();
   }
@@ -479,6 +488,7 @@ export class ClientRequest extends (OutgoingMessage as Any) {
         (res as Any).req = this;
         res.onActivity = () => this.touch();
         this.res = res;
+        if (onResponseFinish.hasSubscribers) onResponseFinish.publish({ request: this, response: res });
         res.once("close", () => {
           if (!this.closed && !this.destroyed) {
             this.closed = true;
@@ -492,7 +502,9 @@ export class ClientRequest extends (OutgoingMessage as Any) {
         if (this.destroyed) return;
         // The browser's fetch hides why it failed (refused, DNS, CORS, TLS), so every failure reads as a refused connection.
         const port = Number(this.url.port) || (this.protocol === "https:" ? 443 : 80);
-        this.destroy(Object.assign(new Error(`connect ECONNREFUSED ${this.url.hostname}:${port}`), { code: "ECONNREFUSED", errno: -61, syscall: "connect", address: this.url.hostname, port, cause: e }));
+        const error = Object.assign(new Error(`connect ECONNREFUSED ${this.url.hostname}:${port}`), { code: "ECONNREFUSED", errno: -61, syscall: "connect", address: this.url.hostname, port, cause: e });
+        if (onRequestError.hasSubscribers) onRequestError.publish({ request: this, error });
+        this.destroy(error);
       },
     );
   }

@@ -11,7 +11,7 @@ import { inRanges, isMethod, literalRanges } from "./literals";
 import { DATA_FILE, dataFormat, loadResolver, parseDataFile, resolve, type DataFormat, type ResolveKind } from "./resolver";
 import { dirname, isLazy, LazyMiss, norm, withLoaded, type VFS } from "@runbun/vfs";
 import hostNames, { version as hostVersion } from "virtual:host-package-names";
-import { builtins, exportNames } from "./worker/node";
+import { builtinName, exportNames, NODE_PREFIXED } from "./worker/node";
 import { pluginUrl, routesThroughPlugins, splitNamespace, type PluginAnswer, type PluginFilters } from "./pluginRoutes";
 
 export type ModuleResponse = { status: number; body: string };
@@ -63,7 +63,7 @@ function hoistRequires(vfs: VFS, code: string, dir: string, url: (spec: string) 
   if (!code.includes("createRequire(import.meta.url)")) return code;
   // Literal `require.resolve("x")` becomes the path it resolves to.
   code = code.replace(/(?<![\w$.])(?:__)?require\.resolve\(\s*(["'])([^"'\n]+)\1\s*\)/g, (m, _q: string, s: string) => {
-    const p = s.replace(/^node:/, "") in builtins ? null : resolveWith(vfs, s, dir, "require");
+    const p = builtinName(s) !== undefined ? null : resolveWith(vfs, s, dir, "require");
     return p ? JSON.stringify("/" + p) : m;
   });
   // In the worker, data files load when required instead (see dataModule).
@@ -71,7 +71,7 @@ function hoistRequires(vfs: VFS, code: string, dir: string, url: (spec: string) 
     const t = resolveWith(vfs, s, dir, "require");
     return !!t && !(TARGET === "bun" && DATA_FILE.test(t));
   };
-  const specs = [...new Set([...code.matchAll(/(?<![\w$.])(?:__)?require\(\s*(["'])([^"'\n]+)\1\s*\)/g)].map((m) => m[2]))].filter((s) => !(s.replace(/^node:/, "") in builtins) && (!s.startsWith(".") || DATA_FILE.test(s)) && hoist(s));
+  const specs = [...new Set([...code.matchAll(/(?<![\w$.])(?:__)?require\(\s*(["'])([^"'\n]+)\1\s*\)/g)].map((m) => m[2]))].filter((s) => builtinName(s) === undefined && (!s.startsWith(".") || DATA_FILE.test(s)) && hoist(s));
   if (!specs.length) return code;
   const imports = specs.map((s, i) => `import * as __h${i} from ${JSON.stringify(url(s))};`).join("");
   const table = specs.map((s, i) => `${JSON.stringify(s)}: __h${i}`).join(", ");
@@ -124,7 +124,7 @@ function hoistMetaRequire(vfs: VFS, code: string, path: string, dir: string, url
   }
   // In the worker, data files load when required (see dataModule): an import here would make them return their namespace.
   const specs = [...new Set(lits)].filter((s) => {
-    if (s.replace(/^node:/, "") in builtins) return false;
+    if (builtinName(s) !== undefined) return false;
     const t = resolveWith(vfs, s, dir, "require");
     return !!t && !(TARGET === "bun" && DATA_FILE.test(t));
   });
@@ -133,7 +133,7 @@ function hoistMetaRequire(vfs: VFS, code: string, path: string, dir: string, url
   // On the module's first line, so the line numbers in its stack traces stay as they are.
   return `${imports}const __metaRequire = ((t, b) => (r => globalThis.__decorateRequire?.(r, ${JSON.stringify("/" + path)}) ?? r)((id) => {
   const n = String(id).replace(/^node:/, "");
-  if (n in b) return b[n];
+  if (n in b && (n !== id || !${JSON.stringify(NODE_PREFIXED)}.includes(n))) return b[n];
   if (id in t) return "__cjs" in t[id] ? t[id].__cjs : t[id];
   if ("bun:" + id in b) return b["bun:" + id];
   if (globalThis.__cjsRequire) return globalThis.__cjsRequire(id, ${JSON.stringify("/" + path)});
@@ -188,13 +188,13 @@ function resolveTarget(vfs: VFS, spec: string, dir: string, kind: ResolveKind = 
 }
 
 function resolveSpecifier(vfs: VFS, spec: string, dir: string, kind: ResolveKind): string | null {
-  const builtin = spec.replace(/^node:/, "");
+  const builtin = builtinName(spec);
   if (spec === "bun:wrap") return "__bun/wrap";
   if (spec in hostNames) {
     checkHostVersion(vfs);
     return `__host/${spec}`;
   }
-  if (spec.startsWith("node:") || builtin in builtins) return builtin in builtins ? `__node/${builtin}` : null;
+  if (spec.startsWith("node:") || builtin !== undefined) return builtin !== undefined ? `__node/${builtin}` : null;
   // A `file:` URL names a path, as in the config Vite bundles and imports (`import … from "file:///node_modules/vite/…"`).
   if (spec.startsWith("file:")) spec = decodeURIComponent(new URL(spec).pathname);
   return resolveWith(vfs, spec, dir, kind);
@@ -213,7 +213,7 @@ let plugins: PluginFilters | undefined;
 
 /** Whether an import of `spec` from `dir` goes through the worker's plugins (pluginRoutes.ts). */
 function pluginRouted(vfs: VFS, spec: string, dir: string): boolean {
-  if (spec.replace(/^node:/, "") in builtins || spec in hostNames || /^(https?:|data:|blob:)/.test(spec)) return false;
+  if (builtinName(spec) !== undefined || spec in hostNames || /^(https?:|data:|blob:)/.test(spec)) return false;
   const namespaced = splitNamespace(spec)[0] !== "file";
   if (!plugins && !namespaced) return false;
   const t = (() => {
@@ -313,8 +313,8 @@ ${target === "bun" ? `import * as __bwcSelf from ${q(`${VFS_ROOT}${path}`)};\ngl
 /** The module for a Node built-in: the worker registers the real object as `globalThis.__nodeBuiltins`. */
 function builtinModule(name: string): string {
   const names = exportNames(name);
-  // bun:sqlite's wasm loads asynchronously, before anything is exported
-  const pre = name === "bun:sqlite" ? "await globalThis.__loadBunSqlite();\n" : "";
+  // bun:sqlite's wasm (node:sqlite's too) loads asynchronously, before anything is exported
+  const pre = name === "bun:sqlite" || name === "sqlite" ? "await globalThis.__loadBunSqlite();\n" : "";
   return `${pre}const m = globalThis.__nodeBuiltins[${JSON.stringify(name)}];
 export default m;
 export const __cjs = m;
