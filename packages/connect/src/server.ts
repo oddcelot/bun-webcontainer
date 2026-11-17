@@ -7,7 +7,7 @@
 //   /__connect/info                    { ws, token, … } for a same-origin page (the playground served from here)
 //   /__connect/preview/<token>/<run>/  the run's Bun.serve
 // Everything else is the playground (--playground: a URL to proxy, or a built dist/ directory), when enabled.
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, constants, existsSync, fstatSync, lstatSync, openSync, readSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, extname, isAbsolute, join, normalize } from "node:path";
 import type { ServerWebSocket, Subprocess } from "bun";
@@ -158,16 +158,34 @@ export function changedFiles(dir: string, sent: Map<string, string>, tests: Set<
       const st = lstatSync(join(dir, ...parts.slice(0, i)), { throwIfNoEntry: false });
       if (!st?.isDirectory()) return void skipped.push(`${rel} (a link on its path)`);
     }
-    const st = lstatSync(join(dir, rel), { throwIfNoEntry: false });
-    if (!st) return;
-    if (!st.isFile()) return void skipped.push(`${rel} (not a regular file)`);
-    if (st.size > SYNC_LIMITS.file) return void skipped.push(`${rel} (over ${SYNC_LIMITS.file / 1024} KiB)`);
-    if (files.length >= SYNC_LIMITS.count || total + st.size > SYNC_LIMITS.total) return void skipped.push(`${rel} (too many or too large in all)`);
+    // Opened without following a link, and checked on the open file, not the path: a link swapped in after the
+    // lstat above can't make the runner read something outside the project.
+    let fd: number;
+    try {
+      fd = openSync(join(dir, rel), constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    } catch {
+      return;
+    }
     let text: string;
     try {
-      text = new TextDecoder("utf-8", { fatal: true }).decode(readFileSync(join(dir, rel)));
-    } catch {
-      return void skipped.push(`${rel} (not text)`);
+      const st = fstatSync(fd);
+      if (!st.isFile()) return void skipped.push(`${rel} (not a regular file)`);
+      if (st.size > SYNC_LIMITS.file) return void skipped.push(`${rel} (over ${SYNC_LIMITS.file / 1024} KiB)`);
+      if (files.length >= SYNC_LIMITS.count || total + st.size > SYNC_LIMITS.total) return void skipped.push(`${rel} (too many or too large in all)`);
+      const bytes = Buffer.alloc(st.size);
+      let at = 0;
+      while (at < bytes.length) {
+        const n = readSync(fd, bytes, at, bytes.length - at, at);
+        if (n <= 0) break;
+        at += n;
+      }
+      try {
+        text = new TextDecoder("utf-8", { fatal: true }).decode(bytes.subarray(0, at));
+      } catch {
+        return void skipped.push(`${rel} (not text)`);
+      }
+    } finally {
+      closeSync(fd);
     }
     if (sent.get(rel) === text) return;
     total += Buffer.byteLength(text);
@@ -463,8 +481,9 @@ export function startRunner(opts: RunnerOptions = {}) {
       }
     })();
     await Promise.all([pump(proc.stdout, 1), pump(proc.stderr, 2), proc.exited]);
-    // A child that outlived Bun (it held no output pipe, or the run ended itself) goes with it.
-    void killTree(proc.pid);
+    // A child that outlived Bun (it held no output pipe, or the run ended itself) goes with it, before anything reads
+    // what the run wrote (a test run's snapshots, changedFiles): nothing of the run may still be changing the folder.
+    await killTree(proc.pid);
     return { code: proc.exitCode, signal: proc.signalCode };
   }
 
