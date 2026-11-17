@@ -49,6 +49,8 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
   const logListeners = new Set<(level: string, text: string, partial: boolean) => void>();
   // The shell (see `start`) needs the runner, which comes later.
   let exec: ReturnType<typeof createShell> | undefined;
+  /** The console's size once it is open: a runner made later starts with it. */
+  let size: { cols: number; rows: number } | undefined;
   const terminal = createConsole({
     onCommand: async (line) => exec?.(line),
     // Ctrl+C: the shell line that's running, and the program (like a shell's SIGINT).
@@ -59,6 +61,10 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
     cwd: () => exec?.cwd() ?? "/",
     // What is typed while the program reads its stdin (see `Runner.onStdinWait`); null is end of input (Ctrl+D).
     onInput: (data) => runner?.stdin(data),
+    onResize: (cols, rows) => {
+      if (runner instanceof Runner) runner.resize(cols, rows);
+      size = { cols, rows };
+    },
     onClear: () => clearConsole(),
     isFile: (path) => vfs.files.has(bare(path)),
     onLocation: (path, line, column) => workspace.openAt(bare(path), line, column),
@@ -458,6 +464,7 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
       if (!browserOk) return;
       semver ??= await loadSemver();
       next = browserRunner ??= new Runner(vfs, log);
+      if (size) browserRunner.resize(size.cols, size.rows);
     }
     if (next === runner) return;
     const previous = runner;
@@ -465,6 +472,7 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
     runner.attach();
     runner.onExit = (code) => session.setStatus(exited(code));
     runner.onStdinWait = (on) => terminal.reading(on);
+    if (runner instanceof Runner) runner.onStdinRaw = (on) => terminal.rawMode(on);
     runner.onPorts = (ports, shown) => {
       session.setPorts(ports);
       session.setPreviewPort(shown);
