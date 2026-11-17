@@ -24,6 +24,7 @@ Reported version: `Bun.version` is `1.4.4-browser`. Labels are explained on the 
 | `Bun.semver` | ✅ Works | `order` and `satisfies`, from Bun's own semver code. |
 | `Bun.sleep`, `Bun.sleepSync` | ✅ Works | `sleepSync` blocks the program's worker (`Atomics.wait`). |
 | `Bun.nanoseconds` | ✅ Works | Browser clock resolution. |
+| `Bun.randomUUIDv7` | ✅ Works | Time-ordered UUIDs as Bun makes them: a counter that goes up within the same millisecond, `"hex"`, `"base64"`, `"base64url"` or `"buffer"`, and a timestamp (number or `Date`). |
 | `Bun.inspect`, `Bun.deepEquals`, `Bun.escapeHTML` | ✅ Works | `inspect` is Bun's format with its `depth`, `colors`, `sorted` and `compact` options, and `Bun.inspect.table`. Request, Response, Blob/File, FormData, URL, URLSearchParams, Headers, MessageEvent/ErrorEvent and React elements print as in Bun (Headers sorted). A promise shows its state if one of the playground's APIs returned it (`fetch`, `Bun.file` reads, `Bun.write`, `Bun.sleep`, `fs.promises`) and `<pending>` otherwise, e.g. `Promise.resolve(1)` or an async function's result: their state isn't readable from JS. Keys print strings first, then symbols. |
 | `Bun.main`, `Bun.argv` | ✅ Works | `Bun.main` is the entry's path; `Bun.argv` is `["bun", main]`, as `process.argv`. |
 | `Bun.stdout`, `Bun.stderr` | 🟡 Partial | Work as `Bun.write` destinations and print to the console. No `writer()`. |

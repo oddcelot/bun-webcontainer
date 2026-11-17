@@ -59,6 +59,7 @@ import { setThread, threadEnd, threadError, type ThreadInfo } from "./node/worke
 import { WebWorker } from "./webWorker";
 import { isShellCommand } from "../scripts";
 import { hideXhr, XHR } from "./xhr";
+import { randomUUIDv7 } from "./uuid";
 
 type Handler = (req: Request, server: unknown) => Response | Promise<Response>;
 type HtmlImport = { __htmlImport: string };
@@ -1291,6 +1292,7 @@ async function main() {
     password,
     Cookie,
     CookieMap,
+    randomUUIDv7,
     // Bun's shell with its builtins over the project's files; other commands run as child processes.
     $: createDollar({
       ...shellHost(shellWasm),
