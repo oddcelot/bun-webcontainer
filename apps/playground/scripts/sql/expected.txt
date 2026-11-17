@@ -1,0 +1,76 @@
+create: [0,true,"SQLResultArray",0,"CREATE TABLE",0]
+insert: [{"id":1,"name":"a","n":1,"big":"9007199254740993","j":{"x":[1,2]},"d":"1970-01-01T00:00:00.000Z","b":{"type":"Buffer","data":[104,105]},"arr":[1,2,3],"f":1.5,"ok":true,"nm":"12.50"}]
+insert meta: [1,"INSERT",1,null]
+insert null: [{"id":2,"name":null}]
+typeof: {"big":"string","j":"object","d":"Date","b":"Buffer","arr":"array","f":"number","ok":"boolean","nm":"string","n":"number"}
+values: [[1,"a"],[2,null]]
+raw: [["a"]]
+simple: [[{"a":1}],[{"b":2}]]
+simple one: [{"a":1}]
+empty: []
+in: [{"id":1},{"id":2}]
+in strings: [{"one":1}]
+insert helper: [{"name":"z","n":5}]
+insert many: [{"name":"m1","n":6},{"name":"m2","n":7}]
+insert columns: [{"name":"c","n":9,"f":null}]
+insert undefined: [{"name":null,"n":1}]
+update helper: [{"name":"u","n":50}]
+update undefined: [{"name":"u2","n":50}]
+update count: [4,"UPDATE",4]
+delete: [1,"DELETE",1]
+upsert: [{"id":1000,"name":"x"}]
+identifier: [{"x":1}]
+fragment: [{"a":1,"b":2}]
+array: [{"a":[1,2,3]}]
+array text: [{"a":["a","b"]}]
+any: [{"id":1},{"id":2}]
+json: [{"j":{"a":1}}]
+helper outside: ["SyntaxError","SyntaxError",false,true,null,"Helpers are only allowed for INSERT, UPDATE and IN commands"]
+param types: {"a":1.5,"b":true,"c":"x","d":"10","e":"1099511627776","f":7}
+param date: {"d":"2020-01-02T03:04:05.000Z"}
+param date col: {"d":"2020-01-02T03:04:05.000Z"}
+param bytes: {"b":{"type":"Buffer","data":[1,2,3]}}
+param array: {"x":["a","b"]}
+param null: {"a":null,"b":null}
+param json obj: {"j":"{\"a\":1}"}
+param json str: {"j":"{\"a\":1}"}
+count: {"c":"0"}
+int8: {"c":"1","d":1}
+numeric: {"c":"1.5"}
+date types: {"c":"2020-01-02T00:00:00.000Z","t":"12:30:00","ts":"2020-01-02T03:04:05.000Z","tz":"2020-01-02T01:04:05.000Z"}
+misc: {"c":"6b0b3e4e-8f4e-4bd7-9b1a-3e6a9b2a1c1c","j":{"a":1},"ta":["a","b"],"fa":[1.5,2.5],"b":{"type":"Buffer","data":[222,173,190,239]},"n":null}
+jsonb scalars: {"a":"s","b":null,"c":1}
+duplicate columns: [{"a":2},[1,2]]
+tags: ["TRUNCATE TABLE","CREATE INDEX","DROP INDEX","SET","SELECT","CREATE TABLE","DROP TABLE"]
+unsafe: {"a":3}
+unsafe many: [[{"a":1}],[{"b":2}]]
+file: {"a":8}
+error missing table: ["PostgresError","PostgresError",true,true,"ERR_POSTGRES_SERVER_ERROR","42P01","ERROR","15","relation \"nope\" does not exist"]
+error unique: ["PostgresError","PostgresError",true,true,"ERR_POSTGRES_SERVER_ERROR","23505","t_pkey","Key (id)=(1) already exists.","t","public","duplicate key value violates unique constraint \"t_pkey\""]
+error syntax: ["PostgresError","PostgresError",true,true,"ERR_POSTGRES_SYNTAX_ERROR","42601","ERROR","1","syntax error at or near \"bogus\""]
+error cast: ["PostgresError","PostgresError",true,true,"ERR_POSTGRES_SERVER_ERROR","22P02","invalid input syntax for type integer: \"x\""]
+begin: [1,"function"]
+rollback: ["boom",1]
+tx error: ["PostgresError","PostgresError",true,true,"ERR_POSTGRES_SERVER_ERROR","23505","t_pkey"]
+after tx error: [{"c":0}]
+begin returns: 42
+begin options: {"transaction_read_only":"on"}
+begin queries: [[{"a":1}],[{"a":2}]]
+savepoint: [{"name":"sp1"}]
+transactions in turn: [1,2,3]
+reserve: ["function","function",[{"a":1}]]
+concurrent: [1,2,3]
+thenable: ["function","function","function","function","function","function","function","function"]
+execute: [{"a":1}]
+options: ["app","postgres","postgres","function","function","function","function","function","function","function"]
+classes: ["function","function","function","function","function",true,"function"]
+bigint option: {"a":"1n","c":"1n"}
+same database: [{"c":1}]
+default sql: [{"a":1},"app","function"]
+sqlite: ["sqlite",[{"id":1,"v":"a"}],"SELECT"]
+sqlite meta: [1,"INSERT",2]
+bad protocol: "Unsupported protocol: nonsense. Supported adapters: \"postgres\", \"sqlite\", \"mysql\", \"mariadb\""
+closed: ["PostgresError","PostgresError",true,true,"ERR_POSTGRES_CONNECTION_CLOSED"]
+end twice: "ok"
+reopened: [{"c":1}]
+__end__

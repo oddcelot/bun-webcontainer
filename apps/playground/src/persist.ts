@@ -4,8 +4,11 @@ import type { FileContents as FileData, VFS } from "@runbun/vfs";
 type Log = (level: string, text: string) => void;
 type Dir = FileSystemDirectoryHandle;
 
-/** Paths left out of shares, zips and folders on disk: they come back from `bun install` or the source. */
-export const SKIP = /(^|\/)(node_modules|\.git)(\/|$)/;
+/**
+ * Paths left out of shares, zips and folders on disk: they come back from `bun install` or the source (or, for
+ * .runbun/pglite, are databases of several MB that stay in the browser's storage: see worker/sql.ts).
+ */
+export const SKIP = /(^|\/)(node_modules|\.git|\.runbun\/pglite)(\/|$)/;
 /**
  * What the playground's own store leaves out: node_modules only. A repository the `git` command made lives in .git/
  * and nowhere else, so OPFS keeps it; a folder on disk never gets ours (it may hold a real one).
