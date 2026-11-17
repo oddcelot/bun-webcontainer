@@ -46,7 +46,7 @@ Built-ins import with or without the `node:` prefix. Labels are explained on the
 | `stream/web` | ✅ Works | The browser's web stream classes. |
 | `string_decoder` | ✅ Works | |
 | `sys` | 🟡 Partial | Same as `util`. |
-| `test` | ❌ Missing | Use [`bun:test`](/compatibility/bun/#buntest). |
+| `test` | 🟡 Partial | `node:test` only (bare `test` is the npm package). As in Bun, its tests run under `bun test` in the console, through [`bun:test`](/compatibility/bun/#buntest): `test`/`it`, `describe`/`suite` with `skip`, `todo` and `only` (which runs like any test, as without `--test-only`), `before`, `after`, `beforeEach`, `afterEach`, done callbacks, subtests (`t.test`, run inside their parent, which fails if one does), `t.skip()`, `t.todo()`, `t.plan()`, `t.assert`, `getTestContext`, and `mock` (`fn`, `method`, `getter`, `setter`, `property`, `timers` on bun:test's fake timers; `t.mock` is restored after its test). Not `run()`, `mock.module()` or snapshots, which Bun lacks too. |
 | `timers`, `timers/promises` | ✅ Works | `ref`, `unref` (an unref'd timer doesn't keep the program running), `hasRef`, `refresh`, promise timers with `AbortSignal`. |
 | `tls` | ⚪ Stub | |
 | `trace_events` | ❌ Missing | |

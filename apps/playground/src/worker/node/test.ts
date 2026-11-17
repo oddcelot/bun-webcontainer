@@ -592,6 +592,13 @@ export function failRunning(err: unknown): boolean {
   return true;
 }
 
+/** node:test's `t.skip()` and `t.todo()` (nodeTest.ts): the running test counts as skipped or todo once it ends. */
+let runningMark: "skip" | "todo" | undefined;
+export const markRunning = (mark: "skip" | "todo") => void (runningMark = mark);
+/** The test file loading or running now (relative to the project), for node:test's `filePath`. */
+let currentFile = "";
+export const testFile = () => currentFile;
+
 /** Runs one callback with `done` support and a timeout. */
 function call(fn: Fn, timeout: number): Promise<void> {
   return new Promise<void>((resolve, reject) => {
@@ -652,6 +659,7 @@ async function runSuite(s: Suite, only: boolean, skipAll: boolean) {
     expectedAssertions = undefined;
     needAssertions = false;
     let threw = false;
+    runningMark = undefined;
     try {
       for (const a of ancestors) if (!started && a === s) for (const h of a.hooks.beforeAll) await call(h, defaultTimeout);
       started = true;
@@ -673,7 +681,15 @@ async function runSuite(s: Suite, only: boolean, skipAll: boolean) {
       (failed = true), (err = e);
     }
     const time = dim(`[${ms(performance.now() - t0)}]`);
-    if (item.failing && !threw && !failed) {
+    const mark = runningMark;
+    runningMark = undefined;
+    if (mark === "skip") {
+      totals.skip++;
+      console.log(dim(`» ${label(item)}`));
+    } else if (mark === "todo") {
+      totals.todo++;
+      console.log(`\x1b[35m✎\x1b[0m ${label(item)} ${dim("[todo]")}`);
+    } else if (item.failing && !threw && !failed) {
       totals.fail++;
       console.error(`\x1b[31m✗\x1b[0m\x1b[31m ${label(item)}\x1b[0m\n  ^ this test is marked as failing but it passed. Remove \`.failing\` if tested behavior now works`);
     } else if (failed) {
@@ -718,6 +734,7 @@ export async function runTestFiles(files: string[], load: (file: string) => Prom
   console.log(`bun test v${version.replace(/-.*/, "")}`);
   for (const file of files) {
     console.log(`\n${file}:`);
+    currentFile = file;
     root = current = newSuite("");
     snapshots = new SnapshotFile(io, file, update, snapCounts);
     const before = totals.fail;

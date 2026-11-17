@@ -2,6 +2,7 @@
 // compares the two). Each line is `label: value`.
 import { diagnosticsChannel } from "./diagnostics_channel.ts";
 import { sqlite } from "./sqlite.ts";
+import module, { createRequire } from "node:module";
 
 export type Case = (label: string, f: () => unknown) => void;
 
@@ -16,6 +17,7 @@ export async function run(log: (line: string) => void) {
     }
   };
   log("start: node apis");
+  t("node:test builtin", () => [module.isBuiltin("test"), module.isBuiltin("node:test"), module.builtinModules.includes("node:test"), module.builtinModules.includes("bun:test"), typeof createRequire(import.meta.url)("node:test").mock.fn].join());
   await diagnosticsChannel(t, log);
   await sqlite(t, log);
 }

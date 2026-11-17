@@ -11,6 +11,7 @@ import net from "./net";
 import sqlite from "./sqlite";
 import nodeSqlite from "./nodeSqlite";
 import test from "./test";
+import nodeTest from "./nodeTest";
 import ws from "./ws";
 import { createModule } from "./module";
 import os from "./os";
@@ -98,6 +99,7 @@ export const builtins: Record<string, object> = {
   bun,
   sqlite: nodeSqlite,
   "bun:sqlite": sqlite,
+  test: nodeTest,
   "bun:test": test,
   "bun:ws": ws,
   worker_threads,
@@ -113,8 +115,8 @@ export function builtinName(spec: string): string | undefined {
   return name;
 }
 
-/** `require("module").builtinModules`: the `node:`-only ones with their prefix. */
-export const builtinModuleNames = () => Object.keys(builtins).map((k) => (NODE_PREFIXED.includes(k) ? `node:${k}` : k));
+/** `require("module").builtinModules`: the `node:`-only ones with their prefix; Bun leaves out `node:test`. */
+export const builtinModuleNames = () => Object.keys(builtins).filter((k) => k !== "test").map((k) => (NODE_PREFIXED.includes(k) ? `node:${k}` : k));
 
 builtins.module = createModule(builtins, builtinName, builtinModuleNames);
 
