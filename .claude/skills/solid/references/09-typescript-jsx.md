@@ -1,4 +1,4 @@
-<!-- Vendored from solidjs/solid@d2323b07 (2.0.0-rc.19), documentation/solid-2.0/09-typescript-jsx.md. MIT, (c) Ryan Carniato. -->
+<!-- Vendored from solidjs/solid@a8186e67 (2.0.0), documentation/solid-2.0/09-typescript-jsx.md. MIT, (c) Ryan Carniato. -->
 
 # RFC: TypeScript and JSX ownership
 
