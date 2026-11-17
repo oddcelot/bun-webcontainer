@@ -94,8 +94,11 @@ Servers answer requests from the [preview](/guides/features/#preview), not from 
 | `server.ref`/`unref` | ✅ Works | A server keeps the program running until it stops, unless `unref`'d. |
 | `error` | ✅ Works | Called with the error (`this` the server) when a `fetch` or route handler throws or rejects; its Response is sent. `server.reload({ error })` swaps it. |
 | `development` | ✅ Works | On unless `development: false` or `NODE_ENV` is `production`. When nothing handles an error, a development server prints it, then `GET - /path failed`, and answers 500 with an HTML page showing the stack (Bun's has its error overlay); otherwise it prints the error and answers 500 "Something went wrong!". A handler that returns something other than a Response gets Bun's "Expected a Response object" error and its default answer (200 "Welcome to Bun!", or 204). |
-| `idleTimeout`, `maxRequestBodySize`, `unix`, `reusePort` | ❌ Missing | |
-| `server.requestIP`, `server.timeout` | ❌ Missing | |
+| `maxRequestBodySize` | ✅ Works | 128 MiB by default; a larger body gets a 413 with `Connection: close` and the handler never runs. Counted for preview requests and the program's own `fetch` (with the default `redirect: "follow"`). |
+| `server.requestIP` | ✅ Works | What Bun reports for a client on the same machine: `{ address: "::1", family: "IPv6", port }` for the preview and `localhost`, `::ffff:127.0.0.1` for `127.0.0.1`; `null` over a unix socket or for a request the server didn't get. The port is made up. |
+| `unix` | 🟡 Partial | The server has no port and no preview (`server.url` is `unix://<path>`); the program reaches it with `fetch(url, { unix: path })`. No socket file is made. |
+| `idleTimeout`, `server.timeout` | ⚪ Stub | `idleTimeout` is checked as in Bun (an integer up to 255), but nothing times out: Bun closes a request its handler leaves idle for 10 seconds, the playground waits. |
+| `reusePort` | ⚪ Stub | Accepted; changes nothing. |
 
 Routes with parameters, JSON and a streamed response. Send requests from the bar above the preview:
 
