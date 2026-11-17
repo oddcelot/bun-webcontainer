@@ -215,20 +215,18 @@ const stopServer = (inst: Instance) => {
   postPorts();
 };
 
-let nodeServer: Instance | undefined;
 /** A node:http server's accepted WebSockets carry their `ws` connection as data (see upgradeRequests). */
 const nodeSockets: WebSocketHandlers = {
   open: (ws) => (ws.data as NodeSocket).open(ws),
   message: (ws, m) => (ws.data as NodeSocket).message(m),
   close: (ws, code, reason) => (ws.data as NodeSocket).close(code, reason),
 };
-hooks.set = (h) => {
-  if (nodeServer) stopServer(nodeServer);
-  nodeServer = h ? createInstance({ fetch: h, websocket: nodeSockets }) : undefined;
+hooks.listen = (fetch, port) => {
+  const inst = listen({ fetch, websocket: nodeSockets, port });
   // The listening `http.Server` holds the program (net.ts), so its `unref()` lets it end.
-  if (nodeServer) release(nodeServer);
+  release(inst);
+  return { port: inst.port, stop: () => servers.includes(inst) && stopServer(inst) };
 };
-hooks.get = () => nodeServer?.handler;
 
 /**
  * Requests the worker made for a page's WebSocket: `server.upgrade(req)` accepts them, once, with the Set-Cookie

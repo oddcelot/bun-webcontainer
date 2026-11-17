@@ -3,7 +3,7 @@ import EventEmitter from "events";
 import { capture, runIn } from "./asyncHooks";
 import dc from "./diagnosticsChannel";
 import { Server as NetServer, Socket } from "./net";
-import { hooks, upgradeRequests, type FetchHandler } from "./serve";
+import { hooks, upgradeRequests, type FetchHandler, type NodeListener } from "./serve";
 import { Readable, Writable } from "./stream";
 
 type Any = any;
@@ -242,7 +242,7 @@ export class ServerResponse extends (OutgoingMessage as Any) {
   }
 }
 
-const listeners = new WeakMap<object, FetchHandler>();
+const listeners = new WeakMap<object, NodeListener>();
 
 export class Server extends (NetServer as Any) {
   timeout = 0;
@@ -258,14 +258,17 @@ export class Server extends (NetServer as Any) {
     const l = typeof opts === "function" ? opts : handler;
     if (l) this.on("request", l);
   }
-  onListen() {
+  onListen(port: number) {
     const handler: FetchHandler = async (req, bun) => {
       // The request listeners run in the context `listen` was called in; the body's `await` below resumes outside it.
       const context = capture();
       const addr = this.address();
       const socket = new Socket();
       socket.encrypted = this.encrypted;
-      const incoming = await IncomingMessage.from(req, socket, `localhost:${addr?.port}`);
+      // A loopback request has no Host header (fetch can't set one): the host it was made to, as the client sends it;
+      // a preview request's URL is the playground's.
+      const url = URL.canParse(req.url) ? new URL(req.url) : undefined;
+      const incoming = await IncomingMessage.from(req, socket, url && Number(url.port) === addr?.port ? url.host : `localhost:${addr?.port}`);
       // A page's WebSocket (see openSocket in the runtime): "upgrade" listeners take it, `ws` accepts it.
       if (req.headers.get("upgrade")?.toLowerCase() === "websocket" && this.listenerCount("upgrade")) {
         upgradeRequests.set(incoming, (data) => (bun as { upgrade(r: Request, o: object): boolean }).upgrade(req, { data }));
@@ -283,11 +286,12 @@ export class Server extends (NetServer as Any) {
         if (!runIn(context, () => this.emit("request", incoming, res), undefined, [])) resolve(new Response("No request listener", { status: 503 }));
       }).catch((e) => new Response(String(e), { status: 500 }));
     };
-    listeners.set(this, handler);
-    hooks.set(handler);
+    const l = hooks.listen(handler, port);
+    listeners.set(this, l);
+    return l.port;
   }
   onClose() {
-    if (hooks.get() === listeners.get(this)) hooks.set(undefined);
+    listeners.get(this)?.stop();
     listeners.delete(this);
   }
   setTimeout(ms?: number, cb?: () => void) {

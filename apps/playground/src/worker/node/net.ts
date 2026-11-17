@@ -60,17 +60,25 @@ export class Server extends EventEmitter {
     const cb = typeof args[args.length - 1] === "function" ? args.pop() : undefined;
     const o = typeof args[0] === "object" && args[0] !== null ? args[0] : { port: args[0], host: typeof args[1] === "string" ? args[1] : undefined };
     if (this.listening) throw Object.assign(new Error("Listen method has been called more than once without closing."), { code: "ERR_SERVER_ALREADY_LISTEN" });
-    const port = Number(o.port) || nextPort++;
     const host = o.host ?? "::";
+    let port: number;
+    try {
+      // Port 0 (or none) is the subclass's to pick (http.Server: the runtime's), else the next free one.
+      port = this.onListen(Number(o.port) || 0) ?? (Number(o.port) || nextPort++);
+    } catch (e) {
+      // EADDRINUSE and the like: an "error" event, as Node's listen reports them.
+      queueMicrotask(() => this.emit("error", e));
+      return this;
+    }
     this._addr = { address: host === "localhost" ? "127.0.0.1" : host, family: host.includes(":") ? "IPv6" : "IPv4", port };
     this.listening = true;
     if (this.#refed) hold(this);
-    this.onListen();
     if (cb) this.once("listening", cb as () => void);
     queueMicrotask(() => this.emit("listening"));
     return this;
   }
-  protected onListen() {}
+  /** Binds `port` (0: any); returns the port it got, or nothing to leave that to `listen`. Throws if it can't. */
+  protected onListen(_port: number): number | void {}
   protected onClose() {}
   address() {
     return this._addr;

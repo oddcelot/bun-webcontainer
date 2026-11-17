@@ -24,4 +24,4 @@ server.on("upgrade", (req, socket, head) => {
     });
   });
 });
-server.listen(Number(process.env.SERVE_PORT ?? 3000), () => console.log("listening"));
+server.listen(Number(process.env.SERVE_PORT ?? 8080), () => console.log("listening"));

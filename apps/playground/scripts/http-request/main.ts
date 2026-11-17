@@ -254,6 +254,50 @@ if (Bun.env.NET) {
       });
   });
 }
+// node:http servers of this program, on the port each listens on (0: one of its own), reached by both clients.
+{
+  const named = (name: string) => http.createServer((req, res) => res.writeHead(200, { "x-server": name }).end(`${name} ${req.method} ${req.url} ${req.headers.host}`));
+  const listening = (s: http.Server, ...a: unknown[]) => new Promise<void>((r) => s.listen(...(a as []), () => r()));
+  const fixed = named("fixed");
+  const any = named("any");
+  await listening(fixed, 3013);
+  await listening(any, 0);
+  const port = (any.address() as { port: number }).port;
+  log("node listen:", JSON.stringify(fixed.address()), port > 0 && port !== 3013, (any.address() as { family: string }).family);
+  log("node fetch:", await fetch("http://localhost:3013/a?b=1").then(async (r) => `${r.status} ${r.headers.get("x-server")} ${await r.text()}`));
+  log("node fetch port 0:", await fetch(`http://127.0.0.1:${port}/c`, { method: "POST", body: "x" }).then(async (r) => (await r.text()).replace(String(port), "<port>")));
+  await new Promise<void>((done) => {
+    http.get("http://localhost:3013/d", async (res) => {
+      log("node http.get:", res.statusCode, res.headers["x-server"], await read(res));
+      done();
+    });
+  });
+  await new Promise<void>((done) => {
+    const req = http.request({ port, path: "/e", method: "PUT" }, async (res) => {
+      log("node http.request port 0:", res.statusCode, (await read(res)).startsWith("any PUT /e"));
+      done();
+    });
+    req.end("body");
+  });
+  for (const [name, p] of [["node", 3013], ["Bun.serve", 3011]] as const) {
+    const taken = http.createServer();
+    log(`node listen on a ${name} port:`, await new Promise((r) => (taken.on("error", (e: any) => r(`${e.code} ${e.syscall} ${e.message}`)), taken.listen(p, () => r("listening")))));
+  }
+  log("Bun.serve on a node port:", (() => {
+    try {
+      return Bun.serve({ port: 3013, fetch: () => new Response() }) && "served";
+    } catch (e: any) {
+      return `${e.code} ${e.message}`;
+    }
+  })());
+  await new Promise((r) => fixed.close(r));
+  any.close();
+  // The port is free again (a fetch to it would go to the browser's network here, not fail as ECONNREFUSED).
+  const again = named("again");
+  await listening(again, 3013);
+  log("node listen after close:", await fetch("http://localhost:3013/f").then((r) => r.text()));
+  again.close();
+}
 // A WebSocket to this program's own server, as Bun's client connects to it.
 const sockets = Bun.serve({
   port: 3012,
