@@ -671,6 +671,39 @@ export class Runner {
     this.shareTaken(worker);
   }
 
+  /**
+   * A shell line in a worker of its own, outside any run (`bun install`'s lifecycle scripts, install.ts): `cwd` and `env`
+   * as a child process gets them, its output to `out` as it comes, its own child processes as a program's. Resolves
+   * with how it ended; past `timeout` it is ended (SIGKILL), so a script that never ends doesn't hold the install.
+   */
+  async exec(script: string, cwd: string, env: Record<string, string>, out: (fd: 1 | 2, data: Uint8Array) => void, timeout: number): Promise<{ code: number; signal: string | null }> {
+    if (CONTENT_ORIGIN) this.host = await connectHost();
+    const worker = this.newWorker();
+    return new Promise((resolve) => {
+      let ended = false;
+      const done = (code: number, signal: string | null) => {
+        if (ended) return;
+        ended = true;
+        clearTimeout(timer);
+        this.end(worker);
+        resolve({ code, signal });
+      };
+      const timer = setTimeout(() => done(137, "SIGKILL"), timeout);
+      worker.onmessage = (e) => {
+        const c = e.data;
+        if (c.type === "stdio") out(c.fd, c.data);
+        else if (c.type === "console") out(c.level === "error" || c.level === "warn" ? 2 : 1, enc.encode(`${c.text}\n`));
+        else if (c.type === "exit") done(c.code, c.signal ?? null);
+        else if (c.type !== "ports" && c.type !== "ready") this.common(worker, c);
+      };
+      worker.onerror = (e) => {
+        out(2, enc.encode(`worker error: ${e.message}\n`));
+        done(1, null);
+      };
+      worker.postMessage({ type: "start", script, args: [], files: this.vfs.files, dirs: this.vfs.dirs, vfsRoot: vfsRoot(), proc: { pid: 2, ppid: 1, cwd, env } });
+    });
+  }
+
   /** The program a child process belongs to (the one Run, a restart or a test run started). */
   private rootOf(worker: Worker): Worker {
     for (let p = this.procs.get(worker); p; p = this.procs.get(worker)) worker = p.parent;

@@ -8,6 +8,8 @@ import { git as runGit } from "./git/git";
 import { builtins } from "./shell/builtins";
 import { EMPTY, Shell, ShellEnv, vfsFs, type Command as ShellCommand, type CommandCtx, type Writer } from "./shell/interp";
 import { loadShellWasm } from "./shell/load";
+import type { InstallFlags } from "./install";
+import { untrustedNames, untrustedReport } from "./lifecycle";
 import { links, setLink } from "./links";
 import { binCommand, isTestFile, scriptChecks, scriptEntry, shellCommand, type Pkg } from "./scripts";
 
@@ -19,7 +21,8 @@ export interface ShellHost {
   log: Log;
   /** Start the server on `entry` (the project's entry file when omitted), `args` after it in `process.argv`. */
   run(entry?: string, args?: string[]): Promise<void>;
-  install(): Promise<void>;
+  /** `bun install` (see install.ts InstallFlags). */
+  install(options?: InstallFlags): Promise<void>;
   /** Run these test files (`bun test`); resolves with the number of failed tests. */
   test(files: string[], args?: string[]): Promise<{ failed: number }>;
   stop(): void;
@@ -46,7 +49,10 @@ bun add <pkg> [-d]     add (dev) dependencies
 bun remove <pkg>       remove dependencies
 bun link [pkg]         register this folder's package, or depend on one registered (link:)
 bun unlink             forget this folder's registration
+bun install --ignore-scripts  install without running lifecycle scripts
 bun pm cache [rm]      show or clear the package cache
+bun pm untrusted       list the dependencies whose lifecycle scripts were blocked
+bun pm trust <pkg>|--all  trust them: add to trustedDependencies and run their scripts
 bun fmt [-c] [path...]  format (or --check) files like Prettier, with the project's configs
 bun check [path...]    type check with Bun's TypeScript 7 checker (tsconfig.json, @types)
 git <command>          init, status, add, commit, log, diff… (git help: all of them)
@@ -108,7 +114,7 @@ export function createShell(host: ShellHost) {
       fail("no package.json");
     }
   }
-  const writePkg = (pkg: Pkg) => vfs.write("package.json", JSON.stringify(pkg, null, 2) + "\n");
+  const writePkg = (pkg: Pkg & Record<string, unknown>) => vfs.write("package.json", JSON.stringify(pkg, null, 2) + "\n");
 
   /** `bun --check`: the type errors of `entry` and its imports, as Bun prints them; false if the program can't start. */
   async function checkFirst(entry: string): Promise<boolean> {
@@ -180,14 +186,34 @@ export function createShell(host: ShellHost) {
     }
   }
 
-  async function pm([sub, action]: string[]) {
-    if (sub !== "cache") return fail(`bun pm ${sub ?? ""}: only "bun pm cache [rm]" works here`);
+  async function pm([sub, action, ...more]: string[]) {
+    if (sub === "untrusted") return log("log", untrustedReport(vfs));
+    if (sub === "trust") return trust([action, ...more].filter((a) => a !== undefined));
+    if (sub !== "cache") return fail(`bun pm ${sub ?? ""}: only "bun pm cache [rm]", "bun pm untrusted" and "bun pm trust" work here`);
     if (action === "rm") return await Promise.all([clearPkgCache(), clearStore()]), log("sys", "[bun pm cache] cleared");
     if (action) return fail(`bun pm cache: unknown option ${action}`);
     const [{ tarballs, packuments, bytes }, store] = await Promise.all([pkgCacheInfo(), storeInfo()]);
     const mb = (n: number) => (n / 2 ** 20).toFixed(1);
     log("log", `${tarballs} tarballs, ${packuments} manifests, ${mb(bytes)} MB in browser storage`);
     if (store.entries) log("log", `${store.entries} large package files, ${mb(store.bytes)} MB (unpacked on demand)`);
+  }
+
+  /**
+   * `bun pm trust <names>` / `--all`: adds the dependencies whose scripts were blocked to trustedDependencies, then
+   * installs, which runs their scripts (host.trusted) and writes the list to bun.lock.
+   */
+  async function trust(args: string[]) {
+    const all = args.includes("--all");
+    const blocked = untrustedNames(vfs);
+    const names = all ? blocked : args.filter((a) => !a.startsWith("-"));
+    if (!all && !names.length) return fail("error: expected package names(s) or --all");
+    const unknown = names.filter((n) => !blocked.includes(n));
+    if (!names.length || (unknown.length && unknown.length === names.length)) return fail(`error: 0 scripts ran. This means all dependencies are already trusted or none have scripts.`);
+    const pkg = readPkg() as (Pkg & { trustedDependencies?: string[] }) | undefined;
+    if (!pkg) return;
+    const list = Array.isArray(pkg.trustedDependencies) ? pkg.trustedDependencies : [];
+    writePkg({ ...pkg, trustedDependencies: [...list, ...names.filter((n) => !list.includes(n) && blocked.includes(n))] });
+    await host.install({ trusted: names });
   }
 
   /**
@@ -369,7 +395,7 @@ export function createShell(host: ShellHost) {
       if (!sub || sub === "help" || sub === "--help") return log("log", HELP);
       if (sub === "test") return await test(rest);
       if (sub === "run") return await runTarget(rest[0] && vfs.files.has(projectPath(ctx, rest[0])) ? projectPath(ctx, rest[0]) : rest[0], withCheck);
-      if (sub === "install" || sub === "i") return await host.install();
+      if (sub === "install" || sub === "i") return await host.install({ ignoreScripts: rest.includes("--ignore-scripts") });
       if (sub === "add" || sub === "a") return await add(rest);
       if (sub === "remove" || sub === "rm") return remove(rest);
       if (sub === "fmt") return await fmt(rest);

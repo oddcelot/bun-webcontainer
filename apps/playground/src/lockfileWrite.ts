@@ -10,6 +10,7 @@ import { catalogRange, catalogsOf, type Catalogs } from "./catalogs";
 import { overrideLines, overridesOf, type Overrides } from "./overrides";
 import { githubDep, isGitRange, tarballRoot, type GitHubDep } from "./gitDeps";
 import { untar } from "./tar";
+import { writtenOrder } from "./lockOrder";
 
 type Group = "dependencies" | "devDependencies" | "optionalDependencies" | "peerDependencies";
 const GROUPS: Group[] = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"];
@@ -30,6 +31,7 @@ export type Manifest = {
   libc?: unknown;
   bin?: string | Record<string, string>;
   hasInstallScript?: boolean;
+  trustedDependencies?: string[];
   scripts?: Record<string, string>;
   deprecated?: string;
   dist?: { tarball: string; integrity?: string };
@@ -603,6 +605,19 @@ function entry(pkg: Pkg): string {
   return `[${ident}, ${info(pkg)}]`;
 }
 
+/**
+ * The tree's packages in the order Bun's tree iterator visits them: each node's own node_modules in turn (the root's
+ * first), its packages in the order they were placed there.
+ */
+function treeWalk(tree: Node[]): Node[] {
+  const placed = new Map<Node, Node[]>();
+  for (const n of tree.slice(1)) placed.set(n.parent!, [...(placed.get(n.parent!) ?? []), n]);
+  return tree.flatMap((n) => placed.get(n) ?? []);
+}
+
+/** The name `trustedDependencies` lists a package by: an npm package's own, any other's folder name (`trusted_name`). */
+const trustedName = (n: Node) => (n.pkg!.kind === "npm" ? n.pkg!.name : n.parent!.depth ? n.path.slice(n.parent!.path.length + 1) : n.path);
+
 /** The bun.lock Bun writes for this tree. */
 export function writeBunLock({ root, rootDeps, workspaces, catalogs, overrides, tree }: Resolved): string {
   const lines = ["{", `  "lockfileVersion": ${overrides.scoped.length ? 3 : 2},`, '  "configVersion": 1,', '  "workspaces": {'];
@@ -627,6 +642,14 @@ export function writeBunLock({ root, rootDeps, workspaces, catalogs, overrides, 
   member("", root, rootDeps, false);
   for (const w of workspaces) member(w.path, w.manifest, depsOf(w.manifest, true), true);
   lines.push("  },");
+  // The trusted packages the tree has, in Bun's hash map order (lockOrder.ts) over the tree's walk.
+  const walk = treeWalk(tree);
+  const trusted = Array.isArray(root.trustedDependencies) ? new Set(root.trustedDependencies) : undefined;
+  if (trusted) {
+    const found = walk.map(trustedName).filter((n) => trusted.has(n));
+    if (found.length) lines.push('  "trustedDependencies": [', ...writtenOrder(found.map((n) => ({ key: n, value: n })), trusted.size).map((n) => `    ${q(n)},`), "  ],");
+    else if (!trusted.size) lines.push('  "trustedDependencies": [],');
+  }
   if (Object.keys(overrides.rules).length || overrides.scoped.length) lines.push('  "overrides": {', ...overrideLines(overrides), "  },");
   const group = (map: Record<string, string>, indent: string) => Object.keys(map).sort(byBytes).map((n) => `${indent}${q(n)}: ${q(map[n])},`);
   if (Object.keys(catalogs.default).length) lines.push('  "catalog": {', ...group(catalogs.default, "    "), "  },");

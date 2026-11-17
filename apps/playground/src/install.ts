@@ -7,6 +7,7 @@ import { links } from "./links";
 import { parseNpmrc } from "./npmrc";
 import { packageDirs, vfsWorkspaces } from "./workspaces";
 import type { VFS } from "@runbun/vfs";
+import { blockedMessage, runDependencyScripts, runRootScripts, scriptedPackages, type ScriptRunner } from "./lifecycle";
 
 type Log = (level: "log" | "error", text: string) => void;
 
@@ -107,11 +108,20 @@ function installedPaths(lock: ReturnType<typeof parseBunLock>): Set<string> {
 }
 
 /**
+ * What the console passes along: `ignoreScripts` (`--ignore-scripts`); `trusted`: the packages `bun pm trust` just
+ * trusted, whose scripts run although they are installed already.
+ */
+export type InstallFlags = { ignoreScripts?: boolean; trusted?: string[] };
+/** `run`: how lifecycle scripts run (a worker each, runner.ts `exec`); without one (this browser can't run code) they are skipped. */
+export type InstallOptions = InstallFlags & { run?: ScriptRunner };
+
+/**
  * `bun install`. With a bun.lock that matches package.json, what it lists. Without one, or with one package.json has
  * moved past, resolves package.json as Bun does (a dependency keeps its locked version while its range fits), writes
- * the bun.lock Bun would (native `bun install` takes it as is), and installs from that.
+ * the bun.lock Bun would (native `bun install` takes it as is), and installs from that. Then the lifecycle scripts
+ * (lifecycle.ts) through `run`, unless `ignoreScripts`.
  */
-export async function bunInstall(vfs: VFS, semver: Semver, log: Log): Promise<number> {
+export async function bunInstall(vfs: VFS, semver: Semver, log: Log, { run, ignoreScripts, trusted = [] }: InstallOptions = {}): Promise<number> {
   // The registries and credentials of the project's .npmrc, for every fetch below.
   const npmrc = parseNpmrc(vfs.readText(".npmrc"));
   for (const w of npmrc.warnings) log("error", w);
@@ -145,8 +155,19 @@ export async function bunInstall(vfs: VFS, semver: Semver, log: Log): Promise<nu
       log("log", "Saved bun.lock");
     }
   }
+  const scripts = ignoreScripts ? undefined : run;
+  // The root's preinstall comes first, as in Bun; one that fails stops the install.
+  if (scripts && !(await runRootScripts(scripts, vfs, "before", log))) return 0;
+  // A dependency's scripts run when it is installed, not again for one that already was.
+  const placed = installedPaths(parseBunLock(lock));
+  const before = new Set([...placed].filter((dir) => vfs.files.has(`${dir}/package.json`)));
   const n = await installFromBunLock(vfs, lock, log);
   const total = n + (await installWasiBindings(vfs, lock, semver, log));
-  if (complete) for (const dir of pruneNodeModules(vfs, installedPaths(parseBunLock(lock)))) log("log", `- ${dir.replace(/^node_modules\//, "").replaceAll("/node_modules/", "/")}`);
+  if (complete) for (const dir of pruneNodeModules(vfs, placed)) log("log", `- ${dir.replace(/^node_modules\//, "").replaceAll("/node_modules/", "/")}`);
+  if (scripts) {
+    const { ok, blocked } = await runDependencyScripts(scripts, vfs, lock, new Set([...placed].filter((dir) => !before.has(dir) || trusted.includes(dir.split("node_modules/").pop()!))), log);
+    if (ok) await runRootScripts(scripts, vfs, "after", log);
+    if (blocked) log("log", blockedMessage(blocked));
+  } else if (!ignoreScripts && scriptedPackages(vfs, lock).length) log("error", "lifecycle scripts skipped: this browser can't run code");
   return total;
 }

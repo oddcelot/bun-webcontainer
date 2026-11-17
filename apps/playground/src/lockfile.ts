@@ -35,11 +35,12 @@ type BunLock = {
   catalog?: Deps;
   catalogs?: Record<string, Deps>;
   overrides?: Record<string, unknown>;
+  trustedDependencies?: string[];
   packages: Record<string, unknown[]>;
 };
 
 type Deps = Record<string, string>;
-type Manifest = { dependencies?: Deps; devDependencies?: Deps; optionalDependencies?: Deps; peerDependencies?: Deps; workspaces?: unknown; catalog?: unknown; catalogs?: unknown; overrides?: unknown; resolutions?: unknown };
+type Manifest = { dependencies?: Deps; devDependencies?: Deps; optionalDependencies?: Deps; peerDependencies?: Deps; workspaces?: unknown; catalog?: unknown; catalogs?: unknown; overrides?: unknown; resolutions?: unknown; trustedDependencies?: string[] };
 
 const allDeps = (m?: Manifest): Deps => ({ ...m?.peerDependencies, ...m?.devDependencies, ...m?.optionalDependencies, ...m?.dependencies });
 
@@ -52,6 +53,15 @@ export function staleInLock(lock: BunLock, pkg: Manifest, workspaces?: { path: s
   stale.push(...differs(rules, flattenOverrides(lock.overrides)).map((n) => `override ${n}`));
   // A catalog entry added, removed or given another range (the workspaces keep the `catalog:` literal).
   for (const e of catalogChanges({ default: lock.catalog ?? {}, groups: lock.catalogs ?? {} }, catalogsOf(pkg))) stale.push(`catalog ${e}`);
+  // A trusted package added or removed, among those bun.lock has (Bun writes only those).
+  const names = new Set<string>();
+  for (const [key, e] of Object.entries(lock.packages)) {
+    const id = typeof e[0] === "string" ? parseIdent(e[0]) : null;
+    if (id) names.add(resolutionKind(id.version) === "npm" ? id.name : splitKey(key).at(-1)!);
+  }
+  const trusted = Array.isArray(pkg.trustedDependencies) ? pkg.trustedDependencies.filter((n) => names.has(n)) : [];
+  const lockedTrusted = lock.trustedDependencies ?? [];
+  if (trusted.length !== lockedTrusted.length || trusted.some((n) => !lockedTrusted.includes(n))) stale.push("trustedDependencies");
   // A workspace added or removed, or one whose dependencies changed (named by its folder).
   if (!workspaces) return stale;
   const paths = new Set(workspaces.map((w) => w.path));
