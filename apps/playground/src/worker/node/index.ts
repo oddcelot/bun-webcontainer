@@ -11,6 +11,7 @@ import sqlite from "./sqlite";
 import test from "./test";
 import ws from "./ws";
 import { createModule } from "./module";
+import { codeError } from "./errors";
 import os from "./os";
 import path from "./path";
 import perf_hooks from "./perf_hooks";
@@ -101,6 +102,15 @@ export const builtins: Record<string, object> = {
   zlib,
 };
 builtins.module = createModule(builtins);
+/** `process.getBuiltinModule(id)`: what `require(id)` gives for a built-in (`node:` or not, `bun:*`), else undefined. */
+process.getBuiltinModule = function getBuiltinModule(id: unknown) {
+  if (typeof id !== "string") {
+    const received = id === null ? "null" : id === undefined ? "undefined" : typeof id === "object" ? `an instance of ${id.constructor?.name ?? "Object"}` : `type ${typeof id} (${String(id)})`;
+    throw codeError(TypeError, "ERR_INVALID_ARG_TYPE", `The "moduleName" argument must be of type string. Received ${received}`);
+  }
+  const { isBuiltin } = builtins.module as { isBuiltin(id: string): boolean };
+  return isBuiltin(id) ? builtins[id.replace(/^node:/, "")] : undefined;
+};
 
 export { setFs } from "./fs";
 export { setRequire } from "./module";
