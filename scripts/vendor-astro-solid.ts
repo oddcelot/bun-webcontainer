@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
-// Re-copies packages/astro-solid/src from withastro/astro#17891 (@astrojs/solid-js v8, Solid 2) and records the
-// commit in packages/astro-solid/README.md. `scripts/vendor-astro-solid.ts [sha]`; default: the PR's current head.
+// Re-copies packages/astro-solid/src and packages/astro-solid-renderer/src from withastro/astro#17891
+// (@astrojs/solid-js v8 and its renderer, Solid 2) and records the commit in packages/astro-solid/README.md.
+// `scripts/vendor-astro-solid.ts [sha]`; default: the PR's current head.
 // `--check` only reports whether the PR merged, its head, and the npm dist-tags (changes nothing). Needs `gh`.
 import { $ } from "bun";
 
@@ -23,15 +24,20 @@ if (args.includes("--check")) {
 
 const sha = args[0] ?? head;
 const repo: string = pr.head.repo.full_name;
-const list = JSON.parse(await $`gh api repos/${repo}/contents/packages/integrations/solid/src?ref=${sha}`.text());
-await $`rm -rf ${dir}src && mkdir -p ${dir}src`;
-for (const { name, download_url } of list as { name: string; download_url: string }[]) {
-  await Bun.write(`${dir}src/${name}`, await (await fetch(download_url)).text());
+// The integration, and the renderer it now re-exports (npm's @astrojs/solid-js-renderer is Solid 1.x).
+const packages = [
+  { from: "packages/integrations/solid", to: dir },
+  { from: "packages/renderers/solid-js", to: new URL("../packages/astro-solid-renderer/", import.meta.url).pathname },
+];
+for (const { from, to } of packages) {
+  const list = JSON.parse(await $`gh api repos/${repo}/contents/${from}/src?ref=${sha}`.text());
+  await $`rm -rf ${to}src && mkdir -p ${to}src`;
+  for (const { name, download_url } of list as { name: string; download_url: string }[]) {
+    await Bun.write(`${to}src/${name}`, await (await fetch(download_url)).text());
+  }
+  const upstream = JSON.parse(await (await fetch(`https://raw.githubusercontent.com/${repo}/${sha}/${from}/package.json`)).text());
+  console.log(`vendored ${list.length} files of ${upstream.name} from ${repo}@${sha}`);
+  console.log("  upstream deps (keep package.json in step):", upstream.dependencies, upstream.peerDependencies);
 }
 const readme = `${dir}README.md`;
 await Bun.write(readme, (await Bun.file(readme).text()).replace(/@ `[0-9a-f]{40}`/, `@ \`${sha}\``));
-const upstream = JSON.parse(
-  await (await fetch(`https://raw.githubusercontent.com/${repo}/${sha}/packages/integrations/solid/package.json`)).text(),
-);
-console.log(`vendored ${list.length} files from ${repo}@${sha}`);
-console.log("upstream deps (keep package.json in step):", upstream.dependencies, upstream.peerDependencies);

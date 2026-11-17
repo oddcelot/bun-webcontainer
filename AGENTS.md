@@ -120,7 +120,7 @@ playground runs user code in the browser engine with JS shims for `Bun.*`, a VFS
 (`/__vfs/` modules, `/__preview/` Bun.serve), and Bun's wasm transpiler.
 
 Layout: `apps/` (playground, docs), `examples/` (`astro-demo`: a minimal site on `@runbun/astro`'s defaults), `crates/` (the Rust wrapper crates, one Cargo workspace), `packages/`
-(`@runbun/astro`, `@runbun/embed` and `@runbun/connect` (the local runner, see its NOTES.md) on npm; private `@runbun/ui` (tokens, and Solid 2 components in `solid/`, each importing its CSS from `css/` in the `runbun-ui` layer; shipped as source; see its README) and `@runbun/vfs`; `astro-solid`: vendored `@astrojs/solid-js` v8 for Solid 2, see its README), `patches/` (`bun/`, `npm/`, `bun-codegen/`).
+(`@runbun/astro`, `@runbun/embed` and `@runbun/connect` (the local runner, see its NOTES.md) on npm; private `@runbun/ui` (tokens, and Solid 2 components in `solid/`, each importing its CSS from `css/` in the `runbun-ui` layer; shipped as source; see its README) and `@runbun/vfs`; `astro-solid` and `astro-solid-renderer`: vendored `@astrojs/solid-js` v8 and its renderer for Solid 2, see the former's README), `patches/` (`bun/`, `npm/`, `bun-codegen/`).
 
 ## Git Workflow
 

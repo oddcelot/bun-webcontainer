@@ -1,4 +1,4 @@
-<!-- Vendored from solidjs/solid@d2323b07 (2.0.0-rc.19), packages/solid/CHEATSHEET.md. MIT, (c) Ryan Carniato. Also ships as node_modules/solid-js/CHEATSHEET.md. -->
+<!-- Vendored from solidjs/solid@a8186e67 (2.0.0), packages/solid/CHEATSHEET.md. MIT, (c) Ryan Carniato. Also ships as node_modules/solid-js/CHEATSHEET.md. -->
 
 # Solid 2.0 — Cheatsheet
 
@@ -42,6 +42,7 @@ import {
   untrack,
   flush,
   onSettled,
+  onFlush,
   createContext,
   useContext,
   children,
@@ -142,7 +143,19 @@ onSettled(() => {
 });
 ```
 
-`onSettled` works in component bodies (after first reactive settle) **and** in event handlers (defer work until the triggered transition settles). For component-level setup-and-teardown, **use `onSettled` with a returned cleanup, not `onCleanup` directly** — `onCleanup` is reserved for reactive cleanup inside computations (see Advanced).
+`onSettled` works in component bodies (after first reactive settle) **and** in event handlers (defer work until the triggered transition settles).
+
+```ts
+// Keep a write out of another update's hold: runs once right after the
+// pending flush, never waits on async. For event handlers and effect
+// callbacks (dev warns ON_FLUSH_IN_OWNED_SCOPE in a body or computation).
+const select = (id: string) => {
+  onFlush(() => setOpen(false)); // closes now even if onSelect navigates
+  props.onSelect?.(id);
+};
+```
+
+For component-level setup-and-teardown, **use `onSettled` with a returned cleanup, not `onCleanup` directly** — `onCleanup` is reserved for reactive cleanup inside computations (see Advanced).
 
 ---
 
@@ -574,6 +587,8 @@ return <li class={cls} />;
 ```ts
 import { renderToString, renderToStream, isServer, isDev } from "@solidjs/web";
 ```
+
+Hydration adopts each async read the server answered (value or error) and never asks again; a hydrated `<Errored>` keeps the server's fallback until an input changes or `reset()`. Adopted computes still run once to track reads, with the global `Promise` and `fetch` faked (never settle): don't cache promises or `import()`s created in a compute.
 
 `Portal` throws on the server. `Reveal` `order="together"` and `collapsed` require streaming (`renderToStream` — awaiting it yields the fully settled HTML string).
 

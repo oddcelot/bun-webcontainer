@@ -18,9 +18,10 @@
     "typecheck": "tsrs --noEmit"
   },
   "dependencies": {
+    "@astrojs/internal-helpers": "^0.13.2",
+    "@astrojs/solid-js-renderer": "workspace:*",
     "@solidjs/vite-plugin": "catalog:",
-    "vite": "^8.3.8",
-    "vitefu": "^1.1.3"
+    "vite": "^8.3.8"
   },
   "peerDependencies": {
     "@solidjs/web": "catalog:",

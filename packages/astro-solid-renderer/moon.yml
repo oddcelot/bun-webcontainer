@@ -1,0 +1,18 @@
+$schema: 'https://moonrepo.dev/schemas/project.json'
+
+# Vendored Solid 2 @astrojs/solid-js-renderer (../astro-solid/README.md): src/ is upstream's, built with tsrs into dist/.
+language: 'typescript'
+
+fileGroups:
+  sources:
+    - 'src/**/*'
+    - 'tsconfig.json'
+    - 'package.json'
+
+tasks:
+  build:
+    command: 'bun run build'
+    inputs:
+      - '@group(sources)'
+    outputs:
+      - 'dist/**/*'

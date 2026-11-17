@@ -12,6 +12,7 @@ fileGroups:
 tasks:
   build:
     command: 'bun run build'
+    deps: ['astro-solid-renderer:build']
     inputs:
       - '@group(sources)'
     outputs:

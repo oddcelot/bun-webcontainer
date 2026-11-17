@@ -18,13 +18,13 @@ minimum). Check anything unclear against the references below, not memory.
 
 ## Versions and packages
 
-Pinned exact (release candidate; the Solid docs ask for exact pins):
+Pinned exact in the root catalog:
 
 | Package                | Version          | Holds                                                                   |
 | ---------------------- | ---------------- | ----------------------------------------------------------------------- |
-| `solid-js`             | `2.0.0-rc.19`    | signals, memos, effects, stores, control flow, context, `action`, async |
-| `@solidjs/web`         | `2.0.0-rc.19`    | `render`, `Portal`, `dynamic`, the JSX types (`JSX`, `ComponentProps`)  |
-| `@solidjs/vite-plugin` | `3.0.0-next.52`  | Vite 8 plugin; compiles JSX with the Oxc-based `@solidjs/compiler`      |
+| `solid-js`             | `2.0.0`          | signals, memos, effects, stores, control flow, context, `action`, async |
+| `@solidjs/web`         | `2.0.0`          | `render`, `Portal`, `dynamic`, the JSX types (`JSX`, `ComponentProps`)  |
+| `@solidjs/vite-plugin` | `3.0.1`          | Vite 8 plugin; compiles JSX with the Oxc-based `@solidjs/compiler`      |
 
 `solid-js/web`, `solid-js/store`, `vite-plugin-solid` and `jsxImportSource: "solid-js"` are 1.x;
 don't use them. `tsconfig.json` has `"jsx": "preserve"` and `"jsxImportSource": "@solidjs/web"`.
@@ -116,7 +116,7 @@ dev warnings or errors. Each diagnostic has a code; look it up in
 effect's apply (e.g. `tree.select()` → `onSelectionChange`) that reads a store is
 `STRICT_READ_UNTRACKED`; keep the value the effect applied in a local and read that.
 
-## References (vendored, rc.19)
+## References (vendored, 2.0.0)
 
 | Topic                                              | File                                                                               |
 | -------------------------------------------------- | ---------------------------------------------------------------------------------- |

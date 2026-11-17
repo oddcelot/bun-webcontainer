@@ -1,4 +1,4 @@
-<!-- Vendored from solidjs/solid@d2323b07 (2.0.0-rc.19), documentation/solid-2.0/02-signals-derived-ownership.md. MIT, (c) Ryan Carniato. -->
+<!-- Vendored from solidjs/solid@a8186e67 (2.0.0), documentation/solid-2.0/02-signals-derived-ownership.md. MIT, (c) Ryan Carniato. -->
 
 # RFC: Signals, derived primitives, ownership, and context
 

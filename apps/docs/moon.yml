@@ -16,9 +16,11 @@ fileGroups:
     - '/packages/astro/src/**/*'
     - '/packages/astro/components/**/*'
     - '/packages/astro/package.json'
-    # @astrojs/solid-js (workspace:*, vendored v8): its dist/, built by astro-solid:build.
+    # @astrojs/solid-js (workspace:*, vendored v8) and its renderer: their dist/, built by astro-solid:build.
     - '/packages/astro-solid/src/**/*'
     - '/packages/astro-solid/package.json'
+    - '/packages/astro-solid-renderer/src/**/*'
+    - '/packages/astro-solid-renderer/package.json'
 
 tasks:
   check:
