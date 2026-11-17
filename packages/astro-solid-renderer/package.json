@@ -1,0 +1,32 @@
+{
+  "name": "@astrojs/solid-js-renderer",
+  "version": "0.1.2",
+  "private": true,
+  "description": "Vendored Solid 2 @astrojs/solid-js-renderer from withastro/astro#17891 (npm's is Solid 1.x). See ../astro-solid/README.md.",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+    "./container-renderer": { "types": "./dist/container-renderer.d.ts", "default": "./dist/container-renderer.js" },
+    "./client.js": { "types": "./dist/client.d.ts", "default": "./dist/client.js" },
+    "./server.js": { "types": "./dist/server.d.ts", "default": "./dist/server.js" },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsrs",
+    "typecheck": "tsrs --noEmit"
+  },
+  "dependencies": {
+    "@astrojs/runtime": "^0.1.1",
+    "vitefu": "^1.1.3"
+  },
+  "peerDependencies": {
+    "@solidjs/web": "catalog:",
+    "solid-js": "catalog:"
+  },
+  "devDependencies": {
+    "@solidjs/web": "catalog:",
+    "solid-js": "catalog:",
+    "tsrs": "0.25.0-ts7.1.0-beta"
+  }
+}

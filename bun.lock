@@ -124,13 +124,31 @@
       "name": "@astrojs/solid-js",
       "version": "8.0.0-beta.0",
       "dependencies": {
+        "@astrojs/internal-helpers": "^0.13.2",
+        "@astrojs/solid-js-renderer": "workspace:*",
         "@solidjs/vite-plugin": "catalog:",
         "vite": "^8.3.8",
-        "vitefu": "^1.1.3",
       },
       "devDependencies": {
         "@solidjs/web": "catalog:",
         "astro": "^7.4.12",
+        "solid-js": "catalog:",
+        "tsrs": "0.25.0-ts7.1.0-beta",
+      },
+      "peerDependencies": {
+        "@solidjs/web": "catalog:",
+        "solid-js": "catalog:",
+      },
+    },
+    "packages/astro-solid-renderer": {
+      "name": "@astrojs/solid-js-renderer",
+      "version": "0.1.2",
+      "dependencies": {
+        "@astrojs/runtime": "^0.1.1",
+        "vitefu": "^1.1.3",
+      },
+      "devDependencies": {
+        "@solidjs/web": "catalog:",
         "solid-js": "catalog:",
         "tsrs": "0.25.0-ts7.1.0-beta",
       },
@@ -230,6 +248,8 @@
     "@astrojs/sitemap": ["@astrojs/sitemap@3.7.4", "", { "dependencies": { "sitemap": "^9.0.0", "zod": "^4.3.6" } }, "sha512-LbKNC24bdUWcQf/pThB6qLlSqHojxGjZDURIzFocY8rlWnAn2t74nnhnK6S5x0NHriHoAduLEpVjRykmeGiVvA=="],
 
     "@astrojs/solid-js": ["@astrojs/solid-js@workspace:packages/astro-solid"],
+
+    "@astrojs/solid-js-renderer": ["@astrojs/solid-js-renderer@workspace:packages/astro-solid-renderer"],
 
     "@astrojs/starlight": ["@astrojs/starlight@0.43.1", "", { "dependencies": { "@astrojs/markdown-satteri": "^0.4.3", "@astrojs/mdx": "^8.0.3", "@astrojs/sitemap": "^3.7.4", "@pagefind/default-ui": "^1.3.0", "@types/hast": "^3.0.5", "@types/mdast": "^4.0.4", "astro-expressive-code": "^0.44.0", "bcp-47": "^2.1.0", "hast-util-format": "^1.1.0", "hast-util-select": "^6.0.4", "hast-util-to-html": "^9.0.5", "hast-util-to-string": "^3.0.1", "hastscript": "^9.0.1", "i18next": "^27.0.1", "klona": "^2.0.6", "magic-string": "^1.2.3", "mdast-util-directive": "^3.1.0", "mdast-util-to-markdown": "^2.1.2", "mdast-util-to-string": "^4.0.0", "pagefind": "^1.5.2", "remark-directive": "^4.0.0", "satteri": "^0.10.3", "ultrahtml": "^1.6.0", "unified": "^11.0.5", "unist-util-visit": "^5.1.0", "vfile": "^6.0.3", "yaml": "^2.9.1" }, "peerDependencies": { "@astrojs/markdown-remark": "^7.3.0", "astro": "^7.2.10" }, "optionalPeers": ["@astrojs/markdown-remark"] }, "sha512-GhTK+93UNejoQThnYbEkJAlRJiOtctxOCnFtLcUMSTraT75vzS1E89xdMtKOdKcUDD2wx+taJxsfrA3UBs0QgQ=="],
 
