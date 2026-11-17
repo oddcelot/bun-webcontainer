@@ -89,7 +89,7 @@ function validate(input: string): { kind: Tag; params: number } {
 
 type Param = [name: string, value: string];
 
-/** Bun's `Pattern::match_` (with optional catch-alls): `path` without its leading slash against a route's name. */
+/** Bun's `Pattern::match_` (with optional catch-all routes): `path` without its leading slash against a route's name. */
 function matchPattern(path: string, name: string, matchName: string, params: Param[]): boolean {
   let offset = 0;
   let rest = path;
