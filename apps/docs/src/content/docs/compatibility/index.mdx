@@ -30,10 +30,11 @@ The playground is built from Bun {BUN_VERSION}; `Bun.version` reports <code>{BUN
 | [`bun:test`](/compatibility/bun/#buntest) | 🟡 Partial | `bun test` in the console. |
 | [`Bun.$`, `Bun.spawn`](/compatibility/bun/) | 🟡 Partial | Bun's shell and its builtins (`ls`, `cat`, `mkdir`, `rm`…) over the project's files. Child processes run `bun`, `node`, `package.json` scripts and installed bins, each in a worker of its own; `spawnSync` only on cross-origin isolated pages. |
 | [`Bun.S3Client`, `Bun.s3`](/compatibility/bun/) | 🟡 Partial | S3, R2 and MinIO over `fetch` with Bun's SigV4 signing, presigned URLs and multipart uploads; the bucket needs CORS rules for the page's origin. |
-| [`Bun.connect`, `Bun.sql`, `bun:ffi`](/compatibility/bun/) | ❌ Missing | No raw sockets or native code in a browser; also `Bun.redis`. |
+| [`Bun.sql`](/compatibility/bun/) | 🟡 Partial | Postgres on PGlite, in the tab; any `postgres://` URL names a database in the browser. |
+| [`Bun.connect`, `Bun.redis`, `bun:ffi`](/compatibility/bun/) | ❌ Missing | No raw sockets or native code in a browser. |
 | [`node:*` built-ins](/compatibility/node/) | 🟡 Partial | `buffer`, `events`, `path`, `stream`, `url` and `timers` work; `fs`, `http` and `crypto` mostly do. `child_process` runs child processes; `net` and `tls` are stubs. |
 | [Transpiler](/compatibility/toolchain/#transpiler) | ✅ Works | TypeScript, JSX and decorators, with Bun's defaults and the project's `tsconfig.json`. |
-| [`bun install`](/compatibility/toolchain/) | 🟡 Partial | Installs from npm and reads `bun.lock`; doesn't write `bun.lock`; no native `.node` addons. |
+| [`bun install`](/compatibility/toolchain/) | 🟡 Partial | Installs from npm, reads and writes `bun.lock`; no native `.node` addons. |
 | [Type checking, `bun check`, `bun fmt`](/compatibility/toolchain/) | ✅ Works | Completions, hovers and errors in the editor; `bun check` and `bun fmt` in the console. |
 | [Frameworks](/compatibility/frameworks/) | ✅ Works | Elysia, Hono, Vite, Astro and Lit SSR, among others. |
 | [Browsers](/compatibility/browsers/) | 🟡 Partial | Chrome and Edge 133+ and Firefox 134+ run code; Safari and iOS can edit but not run (no WebAssembly Memory64); Safari Technology Preview runs code. |
