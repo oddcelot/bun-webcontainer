@@ -384,6 +384,7 @@ function createInstance(opts: ServeOptions): Instance {
  */
 const NativeResponse = Response;
 const textBodies = new WeakSet<Response>();
+const REDIRECT_STATUS = new Set([301, 302, 303, 307, 308]);
 const hasType = (init?: ResponseInit) => new Headers(init?.headers).has("content-type");
 class ServerResponse extends NativeResponse {
   constructor(body?: BodyInit | null, init?: ResponseInit) {
@@ -402,6 +403,18 @@ class ServerResponse extends NativeResponse {
   static json(data: unknown, init?: ResponseInit) {
     const r = new ServerResponse(JSON.stringify(data), init);
     if (!hasType(init)) r.headers.set("content-type", "application/json;charset=utf-8");
+    return r;
+  }
+  /**
+   * Bun's: the Location is the URL as given (a browser's resolves it against the worker's own URL, the playground's),
+   * and an init object's status defaults to 200.
+   */
+  static redirect(url: string | URL, init?: number | ResponseInit) {
+    const obj = typeof init === "object" && init !== null;
+    const status = typeof init === "number" ? init : obj ? (init.status ?? 200) : 302;
+    if (!REDIRECT_STATUS.has(status) && !(status === 200 && obj)) throw new RangeError("Failed to execute 'redirect' on 'Response': Invalid status code");
+    const r = new ServerResponse(null, { ...(obj ? init : {}), status });
+    r.headers.set("location", String(url));
     return r;
   }
   clone(): Response {
@@ -1062,14 +1075,8 @@ const fileFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   if (!url.startsWith("file:")) {
     // A server this program started (Bun.serve, http.createServer) is answered in-process, as on a machine where
     // localhost reaches it; the browser's network can't. A child process's server lives in another worker: unreachable.
-    const u = new URL(url);
-    const inst = loopback.has(u.hostname) && u.protocol === "http:" ? servers.find((s) => s.port === Number(u.port || 80)) : undefined;
-    if (inst) {
-      const req = new Request(input, init);
-      const { res, setCookies } = await dispatch(inst, req);
-      // What a client of Bun.serve gets: its headers (the implicit content-type, Set-Cookie), no body for HEAD.
-      return new Response(req.method === "HEAD" ? null : res.body, { status: res.status, statusText: res.statusText, headers: servedHeaders(res, setCookies) });
-    }
+    const inst = ownServer(url);
+    if (inst) return loopbackFetch(inst, new Request(input, init));
     return networkFetch(input, withHeaders(input, init));
   }
   const path = norm(decodeURIComponent(new URL(url).pathname));
@@ -1077,6 +1084,53 @@ const fileFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   if (data === undefined) throw new TypeError(`fetch failed: no such file /${path}`);
   return new Response(data.slice());
 };
+
+/** The server of this program that `url` reaches on localhost, if any. */
+function ownServer(url: string | URL): Instance | undefined {
+  const u = new URL(url);
+  return loopback.has(u.hostname) && u.protocol === "http:" ? servers.find((s) => s.port === Number(u.port || 80)) : undefined;
+}
+
+/** Bun follows 126 redirects; the 127th fails. */
+const MAX_REDIRECTS = 126;
+const fetchError = (code: string, message: string) => Object.assign(new TypeError(`${message}. For more information, pass \`verbose: true\` in the second argument to fetch()`), { code });
+
+/**
+ * A request to a server of this program, answered in-process. Redirects are followed as Bun's fetch follows them
+ * (`redirect: "follow"`, the default): a 303, and a 301 or 302 to a POST, go on as a GET without the body; the others
+ * keep method and body; another origin doesn't get the Authorization and Cookie headers. A hop that leaves the
+ * program's servers goes to the network. `"manual"` returns the redirect, `"error"` fails on it.
+ */
+async function loopbackFetch(inst: Instance, req: Request): Promise<Response> {
+  const mode = req.redirect;
+  // A 307 or 308 sends the body again: kept from the start, as it is read only once.
+  const body = mode === "follow" && req.body ? await req.clone().arrayBuffer() : null;
+  for (let hops = 0; ; hops++) {
+    const { res, setCookies } = await dispatch(inst, req);
+    const location = res.headers.get("location");
+    if (mode === "manual" || !REDIRECT_STATUS.has(res.status) || location === null) {
+      // What a client of Bun.serve gets: its headers (the implicit content-type, Set-Cookie), no body for HEAD.
+      const out = new Response(req.method === "HEAD" ? null : res.body, { status: res.status, statusText: res.statusText, headers: servedHeaders(res, setCookies) });
+      return Object.defineProperties(out, { url: { value: req.url }, redirected: { value: hops > 0 } });
+    }
+    res.body?.cancel().catch(() => {});
+    if (mode === "error") throw fetchError("UnexpectedRedirect", `UnexpectedRedirect fetching "${req.url}"`);
+    if (hops === MAX_REDIRECTS) throw fetchError("TooManyRedirects", "TooManyRedirects: The response redirected too many times");
+    const next = new URL(location, req.url);
+    const asGet = (res.status === 303 && req.method !== "GET" && req.method !== "HEAD") || ((res.status === 301 || res.status === 302) && req.method === "POST");
+    const headers = new Headers(req.headers);
+    if (asGet) for (const h of ["content-type", "content-length", "content-encoding", "content-language", "content-location"]) headers.delete(h);
+    if (next.origin !== new URL(req.url).origin) for (const h of ["authorization", "proxy-authorization", "cookie"]) headers.delete(h);
+    const nextInit: RequestInit = { method: asGet ? "GET" : req.method, headers, body: asGet || req.method === "GET" || req.method === "HEAD" ? null : body, redirect: mode, signal: req.signal };
+    const nextInst = ownServer(next);
+    if (!nextInst) {
+      const out = await networkFetch(next, nextInit);
+      return Object.defineProperty(out, "redirected", { value: true });
+    }
+    inst = nextInst;
+    req = new Request(next, nextInit);
+  }
+}
 globalThis.fetch = trackedFn(function fetch(input: RequestInfo | URL, init?: RequestInit) {
   return fileFetch(input, init);
 }) as typeof fetch;

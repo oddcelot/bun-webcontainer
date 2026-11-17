@@ -469,7 +469,10 @@ export class ClientRequest extends (OutgoingMessage as Any) {
     }
     this.chunks = [];
     this.touch();
-    fetch(this.url, { method: this.method, headers, body: body as BodyInit | undefined, signal: this.control.signal, redirect: "follow" }).then(
+    // Node doesn't follow redirects. The browser's network fetch can't hand one over (an opaque response), so only this
+    // program's own servers (on localhost, answered in-process) give the redirect itself.
+    const redirect = /^(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0)$/.test(this.url.hostname) ? "manual" : "follow";
+    fetch(this.url, { method: this.method, headers, body: body as BodyInit | undefined, signal: this.control.signal, redirect }).then(
       (r) => {
         if (this.destroyed) return void r.body?.cancel().catch(() => {});
         const res = new ClientResponse(this.socket, r, () => this.control.abort());

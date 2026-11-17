@@ -28,6 +28,8 @@ const server = Bun.serve({
         }),
       );
     if (u.pathname === "/empty") return new Response(null, { status: 204 });
+    if (u.pathname.startsWith("/moved/")) return new Response(null, { status: Number(u.pathname.slice(7)), headers: { location: "/echo?moved=1" } });
+    if (u.pathname === "/loop") return Response.redirect("/loop", 302);
     return new Response("nf", { status: 404 });
   },
 });
@@ -99,6 +101,22 @@ await new Promise<void>((done) => {
     })
     .end();
 });
+await new Promise<void>((done) => {
+  http.get("http://localhost:3011/moved/302", async (res) => {
+    log("redirect not followed:", res.statusCode, res.headers.location, await read(res));
+    done();
+  });
+});
+// fetch() follows redirects to this program's own server as Bun's does.
+for (const [status, method] of [[301, "POST"], [302, "PUT"], [303, "PUT"], [307, "POST"], [308, "PATCH"]] as const) {
+  const r = await fetch(`http://localhost:3011/moved/${status}`, { method, body: "data", headers: { "content-type": "text/x" } });
+  log(`fetch ${status} ${method}:`, r.status, r.redirected, r.url, await r.text());
+}
+for (const redirect of ["manual", "error"] as const) {
+  const r = await fetch("http://localhost:3011/moved/302", { redirect }).catch((e) => e);
+  log(`fetch redirect ${redirect}:`, r instanceof Error ? `${r.name} ${(r as any).code}` : `${r.status} ${r.redirected} ${r.headers.get("location")}`);
+}
+log("fetch redirect loop:", await fetch("http://localhost:3011/loop").then((r) => r.status, (e) => `${e.name} ${e.code}`));
 await new Promise<void>((done) => {
   http.get("http://localhost:3011/nope", async (res) => {
     log("404:", res.statusCode, res.statusMessage, res.headers["content-type"], await read(res));
