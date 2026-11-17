@@ -12,6 +12,8 @@ export interface LocalBun {
   /** Native Bun's version and how runs are sandboxed (bwrap, sandbox-exec, none). */
   bun: string;
   sandbox: string;
+  /** What the runner can do beyond the first version (hello's `features`); an older runner has none. */
+  features: string[];
   send(m: ClientMessage): void;
   /** Calls `fn` with every message from the runner; returns the unsubscribe. */
   on(fn: (m: ServerMessage) => void): () => void;
@@ -88,6 +90,7 @@ export function connectLocalBun(url: string, onWaiting?: () => void): Promise<Lo
         local = {
           bun: m.bun,
           sandbox: m.sandbox,
+          features: m.features ?? [],
           send: (msg) => ws.send(JSON.stringify(msg)),
           on(fn) {
             listeners.add(fn);
