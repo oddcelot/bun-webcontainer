@@ -204,15 +204,15 @@ pub fn stat(ctx: &Ctx, old: &Flat, new: &Flat, summary: bool) -> Result<String, 
             continue;
         }
         let data = |e: Option<&(u32, ObjectId)>| e.map(|e| object_side(ctx, e).map(|s| s.data)).transpose();
-        let (od, nd) = (data(o)?.unwrap_or_default(), data(n)?.unwrap_or_default());
+        let (old_data, new_data) = (data(o)?.unwrap_or_default(), data(n)?.unwrap_or_default());
         let name = match rename {
             Some(r) => crate::rename::pprint(&path_str(&r.old), &path_str(p)),
             None => path_str(p),
         };
-        let file = if is_binary(&od) || is_binary(&nd) {
-            File { name, add: nd.len(), del: od.len(), binary: true }
+        let file = if is_binary(&old_data) || is_binary(&new_data) {
+            File { name, add: new_data.len(), del: old_data.len(), binary: true }
         } else {
-            let input = InternedInput::new(&od[..], &nd[..]);
+            let input = InternedInput::new(&old_data[..], &new_data[..]);
             let diff: Diff = diff_with_slider_heuristics(Algorithm::Histogram, &input);
             File { name, add: diff.count_additions() as usize, del: diff.count_removals() as usize, binary: false }
         };
