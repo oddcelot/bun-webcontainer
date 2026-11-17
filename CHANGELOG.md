@@ -5,6 +5,87 @@ browser, its editor, and the docs at docs.runbun.dev. They release together at o
 `package.json`, tagged `v<version>`), organised by part. `@runbun/astro` keeps its own changelog in
 [packages/astro/CHANGELOG.md](./packages/astro/CHANGELOG.md).
 
+## 0.5.0 — 2026-11-17
+
+A large step in Bun and Node compatibility: node:crypto ciphers and signatures, HTTP clients, `HTMLRewriter`, zstd and
+brotli, S3, `Bun.sql` on an in-tab Postgres, console input with a real terminal mode, AsyncLocalStorage across
+`await`, and much more of `bun test`. `bun install` handles monorepos, catalogs, overrides and private registries.
+Nothing needs action; `bun test -u` with Local Bun needs `@runbun/connect` 0.3.0.
+
+### Playground
+
+- **Added** — **`bun test -u` updates snapshots with Local Bun.** The changed snapshot files and inline snapshots land
+  in your project and show in the editor; with a runner older than `@runbun/connect` 0.3.0 the console says to update
+  it instead of losing the snapshots silently.
+- **Fixed** — **Stack traces after an `await` point at the right column again.** A frame on a line with an `await`
+  before it reported a column further along than Bun.
+
+### Runtime
+
+- **Added** — **`http.request` and `http.get` work.** Code that uses node:http or node:https clients (axios,
+  node-fetch-style libraries) no longer throws; requests go over `fetch`, so remote hosts follow the browser's CORS
+  rules.
+- **Added** — **`HTMLRewriter` works.** Rewrite HTML as a stream with CSS selectors and element, text, comment, doctype
+  and document-end handlers, on a Response, a string or a buffer, as in Bun. Handlers can be async when the input is a
+  Response.
+- **Added** — **bun:sqlite throws SQLiteError and covers more of Bun's API.** `SQLiteError` carries `code`, `errno` and
+  `byteOffset`; `safeIntegers`, `Statement.as()`, `Database.deserialize()` and `inTransaction` now work, and nested
+  `db.transaction()` calls use savepoints.
+- **Added** — **Custom matchers and assertion counts in `bun test`.** `expect.extend`, `expect.assertions`,
+  `expect.hasAssertions`, `test.failing` and `test.concurrent` no longer throw as unsupported.
+- **Added** — **Fake timers in `bun test`.** `jest.useFakeTimers()`, `advanceTimersByTime`, `runAllTimers` and
+  `setSystemTime` work, so tests of debounce, retry and date code run without waiting.
+- **Added** — **Snapshot testing in `bun test`.** `toMatchSnapshot`, `toMatchInlineSnapshot` and `bun test -u` work and
+  write the same `.snap` files as Bun.
+- **Added** — **`mock.module` and `jest.mock` in `bun test`.** A module mocked before its first `import()` is replaced
+  for everything that loads it after.
+- **Added** — **node:crypto has ciphers, keys and signatures.** `createCipheriv` (AES, ChaCha20-Poly1305),
+  `createPrivateKey`/`createPublicKey`/`KeyObject`, `generateKeyPair`, `sign`/`verify` and
+  `publicEncrypt`/`privateDecrypt` were missing; libraries like `jsonwebtoken` that sign with RSA now run.
+- **Added** — **`Bun.hash.cityHash32`, `cityHash64`, `xxHash3` and `rapidhash` work.** They threw before; all of
+  `Bun.hash` now returns what Bun does, seeds included.
+- **Added** — **`Bun.build` takes `loader`, `env`, `packages`, `drop` and `root`.** They were ignored before; the output
+  now matches native Bun's.
+- **Added** — **zstd and brotli work.** `Bun.zstdCompress`, `Bun.zstdDecompress` and their sync forms, `node:zlib`'s
+  Brotli and zstd functions and streams, and `CompressionStream("brotli" | "zstd")` used to be missing or throw.
+- **Added** — **Programs can read what you type in the console.** `readline`, `process.stdin`, `Bun.stdin`, `for await
+  (const line of console)` and `prompt()` used to get nothing; now Enter sends the line to the program, Ctrl+D ends the
+  input, and output without a newline keeps your answer on the prompt's row.
+- **Added** — **`node:vm` runs code.** `vm.runInThisContext`, `Script`,
+  `createContext`/`runInContext`/`runInNewContext`, `isContext` and `compileFunction` work instead of throwing. A
+  context shares the worker's realm, so it isn't a sandbox.
+- **Added** — **Prompt libraries and TUIs work in the console.** `process.stdin.setRawMode(true)` delivers each key as
+  it is typed, `process.stdout` is a terminal with a size and colors, `readline` has a terminal mode and `keypress`
+  events, and `@clack/prompts` selects, text inputs and confirms redraw in place.
+- **Added** — **S3 from the browser.** `Bun.S3Client`, `Bun.s3`, S3 files, presigned URLs, multipart uploads and `s3://`
+  URLs work against S3, R2 and MinIO, signed as Bun signs; the bucket must allow the page's origin in its CORS rules.
+- **Added** — **`Bun.sql` and `SQL` work, with Postgres in the tab.** A `postgres://` URL opens a database that lives in
+  your browser (PGlite) and stays with the project between runs; the first query downloads about 5 MB.
+- **Fixed** — **fetch reaches your own server.** `fetch("http://localhost:3000")` failed when the same program served
+  that port with `Bun.serve` or `http.createServer`.
+- **Fixed** — **axios uses node:http.** `import axios from "axios"` picked the browser's XMLHttpRequest adapter; there
+  is no `XMLHttpRequest` global now, as in Bun.
+- **Fixed** — **`require.resolve` works in ES modules.** `require` in an ES module (and `import.meta.require`) threw
+  "require.resolve is not a function"; it now has `resolve`, `cache` and `main`, as in Bun.
+- **Fixed** — **AsyncLocalStorage keeps its store across await.** The store was lost at the first `await`, timer or
+  promise callback, which broke request context in Hono's `contextStorage()`, pino-http and similar. It now follows the
+  call through timers, promises, `for await` and a server's handler, as in Bun.
+- **Fixed** — **Vite 8 projects run again.** vite-demo and astro-solid-demo failed with "Worker: only the project's
+  files can run in a Worker here".
+
+### Toolchain
+
+- **Added** — **Monorepos install.** `bun install` reads the root's `workspaces` and `workspace:` dependencies,
+  installs each workspace's dependencies and writes the same bun.lock native Bun does. A project that was refused with
+  "workspaces don't work in the browser" now installs and runs.
+- **Added** — **Catalogs install.** `"react": "catalog:"` and named catalogs in the root package.json resolve like
+  native Bun, and bun.lock records them.
+- **Added** — **`overrides` and `resolutions` apply.** Flat and scoped rules (nested objects, `name@range` keys,
+  `parent/child` and `parent>child`) install the versions you pinned, and bun.lock records them as native Bun does.
+- **Added** — **Private and mirrored registries.** `registry=` and `@scope:registry=` in the project's .npmrc choose
+  where `bun install` fetches from, with the `_authToken` or `_auth` you put there. The registry has to allow
+  cross-origin requests.
+
 ## 0.4.2 — 2026-11-16
 
 Embedded playgrounds start faster and fail less on the way: a test run no longer leaves the preview without a server,
@@ -238,7 +319,8 @@ origin, and a project opened from a link waits for Run; nothing needs action.
   was printed and the test passed; now the test running at the time fails, as in Bun.
 - **Fixed** — **`new Request()` keeps Cookie, Host, Origin, Referer and Content-Length, as in Bun.**
   `app.handle(new Request(url, { headers: { cookie } }))` sees its cookies instead of losing them.
-- **Fixed** — **Imports of `file:` URLs load.** `import "file:///node_modules/…"` failed with "cannot resolve", so a Vite
+- **Fixed** — **Imports of `file:` URLs load.** `import "file:///node_modules/…"` failed with "cannot resolve", so a
+  Vite
   CLI couldn't load its `vite.config.ts`.
 - **Fixed** — **`exit` listeners see Bun's code after an unhandled rejection.** They got 1 where Bun passes
   `process.exitCode` (0 when unset); the program still ends with code 1.
