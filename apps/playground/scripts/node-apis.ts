@@ -34,7 +34,10 @@ const compare = (label: string, got: string[], want: string[]) => {
 };
 
 // Native Bun first: the expectations are its behavior.
-const native = Bun.spawnSync(["bun", "node-apis/main.ts"], { cwd: import.meta.dir }).stdout.toString().trim().split("\n");
+// In a folder of its own: the program writes files (a database, the trace file Bun writes for trace_events).
+const nativeDir = mkdtempSync(join(tmpdir(), "node-apis-native-"));
+const native = Bun.spawnSync(["bun", join(dir, "main.ts")], { cwd: nativeDir }).stdout.toString().trim().split("\n");
+rmSync(nativeDir, { recursive: true, force: true });
 for (const [label, [want]] of Object.entries(DIFFERENT)) {
   const line = native.find((l) => labelOf(l) === label);
   if (line !== `${label}: ${want}`) (bad++, console.error(`✗ native bun ${label}\n  got  ${JSON.stringify(line)}\n  want ${JSON.stringify(`${label}: ${want}`)}`));
@@ -79,7 +82,7 @@ const host = Bun.serve({
     if (d.event === "console") window.lines.push(...d.data.text.split("\\n"));
   });
 </script>`,
-      { headers: { "content-type": "text/html" } },
+      { headers: { "content-type": "text/html; charset=utf-8" } },
     ),
 });
 const profile = mkdtempSync(join(tmpdir(), "node-apis-"));

@@ -20,7 +20,6 @@ export const dns = stubModule("dns", "resolve resolve4 resolve6 reverse setServe
 
 export const http2 = stubModule("http2", "connect createServer createSecureServer getDefaultSettings getPackedSettings getUnpackedSettings Http2ServerRequest Http2ServerResponse", { constants: {}, sensitiveHeaders: Symbol("nodejs.http2.sensitiveHeaders") });
 export const tls = stubModule("tls", "connect createServer createSecureContext checkServerIdentity getCiphers TLSSocket Server", { DEFAULT_MIN_VERSION: "TLSv1.2", DEFAULT_MAX_VERSION: "TLSv1.3", rootCertificates: [] });
-export const v8 = stubModule("v8", "getHeapStatistics getHeapSpaceStatistics getHeapSnapshot writeHeapSnapshot serialize deserialize setFlagsFromString cachedDataVersionTag");
 export const inspector = stubModule("inspector", "open close url waitForDebugger Session", { console });
 export const cluster = stubModule("cluster", "fork disconnect setupPrimary setupMaster Worker", { isPrimary: true, isMaster: true, isWorker: false, workers: {}, settings: {} });
 
