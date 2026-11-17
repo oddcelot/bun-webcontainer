@@ -24,6 +24,8 @@ This opens the playground at `http://127.0.0.1:7357/`, served by the runner. The
 - **Pressed**: Run, `bun install` and `bun test` go to Bun on your machine. The console says which version and sandbox, and the output of the native program shows there. The preview works as before.
 - **Not pressed**: runs stay in the browser, as without the runner.
 
+`bun test -u` (`--update-snapshots`) works here too, with `@runbun/connect` 0.3.0 or newer: after the run, the runner sends back the `__snapshots__/*.snap` files it changed and the test files whose inline snapshots it rewrote, and the playground writes them into your project, so the editor shows them. A first run that writes new snapshots without `-u` is copied back the same way. Only those files come back: a file over 1 MiB (8 MiB in all), a link, a file that is not text and anything outside the project are left behind, since the program under test wrote them. With an older runner the console says to update it.
+
 Switching restarts a running program on the other side. Going back to the browser installs `node_modules` in the page first, since the runner keeps its own. The choice is remembered. If you stop the runner, runs move back to the browser and the button greys out; start it again and reload.
 
 Projects saved on runbun.dev don't show up at `127.0.0.1:7357`: browsers keep each site's storage apart. Share a link or download a zip to move one over.

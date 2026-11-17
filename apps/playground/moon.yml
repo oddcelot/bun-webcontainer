@@ -35,14 +35,15 @@ tasks:
     # in transpile-wasm:test), the embed's `requests` parser (scripts/requests.ts) and the request panel's helpers
     # (scripts/request-fields.ts), the worker's VFS mirror (scripts/vfs-mirror.ts), `bun test`'s per-file counts
     # (scripts/test-results.ts), what `persist` leaves unsaved (scripts/persist-skip.ts), how a test run that doesn't
-    # report ends: Stop, the watchdog, process.exit (scripts/runner-stop.ts), who the embed's `change` event says
+    # report ends: Stop, the watchdog, process.exit (scripts/runner-stop.ts), `bun test -u` with Local Bun against a real runner
+    # (scripts/remote-snapshots.ts), who the embed's `change` event says
     # changed a file (scripts/change-origin.ts), the worker's Requests keeping forbidden headers
     # (scripts/request-headers.ts), what `bun install` prunes from node_modules (scripts/install-prune.ts) and when it
     # reuses a cached packument (scripts/packument-cache.ts), how runbun.json is read (scripts/project-config.ts),
     # Bun.hash against native bun (scripts/hash-compat.ts), the workspace layout (scripts/workspaces-unit.ts), the source
     # pass that keeps AsyncLocalStorage across await (scripts/async-await.ts) and S3 signing and operations against
     # native bun on a local S3 (scripts/s3-signing.ts; scripts/s3.ts is the browser run).
-    script: 'bun scripts/inspect-corpus/diff.ts && bun scripts/data-apis/jsonl.ts && bun scripts/data-apis/xml-stringify.ts && bun scripts/requests.ts && bun scripts/request-fields.ts && bun scripts/vfs-mirror.ts && bun scripts/test-results.ts && bun scripts/persist-skip.ts && bun scripts/runner-stop.ts && bun scripts/change-origin.ts && bun scripts/request-headers.ts && bun scripts/install-prune.ts && bun scripts/packument-cache.ts && bun scripts/project-config.ts && bun scripts/hash-compat.ts && bun scripts/workspaces-unit.ts && bun scripts/async-await.ts && bun scripts/s3-signing.ts'
+    script: 'bun scripts/inspect-corpus/diff.ts && bun scripts/data-apis/jsonl.ts && bun scripts/data-apis/xml-stringify.ts && bun scripts/requests.ts && bun scripts/request-fields.ts && bun scripts/vfs-mirror.ts && bun scripts/test-results.ts && bun scripts/persist-skip.ts && bun scripts/runner-stop.ts && bun scripts/remote-snapshots.ts && bun scripts/change-origin.ts && bun scripts/request-headers.ts && bun scripts/install-prune.ts && bun scripts/packument-cache.ts && bun scripts/project-config.ts && bun scripts/hash-compat.ts && bun scripts/workspaces-unit.ts && bun scripts/async-await.ts && bun scripts/s3-signing.ts'
     toolchains: ['bun']
     inputs:
       - 'scripts/inspect-corpus/**/*'
@@ -65,6 +66,9 @@ tasks:
       - 'scripts/persist-skip.ts'
       - 'src/persist.ts'
       - 'scripts/runner-stop.ts'
+      - 'scripts/remote-snapshots.ts'
+      - 'src/remoteRunner.ts'
+      - '/packages/connect/src/**/*'
       - 'src/runner.ts'
       - 'scripts/change-origin.ts'
       - 'src/embed/changes.ts'

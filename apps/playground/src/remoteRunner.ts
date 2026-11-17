@@ -1,4 +1,4 @@
-import { PACKED_REQUEST, PACKED_RESPONSE, type FileData, type ServerMessage } from "@runbun/connect/protocol";
+import { FEATURE_SNAPSHOTS, PACKED_REQUEST, PACKED_RESPONSE, SYNC_LIMITS, syncPath, type FileData, type ServerMessage } from "@runbun/connect/protocol";
 import type { VFS } from "@runbun/vfs";
 import type { LocalBun } from "./localBun";
 import { SKIP } from "./persist";
@@ -18,12 +18,16 @@ interface Current {
   preview?: string;
   started: boolean;
   killed: boolean;
+  /** A test run that asked for its changed snapshots back: the test files it sent as text, the only ones it may rewrite. */
+  snapshots?: Set<string>;
   output: string;
   partial: { 1: string; 2: string };
   settle(): void;
   exited: Promise<void>;
   done(): void;
 }
+
+const UPDATE_FLAGS = ["-u", "--update-snapshots"];
 
 const toBase64 = (bytes: Uint8Array) => {
   let s = "";
@@ -86,20 +90,37 @@ export class RemoteRunner extends Runner {
       return;
     }
     const c = this.begin(!!tests);
+    const files = this.snapshot();
+    // Test runs ask for the files they changed (snapshots, inline snapshots) if the runner can send them; `-u` also
+    // rewrites the ones that differ. `files` is only taken from a run that asked, and only for the paths it may change.
+    const snapshots = !!tests && this.local.features.includes(FEATURE_SNAPSHOTS);
+    if (snapshots) c.snapshots = new Set(tests.filter((t) => typeof files[t] === "string"));
     // runbun.json's `env`, as in the browser (worker/runtime.ts); the runner leaves out names it keeps for itself.
     const env = readConfig((path) => this.files.readText(path)).env;
-    this.local.send({ t: "run", id: c.id, project: this.project, files: this.snapshot(), entry, args, test: tests, env });
+    this.local.send({
+      t: "run",
+      id: c.id,
+      project: this.project,
+      files,
+      entry,
+      args,
+      test: tests,
+      env,
+      ...(snapshots && { updateSnapshots: args.some((a) => UPDATE_FLAGS.includes(a)) }),
+    });
     await this.ready;
   }
 
   /** Native Bun reports failed tests in all, not per file (no `results`). */
   override async runTests(files: string[], args: string[] = []): Promise<TestResults> {
-    // The runner tests a copy of the project in a temp folder it then removes: updated snapshots would be lost.
-    if (args.length) {
-      this.out("error", `[local] bun test ${args.join(" ")}: snapshots update only in the browser; switch Local Bun off to update them.`);
+    // The runner tests a copy of the project in a temp folder it then removes; it sends the changed snapshots back
+    // (an older runner doesn't, and they would be lost).
+    if (args.length && !(args.every((a) => UPDATE_FLAGS.includes(a)) && this.local.features.includes(FEATURE_SNAPSHOTS))) {
+      const old = UPDATE_FLAGS.includes(args[0]!) ? " with this runner (update @runbun/connect to update them here)" : "";
+      this.out("error", `[local] bun test ${args.join(" ")}: snapshots update only in the browser${old}; switch Local Bun off to update them.`);
       return { failed: 1 };
     }
-    await this.start("", files);
+    await this.start("", files, args);
     await this.current?.exited;
     return { failed: this.failed };
   }
@@ -170,6 +191,27 @@ export class RemoteRunner extends Runner {
     c.done();
   }
 
+  /**
+   * Writes the files a test run changed into the project. They are the untrusted program's output: only from the run
+   * that asked (`c.snapshots`), once, only paths `syncPath` allows (snapshot files, or a test file this run sent),
+   * only text, within SYNC_LIMITS; anything else is dropped.
+   */
+  private applyFiles(c: Current, files: unknown) {
+    const tests = c.snapshots;
+    c.snapshots = undefined;
+    if (!tests || !Array.isArray(files) || files.length > SYNC_LIMITS.count) return;
+    const written: string[] = [];
+    let total = 0;
+    for (const f of files) {
+      const path = syncPath(f?.path, tests);
+      if (!path || typeof f.text !== "string" || f.text.length > SYNC_LIMITS.file || (total += f.text.length) > SYNC_LIMITS.total || SKIP.test(path)) continue;
+      if (this.files.readText(path) === f.text) continue;
+      this.files.write(path, f.text);
+      written.push(path);
+    }
+    if (written.length) this.out("sys", `[local] wrote ${written.join(", ")}`);
+  }
+
   private onMessage(m: ServerMessage) {
     const c = this.current;
     if (m.t === "error") return this.out("error", `[local] ${m.message}`), c && (!m.id || m.id === c.id) && this.finish(c, 1);
@@ -188,7 +230,8 @@ export class RemoteRunner extends Runner {
           c.started = true;
           c.settle();
         }, SETTLE_MS);
-    } else if (m.t === "listening") {
+    } else if (m.t === "files") this.applyFiles(c, m.files);
+    else if (m.t === "listening") {
       c.started = true;
       c.settle();
     } else if (m.t === "exit") this.finish(c, m.code ?? (m.signal ? 128 : 1));
