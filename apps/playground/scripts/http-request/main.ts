@@ -14,6 +14,22 @@ const bodies: Record<string, () => Response> = {
   "wrong-length": () => new Response("hello", { headers: { "content-length": "3" } }),
   "body-stream": () => new Response(new Response("piped").body),
   "no-content": () => new Response(null, { status: 204 }),
+  stream: () => new Response(new ReadableStream({ start: (c) => (c.enqueue(new TextEncoder().encode("abc")), c.close()) })),
+};
+// Streams that fail: before Bun sends the head (with the first chunk and what is ready with it), or after.
+const failing: Record<string, () => ReadableStream> = {
+  "error at once": () => new ReadableStream({ start: (c) => c.error(new Error("x")) }),
+  "error after a chunk": () => new ReadableStream({ start: (c) => (c.enqueue(new TextEncoder().encode("before ")), c.error(new Error("x"))) }),
+  "error later": () => {
+    let n = 0;
+    return new ReadableStream({
+      async pull(c) {
+        if (n++ === 0) return c.enqueue(new TextEncoder().encode("before "));
+        await new Promise((r) => setTimeout(r, 50));
+        throw new Error("x");
+      },
+    });
+  },
 };
 
 const server = Bun.serve({
@@ -44,6 +60,7 @@ const server = Bun.serve({
     if (u.pathname.startsWith("/moved/")) return new Response(null, { status: Number(u.pathname.slice(7)), headers: { location: "/echo?moved=1" } });
     if (u.pathname === "/loop") return Response.redirect("/loop", 302);
     if (u.pathname.startsWith("/body/")) return bodies[u.pathname.slice(6)]();
+    if (u.pathname.startsWith("/failing/")) return new Response(failing[decodeURIComponent(u.pathname.slice(9))]());
     if (u.pathname === "/form") return Response.json([...(await req.formData())].map(([k, v]) => (typeof v === "string" ? [k, v] : [k, v.name, v.type, v.size])));
     return new Response("nf", { status: 404 });
   },
@@ -125,7 +142,7 @@ await new Promise<void>((done) => {
 for (const kind of Object.keys(bodies))
   for (const method of ["GET", "HEAD"]) {
     const r = await fetch(`http://localhost:3011/body/${kind}`, { method });
-    log(`served ${method} ${kind}:`, r.status, r.headers.get("content-type"), kind === "body-stream" ? "" : r.headers.get("content-length"), JSON.stringify(await r.text()));
+    log(`served ${method} ${kind}:`, r.status, r.headers.get("content-type"), r.headers.get("content-length"), JSON.stringify(await r.text()));
   }
 {
   // A file part is typed by its name, as Bun parses it; a Bun.file is a File named by its path.
@@ -136,6 +153,17 @@ for (const kind of Object.keys(bodies))
   fd.set("src", Bun.file("main.ts"));
   log("multipart:", await fetch("http://localhost:3011/form", { method: "POST", body: fd }).then((r) => r.text()));
   log("bun file in form:", (fd.get("src") as File).name, fd.get("src") instanceof File);
+}
+for (const kind of Object.keys(failing)) {
+  let text = "";
+  try {
+    const r = await fetch(`http://localhost:3011/failing/${kind}`);
+    text = `${r.status} `;
+    for await (const chunk of r.body!) text += new TextDecoder().decode(chunk);
+    log(`${kind}:`, text, "(ended)");
+  } catch (e: any) {
+    log(`${kind}:`, text, "!", e.name, e.code);
+  }
 }
 // fetch() follows redirects to this program's own server as Bun's does.
 for (const [status, method] of [[301, "POST"], [302, "PUT"], [303, "PUT"], [307, "POST"], [308, "PATCH"]] as const) {

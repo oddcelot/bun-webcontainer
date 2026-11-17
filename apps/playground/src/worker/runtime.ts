@@ -391,6 +391,8 @@ const REDIRECT_STATUS = new Set([301, 302, 303, 307, 308]);
 const hasType = (init?: ResponseInit) => new Headers(init?.headers).has("content-type");
 /** Streams whose bytes come from a body or a Blob (`response.body`, `request.body`, `blob.stream()`), as Bun's native ones. */
 const bodyStreams = new WeakSet<ReadableStream>();
+/** The length of such a stream where its body's is known (a Response's string, bytes or Blob): Bun sends it. */
+const streamLengths = new WeakMap<ReadableStream, number>();
 for (const [proto, key] of [[NativeResponse.prototype, "body"], [Request.prototype, "body"]] as const) {
   const get = Object.getOwnPropertyDescriptor(proto, key)?.get;
   if (get)
@@ -398,6 +400,8 @@ for (const [proto, key] of [[NativeResponse.prototype, "body"], [Request.prototy
       get() {
         const s = get.call(this) as ReadableStream | null;
         if (s) bodyStreams.add(s);
+        const length = served.get(this as Response)?.length;
+        if (s && length !== undefined && !(this as Response).bodyUsed) streamLengths.set(s, length);
         return s;
       },
       configurable: true,
@@ -408,6 +412,7 @@ const blobStream = Blob.prototype.stream;
 Blob.prototype.stream = function stream(this: Blob) {
   const s = blobStream.call(this);
   bodyStreams.add(s);
+  streamLengths.set(s, blobSize.call(this) as number);
   return s;
 };
 const blobSize = Object.getOwnPropertyDescriptor(Blob.prototype, "size")!.get!;
@@ -419,6 +424,7 @@ function knownLength(body: BodyInit | null | undefined): number | undefined {
   // The Blob's own bytes (a Bun.file's are the file when it was made), not a BunFile's live size.
   if (body instanceof Blob) return blobSize.call(body) as number;
   if (body instanceof URLSearchParams) return new TextEncoder().encode(body.toString()).byteLength;
+  if (body instanceof ReadableStream) return streamLengths.get(body);
   return undefined;
 }
 class ServerResponse extends NativeResponse {
@@ -1177,6 +1183,63 @@ function ownServer(url: string | URL): Instance | undefined {
 const MAX_REDIRECTS = 126;
 const fetchError = (code: string, message: string) => Object.assign(new TypeError(`${message}. For more information, pass \`verbose: true\` in the second argument to fetch()`), { code });
 
+const macrotask = () =>
+  new Promise<void>((resolve) => {
+    const ch = new MessageChannel();
+    ch.port1.onmessage = () => (ch.port1.close(), resolve());
+    ch.port2.postMessage(0);
+  });
+const connectionReset = () => fetchError("ECONNRESET", "ECONNRESET: The socket connection was closed unexpectedly");
+
+/**
+ * A response body as a client of Bun.serve gets it. Bun sends the head with the first chunk, and what the stream has
+ * ready without waiting along with it: a stream that fails before then drops the connection (fetch rejects), one that
+ * fails later ends the body with the same error. A stream that ended by then has its length sent too, as Bun does.
+ */
+async function eagerBody(stream: ReadableStream<Uint8Array>): Promise<{ body: ReadableStream<Uint8Array>; length?: number }> {
+  const reader = stream.getReader();
+  const ready: Uint8Array[] = [];
+  let pending: Promise<ReadableStreamReadResult<Uint8Array>> | undefined;
+  let done = false;
+  try {
+    for (let r = await reader.read(); ; ) {
+      if (r.done) {
+        done = true;
+        break;
+      }
+      ready.push(r.value);
+      const next = reader.read();
+      const settled = await Promise.race([next, macrotask()]);
+      if (!settled) {
+        pending = next;
+        // Read later; until then a failure is this one's to report.
+        next.catch(() => {});
+        break;
+      }
+      r = settled;
+    }
+  } catch {
+    throw connectionReset();
+  }
+  const length = done ? ready.reduce((n, c) => n + c.byteLength, 0) : undefined;
+  const body = new ReadableStream<Uint8Array>({
+    async pull(c) {
+      if (ready.length) return c.enqueue(ready.shift()!);
+      if (done) return c.close();
+      try {
+        const r = await (pending ?? reader.read());
+        pending = undefined;
+        if (r.done) c.close();
+        else c.enqueue(r.value);
+      } catch {
+        c.error(connectionReset());
+      }
+    },
+    cancel: (reason) => reader.cancel(reason),
+  });
+  return { body, length };
+}
+
 /**
  * A request to a server of this program, answered in-process. Redirects are followed as Bun's fetch follows them
  * (`redirect: "follow"`, the default): a 303, and a 301 or 302 to a POST, go on as a GET without the body; the others
@@ -1192,7 +1255,10 @@ async function loopbackFetch(inst: Instance, req: Request): Promise<Response> {
     const location = res.headers.get("location");
     if (mode === "manual" || !REDIRECT_STATUS.has(res.status) || location === null) {
       // What a client of Bun.serve gets: its headers (the implicit content-type, Set-Cookie), no body for HEAD.
-      const out = new Response(req.method === "HEAD" ? null : res.body, { status: res.status, statusText: res.statusText, headers: servedHeaders(res, setCookies, req.method === "HEAD") });
+      const eager = req.method !== "HEAD" && res.body ? await eagerBody(res.body) : undefined;
+      const headers = servedHeaders(res, setCookies, req.method === "HEAD");
+      if (eager?.length !== undefined && !headers.some(([k]) => k === "content-length")) headers.push(["content-length", String(eager.length)]);
+      const out = new Response(eager?.body ?? null, { status: res.status, statusText: res.statusText, headers });
       return Object.defineProperties(out, { url: { value: req.url }, redirected: { value: hops > 0 } });
     }
     res.body?.cancel().catch(() => {});
