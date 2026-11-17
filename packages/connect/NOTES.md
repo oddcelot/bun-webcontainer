@@ -20,6 +20,18 @@ bun test.ts [secret]    # end-to-end: access checks, native APIs, sandbox, previ
   (`HOME`/`TMPDIR` inside the dir, `PORT` for `Bun.serve`), plus the project's runbun.json `env` (the run message's
   `env`, server.ts `projectEnv`: not the runner's names, nor `LD_*`/`DYLD_*`), set inside the sandbox only.
   stdout/stderr stream back; stdin and kill go in.
+- **Snapshots** (`snapshots` in `hello.features`): a `run` with `test` and a boolean `updateSnapshots` gets a `files`
+  message before its `exit`: `true` also passes `--update-snapshots`, `false` only syncs (native `bun test` writes
+  new snapshots without a flag; the runner's env has no `CI`, but a project's `env` may set it, then nothing is
+  written). Old pages send no flag and get no message; a page checks `features` before relying on it. What comes
+  back (`changedFiles`, server.ts): `**/__snapshots__/*.snap` that are new or differ from what the page sent, and
+  the run's own test files (the `test` entries that were sent as text) whose text changed (inline snapshots). The
+  program under test wrote that directory, so it is hostile input: the walk never follows links, every path
+  component is lstat'ed and a link or non-regular file is skipped, `syncPath` (protocol.ts, shared with the page)
+  is the allowlist (no `..`, empty, absolute, node_modules, .git), text must be valid UTF-8, and `SYNC_LIMITS` cap
+  the file (1 MiB), the total (8 MiB) and the count (500). Skipped files are named in the run's stderr. The page
+  re-checks all of it and applies files only to the run it started (remoteRunner.ts `applyFiles`). Not synced:
+  deleted snapshot files, binary files.
 - **Sandbox**: Linux `bwrap` (root read-only, `/home` `/root` `/tmp` empty, the project dir the only writable
   bind, `--unshare-all --share-net`); macOS `sandbox-exec` (writes only to the project, home unreadable apart
   from the Bun binary; no `open`/`osascript` or LaunchServices lookups, which would start apps outside the sandbox; connecting to the runner's own port is denied, so the program can't fetch the token from

@@ -11,7 +11,7 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import { tmpdir } from "node:os";
 import { dirname, extname, isAbsolute, join, normalize } from "node:path";
 import type { ServerWebSocket, Subprocess } from "bun";
-import { PACKED_REQUEST, PACKED_RESPONSE, type ClientMessage, type ConnectInfo, type ServerMessage } from "./protocol.ts";
+import { FEATURE_SNAPSHOTS, PACKED_REQUEST, PACKED_RESPONSE, SYNC_LIMITS, syncPath, type ClientMessage, type ConnectInfo, type ServerMessage } from "./protocol.ts";
 import { type FsLike, listeningPorts, peerVerdict, readNetRows, readProcs, refuse } from "./peer.ts";
 import { detectSandbox, launch, type SandboxKind } from "./sandbox.ts";
 
@@ -133,6 +133,70 @@ export function projectEnv(env: unknown): { env: Record<string, string>; refused
 }
 const RUNNER_ENV = new Set(["PATH", "HOME", "TMPDIR", "PORT", "BUN_INSTALL_CACHE_DIR", "NO_COLOR"]);
 
+/** The relative path of a file name as the runner writes it (`./a.test.ts` is `a.test.ts`), or undefined if unsafe. */
+function relPath(path: string): string | undefined {
+  const rel = normalize(path).replace(/^\/+/, "");
+  return rel && !isAbsolute(rel) && !rel.startsWith("..") ? rel : undefined;
+}
+
+/**
+ * The files a test run changed, for the page (protocol.ts `files`): `__snapshots__/*.snap` files that are new or differ
+ * from what the page sent, and the run's own test files whose text changed (inline snapshots). The program under test
+ * wrote into `dir`, so nothing in it is trusted: no link is followed (every component is lstat'ed, a non-regular file
+ * or a link is skipped), paths go through `syncPath`, and size and count are capped. `sent` is the page's text per
+ * path, `tests` the run's test files among them. `skipped` says why something wasn't returned.
+ */
+export function changedFiles(dir: string, sent: Map<string, string>, tests: Set<string>): { files: { path: string; text: string }[]; skipped: string[] } {
+  const files: { path: string; text: string }[] = [];
+  const skipped: string[] = [];
+  let total = 0;
+  const take = (rel: string) => {
+    if (!syncPath(rel, tests)) return;
+    // A link on the way (a directory the program replaced) or as the file itself: skip.
+    const parts = rel.split("/");
+    for (let i = 1; i < parts.length; i++) {
+      const st = lstatSync(join(dir, ...parts.slice(0, i)), { throwIfNoEntry: false });
+      if (!st?.isDirectory()) return void skipped.push(`${rel} (a link on its path)`);
+    }
+    const st = lstatSync(join(dir, rel), { throwIfNoEntry: false });
+    if (!st) return;
+    if (!st.isFile()) return void skipped.push(`${rel} (not a regular file)`);
+    if (st.size > SYNC_LIMITS.file) return void skipped.push(`${rel} (over ${SYNC_LIMITS.file / 1024} KiB)`);
+    if (files.length >= SYNC_LIMITS.count || total + st.size > SYNC_LIMITS.total) return void skipped.push(`${rel} (too many or too large in all)`);
+    let text: string;
+    try {
+      text = new TextDecoder("utf-8", { fatal: true }).decode(readFileSync(join(dir, rel)));
+    } catch {
+      return void skipped.push(`${rel} (not text)`);
+    }
+    if (sent.get(rel) === text) return;
+    total += Buffer.byteLength(text);
+    files.push({ path: rel, text });
+  };
+  for (const t of [...tests].sort()) take(t);
+  // Snapshot files anywhere in the project: walk without following links, skipping what the page never sends.
+  let seen = 0;
+  const walk = (rel: string, depth: number) => {
+    if (depth > 32) return;
+    let names: string[];
+    try {
+      names = readdirSync(join(dir, rel));
+    } catch {
+      return;
+    }
+    for (const name of names.sort()) {
+      if (++seen > 50_000) return;
+      if (name === "node_modules" || name === ".git" || (depth === 0 && name === ".tmp")) continue;
+      const p = rel ? `${rel}/${name}` : name;
+      const st = lstatSync(join(dir, p), { throwIfNoEntry: false });
+      if (st?.isDirectory()) walk(p, depth + 1);
+      else if (st && (rel === "__snapshots__" || rel.endsWith("/__snapshots__")) && name.endsWith(".snap")) take(p);
+    }
+  };
+  walk("", 0);
+  return { files, skipped };
+}
+
 /** The real /proc, for peer.ts. */
 const procFs: FsLike = { readFile: (p) => readFileSync(p, "utf8"), readdir: (p) => readdirSync(p), readlink: (p) => readlinkSync(p) };
 
@@ -224,7 +288,7 @@ export function startRunner(opts: RunnerOptions = {}) {
     },
     websocket: {
       open(ws) {
-        send(ws, { t: "hello", bun: Bun.version, platform: process.platform, sandbox });
+        send(ws, { t: "hello", bun: Bun.version, platform: process.platform, sandbox, features: [FEATURE_SNAPSHOTS] });
       },
       async message(ws, raw) {
         let msg: ClientMessage;
@@ -456,7 +520,9 @@ export function startRunner(opts: RunnerOptions = {}) {
       if (result.code === 0 && !run.killed && (msg.entry || msg.test)) {
         send(ws, { t: "phase", id: msg.id, phase: "run" });
         send(ws, { t: "started", id: msg.id, preview: `http://${ws.data.host}/__connect/preview/${token}/${msg.id}/` });
-        const args = msg.test ? ["test", ...msg.test] : ["run", msg.entry, ...(msg.args ?? [])];
+        // `bun test` writes new snapshots without a flag (not in CI: the runner's env never has CI; a project's `env`
+        // could set it, and then nothing is written); with `updateSnapshots` it rewrites the changed ones too.
+        const args = msg.test ? ["test", ...(msg.updateSnapshots === true ? ["--update-snapshots"] : []), ...msg.test] : ["run", msg.entry, ...(msg.args ?? [])];
         // The project's `env` for the program and its tests, not for `bun install`.
         const { env, refused } = projectEnv(msg.env);
         if (refused.length) send(ws, { t: "out", id: msg.id, fd: 2, data: `[runbun connect] env left out: ${refused.join(", ")}\n` });
@@ -476,6 +542,22 @@ export function startRunner(opts: RunnerOptions = {}) {
             }
           })();
         result = await done;
+        if (msg.test && typeof msg.updateSnapshots === "boolean" && !run.killed) {
+          try {
+            const sent = new Map<string, string>();
+            for (const [path, data] of Object.entries(msg.files)) if (typeof data === "string") sent.set(relPath(path)!, data);
+            const tests = new Set<string>();
+            for (const t of msg.test) {
+              const rel = relPath(t);
+              if (rel && sent.has(rel)) tests.add(rel);
+            }
+            const { files, skipped } = changedFiles(dir, sent, tests);
+            if (skipped.length) send(ws, { t: "out", id: msg.id, fd: 2, data: `[runbun connect] not copied back: ${skipped.join(", ")}\n` });
+            if (files.length) send(ws, { t: "files", id: msg.id, files });
+          } catch (e) {
+            send(ws, { t: "out", id: msg.id, fd: 2, data: `[runbun connect] snapshots not copied back: ${e}\n` });
+          }
+        }
       }
     } finally {
       send(ws, { t: "exit", id: msg.id, ...result });

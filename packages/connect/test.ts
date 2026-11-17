@@ -30,8 +30,9 @@ function connect(url: string, origin: string): Promise<WebSocket | number> {
 }
 
 function run(ws: WebSocket, id: string, files: Record<string, string>, onStart?: (m: ServerMessage & { t: "started" }) => void | Promise<void>, extra: object = {}) {
-  return new Promise<{ out: string; err: string; code: number | null; seen: string[] }>((resolve) => {
+  return new Promise<{ out: string; err: string; code: number | null; seen: string[]; files: { path: string; text: string }[] }>((resolve) => {
     const seen: string[] = [];
+    const got: { path: string; text: string }[] = [];
     let out = "", err = "";
     const on = async (e: MessageEvent) => {
       const m = JSON.parse(e.data) as ServerMessage;
@@ -39,8 +40,9 @@ function run(ws: WebSocket, id: string, files: Record<string, string>, onStart?:
       seen.push(m.t);
       if (m.t === "started") await onStart?.(m);
       if (m.t === "out") m.fd === 1 ? (out += m.data) : (err += m.data);
-      if (m.t === "error") (err += m.message), resolve({ out, err, code: -1, seen });
-      if (m.t === "exit") ws.removeEventListener("message", on), resolve({ out, err, code: m.code, seen });
+      if (m.t === "files") got.push(...m.files);
+      if (m.t === "error") (err += m.message), resolve({ out, err, code: -1, seen, files: got });
+      if (m.t === "exit") ws.removeEventListener("message", on), resolve({ out, err, code: m.code, seen, files: got });
     };
     ws.addEventListener("message", on);
     ws.send(JSON.stringify({ t: "run", id, files, entry: "index.ts", ...extra }));
@@ -59,6 +61,7 @@ try {
   check("runbun.dev with the token connects", typeof ws === "object");
   const hello = await new Promise<ServerMessage>((res) => (ws.onmessage = (e) => res(JSON.parse(e.data))));
   check("hello reports the sandbox", hello.t === "hello" && hello.sandbox === r.sandbox);
+  check("hello lists the snapshots feature", hello.t === "hello" && !!hello.features?.includes("snapshots"));
 
   // Native-only: processes, FFI, the real runtime.
   const native = await run(ws, "native", {
@@ -106,6 +109,70 @@ try {
     JSON.stringify(sx.argv.slice(3)),
   );
   check("no sandbox: the project's env goes to Bun, the runner's names winning", none.env.GREETING === "hi" && none.env.HOME === "/p", JSON.stringify(none.env));
+
+  // Snapshots: `updateSnapshots` adds --update-snapshots and the changed files come back in a `files` message.
+  const snapTest = `import { expect, test } from "bun:test";
+    test("snaps", () => {
+      expect({ a: 1 }).toMatchSnapshot();
+      expect(1 + 1).toMatchInlineSnapshot();
+    });`;
+  const snapRun = (id: string, files: Record<string, string>, extra: object) => run(ws, id, files, undefined, { entry: "", test: ["a.test.ts"], ...extra });
+  const byPath = (r: { files: { path: string; text: string }[] }) => Object.fromEntries(r.files.map((f) => [f.path, f.text]));
+  const snapFirst = await snapRun("snap1", { "a.test.ts": snapTest }, { updateSnapshots: true });
+  const f1 = byPath(snapFirst);
+  check("a snapshot test's new .snap comes back", /exports\[`snaps 1`\]/.test(f1["__snapshots__/a.test.ts.snap"] ?? ""), snapFirst.err + JSON.stringify(f1));
+  check("an inline snapshot comes back in its test file", /toMatchInlineSnapshot\(`?2`?\)/.test(f1["a.test.ts"] ?? ""), JSON.stringify(f1));
+  check("`files` comes before `exit`", snapFirst.seen.indexOf("files") >= 0 && snapFirst.seen.indexOf("files") < snapFirst.seen.indexOf("exit"), snapFirst.seen.join());
+  const snapText = f1["__snapshots__/a.test.ts.snap"] ?? "";
+  const stale = await snapRun("snap2", { "a.test.ts": f1["a.test.ts"] ?? snapTest, "__snapshots__/a.test.ts.snap": snapText.replace(`"a": 1`, `"a": 9`) }, { updateSnapshots: true });
+  check("--update-snapshots rewrites a stale .snap", byPath(stale)["__snapshots__/a.test.ts.snap"] === snapText && stale.code === 0, stale.err + stale.out);
+  const kept = await snapRun("snap3", { "a.test.ts": f1["a.test.ts"] ?? snapTest, "__snapshots__/a.test.ts.snap": snapText.replace(`"a": 1`, `"a": 9`) }, { updateSnapshots: false });
+  check("without it a stale .snap fails and nothing comes back", kept.code !== 0 && !kept.seen.includes("files"), kept.err);
+  const same = await snapRun("snap4", { "a.test.ts": f1["a.test.ts"] ?? snapTest, "__snapshots__/a.test.ts.snap": snapText }, { updateSnapshots: true });
+  check("nothing changed, no `files`", same.code === 0 && !same.seen.includes("files"), same.err + same.seen.join());
+  const created = await snapRun("snap5", { "a.test.ts": f1["a.test.ts"] ?? snapTest }, { updateSnapshots: false });
+  check("a new snapshot is written without -u and comes back", !!byPath(created)["__snapshots__/a.test.ts.snap"], created.err + created.out);
+  const old = await snapRun("snap6", { "a.test.ts": f1["a.test.ts"] ?? snapTest }, {});
+  check("a page that doesn't ask (old pages) gets no `files`", old.code === 0 && !old.seen.includes("files"), old.seen.join());
+
+  // The program under test is untrusted: what it writes outside the allowlist, over a link or past the caps stays here.
+  const snapEvil = await snapRun(
+    "snapevil",
+    {
+      "a.test.ts": `import { expect, test } from "bun:test";
+        import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
+        test("evil", () => {
+          const t = (f: () => void) => { try { f(); } catch {} };
+          mkdirSync("__snapshots__", { recursive: true });
+          mkdirSync("linked", { recursive: true });
+          t(() => writeFileSync("../x", "outside"));
+          t(() => writeFileSync("notes.txt", "not allowlisted"));
+          t(() => writeFileSync("src.ts", "not a test file"));
+          t(() => writeFileSync("other.test.ts", "a test file the run didn't list"));
+          t(() => writeFileSync("__snapshots__/ok.snap", "// good"));
+          t(() => writeFileSync("__snapshots__/big.snap", "x".repeat(2 * 1024 * 1024)));
+          t(() => writeFileSync("__snapshots__/binary.snap", Buffer.from([0xff, 0xfe, 0x00])));
+          t(() => writeFileSync("__snapshots__/a.txt", "wrong extension"));
+          t(() => writeFileSync("__snapshots__/sub.snap.d", "no"));
+          t(() => symlinkSync(${JSON.stringify(secret)}, "__snapshots__/link.snap"));
+          t(() => mkdirSync("deep/__snapshots__", { recursive: true }));
+          t(() => symlinkSync(${JSON.stringify(secret)}, "deep/__snapshots__/link2.snap"));
+          t(() => symlinkSync("..", "linked/__snapshots__"));
+          t(() => writeFileSync("node_modules_x.snap", "no"));
+          t(() => mkdirSync("node_modules/p/__snapshots__", { recursive: true }));
+          t(() => writeFileSync("node_modules/p/__snapshots__/p.snap", "no"));
+          expect(1).toBe(1);
+        });`,
+      "other.test.ts": "// the page's text",
+      "src.ts": "// the page's text",
+    },
+    { updateSnapshots: true },
+  );
+  const ev = byPath(snapEvil);
+  check("a test's own good .snap still comes back", ev["__snapshots__/ok.snap"] === "// good", snapEvil.err + JSON.stringify(Object.keys(ev)));
+  check("../x, other files, an unlisted test file and node_modules don't", Object.keys(ev).every((p) => ["__snapshots__/ok.snap"].includes(p)), JSON.stringify(Object.keys(ev)));
+  check("a symlinked .snap isn't read through", !("__snapshots__/link.snap" in ev) && !("deep/__snapshots__/link2.snap" in ev) && !JSON.stringify(ev).includes("hunter2"), snapEvil.err);
+  check("an oversized or binary .snap stays behind, with a note", !("__snapshots__/big.snap" in ev) && !("__snapshots__/binary.snap" in ev) && /big\.snap \(over/.test(snapEvil.err) && /binary\.snap \(not text/.test(snapEvil.err), snapEvil.err);
 
   // The sandbox: the secret is unreadable, nothing outside the project lands on the host.
   const jail = await run(ws, "jail", {

@@ -47,6 +47,11 @@ the terminal question off.
 Without a sandbox (Windows, Linux without bubblewrap) the runner refuses to start. `--no-sandbox` starts it anyway, and
 then code from the playground runs with all your user's rights.
 
+`bun test -u` in the playground's console updates snapshots: after a test run the runner sends back the
+`__snapshots__/*.snap` files and the test files (inline snapshots) that run changed, and the page writes them into the
+project. Nothing else comes back, and the page only takes those paths: a file past 1 MiB (8 MiB in all), a link, a
+non-text file or a path outside the project is left behind.
+
 Each run is stopped, with everything it started, past `--max-memory` (MB, all its processes together; default 2048) or
 `--max-processes` (default 64). These are checked twice a second, so they aren't a hard cap.
 
