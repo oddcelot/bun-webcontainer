@@ -9,6 +9,7 @@ import fs from "./fs";
 import http, { https } from "./http";
 import net from "./net";
 import sqlite from "./sqlite";
+import nodeSqlite from "./nodeSqlite";
 import test from "./test";
 import ws from "./ws";
 import { createModule } from "./module";
@@ -95,13 +96,27 @@ export const builtins: Record<string, object> = {
   v8,
   vm,
   bun,
+  sqlite: nodeSqlite,
   "bun:sqlite": sqlite,
   "bun:test": test,
   "bun:ws": ws,
   worker_threads,
   zlib,
 };
-builtins.module = createModule(builtins);
+/** Built-ins with only a `node:` name, as in Bun: bare, `sqlite` and `test` are npm packages. */
+export const NODE_PREFIXED = ["sqlite", "test"];
+
+/** The key in `builtins` of specifier `spec` (`fs`, `node:fs`, `bun:sqlite`, `node:sqlite`), or undefined if it isn't one. */
+export function builtinName(spec: string): string | undefined {
+  const name = spec.startsWith("node:") ? spec.slice(5) : spec;
+  if (!Object.hasOwn(builtins, name) || (name === spec && NODE_PREFIXED.includes(name))) return undefined;
+  return name;
+}
+
+/** `require("module").builtinModules`: the `node:`-only ones with their prefix. */
+export const builtinModuleNames = () => Object.keys(builtins).map((k) => (NODE_PREFIXED.includes(k) ? `node:${k}` : k));
+
+builtins.module = createModule(builtins, builtinName, builtinModuleNames);
 
 export { setFs } from "./fs";
 export { setRequire } from "./module";

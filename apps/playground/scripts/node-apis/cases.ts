@@ -1,6 +1,7 @@
 // Node modules native Bun implements and the playground emulates, as one program both run (scripts/node-apis.ts
 // compares the two). Each line is `label: value`.
 import { diagnosticsChannel } from "./diagnostics_channel.ts";
+import { sqlite } from "./sqlite.ts";
 
 export type Case = (label: string, f: () => unknown) => void;
 
@@ -16,4 +17,5 @@ export async function run(log: (line: string) => void) {
   };
   log("start: node apis");
   await diagnosticsChannel(t, log);
+  await sqlite(t, log);
 }

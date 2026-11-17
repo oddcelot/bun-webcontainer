@@ -3,7 +3,7 @@ import { loadResolver, parseData, parseDataFile, resolve } from "../resolver";
 import { loadSemver } from "../semver";
 import { dirname, norm, VFS, type FileData } from "@runbun/vfs";
 import { readConfig } from "../projectConfig";
-import { BUN_NAMES, builtins, compressionStreams, installAsyncContext, installTimers, setExit, setFs, setRawStdio, setRequire, setStdio } from "./node";
+import { BUN_NAMES, builtinName, builtins, compressionStreams, installAsyncContext, installTimers, setExit, setFs, setRawStdio, setRequire, setStdio } from "./node";
 import { bundle, type BundleConfig, type BundleLog } from "./bundler";
 import { setHostVfs } from "./hostPackages";
 import { hash } from "./hash";
@@ -131,8 +131,8 @@ const importUrl = new Function("url", "options", "return import(url, options)") 
 /** `import(expr)` in served modules (see rewriteMeta): `file:` URLs and paths, as Bun takes them, load from the VFS. */
 g.__dynamicImport = (from: string, spec: unknown, options?: ImportCallOptions) => {
   const s = String(spec);
-  const builtin = s.replace(/^node:/, "");
-  if (builtin in builtins) return importUrl(`${VFS_ROOT}__node/${builtin}`);
+  const builtin = builtinName(s);
+  if (builtin !== undefined) return importUrl(`${VFS_ROOT}__node/${builtin}`);
   // A package resolves from the importer's directory (CommonJS the worker runs itself rewrites literal imports to this too).
   const pkg = !/^(file:|\/|\.|[a-z][a-z\d+.-]*:)/i.test(s) && from.startsWith("file:") ? resolve(s, dirname(norm(decodeURIComponent(new URL(from).pathname))), "import", "bun") : null;
   const path = pkg ?? (/^(file:|\/|\.)/.test(s) && decodeURIComponent(new URL(s, from).pathname));
