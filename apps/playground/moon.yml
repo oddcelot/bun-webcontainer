@@ -270,6 +270,15 @@ tasks:
     toolchains: ['bun']
     options:
       cache: false
+  test-serve:
+    # Bun.serve end to end against native Bun (scripts/serve.ts): failing handlers, the `error` handler and the
+    # defaults, maxRequestBodySize, requestIP and unix over loopback fetch; then from the preview page, error pages,
+    # streams that fail before or after their first chunk, and WebSockets (both ways, pub/sub, close codes) to Bun.serve
+    # and to a node:http server's "upgrade" with `ws`. Needs Chrome.
+    command: 'bun scripts/serve.ts'
+    toolchains: ['bun']
+    options:
+      cache: false
   test-cookies:
     # The preview's cookies end to end (scripts/cookies.ts): a script's cookie with a narrower path, its changes to a
     # server's cookie, and a reload's sweep of the old preview base's, on the editor's origin and on a content origin

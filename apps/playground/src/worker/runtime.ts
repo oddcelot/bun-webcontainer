@@ -76,7 +76,20 @@ type WebSocketHandlers = {
   close?(ws: ServerWebSocket, code: number, reason: string): void;
   drain?(ws: ServerWebSocket): void;
 };
-type ServeOptions = { port?: number | string; hostname?: string; fetch?: Handler; routes?: Routes; websocket?: WebSocketHandlers };
+type ErrorHandler = (this: unknown, err: unknown) => unknown;
+type ServeOptions = {
+  port?: number | string;
+  hostname?: string;
+  fetch?: Handler;
+  routes?: Routes;
+  websocket?: WebSocketHandlers;
+  error?: ErrorHandler;
+  development?: boolean | object;
+  maxRequestBodySize?: number;
+  idleTimeout?: number;
+  unix?: string;
+  reusePort?: boolean;
+};
 type WsPayload = string | ArrayBuffer | ArrayBufferView;
 
 const g = globalThis as unknown as Record<string, unknown>;
@@ -175,6 +188,14 @@ interface Instance {
   /** Started on port 0: a helper the preview never shows. */
   ephemeral: boolean;
   topics: Map<string, Set<ServerWebSocket>>;
+  /** `error`: answers for a handler that threw or rejected. */
+  error?: ErrorHandler;
+  /** Picks the default error page (Bun's HTML one, or "Something went wrong!") and what a failed request logs. */
+  development: boolean;
+  /** `maxRequestBodySize`: a larger request body gets a 413 instead of the handler. */
+  maxBody: number;
+  /** `unix`: the socket path `fetch(url, { unix })` reaches it on; such a server has no port and no preview. */
+  unix?: string;
   server: object;
   /** The AsyncLocalStorage context `Bun.serve` was called in: its handlers run in it, as in Bun. */
   context: ReturnType<typeof capture>;
@@ -214,6 +235,8 @@ hooks.get = () => nodeServer?.handler;
  * headers Bun's 101 response would carry.
  */
 const upgrades = new WeakMap<Request, (data: unknown, setCookies: string[]) => void>();
+/** Requests `server.upgrade` accepted: their handler may return nothing. */
+const upgraded = new WeakSet<Request>();
 
 const size = (m: WsPayload) => (typeof m === "string" ? new TextEncoder().encode(m).length : m.byteLength);
 const bytesOf = (m: Exclude<WsPayload, string>) =>
@@ -318,11 +341,35 @@ let taken = new Set<number>();
  * Bun's EADDRINUSE error, as native Bun does. Port 0 always gets a port of its own.
  */
 function listen(opts: ServeOptions): Instance {
+  // `idleTimeout` is checked as in Bun, but nothing times out here (the docs say so); `reusePort` changes nothing.
+  const idle = opts.idleTimeout;
+  if (idle !== undefined && idle !== null) {
+    if (typeof idle !== "number" || !Number.isInteger(idle)) throw codeError(TypeError, "ERR_INVALID_ARG_TYPE", "Bun.serve expects idleTimeout to be an integer");
+    if (idle > 255) throw codeError(TypeError, "ERR_INVALID_ARG_TYPE", "Bun.serve expects idleTimeout to be 255 or less");
+  }
+  if (opts.unix) {
+    if (servers.some((s) => s.unix === opts.unix))
+      throw Object.assign(new Error(`EADDRINUSE: address already in use, listen '${opts.unix}'`), { code: "EADDRINUSE", syscall: "listen", errno: 0 });
+    return createInstance(opts);
+  }
   const port = Number(opts.port ?? env.PORT ?? env.BUN_PORT ?? 3000);
   if (port !== 0 && (taken.has(port) || servers.some((s) => s.port === port)))
     throw Object.assign(new Error(`Failed to start server. Is port ${port} in use?`), { code: "EADDRINUSE", syscall: "listen", errno: 0 });
   return createInstance(opts);
 }
+
+/** `maxRequestBodySize` as Bun takes it: 128 MiB unless a size is given; a negative one is no limit. */
+const bodyLimit = (n: unknown) => (typeof n !== "number" || Number.isNaN(n) ? 128 * 1024 * 1024 : n < 0 ? Infinity : Math.floor(n));
+
+type SocketAddress = { address: string; family: "IPv4" | "IPv6"; port: number };
+/** Where each request a server answered came from (`server.requestIP`), set by `dispatch`. */
+const peers = new WeakMap<Request, SocketAddress>();
+/** A client on this machine: `127.0.0.1` reaches Bun's dual-stack socket as an IPv4-mapped address, the rest as `::1`. */
+const localPeer = (hostname: string): SocketAddress => ({
+  address: hostname === "127.0.0.1" || hostname === "0.0.0.0" ? "::ffff:127.0.0.1" : "::1",
+  family: "IPv6",
+  port: 49152 + Math.floor(Math.random() * 16384),
+});
 
 function createInstance(opts: ServeOptions): Instance {
   const requested = Number(opts.port ?? env.PORT ?? env.BUN_PORT ?? 3000);
@@ -335,19 +382,32 @@ function createInstance(opts: ServeOptions): Instance {
     port,
     ephemeral: requested === 0,
     topics: new Map(),
+    error: opts.error,
+    // As in Bun: on unless asked off, or NODE_ENV is production.
+    development: opts.development === undefined ? env.NODE_ENV !== "production" : !!opts.development,
+    maxBody: bodyLimit(opts.maxRequestBodySize),
+    unix: opts.unix || undefined,
     server: {},
     context: capture(),
   };
+  if (inst.unix) inst.ephemeral = true;
   inst.server = {
-    port,
-    hostname,
-    url: new URL(`http://${hostname}:${port}/`),
-    development: true,
+    port: inst.unix ? undefined : port,
+    hostname: inst.unix ? undefined : hostname,
+    url: new URL(inst.unix ? `unix://${inst.unix}` : `http://${hostname}:${port}/`),
+    /** Bun's for a local client: `localhost` and the preview come over IPv6 loopback; none over a unix socket. */
+    requestIP: (req: Request) => peers.get(req) ?? null,
+    /** Nothing times out here (see `idleTimeout`). */
+    timeout(_req: Request, _seconds: number) {},
+    get development() {
+      return inst.development;
+    },
     /** Swaps handlers in place, as Bun's does; the port and hostname stay. */
     reload(next: ServeOptions) {
       if (next.fetch) inst.handler = next.fetch;
       if (next.routes) inst.routes = next.routes;
       if (next.websocket) inst.websocket = next.websocket;
+      if (next.error) inst.error = next.error;
     },
     /**
      * As in Bun, the 101 carries the Set-Cookie headers of `headers`, then those of what a route handler set or deleted
@@ -357,6 +417,7 @@ function createInstance(opts: ServeOptions): Instance {
       const accept = upgrades.get(req);
       if (!accept) return false;
       upgrades.delete(req);
+      upgraded.add(req);
       const setCookies = [...(o?.headers ? new Headers(o.headers).getSetCookie() : []), ...(requestCookies.get(req)?.toSetCookieHeaders() ?? [])];
       accept(o?.data, setCookies);
       return true;
@@ -730,9 +791,55 @@ function routeRequest(req: Request, params: Record<string, string>) {
  * Answers `req`, with the Set-Cookie headers for what a route handler set or deleted in `req.cookies` by the time it
  * returned (Bun sends them after the response's own, and leaves the Response object itself alone).
  */
-async function dispatch(inst: Instance, req: Request): Promise<{ res: Response; setCookies: string[] }> {
-  const res = await route(inst, req);
-  return { res, setCookies: requestCookies.get(req)?.toSetCookieHeaders() ?? [] };
+async function dispatch(inst: Instance, req: Request, bodySize?: number): Promise<{ res: Response; setCookies: string[] }> {
+  if (!inst.unix && !peers.has(req)) peers.set(req, localPeer(new URL(req.url).hostname));
+  let res: unknown;
+  // A body over `maxRequestBodySize` (its size known: the preview's, a loopback fetch's) never reaches the handler.
+  if (bodySize !== undefined && bodySize > inst.maxBody) res = new Response(null, { status: 413, headers: { connection: "close" } });
+  else
+    try {
+      res = await route(inst, req);
+    } catch (err) {
+      res = await failed(inst, req, err);
+    }
+  if (!(res instanceof Response)) res = notAResponse(inst, req, res);
+  return { res: res as Response, setCookies: requestCookies.get(req)?.toSetCookieHeaders() ?? [] };
+}
+
+/**
+ * A handler threw or rejected: Bun's `error` handler answers, as `this` the server. If there is none, it throws, or
+ * it returns something other than a Response, the error (its own, if it threw) is logged and Bun's default answers:
+ * in development, an HTML error page, after `GET - /path failed`; otherwise "Something went wrong!".
+ */
+async function failed(inst: Instance, req: Request, err: unknown): Promise<Response> {
+  if (err === EXIT || halted) throw err;
+  let logged = err;
+  if (inst.error)
+    try {
+      const res = await runIn<unknown>(inst.context, inst.error, inst.server, [err]);
+      if (res instanceof Response) return res;
+    } catch (e) {
+      if (e === EXIT || halted) throw e;
+      logged = e;
+    }
+  if (!inst.development) {
+    printError(logged);
+    return new Response("Something went wrong!", { status: 500, headers: { "content-type": "text/plain" } });
+  }
+  post({ type: "console", level: "error", text: `${uncaughtText(logged)}${req.method} - ${new URL(req.url).pathname} failed` });
+  const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return new Response(
+    `<!doctype html>\n<html lang="en">\n  <head>\n    <meta charset="utf-8" />\n    <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n    <title>Internal Server Error</title>\n  </head>\n  <body>\n    <pre>${esc(fmt(logged))}</pre>\n  </body>\n</html>\n`,
+    { status: 500, headers: { "content-type": "text/html;charset=utf-8" } },
+  );
+}
+
+/** A handler returned something other than a Response (and didn't upgrade): Bun logs it, then answers anyway. */
+function notAResponse(inst: Instance, req: Request, value: unknown): Response {
+  if (upgraded.has(req)) return new Response(null);
+  const shown = typeof value === "string" ? JSON.stringify(value) : bunInspect(value);
+  post({ type: "console", level: "error", text: `error: Expected a Response object, but received '${shown}'` });
+  return inst.development ? new Response("Welcome to Bun! To get started, return a Response object.") : new Response(null, { status: 204 });
 }
 
 async function route(inst: Instance, req: Request): Promise<Response> {
@@ -1185,6 +1292,13 @@ const fileFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = input instanceof Request ? input.url : String(input);
   if (!URL.canParse(url)) throw Object.assign(new TypeError("fetch() URL is invalid"), { code: "ERR_INVALID_URL" });
   if (url.startsWith("s3:")) return s3.fetchUrl(url, init);
+  // Bun's `unix` option: the request goes to the server on that socket path, whatever the URL's host.
+  const unix = (init as { unix?: string } | undefined)?.unix;
+  if (unix) {
+    const inst = servers.find((s) => s.unix === unix);
+    if (!inst) throw codeError(TypeError, "ENOENT", "ENOENT: Was there a typo in the url or port?");
+    return loopbackFetch(inst, new Request(input, init));
+  }
   if (!url.startsWith("file:")) {
     // A server this program started (Bun.serve, http.createServer) is answered in-process, as on a machine where
     // localhost reaches it; the browser's network can't. A child process's server lives in another worker: unreachable.
@@ -1276,7 +1390,7 @@ async function loopbackFetch(inst: Instance, req: Request): Promise<Response> {
   // A 307 or 308 sends the body again: kept from the start, as it is read only once.
   const body = mode === "follow" && req.body ? await req.clone().arrayBuffer() : null;
   for (let hops = 0; ; hops++) {
-    const { res, setCookies } = await dispatch(inst, req);
+    const { res, setCookies } = await dispatch(inst, req, req.body ? body?.byteLength : undefined);
     const location = res.headers.get("location");
     if (mode === "manual" || !REDIRECT_STATUS.has(res.status) || location === null) {
       // What a client of Bun.serve gets: its headers (the implicit content-type, Set-Cookie), no body for HEAD.
@@ -1565,7 +1679,7 @@ async function main() {
         const inst = (m.port !== undefined && servers.find((s) => s.port === m.port)) || previewServer();
         if (!inst) return sendText(port, 503, "No Bun.serve handler registered");
         // A response being made holds the program, even after an unref'd or stopped server.
-        out = await holdUntil(dispatch(inst, serverRequest(r.path, { method: r.method, body: r.body }, r.headers)));
+        out = await holdUntil(dispatch(inst, serverRequest(r.path, { method: r.method, body: r.body }, r.headers), r.body?.byteLength));
       } catch (err) {
         if (halted) return;
         // Bun's development server (`development` is true here) reports it as uncaught, then which request failed.
