@@ -1,0 +1,28 @@
+{
+  "name": "trusted-patched",
+  "dependencies": {
+    "is-number": "7.0.0",
+    "ms": "2.1.3",
+    "picocolors": "1.1.1",
+    "zod": "3.23.8",
+    "kleur": "4.1.5",
+    "debug": "4.4.0",
+    "semver": "7.7.1",
+    "ansi-regex": "6.1.0"
+  },
+  "trustedDependencies": [
+    "zod",
+    "ansi-regex",
+    "ms",
+    "semver",
+    "debug",
+    "picocolors",
+    "kleur",
+    "is-number",
+    "not-installed"
+  ],
+  "patchedDependencies": {
+    "is-number@7.0.0": "patches/is-number@7.0.0.patch",
+    "ms@2.1.3": "patches/ms@2.1.3.patch"
+  }
+}
