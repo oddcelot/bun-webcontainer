@@ -43,7 +43,7 @@ if (typeof CompressionStream !== "undefined") compressionStreams.CompressionStre
 if (typeof DecompressionStream !== "undefined") compressionStreams.DecompressionStream = streamWeb.DecompressionStream = withBrotliZstd(DecompressionStream, false);
 
 /** What `Bun` has; runtime.ts types the global against this list. */
-export const BUN_NAMES = ["version", "env", "gc", "main", "argv", "stdout", "stderr", "stdin", "inspect", "deepEquals", "escapeHTML", "which", "spawn", "spawnSync", "sleep", "nanoseconds", "semver", "file", "write", "serve", "build", "CryptoHasher", "gzipSync", "gunzipSync", "deflateSync", "inflateSync", "zstdCompress", "zstdCompressSync", "zstdDecompress", "zstdDecompressSync", "hash", "Transpiler", "resolveSync", "resolve", "Glob", "YAML", "TOML", "JSONC", "JSON5", "password", "Cookie", "CookieMap", "sleepSync", "revision", "JSONL", "XML", "markdown", "$"] as const;
+export const BUN_NAMES = ["version", "env", "gc", "main", "argv", "stdout", "stderr", "stdin", "inspect", "deepEquals", "escapeHTML", "which", "spawn", "spawnSync", "sleep", "nanoseconds", "semver", "file", "write", "serve", "build", "CryptoHasher", "gzipSync", "gunzipSync", "deflateSync", "inflateSync", "zstdCompress", "zstdCompressSync", "zstdDecompress", "zstdDecompressSync", "hash", "Transpiler", "resolveSync", "resolve", "Glob", "YAML", "TOML", "JSONC", "JSON5", "password", "Cookie", "CookieMap", "sleepSync", "revision", "JSONL", "XML", "markdown", "$", "S3Client", "s3"] as const;
 /** `import ... from "bun"`: the worker copies the `Bun` global in once it exists; the page only needs the names. */
 const bun: Record<string, unknown> = Object.fromEntries(BUN_NAMES.map((k) => [k, undefined]));
 

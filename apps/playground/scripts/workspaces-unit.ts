@@ -2,7 +2,7 @@
 // (src/lockfile.ts staleInLock), and the VFS copy of a workspace in node_modules following its folder's edits.
 import { staleInLock } from "../src/lockfile";
 import { catalogRange, catalogsOf } from "../src/catalogs";
-import { overridesOf } from "../src/overrides";
+import { intersects, overridesOf } from "../src/overrides";
 import { authFor, parseNpmrc, registryFor } from "../src/npmrc";
 import { findWorkspaces, mirrorWorkspaces, packageDirs, vfsWorkspaces } from "../src/workspaces";
 import { VFS } from "@runbun/vfs";
@@ -43,16 +43,40 @@ eq("a named one", [catalogRange(cats, "n", "z"), catalogRange(cats, "n", "x"), c
 eq("catalog entry changed", staleInLock({ ...lock, catalog: { x: "1" } }, { dependencies: { a: "1" }, workspaces: ["a"], catalog: { x: "2" } }), ["catalog x"]);
 eq("catalog entry added", staleInLock(lock, { dependencies: { a: "1" }, workspaces: ["a"], catalogs: { n: { z: "1" } } }), ["catalog n/z"]);
 
+const semver = { order: (x: string, y: string) => Bun.semver.order(x, y), satisfies: (v: string, r: string) => Bun.semver.satisfies(v, r) };
 const ov = overridesOf({
   dependencies: { ms: "^2" },
   resolutions: { ignored: "1" },
-  overrides: { "//": "note", a: "1", "**/b": "^2", "@s/c": "$ms", d: "$missing", e: "", f: "-", g: "patch:x", "h@1": "2", "i>j": "3", "k/l": "4", m: { n: "5" } },
+  overrides: { "//": "note", a: "1", "**/b": "^2", "@s/c": "$ms", d: "$missing", e: "", f: "-", g: "patch:x", "h@1": "2", "i>j": "3", "k/l": "4", m: { n: "5", ".": "6" }, "o@^1": { p: "7", "q@2": "8" } },
 });
-eq("flat overrides", ov.rules, { a: "1", b: "^2", "@s/c": "^2" });
-eq("scoped ones", ov.unsupported, ["h@1", "i>j", "k/l", "m"]);
+eq("flat overrides", ov.rules, { a: "1", b: "^2", "@s/c": "^2", m: "6" });
+eq("scoped ones", ov.scoped.map((r) => [r.parent && `${r.parent.name}@${r.parent.range}`, `${r.target.name}@${r.target.range}`, r.value]), [
+  [undefined, "h@1", "2"],
+  ["i@", "j@", "3"],
+  ["k@", "l@", "4"],
+  ["m@", "n@", "5"],
+  ["o@^1", "p@", "7"],
+  ["o@^1", "q@2", "8"],
+]);
 eq("resolutions only without overrides", overridesOf({ resolutions: { "**/x": "1" } }).rules, { x: "1" });
+eq("resolutions take strings", overridesOf({ resolutions: { x: { y: "1" } } }).scoped, []);
+eq("yarn and pnpm paths", overridesOf({ resolutions: { "a/b": "1", "**/c/d": "2", "e/**/f": "3", "@s/g/h": "4", "i>@s/j": "5", "k/l/m": "6", "n@npm:@s/o@^1/p": "7" } }).scoped.map((r) => `${r.parent?.name}>${r.target.name}`), ["a>b", "c>d", "e>f", "@s/g>h", "i>@s/j"]);
+eq("a workspace's range for $name", overridesOf({ overrides: { x: "$x", y: "$y" } }, [{ dependencies: { x: "^1" } }, { devDependencies: { x: "^1", y: "1" } }, { dependencies: { y: "2" } }]).rules, { x: "^1" });
+eq("overrides that aren't a map", overridesOf({ overrides: [] }).errors.length, 1);
+eq("ranges that overlap (as npm`s intersects says)", [["1", "^1.2.0"], ["1.2.3", "~1.2.0"], ["^1 || ^3", "3.x"], ["2 - 3", "<=2.0.0"], ["^0.0.3", "0.0.3"], ["1.x", "^2"], [">2", "<=2"], ["<1", ">=1"], ["^0.1.0", ">0.1.1 <0.1.5"], ["*", "^4"]].map(([a, b]) => intersects(a, b, semver)), [true, true, true, true, true, false, false, false, true, true]);
+const dep = (name: string, range: string) => ({ name, range });
+const scoped = overridesOf({ overrides: { a: "1", x: { a: "2", "b@^1": "3" }, "x@^2": { a: "4" }, "c@^1": "5", "x@3": { "a@^9": "6" } } });
+eq("flat rule", scoped.lookup(dep("a", "^9"), { name: "z" }, semver), "1");
+eq("parent", scoped.lookup(dep("a", "^9"), { name: "x" }, semver), "2");
+eq("ranged parent wins", scoped.lookup(dep("a", "^9"), { name: "x", version: "2.1.0" }, semver), "4");
+eq("parent range not met", scoped.lookup(dep("a", "^9"), { name: "x", version: "1.0.0" }, semver), "2");
+eq("target range", [scoped.lookup(dep("b", "^1.2.0"), { name: "x" }, semver), scoped.lookup(dep("b", "^2.0.0"), { name: "x" }, semver), scoped.lookup(dep("b", "latest"), { name: "x" }, semver)], ["3", undefined, undefined]);
+eq("name@range key", [scoped.lookup(dep("c", ">=1.5.0"), { name: "z" }, semver), scoped.lookup(dep("c", "^2"), { name: "z" }, semver)], ["5", undefined]);
+eq("an alias isn't selected by a plain key", scoped.lookup(dep("a", "npm:other@^1"), { name: "z" }, semver), undefined);
 eq("override changed", staleInLock({ ...lock, overrides: { a: "1" } }, { dependencies: { a: "1" }, overrides: { a: "2" } }), ["override a"]);
 eq("override added", staleInLock(lock, { dependencies: { a: "1" }, resolutions: { b: "1" } }), ["override b"]);
+eq("scoped override unchanged", staleInLock({ ...lock, overrides: { a: { ".": "1", "b@^1": "2" }, "c@1": { ".": "3" }, "d": { e: "4" } } }, { dependencies: { a: "1" }, overrides: { a: { ".": "1", "b@^1": "2" }, "c@1": "3", "d>e": "4" } }), []);
+eq("scoped override changed", staleInLock({ ...lock, overrides: { d: { e: "4" } } }, { dependencies: { a: "1" }, overrides: { "d>e": "5" } }), ["override d > e"]);
 
 const rc = parseNpmrc(`; comment
 # another

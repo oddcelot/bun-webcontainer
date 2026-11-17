@@ -1,0 +1,16 @@
+{
+  "name": "ovp",
+  "dependencies": {
+    "is-even": "^1.0.0",
+    "debug": "^4.3.0"
+  },
+  "overrides": {
+    "is-even>is-odd": "0.1.1",
+    "is-odd>is-number@^3": "3.0.0",
+    "is-number>kind-of": "3.2.2",
+    "debug@^4>ms": "2.1.2",
+    "is-even@^2>is-odd": "3.0.1",
+    "a>b>c": "1.0.0",
+    "@scope>x": "1.0.0"
+  }
+}

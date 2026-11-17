@@ -3,7 +3,7 @@ import { splitPackage } from "./pkgStore";
 import { fetchTarball, registryOf } from "./pkgCache";
 import { vfsWorkspaces } from "./workspaces";
 import { catalogChanges, catalogsOf } from "./catalogs";
-import { overridesOf } from "./overrides";
+import { flattenOverrides, overridesInLock, overridesOf } from "./overrides";
 
 type Log = (level: "log" | "error", text: string) => void;
 
@@ -44,9 +44,8 @@ export function staleInLock(lock: BunLock, pkg: Manifest, workspaces?: { path: s
   const differs = (want: Deps, locked: Deps) => [...new Set([...Object.keys(want), ...Object.keys(locked)])].filter((n) => locked[n] !== want[n]);
   const stale = differs(allDeps(pkg), allDeps(lock.workspaces?.[""]));
   // An override added, removed or given another range.
-  const rules = overridesOf(pkg).rules;
-  const locked = Object.fromEntries(Object.entries(lock.overrides ?? {}).filter((e): e is [string, string] => typeof e[1] === "string"));
-  stale.push(...differs(rules, locked).map((n) => `override ${n}`));
+  const rules = overridesInLock(overridesOf(pkg, workspaces?.map((w) => w.manifest)));
+  stale.push(...differs(rules, flattenOverrides(lock.overrides)).map((n) => `override ${n}`));
   // A catalog entry added, removed or given another range (the workspaces keep the `catalog:` literal).
   for (const e of catalogChanges({ default: lock.catalog ?? {}, groups: lock.catalogs ?? {} }, catalogsOf(pkg))) stale.push(`catalog ${e}`);
   // A workspace added or removed, or one whose dependencies changed (named by its folder).
@@ -173,7 +172,7 @@ export async function gunzip(bytes: Uint8Array): Promise<Uint8Array> {
  */
 export async function installFromBunLock(vfs: VFS, lockText: string, log: Log): Promise<number> {
   const lock = parseBunLock(lockText);
-  if (lock.lockfileVersion > 2) log("error", `bun.lock: lockfileVersion ${lock.lockfileVersion} isn't supported yet`);
+  if (lock.lockfileVersion > 3) log("error", `bun.lock: lockfileVersion ${lock.lockfileVersion} isn't supported yet`);
 
   const pkgText = vfs.readText("package.json");
   const root = pkgText ? JSON.parse(pkgText) : undefined;

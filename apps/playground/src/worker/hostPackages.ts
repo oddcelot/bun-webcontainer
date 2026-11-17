@@ -3,6 +3,12 @@
 // Note: the wasm binding allocates a 1 GiB shared memory, so this module must only be imported by the worker.
 import { dirname, type FileContents, type VFS } from "@runbun/vfs";
 import { builtins } from "./node";
+import { allowHostWorker } from "./webWorker";
+
+// rolldown's wasm binding starts `new Worker(new URL("./wasi-worker-browser.mjs", import.meta.url))` for its threads.
+// The worker's `Worker` is Bun's (webWorker.ts), which only runs project files: let it hand this one URL to the
+// browser's. The same asset as the binding's (Vite emits one file for it), so the same path.
+allowHostWorker(new URL("../../node_modules/@rolldown/browser/dist/wasi-worker-browser.mjs", import.meta.url));
 
 const loaders: Record<string, () => Promise<object>> = {
   rolldown: () => import("@rolldown/browser"),

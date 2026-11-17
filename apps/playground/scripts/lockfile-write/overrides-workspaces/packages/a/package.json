@@ -1,0 +1,1 @@
+{ "name": "a", "version": "1.0.0", "dependencies": { "ms": "^2.0.0", "debug": "^4.0.0", "is-odd": "^3.0.0", "b": "workspace:*" } }

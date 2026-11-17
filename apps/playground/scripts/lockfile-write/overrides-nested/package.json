@@ -1,0 +1,27 @@
+{
+  "name": "ovn",
+  "dependencies": {
+    "is-even": "^1.0.0",
+    "is-number": "^4.0.0",
+    "debug": "^4.3.0",
+    "ms": "^2.0.0"
+  },
+  "overrides": {
+    "is-odd": {
+      "is-number": "^6.0.0"
+    },
+    "is-number": {
+      ".": "7.0.0",
+      "kind-of": "3.2.2"
+    },
+    "debug": {
+      "ms": "$ms"
+    },
+    "is-even": {
+      "//": "a comment",
+      "is-odd": "0.1.1",
+      "ms": "-",
+      "x": { "deeper": "1.0.0" }
+    }
+  }
+}

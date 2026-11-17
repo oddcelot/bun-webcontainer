@@ -3,7 +3,8 @@
 // handles come out as valid code that does what the original does, and run with the worker's real AsyncLocalStorage
 // (src/worker/node/asyncHooks.ts) each `await` resumes in its caller's store, through `try`, `for await`, generators
 // and concurrent calls.
-import { restoreContext } from "../src/asyncAwait.ts";
+import { restoreContext, restoreContextMapped } from "../src/asyncAwait.ts";
+import { decodeMappings, insertColumns, originalPosition } from "../src/sourceMap.ts";
 import { async_hooks, installAsyncContext } from "../src/worker/node/asyncHooks.ts";
 
 const transpiler = new Bun.Transpiler({ loader: "ts" });
@@ -92,5 +93,22 @@ const seen: string[] = [];
 await als.run("m", () => new Promise<void>((done) => queueMicrotask(() => (seen.push("microtask=" + als.getStore()), Promise.resolve().then(() => (seen.push("then=" + als.getStore()), done()))))));
 check("queueMicrotask and then carry the store", seen.join() === "microtask=m,then=m", seen);
 check("nothing leaks to the next macrotask", await new Promise((r) => setTimeout(() => r(als.getStore() === undefined), 0)));
+
+// The source map follows the inserts: a position after an `await` on a line still maps to its original column.
+{
+  const src = "const a = await f(), b = await g(); h();\n";
+  const { code, inserts } = restoreContextMapped(src);
+  const b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  // One segment per token start (generated column = original column), as small VLQs.
+  const cols = [...src.matchAll(/\w+/g)].map((m) => m.index!);
+  const vlq = (n: number) => b64[n << 1];
+  const mappings = cols.map((c, i) => vlq(c - (cols[i - 1] ?? 0)) + "A" + "A" + vlq(c - (cols[i - 1] ?? 0))).join(",");
+  const mapped = decodeMappings(insertColumns(mappings, inserts));
+  for (const word of ["await", "g", "h"]) {
+    const from = src.lastIndexOf(word);
+    const got = originalPosition(mapped, 0, code.lastIndexOf(word))?.[1];
+    check(`source map: ${word} after inserts maps to its column`, got === from, { got, want: from });
+  }
+}
 
 process.exit(bad ? 1 : 0);

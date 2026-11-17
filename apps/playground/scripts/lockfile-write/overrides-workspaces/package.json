@@ -1,0 +1,23 @@
+{
+  "name": "ovw",
+  "workspaces": [
+    "packages/*"
+  ],
+  "dependencies": {
+    "ms": "^2.0.0"
+  },
+  "overrides": {
+    "a": {
+      "ms": "2.0.0",
+      "debug": "$debug"
+    },
+    "b@^1": {
+      "is-odd": "0.1.1"
+    },
+    "b@2": {
+      "is-odd": "0.1.0"
+    },
+    "is-odd@^3": "$is-odd",
+    "a>is-number": "$nothing"
+  }
+}
