@@ -17,8 +17,8 @@ Opens with `core.fileMode=false` (no exec bits on the host FS). `init` writes th
 `Playground <playground@runbun.dev>`.
 
 Supported: `init`, `status`, `add`, `rm [--cached]`, `restore`, `reset`, `commit`, `log`, `diff [--cached]`, `show`,
-`branch`, `switch`, `checkout`, `merge`, `clean`, `config`, `rev-parse`, `clone`, `fetch`, `pull`, `push`, `remote`. `git help`
-lists the flags. Pathspecs are plain paths or directory prefixes (no globs). Not supported: rebase, stash, tag (they
+`branch`, `switch`, `checkout`, `merge`, `tag`, `clean`, `config`, `rev-parse`, `clone`, `fetch`, `pull`, `push`, `remote`.
+`git help` lists the flags. Pathspecs are plain paths or directory prefixes (no globs). Not supported: rebase, stash (they
 print `git: '<cmd>' is not supported in the playground yet`).
 
 Output the panel parses (byte-identical to native git, checked by `test.ts`):
@@ -35,6 +35,11 @@ Output the panel parses (byte-identical to native git, checked by `test.ts`):
   exist in 'rev'`, exit 128.
 - `branch --show-current`, `--format` (`%(refname[:short])`, `%(objectname[:short])`, `%(HEAD)`), `-d|-D`, `-m`,
   `branch <name> [<start>]`. `-d` is "fully merged" = reachable from HEAD (no upstream). Refuses the current branch.
+- `tag` (`tag.rs`): `[-l|--list] [<pattern>...]` (wildmatch: `*`, `?`, `[a-z]`, `[!x]`), `-n[<num>]` (git's
+  `%(align:15)` name, then the annotation's, else the commit's, first lines), `<name> [<rev>]`, `-a`/`-m <msg>`
+  (annotated: a tag object with the identity as tagger; `-a` without `-m` is git's `no tag message?`, there is no
+  editor), `-f` (`Updated tag 'v1' (was abc1234)`), `-d <name>...`; `show <tag>` prints an annotated tag's header and
+  message before the commit. Not done: `--sort`, `--contains`, `-s`/`-u` (signing), `-F`.
 - `rev-parse [--verify] [-q] [--short] [--abbrev-ref] <rev>`, `--show-toplevel`, `--is-inside-work-tree`, `--git-dir`.
 - `config <key> [<value>]`, `--get`, `--unset`, `--list|-l`, `--local`: the repository's `/.git/config` only;
   `--global`, `--system`, `--file` exit 128 with `only --local config in the playground`. Unset key: exit 1.

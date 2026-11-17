@@ -591,6 +591,38 @@ try {
   check("merge commit parents", native(A, ["log", "-1", "--format=%P"]).trim().split(" ").length === 2);
   check("merge state gone", !existsSync(join(A, ".git/MERGE_HEAD")) && !existsSync(join(A, ".git/MERGE_MSG")));
 
+  // ---- tag ------------------------------------------------------------------------------------------------------------
+  // the tags as refs and objects (an annotated tag's id differs: its tagger's time)
+  const tagState = (d: string) =>
+    native(d, ["for-each-ref", "refs/tags", "--format=%(refname)|%(objecttype)|%(if:equals=tag)%(objecttype)%(then)%(*objecttype) %(*objectname) %(tag) %(taggername) %(taggeremail)%(else)%(objectname)%(end)|%(contents)"]);
+  const p6 = join(tmp, "p6");
+  cpSync(p5d, p6, { recursive: true });
+  nat(p6, "tag", "-a", "empty", "-m", "");
+  nat(p6, "tag", "a-very-long-tag-name");
+  const ts = { out: true, err: true, extra: tagState };
+  for (const a of [[], ["-l"], ["--list"], ["-l", "a*"], ["--list", "?nn", "l*"], ["-l", "[a-e]*"], ["-l", "[!a]*"], ["-n"], ["-n2"], ["-n3"], ["-l", "-n", "a*"], ["-n1", "ann"]]) {
+    await twin(`tag ${a.join(" ")}`, p6, ["tag", ...a], ts);
+  }
+  await twin("tag lightweight", p6, ["tag", "v1"], ts);
+  await twin("tag lightweight at rev", p6, ["tag", "v1", "HEAD~1"], ts);
+  await twin("tag -a -m -m", p6, ["tag", "-a", "v2", "-m", "release two", "-m", "para two"], ts);
+  await twin("tag -m", p6, ["tag", "-m", "only m", "v3", "feat"], ts);
+  await twin("tag -a without message", p6, ["tag", "-a", "nomsg"], ts);
+  await twin("tag exists", p6, ["tag", "light"], ts);
+  await twin("tag -f moves", p6, ["tag", "-f", "light", "HEAD~1"], ts);
+  await twin("tag -f same", p6, ["tag", "-f", "light", "feat"], ts);
+  await twin("tag -d", p6, ["tag", "-d", "light", "ann"], ts);
+  await twin("tag -d missing", p6, ["tag", "-d", "nope", "light"], ts);
+  await twin("tag -d none", p6, ["tag", "-d"], ts);
+  await twin("tag bad name", p6, ["tag", "bad..name"], ts);
+  await twin("tag bad rev", p6, ["tag", "x", "nope"], ts);
+  await twin("tag nested", p6, ["tag", "-a", "nested", "-m", "n", "ann"], ts);
+  r = await git(empty, ["tag", "v0"], ident);
+  check("tag unborn", r.code === 128 && r.err === "fatal: Failed to resolve 'HEAD' as a valid ref.\n", JSON.stringify(r));
+  await twin("show annotated tag", p6, ["show", "ann"], { out: true });
+  await twin("show lightweight tag", p6, ["show", "light"], { out: true });
+  await twin("log tag", p6, ["log", "--oneline", "ann"], { out: true, nativeArgs: ["log", "--oneline", "--no-decorate", "ann"] });
+
   // ---- config ---------------------------------------------------------------------------------------------------------
   const p4 = join(tmp, "p4");
   mkdirSync(p4);
