@@ -10,6 +10,7 @@ import { hash } from "./hash";
 import { CryptoHasher } from "./node/crypto";
 import { setCryptoWasm } from "./node/cryptoWasm";
 import { Glob } from "./glob";
+import { FileSink } from "./fileSink";
 import { FileSystemRouter } from "./fileSystemRouter";
 import { installConsole, table } from "./console";
 import { bunInspect, formatLog as formatValues, installWebInspect } from "./inspect";
@@ -969,6 +970,8 @@ class BunFile extends Blob {
   }
   /** `FileSink`: buffers writes and saves them on `flush`/`end`, replacing the file. */
   writer() {
+    // Bun.stdout and Bun.stderr: onto the console, flushed as Bun does (fileSink.ts).
+    if (this === stdout || this === stderr) return new FileSink((b) => void (this === stdout ? process.stdout : process.stderr).write(b));
     const parts: Uint8Array[] = [];
     let written = 0;
     const flush = async () => {
