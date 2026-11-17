@@ -12,6 +12,7 @@ import { DATA_FILE, dataFormat, loadResolver, parseDataFile, resolve, type DataF
 import { dirname, isLazy, LazyMiss, norm, withLoaded, type VFS } from "@runbun/vfs";
 import hostNames, { version as hostVersion } from "virtual:host-package-names";
 import { builtins, exportNames } from "./worker/node";
+import { pluginUrl, routesThroughPlugins, splitNamespace, type PluginAnswer, type PluginFilters } from "./pluginRoutes";
 
 export type ModuleResponse = { status: number; body: string };
 
@@ -200,9 +201,31 @@ function resolveSpecifier(vfs: VFS, spec: string, dir: string, kind: ResolveKind
 }
 
 /** The transpiler's resolver: where each specifier in a module of `dir` is served. */
-function resolver(vfs: VFS, dir: string): Resolver {
+function resolver(vfs: VFS, dir: string, importer?: string): Resolver {
   const url = specifierUrl(vfs, dir);
+  // In the worker, what its runtime plugins take is theirs to serve (servePlugin).
+  if (importer !== undefined) return (spec) => (pluginRouted(vfs, spec, dir) ? `${VFS_ROOT}${pluginUrl(importer, spec)}` : url(spec));
   return (spec) => url(spec);
+}
+
+/** The worker's runtime plugins' filters (`Bun.plugin`, worker/plugins.ts), once it has some. */
+let plugins: PluginFilters | undefined;
+
+/** Whether an import of `spec` from `dir` goes through the worker's plugins (pluginRoutes.ts). */
+function pluginRouted(vfs: VFS, spec: string, dir: string): boolean {
+  if (spec.replace(/^node:/, "") in builtins || spec in hostNames || /^(https?:|data:|blob:)/.test(spec)) return false;
+  const namespaced = splitNamespace(spec)[0] !== "file";
+  if (!plugins && !namespaced) return false;
+  const t = (() => {
+    try {
+      return resolveWith(vfs, spec.startsWith("file:") ? decodeURIComponent(new URL(spec).pathname) : spec, dir);
+    } catch {
+      return null;
+    }
+  })();
+  // A namespaced specifier (`virtual:x`) that doesn't resolve is for the plugins, even ones the program registers later.
+  if (namespaced && t === null) return true;
+  return routesThroughPlugins(plugins, spec, t === null ? null : `/${t}`);
 }
 
 /** The URL a module imported as `spec` from `dir` is served at; remote and already-final specifiers stay as written. */
@@ -368,6 +391,8 @@ async function serveCommonJS(vfs: VFS, path: string, onError: (msg: string) => v
     }
   }
   const code = wrapCommonJS(path, body, (spec) => {
+    // A runtime plugin's module loads when required, through the worker's plugins (worker/plugins.ts).
+    if (target === "bun" && pluginRouted(vfs, spec, dir)) return null;
     const t = resolveTarget(vfs, spec, dir, "require");
     if (t === null || t.startsWith("__")) return t && `${VFS_ROOT}${t}`;
     // In the worker, data files load when required, as their value (see dataModule).
@@ -381,7 +406,7 @@ async function serveCommonJS(vfs: VFS, path: string, onError: (msg: string) => v
   });
   // The body is plain source: its `import("x")` calls still need their specifiers resolved.
   try {
-    const [plain, mappings] = (await transpileCached(rewriteMeta(code, path, bun), `${path}.js`, tsconfigFor(vfs, path), resolver(vfs, dir), false, bun)).split("\0");
+    const [plain, mappings] = (await transpileCached(rewriteMeta(code, path, bun), `${path}.js`, tsconfigFor(vfs, path), resolver(vfs, dir, bun ? "/" + path : undefined), false, bun)).split("\0");
     const restored = bun ? restoreContextMapped(plain) : undefined;
     const js = restored?.code ?? plain;
     // In the worker, its source map leads to the wrapper's lines, which are the file's (or the first transpile's, which
@@ -413,17 +438,25 @@ export function resetSyncEsm() {
   syncEsm.clear();
   servedEsm.clear();
   mocks.clear();
+  plugins = pluginToken = undefined;
 }
 
 /** The worker's synchronous requests about the ES modules it runs itself: `claim/<path>`, `done/<names>/<path>`, `fail/<path>`. */
 function syncEsmRequest(req: string): ModuleResponse {
-  const [, what, rest] = /^(claim|done|fail|mock)\/(.*)$/.exec(req) ?? [];
+  const [, what, rest] = /^(claim|done|fail|mock|plugins)\/(.*)$/.exec(req) ?? [];
   // `mock/<names>/<path>`: refused once the module has been served (it is, or is being, imported).
   if (what === "mock") {
     const slash = rest.indexOf("/");
     const path = norm(rest.slice(slash + 1));
     if (servedEsm.has(path)) return { status: 409, body: "" };
     mocks.set(path, JSON.parse(decodeURIComponent(rest.slice(0, slash))) as string[]);
+    return { status: 200, body: "" };
+  }
+  // `plugins/<filters>`: the worker's runtime plugins now (worker/plugins.ts), before it imports anything else.
+  if (what === "plugins") {
+    const f = JSON.parse(decodeURIComponent(rest)) as PluginFilters;
+    plugins = f.resolve.length || f.load.length || f.modules.length ? f : undefined;
+    pluginToken = f.token;
     return { status: 200, body: "" };
   }
   if (what === "claim") {
@@ -462,6 +495,53 @@ ${names.includes("default") ? "export default __ns.default;\n" : ""}${named.leng
 export { ${named.map((n, i) => `__s${i} as ${q(n)}`).join(", ")} };` : ""}`;
 }
 
+/** The worker whose plugins the page asks (its BroadcastChannel's name), as it last told the page. */
+let pluginToken: string | undefined;
+/** Source a runtime plugin loaded, served as an ES module at `url` (see serveModuleOnce). */
+type PluginSource = { key: string; url: string; contents: string; dir: string; importer: string };
+
+/** Asks the worker's plugins for the module of `spec` imported from `importer` (worker/plugins.ts serve). */
+function askPlugins(importer: string, spec: string): Promise<PluginAnswer> {
+  if (!pluginToken) return Promise.resolve({ kind: "error", name: "ResolveMessage", message: `Cannot find package '${spec}' imported from ${importer}` });
+  const ch = new BroadcastChannel(`runbun-plugins-${pluginToken}`);
+  const id = Math.random();
+  return new Promise<PluginAnswer>((resolve) => {
+    const timer = setTimeout(() => resolve({ kind: "error", name: "Error", message: `The program's plugins didn't answer for "${spec}"` }), 30_000);
+    ch.onmessage = (e: MessageEvent<{ reply?: number; answer: PluginAnswer }>) => {
+      if (e.data?.reply !== id) return;
+      clearTimeout(timer);
+      resolve(e.data.answer);
+    };
+    ch.postMessage({ id, importer, spec });
+  }).finally(() => ch.close());
+}
+
+/**
+ * `__plugin/<importer>/<specifier>`: what the worker's runtime plugins make of an import (pluginRoutes.ts). Exports the
+ * worker holds come from it; source is served as an ES module; a file no onLoad hook takes, as itself.
+ */
+async function servePlugin(vfs: VFS, rawPath: string, onError: (msg: string) => void): Promise<ModuleResponse> {
+  const [importer, spec] = rawPath.slice(9).split("/").map(decodeURIComponent);
+  const answer = await askPlugins(importer, spec);
+  const q = JSON.stringify;
+  if (answer.kind === "error") return { status: 200, body: `throw Object.assign(new Error(${q(answer.message)}), { name: ${q(answer.name)} });` };
+  if (answer.kind === "file") {
+    const url = q(`${VFS_ROOT}${answer.path.slice(1)}`);
+    return { status: 200, body: `import * as __n from ${url};\nexport * from ${url};\nexport default __n.default;` };
+  }
+  if (answer.kind === "names") {
+    const named = answer.names.filter((n) => n !== "default");
+    return {
+      status: 200,
+      body: `const __ns = globalThis.__pluginNamespace(${q(answer.key)});
+${answer.names.includes("default") ? "export default __ns.default;\n" : ""}${named.length ? `const { ${named.map((n, i) => `${q(n)}: __s${i}`).join(", ")} } = __ns;
+export { ${named.map((n, i) => `__s${i} as ${q(n)}`).join(", ")} };` : ""}`,
+    };
+  }
+  const { key, contents, dir, importer: self, file } = answer;
+  return serveModuleOnce(vfs, file, onError, "bun", { key, url: `${VFS_ROOT}${pluginUrl(importer, spec)}`, contents, dir, importer: self });
+}
+
 /**
  * The URL prefix (under `/__vfs/`) the worker loads a `.cjs`, `.cts`, `.mjs` or `.mts` program by, so it is served by
  * its extension's module type (moduleKindOf `entry`). Other programs load by their own URL, the one imports use.
@@ -476,14 +556,15 @@ export function serveModule(vfs: VFS, rawPath: string, onError: (msg: string) =>
   return withLoaded(vfs, () => serveModuleOnce(vfs, rawPath, onError, target));
 }
 
-async function serveModuleOnce(vfs: VFS, rawPath: string, onError: (msg: string) => void, target: ModuleTarget): Promise<ModuleResponse> {
+async function serveModuleOnce(vfs: VFS, rawPath: string, onError: (msg: string) => void, target: ModuleTarget, plugin?: PluginSource): Promise<ModuleResponse> {
   if (target === "bun" && rawPath.startsWith("__esmsync/")) return syncEsmRequest(rawPath.slice(10));
+  if (target === "bun" && rawPath.startsWith("__plugin/")) return servePlugin(vfs, rawPath, onError);
   let path = norm(rawPath);
   // `__entry/<path>`: the program the worker runs, whose extension can make it CommonJS or an ES module (moduleKindOf).
   const entry = path.startsWith(ENTRY_PREFIX);
   if (entry) path = path.slice(ENTRY_PREFIX.length);
   await loadResolver(vfs);
-  const mocked = target === "bun" ? mocks.get(path) : undefined;
+  const mocked = target === "bun" && !plugin ? mocks.get(path) : undefined;
   if (mocked) {
     servedEsm.add(path);
     return { status: 200, body: mockedModule(path, mocked) };
@@ -509,7 +590,7 @@ async function serveModuleOnce(vfs: VFS, rawPath: string, onError: (msg: string)
   }
   const host = hostEntry(vfs, path);
   if (host) return { status: 200, body: hostModule(host) };
-  const src = vfs.readText(path);
+  const src = plugin ? plugin.contents : vfs.readText(path);
   if (src === undefined) {
     onError(`module not found: ${path}`);
     return { status: 404, body: `Not found: ${path}` };
@@ -520,7 +601,7 @@ async function serveModuleOnce(vfs: VFS, rawPath: string, onError: (msg: string)
     const format = dataFormat(path);
     if (format) return { status: 200, body: dataModule(path, src, format, target) };
     // Whatever its extension, a file Bun runs as CommonJS is served as such (see moduleKindOf).
-    if (JS_LIKE.test(path)) {
+    if (JS_LIKE.test(path) && !plugin) {
       await loadTranspiler();
       TARGET = target;
       if (moduleKindOf(vfs, path, src, entry) === "cjs") return { status: 200, body: commonJSFacade(commonJSNames(vfs, path, src), `${VFS_ROOT}__cjs/${path}`) };
@@ -528,21 +609,21 @@ async function serveModuleOnce(vfs: VFS, rawPath: string, onError: (msg: string)
     // An ES module: Bun's parser finds the specifiers, as `bun build --no-bundle` does (JSX per tsconfig too).
     // In the worker, with a source map: its error printer maps stack frames back to the file's lines (worker/sourceMaps.ts).
     // In a debug run, the project's own files call the step debugger before each statement (worker/debugger.ts).
-    const debug = target === "bun" && instrumenting() && !/(^|\/)node_modules\//.test(path);
-    const [plain, mappings, table] = (await transpileCached(src, path, tsconfigFor(vfs, path), resolver(vfs, dirname(path)), target === "bun", target === "bun", debug)).split("\0");
+    const debug = target === "bun" && !plugin && instrumenting() && !/(^|\/)node_modules\//.test(path);
+    const [plain, mappings, table] = (await transpileCached(src, path, tsconfigFor(vfs, path), resolver(vfs, plugin?.dir ?? dirname(path), target === "bun" ? (plugin?.importer ?? "/" + path) : undefined), target === "bun", target === "bun", debug)).split("\0");
     // In the worker, each `await` keeps the AsyncLocalStorage context (asyncAwait.ts).
     const restored = target === "bun" ? restoreContextMapped(plain) : { code: plain, inserts: new Map<number, [number, number][]>() };
     const transpiled = restored.code;
     let code = transpiled;
     if (target === "bun") {
-      const sync = syncEsm.get(path);
+      const sync = plugin ? undefined : syncEsm.get(path);
       const names = sync && (await sync.names);
       if (names) return { status: 200, body: syncEsmModule(path, names) };
-      servedEsm.add(path);
+      if (!plugin) servedEsm.add(path);
     }
     TARGET = target;
     // The hoisted imports are final URLs already (the transpiler leaves those alone).
-    const dir = dirname(path);
+    const dir = plugin?.dir ?? dirname(path);
     const url = specifierUrl(vfs, dir);
     const final = (spec: string) => url(spec) ?? spec;
     // Bun's `require` in an ES module, `import.meta.require` (the transpiler declares it where the module uses a free one).
@@ -552,7 +633,11 @@ async function serveModuleOnce(vfs: VFS, rawPath: string, onError: (msg: string)
     let body = rewriteMeta(hoistMetaRequire(vfs, hoistRequires(vfs, patchChokidar(code), dir, final), path, dir, final, free), path, target === "bun");
     // In the worker, the module's namespace once it has run, for a require() of it (worker/node/module.ts): imported
     // from its own URL, so it's this instance.
-    if (target === "bun") {
+    if (plugin) {
+      // A runtime plugin's module: its namespace by its key, for later imports of it from elsewhere (servePlugin).
+      body += `\nimport * as __bwcSelf from ${JSON.stringify(plugin.url)};\nglobalThis.__pluginLoaded?.(${JSON.stringify(plugin.key)}, __bwcSelf);`;
+      if (mappings !== undefined) body += inlineSourceMap(path, shiftFirstColumn(insertColumns(mappings, restored.inserts), firstLineLength(body) - firstLineLength(transpiled)));
+    } else if (target === "bun") {
       body += `\nimport * as __bwcSelf from ${JSON.stringify(`${VFS_ROOT}${entry ? ENTRY_PREFIX : ""}${path}`)};\nglobalThis.__esmLoaded?.(${JSON.stringify("/" + path)}, __bwcSelf);`;
       // Its probe table, before any of its statements runs.
       if (table) body = `__dbg.file(${JSON.parse(table).file},${JSON.stringify(path)},${table});${body}`;

@@ -12,6 +12,8 @@ import { setCryptoWasm } from "./node/cryptoWasm";
 import { Glob } from "./glob";
 import { FileSink } from "./fileSink";
 import { FileSystemRouter } from "./fileSystemRouter";
+import { plugin, pluginImportUrl, pluginRequire, setPluginHost } from "./plugins";
+import { pluginModuleHost, setPluginHook } from "./node/module";
 import { installConsole, table } from "./console";
 import { bunInspect, formatLog as formatValues, installWebInspect } from "./inspect";
 import { trackBodies } from "./bodies";
@@ -137,6 +139,9 @@ g.__dynamicImport = (from: string, spec: unknown, options?: ImportCallOptions) =
   const s = String(spec);
   const builtin = s.replace(/^node:/, "");
   if (builtin in builtins) return importUrl(`${VFS_ROOT}__node/${builtin}`);
+  // What a runtime plugin (Bun.plugin) takes, the page asks it for (plugins.ts).
+  const plugged = pluginImportUrl(from, s);
+  if (plugged) return plugged.then((url) => importUrl(url, options));
   // A package resolves from the importer's directory (CommonJS the worker runs itself rewrites literal imports to this too).
   const pkg = !/^(file:|\/|\.|[a-z][a-z\d+.-]*:)/i.test(s) && from.startsWith("file:") ? resolve(s, dirname(norm(decodeURIComponent(new URL(from).pathname))), "import", "bun") : null;
   const path = pkg ?? (/^(file:|\/|\.)/.test(s) && decodeURIComponent(new URL(s, from).pathname));
@@ -1442,6 +1447,8 @@ async function main() {
   // The shell's parser too: `$` parses as it's called, as Bun's does (a syntax error throws there).
   const [semver, shellWasm] = await Promise.all([loadSemver(), loadShellWasm(), loadResolver(vfs)]);
   setRequire(vfs, (spec, dir) => resolve(spec, dir, "require", "bun"), (spec, dir) => resolve(spec, dir, "import", "bun"), () => VFS_ROOT);
+  setPluginHost({ vfsRoot: () => VFS_ROOT, resolve: (spec, dir, kind) => resolve(spec, dir, kind, "bun"), cwd: () => process.cwd(), parseData, ...pluginModuleHost() });
+  setPluginHook(pluginRequire);
   const bun: Record<(typeof BUN_NAMES)[number], unknown> = {
     version: `${BUN_VERSION}-browser`,
     env,
@@ -1505,6 +1512,7 @@ async function main() {
     resolve: async (specifier: string, from: string | URL) => resolveSync(specifier, from),
     Glob,
     FileSystemRouter,
+    plugin,
     S3Client: s3.S3Client,
     s3: s3.s3,
     sql,

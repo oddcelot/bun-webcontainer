@@ -15,6 +15,13 @@ const PORT = Number(process.env.EDITOR_PORT ?? 5560);
 const HOST_PORT = Number(process.env.HOST_PORT ?? 5561);
 const EDITOR = `http://localhost:${PORT}`;
 
+/** Lines where the playground prints something else on purpose: label -> [native Bun, playground]. */
+const DIFFERENT: Record<string, [string, string]> = {
+  // Bun 1.4.4 runs a plugin's "json" (and "toml") contents as JavaScript; the playground parses them as the loader says.
+  json2: ["threw SyntaxError Unexpected token ':'", '{"a":[1,2]}'],
+};
+const labelOf = (line: string) => line.slice(0, line.indexOf(": "));
+
 const files: Record<string, string> = {};
 for (const e of readdirSync(project, { recursive: true, withFileTypes: true }))
   if (e.isFile()) files[relative(project, join(e.parentPath, e.name))] = readFileSync(join(e.parentPath, e.name), "utf8");
@@ -42,7 +49,12 @@ try {
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }
+for (const [label, [native]] of Object.entries(DIFFERENT)) {
+  const line = want.find((l) => labelOf(l) === label);
+  if (line !== `${label}: ${native}`) (bad++, console.error(`✗ native bun ${label}\n  got  ${JSON.stringify(line)}\n  want ${JSON.stringify(`${label}: ${native}`)}`));
+}
 console.log(`✓ native bun: ${want.length} lines`);
+want = want.map((l) => (DIFFERENT[labelOf(l)] ? `${labelOf(l)}: ${DIFFERENT[labelOf(l)][1]}` : l));
 
 const chrome =
   process.env.CHROME ??
