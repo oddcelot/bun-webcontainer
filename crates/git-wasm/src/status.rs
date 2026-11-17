@@ -94,6 +94,8 @@ pub fn worktree_changes(ctx: &Ctx, untracked: gix::status::UntrackedFiles) -> Re
 }
 
 pub struct Status {
+    /// paths with conflict stages, and which of them they have (bit 0: base, 1: ours, 2: theirs)
+    pub unmerged: Vec<(String, u8)>,
     /// (path, 'A' | 'M' | 'D' | 'T' | 'R'); a rename under its new path
     pub staged: Vec<(String, char)>,
     /// new path -> old path, for the staged renames
@@ -109,8 +111,12 @@ pub fn compute(ctx: &Ctx) -> Result<Status, crate::Exit> {
 pub fn compute_with(ctx: &Ctx, mode: gix::status::UntrackedFiles) -> Result<Status, crate::Exit> {
     let index = load_index(ctx)?;
     let (head, idx) = (flat_head(ctx)?, flat_index(&index));
+    let conflicts = unmerged(&index);
     let mut staged = Vec::new();
     for (p, (m, id)) in &idx {
+        if conflicts.contains_key(p) {
+            continue;
+        }
         match head.get(p) {
             None => staged.push((path_str(p), 'A')),
             Some((hm, hid)) if hm != m || hid != id => {
@@ -121,7 +127,7 @@ pub fn compute_with(ctx: &Ctx, mode: gix::status::UntrackedFiles) -> Result<Stat
         }
     }
     for p in head.keys() {
-        if !idx.contains_key(p) {
+        if !idx.contains_key(p) && !conflicts.contains_key(p) {
             staged.push((path_str(p), 'D'));
         }
     }
@@ -143,13 +149,56 @@ pub fn compute_with(ctx: &Ctx, mode: gix::status::UntrackedFiles) -> Result<Stat
     let (mut unstaged, mut untracked) = (Vec::new(), Vec::new());
     for w in worktree_changes(ctx, mode)? {
         let p = path_str(&w.path);
+        if conflicts.contains_key(&w.path) {
+            continue;
+        }
         match w.kind {
             Kind::Modified => unstaged.push((p, 'M')),
             Kind::Deleted => unstaged.push((p, 'D')),
             Kind::Untracked => untracked.push(if w.is_dir { format!("{p}/") } else { p }),
         }
     }
-    Ok(Status { staged, renamed_from, unstaged, untracked })
+    let unmerged = conflicts.into_iter().map(|(p, m)| (path_str(&p), m)).collect();
+    Ok(Status { unmerged, staged, renamed_from, unstaged, untracked })
+}
+
+/// Paths with conflict stages (1 base, 2 ours, 3 theirs) and which stages each has, as a mask (bit `stage - 1`).
+pub fn unmerged(index: &gix::index::State) -> BTreeMap<BString, u8> {
+    let mut map = BTreeMap::new();
+    for e in index.entries().iter().filter(|e| e.stage_raw() > 0) {
+        *map.entry(e.path(index).to_owned()).or_insert(0) |= 1 << (e.stage_raw() - 1);
+    }
+    map
+}
+
+/// A merge is in progress (`.git/MERGE_HEAD`).
+pub fn merging() -> bool {
+    std::path::Path::new("/.git/MERGE_HEAD").exists()
+}
+
+/// The short format's code for a conflict's stage mask (wt-status.c).
+pub fn unmerged_code(mask: u8) -> &'static str {
+    match mask {
+        1 => "DD",
+        2 => "AU",
+        3 => "UD",
+        4 => "UA",
+        5 => "DU",
+        6 => "AA",
+        _ => "UU",
+    }
+}
+
+fn unmerged_label(mask: u8) -> &'static str {
+    match mask {
+        1 => "both deleted:",
+        2 => "added by us:",
+        3 => "deleted by them:",
+        4 => "added by them:",
+        5 => "deleted by us:",
+        6 => "both added:",
+        _ => "both modified:",
+    }
 }
 
 pub fn branch_name(ctx: &Ctx) -> Result<String, crate::Exit> {
@@ -184,12 +233,21 @@ pub fn long(ctx: &Ctx, st: &Status) -> Result<String, crate::Exit> {
     if unborn {
         s += "\nNo commits yet\n\n";
     }
+    let merging = merging();
+    if merging {
+        s += if st.unmerged.is_empty() {
+            "All conflicts fixed but you are still merging.\n  (use \"git commit\" to conclude merge)\n\n"
+        } else {
+            "You have unmerged paths.\n  (fix conflicts and run \"git commit\")\n  (use \"git merge --abort\" to abort the merge)\n\n"
+        };
+    }
     if !st.staged.is_empty() {
         s += "Changes to be committed:\n";
-        s += &if unborn {
-            "  (use \"git rm --cached <file>...\" to unstage)\n".to_string()
-        } else {
-            "  (use \"git restore --staged <file>...\" to unstage)\n".to_string()
+        // git's hints (wt-status.c); none while merging
+        s += match () {
+            _ if merging => "",
+            _ if unborn => "  (use \"git rm --cached <file>...\" to unstage)\n",
+            _ => "  (use \"git restore --staged <file>...\" to unstage)\n",
         };
         for (p, c) in &st.staged {
             let p = match st.renamed_from.get(p) {
@@ -201,9 +259,30 @@ pub fn long(ctx: &Ctx, st: &Status) -> Result<String, crate::Exit> {
         }
         s += "\n";
     }
+    if !st.unmerged.is_empty() {
+        s += "Unmerged paths:\n";
+        if !merging && !unborn {
+            s += "  (use \"git restore --staged <file>...\" to unstage)\n";
+        }
+        let both_deleted = st.unmerged.iter().any(|(_, m)| *m == 1);
+        let del_mod = st.unmerged.iter().any(|(_, m)| *m == 3 || *m == 5);
+        let not_deleted = st.unmerged.iter().any(|(_, m)| ![1, 3, 5].contains(m));
+        s += match () {
+            _ if !both_deleted && !del_mod => "  (use \"git add <file>...\" to mark resolution)\n",
+            _ if both_deleted && !del_mod && !not_deleted => "  (use \"git rm <file>...\" to mark resolution)\n",
+            _ => "  (use \"git add/rm <file>...\" as appropriate to mark resolution)\n",
+        };
+        for (p, m) in &st.unmerged {
+            s += &ctx.paint("31", &format!("\t{:<17}{}", unmerged_label(*m), quote_path(p, false)));
+            s += "\n";
+        }
+        s += "\n";
+    }
     if !st.unstaged.is_empty() {
         s += "Changes not staged for commit:\n";
-        s += "  (use \"git add/rm <file>...\" to update what will be committed)\n";
+        let rm = if st.unstaged.iter().any(|(_, c)| *c == 'D') { "/rm" } else { "" };
+        s += &format!("  (use \"git add{rm} <file>...\" to update what will be committed)\n");
+        s += "  (use \"git restore <file>...\" to discard changes in working directory)\n";
         for (p, c) in &st.unstaged {
             s += &ctx.paint("31", &format!("\t{}{}", label(*c), quote_path(p, false)));
             s += "\n";
@@ -222,7 +301,7 @@ pub fn long(ctx: &Ctx, st: &Status) -> Result<String, crate::Exit> {
     // Each section ends in a blank line; with something staged, git prints nothing more.
     s += match () {
         _ if !st.staged.is_empty() => "",
-        _ if !st.unstaged.is_empty() => "no changes added to commit (use \"git add\" and/or \"git commit -a\")\n",
+        _ if !st.unstaged.is_empty() || !st.unmerged.is_empty() => "no changes added to commit (use \"git add\" and/or \"git commit -a\")\n",
         _ if !st.untracked.is_empty() => "nothing added to commit but untracked files present (use \"git add\" to track)\n",
         _ if unborn => "nothing to commit (create/copy files and use \"git add\" to track)\n",
         _ => "nothing to commit, working tree clean\n",
@@ -345,7 +424,17 @@ pub fn status(ctx: &Ctx, args: &[String]) -> Res {
             map.entry(p).or_insert((' ', ' ')).1 = *c;
         }
         let q = |p: &str| if quote { quote_path(p, true) } else { p.to_string() };
-        for (p, (x, y)) in map {
+        // conflicts sort in with the rest: `UU path`
+        let mut map: BTreeMap<&str, Option<(char, char)>> = map.into_iter().map(|(p, e)| (p, Some(e))).collect();
+        for (p, _) in &st.unmerged {
+            map.insert(p, None);
+        }
+        let masks: BTreeMap<&str, u8> = st.unmerged.iter().map(|(p, m)| (p.as_str(), *m)).collect();
+        for (p, e) in map {
+            let Some((x, y)) = e else {
+                o += &format!("{} {}{eol}", paint("31", unmerged_code(masks[p])), q(p));
+                continue;
+            };
             let xs = if x == ' ' { " ".into() } else { paint("32", &x.to_string()) };
             let ys = if y == ' ' { " ".into() } else { paint("31", &y.to_string()) };
             // A rename: `R  old -> new`, or with -z the new path, then the old one.

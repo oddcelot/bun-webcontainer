@@ -17,8 +17,8 @@ Opens with `core.fileMode=false` (no exec bits on the host FS). `init` writes th
 `Playground <playground@runbun.dev>`.
 
 Supported: `init`, `status`, `add`, `rm [--cached]`, `restore`, `reset`, `commit`, `log`, `diff [--cached]`, `show`,
-`branch`, `switch`, `checkout`, `clean`, `config`, `rev-parse`, `clone`, `fetch`, `pull`, `push`, `remote`. `git help` lists the
-flags. Pathspecs are plain paths or directory prefixes (no globs). Not supported: merge, rebase, stash, tag (they
+`branch`, `switch`, `checkout`, `merge`, `clean`, `config`, `rev-parse`, `clone`, `fetch`, `pull`, `push`, `remote`. `git help`
+lists the flags. Pathspecs are plain paths or directory prefixes (no globs). Not supported: rebase, stash, tag (they
 print `git: '<cmd>' is not supported in the playground yet`).
 
 Output the panel parses (byte-identical to native git, checked by `test.ts`):
@@ -47,7 +47,22 @@ nothing is touched and it exits 1 with git's `Your local changes ... would be ov
 files message). Local changes to paths both commits share are carried over. Differences: `checkout` doesn't print the
 `M\tfile` lines for carried changes, and detaching prints one `HEAD is now at` line instead of git's advice. Files are
 written from blobs without filters (no autocrlf, symlinks become plain files), so gix's `worktree-mutation` (and the
-`io-close` WASI patch it would need) isn't used. `reset --merge|--keep`, `stash`, `merge` are not implemented.
+`io-close` WASI patch it would need) isn't used. `reset --merge|--keep` and `stash` are not implemented.
+
+Merging (`merge.rs`, gix's `merge` feature: gix-merge, which follows merge-ort): `merge [<rev>]` (no rev: the upstream),
+`--no-ff`, `--ff-only`, `-m`, `-q`, `--no-stat`, `--abort`, `--continue`. A fast-forward is the two-way merge of `switch`
+(`Updating a..b`, `Fast-forward` and git's `--stat --summary`, `diff::stat`). A true merge refuses staged changes (exit 2,
+as merge-ort), merges the commits with `merge_commits`, writes the merged tree (conflicting files with markers, labels
+`HEAD` and the rev as typed) through the same two-way merge, so a local change or untracked file in the way refuses it
+(`... would be overwritten by merge`) and other local changes stay, then puts the conflicts' stages 1-3 in the index
+(`apply_index_entries`). Messages as git's (`Auto-merging`, `CONFLICT (content|add/add|modify/delete)`, by path).
+A conflict leaves `MERGE_HEAD`, `MERGE_MSG` (with `# Conflicts:`), `MERGE_MODE` and exits 1; `status` then shows the
+unmerged paths (`UU`/`AA`/`UD`/... and the long format's sections and hints), `add`/`rm`/`commit -a` resolve them,
+`commit` (no `-m`: `MERGE_MSG`, as `--no-edit`) makes the merge commit and refuses while paths are unmerged, `switch`
+refuses during a merge, `checkout` with unmerged paths, and `merge --abort` (`reset --merge`) and `reset` end it. Merge
+messages: `Merge branch|tag|remote-tracking branch|commit '<rev>'` (an annotated tag's message below), ` into <branch>`
+unless on main/master. Not done: octopus merges, strategies (`-s`, `-X`), `--squash`, `--no-commit`, merging into an
+unborn branch; `pull` still only fast-forwards.
 
 `test.ts` runs a scripted session under node's WASI and compares status, diff, log, show and every mutation with native
 git: "twin" runs execute the same command on two copies of a project (ours vs native) and compare `status`, `ls-files -s`,
@@ -93,7 +108,7 @@ imports synchronously, and checks the results with native git (56 checks; the pu
 
 ## Results
 
-- Features: `sha1 basic status dirwalk blocking-network-client` (no `worktree-mutation`), and gix-transport `http-client`.
+- Features: `sha1 basic status dirwalk blocking-network-client merge` (no `worktree-mutation`), and gix-transport `http-client`.
 - Writes match native gix byte for byte (same commit ids); `git fsck --full` is clean; status, tree diff and log
   match native output.
 - Packed clones read fine. This repo (933 commits, 3.4 MiB pack, 578 files): full log walk, HEAD tree and status in

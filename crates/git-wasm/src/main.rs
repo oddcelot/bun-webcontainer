@@ -5,6 +5,7 @@ mod diff;
 mod history;
 mod http;
 mod index;
+mod merge;
 mod net;
 mod push;
 mod refs;
@@ -111,6 +112,7 @@ Supported in the playground:
    branch     List, create, delete (-d, -D), rename (-m) branches, --show-current, --format
    switch     Switch branches (<branch>, -c <new> [<start>], --detach, -f)
    checkout   Switch branches or restore files (<branch>, -b <new>, <rev> -- <path>...)
+   merge      Join a branch into the current one (<rev>, --no-ff, --ff-only, -m <msg>, --abort, --continue)
    clean      Remove untracked files (-n, -f, -d)
    config     Get and set options in the repository config (--get, --unset, --list)
    rev-parse  Print the object id of a revision (--verify, --abbrev-ref)
@@ -153,7 +155,8 @@ fn run(args: &[String]) -> Res {
         "pull" => net::pull(&open()?, rest),
         "remote" => net::remote(&open()?, rest),
         "push" => push::push(&open()?, rest),
-        "merge" | "rebase" | "stash" | "tag" => {
+        "merge" => merge::merge(&open()?, rest),
+        "rebase" | "stash" | "tag" => {
             eprintln!("git: '{cmd}' is not supported in the playground yet");
             Ok(1)
         }

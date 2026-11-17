@@ -62,7 +62,7 @@ fn write_entry(ctx: &Ctx, path: &BString, mode: u32, id: ObjectId) -> Result<Sta
 }
 
 /// Remove a file and the directories it leaves empty.
-fn remove_path(path: &BString) {
+pub fn remove_path(path: &BString) {
     let p = disk(path.as_ref());
     let _ = std::fs::remove_file(&p);
     let mut dir = p.parent().map(Path::to_path_buf);
@@ -162,7 +162,21 @@ fn blocked(p: &BString, removed: &HashSet<BString>) -> bool {
 /// worktree still hold HEAD's version; everything else, local changes included, is carried over. Refuses, touching
 /// nothing, when a change or an untracked file is in the way.
 fn switch_tree(ctx: &Ctx, t: &Flat) -> Result<(), Exit> {
-    let (h, idx) = (flat_head(ctx)?, flat_index(&load_index(ctx)?));
+    let index = load_index(ctx)?;
+    let conflicts = crate::status::unmerged(&index);
+    if !conflicts.is_empty() {
+        for p in conflicts.keys() {
+            out(&format!("{}: needs merge\n", path_str(p)));
+        }
+        return error("you need to resolve your current index first");
+    }
+    two_way(ctx, &flat_head(ctx)?, t, "checkout")
+}
+
+/// The two-way merge from `h` (what the index is expected to hold) to `t`, as `switch_tree` describes; `verb` names
+/// the command in the refusal (`checkout`, `merge`).
+pub fn two_way(ctx: &Ctx, h: &Flat, t: &Flat, verb: &str) -> Result<(), Exit> {
+    let idx = flat_index(&load_index(ctx)?);
     let paths: BTreeSet<&BString> = h.keys().chain(t.keys()).filter(|p| h.get(*p) != t.get(*p)).collect();
     let removed: HashSet<BString> =
         paths.iter().filter(|p| t.get(**p).is_none() && h.get(**p).is_some() && idx.get(**p) == h.get(**p)).map(|p| (*p).clone()).collect();
@@ -187,15 +201,16 @@ fn switch_tree(ctx: &Ctx, t: &Flat) -> Result<(), Exit> {
         }
     }
     let mut msg = Vec::new();
+    let before = if verb == "checkout" { "switch branches" } else { verb };
     if !tracked.is_empty() {
         msg.push(format!(
-            "error: Your local changes to the following files would be overwritten by checkout:\n\t{}\nPlease commit your changes or stash them before you switch branches.\nAborting",
+            "error: Your local changes to the following files would be overwritten by {verb}:\n\t{}\nPlease commit your changes or stash them before you {before}.\nAborting",
             tracked.join("\n\t")
         ));
     }
     if !untracked.is_empty() {
         msg.push(format!(
-            "error: The following untracked working tree files would be overwritten by checkout:\n\t{}\nPlease move or remove them before you switch branches.\nAborting",
+            "error: The following untracked working tree files would be overwritten by {verb}:\n\t{}\nPlease move or remove them before you {before}.\nAborting",
             untracked.join("\n\t")
         ));
     }
@@ -219,13 +234,14 @@ fn switch_tree(ctx: &Ctx, t: &Flat) -> Result<(), Exit> {
 
 /// Make the index (and with `worktree` the tracked files) equal to `t`, discarding changes. Untracked files stay.
 pub fn hard_reset(ctx: &Ctx, t: &Flat, worktree: bool) -> Result<(), Exit> {
-    let idx = flat_index(&load_index(ctx)?);
-    let paths: BTreeSet<&BString> = idx.keys().chain(t.keys()).collect();
+    let index = load_index(ctx)?;
+    let (idx, conflicts) = (flat_index(&index), crate::status::unmerged(&index));
+    let paths: BTreeSet<&BString> = idx.keys().chain(t.keys()).chain(conflicts.keys()).collect();
     let (mut drop, mut add) = (HashSet::new(), Vec::new());
     for p in paths {
         let tt = t.get(p);
         let mut stat = Stat::default();
-        let mut rewrite = idx.get(p) != tt;
+        let mut rewrite = idx.get(p) != tt || conflicts.contains_key(p);
         match tt {
             Some((mode, id)) => {
                 if worktree && !disk_matches(ctx, p, *id) {
@@ -241,6 +257,24 @@ pub fn hard_reset(ctx: &Ctx, t: &Flat, worktree: bool) -> Result<(), Exit> {
         }
         if rewrite {
             drop.insert(p.clone());
+        }
+    }
+    rewrite_index(ctx, &drop, &add)
+}
+
+/// `reset --merge` to HEAD: the paths whose index entry differs from HEAD (conflicts included) get HEAD's version in
+/// the index and the worktree; local changes to other paths stay.
+pub fn reset_merge(ctx: &Ctx) -> Result<(), Exit> {
+    let index = load_index(ctx)?;
+    let (h, idx, conflicts) = (flat_head(ctx)?, flat_index(&index), crate::status::unmerged(&index));
+    let paths: BTreeSet<&BString> =
+        h.keys().chain(idx.keys()).chain(conflicts.keys()).filter(|p| h.get(*p) != idx.get(*p) || conflicts.contains_key(*p)).collect();
+    let (mut drop, mut add) = (HashSet::new(), Vec::new());
+    for p in paths {
+        drop.insert(p.clone());
+        match h.get(p) {
+            Some((mode, id)) => add.push((p.clone(), *mode, *id, write_entry(ctx, p, *mode, *id)?)),
+            None => remove_path(p),
         }
     }
     rewrite_index(ctx, &drop, &add)
@@ -338,6 +372,9 @@ fn detach(ctx: &Ctx, c: &gix::Commit<'_>, from: &str, force: bool) -> Res {
 
 pub fn switch(ctx: &Ctx, args: &[String]) -> Res {
     let o = parse(args, false)?;
+    if crate::status::merging() {
+        return fatal("cannot switch branch while merging\nConsider \"git merge --quit\" or \"git worktree add\".");
+    }
     switch_branch(ctx, &o)
 }
 
@@ -495,11 +532,19 @@ pub fn reset(ctx: &Ctx, args: &[String]) -> Res {
         }
         return fatal("Failed to resolve 'HEAD' as a valid ref.");
     };
+    if mode == "soft" && crate::status::merging() {
+        return fatal("Cannot do a soft reset in the middle of a merge.");
+    }
     if mode != "soft" {
         hard_reset(ctx, &commit_flat(ctx, &target)?, mode == "hard")?;
     }
+    crate::merge::clear_state();
+    let orig = ctx.repo.head_id().ok().map(|i| i.detach());
     let to = args.iter().find(|a| !a.starts_with('-')).map_or("HEAD", String::as_str);
     move_head(ctx, target.id, &format!("reset: moving to {to}"))?;
+    if let Some(orig) = orig {
+        crate::merge::write_state("ORIG_HEAD", &format!("{orig}\n"))?;
+    }
     if mode == "hard" {
         out(&format!("HEAD is now at {} {}\n", short(target.id), subject(&target)));
     }

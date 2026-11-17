@@ -14,6 +14,15 @@ fn disk(path: &BStr) -> std::path::PathBuf {
 pub fn stage(ctx: &Ctx, specs: &Specs, untracked: bool) -> Result<usize, crate::Exit> {
     let mut index = load_index(ctx)?;
     let mut changes = worktree_changes(ctx, gix::status::UntrackedFiles::Files)?;
+    // Conflicted paths: staging the file (or its absence) resolves them.
+    for e in index.entries().iter().filter(|e| e.stage_raw() >= 2) {
+        let path = e.path(&index).to_owned();
+        if changes.iter().any(|w| w.path == path) {
+            continue;
+        }
+        let kind = if std::fs::symlink_metadata(disk(path.as_ref())).is_ok() { Kind::Modified } else { Kind::Deleted };
+        changes.push(crate::status::Wt { path, kind, is_dir: false, entry: Some((e.mode.bits(), e.id)) });
+    }
     changes.retain(|w| (untracked || w.kind != Kind::Untracked) && specs.matches(&path_str(&w.path)));
     let touched: HashSet<BString> = changes.iter().map(|w| w.path.clone()).collect();
     index.remove_entries(|_, p, _| touched.contains(p));
@@ -66,6 +75,7 @@ pub fn add(ctx: &Ctx, args: &[String]) -> Res {
 pub fn rm(ctx: &Ctx, args: &[String]) -> Res {
     let cached = args.iter().any(|a| a == "--cached");
     let force = args.iter().any(|a| a == "-f" || a == "--force");
+    let quiet = args.iter().any(|a| a == "-q" || a == "--quiet");
     let paths = positional(args);
     if paths.is_empty() {
         return fatal("No pathspec was given. Which files should I remove?");
@@ -79,7 +89,7 @@ pub fn rm(ctx: &Ctx, args: &[String]) -> Res {
         if specs.matches(&path_str(&p.to_owned())) && !gone.contains(&p.to_owned()) {
             gone.push(p.to_owned());
             // Like git: deleting a file whose content isn't in the index would lose those edits.
-            if !cached && !force {
+            if !cached && !force && e.stage_raw() == 0 {
                 if let Ok(bytes) = std::fs::read(disk(p)) {
                     let id = gix::objs::compute_hash(e.id.kind(), gix::objs::Kind::Blob, &bytes);
                     if id.ok() != Some(e.id) {
@@ -101,7 +111,9 @@ pub fn rm(ctx: &Ctx, args: &[String]) -> Res {
     index.remove_entries(|_, p, _| set.contains(p));
     index.write(Default::default())?;
     for p in &gone {
-        crate::out(&format!("rm '{}'\n", path_str(p)));
+        if !quiet {
+            crate::out(&format!("rm '{}'\n", path_str(p)));
+        }
         if !cached {
             let _ = std::fs::remove_file(disk(p.as_ref()));
         }

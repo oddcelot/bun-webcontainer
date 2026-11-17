@@ -179,6 +179,153 @@ pub fn diff_flats(ctx: &Ctx, old: &Flat, new: &Flat, out: &mut String, st: &mut 
     Ok(())
 }
 
+/// git's `--stat` (diff.c show_stats, 80 columns) and, with `summary`, `--summary`: ` a.txt | 2 +-` per file,
+/// ` 3 files changed, 2 insertions(+), 2 deletions(-)`, then ` create mode 100644 n.txt` and the like.
+pub fn stat(ctx: &Ctx, old: &Flat, new: &Flat, summary: bool) -> Result<String, crate::Exit> {
+    struct File {
+        name: String,
+        add: usize,
+        del: usize,
+        binary: bool,
+    }
+    let deleted: Vec<_> = old.iter().filter(|(p, _)| !new.contains_key(*p)).map(|(p, e)| (p.clone(), *e)).collect();
+    let added: Vec<_> = new.iter().filter(|(p, _)| !old.contains_key(*p)).map(|(p, e)| (p.clone(), *e)).collect();
+    let renames = crate::rename::detect(ctx, &deleted, &added)?;
+    let from: std::collections::HashMap<&BString, &crate::rename::Rename> = renames.iter().map(|r| (&r.new, r)).collect();
+    let sources: std::collections::HashSet<&BString> = renames.iter().map(|r| &r.old).collect();
+    let mut paths: Vec<&BString> = old.keys().chain(new.keys()).filter(|p| !sources.contains(p)).collect();
+    paths.sort();
+    paths.dedup();
+    let (mut files, mut notes) = (Vec::new(), Vec::new());
+    for p in paths {
+        let rename = from.get(p);
+        let (o, n) = (rename.map_or(old.get(p), |r| old.get(&r.old)), new.get(p));
+        if o == n && rename.is_none() {
+            continue;
+        }
+        let data = |e: Option<&(u32, ObjectId)>| e.map(|e| object_side(ctx, e).map(|s| s.data)).transpose();
+        let (od, nd) = (data(o)?.unwrap_or_default(), data(n)?.unwrap_or_default());
+        let name = match rename {
+            Some(r) => crate::rename::pprint(&path_str(&r.old), &path_str(p)),
+            None => path_str(p),
+        };
+        let file = if is_binary(&od) || is_binary(&nd) {
+            File { name, add: nd.len(), del: od.len(), binary: true }
+        } else {
+            let input = InternedInput::new(&od[..], &nd[..]);
+            let diff: Diff = diff_with_slider_heuristics(Algorithm::Histogram, &input);
+            File { name, add: diff.count_additions() as usize, del: diff.count_removals() as usize, binary: false }
+        };
+        files.push(file);
+        match (o, n, rename) {
+            (_, _, Some(r)) => notes.push(format!(" rename {} ({}%)\n", crate::rename::pprint(&path_str(&r.old), &path_str(p)), r.percent())),
+            (None, Some((m, _)), _) => notes.push(format!(" create mode {m:o} {}\n", path_str(p))),
+            (Some((m, _)), None, _) => notes.push(format!(" delete mode {m:o} {}\n", path_str(p))),
+            (Some((om, _)), Some((nm, _)), _) if om != nm => notes.push(format!(" mode change {om:o} => {nm:o} {}\n", path_str(p))),
+            _ => {}
+        }
+    }
+    let width = 80usize;
+    let digits = |n: usize| n.to_string().len();
+    let (mut max_change, mut max_len, mut bin_width, mut number_width) = (0usize, 0usize, 0usize, 0usize);
+    for f in &files {
+        max_len = max_len.max(f.name.chars().count());
+        if f.binary {
+            bin_width = bin_width.max(14 + digits(f.add) + digits(f.del));
+            number_width = 3;
+        } else {
+            max_change = max_change.max(f.add + f.del);
+        }
+    }
+    number_width = number_width.max(digits(max_change));
+    let width = width.max(16 + 6 + number_width);
+    let mut graph_width = if max_change + 4 > bin_width { max_change } else { bin_width - 4 };
+    let mut name_width = max_len;
+    if name_width + number_width + 6 + graph_width > width {
+        let limit = (width * 3 / 8).saturating_sub(number_width + 6);
+        if graph_width > limit {
+            graph_width = limit.max(6);
+        }
+        if name_width > width - number_width - 6 - graph_width {
+            name_width = width - number_width - 6 - graph_width;
+        } else {
+            graph_width = width - number_width - 6 - name_width;
+        }
+    }
+    let scale = |it: usize| if it == 0 { 0 } else { 1 + it * (graph_width - 1) / max_change };
+    let mut s = String::new();
+    let (mut ins, mut del) = (0, 0);
+    for f in &files {
+        let (mut prefix, mut name) = ("", f.name.as_str());
+        let mut len = name_width;
+        if name_width < name.chars().count() {
+            prefix = "...";
+            len = len.saturating_sub(3);
+            let skip = name.chars().count() - len;
+            name = &name[name.char_indices().nth(skip).map_or(name.len(), |(i, _)| i)..];
+            if let Some(i) = name.find('/') {
+                name = &name[i..];
+            }
+        }
+        let pad = " ".repeat(len.saturating_sub(name.chars().count()));
+        if f.binary {
+            s += &format!(" {prefix}{name}{pad} | {:>number_width$}", "Bin");
+            if f.add == 0 && f.del == 0 {
+                s += "\n";
+            } else {
+                s += &format!(" {} -> {} bytes\n", ctx.paint("31", &f.del.to_string()), ctx.paint("32", &f.add.to_string()));
+            }
+            continue;
+        }
+        ins += f.add;
+        del += f.del;
+        let (mut a, mut d) = (f.add, f.del);
+        if graph_width <= max_change {
+            let mut total = scale(a + d);
+            if total < 2 && a > 0 && d > 0 {
+                total = 2;
+            }
+            if a < d {
+                a = scale(a);
+                d = total - a;
+            } else {
+                d = scale(d);
+                a = total - d;
+            }
+        }
+        let n = f.add + f.del;
+        s += &format!(" {prefix}{name}{pad} | {n:>number_width$}{}", if n > 0 { " " } else { "" });
+        if a > 0 {
+            s += &ctx.paint("32", &"+".repeat(a));
+        }
+        if d > 0 {
+            s += &ctx.paint("31", &"-".repeat(d));
+        }
+        s += "\n";
+    }
+    s += &stat_summary(files.len(), ins, del);
+    if summary {
+        s += &notes.concat();
+    }
+    Ok(s)
+}
+
+/// ` 2 files changed, 3 insertions(+), 1 deletion(-)` (diff.c print_stat_summary).
+pub fn stat_summary(files: usize, ins: usize, del: usize) -> String {
+    if files == 0 {
+        return " 0 files changed\n".into();
+    }
+    let n = |v: usize, one: &str, many: &str| format!("{v} {}", if v == 1 { one } else { many });
+    let mut s = format!(" {}", n(files, "file changed", "files changed"));
+    if ins > 0 || del == 0 {
+        s += &format!(", {}", n(ins, "insertion(+)", "insertions(+)"));
+    }
+    if del > 0 || ins == 0 {
+        s += &format!(", {}", n(del, "deletion(-)", "deletions(-)"));
+    }
+    s + "\n"
+}
+
 pub fn diff(ctx: &Ctx, args: &[String]) -> Res {
     let (mut out, mut st) = (String::new(), Stats::default());
     if args.iter().any(|a| a == "--cached" || a == "--staged") {

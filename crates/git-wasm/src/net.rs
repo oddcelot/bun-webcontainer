@@ -239,7 +239,7 @@ pub fn pull(ctx: &Ctx, args: &[String]) -> Res {
         // Fast-forward only: our commit must be in the upstream's history.
         let ancestor = ctx.repo.rev_walk([target.id]).all()?.filter_map(Result::ok).any(|i| i.id == head);
         if !ancestor {
-            return error("Not possible to fast-forward, aborting. (merge and rebase aren't supported in the playground yet)");
+            return error(format!("Not possible to fast-forward, aborting. (`git merge {name}/{}` merges them; rebase isn't supported in the playground yet)", merge.trim_start_matches("refs/heads/")));
         }
     }
     crate::http::report("Updating files");
