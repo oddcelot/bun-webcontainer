@@ -13,9 +13,9 @@
       "@iconify-json/lucide": "^1.2.155",
       "@iconify-json/logos": "^1.2.20",
       "unocss": "66.13.0",
-      "solid-js": "2.0.0-rc.21",
-      "@solidjs/web": "2.0.0-rc.21",
-      "@solidjs/vite-plugin": "3.0.0-next.57",
+      "solid-js": "2.0.0",
+      "@solidjs/web": "2.0.0",
+      "@solidjs/vite-plugin": "3.0.1",
       "@kobalte/core": "2.0.0-alpha.4"
     }
   },
