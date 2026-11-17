@@ -32,7 +32,7 @@ import { isProxy } from "./proxies";
 import { markdownWasm, xmlWasm } from "../transpiler";
 import { asyncError, codeError, fsError } from "./node/errors";
 import { capture, runIn } from "./node/asyncHooks";
-import { mimeOf } from "./mime";
+import { MIME, mimeOf } from "./mime";
 import { hooks, type NodeSocket } from "./node/serve";
 import { flushDatabases } from "./node/sqlite";
 import { SQL, flushSql, sql } from "./sql";
@@ -878,6 +878,10 @@ class BunFile extends Blob {
   readonly #end: number | undefined;
   /** The path as given, which Bun's errors name. */
   readonly #given: string;
+  /** The path as given (a `file:` URL's path), which Bun names the file by in a FormData. */
+  static givenPath(f: BunFile) {
+    return f.#given;
+  }
   constructor(path: string, type?: string, start = 0, end?: number) {
     const name = norm(nodePath.resolve(path));
     const data = vfs.readBytes(name);
@@ -968,6 +972,34 @@ class BunFile extends Blob {
       },
     };
   }
+}
+
+// A Bun.file in a FormData is a File named by its path, as in Bun (a browser names a Blob "blob").
+for (const key of ["append", "set"] as const) {
+  const method = FormData.prototype[key] as (this: FormData, name: string, value: string | Blob, filename?: string) => void;
+  FormData.prototype[key] = function (this: FormData, name: string, value: string | Blob, filename?: string) {
+    if (filename === undefined && value instanceof BunFile) filename = BunFile.givenPath(value);
+    // Two arguments for a string: a third, even undefined, makes it the Blob overload.
+    return arguments.length < 3 && filename === undefined ? method.call(this, name, value) : method.call(this, name, value, filename);
+  } as never;
+}
+
+/**
+ * A file part's type in a parsed multipart body, as Bun gives it: from its file name's extension (Bun's table), not
+ * from the part's Content-Type (`a.txt` is `text/plain;charset=utf-8`); "" when there is none.
+ */
+const partType = (name: string) => {
+  const dot = name.lastIndexOf(".");
+  return dot > 0 && dot > name.lastIndexOf("/") ? (MIME[name.slice(dot + 1).toLowerCase()] ?? "") : "";
+};
+for (const proto of [NativeResponse.prototype, Request.prototype]) {
+  const parse = proto.formData as (this: Body) => Promise<FormData>;
+  proto.formData = async function formData(this: Body) {
+    const parsed = await parse.call(this);
+    const out = new FormData();
+    for (const [k, v] of parsed) out.append(k, typeof v === "string" ? v : new File([v], v.name, { type: partType(v.name), lastModified: v.lastModified }));
+    return out;
+  };
 }
 
 /** `Bun.S3Client`, `Bun.s3` and `s3://` URLs (s3.ts), on the worker's env and its (tracked) fetch. */

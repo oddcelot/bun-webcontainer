@@ -44,6 +44,7 @@ const server = Bun.serve({
     if (u.pathname.startsWith("/moved/")) return new Response(null, { status: Number(u.pathname.slice(7)), headers: { location: "/echo?moved=1" } });
     if (u.pathname === "/loop") return Response.redirect("/loop", 302);
     if (u.pathname.startsWith("/body/")) return bodies[u.pathname.slice(6)]();
+    if (u.pathname === "/form") return Response.json([...(await req.formData())].map(([k, v]) => (typeof v === "string" ? [k, v] : [k, v.name, v.type, v.size])));
     return new Response("nf", { status: 404 });
   },
 });
@@ -126,6 +127,16 @@ for (const kind of Object.keys(bodies))
     const r = await fetch(`http://localhost:3011/body/${kind}`, { method });
     log(`served ${method} ${kind}:`, r.status, r.headers.get("content-type"), kind === "body-stream" ? "" : r.headers.get("content-length"), JSON.stringify(await r.text()));
   }
+{
+  // A file part is typed by its name, as Bun parses it; a Bun.file is a File named by its path.
+  const fd = new FormData();
+  fd.set("text", "plain");
+  fd.set("doc", new File(["x"], "a.txt", { type: "text/plain" }));
+  fd.set("other", new File(["y"], "b.zzz", { type: "text/plain" }));
+  fd.set("src", Bun.file("main.ts"));
+  log("multipart:", await fetch("http://localhost:3011/form", { method: "POST", body: fd }).then((r) => r.text()));
+  log("bun file in form:", (fd.get("src") as File).name, fd.get("src") instanceof File);
+}
 // fetch() follows redirects to this program's own server as Bun's does.
 for (const [status, method] of [[301, "POST"], [302, "PUT"], [303, "PUT"], [307, "POST"], [308, "PATCH"]] as const) {
   const r = await fetch(`http://localhost:3011/moved/${status}`, { method, body: "data", headers: { "content-type": "text/x" } });
