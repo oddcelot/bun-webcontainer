@@ -380,21 +380,62 @@ function createInstance(opts: ServeOptions): Instance {
  * standalone `Headers` keeps them, so responses get one built from their init, plus what Response adds itself
  * (a form's boundary). `instanceof Response` still holds for the browser's own responses (`fetch()` results).
  * Content types follow Bun: a string body has none until it is served (then `text/plain;charset=utf-8`, see
- * servedHeaders), and `Response.json()` says `application/json;charset=utf-8`.
+ * servedHeaders), bytes and a stream of a body or Blob are served as `application/octet-stream`, and `Response.json()`
+ * says `application/json;charset=utf-8`.
  */
 const NativeResponse = Response;
-const textBodies = new WeakSet<Response>();
+/** What Bun.serve adds to a response it sends: a default content type, and the body's length where it is known. */
+type Served = { type?: string; implicitType?: boolean; length?: number };
+const served = new WeakMap<Response, Served>();
 const REDIRECT_STATUS = new Set([301, 302, 303, 307, 308]);
 const hasType = (init?: ResponseInit) => new Headers(init?.headers).has("content-type");
+/** Streams whose bytes come from a body or a Blob (`response.body`, `request.body`, `blob.stream()`), as Bun's native ones. */
+const bodyStreams = new WeakSet<ReadableStream>();
+for (const [proto, key] of [[NativeResponse.prototype, "body"], [Request.prototype, "body"]] as const) {
+  const get = Object.getOwnPropertyDescriptor(proto, key)?.get;
+  if (get)
+    Object.defineProperty(proto, key, {
+      get() {
+        const s = get.call(this) as ReadableStream | null;
+        if (s) bodyStreams.add(s);
+        return s;
+      },
+      configurable: true,
+      enumerable: true,
+    });
+}
+const blobStream = Blob.prototype.stream;
+Blob.prototype.stream = function stream(this: Blob) {
+  const s = blobStream.call(this);
+  bodyStreams.add(s);
+  return s;
+};
+const blobSize = Object.getOwnPropertyDescriptor(Blob.prototype, "size")!.get!;
+/** The byte length of a body Bun knows before sending it (not a stream's, nor a form's). */
+function knownLength(body: BodyInit | null | undefined): number | undefined {
+  if (body === null || body === undefined) return 0;
+  if (typeof body === "string") return new TextEncoder().encode(body).byteLength;
+  if (body instanceof ArrayBuffer || ArrayBuffer.isView(body)) return body.byteLength;
+  // The Blob's own bytes (a Bun.file's are the file when it was made), not a BunFile's live size.
+  if (body instanceof Blob) return blobSize.call(body) as number;
+  if (body instanceof URLSearchParams) return new TextEncoder().encode(body.toString()).byteLength;
+  return undefined;
+}
 class ServerResponse extends NativeResponse {
   constructor(body?: BodyInit | null, init?: ResponseInit) {
     super(body, init);
     const headers = new Headers(init?.headers);
     for (const [k, v] of super.headers) if (!headers.has(k)) headers.set(k, v);
-    if (typeof body === "string" && !hasType(init)) {
-      headers.delete("content-type");
-      textBodies.add(this);
+    const info: Served = { length: knownLength(body) };
+    if (!hasType(init)) {
+      if (typeof body === "string") {
+        headers.delete("content-type");
+        info.type = "text/plain;charset=utf-8";
+      } else if (body instanceof ArrayBuffer || ArrayBuffer.isView(body) || (body instanceof ReadableStream && bodyStreams.has(body))) info.type = "application/octet-stream";
+      // A Blob's type, a form's boundary: Bun sends them, but not for HEAD.
+      else if (headers.has("content-type")) info.implicitType = true;
     }
+    served.set(this, info);
     Object.defineProperty(this, "headers", { value: headers });
   }
   static [Symbol.hasInstance](x: unknown) {
@@ -419,7 +460,8 @@ class ServerResponse extends NativeResponse {
   }
   clone(): Response {
     const c = super.clone();
-    if (textBodies.has(this)) textBodies.add(c);
+    const info = served.get(this);
+    if (info) served.set(c, info);
     return Object.defineProperty(c, "headers", { value: new Headers(this.headers) });
   }
 }
@@ -446,10 +488,17 @@ Object.defineProperty(Headers.prototype, "toJSON", {
 trackBodies(self);
 installWebInspect(self);
 
-/** The headers Bun.serve sends for `res`, then the Set-Cookie headers of the request's `req.cookies` changes. */
-function servedHeaders(res: Response, setCookies: string[]): [string, string][] {
-  const headers = [...res.headers];
-  if (textBodies.has(res) && !res.headers.has("content-type")) headers.push(["content-type", "text/plain;charset=utf-8"]);
+/**
+ * The headers Bun.serve sends for `res`, then the Set-Cookie headers of the request's `req.cookies` changes: a default
+ * content type (none for HEAD, as Bun leaves out what it would derive from the body) and the content length when the
+ * body's is known (a stream's isn't), as Bun adds them.
+ */
+function servedHeaders(res: Response, setCookies: string[], head = false): [string, string][] {
+  const info = served.get(res);
+  const length = info?.length !== undefined && !(res.status < 200 || res.status === 204 || res.status === 304) ? info.length : undefined;
+  const headers = [...res.headers].filter(([k]) => !(k === "content-length" && length !== undefined) && !(k === "content-type" && head && info?.implicitType));
+  if (info?.type && !head && !res.headers.has("content-type")) headers.push(["content-type", info.type]);
+  if (length !== undefined) headers.push(["content-length", String(length)]);
   for (const c of setCookies) headers.push(["set-cookie", c]);
   return headers;
 }
@@ -602,8 +651,8 @@ async function serveBundledHtml(imp: HtmlImport): Promise<Response> {
  * A preview response goes back as it's produced (SSE, streamed HTML): `head`, then a `chunk` per piece of the body,
  * then `end`, or `error` if the body fails. A `cancel` from the other end (the page went away) cancels the body.
  */
-async function sendResponse(port: MessagePort, res: Response, setCookies: string[] = []) {
-  port.postMessage({ type: "head", status: res.status, statusText: res.statusText, headers: servedHeaders(res, setCookies) });
+async function sendResponse(port: MessagePort, res: Response, setCookies: string[] = [], head = false) {
+  port.postMessage({ type: "head", status: res.status, statusText: res.statusText, headers: servedHeaders(res, setCookies, head) });
   if (!res.body) return port.postMessage({ type: "end" });
   const reader = res.body.getReader();
   port.onmessage = (e) => {
@@ -669,7 +718,8 @@ async function route(inst: Instance, req: Request): Promise<Response> {
     if (value instanceof Response) return value.clone();
     if (isHtmlImport(value)) return serveBundledHtml(value);
     if (typeof value === "function") return call(value, routeRequest(req, params), server);
-    const byMethod = value[req.method];
+    // A HEAD to a route with only GET gets GET's response, without its body (as Bun answers it).
+    const byMethod = value[req.method] ?? (req.method === "HEAD" ? value.GET : undefined);
     if (byMethod) return byMethod instanceof Response ? byMethod.clone() : call(byMethod, routeRequest(req, params), server);
   }
   if (handler) return call(handler, req, server);
@@ -1110,7 +1160,7 @@ async function loopbackFetch(inst: Instance, req: Request): Promise<Response> {
     const location = res.headers.get("location");
     if (mode === "manual" || !REDIRECT_STATUS.has(res.status) || location === null) {
       // What a client of Bun.serve gets: its headers (the implicit content-type, Set-Cookie), no body for HEAD.
-      const out = new Response(req.method === "HEAD" ? null : res.body, { status: res.status, statusText: res.statusText, headers: servedHeaders(res, setCookies) });
+      const out = new Response(req.method === "HEAD" ? null : res.body, { status: res.status, statusText: res.statusText, headers: servedHeaders(res, setCookies, req.method === "HEAD") });
       return Object.defineProperties(out, { url: { value: req.url }, redirected: { value: hops > 0 } });
     }
     res.body?.cancel().catch(() => {});
@@ -1389,7 +1439,7 @@ async function main() {
         post({ type: "console", level: "error", text: `${uncaughtText(err)}${r.method} - ${new URL(r.path, "http://localhost/").pathname} failed` });
         return sendText(port, 500, fmt(err));
       }
-      await sendResponse(port, out.res, out.setCookies);
+      await sendResponse(port, out.res, out.setCookies, r.method === "HEAD");
     } else if (m.type === "ws") {
       const port = e.ports[0];
       const inst = m.port === undefined ? previewServer() : servers.find((s) => s.port === m.port);

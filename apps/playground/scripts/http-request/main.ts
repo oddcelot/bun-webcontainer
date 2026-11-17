@@ -3,6 +3,19 @@
 import http from "node:http";
 import https from "node:https";
 
+// What Bun.serve adds to each kind of body: a content type, the length where it is known before sending.
+const bodies: Record<string, () => Response> = {
+  string: () => new Response("hello"),
+  null: () => new Response(null),
+  bytes: () => new Response(new Uint8Array([1, 2, 3])),
+  "typed-blob": () => new Response(new Blob(["xy"], { type: "text/x" })),
+  json: () => Response.json({ a: 1 }),
+  "explicit-type": () => new Response("x", { headers: { "content-type": "text/html" } }),
+  "wrong-length": () => new Response("hello", { headers: { "content-length": "3" } }),
+  "body-stream": () => new Response(new Response("piped").body),
+  "no-content": () => new Response(null, { status: 204 }),
+};
+
 const server = Bun.serve({
   port: 3011,
   async fetch(req) {
@@ -30,6 +43,7 @@ const server = Bun.serve({
     if (u.pathname === "/empty") return new Response(null, { status: 204 });
     if (u.pathname.startsWith("/moved/")) return new Response(null, { status: Number(u.pathname.slice(7)), headers: { location: "/echo?moved=1" } });
     if (u.pathname === "/loop") return Response.redirect("/loop", 302);
+    if (u.pathname.startsWith("/body/")) return bodies[u.pathname.slice(6)]();
     return new Response("nf", { status: 404 });
   },
 });
@@ -107,6 +121,11 @@ await new Promise<void>((done) => {
     done();
   });
 });
+for (const kind of Object.keys(bodies))
+  for (const method of ["GET", "HEAD"]) {
+    const r = await fetch(`http://localhost:3011/body/${kind}`, { method });
+    log(`served ${method} ${kind}:`, r.status, r.headers.get("content-type"), kind === "body-stream" ? "" : r.headers.get("content-length"), JSON.stringify(await r.text()));
+  }
 // fetch() follows redirects to this program's own server as Bun's does.
 for (const [status, method] of [[301, "POST"], [302, "PUT"], [303, "PUT"], [307, "POST"], [308, "PATCH"]] as const) {
   const r = await fetch(`http://localhost:3011/moved/${status}`, { method, body: "data", headers: { "content-type": "text/x" } });
