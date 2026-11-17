@@ -280,6 +280,30 @@ pub fn reset_merge(ctx: &Ctx) -> Result<(), Exit> {
     rewrite_index(ctx, &drop, &add)
 }
 
+/// Write the files of `t` into the worktree (not the index), for `stash`'s untracked files.
+pub fn write_files(ctx: &Ctx, t: &Flat) -> Result<(), Exit> {
+    for (p, (mode, id)) in t {
+        write_entry(ctx, p, *mode, *id)?;
+    }
+    Ok(())
+}
+
+/// Set the index to `t` (stage 0 only), keeping the stat of entries that stay the same; the worktree isn't touched.
+pub fn set_index(ctx: &Ctx, t: &Flat) -> Result<(), Exit> {
+    let index = load_index(ctx)?;
+    let (idx, conflicts) = (flat_index(&index), crate::status::unmerged(&index));
+    let paths: BTreeSet<&BString> = idx.keys().chain(t.keys()).chain(conflicts.keys()).filter(|p| idx.get(*p) != t.get(*p) || conflicts.contains_key(*p)).collect();
+    let (mut drop, mut add) = (HashSet::new(), Vec::new());
+    for p in paths {
+        drop.insert(p.clone());
+        if let Some((mode, id)) = t.get(p) {
+            add.push((p.clone(), *mode, *id, Stat::default()));
+        }
+    }
+    rewrite_index(ctx, &drop, &add)
+}
+
+
 // ---- switch / checkout --------------------------------------------------------------------------------------------
 
 struct Opts {

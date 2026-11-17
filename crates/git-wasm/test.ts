@@ -623,6 +623,83 @@ try {
   await twin("show lightweight tag", p6, ["show", "light"], { out: true });
   await twin("log tag", p6, ["log", "--oneline", "ann"], { out: true, nativeArgs: ["log", "--oneline", "--no-decorate", "ann"] });
 
+  // ---- stash ----------------------------------------------------------------------------------------------------------
+  // the list, and per entry its trees and messages as stored (ids differ: commit times)
+  const stashState = (d: string) => {
+    const listed = natIn(d, "stash", "list").stdout;
+    let s = listed;
+    const body = (rev: string) => { const c = natIn(d, "cat-file", "commit", rev); return c.status ? "-" : JSON.stringify(c.stdout.slice(c.stdout.indexOf("\n\n") + 2)); };
+    const id = (rev: string) => natIn(d, "rev-parse", "-q", "--verify", rev).stdout.trim() || "-";
+    for (let i = 0; i < listed.split("\n").filter(Boolean).length; i++) {
+      const e = `stash@{${i}}`;
+      s += [id(`${e}^{tree}`), id(`${e}^1`), id(`${e}^2^{tree}`), (id(`${e}^3`) === "-" ? "-" : id(`${e}^3^{tree}`)), id(`${e}^4`), id(`${e}^2^1`), id(`${e}^3^1`), body(e), body(`${e}^2`), body(`${e}^3`)].join("|") + "\n";
+    }
+    return s;
+  };
+  const p7 = join(tmp, "p7");
+  cpSync(p5, p7, { recursive: true });
+  const dirty = (d: string) => {
+    write(d, "a.txt", "a\nb\nc\nA\n");
+    write(d, "b.txt", "staged\n");
+    write(d, "n2.txt", "new staged\n");
+    nat(d, "add", "b.txt", "n2.txt");
+    rmSync(join(d, "k.txt"));
+    write(d, "u.txt", "untracked\n");
+    write(d, "ud/deep.txt", "untracked deep\n");
+  };
+  const ss = { out: true, err: true, extra: stashState };
+  await twin("stash nothing", p7, ["stash"], ss);
+  await twin("stash list empty", p7, ["stash", "list"], ss);
+  await twin("stash pop empty", p7, ["stash", "pop"], ss);
+  await twin("stash show empty", p7, ["stash", "show"], ss);
+  await twin("stash", p7, ["stash"], { ...ss, setup: dirty });
+  // what we stashed, native git pops (and the other way round below)
+  same("native pops our stash", (natIn(A, "stash", "pop"), state(A)), (natIn(B, "stash", "pop"), state(B)));
+  await twin("stash push -m", p7, ["stash", "push", "-m", "my message"], { ...ss, setup: dirty });
+  await twin("stash -m", p7, ["stash", "-m", "short form"], { ...ss, setup: dirty });
+  await twin("stash save", p7, ["stash", "save", "saved", "words"], { ...ss, setup: dirty });
+  await twin("stash -q", p7, ["stash", "-q"], { ...ss, setup: dirty });
+  await twin("stash -u", p7, ["stash", "-u"], { ...ss, setup: dirty });
+  same("native pops our -u stash", (natIn(A, "stash", "pop"), state(A)), (natIn(B, "stash", "pop"), state(B)));
+  await twin("stash only untracked -u", p7, ["stash", "-u"], { ...ss, setup: (d) => write(d, "u.txt", "u\n") });
+  await twin("stash only untracked", p7, ["stash"], { ...ss, setup: (d) => write(d, "u.txt", "u\n") });
+  await twin("stash detached", p7, ["stash"], { ...ss, setup: (d) => { nat(d, "switch", "-q", "--detach"); dirty(d); } });
+  r = await git(empty, ["stash"], ident);
+  check("stash unborn", r.code === 1 && r.err === "You do not have the initial commit yet\n", JSON.stringify(r));
+  // a stash list made by native git
+  const p7s = join(tmp, "p7s");
+  cpSync(p7, p7s, { recursive: true });
+  dirty(p7s);
+  nat(p7s, "stash", "-u");
+  write(p7s, "a.txt", "a\nb\nc\nsecond\n");
+  nat(p7s, "stash", "push", "-m", "second");
+  write(p7s, "b.txt", "third\n");
+  nat(p7s, "add", "b.txt");
+  nat(p7s, "stash");
+  for (const a of [["list"], ["show"], ["show", "1"], ["show", "stash@{2}"], ["show", "-p"], ["show", "-p", "stash@{2}"], ["show", "--stat", "-p", "1"]]) {
+    await twin(`stash ${a.join(" ")}`, p7s, ["stash", ...a], ss);
+  }
+  await twin("stash apply", p7s, ["stash", "apply"], ss);
+  await twin("stash apply 1", p7s, ["stash", "apply", "1"], ss);
+  await twin("stash apply stash@{2} (untracked)", p7s, ["stash", "apply", "stash@{2}"], ss);
+  await twin("stash apply --index", p7s, ["stash", "apply", "--index"], ss);
+  await twin("stash apply --index stash@{2}", p7s, ["stash", "apply", "--index", "stash@{2}"], ss);
+  await twin("stash apply -q", p7s, ["stash", "apply", "-q"], ss);
+  await twin("stash apply with staged elsewhere", p7s, ["stash", "apply", "1"], { ...ss, setup: (d) => { write(d, "k.txt", "staged\n"); nat(d, "add", "k.txt"); } });
+  await twin("stash apply refuses dirty", p7s, ["stash", "apply", "1"], { ...ss, setup: (d) => write(d, "a.txt", "dirty\n") });
+  await twin("stash apply untracked taken", p7s, ["stash", "apply", "stash@{2}"], { ...ss, setup: (d) => write(d, "u.txt", "mine\n") });
+  await twin("stash pop", p7s, ["stash", "pop"], ss);
+  await twin("stash pop 1", p7s, ["stash", "pop", "1"], ss);
+  await twin("stash pop conflict", p7s, ["stash", "pop", "1"], { ...ss, setup: (d) => { write(d, "a.txt", "a\nb\nc\nZ\n"); nat(d, "commit", "-qam", "conflicting"); }, head: "tree" });
+  await twin("stash drop", p7s, ["stash", "drop"], ss);
+  await twin("stash drop 1", p7s, ["stash", "drop", "1"], ss);
+  await twin("stash drop stash@{2}", p7s, ["stash", "drop", "stash@{2}"], ss);
+  await twin("stash drop -q", p7s, ["stash", "drop", "-q"], ss);
+  await twin("stash drop out of range", p7s, ["stash", "drop", "7"], ss);
+  await twin("stash drop bad", p7s, ["stash", "drop", "nope"], ss);
+  await twin("stash clear", p7s, ["stash", "clear"], ss);
+  await twin("stash on a list", p7s, ["stash"], { ...ss, setup: (d) => write(d, "a.txt", "fourth\n") });
+
   // ---- config ---------------------------------------------------------------------------------------------------------
   const p4 = join(tmp, "p4");
   mkdirSync(p4);

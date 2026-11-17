@@ -10,6 +10,7 @@ mod net;
 mod push;
 mod refs;
 mod rename;
+mod stash;
 mod status;
 mod tag;
 mod worktree;
@@ -115,6 +116,7 @@ Supported in the playground:
    checkout   Switch branches or restore files (<branch>, -b <new>, <rev> -- <path>...)
    merge      Join a branch into the current one (<rev>, --no-ff, --ff-only, -m <msg>, --abort, --continue)
    tag        List, create or delete tags (-l [<pattern>...], -n<num>, -a, -m <msg>, -f, -d)
+   stash      Set changes aside (push [-m <msg>] [-u], save, list, show [-p], apply [--index], pop, drop, clear)
    clean      Remove untracked files (-n, -f, -d)
    config     Get and set options in the repository config (--get, --unset, --list)
    rev-parse  Print the object id of a revision (--verify, --abbrev-ref)
@@ -159,7 +161,8 @@ fn run(args: &[String]) -> Res {
         "push" => push::push(&open()?, rest),
         "merge" => merge::merge(&open()?, rest),
         "tag" => tag::tag(&open()?, rest),
-        "rebase" | "stash" => {
+        "stash" => stash::stash(&open()?, rest),
+        "rebase" => {
             eprintln!("git: '{cmd}' is not supported in the playground yet");
             Ok(1)
         }
