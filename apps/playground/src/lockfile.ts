@@ -7,6 +7,7 @@ import { flattenOverrides, overridesInLock, overridesOf } from "./overrides";
 import { lockedGitHub, tarballPath, type GitHubDep } from "./gitDeps";
 import { links } from "./links";
 import { BASE } from "./base";
+import { applyPatchFile } from "./patches";
 import { untar } from "./tar";
 
 type Log = (level: "log" | "error", text: string) => void;
@@ -36,11 +37,12 @@ type BunLock = {
   catalogs?: Record<string, Deps>;
   overrides?: Record<string, unknown>;
   trustedDependencies?: string[];
+  patchedDependencies?: Record<string, string>;
   packages: Record<string, unknown[]>;
 };
 
 type Deps = Record<string, string>;
-type Manifest = { dependencies?: Deps; devDependencies?: Deps; optionalDependencies?: Deps; peerDependencies?: Deps; workspaces?: unknown; catalog?: unknown; catalogs?: unknown; overrides?: unknown; resolutions?: unknown; trustedDependencies?: string[] };
+type Manifest = { dependencies?: Deps; devDependencies?: Deps; optionalDependencies?: Deps; peerDependencies?: Deps; workspaces?: unknown; catalog?: unknown; catalogs?: unknown; overrides?: unknown; resolutions?: unknown; trustedDependencies?: string[]; patchedDependencies?: Record<string, string> };
 
 const allDeps = (m?: Manifest): Deps => ({ ...m?.peerDependencies, ...m?.devDependencies, ...m?.optionalDependencies, ...m?.dependencies });
 
@@ -53,15 +55,20 @@ export function staleInLock(lock: BunLock, pkg: Manifest, workspaces?: { path: s
   stale.push(...differs(rules, flattenOverrides(lock.overrides)).map((n) => `override ${n}`));
   // A catalog entry added, removed or given another range (the workspaces keep the `catalog:` literal).
   for (const e of catalogChanges({ default: lock.catalog ?? {}, groups: lock.catalogs ?? {} }, catalogsOf(pkg))) stale.push(`catalog ${e}`);
-  // A trusted package added or removed, among those bun.lock has (Bun writes only those).
-  const names = new Set<string>();
+  // A trusted or patched package added or removed, among those bun.lock has (Bun writes only those).
+  const names = new Set<string>(), idents = new Set<string>();
   for (const [key, e] of Object.entries(lock.packages)) {
     const id = typeof e[0] === "string" ? parseIdent(e[0]) : null;
-    if (id) names.add(resolutionKind(id.version) === "npm" ? id.name : splitKey(key).at(-1)!);
+    if (!id) continue;
+    names.add(resolutionKind(id.version) === "npm" ? id.name : splitKey(key).at(-1)!);
+    idents.add(e[0] as string);
   }
   const trusted = Array.isArray(pkg.trustedDependencies) ? pkg.trustedDependencies.filter((n) => names.has(n)) : [];
   const lockedTrusted = lock.trustedDependencies ?? [];
   if (trusted.length !== lockedTrusted.length || trusted.some((n) => !lockedTrusted.includes(n))) stale.push("trustedDependencies");
+  const patches = Object.entries(pkg.patchedDependencies ?? {}).filter(([k]) => idents.has(k));
+  const lockedPatches = lock.patchedDependencies ?? {};
+  if (patches.length !== Object.keys(lockedPatches).length || patches.some(([k, v]) => lockedPatches[k] !== v)) stale.push("patchedDependencies");
   // A workspace added or removed, or one whose dependencies changed (named by its folder).
   if (!workspaces) return stale;
   const paths = new Set(workspaces.map((w) => w.path));
@@ -221,10 +228,31 @@ async function packageTarball(vfs: Pick<VFS, "files" | "readBytes">, id: { name:
 }
 
 /**
+ * The files of the package installed at `dir` (`node_modules/a`) as its tarball has them, before any patch: what
+ * `bun patch --commit` compares the edited folder with. Undefined when bun.lock has no tarball for it.
+ */
+export async function pristineFiles(vfs: Pick<VFS, "files" | "readBytes" | "readText">, dir: string): Promise<Map<string, Uint8Array> | undefined> {
+  const lockText = vfs.readText("bun.lock");
+  if (lockText === undefined) return;
+  const lock = parseBunLock(lockText);
+  const found = Object.entries(lock.packages).find(([key]) => installPath(splitKey(key)) === dir);
+  const id = found && typeof found[1][0] === "string" ? parseIdent(found[1][0]) : null;
+  if (!found || !id || !["npm", "tarball", "file", "git"].includes(resolutionKind(id.version)) || (resolutionKind(id.version) === "file" && !TARBALL.test(id.version))) return;
+  const { tgz } = await packageTarball(vfs, id, found[1], []);
+  const files = new Map<string, Uint8Array>();
+  for (const { name, data } of untar(await gunzip(tgz))) {
+    const rel = name.split("/").slice(1).join("/");
+    if (rel) files.set(rel, data);
+  }
+  return files;
+}
+
+/**
  * Installs exactly what `bun.lock` lists: every package at its locked version and install path
  * (nested keys go to nested `node_modules`), each tarball checked against its integrity hash.
  * npm packages, tarball URLs, GitHub tarballs, `file:` folders or tarballs, and workspaces and `link:` folders (copied
- * to node_modules); other git entries are reported and skipped.
+ * to node_modules); other git entries are reported and skipped. A package bun.lock's `patchedDependencies` names gets
+ * its patch applied.
  */
 export async function installFromBunLock(vfs: VFS, lockText: string, log: Log): Promise<number> {
   const lock = parseBunLock(lockText);
@@ -291,6 +319,13 @@ export async function installFromBunLock(vfs: VFS, lockText: string, log: Log): 
           const { tgz, url } = await packageTarball(vfs, id, entry, folders);
           // Kept as bytes, text included (see INSTALLED_AS_BYTES).
           for (const { name, data } of packageFiles(await gunzip(tgz), url)) put(name, data);
+        }
+        // patchedDependencies: the patch goes over the package's files as installed, in both copies.
+        const patch = lock.patchedDependencies?.[entry[0] as string];
+        if (patch !== undefined) {
+          const text = vfs.readText(patch);
+          const failed = text === undefined ? `no patch file ${patch}` : applyPatchFile({ readText: (p) => vfs.readText(`${dest}/${p}`), write: put, remove: (p) => (vfs.remove(`${dest}/${p}`), also && vfs.remove(`${also}/${p}`)) }, text);
+          if (failed) throw new Error(`failed applying patch file ${patch}: ${failed}`);
         }
         installed++;
         log("log", `+ ${key}@${res}`);

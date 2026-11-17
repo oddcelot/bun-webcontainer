@@ -32,6 +32,7 @@ export type Manifest = {
   bin?: string | Record<string, string>;
   hasInstallScript?: boolean;
   trustedDependencies?: string[];
+  patchedDependencies?: Record<string, string>;
   scripts?: Record<string, string>;
   deprecated?: string;
   dist?: { tarball: string; integrity?: string };
@@ -618,6 +619,19 @@ function treeWalk(tree: Node[]): Node[] {
 /** The name `trustedDependencies` lists a package by: an npm package's own, any other's folder name (`trusted_name`). */
 const trustedName = (n: Node) => (n.pkg!.kind === "npm" ? n.pkg!.name : n.parent!.depth ? n.path.slice(n.parent!.path.length + 1) : n.path);
 
+/** `name@version` as `patchedDependencies` keys a package. */
+const nameAndVersion = (n: Node) => {
+  const p = n.pkg!;
+  return `${p.name}@${p.kind === "npm" ? p.version : p.kind === "workspace" ? (p.manifest.version ?? "") : p.resolution}`;
+};
+
+/** package.json's `patchedDependencies` (`"name@version": "patches/….patch"`), the string values only. */
+export function patchesOf(root: Manifest): Record<string, string> {
+  const p = root.patchedDependencies;
+  if (!p || typeof p !== "object" || Array.isArray(p)) return {};
+  return Object.fromEntries(Object.entries(p).filter((e): e is [string, string] => typeof e[1] === "string"));
+}
+
 /** The bun.lock Bun writes for this tree. */
 export function writeBunLock({ root, rootDeps, workspaces, catalogs, overrides, tree }: Resolved): string {
   const lines = ["{", `  "lockfileVersion": ${overrides.scoped.length ? 3 : 2},`, '  "configVersion": 1,', '  "workspaces": {'];
@@ -642,7 +656,7 @@ export function writeBunLock({ root, rootDeps, workspaces, catalogs, overrides, 
   member("", root, rootDeps, false);
   for (const w of workspaces) member(w.path, w.manifest, depsOf(w.manifest, true), true);
   lines.push("  },");
-  // The trusted packages the tree has, in Bun's hash map order (lockOrder.ts) over the tree's walk.
+  // The trusted and patched packages the tree has, in Bun's hash map order (lockOrder.ts) over the tree's walk.
   const walk = treeWalk(tree);
   const trusted = Array.isArray(root.trustedDependencies) ? new Set(root.trustedDependencies) : undefined;
   if (trusted) {
@@ -650,6 +664,9 @@ export function writeBunLock({ root, rootDeps, workspaces, catalogs, overrides, 
     if (found.length) lines.push('  "trustedDependencies": [', ...writtenOrder(found.map((n) => ({ key: n, value: n })), trusted.size).map((n) => `    ${q(n)},`), "  ],");
     else if (!trusted.size) lines.push('  "trustedDependencies": [],');
   }
+  const patches = patchesOf(root);
+  const patched = walk.map(nameAndVersion).filter((k) => k in patches);
+  if (patched.length) lines.push('  "patchedDependencies": {', ...writtenOrder(patched.map((k) => ({ key: k, value: k })), Object.keys(patches).length).map((k) => `    ${q(k)}: ${q(patches[k])},`), "  },");
   if (Object.keys(overrides.rules).length || overrides.scoped.length) lines.push('  "overrides": {', ...overrideLines(overrides), "  },");
   const group = (map: Record<string, string>, indent: string) => Object.keys(map).sort(byBytes).map((n) => `${indent}${q(n)}: ${q(map[n])},`);
   if (Object.keys(catalogs.default).length) lines.push('  "catalog": {', ...group(catalogs.default, "    "), "  },");

@@ -11,6 +11,8 @@ import { loadShellWasm } from "./shell/load";
 import type { InstallFlags } from "./install";
 import { untrustedNames, untrustedReport } from "./lifecycle";
 import { links, setLink } from "./links";
+import { makePatch, patchPath } from "./patches";
+import { pristineFiles } from "./lockfile";
 import { binCommand, isTestFile, scriptChecks, scriptEntry, shellCommand, type Pkg } from "./scripts";
 
 type Log = (level: string, text: string) => void;
@@ -49,6 +51,7 @@ bun add <pkg> [-d]     add (dev) dependencies
 bun remove <pkg>       remove dependencies
 bun link [pkg]         register this folder's package, or depend on one registered (link:)
 bun unlink             forget this folder's registration
+bun patch <pkg>        patch an installed package: edit it, then bun patch --commit <folder>
 bun install --ignore-scripts  install without running lifecycle scripts
 bun pm cache [rm]      show or clear the package cache
 bun pm untrusted       list the dependencies whose lifecycle scripts were blocked
@@ -243,6 +246,38 @@ export function createShell(host: ShellHost) {
     await host.install();
   }
 
+  /**
+   * `bun patch <pkg>`: says which folder to edit (installed files are the project's own here already).
+   * `bun patch --commit <folder>`: the edits, as a patch from the package's own files (patches.ts), saved in
+   * patches/ and named in package.json's patchedDependencies; the install then applies it as bun.lock records it.
+   */
+  async function patch(args: string[]) {
+    const commit = args.includes("--commit");
+    const dirFlag = args.find((a) => a.startsWith("--patches-dir="))?.slice("--patches-dir=".length);
+    const target = args.find((a) => !a.startsWith("-"));
+    if (!target) return fail(`error: missing package to patch: bun patch ${commit ? "--commit <folder>" : "<pkg>"}`);
+    const dir = target.replace(/^\.\//, "").replace(/\/$/, "").startsWith("node_modules/") ? target.replace(/^\.\//, "").replace(/\/$/, "") : `node_modules/${target.replace(/(.)@[^/]*$/, "$1")}`;
+    const meta = JSON.parse(vfs.readText(`${dir}/package.json`) ?? "null") as { name?: string; version?: string } | null;
+    if (!meta?.name) return fail(`error: package ${target} not found`);
+    if (!commit) return log("log", `\nTo patch ${meta.name}, edit the following folder:\n\n  ${dir}\n\nOnce you're done with your changes, run:\n\n  bun patch --commit '${dir}'`);
+    const pristine = await pristineFiles(vfs, dir);
+    if (!pristine) return fail(`error: ${meta.name} isn't a package installed from a tarball (bun.lock), so it can't be patched`);
+    const paths = vfs.list(dir).filter((p) => !p.slice(dir.length + 1).split("/").includes("node_modules"));
+    await vfs.ensure(paths);
+    const edited = new Map(paths.flatMap((p) => {
+      const bytes = vfs.readBytes(p);
+      return bytes ? [[p.slice(dir.length + 1), bytes] as const] : [];
+    }));
+    const text = await makePatch(pristine, edited);
+    if (!text) return log("log", `No changes detected in ${dir}`);
+    const file = `${dirFlag ? dirFlag.replace(/\/$/, "") : "patches"}/${patchPath(meta.name, meta.version ?? "").slice("patches/".length)}`;
+    vfs.write(file, text);
+    const pkg = readPkg() as (Pkg & { patchedDependencies?: Record<string, string> }) | undefined;
+    if (!pkg) return;
+    writePkg({ ...pkg, patchedDependencies: { ...pkg.patchedDependencies, [`${meta.name}@${meta.version}`]: file } });
+    await host.install();
+  }
+
   async function remove(names: string[]) {
     if (!names.length) return fail("usage: bun remove <pkg>...");
     const pkg = readPkg();
@@ -401,6 +436,7 @@ export function createShell(host: ShellHost) {
       if (sub === "fmt") return await fmt(rest);
       if (sub === "check") return await check(rest);
       if (sub === "pm") return await pm(rest);
+      if (sub === "patch") return await patch(rest);
       if (sub === "link" || sub === "unlink") return await link(rest, projectPath(ctx, "."), sub === "unlink");
       if (vfs.files.has(projectPath(ctx, sub))) return await runTarget(projectPath(ctx, sub), withCheck);
       fail(`bun ${sub}: not available here (try "help")`);

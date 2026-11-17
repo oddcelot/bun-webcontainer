@@ -1,0 +1,13 @@
+diff --git a/index.js b/index.js
+index ea734fb73820316ed1c0f6a2f6e96dce0e3eb6f0..aef58d2d669d22319853dceb7b72c823bccb03a6 100644
+--- a/index.js
++++ b/index.js
+@@ -2,7 +2,7 @@
+  * Helpers.
+  */
+ 
+-var s = 1000;
++var s = 1000; // one second
+ var m = s * 60;
+ var h = m * 60;
+ var d = h * 24;
