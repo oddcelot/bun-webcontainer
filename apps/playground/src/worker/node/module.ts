@@ -131,7 +131,13 @@ const nodeModulePaths = (dir: string) => {
 };
 
 /** `node:module` needs the registry (for createRequire, builtinModules), so it is built by index.ts. */
-export function createModule(registry: Record<string, object>, builtinName: (spec: string) => string | undefined, builtinModules: () => string[]) {
+export function createModule(
+  registry: Record<string, object>,
+  builtinName: (spec: string) => string | undefined,
+  builtinModules: () => string[],
+  /** A package Bun serves from its own modules when it isn't installed (`ws`): its key in `registry`. */
+  fallback: (spec: string) => string | undefined = () => undefined,
+) {
   const name = (id: string) => builtinName(id) ?? id;
   const isBuiltin = (id: string) => builtinName(String(id)) !== undefined;
 
@@ -161,6 +167,8 @@ export function createModule(registry: Record<string, object>, builtinName: (spe
     const plugged = pluginHook?.(id, from, "require");
     if (plugged) return plugged.value;
     const path = resolveFile?.(id, requireDir(from));
+    const builtin = path ? undefined : fallback(id);
+    if (builtin) return registry[builtin];
     if (!path || !vfs) throw notFound(id, from);
     const file = "/" + path;
     if (mocks.has(path)) return mocks.get(path);
@@ -193,6 +201,8 @@ export function createModule(registry: Record<string, object>, builtinName: (spe
     const plugged = pluginHook?.(spec, from, "import");
     if (plugged) return plugged.value as object;
     const path = resolveImport?.(spec, requireDir(from));
+    const builtin = path ? undefined : fallback(spec);
+    if (builtin) return builtinNamespace(builtin, registry[builtin]);
     if (!path || !vfs) throw Object.assign(new Error(`Cannot find module '${spec}' from '${from}'`), { name: "ResolveMessage", code: "ERR_MODULE_NOT_FOUND" });
     const file = "/" + path;
     if (mocks.has(path)) return Object.assign(Object.create(null) as object, mocks.get(path));
@@ -327,6 +337,7 @@ export function createModule(registry: Record<string, object>, builtinName: (spe
       if (isBuiltin(id)) return id;
       const path = resolveFile?.(id, requireDir(from));
       if (path) return "/" + path;
+      if (fallback(id)) return id;
       throw notFound(id, from);
     };
     resolve.paths = (id: string) => (isBuiltin(id) ? null : nodeModulePaths(requireDir(from)));

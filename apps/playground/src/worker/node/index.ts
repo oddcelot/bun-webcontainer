@@ -128,10 +128,16 @@ export function builtinName(spec: string): string | undefined {
   return name;
 }
 
+/**
+ * Packages Bun serves from its own modules when they aren't installed (an installed one wins): the key in `builtins`
+ * of `spec`, or undefined. Bun also has `undici`, `node-fetch` and others; the playground has only `ws`.
+ */
+export const bunFallback = (spec: string): string | undefined => (spec === "ws" ? "bun:ws" : undefined);
+
 /** `require("module").builtinModules`: the `node:`-only ones with their prefix; Bun leaves out `node:test`. */
 export const builtinModuleNames = () => Object.keys(builtins).filter((k) => k !== "test").map((k) => (NODE_PREFIXED.includes(k) ? `node:${k}` : k));
 
-builtins.module = createModule(builtins, builtinName, builtinModuleNames);
+builtins.module = createModule(builtins, builtinName, builtinModuleNames, bunFallback);
 /** `process.getBuiltinModule(id)`: what `require(id)` gives for a built-in (`node:` or not, `bun:*`), else undefined. */
 process.getBuiltinModule = function getBuiltinModule(id: unknown) {
   if (typeof id !== "string") {

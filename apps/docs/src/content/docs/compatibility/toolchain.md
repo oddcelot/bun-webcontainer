@@ -105,6 +105,7 @@ Bun's own resolver, compiled to WebAssembly (~900 KB, loaded with the first modu
 - ✅ Markdown imports (`.md`, `.markdown`) with Bun's renderer, as Bun has them: the HTML is the default export; `require` returns the module's namespace
 - ✅ CSS imported from code that goes through an HTML import (bundled), or through Vite
 - ✅ CSS imported from server code (`import "./x.css"`, also `.module.css`) is `{}`, as in Bun's runtime. In a page served without bundling, it is linked as a stylesheet and CSS module class names map to themselves.
+- ✅ `ws` that isn't installed is Bun's own, as in Bun: `import`, `require`, `import.meta.resolve` and `Bun.resolveSync` give it (an installed `ws` wins). Bun's other stand-ins for packages it has built in (`undici`, `node-fetch` and the like) aren't there
 - ✅ `http:`/`https:` imports are left to the browser
 - `rolldown` is replaced by the playground's own `@rolldown/browser`, since the native binding can't load
 

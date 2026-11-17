@@ -3,7 +3,7 @@
 // (loopback fetches of failing handlers, the `error` handler) must be native Bun's; then its preview page runs
 // serve/client.ts (default error pages, streams that fail before or after their first chunk, WebSockets: messages both
 // ways, pub/sub, close codes) and must see what native Bun's clients see. serve/node.ts does the same for a node:http
-// server's "upgrade" accepted with `ws`.
+// server's "upgrade" accepted with `ws` (not installed: Bun's own).
 //   bun scripts/serve.ts
 // Chrome: CHROME=<path to the binary>, else the usual install on macOS or Linux.
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -54,7 +54,7 @@ async function native(entry: string, run: () => Promise<string[]>): Promise<[str
 const nativeHttp = `http://localhost:${NATIVE_PORT}`;
 const nativeWs = `ws://localhost:${NATIVE_PORT}`;
 const [wantServer, wantClient] = await native("server.ts", () => client(nativeHttp, nativeWs));
-const [, wantNode] = await native("node.ts", () => nodeClient(nativeWs));
+const [wantNodeLines, wantNode] = await native("node.ts", () => nodeClient(nativeWs));
 
 const chrome =
   process.env.CHROME ??
@@ -139,7 +139,8 @@ try {
     compare("server.ts (loopback fetch)", lines, wantServer);
     if (process.env.DEBUG) console.error(await pf.evaluate(() => [location.href, document.title, String(WebSocket).slice(0, 80)]));
     compare("server.ts (preview page)", await within(pf, pf.evaluate(client, base, `ws://localhost:${PORT}${base}`)), wantClient);
-    const [, pf2, base2] = await run("node.ts", 2, "node");
+    const [nodeLines, pf2, base2] = await run("node.ts", 2, "node");
+    compare("node.ts (output)", nodeLines, wantNodeLines);
     compare("node.ts (preview page)", await within(pf2, pf2.evaluate(nodeClient, `ws://localhost:${PORT}${base2}`)), wantNode);
     for (const c of crashes) (bad++, console.error(`✗ page error: ${c}`));
   } finally {

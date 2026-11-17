@@ -1,8 +1,9 @@
 // A node:http server whose "upgrade" listener accepts WebSockets with `ws` (scripts/serve.ts, client.ts nodeClient).
+// ws isn't installed: Bun's own serves it, to `import`, `require` and the resolvers alike.
 import http from "node:http";
-// import.meta.require: a bare `import "ws"` needs ws installed in the playground (bead bwc-d4q), not in Bun.
-const { WebSocketServer } = import.meta.require("ws") as typeof import("ws");
-type WebSocket = import("ws").WebSocket;
+import { type WebSocket, WebSocketServer } from "ws";
+
+console.log("ws:", require("ws").WebSocketServer === WebSocketServer, import.meta.resolve("ws"), require.resolve("ws"), Bun.resolveSync("ws", import.meta.dir));
 
 const wss = new WebSocketServer({ noServer: true });
 const sockets = new Map<WebSocket, string>();

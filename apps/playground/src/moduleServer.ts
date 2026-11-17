@@ -11,7 +11,7 @@ import { inRanges, isMethod, literalRanges } from "./literals";
 import { DATA_FILE, dataFormat, loadResolver, parseDataFile, resolve, type DataFormat, type ResolveKind } from "./resolver";
 import { dirname, isLazy, LazyMiss, norm, withLoaded, type VFS } from "@runbun/vfs";
 import hostNames, { version as hostVersion } from "virtual:host-package-names";
-import { builtinName, exportNames, NODE_PREFIXED } from "./worker/node";
+import { builtinName, bunFallback, exportNames, NODE_PREFIXED } from "./worker/node";
 import { pluginUrl, routesThroughPlugins, splitNamespace, type PluginAnswer, type PluginFilters } from "./pluginRoutes";
 
 export type ModuleResponse = { status: number; body: string };
@@ -197,7 +197,10 @@ function resolveSpecifier(vfs: VFS, spec: string, dir: string, kind: ResolveKind
   if (spec.startsWith("node:") || builtin !== undefined) return builtin !== undefined ? `__node/${builtin}` : null;
   // A `file:` URL names a path, as in the config Vite bundles and imports (`import … from "file:///node_modules/vite/…"`).
   if (spec.startsWith("file:")) spec = decodeURIComponent(new URL(spec).pathname);
-  return resolveWith(vfs, spec, dir, kind);
+  const t = resolveWith(vfs, spec, dir, kind);
+  // `ws` that isn't installed is Bun's own, as in Bun.
+  const fallback = t === null ? bunFallback(spec) : undefined;
+  return fallback ? `__node/${fallback}` : t;
 }
 
 /** The transpiler's resolver: where each specifier in a module of `dir` is served. */
