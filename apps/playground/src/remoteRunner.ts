@@ -1,4 +1,4 @@
-import { FEATURE_COVERAGE, FEATURE_SNAPSHOTS, lcovPath, PACKED_REQUEST, PACKED_RESPONSE, SYNC_LIMITS, syncPath, type FileData, type ServerMessage } from "@runbun/connect/protocol";
+import { FEATURE_COVERAGE, FEATURE_SNAPSHOTS, FEATURE_TESTFLAGS, lcovPath, PACKED_REQUEST, PACKED_RESPONSE, SYNC_LIMITS, syncPath, testFlag, type FileData, type ServerMessage } from "@runbun/connect/protocol";
 import type { VFS } from "@runbun/vfs";
 import type { LocalBun } from "./localBun";
 import { SKIP } from "./persist";
@@ -105,6 +105,8 @@ export class RemoteRunner extends Runner {
     const dir = coverage?.dir.replace(/^(\.\/+)+/, "").replace(/\/+$/, "");
     const lcov = coverage?.reporters.lcov ? lcovPath(dir && dir !== "." ? `${dir}/lcov.info` : "lcov.info") : undefined;
     this.coverageOn = !!coverage;
+    // -t, --timeout, --bail, --rerun-each, --todo, --only: the runner passes them on (runTests checked it takes them).
+    const testFlags = args.filter((a) => testFlag(a));
     const c = this.begin(!!tests);
     const files = this.snapshot();
     // Test runs ask for the files they changed (snapshots, inline snapshots) if the runner can send them; `-u` also
@@ -125,6 +127,7 @@ export class RemoteRunner extends Runner {
       ...(snapshots && { updateSnapshots: args.some((a) => UPDATE_FLAGS.includes(a)) }),
       ...(tests && args.some(isCoverageFlag) && { coverage: args.filter(isCoverageFlag) }),
       ...(lcov && { lcov }),
+      ...(tests && testFlags.length && { testFlags }),
     });
     await this.ready;
   }
@@ -133,18 +136,23 @@ export class RemoteRunner extends Runner {
   override async runTests(files: string[], args: string[] = []): Promise<TestResults> {
     // The runner tests the project in its own folder; it sends the changed snapshots and the coverage lcov.info back
     // (an older runner doesn't, and they would be lost).
-    // The runner takes no other flags of `bun test`.
+    // Besides these, it takes -t, --timeout, --bail, --rerun-each, --todo and --only, if it says so.
     const coverage = args.filter(isCoverageFlag);
     if (coverage.length && !this.local.features.includes(FEATURE_COVERAGE)) {
       this.out("error", `[local] bun test ${coverage.join(" ")}: this runner can't count coverage (update @runbun/connect, or switch Local Bun off for it).`);
       return { failed: 1 };
     }
-    const other = args.filter((a) => !isCoverageFlag(a) && !UPDATE_FLAGS.includes(a));
+    const other = args.filter((a) => !isCoverageFlag(a) && !UPDATE_FLAGS.includes(a) && !testFlag(a));
     if (other.length) {
-      this.out("error", `[local] bun test ${other.join(" ")}: Local Bun takes only -u and the coverage flags; switch Local Bun off for it.`);
+      this.out("error", `[local] bun test ${other.join(" ")}: Local Bun doesn't take it; switch Local Bun off for it.`);
       return { failed: 1 };
     }
-    const update = args.filter((a) => !isCoverageFlag(a));
+    const passed = args.filter((a) => testFlag(a));
+    if (passed.length && !this.local.features.includes(FEATURE_TESTFLAGS)) {
+      this.out("error", `[local] bun test ${passed.join(" ")}: this runner can't pass them on (update @runbun/connect, or switch Local Bun off for it).`);
+      return { failed: 1 };
+    }
+    const update = args.filter((a) => !isCoverageFlag(a) && !testFlag(a));
     if (update.length && !(update.every((a) => UPDATE_FLAGS.includes(a)) && this.local.features.includes(FEATURE_SNAPSHOTS))) {
       const old = UPDATE_FLAGS.includes(update[0]!) ? " with this runner (update @runbun/connect to update them here)" : "";
       this.out("error", `[local] bun test ${update.join(" ")}: snapshots update only in the browser${old}; switch Local Bun off to update them.`);

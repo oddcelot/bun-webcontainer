@@ -32,6 +32,10 @@ bun test.ts [secret]    # end-to-end: access checks, native APIs, sandbox, previ
   the file (1 MiB), the total (8 MiB) and the count (500). Skipped files are named in the run's stderr. The page
   re-checks all of it and applies files only to the run it started (remoteRunner.ts `applyFiles`). Not synced:
   deleted snapshot files, binary files.
+- **Test flags** (`testflags` in `hello.features`): a test run's `testFlags` go to `bun test` after `testFlag`
+  (protocol.ts) allows each: `--test-name-pattern=<text>` (the page's `-t=<text>` too; one argv entry, no shell),
+  `--timeout=`, `--rerun-each=` and `--bail=` as unsigned integers, `--bail`, `--todo`, `--only`; anything else
+  refuses the run. Old pages send none; an old runner ignores the field (the page checks `features` and refuses).
 - **Coverage** (`coverage` in `hello.features`): a test run's `coverage` flags go to `bun test` after `coverageFlag`
   (protocol.ts) allows each: `--coverage`, `--coverage-reporter=text|lcov`, `--coverage-dir=` a path inside the
   project; anything else refuses the run. bunfig.toml's `[test]` options need nothing: the file comes with the
