@@ -8,6 +8,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import puppeteer from "puppeteer-core";
+import { nativeEnv } from "./native-env";
 
 const app = join(import.meta.dir, "..");
 const PORT = Number(process.env.EDITOR_PORT ?? 5340);
@@ -41,7 +42,7 @@ const compare = (label: string, got: string[], want: string[]) => {
 };
 
 // Native Bun first: the expectations are its behavior.
-const native = Bun.spawnSync(["bun", "vm/native.ts"], { cwd: import.meta.dir }).stdout.toString().trim().split("\n");
+const native = Bun.spawnSync(["bun", "vm/native.ts"], { cwd: import.meta.dir, env: nativeEnv() }).stdout.toString().trim().split("\n");
 for (const [label, [want]] of Object.entries(DIFFERENT)) {
   const line = native.find((l) => labelOf(l) === label);
   if (line !== `${label}: ${want}`) (bad++, console.error(`✗ native bun ${label}\n  got  ${JSON.stringify(line)}\n  want ${JSON.stringify(`${label}: ${want}`)}`));

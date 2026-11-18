@@ -8,6 +8,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import puppeteer from "puppeteer-core";
+import { nativeEnv } from "./native-env";
 
 const app = join(import.meta.dir, "..");
 const PORT = Number(process.env.EDITOR_PORT ?? 5610);
@@ -39,7 +40,7 @@ const compare = (label: string, got: string[], want: string[]) => {
 // Native Bun first: the expectations are its behavior.
 // In a folder of its own: the program writes files (a database, the trace file Bun writes for trace_events).
 const nativeDir = mkdtempSync(join(tmpdir(), "node-apis-native-"));
-const native = Bun.spawnSync(["bun", join(dir, "main.ts")], { cwd: nativeDir }).stdout.toString().trim().split("\n");
+const native = Bun.spawnSync(["bun", join(dir, "main.ts")], { cwd: nativeDir, env: nativeEnv() }).stdout.toString().trim().split("\n");
 rmSync(nativeDir, { recursive: true, force: true });
 for (const [label, [want]] of Object.entries(DIFFERENT)) {
   const line = native.find((l) => labelOf(l) === label);

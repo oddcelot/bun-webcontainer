@@ -9,6 +9,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import puppeteer from "puppeteer-core";
+import { nativeEnv } from "./native-env";
 
 const app = join(import.meta.dir, "..");
 const PORT = 5250;
@@ -33,7 +34,7 @@ const dir = mkdtempSync(join(tmpdir(), "sqlite-"));
 let want: string[];
 try {
   writeFileSync(join(dir, "main.ts"), main);
-  const r = Bun.spawnSync(["bun", "main.ts"], { cwd: dir });
+  const r = Bun.spawnSync(["bun", "main.ts"], { cwd: dir, env: nativeEnv() });
   want = r.stdout.toString().trim().split("\n");
   if (want.at(-1) !== "__end__") throw new Error(`native Bun failed:\n${r.stderr.toString()}`);
 } finally {

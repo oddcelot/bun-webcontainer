@@ -12,6 +12,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, 
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import puppeteer from "puppeteer-core";
+import { nativeEnv } from "./native-env";
 
 const app = join(import.meta.dir, "..");
 const fixtures = join(app, "fixtures/bun-test");
@@ -78,17 +79,27 @@ const isLcov = (p: string) => p.endsWith("lcov.info");
 // eslint-disable-next-line no-control-regex
 const plain = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "");
 
-/** A run's report reduced to what must agree: the totals, and "file :: test" with the error that failed it. */
+/**
+ * A run's report reduced to what must agree: the totals, "file :: test" with the error that failed it, and past 20
+ * passing tests the lists at the end ("5 tests skipped:", then those tests again).
+ */
 function digest(lines: string[]) {
   const failures: string[] = [];
   const summary: string[] = [];
+  const lists: string[] = [];
   let file = "";
   let buf: string[] = [];
   let last: number | undefined;
+  let listing = "";
   for (const raw of lines) {
     const line = plain(raw).replace(/\s+\[[\d.]+m?s\]$/, "").replace(/\s+$/, "");
     let m: RegExpMatchArray | null;
-    if ((m = line.match(/^(?:\(fail\)|✗) (.*)$/))) {
+    if ((m = line.match(/^\d+ tests (skipped|todo|failed):$/))) {
+      listing = m[1];
+      lists.push(line);
+    } else if (listing && (m = line.match(/^(?:\(fail\)|✗|\(skip\)|»|\(todo\)|✎) (.*?)(?: \[todo\])?$/))) lists.push(`${listing}: ${m[1]}`);
+    else if (listing && /^\s+\^ /.test(line)) lists[lists.length - 1] += ` ${line.trim()}`;
+    else if ((m = line.match(/^(?:\(fail\)|✗) (.*)$/))) {
       failures.push(`${file} :: ${m[1]}\n${buf.join("\n")}`);
       last = failures.length - 1;
       buf = [];
@@ -98,7 +109,7 @@ function digest(lines: string[]) {
     } else if ((m = line.match(/^(\S+\.(?:test|spec)\.\w+):$/))) {
       file = m[1];
       last = undefined;
-    } else if ((m = line.match(/^\s*(\d+ (?:pass|fail|skip|todo|expect\(\) calls))$/))) summary.push(m[1]);
+    } else if ((m = line.match(/^\s*(\d+ (?:pass|fail|skip|todo|expect\(\) calls))$/))) (summary.push(m[1]), (listing = ""));
     else if ((m = line.match(/^\s*\d+ snapshots?, (\d+ expect\(\) calls)$/))) summary.push(m[1]);
     else if (/^snapshots: /.test(line)) {
       /* the counts differ a little: not compared */
@@ -110,13 +121,14 @@ function digest(lines: string[]) {
     if (!/^\s+\^ /.test(line) && !/^(?:\(fail\)|✗) /.test(line)) last = undefined;
   }
   failures.sort();
-  return { failures, summary };
+  return { failures, summary, lists };
 }
 
 let bad = 0;
 function compare(label: string, got: ReturnType<typeof digest>, want: ReturnType<typeof digest>) {
   const before = bad;
   if (JSON.stringify(got.summary) !== JSON.stringify(want.summary)) (bad++, console.error(`✗ ${label}: summary\n  got  ${JSON.stringify(got.summary)}\n  want ${JSON.stringify(want.summary)}`));
+  if (JSON.stringify(got.lists) !== JSON.stringify(want.lists)) (bad++, console.error(`✗ ${label}: lists\n  got  ${JSON.stringify(got.lists)}\n  want ${JSON.stringify(want.lists)}`));
   const head = (f: string) => f.split("\n")[0];
   const gotBy = new Map(got.failures.map((f) => [head(f), f]));
   const wantBy = new Map(want.failures.map((f) => [head(f), f]));
@@ -127,7 +139,7 @@ function compare(label: string, got: ReturnType<typeof digest>, want: ReturnType
     bad++;
     console.error(`✗ ${label}: ${k}\n  got  ${JSON.stringify(g?.split("\n").slice(1).join("\n"))}\n  want ${JSON.stringify(w?.split("\n").slice(1).join("\n"))}`);
   }
-  if (bad === before) console.log(`✓ ${label}: ${want.summary.join(", ")}`);
+  if (bad === before) console.log(`✓ ${label}: ${want.summary.join(", ")}${want.lists.length ? ` (listed again: ${want.lists.filter((l) => /:$/.test(l)).map((l) => l.replace(/ tests (\w+):$/, " $1")).join(", ")})` : ""}`);
 }
 
 /** Files under `dir` as the run left them, `__snapshots__` only. */
@@ -193,8 +205,7 @@ if (!process.argv.includes("--no-native")) {
           if (text === null) rmSync(join(dir, p), { force: true });
           else (mkdirSync(join(dir, p, ".."), { recursive: true }), writeFileSync(join(dir, p), text));
         }
-        const env = { ...process.env, ...step.env, NO_COLOR: "1" } as Record<string, string | undefined>;
-        if (!step.env?.CI) delete env.CI;
+        const env = nativeEnv({ CI: undefined, ...step.env, NO_COLOR: "1" });
         const r = Bun.spawnSync(["bun", "test", ...step.args], { cwd: dir, env });
         const lines = (r.stdout.toString() + "\n" + r.stderr.toString()).split("\n");
         runs.push({ out: digest(lines), lines, files: read(dir) });

@@ -6,6 +6,7 @@
 //   bun scripts/fmt-examples.ts          check; exits 1 if a file needs formatting
 //   bun scripts/fmt-examples.ts --write  format them (then commit in the submodule)
 import { existsSync, readdirSync, statSync } from "node:fs";
+import { nativeEnv } from "./native-env";
 
 const root = new URL("../examples/", import.meta.url).pathname;
 const write = process.argv.includes("--write");
@@ -14,7 +15,7 @@ for (const name of readdirSync(root).sort()) {
   const dir = root + name;
   // Projects only: not the repo's scripts/, nor an entry that opens a GitHub repo (no package.json).
   if (!statSync(dir).isDirectory() || !existsSync(`${dir}/package.json`)) continue;
-  const r = Bun.spawnSync(["bun", "fmt", ...(write ? [] : ["--check"]), "."], { cwd: dir, stdout: "pipe", stderr: "pipe" });
+  const r = Bun.spawnSync(["bun", "fmt", ...(write ? [] : ["--check"]), "."], { cwd: dir, env: nativeEnv(), stdout: "pipe", stderr: "pipe" });
   const out = (r.stdout.toString() + r.stderr.toString()).trim();
   console.log(`${name}: ${out.split("\n").at(-1)}`);
   if (r.exitCode !== 0) {

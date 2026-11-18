@@ -11,6 +11,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import puppeteer from "puppeteer-core";
+import { nativeEnv } from "./native-env";
 
 const app = join(import.meta.dir, "..");
 const PORT = 5240;
@@ -80,13 +81,13 @@ if (!process.argv.includes("--no-native")) {
   try {
     for (const [p, text] of Object.entries(files)) writeFileSync(join(dir, p), text);
     const run = (entry: string) => {
-      const r = Bun.spawnSync(["bun", entry], { cwd: dir });
+      const r = Bun.spawnSync(["bun", entry], { cwd: dir, env: nativeEnv() });
       if (r.exitCode) throw new Error(`native bun ${entry}:\n${r.stderr.toString()}`);
       return r.stdout.toString().trimEnd().split("\n");
     };
     wantMain = run("main.ts").filter((l) => !l.startsWith("chacha20:"));
     if (JWT) {
-      const install = Bun.spawnSync(["bun", "install", "--no-progress"], { cwd: dir });
+      const install = Bun.spawnSync(["bun", "install", "--no-progress"], { cwd: dir, env: nativeEnv() });
       if (install.exitCode) throw new Error(`native bun install:\n${install.stderr.toString()}`);
       wantJwt = run("jwt.ts");
     }

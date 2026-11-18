@@ -16,6 +16,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import puppeteer from "puppeteer-core";
+import { nativeEnv } from "./native-env";
 
 const app = join(import.meta.dir, "..");
 const PORT = 5196;
@@ -80,7 +81,7 @@ function native(): Record<string, string[]> {
       Object.keys(PROGRAMS).map((name) => {
         const r = Bun.spawnSync(["bun", name], {
           cwd: dir,
-          env: { ...process.env, NO_COLOR: "1", FORCE_COLOR: "0" },
+          env: nativeEnv({ NO_COLOR: "1", FORCE_COLOR: "0" }),
         });
         return [
           name,

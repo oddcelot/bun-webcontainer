@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { parseNpmrc, registryFor } from "../src/npmrc";
 import { lockedPackages, resolveProject, writeBunLock, type Manifest, type ResolveHost } from "../src/lockfileWrite";
 import { tarballPath } from "../src/gitDeps";
+import { nativeEnv as withoutAgent } from "./native-env";
 
 const fixtures = new URL("./lockfile-write/", import.meta.url).pathname;
 
@@ -108,8 +109,8 @@ function host(dir: string, seen: string[] = []): ResolveHost {
  * (BUN_INSTALL) where `bun link` registered each folder it lists, so the user's own links stay out of it.
  */
 function nativeEnv(dir: string): Record<string, string | undefined> {
-  if (!existsSync(join(dir, "bun-link.json"))) return process.env;
-  const env = { ...process.env, BUN_INSTALL: join(dir, ".bun-global") };
+  if (!existsSync(join(dir, "bun-link.json"))) return withoutAgent();
+  const env = withoutAgent({ BUN_INSTALL: join(dir, ".bun-global") });
   for (const d of JSON.parse(readFileSync(join(dir, "bun-link.json"), "utf8")) as string[]) {
     const r = Bun.spawnSync(["bun", "link"], { cwd: join(dir, d), env, stderr: "pipe" });
     if (r.exitCode) throw new Error(`bun link in ${d}: ${r.stderr}`);

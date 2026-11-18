@@ -12,6 +12,7 @@ import { join } from "node:path";
 import zlib from "node:zlib";
 import puppeteer from "puppeteer-core";
 import { corpus, LEVELS, QUALITIES } from "../fixtures/compress/corpus.ts";
+import { nativeEnv } from "./native-env";
 
 const app = join(import.meta.dir, "..");
 const dir = join(app, "fixtures/compress");
@@ -75,7 +76,7 @@ let expected: string[] = [];
   const work = mkdtempSync(join(tmpdir(), "compress-"));
   try {
     for (const [p, text] of Object.entries(files)) writeFileSync(join(work, p), text);
-    const r = Bun.spawnSync(["bun", "main.ts"], { cwd: work });
+    const r = Bun.spawnSync(["bun", "main.ts"], { cwd: work, env: nativeEnv() });
     const out = r.stdout.toString().trim().split("\n");
     if (r.exitCode !== 0 || out[out.length - 1] !== "__end__") (bad++, console.error(`✗ native bun main.ts failed:\n${r.stderr.toString()}\n${out.slice(-5).join("\n")}`));
     expected = programLines(out);

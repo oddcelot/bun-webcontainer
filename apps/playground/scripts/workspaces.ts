@@ -10,6 +10,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import puppeteer from "puppeteer-core";
+import { nativeEnv } from "./native-env";
 
 const app = join(import.meta.dir, "..");
 const PORT = 5280;
@@ -70,10 +71,10 @@ if (!process.argv.includes("--no-native")) {
   const dir = mkdtempSync(join(tmpdir(), "ws-run-"));
   try {
     write(dir, files);
-    const install = Bun.spawnSync(["bun", "install", "--ignore-scripts"], { cwd: dir, stderr: "pipe" });
+    const install = Bun.spawnSync(["bun", "install", "--ignore-scripts"], { cwd: dir, stderr: "pipe", env: nativeEnv() });
     if (install.exitCode) throw new Error(`native bun install: ${install.stderr}`);
     native = readFileSync(join(dir, "bun.lock"), "utf8");
-    const r = Bun.spawnSync(["bun", ENTRY], { cwd: dir });
+    const r = Bun.spawnSync(["bun", ENTRY], { cwd: dir, env: nativeEnv() });
     compare("native bun", r.stdout.toString().trim().split("\n"));
   } finally {
     rmSync(dir, { recursive: true, force: true });

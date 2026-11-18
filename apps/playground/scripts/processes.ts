@@ -18,6 +18,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import puppeteer from "puppeteer-core";
+import { nativeEnv } from "./native-env";
 
 const app = join(import.meta.dir, "..");
 const PORT = 5198;
@@ -384,7 +385,7 @@ if (!process.argv.includes("--no-native")) {
       mkdirSync(dirname(join(dir, p)), { recursive: true });
       writeFileSync(join(dir, p), text);
     }
-    const r = Bun.spawnSync(["bun", "main.ts"], { cwd: dir, env: { ...process.env, X: undefined, CODE: undefined } });
+    const r = Bun.spawnSync(["bun", "main.ts"], { cwd: dir, env: nativeEnv({ X: undefined, CODE: undefined }) });
     compare("native bun", r.stdout.toString().trim().split("\n"));
   } finally {
     rmSync(dir, { recursive: true, force: true });

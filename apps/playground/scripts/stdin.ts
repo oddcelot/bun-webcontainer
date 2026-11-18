@@ -12,6 +12,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import puppeteer from "puppeteer-core";
+import { nativeEnv } from "./native-env";
 
 const app = join(import.meta.dir, "..");
 const ISOLATED = process.argv.includes("--isolated");
@@ -219,7 +220,7 @@ const dec = new TextDecoder();
 /** Native Bun running the case, fed by the same steps: a line goes in once the program has printed what the step waits for. */
 async function native(c: Case, dir: string): Promise<string> {
   writeFileSync(join(dir, c.file), c.code);
-  const proc = Bun.spawn(["bun", c.file], { cwd: dir, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+  const proc = Bun.spawn(["bun", c.file], { cwd: dir, env: nativeEnv(), stdin: "pipe", stdout: "pipe", stderr: "pipe" });
   let out = "";
   const reading = (async () => {
     for await (const chunk of proc.stdout) out += dec.decode(chunk);

@@ -9,6 +9,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import puppeteer from "puppeteer-core";
+import { nativeEnv } from "./native-env";
 
 const app = join(import.meta.dir, "..");
 const PORT = Number(process.env.EDITOR_PORT ?? 5210);
@@ -35,9 +36,9 @@ const AXIOS_PACKAGE = JSON.stringify({ name: "ax", dependencies: { axios: "1.7.9
 const dir = mkdtempSync(join(tmpdir(), "http-request-"));
 if (AXIOS) {
   writeFileSync(join(dir, "package.json"), AXIOS_PACKAGE);
-  Bun.spawnSync(["bun", "install"], { cwd: dir });
+  Bun.spawnSync(["bun", "install"], { cwd: dir, env: nativeEnv() });
 }
-const native = (writeFileSync(join(dir, entry), main), Bun.spawnSync(["bun", entry], { cwd: dir, env: { ...process.env, NET: NET ? "1" : "" } }));
+const native = (writeFileSync(join(dir, entry), main), Bun.spawnSync(["bun", entry], { cwd: dir, env: nativeEnv({ NET: NET ? "1" : "" }) }));
 rmSync(dir, { recursive: true, force: true });
 const want = native.stdout.toString().trim().split("\n");
 if (!want.includes("__end__")) (console.error(native.stderr.toString()), process.exit(1));
