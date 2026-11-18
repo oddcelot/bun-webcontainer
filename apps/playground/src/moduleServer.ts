@@ -1,12 +1,12 @@
 import { BASE } from "./base";
-import { commonJSFacade, exportNames as commonJSExportNames, isCommonJS, JS_LIKE, moduleKindOf, reexports, requireRuntimeImports, stripDirname, wrapCommonJS, wrappedBodyLine } from "./cjs";
+import { commonJSFacade, exportNames as commonJSExportNames, isCommonJS, JS_LIKE, keepUseStrict, moduleKindOf, reexports, requireRuntimeImports, stripDirname, wrapCommonJS, wrappedBodyLine } from "./cjs";
 import { firstLineLength, insertColumns, shiftFirstColumn } from "./sourceMap";
 import bunWrap from "./bunWrap.js?raw";
 import { loadTranspiler, type Resolver } from "./transpiler";
 import { restoreContextMapped } from "./asyncAwait";
 import { transpileCached } from "./transpileCache";
 import { instrumenting } from "./debugSession";
-import { fileId, isCovered, isTestName, type CoverageOptions } from "./coverage/options";
+import { counterName, fileId, isCovered, isTestName, type CoverageOptions } from "./coverage/options";
 import { tsconfigFor } from "./tsconfig";
 import { inRanges, isMethod, literalRanges } from "./literals";
 import { DATA_FILE, dataFormat, loadResolver, parseDataFile, resolve, type DataFormat, type ResolveKind } from "./resolver";
@@ -200,14 +200,15 @@ function covering(path: string, target: ModuleTarget, debug: boolean, plugin?: P
 /**
  * The counters in transpiled `code` (coverage/instrument.ts, loaded now), its mappings moved for them, and the
  * statement that registers the file in the worker (worker/coverage.ts) by `url` (`/<path>`, or a virtual module's
- * name); undefined for code the instrumenter can't parse.
+ * name), or gives it counters nothing reads in a worker that isn't counting (another process of a program whose
+ * spawned `bun test --coverage` runs); undefined for code the instrumenter can't parse.
  */
 async function coverModule(code: string, mappings: string, url: string, script: boolean, source?: string) {
   const { instrument } = await import("./coverage/instrument");
   const id = fileId(url);
   const done = instrument(code, mappings, id, script, source);
   if (!done) return undefined;
-  return { code: done.code, mappings: insertColumns(mappings, done.inserts), register: `globalThis.__bwcCovFile?.(${id},${JSON.stringify(url)},${JSON.stringify(done.meta)});` };
+  return { code: done.code, mappings: insertColumns(mappings, done.inserts), register: `if (globalThis.__bwcCovFile) globalThis.__bwcCovFile(${id},${JSON.stringify(url)},${JSON.stringify(done.meta)}); else globalThis.${counterName(id)} ??= new Float64Array(${done.meta.n});` };
 }
 
 /** Where `spec` imported from `dir` is served, relative to `/__vfs/`; null if it doesn't resolve. CSS imported from code is `__css/<path>` (see cssModule). */
@@ -416,7 +417,10 @@ async function serveCommonJS(vfs: VFS, path: string, onError: (msg: string) => v
       probes = table;
       body = stripDirname(js);
       if (body !== js) stripped = 1;
-      body = requireRuntimeImports(body);
+      // Its "use strict" back, on a line of its own: strict mode follows the file, as in Bun.
+      let added: number;
+      [body, added] = keepUseStrict(src, requireRuntimeImports(body));
+      stripped -= added;
       inner = mappings;
     } catch (e) {
       if (e instanceof LazyMiss) throw e; // loaded and served again (withLoaded)

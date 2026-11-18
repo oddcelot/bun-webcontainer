@@ -43,3 +43,19 @@ export class Box {
     return this.#v;
   }
 }
+
+export function* restPattern(...[a, b = 2]: number[]) {
+  yield a + b;
+}
+
+export function* restPatternNever(...[a]: number[]) {
+  yield a;
+}
+
+export function* restNested(...[a, , ...more]: number[]) {
+  yield [a, more.length, Array.isArray(more)];
+}
+
+export function* restObject(...{ length }: number[]) {
+  yield length;
+}

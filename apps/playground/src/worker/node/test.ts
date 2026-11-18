@@ -2,12 +2,14 @@ import { fakeTimers, real, resetFakeTimers } from "./fakeTimers";
 import { dedent, serialize, SnapshotFile, withMatchers, type SnapshotCounts, type SnapshotIO } from "./snapshot";
 import { formatLog } from "../inspect";
 import { inspect, isDeepStrictEqual } from "./util";
+import type { TestOptions } from "../../testArgs";
 
 // `bun:test`: a compact Jest-style runner. Files register suites while they load; `runTestFiles` loads each file in
 // turn, runs what it registered and reports in the style of `bun test`. Coverage is worker/coverage.ts; not supported: --watch.
 
 type Fn = (done?: (err?: unknown) => void) => unknown;
-type Case = { kind: "case"; name: string; fn: Fn; mode: Mode; timeout: number; failing: boolean };
+/** `body`: whether it was given a function (a `test.todo` without one doesn't run with `--todo`). */
+type Case = { kind: "case"; name: string; fn: Fn; body: boolean; mode: Mode; timeout: number; failing: boolean };
 /** What `test.skip.failing` and friends have said so far: the mode, and `.failing`. `.concurrent` and `.serial` change nothing here (tests run in turn). */
 type Flags = { mode: Mode; failing: boolean };
 type Suite = { kind: "suite"; name: string; parent?: Suite; items: (Suite | Case)[]; mode: Mode; hooks: Record<Hook, Fn[]> };
@@ -520,7 +522,7 @@ function title(t: string, row: unknown, idx: number): string {
 
 function defineTest(name: string, fn: Fn | undefined, flags: Flags, opts?: number | { timeout?: number }) {
   const timeout = typeof opts === "number" ? opts : (opts?.timeout ?? defaultTimeout);
-  current.items.push({ kind: "case", name, fn: fn ?? (() => {}), mode: fn || flags.mode === "todo" ? flags.mode : "todo", timeout, failing: flags.failing });
+  current.items.push({ kind: "case", name, fn: fn ?? (() => {}), body: !!fn, mode: fn || flags.mode === "todo" ? flags.mode : "todo", timeout, failing: flags.failing });
 }
 
 function defineSuite(name: string, fn: () => void, flags: Flags) {
@@ -609,10 +611,17 @@ export const markRunning = (mark: "skip" | "todo") => void (runningMark = mark);
 let currentFile = "";
 export const testFile = () => currentFile;
 
+/** A callback that ran past its timeout: a test reports it as Bun does, under its name. */
+class Timeout extends Error {
+  constructor(readonly ms: number) {
+    super(`test timed out after ${ms}ms`);
+  }
+}
+
 /** Runs one callback with `done` support and a timeout. */
 function call(fn: Fn, timeout: number): Promise<void> {
   return new Promise<void>((resolve, reject) => {
-    const timer = real.setTimeout(() => finish(new Error(`test timed out after ${timeout}ms`)), timeout);
+    const timer = real.setTimeout(() => finish(new Timeout(timeout)), timeout);
     const finish = (err?: unknown) => {
       real.clearTimeout(timer);
       if (failCurrent === finish) failCurrent = undefined;
@@ -628,8 +637,19 @@ function call(fn: Fn, timeout: number): Promise<void> {
   });
 }
 
-type Totals = { pass: number; fail: number; skip: number; todo: number };
-const totals: Totals = { pass: 0, fail: 0, skip: 0, todo: 0 };
+/** `filtered`: tests `-t` left out. */
+type Totals = { pass: number; fail: number; skip: number; todo: number; filtered: number };
+const totals: Totals = { pass: 0, fail: 0, skip: 0, todo: 0, filtered: 0 };
+
+/** What the run's flags ask (testArgs.ts): `-t`, `--bail`, `--todo`, `--only`. */
+let runOpts: Pick<TestOptions, "namePattern" | "bail" | "todo" | "only"> = { todo: false, only: false };
+/** What `--bail` throws once the run has failed often enough. */
+const BAIL = Symbol("bail");
+/** A failure: counted, and with `--bail`, the end of the run once there are enough. */
+function countFailure() {
+  totals.fail++;
+  if (runOpts.bail && totals.fail >= runOpts.bail) throw BAIL;
+}
 
 /** How Bun reports what failed a test: an error as its printer has it (source, own properties, frames, cause). */
 function failure(e: unknown): string {
@@ -651,13 +671,21 @@ async function runSuite(s: Suite, only: boolean, skipAll: boolean) {
       await runSuite(item, only, skipAll || s.mode === "skip" || item.mode === "skip");
       continue;
     }
-    const skipped = skipAll || s.mode === "skip" || item.mode === "skip" || (only && item.mode !== "only" && !ancestors.some((a) => a.mode === "only"));
-    if (skipped) {
+    // In a file with `.only` tests (any file, with `--only`), the others don't run or count, as in Bun; `-t` filters
+    // the rest, counted as filtered out.
+    if (only && item.mode !== "only" && !ancestors.some((a) => a.mode === "only")) continue;
+    if (runOpts.namePattern && !runOpts.namePattern.test([...names(s), item.name].join(" "))) {
+      totals.filtered++;
+      continue;
+    }
+    if (skipAll || s.mode === "skip" || item.mode === "skip") {
       totals.skip++;
       report.log(dim(`» ${label(item)}`));
       continue;
     }
-    if (item.mode === "todo" || todo) {
+    // `--todo`: a todo test with a body runs, and fails if it passes.
+    const todoRun = (item.mode === "todo" || todo) && runOpts.todo && item.body;
+    if ((item.mode === "todo" || todo) && !todoRun) {
       totals.todo++;
       report.log(`\x1b[35m✎\x1b[0m ${label(item)} ${dim("[todo]")}`);
       continue;
@@ -700,18 +728,27 @@ async function runSuite(s: Suite, only: boolean, skipAll: boolean) {
     } else if (mark === "todo") {
       totals.todo++;
       report.log(`\x1b[35m✎\x1b[0m ${label(item)} ${dim("[todo]")}`);
+    } else if (todoRun && failed) {
+      totals.todo++;
+      report.error(`${failure(err)}\n\x1b[35m✎\x1b[0m ${label(item)} ${time}`);
+    } else if (todoRun) {
+      report.error(`\x1b[31m✗\x1b[0m\x1b[31m ${label(item)}\x1b[0m ${time}\n  ^ this test is marked as todo but passes. Remove \`.todo\` if tested behavior now works`);
+      countFailure();
     } else if (item.failing && !threw && !failed) {
-      totals.fail++;
       report.error(`\x1b[31m✗\x1b[0m\x1b[31m ${label(item)}\x1b[0m\n  ^ this test is marked as failing but it passed. Remove \`.failing\` if tested behavior now works`);
+      countFailure();
+    } else if (failed && err instanceof Timeout && err.ms === item.timeout) {
+      report.error(`\x1b[31m✗\x1b[0m\x1b[31m ${label(item)}\x1b[0m ${time}\n  ^ this test timed out after ${err.ms}ms.`);
+      countFailure();
     } else if (failed) {
-      totals.fail++;
       report.error(`${failure(err)}\n\x1b[31m✗\x1b[0m\x1b[31m ${label(item)}\x1b[0m ${time}`);
+      countFailure();
     } else {
       totals.pass++;
       report.log(`\x1b[32m✓\x1b[0m ${label(item)} ${time}`);
     }
   }
-  if (started) for (const h of s.hooks.afterAll) await call(h, defaultTimeout).catch((e) => ((totals.fail++), report.error(`${failure(e)}\n\x1b[31m✗\x1b[0m\x1b[31m ${names(s).join(" > ")} (afterAll)\x1b[0m`)));
+  if (started) for (const h of s.hooks.afterAll) await call(h, defaultTimeout).catch((e) => (report.error(`${failure(e)}\n\x1b[31m✗\x1b[0m\x1b[31m ${names(s).join(" > ")} (afterAll)\x1b[0m`), countFailure()));
 }
 
 /** Snapshot files in the project, through the worker's `fs`. */
@@ -733,13 +770,20 @@ export type TestOutcome = { failed: number; results: { file: string; failed: num
  * Loads each file (its top level registers suites in `bun:test`), runs it and prints Bun's report.
  * Resolves to the number of failed tests, in all and per file (import errors count as failures).
  */
-export async function runTestFiles(files: string[], load: (file: string) => Promise<unknown>, version: string, opts: { update?: boolean; io?: SnapshotIO; preload?: () => string[]; coverage?: () => boolean } = {}): Promise<TestOutcome> {
+export async function runTestFiles(
+  files: string[],
+  load: (file: string) => Promise<unknown>,
+  version: string,
+  opts: Partial<TestOptions> & { io?: SnapshotIO; preload?: () => string[]; coverage?: () => boolean } = {},
+): Promise<TestOutcome> {
   update = !!opts.update;
+  runOpts = { namePattern: opts.namePattern, bail: opts.bail, todo: !!opts.todo, only: !!opts.only };
+  if (opts.timeout !== undefined) defaultTimeout = opts.timeout;
   snapCounts.passed = snapCounts.added = snapCounts.failed = 0;
   const io = opts.io ?? (await fsIO());
   const t0 = performance.now();
   resetFakeTimers();
-  totals.pass = totals.fail = totals.skip = totals.todo = 0;
+  totals.pass = totals.fail = totals.skip = totals.todo = totals.filtered = 0;
   expectCalls = 0;
   const results: TestOutcome["results"] = [];
   report.log(`bun test v${version.replace(/-.*/, "")}`);
@@ -758,37 +802,65 @@ export async function runTestFiles(files: string[], load: (file: string) => Prom
     (async () => {
       for (const h of global.hooks[hook]) await call(h, defaultTimeout);
     })().catch((e) => (totals.fail++, report.error(`${failure(e)}\n\x1b[31m✗\x1b[0m\x1b[31m (${hook})\x1b[0m`)));
-  for (const file of files) {
-    report.log(`\n${file}:`);
-    currentFile = file;
-    snapshots = new SnapshotFile(io, file, update, snapCounts);
-    const before = totals.fail;
-    try {
-      if (preloads.length) {
-        root = current = global;
-        for (const p of preloads.splice(0)) await load(p);
+  const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
+  const ran = () => totals.pass + totals.fail + totals.skip + totals.todo;
+  const runs = Math.max(1, opts.rerunEach ?? 1);
+  let started = 0;
+  try {
+    for (const file of files) {
+      started++;
+      currentFile = file;
+      snapshots = new SnapshotFile(io, file, update, snapCounts);
+      const before = totals.fail;
+      // `--rerun-each`: the tests the file registered run that many times.
+      for (let run = 1; run <= runs; run++) {
+        report.log(`\n${file}:${runs > 1 ? ` (run #${run})` : ""}`);
+        if (run === 1) {
+          try {
+            if (preloads.length) {
+              root = current = global;
+              for (const p of preloads.splice(0)) await load(p);
+            }
+            root = current = newSuite("", global);
+            await load(file);
+          } catch (e) {
+            report.error(`${failure(e)}\n\x1b[31m✗\x1b[0m\x1b[31m ${file}\x1b[0m`);
+            results.push({ file, failed: 1 });
+            countFailure();
+            break;
+          }
+          if (!globalStarted) (globalStarted = true), await globalHook("beforeAll");
+        }
+        await runSuite(root, runOpts.only || hasOnly(root), false);
       }
-      root = current = newSuite("", global);
-      await load(file);
-    } catch (e) {
-      totals.fail++;
-      report.error(`${failure(e)}\n\x1b[31m✗\x1b[0m\x1b[31m ${file}\x1b[0m`);
-      results.push({ file, failed: 1 });
-      continue;
+      // (A file that didn't load leaves its snapshot file as it is.)
+      if (results.at(-1)?.file === file) continue;
+      snapshots.flush();
+      results.push({ file, failed: totals.fail - before });
     }
-    if (!globalStarted) (globalStarted = true), await globalHook("beforeAll");
-    await runSuite(root, hasOnly(root), false);
-    snapshots.flush();
-    results.push({ file, failed: totals.fail - before });
+  } catch (e) {
+    if (e !== BAIL) throw e;
+    // `--bail`: no summary, as in Bun, but how far it got.
+    report.log(`Ran ${plural(ran(), "test")} across ${plural(started, "file")}. ${dim(`[${ms(performance.now() - t0)}]`)}`);
+    report.error(`Bailed out after ${plural(totals.fail, "failure")}`);
+    resetFakeTimers();
+    return { failed: totals.fail, results };
   }
   if (globalStarted) await globalHook("afterAll");
+  const n = ran();
+  if (runOpts.namePattern && !n) {
+    report.log("");
+    report.error(`error: regex ${JSON.stringify(runOpts.namePattern.source)} matched 0 tests. Searched ${plural(files.length, "file")} (skipping ${plural(totals.filtered, "test")}) ${dim(`[${ms(performance.now() - t0)}]`)}`);
+    resetFakeTimers();
+    return { failed: 1, results };
+  }
   // `--coverage`: its table goes before the summary.
   const coverageFailed = opts.coverage?.() ?? false;
-  const n =totals.pass + totals.fail + totals.skip + totals.todo;
   const row = (count: number, word: string) => (count ? ` ${count} ${word}` : "");
   report.log("");
   report.log(paint(32, ` ${totals.pass} pass`));
-  for (const [c, w] of [[totals.skip, "skip"], [totals.todo, "todo"]] as const) if (c) report.log(row(c, w));
+  // Bun counts the tests `-t` left out only where none was skipped.
+  for (const [c, w] of [[totals.skip, "skip"], [totals.skip ? 0 : totals.filtered, "filtered out"], [totals.todo, "todo"]] as const) if (c) report.log(row(c, w));
   if (totals.fail) report.error(` ${totals.fail} fail`);
   else report.log(" 0 fail");
   const { passed, added, failed } = snapCounts;
@@ -796,8 +868,8 @@ export async function runTestFiles(files: string[], load: (file: string) => Prom
     const parts = [passed && `${passed} passed`, added && (passed || failed ? `${added} added` : `+${added} added`), failed && `${failed} failed`].filter(Boolean);
     report.log(`snapshots: ${parts.join(", ")}`);
   }
-  report.log(` ${expectCalls} expect() calls`);
-  report.log(`Ran ${n} test${n === 1 ? "" : "s"} across ${files.length} file${files.length === 1 ? "" : "s"}. ${dim(`[${ms(performance.now() - t0)}]`)}`);
+  if (expectCalls) report.log(` ${expectCalls} expect() calls`);
+  report.log(`Ran ${plural(n, "test")} across ${plural(files.length, "file")}. ${dim(`[${ms(performance.now() - t0)}]`)}`);
   resetFakeTimers();
   return { failed: totals.fail, results, ...(coverageFailed && { coverageFailed }) };
 }

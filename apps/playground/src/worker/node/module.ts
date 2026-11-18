@@ -1,6 +1,6 @@
 import { dirname, norm, type VFS } from "@runbun/vfs";
 import bunWrapSource from "../../bunWrap.js?raw";
-import { hasModuleSyntax, JS_LIKE, moduleKindOf, packageType, requireRuntimeImports, stripDirname } from "../../cjs";
+import { hasModuleSyntax, JS_LIKE, keepUseStrict, moduleKindOf, packageType, requireRuntimeImports, stripDirname } from "../../cjs";
 import { inRanges, isMethod, literalRanges } from "../../literals";
 import { dataFormat, parseDataFile } from "../../resolver";
 import { transpileSync, transpileSyncEsm } from "../../transpiler";
@@ -308,9 +308,11 @@ export function createModule(
       if (probes) registerProbes(path, probes);
       if (counted && map !== undefined) [js, map] = cover!.instrument(path, js, map, src, true);
       const body = stripDirname(js);
-      stripped = body === js ? 0 : 1;
+      // Its "use strict" back, on a line of its own: strict mode follows the file, as in Bun.
+      const [code, added] = keepUseStrict(src, requireRuntimeImports(body));
+      stripped = (body === js ? 0 : 1) - added;
       mappings = map;
-      return requireRuntimeImports(body);
+      return code;
     };
     // What Bun runs as an ES module (see moduleKindOf, which throws Bun's error for CommonJS features next to an
     // import) loads as one (loadEsm); a file of another extension only if it has module syntax or its package's type.

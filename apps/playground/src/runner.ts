@@ -12,9 +12,21 @@ import { attach as attachDebugger, detach as detachDebugger, onDebugMessage } fr
 import { answerAsks, connectHost, notifyStopped, readContentCookies, spawnWorker, writeContentCookies } from "./contentHost";
 
 /** A program's child process (worker/processes.ts): its worker, and who started it under which id. */
-type Proc = { worker: Worker; parent: Worker; id: number; ended: boolean };
+type Proc = { worker: Worker; parent: Worker; id: number; ended: boolean; coverage?: CoverageOptions };
 type Host = Awaited<ReturnType<typeof connectHost>>;
 const enc = new TextEncoder();
+
+/**
+ * The coverage runs going on: a `bun test --coverage` run's, and spawned ones' (`bun test --coverage` as a child
+ * process). While there is one, the project's files are served counting what runs (the latest's options).
+ */
+const coverageRuns = new Set<CoverageOptions>();
+function covering(opts: CoverageOptions | undefined, on: boolean) {
+  if (!opts) return;
+  if (on) coverageRuns.add(opts);
+  else coverageRuns.delete(opts);
+  setCoverage([...coverageRuns].at(-1));
+}
 
 /** Tells preview pages (see previewWebSocket in swPage.ts) that their WebSockets' server is gone. */
 const previewChannel = new BroadcastChannel("bun-preview");
@@ -433,12 +445,13 @@ export class Runner {
   /** `bun test`: runs test files in a fresh worker (replacing any server) and resolves when the run is over. */
   async runTests(files: string[], args: string[] = []): Promise<TestResults> {
     // `--coverage`: the project's files are served counting what runs, for this run only.
-    setCoverage(await this.coverage(args));
+    const coverage = await this.coverage(args);
+    covering(coverage, true);
     try {
       await this.start("", files, args);
       await this.stop();
     } finally {
-      setCoverage(undefined);
+      covering(coverage, false);
     }
     return { failed: this.failed, results: this.results, ...(this.coverageFailed && { coverageFailed: true }) };
   }
@@ -692,7 +705,18 @@ export class Runner {
     const { entry, script, test, args, execArgv, run } = m.launch;
     // A worker_threads thread also gets its channel to the Worker (worker/node/worker_threads.ts).
     const thread = m.port ? { thread: m.thread, port: m.port } : {};
-    worker.postMessage({ type: "start", entry, script, childTest: test, args, execArgv, run, files: this.vfs.files, dirs: this.vfs.dirs, vfsRoot: vfsRoot(), proc: { pid: m.id, ppid, cwd: m.cwd, env: m.env }, ...thread }, m.port ? [m.port] : []);
+    const start = () =>
+      worker.postMessage({ type: "start", entry, script, childTest: test, args, execArgv, run, files: this.vfs.files, dirs: this.vfs.dirs, vfsRoot: vfsRoot(), proc: { pid: m.id, ppid, cwd: m.cwd, env: m.env }, ...thread }, m.port ? [m.port] : []);
+    // A `bun test --coverage` (or one bunfig.toml's `[test]` turns coverage on for) counts what it loads, served so
+    // until it ends; it starts once that is set up.
+    if (test && (args.some(isCoverageFlag) || this.vfs.readText("bunfig.toml")?.includes("coverage")))
+      void this.coverage(args).then((opts) => {
+        if (proc.ended) return;
+        proc.coverage = opts;
+        covering(opts, true);
+        start();
+      });
+    else start();
     // Before its code runs (the worker handles it ahead of the start, which awaits the wasm), so its first Bun.serve sees them.
     this.shareTaken(worker);
   }
@@ -769,6 +793,7 @@ export class Runner {
     const self = this.procs.get(worker);
     if (self) {
       self.ended = true;
+      covering(self.coverage, false);
       this.procs.delete(worker);
       this.kids.get(self.parent)?.delete(self.id);
       // A child process's server goes with it: the previews it was answering end, and its ports leave the list.

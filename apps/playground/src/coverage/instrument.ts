@@ -14,6 +14,7 @@
 //     `continue`, a label, `try`, `switch`, one with `await` or `yield`) up to the end of its statement list.
 // Loaded only when coverage is on (the parser comes with it).
 import { parse } from "acorn";
+import { useStrictPrologue } from "../cjs";
 import { decodeMappings } from "../sourceMap";
 import { counterName } from "./options";
 
@@ -151,22 +152,30 @@ class Instrumenter {
     const block = f.body.type === "BlockStatement";
     // A generator's body runs when it is first resumed, not when it is called: the call counts where the call evaluates
     // the parameters, the body on its own. In an added default parameter; with a rest parameter, in a computed key of
-    // a pattern its values go through (`...{ [(count, "length")]: n, ...xs }`, made the array again in the body). A
-    // "use strict" body can have neither, so in code that is strict anyway its directive becomes a plain string.
+    // a pattern its values go through (`...{ [(count, "length")]: n, ...xs }`, made the array again in the body), or
+    // that a destructured one gets (`...[a, b, ...{ [(count, "length")]: n }]`, `...{ [(count, "length")]: n, length }`;
+    // in `...[a, ...rest]` its rest's). A "use strict" body can have neither, so in code that is strict anyway its
+    // directive becomes a plain string.
     let bodyCounter = c;
     let restore = "";
+    /** Put after the parameters' own counters: last at its offset (after a default value's closing parenthesis). */
+    let after: [number, string] | undefined;
     let beforeDirectives = false;
     const strictBody = block && f.body.body.some((s: N) => s.directive === "use strict");
     if (f.generator && block && (!strictBody || this.strict)) {
       const last: N | undefined = f.params.at(-1);
       if (last?.type === "RestElement") {
-        if (last.argument.type === "Identifier") {
-          const name = last.argument.name;
-          this.put(last.argument.start, `{ [(${this.inc(c)}, "length")]: $__covLength, ...`);
-          this.put(last.argument.end, " }");
-          restore = `${name} = Array.from({ ...${name}, length: $__covLength });`;
-          bodyCounter = this.counter(f.body.start, f.body.end);
-        }
+        let rest: N = last;
+        while (rest.argument.type === "ArrayPattern" && rest.argument.elements.at(-1)?.type === "RestElement") rest = rest.argument.elements.at(-1);
+        const arg: N = rest.argument;
+        const key = `[(${this.inc(c)}, "length")]: $__covLength`;
+        if (arg.type === "Identifier") {
+          this.put(arg.start, `{ ${key}, ...`);
+          this.put(arg.end, " }");
+          restore = `${arg.name} = Array.from({ ...${arg.name}, length: $__covLength });`;
+        } else if (arg.type === "ArrayPattern") after = [arg.end - 1, `${arg.elements.length ? ", " : ""}...{ ${key} }`];
+        else if (arg.type === "ObjectPattern") after = [arg.start + 1, ` ${key},`];
+        bodyCounter = this.counter(f.body.start, f.body.end);
       } else {
         const at = last ? last.end : this.code.lastIndexOf(")", f.body.start);
         this.put(at, `${last ? ", " : ""}$__covCall = ${this.inc(c)}`);
@@ -178,6 +187,7 @@ class Instrumenter {
     const outerStrict = this.strict;
     this.strict ||= strictBody;
     for (const p of f.params) this.node(p);
+    if (after) this.put(...after);
     if (block) {
       let at = f.body.start + 1;
       for (const s of f.body.body) {
@@ -490,8 +500,8 @@ export function instrument(code: string, mappings: string, id: number, script = 
       return undefined;
     }
   }
-  const directive = script && source !== undefined ? /^(?:#![^\n]*\n)?(?:\s|\/\/[^\n]*|\/\*[\s\S]*?\*\/)*(?=(["'])use strict\1)/.exec(source) : null;
+  const directive = script && source !== undefined ? useStrictPrologue(source) : null;
   const directiveLine = directive && !/^\s*(["'])use strict\1/.test(code) ? lineStarts(directive[0]).length - 1 : undefined;
-  const strict = !script || program.body.some((s: N) => s.directive === "use strict");
+  const strict = !script || !!directive || program.body.some((s: N) => s.directive === "use strict");
   return new Instrumenter(code, counterName(id), strict).run(program).result(mappings, directiveLine);
 }

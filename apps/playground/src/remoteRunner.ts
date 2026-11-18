@@ -139,6 +139,11 @@ export class RemoteRunner extends Runner {
       this.out("error", `[local] bun test ${coverage.join(" ")}: this runner can't count coverage (update @runbun/connect, or switch Local Bun off for it).`);
       return { failed: 1 };
     }
+    const other = args.filter((a) => !isCoverageFlag(a) && !UPDATE_FLAGS.includes(a));
+    if (other.length) {
+      this.out("error", `[local] bun test ${other.join(" ")}: Local Bun takes only -u and the coverage flags; switch Local Bun off for it.`);
+      return { failed: 1 };
+    }
     const update = args.filter((a) => !isCoverageFlag(a));
     if (update.length && !(update.every((a) => UPDATE_FLAGS.includes(a)) && this.local.features.includes(FEATURE_SNAPSHOTS))) {
       const old = UPDATE_FLAGS.includes(update[0]!) ? " with this runner (update @runbun/connect to update them here)" : "";

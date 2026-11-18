@@ -15,7 +15,7 @@ import { makePatch, patchPath } from "./patches";
 import { pristineFiles } from "./lockfile";
 import { binCommand, cliPreloads, isTestFile, parseBunArgs, scriptChecks, scriptEntry, scriptPreloads, shellCommand, type Pkg } from "./scripts";
 import { escape } from "./shell/dollar";
-import { COVERAGE_VALUE_FLAGS, isCoverageFlag } from "./coverage/options";
+import { splitTestArgs, testOptions } from "./testArgs";
 
 type Log = (level: string, text: string) => void;
 
@@ -47,7 +47,8 @@ const HELP = `Bun's shell: quotes, pipes |, && || ;, redirects > >> < 2>&1, $VAR
 
 bun run <script|file>  run a script or a file
 bun <file>             run a file
-bun test [-u] [--coverage] [filter...]  run test files (stops the server); -u updates snapshots
+bun test [-u] [--coverage] [-t pattern] [filter...]  run test files (stops the server); -u updates snapshots
+                       (also --timeout, --bail, --rerun-each, --todo, --only)
 bun install, bun i     install dependencies
 bun add <pkg> [-d]     add (dev) dependencies
 bun remove <pkg>       remove dependencies
@@ -149,25 +150,17 @@ export function createShell(host: ShellHost) {
     return (!(check || scriptChecks(script)) || (await checkFirst(entry!))) && host.run(entry!);
   }
 
-  /**
-   * The `bun test` flags here: rewrite the snapshot files and inline snapshots (the playground's CI is never set), and
-   * coverage's (`--coverage`, `--coverage-reporter`, `--coverage-dir`; passed on as `--name=value`).
-   */
-  const UPDATE_FLAGS = ["-u", "--update-snapshots"];
+  /** `bun test` with the flags testArgs.ts takes, passed on as `--name=value` (a spawned `bun test` takes the same). */
   async function test(args: string[]) {
-    const flags: string[] = [];
-    const filters: string[] = [];
-    for (let i = 0; i < args.length; i++) {
-      const a = args[i];
-      if (!a.startsWith("-")) filters.push(a.replace(/^\.\//, ""));
-      else if (UPDATE_FLAGS.includes(a) || isCoverageFlag(a)) {
-        // `--coverage-dir out` as `--coverage-dir=out`.
-        if (COVERAGE_VALUE_FLAGS.includes(a)) {
-          if (i + 1 >= args.length) return fail(`error: missing value for ${a}`);
-          flags.push(`${a}=${args[++i]}`);
-        } else flags.push(a);
-      } else return fail(`error: bun test ${a} is not supported here`);
+    const split = splitTestArgs(args);
+    if (split.error !== undefined) return fail(split.error);
+    try {
+      testOptions(split.flags);
+    } catch (e) {
+      return fail(`error: ${e instanceof Error ? e.message : String(e)}`);
     }
+    const { flags } = split;
+    const filters = split.filters.map((f) => f.replace(/^\.\//, ""));
     const files = [...vfs.files.keys()].filter((f) => isTestFile(f) && (!filters.length || filters.some((x) => f.includes(x)))).sort();
     if (!files.length) return fail(`error: No tests found${filters.length ? ` matching ${filters.join(", ")}` : ""}!\n\nTest files match *.test.ts, *_test.ts, *.spec.ts or *_spec.ts (also .tsx .js .jsx), outside node_modules.`);
     await host.test(files, flags);
