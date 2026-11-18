@@ -150,6 +150,47 @@ export async function sqlite(t: Case, log: (line: string) => void) {
     db.aggregate("cnt", { start: () => [] as unknown[], step: (acc: unknown[], v: unknown) => (acc.push(v), acc), result: (acc: unknown[]) => acc.length });
     return db.prepare("select cnt(a) as s from z").get();
   });
+  s("sqlite function result types", () => {
+    const vals: unknown[] = [5, 5.5, 5n, 2n ** 62n + 1n, "s", null, undefined, NaN, new Uint8Array([1])];
+    vals.forEach((v, i) => db.function(`rv${i}`, () => v));
+    const st = db.prepare(`select ${vals.map((_, i) => `typeof(rv${i}()) t${i}, rv${i}() v${i}`).join(", ")}`);
+    st.setReadBigInts(true);
+    return st.get();
+  });
+  t("sqlite function result errors", () =>
+    [2n ** 63n, {}, Promise.resolve(1), [1]]
+      .map((v, i) => {
+        db.function(`re${i}`, () => v);
+        return errOf(() => db.prepare(`select re${i}() v`).get());
+      })
+      .join(" / "),
+  );
+  t("sqlite function args", () => {
+    db.function("args", { varargs: true }, (...a: unknown[]) => a.map((x) => (x instanceof Uint8Array ? "bytes" : typeof x)).join());
+    db.function("bigargs", { varargs: true, useBigIntArguments: true }, (...a: unknown[]) => a.map((x) => typeof x).join());
+    db.function("arity", (a: unknown, b: unknown) => 1);
+    return [show(db.prepare("select args(1, 2.5, 's', null, x'01') a, bigargs(1, 2.5, 4611686018427387905) b").get()), errOf(() => db.prepare("select args(4611686018427387905) a").get()), errOf(() => db.prepare("select arity(1) a").get())].join(" / ");
+  });
+  s("sqlite deterministic", () => {
+    let calls = 0;
+    db.function("det", { deterministic: true }, () => ++calls);
+    db.function("nondet", () => ++calls);
+    db.exec("create table dt (x); insert into dt values (1), (2), (3)");
+    db.prepare("select det() from dt").all();
+    const a = calls;
+    db.prepare("select nondet() from dt").all();
+    return [a, calls - a, errOf(() => db.exec("create index dti on dt (nondet())")), errOf(() => db.exec("create index dti2 on dt (det())"))];
+  });
+  s("sqlite aggregate window", () => {
+    db.aggregate("sum_win", { start: 0, step: (acc: number, v: number) => acc + v, inverse: (acc: number, v: number) => acc - v, result: (acc: number) => acc * 10 });
+    db.aggregate("sum_agg", { start: 0, step: (acc: number, v: number) => acc + v });
+    return [db.prepare("select sum_win(x) over (order by x rows between 1 preceding and current row) w from dt").all(), db.prepare("select sum_agg(x) s, sum_win(x) w from dt where x > 9").get(), errOf(() => db.prepare("select sum_agg(x) over (order by x) from dt").all())];
+  });
+  t("sqlite aggregate errors", () => [errOf(() => db.aggregate("nostart", { step: (a: number) => a } as never)), errOf(() => db.aggregate("nostep", { start: 0 } as never))].join(" / "));
+  s("sqlite aggregate start fn", () => {
+    db.aggregate("avgx", { start: () => ({ s: 0, n: 0 }), step: (a: { s: number; n: number }, v: number) => ({ s: a.s + v, n: a.n + 1 }), result: (a: { s: number; n: number }) => a.s / a.n });
+    return db.prepare("select avgx(x) a, typeof(avgx(x)) t from dt").get();
+  });
   s("sqlite serialize", () => {
     const d2 = new DatabaseSync(":memory:");
     const bytes = db.serialize();

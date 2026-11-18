@@ -191,9 +191,14 @@ export class DatabaseSync {
 
   /** A user function's result as SQLite's, or the error Node gives for a value it can't store. */
   #result(ctx: number, r: unknown) {
-    if (r === undefined || r === null || typeof r === "number" || typeof r === "string" || typeof r === "bigint") return result(ctx, (r ?? null) as Value);
+    // A number is a REAL, as Node binds one
+    if (r === undefined || r === null || typeof r === "number" || typeof r === "string") return result(ctx, (r ?? null) as Value, true);
+    if (typeof r === "bigint") {
+      if (r <= 2n ** 63n - 1n && r >= -(2n ** 63n)) return result(ctx, r);
+      return this.#fail(ctx, new Error("BigInt value is too large for SQLite"), false);
+    }
     if (ArrayBuffer.isView(r)) return result(ctx, new Uint8Array(r.buffer, r.byteOffset, r.byteLength));
-    this.#fail(ctx, new Error("Returned JavaScript value cannot be converted to a SQLite value"), false);
+    this.#fail(ctx, new Error(r instanceof Promise ? "Asynchronous user-defined functions are not supported" : "Returned JavaScript value cannot be converted to a SQLite value"), false);
   }
 
   /** The function failed with `e`: rethrown as is when it is the program's own error (`own`), else as Node's. */
@@ -232,13 +237,14 @@ export class DatabaseSync {
     if (!options || typeof options !== "object") throw argType('The "options" argument must be an object.');
     if (typeof options.step !== "function") throw argType('The "options.step" argument must be a function.');
     const { start, step, result: done, inverse } = options;
+    if (start === undefined) throw argType('The "options.start" argument must be a function or a primitive value.');
     const big = !!options.useBigIntArguments;
     const flags = (options.deterministic ? 0x800 : 0) | (options.directOnly ? 0x80000 : 0);
     // The accumulator of each group, by its sqlite3_aggregate_context.
     const accs = new Map<number, unknown>();
     const acc = (ctx: number) => {
       const key = aggregateKey(ctx, true);
-      if (!accs.has(key)) accs.set(key, typeof start === "function" ? start() : start);
+      if (!accs.has(key)) accs.set(key, typeof start === "function" ? start.call(null) : start);
       return key;
     };
     const update = (f: Fn) => (ctx: number, args: number[]) => {
@@ -255,7 +261,7 @@ export class DatabaseSync {
         const key = acc(ctx);
         const v = accs.get(key);
         if (final) accs.delete(key);
-        r = done ? done(v) : v;
+        r = done ? done.call(null, v) : v;
       } catch (e) {
         return this.#fail(ctx, e);
       }
