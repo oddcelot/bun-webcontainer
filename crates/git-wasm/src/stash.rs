@@ -5,7 +5,7 @@ use crate::history::{short, signature, with_committer, write_tree};
 use crate::merge::{apply_merged, conflict_messages};
 use crate::status::{Flat, Kind, compute, flat_head, flat_index, flat_tree, load_index, long, unmerged, worktree_changes};
 use crate::worktree::{hard_reset, remove_path, set_index, write_files};
-use crate::{Ctx, Exit, Res, fatal, out};
+use crate::{Ctx, Exit, Res, fatal, out, path_str};
 use gix::ObjectId;
 use gix::bstr::{BStr, ByteSlice};
 use gix::refs::transaction::{Change, LogChange, PreviousValue, RefEdit, RefLog};
@@ -264,8 +264,17 @@ fn apply(ctx: &Ctx, args: &[String], pop: bool) -> Res {
     let (n, _) = pick(spec.as_ref(), list.len())?;
     let s = load(ctx, list[list.len() - 1 - n].new)?;
     let index = load_index(ctx)?;
-    if !unmerged(&index).is_empty() {
-        return Err(Exit { code: 1, msg: "error: could not write index\nerror: cannot apply a stash in the middle of a merge".into() });
+    let conflicted = unmerged(&index);
+    if !conflicted.is_empty() {
+        // refresh_index's report, then the index can't be written
+        for p in conflicted.keys() {
+            out(&format!("{}: needs merge\n", path_str(p)));
+        }
+        eprintln!("error: could not write index");
+        if pop {
+            out("The stash entry is kept in case you need it again.\n");
+        }
+        return Ok(128);
     }
     let current = flat_index(&index);
     let current_tree = write_tree(ctx, &current)?;

@@ -66,8 +66,17 @@ unmerged paths (`UU`/`AA`/`UD`/... and the long format's sections and hints), `a
 `commit` (no `-m`: `MERGE_MSG`, as `--no-edit`) makes the merge commit and refuses while paths are unmerged, `switch`
 refuses during a merge, `checkout` with unmerged paths, and `merge --abort` (`reset --merge`) and `reset` end it. Merge
 messages: `Merge branch|tag|remote-tracking branch|commit '<rev>'` (an annotated tag's message below), ` into <branch>`
-unless on main/master. Not done: octopus merges, strategies (`-s`, `-X`), `--squash`, `--no-commit`, merging into an
-unborn branch; `pull` still only fast-forwards.
+unless on main/master, ` into HEAD` when detached; several revs are grouped as fmt-merge-msg does (`Merge branches 'a'
+and 'b', tag 'v1'`). Merging several revs is git-merge-octopus: the heads reduced as `reduce_heads` does, then one
+after the other onto the tree so far (fast-forwarding while it can), each a three-way merge (`merge_trees`) with the
+merge base of it and what is merged so far, with the script's messages (also under `-q`); only the last may leave
+conflicts (else `Should not be doing an octopus.`, exit 2); it refuses staged changes and changed or untracked files
+in the way. `--no-commit` stops before the commit with MERGE_HEAD/MERGE_MSG (`commit` concludes it); `--squash` writes
+no MERGE_HEAD but SQUASH_MSG (`Squashed commit of the following:` and the commits in log's medium format), which
+`commit` takes as its message (then MERGE_MSG's `# Conflicts:`, cleaned up as `--no-edit` does). Merging into an
+unborn branch checks out the commit (one only; refuses untracked files in the way, keeps staged ones). `stash apply`
+with unmerged paths prints git's `<path>: needs merge` and `error: could not write index` (exit 128). Not done:
+strategies (`-s`, `-X`); `pull` still only fast-forwards.
 
 Stashing (`stash.rs`): `stash [push] [-m <msg>] [-u] [-q]`, `save [<msg>]`, `list`, `show [-p] [--stat] [<stash>]`,
 `apply [--index] [-q] [<stash>]`, `pop`, `drop [-q] [<stash>]`, `clear`; `<stash>` is `stash@{n}` or `n`. The commits
