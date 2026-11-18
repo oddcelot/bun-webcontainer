@@ -245,17 +245,28 @@ fn detached_line(ctx: &Ctx) -> String {
 
 /// The long format, ending in git's closing hint. Returns whether there is anything staged.
 pub fn long(ctx: &Ctx, st: &Status) -> Result<String, crate::Exit> {
+    long_with(ctx, st, false)
+}
+
+/// The long format; `commit`'s (nothing to commit) leaves out the hint on a diverged branch, as git's does.
+pub fn long_with(ctx: &Ctx, st: &Status, commit: bool) -> Result<String, crate::Exit> {
     let mut s = String::new();
     let branch = ctx.repo.head_name()?;
+    let unborn = ctx.repo.head_id().is_err();
     match (&branch, crate::rebase::status_header()) {
         (None, Some(header)) => {
             s += &header;
             s += &crate::rebase::status_lines(!st.unmerged.is_empty());
         }
-        (Some(n), _) => s += &format!("On branch {}\n", n.shorten().to_str_lossy()),
+        (Some(n), _) => {
+            let n = n.shorten().to_str_lossy().into_owned();
+            s += &format!("On branch {n}\n");
+            if let Ok(head) = ctx.repo.head_id() {
+                s += &tracking(ctx, &n, head.detach(), !commit);
+            }
+        }
         (None, None) => s += &detached_line(ctx),
     }
-    let unborn = ctx.repo.head_id().is_err();
     if unborn {
         s += "\nNo commits yet\n\n";
     }
@@ -386,16 +397,63 @@ pub fn upstream(ctx: &Ctx, branch: &str) -> Option<(String, String)> {
     let remote = config.string(format!("branch.{branch}.remote").as_str())?.to_string();
     let merge = config.string(format!("branch.{branch}.merge").as_str())?.to_string();
     let name = merge.strip_prefix("refs/heads/")?;
-    Some(if remote == "." { (name.to_string(), merge.clone()) } else { (format!("{remote}/{name}"), format!("refs/remotes/{remote}/{name}")) })
+    // a remote that isn't configured (no fetch refspec) maps the branch to no tracking ref: no upstream, as in git
+    if remote != "." && config.string(format!("remote.{remote}.fetch").as_str()).is_none() {
+        return None;
+    }
+    let full = if remote == "." { merge.clone() } else { format!("refs/remotes/{remote}/{name}") };
+    Some((shorten_unambiguous(ctx, &full), full))
+}
+
+/// The DWIM rules a short ref name is tried with, in order (refs.c's ref_rev_parse_rules).
+pub const REF_RULES: [&str; 6] = ["{}", "refs/{}", "refs/tags/{}", "refs/heads/{}", "refs/remotes/{}", "refs/remotes/{}/HEAD"];
+
+/// refs_shorten_unambiguous_ref: the shortest name for a full ref that no earlier rule resolves to another ref
+/// (`up`, or `heads/up` while a tag `up` exists).
+pub fn shorten_unambiguous(ctx: &Ctx, full: &str) -> String {
+    let exists = |r: &str| r.starts_with("refs/") && ctx.repo.try_find_reference(r).ok().flatten().is_some();
+    for i in (1..REF_RULES.len()).rev() {
+        let (pre, post) = REF_RULES[i].split_once("{}").unwrap_or_default();
+        let Some(short) = full.strip_prefix(pre).and_then(|r| r.strip_suffix(post)).filter(|s| !s.is_empty()) else { continue };
+        if REF_RULES[..i].iter().all(|rule| !exists(&rule.replace("{}", short))) {
+            return short.to_string();
+        }
+    }
+    full.to_string()
+}
+
+/// How many commits `head` has that the upstream (a full ref) hasn't, and the other way round; None when it is missing.
+fn counts(ctx: &Ctx, head: ObjectId, upstream: &str) -> Option<(usize, usize)> {
+    let theirs = ctx.repo.find_reference(upstream).ok().and_then(|mut r| r.peel_to_id().ok()).map(|id| id.detach())?;
+    let count = |from: ObjectId, hide: ObjectId| ctx.repo.rev_walk([from]).with_hidden([hide]).all().map(|w| w.filter(|i| i.is_ok()).count()).unwrap_or(0);
+    Some((count(head, theirs), count(theirs, head)))
+}
+
+/// The long format's lines about the branch's upstream (remote.c's format_tracking_info with its default
+/// `@{upstream}`, the upstream being where the branch pushes), then a blank line; nothing without an upstream.
+fn tracking(ctx: &Ctx, branch: &str, head: ObjectId, divergence_advice: bool) -> String {
+    let Some((short, full)) = upstream(ctx, branch) else { return String::new() };
+    let plural = |n: usize| if n == 1 { "commit" } else { "commits" };
+    let hints = ctx.repo.config_snapshot().boolean("advice.statusHints").unwrap_or(true);
+    let hint = |h: &str| if hints { format!("  (use \"{h})\n") } else { String::new() };
+    let s = match counts(ctx, head, &full) {
+        None => format!("Your branch is based on '{short}', but the upstream is gone.\n{}", hint("git branch --unset-upstream\" to fixup")),
+        Some((0, 0)) => format!("Your branch is up to date with '{short}'.\n"),
+        Some((a, 0)) => format!("Your branch is ahead of '{short}' by {a} {}.\n{}", plural(a), hint("git push\" to publish your local commits")),
+        Some((0, b)) => format!("Your branch is behind '{short}' by {b} {}, and can be fast-forwarded.\n{}", plural(b), hint("git pull\" to update your local branch")),
+        Some((a, b)) => {
+            let advice = if divergence_advice { hint("git pull\" if you want to integrate the remote branch with yours") } else { String::new() };
+            format!("Your branch and '{short}' have diverged,\nand have {a} and {b} different {} each, respectively.\n{advice}", plural(a + b))
+        }
+    };
+    s + "\n"
 }
 
 /// ` [ahead 1, behind 2]`, ` [gone]` when the upstream's ref is missing, or nothing when the two are the same commit.
 fn ahead_behind(ctx: &Ctx, head: ObjectId, upstream: &str) -> String {
-    let Some(theirs) = ctx.repo.find_reference(upstream).ok().and_then(|mut r| r.peel_to_id().ok()).map(|id| id.detach()) else {
+    let Some((ahead, behind)) = counts(ctx, head, upstream) else {
         return " [gone]".into();
     };
-    let count = |from: ObjectId, hide: ObjectId| ctx.repo.rev_walk([from]).with_hidden([hide]).all().map(|w| w.filter(|i| i.is_ok()).count()).unwrap_or(0);
-    let (ahead, behind) = (count(head, theirs), count(theirs, head));
     match (ahead, behind) {
         (0, 0) => String::new(),
         (a, 0) => format!(" [ahead {a}]"),

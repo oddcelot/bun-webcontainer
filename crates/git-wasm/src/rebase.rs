@@ -120,12 +120,22 @@ If you wish to set tracking information for this branch you can do so with:
 
 pub fn rebase(ctx: &Ctx, args: &[String]) -> Res {
     let (mut quiet, mut onto, mut xopts, mut pos, mut action) = (false, None, Vec::new(), Vec::new(), None);
+    let mut autostash = ctx.repo.config_snapshot().boolean("rebase.autoStash").unwrap_or(false);
+    // --fork-point: unset (None) it is on only without an upstream argument; rebase.forkPoint=false turns it off
+    let mut fork_point = match ctx.repo.config_snapshot().boolean("rebase.forkPoint") {
+        Some(false) => Some(false),
+        _ => None,
+    };
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
             "--continue" | "--abort" | "--skip" | "--quit" => action = Some(a.clone()),
             "-q" | "--quiet" => quiet = true,
-            "-v" | "--verbose" | "--stat" | "-n" | "--no-stat" | "-m" | "--merge" | "--no-autostash" | "--no-update-refs" | "--no-autosquash" => {}
+            "--fork-point" => fork_point = Some(true),
+            "--no-fork-point" => fork_point = Some(false),
+            "--autostash" => autostash = true,
+            "--no-autostash" => autostash = false,
+            "-v" | "--verbose" | "--stat" | "-n" | "--no-stat" | "-m" | "--merge" | "--no-update-refs" | "--no-autosquash" => {}
             "--onto" => onto = Some(it.next().cloned().ok_or(Exit { code: 129, msg: "error: option `onto' requires a value".into() })?),
             a if a.starts_with("--onto=") => onto = Some(a[7..].to_string()),
             "-X" | "--strategy-option" => xopts.push(it.next().cloned().ok_or(Exit { code: 129, msg: "error: option `strategy-option' requires a value".into() })?),
@@ -136,8 +146,8 @@ pub fn rebase(ctx: &Ctx, args: &[String]) -> Res {
                 Some(s) => return fatal(format!("rebase strategy '{s}' is not supported in the playground (ort is)")),
                 None => return Err(Exit { code: 129, msg: "error: option `strategy' requires a value".into() }),
             },
-            "-i" | "--interactive" | "-x" | "--exec" | "-r" | "--rebase-merges" | "--root" | "--autosquash" | "--edit-todo" | "--apply" | "--autostash" | "--update-refs" | "--keep-base" | "--signoff" | "--reapply-cherry-picks" | "-f" | "--force-rebase" | "--no-ff" => {
-                return fatal(format!("git rebase {a} is not supported in the playground (git rebase [--onto <newbase>] [<upstream>], --continue, --skip, --abort, --quit are)"));
+            "-i" | "--interactive" | "-x" | "--exec" | "-r" | "--rebase-merges" | "--root" | "--autosquash" | "--edit-todo" | "--apply" | "--update-refs" | "--keep-base" | "--signoff" | "--reapply-cherry-picks" | "-f" | "--force-rebase" | "--no-ff" => {
+                return fatal(format!("git rebase {a} is not supported in the playground (git rebase [--onto <newbase>] [<upstream> [<branch>]], --continue, --skip, --abort, --quit are)"));
             }
             a if a.starts_with("--rebase-merges=") || a.starts_with("--exec=") || a.starts_with("--strategy=") => {
                 return fatal(format!("git rebase {a} is not supported in the playground"));
@@ -155,6 +165,8 @@ pub fn rebase(ctx: &Ctx, args: &[String]) -> Res {
             "--skip" => skip(ctx),
             "--abort" => abort(ctx),
             _ => {
+                // the autostash goes on the stash list
+                take_autostash(ctx, false)?;
                 std::fs::remove_dir_all(DIR)?;
                 Ok(0)
             }
@@ -163,16 +175,20 @@ pub fn rebase(ctx: &Ctx, args: &[String]) -> Res {
     if in_progress() {
         return fatal(IN_PROGRESS);
     }
-    if pos.len() > 1 {
-        return fatal("git rebase <upstream> <branch> is not supported in the playground: switch to the branch, then rebase it");
+    if pos.len() > 2 {
+        return Err(Exit { code: 129, msg: "usage: git rebase [-i] [options] [--exec <cmd>] [--onto <newbase> | --keep-base] [<upstream> [<branch>]]".into() });
     }
-    let Ok(head) = ctx.repo.head_commit() else { return fatal("invalid upstream 'HEAD'") };
     let upstream_name = match pos.first() {
+        Some(u) if u == "-" => "@{-1}".to_string(),
         Some(u) => u.clone(),
         None => {
             let branch = ctx.repo.head_name()?.map(|n| n.shorten().to_str_lossy().into_owned());
             match branch.as_ref().and_then(|b| crate::status::upstream(ctx, b)) {
-                Some((short, _)) => short,
+                // the tracking ref's full name, as branch_get_upstream gives it
+                Some((_, full)) => {
+                    fork_point.get_or_insert(true);
+                    full
+                }
                 None => {
                     out(&NO_UPSTREAM.replace("{branch}", branch.as_deref().unwrap_or("<branch>")));
                     return Ok(1);
@@ -181,41 +197,196 @@ pub fn rebase(ctx: &Ctx, args: &[String]) -> Res {
         }
     };
     let commit_of = |rev: &str| ctx.repo.rev_parse_single(rev).ok().and_then(|id| id.object().ok()?.peel_to_commit().ok()).map(|c| c.id);
+    warn_ambiguous(ctx, &upstream_name);
     let Some(upstream) = commit_of(&upstream_name) else { return fatal(format!("invalid upstream '{upstream_name}'")) };
+    // `rebase <upstream> <branch>`: that branch (or commit) is what gets rebased; git switches to it first
+    let (head, head_name, branch_name, switch_to) = match pos.get(1) {
+        Some(b) => match ctx.repo.try_find_reference(format!("refs/heads/{b}").as_str()).ok().flatten().and_then(|mut r| r.peel_to_id().ok().map(|id| id.detach())) {
+            Some(id) => (id, Some(format!("refs/heads/{b}")), b.clone(), Some(b.clone())),
+            None => match commit_of(b) {
+                Some(id) => (id, None, b.clone(), Some(b.clone())),
+                None => return fatal(format!("no such branch/commit '{b}'")),
+            },
+        },
+        None => {
+            let Ok(head) = ctx.repo.head_commit() else { return fatal("Could not resolve HEAD to a commit") };
+            let head_name = ctx.repo.head_name()?.map(|n| n.as_bstr().to_str_lossy().into_owned());
+            let branch_name = head_name.as_deref().map_or("HEAD".to_string(), |n| n.trim_start_matches("refs/heads/").to_string());
+            (head.id, head_name, branch_name, None)
+        }
+    };
+    let onto_name = onto.clone().unwrap_or_else(|| upstream_name.clone());
+    warn_ambiguous(ctx, &onto_name);
     let onto_id = match &onto {
         Some(o) => commit_of(o).ok_or_else(|| Exit { code: 128, msg: format!("fatal: Does not point to a valid commit '{o}'") })?,
         None => upstream,
     };
-    start(ctx, head.id, upstream, onto_id, &Start { quiet, xopts, upstream_name })
+    let restrict = if fork_point == Some(true) { fork_point_of(ctx, &upstream_name, head)? } else { None };
+    start(ctx, head, upstream, onto_id, &Start { quiet, xopts, onto_name, head_name, branch_name, switch_to, restrict, autostash })
+}
+
+/// The refs a short name could stand for (repo_dwim_ref's matches).
+fn dwim_matches(ctx: &Ctx, name: &str) -> Vec<String> {
+    crate::status::REF_RULES
+        .iter()
+        .map(|rule| rule.replace("{}", name))
+        .filter(|r| (r == "HEAD" || r.starts_with("refs/")) && ctx.repo.try_find_reference(r.as_str()).ok().flatten().is_some())
+        .collect()
+}
+
+/// get_oid's warning when a name stands for more than one ref.
+fn warn_ambiguous(ctx: &Ctx, name: &str) {
+    if dwim_matches(ctx, name).len() > 1 {
+        eprintln!("warning: refname '{name}' is ambiguous.");
+    }
+}
+
+/// repo_dwim_ref: the full name of the one ref `name` stands for.
+fn dwim_ref(ctx: &Ctx, name: &str) -> Result<String, Exit> {
+    let found = dwim_matches(ctx, name);
+    match found.as_slice() {
+        [] => fatal(format!("No such ref: '{name}'")),
+        [one] => Ok(one.clone()),
+        _ => fatal(format!("Ambiguous refname: '{name}'")),
+    }
+}
+
+/// get_fork_point (`merge-base --fork-point <ref> <commit>`): of the commits `ref` pointed at by its reflog (or its
+/// commit, without one), the one where `commit` forked: the single best common ancestor of `commit` and all of them,
+/// when it is one of them. A rebase then leaves out what came before it, even commits the upstream since dropped.
+pub fn fork_point_of(ctx: &Ctx, refname: &str, commit: ObjectId) -> Result<Option<ObjectId>, Exit> {
+    let full = dwim_ref(ctx, refname)?;
+    let mut revs: Vec<ObjectId> = Vec::new();
+    let log = std::fs::read_to_string(format!("/.git/logs/{full}")).unwrap_or_default();
+    for (i, line) in log.lines().enumerate() {
+        let mut w = line.split(' ');
+        let (old, new) = (w.next().unwrap_or(""), w.next().unwrap_or(""));
+        // the first entry's old value too (collect_one_reflog_ent), then each new one; no nulls, no repeats
+        for id in if i == 0 { vec![old, new] } else { vec![new] } {
+            if let Ok(id) = ObjectId::from_hex(id.as_bytes()) {
+                if !id.is_null() && !revs.contains(&id) && ctx.repo.find_commit(id).is_ok() {
+                    revs.push(id);
+                }
+            }
+        }
+    }
+    if revs.is_empty() {
+        let mut r = ctx.repo.find_reference(full.as_str())?;
+        revs.push(r.peel_to_id()?.detach());
+    }
+    // the merge bases of commit and the reflog's commits: the common ancestors no other common ancestor has as parent
+    let mut ours: std::collections::HashMap<ObjectId, Vec<ObjectId>> = std::collections::HashMap::new();
+    for info in ctx.repo.rev_walk([commit]).all()? {
+        let info = info?;
+        ours.insert(info.id, info.parent_ids.to_vec());
+    }
+    let common: HashSet<ObjectId> = ctx.repo.rev_walk(revs.clone()).all()?.filter_map(Result::ok).map(|i| i.id).filter(|id| ours.contains_key(id)).collect();
+    let parents: HashSet<ObjectId> = common.iter().flat_map(|id| ours[id].iter().copied()).collect();
+    let best: Vec<ObjectId> = common.iter().copied().filter(|id| !parents.contains(id)).collect();
+    Ok(match best.as_slice() {
+        [one] if revs.contains(one) => Some(*one),
+        _ => None,
+    })
 }
 
 /// How a rebase was asked for.
 pub struct Start {
     pub quiet: bool,
     pub xopts: Vec<String>,
-    /// as typed, for the reflog
-    pub upstream_name: String,
+    /// onto as typed, for the reflog
+    pub onto_name: String,
+    /// the branch being rebased (`refs/heads/<name>`), or None for a detached HEAD
+    pub head_name: Option<String>,
+    /// the branch (or commit, or `HEAD`) as `Current branch <name> is up to date` names it
+    pub branch_name: String,
+    /// `rebase <upstream> <branch>`'s branch, switched to when there is nothing to replay
+    pub switch_to: Option<String>,
+    /// the fork point (`--fork-point`): commits before it aren't replayed
+    pub restrict: Option<ObjectId>,
+    /// `--autostash`: local changes set aside first (`.git/rebase-merge/autostash`), applied again at the end
+    pub autostash: bool,
 }
 
-/// Rebase HEAD's commits since `upstream` onto `onto`.
+impl Start {
+    /// A rebase of HEAD (the branch it is on, or a detached HEAD).
+    pub fn of_head(ctx: &Ctx, quiet: bool, xopts: Vec<String>, onto_name: String, autostash: bool) -> Result<Self, Exit> {
+        let head_name = ctx.repo.head_name()?.map(|n| n.as_bstr().to_str_lossy().into_owned());
+        let branch_name = head_name.as_deref().map_or("HEAD".to_string(), |n| n.trim_start_matches("refs/heads/").to_string());
+        Ok(Start { quiet, xopts, onto_name, head_name, branch_name, switch_to: None, restrict: None, autostash })
+    }
+}
+
+/// create_autostash: the tracked changes stashed (not on the list) and reset away, the stash's id in the state
+/// directory for the end of the rebase.
+pub fn make_autostash(ctx: &Ctx) -> Result<(), Exit> {
+    if let Some(id) = crate::stash::create_autostash(ctx)? {
+        std::fs::create_dir_all(DIR)?;
+        write("autostash", &format!("{id}\n"))?;
+        out(&format!("Created autostash: {}\n", short(id)));
+        hard_reset(ctx, &flat_head(ctx)?, true)?;
+    }
+    Ok(())
+}
+
+/// apply_autostash (`attempt`) or save_autostash: the stash taken at the start back, or on the stash list.
+fn take_autostash(ctx: &Ctx, attempt: bool) -> Result<(), Exit> {
+    let Some(id) = read("autostash").and_then(|s| ObjectId::from_hex(s.trim().as_bytes()).ok()) else { return Ok(()) };
+    crate::stash::apply_autostash(ctx, id, attempt)?;
+    let _ = std::fs::remove_file(path("autostash"));
+    Ok(())
+}
+
+/// The rebase ends before it started (up to date, or HEAD couldn't detach): the autostash back, the state gone.
+fn end_early(ctx: &Ctx) -> Result<(), Exit> {
+    take_autostash(ctx, true)?;
+    if in_progress() {
+        std::fs::remove_dir_all(DIR)?;
+    }
+    Ok(())
+}
+
+/// Rebase `head`'s commits since `upstream` onto `onto`.
 pub fn start(ctx: &Ctx, head: ObjectId, upstream: ObjectId, onto: ObjectId, o: &Start) -> Res {
+    if o.autostash {
+        make_autostash(ctx)?;
+    }
     require_clean(ctx, "rebase")?;
-    let head_name = ctx.repo.head_name()?.map(|n| n.as_bstr().to_str_lossy().into_owned());
-    let branch_label = head_name.as_deref().map(|n| n.trim_start_matches("refs/heads/").to_string());
-    // can_fast_forward: onto already in HEAD's history, and nothing of upstream's left out
+    let head_name = o.head_name.clone();
+    // can_fast_forward: onto already in head's history (linearly), and nothing of upstream's left out
     let base = ctx.repo.merge_base(onto, head).ok().flatten().map(|b| b.detach());
-    if base == Some(onto) && ctx.repo.merge_base(upstream, head).ok().flatten().map(|b| b.detach()) == Some(onto) {
-        if !o.quiet {
-            match &branch_label {
-                Some(b) => out(&format!("Current branch {b} is up to date.\n")),
-                None => out("HEAD is up to date.\n"),
+    if base == Some(onto)
+        && o.restrict.is_none_or(|r| Some(r) == base)
+        && ctx.repo.merge_base(upstream, head).ok().flatten().map(|b| b.detach()) == Some(onto)
+        && linear(ctx, onto, head)?
+    {
+        if let Some(to) = &o.switch_to {
+            // checkout_up_to_date
+            let target = commit_flat(ctx, &ctx.repo.find_commit(head)?)?;
+            if let Err(e) = two_way(ctx, &flat_head(ctx)?, &target, "checkout") {
+                eprintln!("{}\nerror: could not switch to {to}", e.msg);
+                end_early(ctx)?;
+                return Ok(1);
+            }
+            let msg = format!("rebase: checkout {to}");
+            match head_name.as_deref().and_then(|n| n.strip_prefix("refs/heads/")) {
+                Some(b) => set_head_branch(ctx, b, &msg)?,
+                None => detach(ctx, head, &msg)?,
             }
         }
+        if !o.quiet {
+            if o.branch_name == "HEAD" {
+                out("HEAD is up to date.\n");
+            } else {
+                out(&format!("Current branch {} is up to date.\n", o.branch_name));
+            }
+        }
+        end_early(ctx)?;
         return Ok(0);
     }
-    // upstream..HEAD without merges, oldest first; what upstream already has (the same patch) is left out
+    // upstream..HEAD (and not before the fork point) without merges, oldest first; what upstream already has (the same
+    // patch) is left out
     let mut picks: Vec<ObjectId> = Vec::new();
-    for info in ctx.repo.rev_walk([head]).with_hidden([upstream]).all()? {
+    for info in ctx.repo.rev_walk([head]).with_hidden(std::iter::once(upstream).chain(o.restrict)).all()? {
         let info = info?;
         if info.parent_ids.len() <= 1 {
             picks.push(info.id);
@@ -246,7 +417,9 @@ pub fn start(ctx: &Ctx, head: ObjectId, upstream: ObjectId, onto: ObjectId, o: &
     let h = flat_head(ctx)?;
     let onto_commit = ctx.repo.find_commit(onto)?;
     if let Err(e) = two_way(ctx, &h, &commit_flat(ctx, &onto_commit)?, "checkout") {
-        eprintln!("{}\nerror: could not detach HEAD", e.msg);
+        eprintln!("{}", e.msg);
+        end_early(ctx)?;
+        eprintln!("error: could not detach HEAD");
         return Ok(1);
     }
     std::fs::create_dir_all(DIR)?;
@@ -270,8 +443,22 @@ pub fn start(ctx: &Ctx, head: ObjectId, upstream: ObjectId, onto: ObjectId, o: &
     write("msgnum", "0\n")?;
     write("end", &format!("{}\n", picks.len()))?;
     crate::merge::write_state("ORIG_HEAD", &format!("{head}\n"))?;
-    detach(ctx, onto, &format!("rebase (start): checkout {}", o.upstream_name))?;
+    detach(ctx, onto, &format!("rebase (start): checkout {}", o.onto_name))?;
     run_todo(ctx)
+}
+
+/// is_linear_history: no merge between `from` (an ancestor) and `to`, following first parents.
+fn linear(ctx: &Ctx, from: ObjectId, mut to: ObjectId) -> Result<bool, Exit> {
+    while to != from {
+        let c = ctx.repo.find_commit(to)?;
+        let parents: Vec<ObjectId> = c.parent_ids().map(|p| p.detach()).collect();
+        match parents.as_slice() {
+            [] => return Ok(true),
+            [p] => to = *p,
+            _ => return Ok(false),
+        }
+    }
+    Ok(true)
 }
 
 fn detach(ctx: &Ctx, id: ObjectId, msg: &str) -> Result<(), Exit> {
@@ -471,6 +658,7 @@ fn abort(ctx: &Ctx) -> Res {
     }
     clear_stop();
     let _ = std::fs::remove_file("/.git/REBASE_HEAD");
+    take_autostash(ctx, true)?;
     std::fs::remove_dir_all(DIR)?;
     Ok(0)
 }
@@ -494,6 +682,7 @@ fn finish(ctx: &Ctx, quiet: bool) -> Res {
         crate::merge::write_state("ORIG_HEAD", &format!("{orig}\n"))?;
     }
     clear_stop();
+    take_autostash(ctx, true)?;
     std::fs::remove_dir_all(DIR)?;
     if !quiet {
         eprintln!("Successfully rebased and updated {what}.");

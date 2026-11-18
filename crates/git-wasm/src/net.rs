@@ -91,7 +91,8 @@ fn report(url: &BStr, outcome: &gix::remote::fetch::Outcome) {
             Mode::Forced => format!(" + {}...{} ", old.unwrap_or_default(), new.unwrap_or_default()),
             _ => continue,
         };
-        lines.push(format!("{what}{remote:<10} -> {local}\n"));
+        let forced = if matches!(u.mode, Mode::Forced) { "  (forced update)" } else { "" };
+        lines.push(format!("{what}{remote:<10} -> {local}{forced}\n"));
     }
     if !lines.is_empty() {
         eprintln!("From {url}");
@@ -251,7 +252,6 @@ pub fn pull(ctx: &Ctx, args: &[String]) -> Res {
         return fatal("You are not currently on a branch.");
     };
     let name = remote_name(ctx, ops.first());
-    fetch_from(ctx, &name, &rest)?;
     let merge = ops
         .get(1)
         .cloned()
@@ -259,6 +259,12 @@ pub fn pull(ctx: &Ctx, args: &[String]) -> Res {
         .unwrap_or_else(|| format!("refs/heads/{branch}"));
     let short = merge.trim_start_matches("refs/heads/").to_string();
     let tracking = format!("refs/remotes/{name}/{short}");
+    // before fetching, as git's get_rebase_fork_point (`merge-base --fork-point`, failures ignored)
+    let fork_point = match ctx.repo.head_id() {
+        Ok(head) if rebase => crate::rebase::fork_point_of(ctx, &tracking, head.detach()).ok().flatten(),
+        _ => None,
+    };
+    fetch_from(ctx, &name, &rest)?;
     let Ok(target) = ctx.repo.rev_parse_single(tracking.as_str()).and_then(|id| Ok(id.object()?.peel_to_commit()?)).map_err(|_| ())
     else {
         return fatal(format!("couldn't find remote ref {merge}"));
@@ -275,8 +281,15 @@ pub fn pull(ctx: &Ctx, args: &[String]) -> Res {
             let behind = ctx.repo.merge_base(head.id, target.id).ok().flatten().is_some_and(|b| b.detach() == head.id);
             if !behind {
                 crate::http::report("Updating files");
-                let start = crate::rebase::Start { quiet: o.quiet, xopts: o.xopts.clone(), upstream_name: format!("{name}/{short}") };
-                return crate::rebase::start(ctx, head.id, target.id, target.id, &start);
+                // get_rebase_newbase_and_upstream: the fork point as the upstream, unless it is where HEAD and the
+                // fetched branch meet anyway
+                let mb = |a: gix::ObjectId, b: gix::ObjectId| ctx.repo.merge_base(a, b).ok().flatten().map(|m| m.detach());
+                let upstream = match fork_point {
+                    Some(fp) if mb(head.id, target.id).and_then(|m| mb(m, fp)) != Some(fp) => fp,
+                    _ => target.id,
+                };
+                let start = crate::rebase::Start::of_head(ctx, o.quiet, o.xopts.clone(), target.id.to_string(), false)?;
+                return crate::rebase::start(ctx, head.id, upstream, target.id, &start);
             }
             o.ff_only = true;
             o.no_ff = false;

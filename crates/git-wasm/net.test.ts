@@ -252,6 +252,9 @@ try {
     if (spawnSync("git", ["-C", pa, "fsck", "--full", "--strict"], { env }).status !== 0) check(`${name}: fsck`, false);
   }
   const behind = (d: string) => native(d, "reset", "-q", "--hard", "HEAD~1");
+  // commits made in a setup get a fixed date, so both copies' have the same id (it shows in rebase's messages)
+  const fixed = { ...env, GIT_AUTHOR_DATE: "1700000000 +0100", GIT_COMMITTER_DATE: "1700000000 +0100" };
+  const mine = (d: string) => { write(d, "c.txt", "mine\n"); spawnSync("git", ["-C", d, "commit", "-qam", "mine"], { env: fixed }); };
   await pullTwin("pull merges diverged", ["pull"]);
   await pullTwin("pull -q", ["pull", "-q"]);
   await pullTwin("pull --no-rebase -n", ["pull", "--no-rebase", "-n"]);
@@ -262,7 +265,7 @@ try {
   await pullTwin("pull --no-ff", ["pull", "--no-ff"], { setup: behind });
   await pullTwin("pull pull.ff=false", ["pull"], { setup: (d) => { behind(d); native(d, "config", "pull.ff", "false"); } });
   await pullTwin("pull --ff-only fast-forward", ["pull", "--ff-only"], { setup: behind });
-  await pullTwin("pull conflict", ["pull"], { setup: (d) => { write(d, "c.txt", "mine\n"); native(d, "commit", "-qam", "mine"); } });
+  await pullTwin("pull conflict", ["pull"], { setup: mine });
   await pullTwin("pull refuses a dirty file", ["pull"], { setup: (d) => write(d, "c.txt", "dirty\n") });
   await pullTwin("pull keeps other changes", ["pull"], { setup: (d) => write(d, "local.txt", "dirty\n") });
   await pullTwin("pull into another branch", ["pull", "origin", "main"], { setup: (d) => native(d, "switch", "-q", "-c", "feat") });
@@ -275,9 +278,28 @@ try {
   await pullTwin("pull pull.rebase=true", ["pull"], { raw: true, setup: (d) => native(d, "config", "pull.rebase", "true") });
   await pullTwin("pull branch.main.rebase=true", ["pull"], { raw: true, setup: (d) => native(d, "config", "branch.main.rebase", "true") });
   await pullTwin("pull --rebase fast-forward", ["pull", "--rebase"], { setup: behind });
-  await pullTwin("pull --rebase conflict", ["pull", "--rebase"], { setup: (d) => { write(d, "c.txt", "mine\n"); native(d, "commit", "-qam", "mine"); } });
+  await pullTwin("pull --rebase conflict", ["pull", "--rebase"], { setup: mine });
   // one local commit (the new commits' ids differ, so their children's parents would)
   await pullTwin("pull --rebase -X theirs", ["pull", "--rebase", "-X", "theirs"], { setup: (d) => { write(d, "c.txt", "mine\n"); native(d, "commit", "-q", "-a", "--amend", "-m", "mine"); } });
+  // origin/main moved to y locally (as a fetch from a remote that had it would), and the remote dropped it since
+  const forked = (d: string) => {
+    const at = (...args: string[]) => { const x = spawnSync("git", ["-C", d, ...args], { encoding: "utf8", env: fixed }); if (x.status !== 0) throw new Error(x.stderr); };
+    at("switch", "-q", "--detach", "origin/main");
+    write(d, "y.txt", "y\n");
+    at("add", "y.txt");
+    at("commit", "-qm", "y: dropped upstream");
+    at("update-ref", "-m", "fetch: forced", "refs/remotes/origin/main", "HEAD");
+    at("switch", "-q", "-C", "main");
+    write(d, "z.txt", "z\n");
+    at("add", "z.txt");
+    at("commit", "-qm", "z: mine");
+  };
+  await pullTwin("fetch forced update", ["fetch"], { setup: forked });
+  // the fork point: y, which origin/main had (its reflog says), isn't replayed; only z is
+  await pullTwin("pull --rebase fork point", ["pull", "--rebase"], { setup: forked });
+  await pullTwin("pull --rebase fork point without a reflog", ["pull", "--rebase"], { setup: (d) => { forked(d); rmSync(join(d, ".git/logs/refs/remotes/origin/main")); } });
+  // what the fork point leaves out, without one: y replayed too
+  await pullTwin("pull --rebase fork point gone", ["pull", "--rebase"], { setup: (d) => { forked(d); native(d, "update-ref", "refs/remotes/origin/main", "main~2"); } });
   await pullTwin("pull --rebase refuses a dirty file", ["pull", "--rebase"], { setup: (d) => write(d, "c.txt", "dirty\n") });
   await pullTwin("pull --rebase refuses staged changes", ["pull", "--rebase"], { setup: (d) => { write(d, "new.txt", "staged\n"); native(d, "add", "new.txt"); } });
   await pullTwin("pull --rebase keeps untracked files", ["pull", "--rebase"], { setup: (d) => write(d, "local.txt", "untracked\n") });

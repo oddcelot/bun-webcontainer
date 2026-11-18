@@ -944,6 +944,56 @@ try {
   // (stderr: git apply's `error: patch failed: b.txt:1` lines come first)
   await twin("stash apply --index conflict", p7s, ["stash", "apply", "--index"], { ...ss, err: false, setup: (d) => { write(d, "b.txt", "conflicting\n"); nat(d, "commit", "-qam", "conflicting"); }, head: "tree" });
 
+  // ---- status: the branch against its upstream ---------------------------------------------------------------------
+  {
+    const ps = join(tmp, "ps");
+    mkdirSync(ps);
+    const psn = (...args: string[]) => nat(ps, ...args);
+    psn("init", "-q", "-b", "main");
+    psn("config", "core.fileMode", "false");
+    let n = 0;
+    const commit = () => { write(ps, "f.txt", `${++n}\n`); psn("add", "f.txt"); psn("commit", "-qm", `c${n}`); };
+    commit();
+    commit();
+    psn("branch", "up");
+    psn("switch", "-qc", "t");
+    psn("branch", "-q", "--set-upstream-to=up");
+    const compare = async (at: string) => {
+      for (const args of [["status"], ["status", "-sb"]]) same(`status tracking, ${at}: ${args.join(" ")}`, (await git(ps, args, ident)).out, native(ps, args));
+      // commit's (nothing to commit) leaves out the hint on a diverged branch
+      const nc = spawnSync("git", ["-C", ps, "commit", "-m", "x"], { encoding: "utf8", env: natEnv });
+      same(`status tracking, ${at}: commit`, (await git(ps, ["commit", "-m", "x"], ident)).out, nc.stdout);
+    };
+    await compare("up to date");
+    commit();
+    await compare("ahead 1");
+    commit();
+    await compare("ahead 2");
+    psn("switch", "-q", "up");
+    commit();
+    psn("switch", "-q", "t");
+    await compare("diverged");
+    psn("reset", "-q", "--hard", "up~1");
+    await compare("behind 1");
+    psn("reset", "-q", "--hard", "up~2");
+    await compare("behind 2");
+    psn("tag", "up", "main");
+    await compare("ambiguous");
+    psn("branch", "-q", "-D", "up");
+    await compare("gone");
+    psn("tag", "-d", "up");
+    await compare("gone, unambiguous");
+    psn("update-ref", "refs/remotes/origin/main", "main");
+    psn("config", "branch.t.remote", "origin");
+    psn("config", "branch.t.merge", "refs/heads/main");
+    await compare("a remote that isn't configured");
+    psn("config", "remote.origin.url", "https://example.com/r.git");
+    psn("config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*");
+    await compare("a remote's");
+    psn("config", "advice.statusHints", "false");
+    await compare("statusHints off");
+  }
+
   // ---- rebase -------------------------------------------------------------------------------------------------------
   // Sequences of steps on two copies: ours (A) and native git (B), compared after each step. New commits' ids differ
   // (their committer time), so ids the source project doesn't have are masked in the output.
@@ -988,6 +1038,25 @@ try {
   prn("switch", "-q", "same");
   write(pr, "f.txt", "A\nb\nc\nd\ne\nf\nG\n");
   prn("commit", "-qam", "s: last line too");
+  // fork points: `up` had u1 when fp branched off it, then dropped it (its reflog remembers); fp tracks up
+  prn("switch", "-qc", "up", "main");
+  write(pr, "u.txt", "u1\n");
+  prn("add", "u.txt");
+  prn("commit", "-qm", "u1: dropped later");
+  prn("switch", "-qc", "fp");
+  write(pr, "p.txt", "p\n");
+  prn("add", "p.txt");
+  prn("commit", "-qm", "p: on u1");
+  prn("switch", "-q", "up");
+  prn("reset", "-q", "--hard", "main");
+  write(pr, "w.txt", "w\n");
+  prn("add", "w.txt");
+  prn("commit", "-qm", "u2: instead");
+  prn("branch", "fp2");
+  prn("config", "branch.fp.remote", ".");
+  prn("config", "branch.fp.merge", "refs/heads/up");
+  prn("config", "branch.fp2.remote", ".");
+  prn("config", "branch.fp2.merge", "refs/heads/up");
   prn("switch", "-q", "--detach", "main");
   prn("switch", "-q", "feat");
   const known = new Set(prn("rev-list", "--all").split("\n").filter(Boolean));
@@ -998,7 +1067,8 @@ try {
       .join("\n") + `\nrebasing: ${existsSync(join(d, ".git/rebase-merge"))}`;
   const chain = (d: string) => mask(spawnSync("git", ["-C", d, "log", "--format=%T|%an|%ae|%at|%B|%H", "HEAD", "--"], { encoding: "utf8", env: natEnv }).stdout);
   const branchAt = (d: string) => mask(spawnSync("git", ["-C", d, "log", "-1", "--format=%T %H", "feat"], { encoding: "utf8", env: natEnv }).stdout);
-  type Step = string[] | ((d: string) => void);
+  // a step: the same git command on both, a change to both copies, or our command and native's equivalent
+  type Step = string[] | ((d: string) => void) | { ours: string[]; native: string[] };
   async function rebaseSeq(name: string, steps: Step[], setup?: (d: string) => void) {
     for (const d of [A, B]) {
       rmSync(d, { recursive: true, force: true });
@@ -1012,9 +1082,10 @@ try {
         step(B);
         continue;
       }
-      const at = `${name} #${i} git ${step.join(" ")}`;
-      const ours = await git(A, step, ident);
-      const nat = spawnSync("git", ["-C", B, ...step], { encoding: "utf8", env: natEnv });
+      const [oursArgs, nativeArgs] = Array.isArray(step) ? [step, step] : [step.ours, step.native];
+      const at = `${name} #${i} git ${oursArgs.join(" ")}`;
+      const ours = await git(A, oursArgs, ident);
+      const nat = spawnSync("git", ["-C", B, ...nativeArgs], { encoding: "utf8", env: natEnv });
       check(`${at}: exit`, ours.code === nat.status, `ours ${ours.code} native ${nat.status}\n${ours.err}\n${nat.stderr}`);
       same(`${at}: stdout`, mask(ours.out), mask(nat.stdout));
       same(`${at}: stderr`, mask(ours.err), mask(nat.stderr));
@@ -1052,9 +1123,56 @@ try {
   await rebaseSeq("rebase conflict, again", [["rebase", "dconf"], ["rebase", "main"], ["switch", "main"], ["merge", "main"]]);
   await rebaseSeq("rebase conflict, unstaged at continue", [["rebase", "dconf"], resolve("A\nb\nc\nresolved\ne\nf\nG\n"), (d) => write(d, "k.txt", "dirty\n"), ["rebase", "--continue"]]);
   await rebaseSeq("rebase conflict, commit then continue", [["rebase", "dconf"], resolve("A\nb\nc\nresolved\ne\nf\nG\n"), ["commit", "-q", "-m", "by hand"], ["status"], ["rebase", "--continue"]]);
+  // commit without -m during a stop: MERGE_MSG, as --no-edit (there is no editor), the conflicts' comments with it
+  await rebaseSeq("rebase conflict, commit without -m", [["rebase", "dconf"], resolve("A\nb\nc\nresolved\ne\nf\nG\n"), { ours: ["commit"], native: ["commit", "--no-edit"] }, ["status"], ["rebase", "--continue"]]);
+  await rebaseSeq("rebase conflict, commit --no-edit", [["rebase", "dconf"], resolve("A\nb\nc\nresolved\ne\nf\nG\n"), ["commit", "--no-edit", "-q"], ["rebase", "--continue"]]);
+  await rebaseSeq("rebase conflict, commit -a without -m", [["rebase", "dconf"], (d) => write(d, "f.txt", "A\nb\nc\nresolved\ne\nf\nG\n"), { ours: ["commit", "-a"], native: ["commit", "-a", "--no-edit"] }, ["rebase", "--continue"]]);
   await rebaseSeq("rebase conflict -X theirs", [["rebase", "-X", "theirs", "dconf"]]);
   await rebaseSeq("rebase conflict -Xours", [["rebase", "-Xours", "dconf"]]);
   await rebaseSeq("rebase conflict, advice off", [["rebase", "dconf"]], (d) => nat(d, "config", "advice.mergeConflict", "false"));
+  // rebase <upstream> <branch>: the branch is switched to first (when up to date), or rebased from wherever HEAD is
+  const onMain = (d: string) => nat(d, "switch", "-q", "main");
+  await rebaseSeq("rebase <upstream> <branch>", [["rebase", "main", "feat"], ["status", "-s"]], onMain);
+  await rebaseSeq("rebase <upstream> <branch> on it", [["rebase", "main", "feat"]]);
+  await rebaseSeq("rebase <upstream> <branch> up to date", [["rebase", "feat~2", "feat"], ["rebase", "-q", "main", "m1"]], onMain);
+  await rebaseSeq("rebase <upstream> <commit>", [["rebase", "main", "feat~1"]], onMain);
+  await rebaseSeq("rebase <upstream> <commit> up to date", [["rebase", "base", "feat~1"], ["rebase", "feat", "HEAD"]], (d) => { onMain(d); nat(d, "tag", "base", "main~2"); });
+  await rebaseSeq("rebase <upstream> <no such branch>", [["rebase", "main", "nope"]], onMain);
+  await rebaseSeq("rebase <upstream> <branch> behind", [["rebase", "main", "behind"]]);
+  await rebaseSeq("rebase <upstream> <branch> with untracked in the way", [["rebase", "feat", "behind"]], (d) => { onMain(d); write(d, "n.txt", "mine\n"); });
+  await rebaseSeq("rebase <upstream> <branch> conflict, abort", [["rebase", "dconf", "feat"], ["status"], ["rebase", "--abort"]], onMain);
+  await rebaseSeq("rebase <upstream> <branch> conflict, continue", [["rebase", "dconf", "feat"], resolve("A\nb\nc\nresolved\ne\nf\nG\n"), ["rebase", "--continue"]], onMain);
+  await rebaseSeq("rebase <upstream> <branch> --onto", [["rebase", "--onto", "m1", "feat~2", "feat"]], onMain);
+  // --fork-point: on without an upstream argument (u1 isn't replayed: up dropped it), off with one
+  const onFp = (d: string) => nat(d, "switch", "-q", "fp");
+  await rebaseSeq("rebase fork point", [["rebase"], ["rebase"]], onFp);
+  await rebaseSeq("rebase <upstream> without fork point", [["rebase", "up"]], onFp);
+  await rebaseSeq("rebase --fork-point <upstream>", [["rebase", "--fork-point", "up"]], onFp);
+  await rebaseSeq("rebase --no-fork-point", [["rebase", "--no-fork-point"]], onFp);
+  await rebaseSeq("rebase rebase.forkPoint=false", [["rebase"]], (d) => { onFp(d); nat(d, "config", "rebase.forkPoint", "false"); });
+  await rebaseSeq("rebase rebase.forkPoint=false --fork-point", [["rebase", "--fork-point"]], (d) => { onFp(d); nat(d, "config", "rebase.forkPoint", "false"); });
+  await rebaseSeq("rebase --fork-point <commit>", [["rebase", "--fork-point", "up~1"]], onFp);
+  await rebaseSeq("rebase --fork-point <branch> <branch>", [["rebase", "--fork-point", "up", "fp"]], onMain);
+  await rebaseSeq("rebase fork point, up to date", [["rebase"]], (d) => nat(d, "switch", "-q", "fp2"));
+  await rebaseSeq("rebase fork point without a reflog", [["rebase"]], (d) => { onFp(d); rmSync(join(d, ".git/logs/refs/heads/up")); });
+  await rebaseSeq("rebase fork point, ambiguous", [["rebase", "--fork-point", "up"]], (d) => { onFp(d); nat(d, "tag", "up", "main"); });
+  await rebaseSeq("rebase ambiguous upstream", [["rebase", "up"], ["status", "-sb"]], (d) => { onFp(d); nat(d, "tag", "up", "main~1"); });
+  // --autostash (rebase.autoStash): local changes stashed first (`Created autostash`), applied again at the end
+  const dirtyK = (d: string) => write(d, "k.txt", "dirty\n");
+  await rebaseSeq("rebase --autostash", [["rebase", "--autostash", "main"], ["stash", "list"]], dirtyK);
+  await rebaseSeq("rebase rebase.autoStash", [["rebase", "main"]], (d) => { dirtyK(d); nat(d, "config", "rebase.autoStash", "true"); });
+  await rebaseSeq("rebase --no-autostash", [["rebase", "--no-autostash", "main"]], (d) => { dirtyK(d); nat(d, "config", "rebase.autoStash", "true"); });
+  await rebaseSeq("rebase --autostash, nothing to stash", [["rebase", "--autostash", "main"]], (d) => write(d, "u.txt", "untracked\n"));
+  await rebaseSeq("rebase --autostash staged", [["rebase", "--autostash", "main"]], (d) => { write(d, "s.txt", "staged\n"); nat(d, "add", "s.txt"); write(d, "n.txt", "changed\n"); nat(d, "add", "n.txt"); dirtyK(d); });
+  await rebaseSeq("rebase --autostash up to date", [["rebase", "--autostash", "feat~2"]], dirtyK);
+  await rebaseSeq("rebase --autostash <upstream> <branch>", [["rebase", "--autostash", "main", "feat"]], (d) => { onMain(d); write(d, "x.txt", "dirty x\n"); });
+  await rebaseSeq("rebase --autostash, untracked in the way", [["rebase", "--autostash", "main"]], (d) => { dirtyK(d); write(d, "x.txt", "mine\n"); });
+  await rebaseSeq("rebase --autostash conflicting", [["rebase", "--autostash", "main"], ["stash", "list"], ["status", "-s"]], (d) => write(d, "f.txt", "Z\nb\nc\nD\ne\nf\nG\n"));
+  await rebaseSeq("rebase --autostash conflict, continue", [["rebase", "--autostash", "dconf"], resolve("A\nb\nc\nresolved\ne\nf\nG\n"), ["rebase", "--continue"], ["stash", "list"]], dirtyK);
+  await rebaseSeq("rebase --autostash conflict, abort", [["rebase", "--autostash", "dconf"], ["rebase", "--abort"], ["stash", "list"]], dirtyK);
+  await rebaseSeq("rebase --autostash conflict, skip", [["rebase", "--autostash", "dconf"], ["rebase", "--skip"]], dirtyK);
+  await rebaseSeq("rebase --autostash conflict, quit", [["rebase", "--autostash", "dconf"], ["rebase", "--quit"], ["stash", "list"]], dirtyK);
+  await rebaseSeq("rebase -", [["rebase", "-"]], (d) => { onMain(d); nat(d, "switch", "-q", "feat"); });
   for (const d of [A, B]) {
     rmSync(d, { recursive: true, force: true });
     cpSync(pr, d, { recursive: true });
@@ -1068,6 +1186,8 @@ try {
     check("rebase: our --continue of native's stop: exit", ours.code === nat2.status, ours.err + nat2.stderr);
     same("rebase: our --continue of native's stop: state", [files(A).join("\n"), chain(A), branchAt(A), native(A, ["status", "--porcelain", "-b"])].join("\n--\n"), [files(B).join("\n"), chain(B), branchAt(B), native(B, ["status", "--porcelain", "-b"])].join("\n--\n"));
   }
+  r = await git(A, ["rebase", "main", "feat", "x"], ident);
+  check("rebase too many arguments: usage", r.code === 129 && r.err.startsWith("usage: git rebase [-i] [options]") && nativeCode(A, ["rebase", "main", "feat", "x"]) === 129, JSON.stringify(r));
   r = await git(A, ["rebase", "-i", "main"], ident);
   check("rebase -i refused", r.code === 128 && r.err.includes("not supported in the playground"), JSON.stringify(r));
 

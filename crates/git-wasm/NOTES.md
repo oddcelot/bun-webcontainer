@@ -25,7 +25,10 @@ Output the panel parses (byte-identical to native git, checked by `test.ts`):
 - `status --porcelain|-s [-b] [-z] [-uall|-uno]`: `XY path` lines, `## main` / `## main...origin/main [ahead 1, behind 2]`
   (`[gone]` without the tracking ref; `net.test.ts`) / `## No commits yet on main` / `## HEAD (no branch)` header; `-z` is NUL-terminated and raw; without `-z` paths are quoted like git (`"sp ace"`,
   octal for non-ASCII). Untracked directories collapse unless `-uall`. Staged renames are detected as git detects them (`R  old -> new`; `-z`: `R  new\0old\0`), with git's similarity score (src/rename.rs); unstaged ones stay `D` + `??`, as in git. No colors in
-  porcelain/`-z`.
+  porcelain/`-z`. The upstream's name is git's shortest unambiguous one (`heads/up` while a tag `up` exists); a branch
+  whose remote has no fetch refspec has none. The long format (and `commit`'s, with nothing to commit) says how the
+  branch stands against its upstream as remote.c's format_tracking_info does: up to date, ahead, behind, diverged or
+  gone, with the hints (`advice.statusHints`; `commit` leaves out the diverged one).
 - `log --format=|--pretty=format:|tformat:`: `%H %h %T %t %P %p %an %ae %at %ad %ar %cn %ce %ct %cd %cr %s %b %B %n %% %xNN`
   (`--format` ends every entry with a newline, `--pretty=format:` separates them); `-n N|-N|--max-count`, `--skip`,
   `--all`, `<rev>...`, `-- <path>...` (commits that change a path, TREESAME parents skipped). `%h` is always 7 digits.
@@ -140,8 +143,11 @@ stash commit's id (tracked changes only; every argument is the message) and chan
 stash-like commit`; storing the newest entry again adds none). `--patch` is interactive: a clear error (exit 128)
 pointing to pathspecs and `--staged`.
 
-Rebasing (`rebase.rs`): `rebase [--onto <newbase>] [<upstream>]` (no upstream: the branch's), `-q`, `-X <option>`
-(merge's), `--continue`, `--skip`, `--abort`, `--quit`; the merge backend's linear case. The commits of
+Rebasing (`rebase.rs`): `rebase [--onto <newbase>] [<upstream> [<branch>]]` (no upstream: the branch's; `-` is
+`@{-1}`), `-q`, `-X <option>` (merge's), `--continue`, `--skip`, `--abort`, `--quit`; the merge backend's linear case.
+With `<branch>`, that branch (or a commit, detached) is rebased from wherever HEAD is: HEAD detaches at onto as usual
+and the end moves that branch; with nothing to replay it is switched to (`rebase: checkout <branch>`, a two-way
+merge) and `Current branch <branch> is up to date.`; `no such branch/commit 'x'` otherwise. The commits of
 `upstream..HEAD` without merges, oldest first, less those whose patch upstream already has (a patch-id over the
 diff without index lines, hunk headers and whitespace; `warning: skipped previously applied commit`), become the todo
 list. HEAD detaches at onto (a two-way merge, so untracked files in the way stop it: `could not detach HEAD`), then
@@ -153,13 +159,29 @@ messages (only for a pick that stops), `error: could not apply`, the advice, and
 `onto`, `orig-head`, `git-rebase-todo` with ` # empty` marks, `done`, `msgnum`, `end`, `message`, `author-script`,
 `stopped-sha`, `interactive`), `REBASE_HEAD` and `MERGE_MSG`, so native git continues ours and we continue native
 git's. `--continue` commits what is staged as the stopped commit (`[detached HEAD abc1234] subject`; nothing staged:
-the commit is dropped); `--skip` resets to HEAD; `--abort` goes back to `orig-head` and the branch; the end moves the
+the commit is dropped); `commit` without `-m` during a stop takes `MERGE_MSG` (the stopped commit's message and the `# Conflicts:` comments), as `--no-edit` does, the author being the committer as in git; `--skip` resets to HEAD; `--abort` goes back to `orig-head` and the branch; the end moves the
 branch and reattaches HEAD (`Successfully rebased and updated refs/heads/feat.`). Progress is `Rebasing (n/m)\r` on
 stderr. `status` shows the rebase as git's long format does (`interactive rebase in progress; onto abc1234`, the last
 two commands done and the next two, the hints); `switch` refuses during one. Not supported (clear errors, exit 128):
-`-i` and the todo editing it needs, `--exec`, `--rebase-merges`, `--root`, `--autosquash`, `--autostash`,
-`--update-refs`, `--apply`, `-f`, `--reapply-cherry-picks`, `rebase <upstream> <branch>`; `--fork-point` isn't used
-(the merge base is), so commits an upstream rewrote are only left out when their patch matches.
+`-i` and the todo editing it needs, `--exec`, `--rebase-merges`, `--root`, `--autosquash`,
+`--update-refs`, `--apply`, `-f`, `--reapply-cherry-picks`.
+
+`--autostash` (`rebase.autoStash`; `--no-autostash`): before the clean-tree check the tracked changes become a stash
+commit (`stash create autostash`, not on the list) kept in `.git/rebase-merge/autostash`, `Created autostash: abc1234`,
+and the tree is reset to HEAD. When the rebase ends (done, up to date, `--abort`, or HEAD couldn't detach) it is
+applied as `stash apply` with its output dropped: `Applied autostash.`, or, when it conflicts, it goes on the stash list
+(`autostash`) with git's message; `--quit` puts it on the list (`Autostash exists; creating a new stash entry.`).
+`pull` takes neither `--autostash` nor `rebase.autoStash` yet (it refuses
+local changes before a rebase).
+
+The fork point (`--fork-point`, on without an upstream argument unless `rebase.forkPoint=false`; `--no-fork-point`):
+git's get_fork_point over the upstream's reflog (`.git/logs/<ref>`: the first entry's old id and every new one, else the
+ref's commit), the one best common ancestor of HEAD and those commits when it is one of them; commits before it aren't
+replayed, so a commit the upstream dropped (rewritten, force-pushed) stays dropped. The name is the ref's full name
+(DWIM over git's rules: `No such ref`, `Ambiguous refname`, and get_oid's `warning: refname 'x' is ambiguous.` for the
+upstream and onto). `pull --rebase` takes the fork point of the tracking ref before fetching (failures ignored) and
+rebases `--onto <fetched> <fork point>` unless the fork point is where HEAD and the fetched commit meet anyway, as
+git's pull does.
 
 `test.ts` runs a scripted session under node's WASI and compares status, diff, log, show and every mutation with native
 git: "twin" runs execute the same command on two copies of a project (ours vs native) and compare `status`, `ls-files -s`,
