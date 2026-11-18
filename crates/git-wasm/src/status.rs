@@ -218,16 +218,38 @@ fn label(c: char) -> &'static str {
     }
 }
 
+/// `HEAD detached at|from <what>` (wt-status.c's wt_status_get_detached_from): the target of HEAD's last `checkout:
+/// moving from A to B` reflog entry, named as the ref it is if that still points where HEAD went then, else as that
+/// commit; `at` while HEAD is still there.
+fn detached_line(ctx: &Ctx) -> String {
+    let head = ctx.repo.head_id().ok().map(|i| i.detach());
+    let log = std::fs::read_to_string("/.git/logs/HEAD").unwrap_or_default();
+    let entry = log.lines().rev().find_map(|l| {
+        let (meta, msg) = l.split_once('\t')?;
+        let target = msg.strip_prefix("checkout: moving from ")?.split_once(" to ")?.1;
+        let new = ObjectId::from_hex(meta.split(' ').nth(1)?.as_bytes()).ok()?;
+        Some((target.to_string(), new))
+    });
+    let Some((target, new)) = entry else {
+        return format!("HEAD detached at {}\n", head.map(crate::history::short).unwrap_or_default());
+    };
+    let peeled = |r: &str| ctx.repo.find_reference(r).ok().and_then(|r| r.into_fully_peeled_id().ok()).map(|i| i.detach());
+    let rules = [target.clone(), format!("refs/{target}"), format!("refs/tags/{target}"), format!("refs/heads/{target}"), format!("refs/remotes/{target}"), format!("refs/remotes/{target}/HEAD")];
+    let found: Vec<&String> = if target == "HEAD" { Vec::new() } else { rules.iter().filter(|r| r.starts_with("refs/") && ctx.repo.find_reference(r.as_str()).is_ok()).collect() };
+    let from = match found.as_slice() {
+        [r] if peeled(r) == Some(new) => r.strip_prefix("refs/tags/").or_else(|| r.strip_prefix("refs/remotes/")).unwrap_or(r).to_string(),
+        _ => crate::history::short(new),
+    };
+    format!("HEAD detached {} {from}\n", if head == Some(new) { "at" } else { "from" })
+}
+
 /// The long format, ending in git's closing hint. Returns whether there is anything staged.
 pub fn long(ctx: &Ctx, st: &Status) -> Result<String, crate::Exit> {
     let mut s = String::new();
     let branch = ctx.repo.head_name()?;
     match &branch {
         Some(n) => s += &format!("On branch {}\n", n.shorten().to_str_lossy()),
-        None => {
-            let id = ctx.repo.head_id().map(|i| i.shorten_or_id().to_string()).unwrap_or_default();
-            s += &format!("HEAD detached at {id}\n");
-        }
+        None => s += &detached_line(ctx),
     }
     let unborn = ctx.repo.head_id().is_err();
     if unborn {

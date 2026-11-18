@@ -65,8 +65,11 @@ path that differs between the two commits is replaced only when the index and th
 nothing is touched and it exits 1 with git's `Your local changes ... would be overwritten by checkout` (or the untracked
 files message). Local changes to paths both commits share are carried over, and listed as git lists them
 (`M\tfile`, `A`, `D`: diff-index of the new HEAD; not with `-q`, `-f`, or `-c`/`-b` without a start point).
-`--detach` alone detaches at HEAD. Difference: detaching prints one `HEAD is now at` line instead of git's advice
-(and no `Previous HEAD position was`). Files are
+`--detach` alone detaches at HEAD. Detaching from a branch prints git's advice (`Note: switching to 'v1'.`, not with
+`--detach` or `advice.detachedHead=false`); leaving a detached HEAD prints `Previous HEAD position was`, or, when only
+it reaches some commits, git's `Warning: you are leaving 2 commits behind` with the first four (orphaned_commit_warning).
+The reflog's `checkout: moving from A to B` names B as typed, and the long status's `HEAD detached at|from <B>` reads it
+back as wt-status.c does. Files are
 written from blobs without filters (no autocrlf, symlinks become plain files), so gix's `worktree-mutation` (and the
 `io-close` WASI patch it would need) isn't used. `reset --merge|--keep` are not implemented (`merge --abort` does what `reset --merge` does after a merge).
 

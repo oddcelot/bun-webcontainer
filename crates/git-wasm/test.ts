@@ -500,7 +500,29 @@ try {
   await twin("switch --detach", p3, ["switch", "--detach", "feat"]);
   await twin("checkout -f", p3, ["checkout", "-f", "feat"], { setup: (d) => { write(d, "a.txt", "dirty\n"); write(d, "c.txt", "dirty c\n"); } });
   await twin("switch -f", p3, ["switch", "-f", "feat"], { setup: (d) => { write(d, "a.txt", "dirty\n"); nat(d, "add", "a.txt"); } });
-  // from feat back to main
+  // detaching: git's advice from a branch (not with --detach), `Previous HEAD position was`, the lost commits' warning
+  await twin("checkout rev: detach advice", p3, ["checkout", "feat^0"], { out: true, err: true });
+  await twin("checkout tag-like rev: advice names it", p3, ["checkout", "feat~1"], { out: true, err: true });
+  await twin("checkout --detach: no advice", p3, ["checkout", "--detach", "feat"], { out: true, err: true });
+  await twin("checkout rev: advice.detachedHead=false", p3, ["checkout", "feat^0"], { out: true, err: true, setup: (d) => nat(d, "config", "advice.detachedHead", "false") });
+  const p3d = join(tmp, "p3d");
+  cpSync(p3, p3d, { recursive: true });
+  nat(p3d, "checkout", "-q", "--detach", "feat");
+  await twin("detached -> branch: previous position", p3d, ["checkout", "main"], { out: true, err: true });
+  await twin("detached -> rev: previous position", p3d, ["checkout", "HEAD~1"], { out: true, err: true });
+  await twin("detached -> switch -c start", p3d, ["switch", "-c", "topic", "main"], { out: true, err: true });
+  await twin("detached -> same commit: nothing", p3d, ["checkout", "feat"], { out: true, err: true });
+  for (const n of [1, 2, 5, 6]) {
+    const lost = join(tmp, `p3lost${n}`);
+    cpSync(p3d, lost, { recursive: true });
+    for (let i = 1; i <= n; i++) nat(lost, "commit", "-q", "--allow-empty", "-m", `lost ${i}`);
+    await twin(`leaving ${n} lost commits`, lost, ["switch", "main"], { out: true, err: true });
+    if (n === 1) {
+      await twin("leaving lost commits -q", lost, ["checkout", "-q", "main"], { out: true, err: true });
+      await twin("leaving lost commits, advice off", lost, ["checkout", "main"], { out: true, err: true, setup: (d) => nat(d, "config", "advice.detachedHead", "false") });
+      await twin("leaving lost commits for a rev", lost, ["checkout", "main^0"], { out: true, err: true });
+    }
+  }  // from feat back to main
   await twin("feat -> main", p3f, ["switch", "main"]);
   await twin("feat -> main, deleted file edited", p3f, ["switch", "main"], { setup: (d) => write(d, "new.txt", "edited\n") });
   await twin("feat -> main, untracked b.txt", p3f, ["switch", "main"], { setup: (d) => write(d, "b.txt", "mine\n") });
