@@ -147,6 +147,15 @@ When your code starts a server (`Bun.serve`, `node:http`, or `export default { f
 
 Limits: the server isn't reachable from outside the browser, there's no HTTP caching (conditional requests are dropped), and only the preview page can open WebSockets to it.
 
+### Fast path for browser-only projects
+
+Experimental, and off unless you ask: open the playground with `?fast` added to the URL and a browser-only project runs without `bun install` and without a worker. Each file is transpiled on its own, the project's packages load from [esm.sh](https://esm.sh) through an import map, and the page appears as soon as they arrive, usually a second or two sooner than the first run of a normal install. The console says `[fast] packages come from https://esm.sh`.
+
+- **What qualifies:** an `index.html` at the project's root, with no project file that uses `Bun.`, `node:`, `bun:`, `require()` or `process.env`, `process.argv` or `process.cwd`. Otherwise the project runs the normal way, and the console says which file ruled it out (`[fast] not used, running normally: index.ts uses Bun.`).
+- **Packages:** versions come from `bun.lock`, else from the `package.json` range. The package names and versions are sent to esm.sh, a third-party service, so the page needs a network and doesn't work offline, and `node_modules` isn't used or written.
+- **The page** runs in a sandboxed frame (scripts, forms, dialogs, popups and downloads; no access to the playground's storage). Uncaught errors and unhandled rejections show in the console.
+- **Not supported:** assets loaded with `import.meta.url`, `fetch` to a server of the project (there is none), Solid's JSX (it needs its own compiler), and source-mapped stack traces.
+
 ## Installing packages
 
 Dependencies install automatically when one of your own projects or an example opens with missing packages (a project from a link waits for Run, which installs first). `bun install` uses `bun.lock` when there is one. Details and limits are in [Toolchain](/compatibility/toolchain/#bun-install).
