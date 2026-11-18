@@ -17,9 +17,9 @@ Opens with `core.fileMode=false` (no exec bits on the host FS). `init` writes th
 `Playground <playground@runbun.dev>`.
 
 Supported: `init`, `status`, `add`, `rm [--cached]`, `restore`, `reset`, `commit`, `log`, `diff [--cached]`, `show`,
-`branch`, `switch`, `checkout`, `clean`, `config`, `rev-parse`, `clone`, `fetch`, `pull`, `push`, `remote`. `git help` lists the
-flags. Pathspecs are plain paths or directory prefixes (no globs). Not supported: merge, rebase, stash, tag (they
-print `git: '<cmd>' is not supported in the playground yet`).
+`branch`, `switch`, `checkout`, `merge`, `stash`, `tag`, `clean`, `config`, `rev-parse`, `clone`, `fetch`, `pull`, `push`,
+`remote`. `git help` lists the flags. Pathspecs are plain paths or directory prefixes (no globs). Not supported: rebase (it
+prints `git: 'rebase' is not supported in the playground yet`).
 
 Output the panel parses (byte-identical to native git, checked by `test.ts`):
 
@@ -35,6 +35,11 @@ Output the panel parses (byte-identical to native git, checked by `test.ts`):
   exist in 'rev'`, exit 128.
 - `branch --show-current`, `--format` (`%(refname[:short])`, `%(objectname[:short])`, `%(HEAD)`), `-d|-D`, `-m`,
   `branch <name> [<start>]`. `-d` is "fully merged" = reachable from HEAD (no upstream). Refuses the current branch.
+- `tag` (`tag.rs`): `[-l|--list] [<pattern>...]` (wildmatch: `*`, `?`, `[a-z]`, `[!x]`), `-n[<num>]` (git's
+  `%(align:15)` name, then the annotation's, else the commit's, first lines), `<name> [<rev>]`, `-a`/`-m <msg>`
+  (annotated: a tag object with the identity as tagger; `-a` without `-m` is git's `no tag message?`, there is no
+  editor), `-f` (`Updated tag 'v1' (was abc1234)`), `-d <name>...`; `show <tag>` prints an annotated tag's header and
+  message before the commit. Not done: `--sort`, `--contains`, `-s`/`-u` (signing), `-F`.
 - `rev-parse [--verify] [-q] [--short] [--abbrev-ref] <rev>`, `--show-toplevel`, `--is-inside-work-tree`, `--git-dir`.
 - `config <key> [<value>]`, `--get`, `--unset`, `--list|-l`, `--local`: the repository's `/.git/config` only;
   `--global`, `--system`, `--file` exit 128 with `only --local config in the playground`. Unset key: exit 1.
@@ -47,7 +52,34 @@ nothing is touched and it exits 1 with git's `Your local changes ... would be ov
 files message). Local changes to paths both commits share are carried over. Differences: `checkout` doesn't print the
 `M\tfile` lines for carried changes, and detaching prints one `HEAD is now at` line instead of git's advice. Files are
 written from blobs without filters (no autocrlf, symlinks become plain files), so gix's `worktree-mutation` (and the
-`io-close` WASI patch it would need) isn't used. `reset --merge|--keep`, `stash`, `merge` are not implemented.
+`io-close` WASI patch it would need) isn't used. `reset --merge|--keep` are not implemented (`merge --abort` does what `reset --merge` does after a merge).
+
+Merging (`merge.rs`, gix's `merge` feature: gix-merge, which follows merge-ort): `merge [<rev>]` (no rev: the upstream),
+`--no-ff`, `--ff-only`, `-m`, `-q`, `--no-stat`, `--abort`, `--continue`. A fast-forward is the two-way merge of `switch`
+(`Updating a..b`, `Fast-forward` and git's `--stat --summary`, `diff::stat`). A true merge refuses staged changes (exit 2,
+as merge-ort), merges the commits with `merge_commits`, writes the merged tree (conflicting files with markers, labels
+`HEAD` and the rev as typed) through the same two-way merge, so a local change or untracked file in the way refuses it
+(`... would be overwritten by merge`) and other local changes stay, then puts the conflicts' stages 1-3 in the index
+(`apply_index_entries`). Messages as git's (`Auto-merging`, `CONFLICT (content|add/add|modify/delete)`, by path).
+A conflict leaves `MERGE_HEAD`, `MERGE_MSG` (with `# Conflicts:`), `MERGE_MODE` and exits 1; `status` then shows the
+unmerged paths (`UU`/`AA`/`UD`/... and the long format's sections and hints), `add`/`rm`/`commit -a` resolve them,
+`commit` (no `-m`: `MERGE_MSG`, as `--no-edit`) makes the merge commit and refuses while paths are unmerged, `switch`
+refuses during a merge, `checkout` with unmerged paths, and `merge --abort` (`reset --merge`) and `reset` end it. Merge
+messages: `Merge branch|tag|remote-tracking branch|commit '<rev>'` (an annotated tag's message below), ` into <branch>`
+unless on main/master. Not done: octopus merges, strategies (`-s`, `-X`), `--squash`, `--no-commit`, merging into an
+unborn branch; `pull` still only fast-forwards.
+
+Stashing (`stash.rs`): `stash [push] [-m <msg>] [-u] [-q]`, `save [<msg>]`, `list`, `show [-p] [--stat] [<stash>]`,
+`apply [--index] [-q] [<stash>]`, `pop`, `drop [-q] [<stash>]`, `clear`; `<stash>` is `stash@{n}` or `n`. The commits
+are git's: w (the tracked files as in the worktree; its message `WIP on main: abc1234 subject` or `On main: <msg>`,
+without a trailing newline as git writes it) with parents HEAD, i (the index: `index on ...`) and with `-u` u (the
+untracked files, a root commit: `untracked files on ...`); refs/stash's reflog is the list, and `drop` rewrites it as
+`git reflog delete --rewrite --updateref` does. Native git pops ours and we apply native git's (`test.ts` checks both).
+`apply` merges w's tree onto the current index with w's first parent as the base (gix `merge_trees`, labels `Updated
+upstream` / `Stashed changes`), through the same two-way merge as `merge`; without `--index` what the stash staged
+comes back unstaged, but for new files (git's `unstage_changes_unless_new`); then it restores u's files and prints the
+long status. A conflict keeps the entry (`The stash entry is kept in case you need it again.`, exit 1). Not done:
+`--keep-index`, `--all`, `--patch`, `--staged`, pathspecs, `stash branch`, `stash create|store`.
 
 `test.ts` runs a scripted session under node's WASI and compares status, diff, log, show and every mutation with native
 git: "twin" runs execute the same command on two copies of a project (ours vs native) and compare `status`, `ls-files -s`,
@@ -93,12 +125,13 @@ imports synchronously, and checks the results with native git (56 checks; the pu
 
 ## Results
 
-- Features: `sha1 basic status dirwalk blocking-network-client` (no `worktree-mutation`), and gix-transport `http-client`.
+- Features: `sha1 basic status dirwalk blocking-network-client merge` (no `worktree-mutation`), and gix-transport `http-client`.
 - Writes match native gix byte for byte (same commit ids); `git fsck --full` is clean; status, tree diff and log
   match native output.
 - Packed clones read fine. This repo (933 commits, 3.4 MiB pack, 578 files): full log walk, HEAD tree and status in
   ~65 ms under node's WASI (native `git status`: 33 ms).
-- Size (the CLI): 3.5 MB stripped, 1.0 MB brotli (2.97 MB and 0.86 MB before the network commands).
+- Size (the CLI): 3.96 MB stripped, 1.10 MB brotli (3.6 MB and 1.0 MB before merge, stash and tag; 2.97 MB and
+  0.86 MB before the network commands).
 - WASI surface: 25 `wasi_snapshot_preview1` imports (`path_open`, `fd_read`/`fd_write`/`fd_seek`, `fd_readdir`,
   `path_filestat_get`, `path_rename`, `path_unlink_file`, `path_create_directory`, …). A browser build needs those
   over the VFS; tsrs-ls-wasm only stubs WASI today.

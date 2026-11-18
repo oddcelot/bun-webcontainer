@@ -1,0 +1,9 @@
+{
+  "name": "local-pkg",
+  "version": "1.2.0",
+  "bin": { "lp": "cli.js" },
+  "dependencies": {
+    "is-number": "^7.0.0",
+    "t3": "file:../vendor/tar-pkg-0.3.0.tgz"
+  }
+}

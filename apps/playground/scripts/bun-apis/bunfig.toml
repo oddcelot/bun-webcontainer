@@ -1,0 +1,6 @@
+# Preloaded before main.ts, as Bun does for `bun main.ts`: its plugin serves main.ts's static import.
+preload = ["./preload.ts"]
+
+# Only `bun test` reads this; main.ts's run must not.
+[test]
+preload = "./missing-test-preload.ts"

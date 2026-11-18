@@ -203,9 +203,14 @@ async function ask(msg: Ask, owner?: Client): Promise<ModuleReply> {
   });
 }
 
+/** A preview response whose body failed before its first chunk: Bun drops the connection, so the page gets a network error. */
+class ConnectionReset extends Error {}
+
 /**
  * A preview request: resolves with the response's head and its body as a stream, fed as the server produces it
  * (`head`, `chunk`…, `end` or `error`; see sendResponse in worker/runtime.ts). Cancelling the stream tells the server.
+ * As in Bun, the head waits for the first chunk (or the end): until then the page's fetch is pending, and a body that
+ * fails first rejects with ConnectionReset.
  */
 async function askStream(msg: Ask, owner?: Client): Promise<{ head: StreamHead; body: ReadableStream<Uint8Array> }> {
   const client = owner ?? (await host());
@@ -220,23 +225,33 @@ async function askStream(msg: Ask, owner?: Client): Promise<{ head: StreamHead; 
       port.close();
     },
   });
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       port.close();
       ctrl.enqueue(new TextEncoder().encode(timedOut()));
       ctrl.close();
       resolve({ head: { status: 504, statusText: "", headers: [["content-type", "text/plain"]] }, body });
     }, ASK_TIMEOUT);
+    // The server has answered once the head comes (no timeout after it); the page sees it with the first chunk.
+    let head: StreamHead | undefined;
+    let settled = false;
     port.onmessage = ({ data }: MessageEvent<StreamMessage>) => {
       if (data.type === "head") {
         clearTimeout(timer);
-        resolve({ head: data, body });
-      } else if (data.type === "chunk") ctrl.enqueue(new Uint8Array(data.data));
+        head = data;
+        return;
+      }
+      if (data.type === "chunk") ctrl.enqueue(new Uint8Array(data.data));
       else {
         port.close();
+        clearTimeout(timer);
         if (data.type === "end") ctrl.close();
-        else ctrl.error(new Error(data.message));
+        else if (settled) ctrl.error(new Error(data.message));
       }
+      if (settled) return;
+      settled = true;
+      if (data.type === "error" || !head) reject(new ConnectionReset(data.type === "error" ? data.message : "no head"));
+      else resolve({ head, body });
     };
     client.postMessage(msg, [ch.port2]);
   });
@@ -315,7 +330,8 @@ async function servePreview(req: Request, url: URL, path?: string, ownerId = pre
         base,
       },
     }, owner);
-  } catch {
+  } catch (err) {
+    if (err instanceof ConnectionReset) return Response.error();
     // The server runs in the playground's tab: a preview opened in its own tab needs that one open.
     return new Response(NO_PLAYGROUND, isolated({ status: 503, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } }));
   }

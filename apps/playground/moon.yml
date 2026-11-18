@@ -38,12 +38,13 @@ tasks:
     # report ends: Stop, the watchdog, process.exit (scripts/runner-stop.ts), `bun test -u` with Local Bun against a real runner
     # (scripts/remote-snapshots.ts), who the embed's `change` event says
     # changed a file (scripts/change-origin.ts), the worker's Requests keeping forbidden headers
-    # (scripts/request-headers.ts), what `bun install` prunes from node_modules (scripts/install-prune.ts) and when it
+    # (scripts/request-headers.ts), what `bun install` prunes from node_modules (scripts/install-prune.ts), the patches
+    # `bun patch --commit` writes and applies against git's (scripts/patches-unit.ts), and when it
     # reuses a cached packument (scripts/packument-cache.ts), how runbun.json is read (scripts/project-config.ts),
     # Bun.hash against native bun (scripts/hash-compat.ts), the workspace layout (scripts/workspaces-unit.ts), the source
     # pass that keeps AsyncLocalStorage across await (scripts/async-await.ts) and S3 signing and operations against
     # native bun on a local S3 (scripts/s3-signing.ts; scripts/s3.ts is the browser run).
-    script: 'bun scripts/inspect-corpus/diff.ts && bun scripts/data-apis/jsonl.ts && bun scripts/data-apis/xml-stringify.ts && bun scripts/requests.ts && bun scripts/request-fields.ts && bun scripts/vfs-mirror.ts && bun scripts/test-results.ts && bun scripts/persist-skip.ts && bun scripts/runner-stop.ts && bun scripts/remote-snapshots.ts && bun scripts/change-origin.ts && bun scripts/request-headers.ts && bun scripts/install-prune.ts && bun scripts/packument-cache.ts && bun scripts/project-config.ts && bun scripts/hash-compat.ts && bun scripts/workspaces-unit.ts && bun scripts/async-await.ts && bun scripts/s3-signing.ts'
+    script: 'bun scripts/inspect-corpus/diff.ts && bun scripts/data-apis/jsonl.ts && bun scripts/data-apis/xml-stringify.ts && bun scripts/requests.ts && bun scripts/request-fields.ts && bun scripts/vfs-mirror.ts && bun scripts/test-results.ts && bun scripts/persist-skip.ts && bun scripts/runner-stop.ts && bun scripts/remote-snapshots.ts && bun scripts/change-origin.ts && bun scripts/request-headers.ts && bun scripts/install-prune.ts && bun scripts/patches-unit.ts && bun scripts/packument-cache.ts && bun scripts/project-config.ts && bun scripts/hash-compat.ts && bun scripts/workspaces-unit.ts && bun scripts/async-await.ts && bun scripts/s3-signing.ts'
     toolchains: ['bun']
     inputs:
       - 'scripts/inspect-corpus/**/*'
@@ -86,6 +87,8 @@ tasks:
       - '/packages/vfs/vfs.ts'
       - 'scripts/request-headers.ts'
       - 'scripts/install-prune.ts'
+      - 'scripts/patches-unit.ts'
+      - 'src/patches.ts'
       - 'src/lockfile.ts'
       - 'scripts/packument-cache.ts'
       - 'src/pkgCache.ts'
@@ -157,6 +160,21 @@ tasks:
     toolchains: ['bun']
     options:
       cache: false
+  test-bun-apis:
+    # Bun APIs implemented in JS end to end (scripts/bun-apis.ts): the project in scripts/bun-apis/ runs in the embed in
+    # headless Chrome and must print what native Bun prints for it. Needs Chrome, so it isn't part of `test`.
+    command: 'bun scripts/bun-apis.ts'
+    toolchains: ['bun']
+    options:
+      cache: false
+  test-node-apis:
+    # Node modules emulated in JavaScript (diagnostics_channel, sqlite, v8, constants, domain, ...) end to end
+    # (scripts/node-apis.ts): scripts/node-apis/main.ts runs in the embed in headless Chrome and must print what native
+    # Bun prints. Needs Chrome, so it isn't part of `test`.
+    command: 'bun scripts/node-apis.ts'
+    toolchains: ['bun']
+    options:
+      cache: false
   test-als:
     # AsyncLocalStorage end to end (scripts/als.ts): scripts/als/ runs in the embed in headless Chrome (a Bun.serve one
     # through the preview, a Hono app with contextStorage() installed from npm) and prints what native Bun prints for it.
@@ -214,6 +232,14 @@ tasks:
       - 'crypto-wasm:build'
     options:
       cache: false
+  test-elysia:
+    # Elysia 2 as a baseline (scripts/elysia.ts): fixtures/elysia2 (routing, validation, hooks, plugins, cookies, files,
+    # streams, WebSocket, Eden, the @elysia/* plugins) is installed from npm and run in the embed in headless Chrome,
+    # and each case must print what native Bun prints. Needs Chrome and the npm registry, so it isn't part of `test`.
+    command: 'bun scripts/elysia.ts'
+    toolchains: ['bun']
+    options:
+      cache: false
   test-compress:
     # zstd and brotli end to end (scripts/compress.ts): fixtures/compress runs in the embed in headless Chrome (Bun.zstd*,
     # node:zlib's brotli and zstd, CompressionStream) and prints what native Bun prints for it; data native Bun
@@ -240,6 +266,15 @@ tasks:
     toolchains: ['bun']
     options:
       cache: false
+  test-install-sources:
+    # `bun install` beyond the registry end to end (scripts/install-sources.ts): `file:` folders and tarballs, `link:`, a
+    # GitHub dependency, patchedDependencies and lifecycle scripts install in the embed in headless Chrome; the scripts'
+    # output, the program's, bun.lock, `bun pm untrusted`/`trust` and `bun patch --commit` match native Bun's. Needs
+    # Chrome, registry.npmjs.org and codeload.github.com, so it isn't part of `test`.
+    command: 'bun scripts/install-sources.ts'
+    toolchains: ['bun']
+    options:
+      cache: false
   test-esm-require:
     # `require` in an ES module (scripts/esm-require.ts): `require.resolve`, `.paths`, `.cache` and `import.meta.require`
     # in the embed in headless Chrome, against native Bun's output. Needs Chrome, so it isn't part of `test`.
@@ -252,6 +287,15 @@ tasks:
     # errors' source previews, I/O errors and promise states in the embed in headless Chrome, against native Bun's
     # output for the same files. Needs Chrome, so it isn't part of `test`.
     command: 'bun scripts/errors.ts'
+    toolchains: ['bun']
+    options:
+      cache: false
+  test-serve:
+    # Bun.serve end to end against native Bun (scripts/serve.ts): failing handlers, the `error` handler and the
+    # defaults, maxRequestBodySize, requestIP and unix over loopback fetch; then from the preview page, error pages,
+    # streams that fail before or after their first chunk, and WebSockets (both ways, pub/sub, close codes) to Bun.serve
+    # and to a node:http server's "upgrade" with `ws`. Needs Chrome.
+    command: 'bun scripts/serve.ts'
     toolchains: ['bun']
     options:
       cache: false

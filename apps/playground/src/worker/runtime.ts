@@ -3,13 +3,17 @@ import { loadResolver, parseData, parseDataFile, resolve } from "../resolver";
 import { loadSemver } from "../semver";
 import { dirname, norm, VFS, type FileData } from "@runbun/vfs";
 import { readConfig } from "../projectConfig";
-import { BUN_NAMES, builtins, compressionStreams, installAsyncContext, installTimers, setExit, setFs, setRawStdio, setRequire, setStdio } from "./node";
+import { BUN_NAMES, builtinName, builtins, compressionStreams, installAsyncContext, installTimers, setExit, setFs, setRawStdio, setRequire, setStdio } from "./node";
 import { bundle, type BundleConfig, type BundleLog } from "./bundler";
 import { setHostVfs } from "./hostPackages";
 import { hash } from "./hash";
 import { CryptoHasher } from "./node/crypto";
 import { setCryptoWasm } from "./node/cryptoWasm";
 import { Glob } from "./glob";
+import { FileSink } from "./fileSink";
+import { FileSystemRouter } from "./fileSystemRouter";
+import { plugin, pluginImportUrl, pluginRequire, setPluginHost } from "./plugins";
+import { pluginModuleHost, setPluginHook } from "./node/module";
 import { installConsole, table } from "./console";
 import { bunInspect, formatLog as formatValues, installWebInspect } from "./inspect";
 import { trackBodies } from "./bodies";
@@ -32,7 +36,7 @@ import { isProxy } from "./proxies";
 import { markdownWasm, xmlWasm } from "../transpiler";
 import { asyncError, codeError, fsError } from "./node/errors";
 import { capture, runIn } from "./node/asyncHooks";
-import { mimeOf } from "./mime";
+import { MIME, mimeOf } from "./mime";
 import { hooks, type NodeSocket } from "./node/serve";
 import { flushDatabases } from "./node/sqlite";
 import { SQL, flushSql, sql } from "./sql";
@@ -59,6 +63,8 @@ import { setThread, threadEnd, threadError, type ThreadInfo } from "./node/worke
 import { WebWorker } from "./webWorker";
 import { isShellCommand } from "../scripts";
 import { hideXhr, XHR } from "./xhr";
+import { randomUUIDv7 } from "./uuid";
+import { loopbackWebSocket } from "./loopbackSocket";
 
 type Handler = (req: Request, server: unknown) => Response | Promise<Response>;
 type HtmlImport = { __htmlImport: string };
@@ -70,7 +76,20 @@ type WebSocketHandlers = {
   close?(ws: ServerWebSocket, code: number, reason: string): void;
   drain?(ws: ServerWebSocket): void;
 };
-type ServeOptions = { port?: number | string; hostname?: string; fetch?: Handler; routes?: Routes; websocket?: WebSocketHandlers };
+type ErrorHandler = (this: unknown, err: unknown) => unknown;
+type ServeOptions = {
+  port?: number | string;
+  hostname?: string;
+  fetch?: Handler;
+  routes?: Routes;
+  websocket?: WebSocketHandlers;
+  error?: ErrorHandler;
+  development?: boolean | object;
+  maxRequestBodySize?: number;
+  idleTimeout?: number;
+  unix?: string;
+  reusePort?: boolean;
+};
 type WsPayload = string | ArrayBuffer | ArrayBufferView;
 
 const g = globalThis as unknown as Record<string, unknown>;
@@ -131,8 +150,11 @@ const importUrl = new Function("url", "options", "return import(url, options)") 
 /** `import(expr)` in served modules (see rewriteMeta): `file:` URLs and paths, as Bun takes them, load from the VFS. */
 g.__dynamicImport = (from: string, spec: unknown, options?: ImportCallOptions) => {
   const s = String(spec);
-  const builtin = s.replace(/^node:/, "");
-  if (builtin in builtins) return importUrl(`${VFS_ROOT}__node/${builtin}`);
+  const builtin = builtinName(s);
+  if (builtin !== undefined) return importUrl(`${VFS_ROOT}__node/${builtin}`);
+  // What a runtime plugin (Bun.plugin) takes, the page asks it for (plugins.ts).
+  const plugged = pluginImportUrl(from, s);
+  if (plugged) return plugged.then((url) => importUrl(url, options));
   // A package resolves from the importer's directory (CommonJS the worker runs itself rewrites literal imports to this too).
   const pkg = !/^(file:|\/|\.|[a-z][a-z\d+.-]*:)/i.test(s) && from.startsWith("file:") ? resolve(s, dirname(norm(decodeURIComponent(new URL(from).pathname))), "import", "bun") : null;
   const path = pkg ?? (/^(file:|\/|\.)/.test(s) && decodeURIComponent(new URL(s, from).pathname));
@@ -166,6 +188,14 @@ interface Instance {
   /** Started on port 0: a helper the preview never shows. */
   ephemeral: boolean;
   topics: Map<string, Set<ServerWebSocket>>;
+  /** `error`: answers for a handler that threw or rejected. */
+  error?: ErrorHandler;
+  /** Picks the default error page (Bun's HTML one, or "Something went wrong!") and what a failed request logs. */
+  development: boolean;
+  /** `maxRequestBodySize`: a larger request body gets a 413 instead of the handler. */
+  maxBody: number;
+  /** `unix`: the socket path `fetch(url, { unix })` reaches it on; such a server has no port and no preview. */
+  unix?: string;
   server: object;
   /** The AsyncLocalStorage context `Bun.serve` was called in: its handlers run in it, as in Bun. */
   context: ReturnType<typeof capture>;
@@ -185,30 +215,36 @@ const stopServer = (inst: Instance) => {
   postPorts();
 };
 
-let nodeServer: Instance | undefined;
 /** A node:http server's accepted WebSockets carry their `ws` connection as data (see upgradeRequests). */
 const nodeSockets: WebSocketHandlers = {
   open: (ws) => (ws.data as NodeSocket).open(ws),
   message: (ws, m) => (ws.data as NodeSocket).message(m),
   close: (ws, code, reason) => (ws.data as NodeSocket).close(code, reason),
 };
-hooks.set = (h) => {
-  if (nodeServer) stopServer(nodeServer);
-  nodeServer = h ? createInstance({ fetch: h, websocket: nodeSockets }) : undefined;
+hooks.listen = (fetch, port) => {
+  const inst = listen({ fetch, websocket: nodeSockets, port });
   // The listening `http.Server` holds the program (net.ts), so its `unref()` lets it end.
-  if (nodeServer) release(nodeServer);
+  release(inst);
+  return { port: inst.port, stop: () => servers.includes(inst) && stopServer(inst) };
 };
-hooks.get = () => nodeServer?.handler;
 
 /**
  * Requests the worker made for a page's WebSocket: `server.upgrade(req)` accepts them, once, with the Set-Cookie
  * headers Bun's 101 response would carry.
  */
 const upgrades = new WeakMap<Request, (data: unknown, setCookies: string[]) => void>();
+/** Requests `server.upgrade` accepted: their handler may return nothing. */
+const upgraded = new WeakSet<Request>();
 
 const size = (m: WsPayload) => (typeof m === "string" ? new TextEncoder().encode(m).length : m.byteLength);
 const bytesOf = (m: Exclude<WsPayload, string>) =>
   m instanceof ArrayBuffer ? m.slice(0) : (m.buffer.slice(m.byteOffset, m.byteOffset + m.byteLength) as ArrayBuffer);
+
+/** What Bun sends for a message: bytes, else the value as a string (a number, an object); nothing is an error. */
+const wsPayload = (m: unknown): WsPayload => {
+  if (m === null || m === undefined) throw new TypeError("send requires a non-empty message");
+  return typeof m === "string" || m instanceof ArrayBuffer || ArrayBuffer.isView(m) ? m : String(m);
+};
 
 /** Bun's `ServerWebSocket`, talking to the page's `WebSocket` over a MessagePort (see previewWebSocket in swPage.ts). */
 class ServerWebSocket {
@@ -222,6 +258,7 @@ class ServerWebSocket {
     public data: unknown,
   ) {}
   send(message: WsPayload) {
+    message = wsPayload(message);
     if (this.readyState !== 1) return 0;
     const data = typeof message === "string" ? message : bytesOf(message);
     this.port.postMessage({ type: "message", data }, typeof data === "string" ? [] : [data]);
@@ -234,6 +271,7 @@ class ServerWebSocket {
     return this.send(message);
   }
   publish(topic: string, message: WsPayload) {
+    message = wsPayload(message);
     for (const ws of this.inst.topics.get(topic) ?? []) if (ws !== this) ws.send(message);
     return size(message);
   }
@@ -301,11 +339,35 @@ let taken = new Set<number>();
  * Bun's EADDRINUSE error, as native Bun does. Port 0 always gets a port of its own.
  */
 function listen(opts: ServeOptions): Instance {
+  // `idleTimeout` is checked as in Bun, but nothing times out here (the docs say so); `reusePort` changes nothing.
+  const idle = opts.idleTimeout;
+  if (idle !== undefined && idle !== null) {
+    if (typeof idle !== "number" || !Number.isInteger(idle)) throw codeError(TypeError, "ERR_INVALID_ARG_TYPE", "Bun.serve expects idleTimeout to be an integer");
+    if (idle > 255) throw codeError(TypeError, "ERR_INVALID_ARG_TYPE", "Bun.serve expects idleTimeout to be 255 or less");
+  }
+  if (opts.unix) {
+    if (servers.some((s) => s.unix === opts.unix))
+      throw Object.assign(new Error(`EADDRINUSE: address already in use, listen '${opts.unix}'`), { code: "EADDRINUSE", syscall: "listen", errno: 0 });
+    return createInstance(opts);
+  }
   const port = Number(opts.port ?? env.PORT ?? env.BUN_PORT ?? 3000);
   if (port !== 0 && (taken.has(port) || servers.some((s) => s.port === port)))
     throw Object.assign(new Error(`Failed to start server. Is port ${port} in use?`), { code: "EADDRINUSE", syscall: "listen", errno: 0 });
   return createInstance(opts);
 }
+
+/** `maxRequestBodySize` as Bun takes it: 128 MiB unless a size is given; a negative one is no limit. */
+const bodyLimit = (n: unknown) => (typeof n !== "number" || Number.isNaN(n) ? 128 * 1024 * 1024 : n < 0 ? Infinity : Math.floor(n));
+
+type SocketAddress = { address: string; family: "IPv4" | "IPv6"; port: number };
+/** Where each request a server answered came from (`server.requestIP`), set by `dispatch`. */
+const peers = new WeakMap<Request, SocketAddress>();
+/** A client on this machine: `127.0.0.1` reaches Bun's dual-stack socket as an IPv4-mapped address, the rest as `::1`. */
+const localPeer = (hostname: string): SocketAddress => ({
+  address: hostname === "127.0.0.1" || hostname === "0.0.0.0" ? "::ffff:127.0.0.1" : "::1",
+  family: "IPv6",
+  port: 49152 + Math.floor(Math.random() * 16384),
+});
 
 function createInstance(opts: ServeOptions): Instance {
   const requested = Number(opts.port ?? env.PORT ?? env.BUN_PORT ?? 3000);
@@ -318,19 +380,32 @@ function createInstance(opts: ServeOptions): Instance {
     port,
     ephemeral: requested === 0,
     topics: new Map(),
+    error: opts.error,
+    // As in Bun: on unless asked off, or NODE_ENV is production.
+    development: opts.development === undefined ? env.NODE_ENV !== "production" : !!opts.development,
+    maxBody: bodyLimit(opts.maxRequestBodySize),
+    unix: opts.unix || undefined,
     server: {},
     context: capture(),
   };
+  if (inst.unix) inst.ephemeral = true;
   inst.server = {
-    port,
-    hostname,
-    url: new URL(`http://${hostname}:${port}/`),
-    development: true,
+    port: inst.unix ? undefined : port,
+    hostname: inst.unix ? undefined : hostname,
+    url: new URL(inst.unix ? `unix://${inst.unix}` : `http://${hostname}:${port}/`),
+    /** Bun's for a local client: `localhost` and the preview come over IPv6 loopback; none over a unix socket. */
+    requestIP: (req: Request) => peers.get(req) ?? null,
+    /** Nothing times out here (see `idleTimeout`). */
+    timeout(_req: Request, _seconds: number) {},
+    get development() {
+      return inst.development;
+    },
     /** Swaps handlers in place, as Bun's does; the port and hostname stay. */
     reload(next: ServeOptions) {
       if (next.fetch) inst.handler = next.fetch;
       if (next.routes) inst.routes = next.routes;
       if (next.websocket) inst.websocket = next.websocket;
+      if (next.error) inst.error = next.error;
     },
     /**
      * As in Bun, the 101 carries the Set-Cookie headers of `headers`, then those of what a route handler set or deleted
@@ -340,11 +415,13 @@ function createInstance(opts: ServeOptions): Instance {
       const accept = upgrades.get(req);
       if (!accept) return false;
       upgrades.delete(req);
+      upgraded.add(req);
       const setCookies = [...(o?.headers ? new Headers(o.headers).getSetCookie() : []), ...(requestCookies.get(req)?.toSetCookieHeaders() ?? [])];
       accept(o?.data, setCookies);
       return true;
     },
     publish(topic: string, message: WsPayload) {
+      message = wsPayload(message);
       const subs = inst.topics.get(topic);
       for (const ws of subs ?? []) ws.send(message);
       return subs?.size ? size(message) : 0;
@@ -379,20 +456,68 @@ function createInstance(opts: ServeOptions): Instance {
  * standalone `Headers` keeps them, so responses get one built from their init, plus what Response adds itself
  * (a form's boundary). `instanceof Response` still holds for the browser's own responses (`fetch()` results).
  * Content types follow Bun: a string body has none until it is served (then `text/plain;charset=utf-8`, see
- * servedHeaders), and `Response.json()` says `application/json;charset=utf-8`.
+ * servedHeaders), bytes and a stream of a body or Blob are served as `application/octet-stream`, and `Response.json()`
+ * says `application/json;charset=utf-8`.
  */
 const NativeResponse = Response;
-const textBodies = new WeakSet<Response>();
+/** What Bun.serve adds to a response it sends: a default content type, and the body's length where it is known. */
+type Served = { type?: string; implicitType?: boolean; length?: number };
+const served = new WeakMap<Response, Served>();
+const REDIRECT_STATUS = new Set([301, 302, 303, 307, 308]);
 const hasType = (init?: ResponseInit) => new Headers(init?.headers).has("content-type");
+/** Streams whose bytes come from a body or a Blob (`response.body`, `request.body`, `blob.stream()`), as Bun's native ones. */
+const bodyStreams = new WeakSet<ReadableStream>();
+/** The length of such a stream where its body's is known (a Response's string, bytes or Blob): Bun sends it. */
+const streamLengths = new WeakMap<ReadableStream, number>();
+for (const [proto, key] of [[NativeResponse.prototype, "body"], [Request.prototype, "body"]] as const) {
+  const get = Object.getOwnPropertyDescriptor(proto, key)?.get;
+  if (get)
+    Object.defineProperty(proto, key, {
+      get() {
+        const s = get.call(this) as ReadableStream | null;
+        if (s) bodyStreams.add(s);
+        const length = served.get(this as Response)?.length;
+        if (s && length !== undefined && !(this as Response).bodyUsed) streamLengths.set(s, length);
+        return s;
+      },
+      configurable: true,
+      enumerable: true,
+    });
+}
+const blobStream = Blob.prototype.stream;
+Blob.prototype.stream = function stream(this: Blob) {
+  const s = blobStream.call(this);
+  bodyStreams.add(s);
+  streamLengths.set(s, blobSize.call(this) as number);
+  return s;
+};
+const blobSize = Object.getOwnPropertyDescriptor(Blob.prototype, "size")!.get!;
+/** The byte length of a body Bun knows before sending it (not a stream's, nor a form's). */
+function knownLength(body: BodyInit | null | undefined): number | undefined {
+  if (body === null || body === undefined) return 0;
+  if (typeof body === "string") return new TextEncoder().encode(body).byteLength;
+  if (body instanceof ArrayBuffer || ArrayBuffer.isView(body)) return body.byteLength;
+  // The Blob's own bytes (a Bun.file's are the file when it was made), not a BunFile's live size.
+  if (body instanceof Blob) return blobSize.call(body) as number;
+  if (body instanceof URLSearchParams) return new TextEncoder().encode(body.toString()).byteLength;
+  if (body instanceof ReadableStream) return streamLengths.get(body);
+  return undefined;
+}
 class ServerResponse extends NativeResponse {
   constructor(body?: BodyInit | null, init?: ResponseInit) {
     super(body, init);
     const headers = new Headers(init?.headers);
     for (const [k, v] of super.headers) if (!headers.has(k)) headers.set(k, v);
-    if (typeof body === "string" && !hasType(init)) {
-      headers.delete("content-type");
-      textBodies.add(this);
+    const info: Served = { length: knownLength(body) };
+    if (!hasType(init)) {
+      if (typeof body === "string") {
+        headers.delete("content-type");
+        info.type = "text/plain;charset=utf-8";
+      } else if (body instanceof ArrayBuffer || ArrayBuffer.isView(body) || (body instanceof ReadableStream && bodyStreams.has(body))) info.type = "application/octet-stream";
+      // A Blob's type, a form's boundary: Bun sends them, but not for HEAD.
+      else if (headers.has("content-type")) info.implicitType = true;
     }
+    served.set(this, info);
     Object.defineProperty(this, "headers", { value: headers });
   }
   static [Symbol.hasInstance](x: unknown) {
@@ -403,9 +528,22 @@ class ServerResponse extends NativeResponse {
     if (!hasType(init)) r.headers.set("content-type", "application/json;charset=utf-8");
     return r;
   }
+  /**
+   * Bun's: the Location is the URL as given (a browser's resolves it against the worker's own URL, the playground's),
+   * and an init object's status defaults to 200.
+   */
+  static redirect(url: string | URL, init?: number | ResponseInit) {
+    const obj = typeof init === "object" && init !== null;
+    const status = typeof init === "number" ? init : obj ? (init.status ?? 200) : 302;
+    if (!REDIRECT_STATUS.has(status) && !(status === 200 && obj)) throw new RangeError("Failed to execute 'redirect' on 'Response': Invalid status code");
+    const r = new ServerResponse(null, { ...(obj ? init : {}), status });
+    r.headers.set("location", String(url));
+    return r;
+  }
   clone(): Response {
     const c = super.clone();
-    if (textBodies.has(this)) textBodies.add(c);
+    const info = served.get(this);
+    if (info) served.set(c, info);
     return Object.defineProperty(c, "headers", { value: new Headers(this.headers) });
   }
 }
@@ -432,10 +570,17 @@ Object.defineProperty(Headers.prototype, "toJSON", {
 trackBodies(self);
 installWebInspect(self);
 
-/** The headers Bun.serve sends for `res`, then the Set-Cookie headers of the request's `req.cookies` changes. */
-function servedHeaders(res: Response, setCookies: string[]): [string, string][] {
-  const headers = [...res.headers];
-  if (textBodies.has(res) && !res.headers.has("content-type")) headers.push(["content-type", "text/plain;charset=utf-8"]);
+/**
+ * The headers Bun.serve sends for `res`, then the Set-Cookie headers of the request's `req.cookies` changes: a default
+ * content type (none for HEAD, as Bun leaves out what it would derive from the body) and the content length when the
+ * body's is known (a stream's isn't), as Bun adds them.
+ */
+function servedHeaders(res: Response, setCookies: string[], head = false): [string, string][] {
+  const info = served.get(res);
+  const length = info?.length !== undefined && !(res.status < 200 || res.status === 204 || res.status === 304) ? info.length : undefined;
+  const headers = [...res.headers].filter(([k]) => !(k === "content-length" && length !== undefined) && !(k === "content-type" && head && info?.implicitType));
+  if (info?.type && !head && !res.headers.has("content-type")) headers.push(["content-type", info.type]);
+  if (length !== undefined) headers.push(["content-length", String(length)]);
   for (const c of setCookies) headers.push(["set-cookie", c]);
   return headers;
 }
@@ -463,29 +608,35 @@ function asPageOrigin(value: string): string {
   return page + (prefix ? rest.slice(prefix.length) || "/" : rest);
 }
 
-/** A page's WebSocket: a GET with `upgrade: websocket` through the server's handler, which may accept it. */
-async function openSocket(inst: Instance, port: MessagePort, path: string, headers: [string, string][]) {
+/**
+ * A page's WebSocket: a GET with `upgrade: websocket` through the server's handler, which may accept it. With `url`,
+ * the program's own WebSocket (loopbackSocket.ts) to that URL: its cookies are its own, not the preview's.
+ */
+async function openSocket(inst: Instance, port: MessagePort, path: string, headers: [string, string][], url?: string) {
   const key = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16))));
-  const req = serverRequest(path, {}, [...headers, ["upgrade", "websocket"], ["connection", "Upgrade"], ["sec-websocket-version", "13"], ["sec-websocket-key", key]]);
+  const all: [string, string][] = [...headers, ["upgrade", "websocket"], ["connection", "Upgrade"], ["sec-websocket-version", "13"], ["sec-websocket-key", key]];
+  const req = url ? new Request(url.replace(/^ws/, "http"), { headers: all }) : serverRequest(path, {}, all);
+  const toJar = (setCookies: string[]) => !url && setCookies.length && post({ type: "cookies", path, setCookies });
   let ws: ServerWebSocket | undefined;
+  let status: number | undefined;
   upgrades.set(req, (data, setCookies) => {
     ws = new ServerWebSocket(port, inst, data);
     // The page's WebSocket never sees the 101's headers: its cookies go to the preview's cookie jar (runner.ts),
     // before the socket opens, so the page's next request carries them.
-    if (setCookies.length) post({ type: "cookies", path, setCookies });
+    toJar(setCookies);
   });
   try {
     const { res, setCookies } = await dispatch(inst, req);
     // Not upgraded: as in Bun, the handler's Response goes back with its Set-Cookie headers, then those of what it
     // set or deleted in `req.cookies`. The page's socket only fails; the cookies go to the jar all the same.
-    const all = ws ? [] : [...(res instanceof Response ? res.headers.getSetCookie() : []), ...setCookies];
-    if (all.length) post({ type: "cookies", path, setCookies: all });
+    if (!ws) toJar([...(res instanceof Response ? res.headers.getSetCookie() : []), ...setCookies]);
+    if (!ws && res instanceof Response) status = res.status;
   } catch (err) {
     console.error(err);
   }
   upgrades.delete(req);
   if (!ws) {
-    port.postMessage({ type: "close", code: 1006, reason: "" });
+    port.postMessage({ type: "close", code: 1006, reason: "", status });
     return port.close();
   }
   const socket = ws;
@@ -588,8 +739,8 @@ async function serveBundledHtml(imp: HtmlImport): Promise<Response> {
  * A preview response goes back as it's produced (SSE, streamed HTML): `head`, then a `chunk` per piece of the body,
  * then `end`, or `error` if the body fails. A `cancel` from the other end (the page went away) cancels the body.
  */
-async function sendResponse(port: MessagePort, res: Response, setCookies: string[] = []) {
-  port.postMessage({ type: "head", status: res.status, statusText: res.statusText, headers: servedHeaders(res, setCookies) });
+async function sendResponse(port: MessagePort, res: Response, setCookies: string[] = [], head = false) {
+  port.postMessage({ type: "head", status: res.status, statusText: res.statusText, headers: servedHeaders(res, setCookies, head) });
   if (!res.body) return port.postMessage({ type: "end" });
   const reader = res.body.getReader();
   port.onmessage = (e) => {
@@ -638,9 +789,55 @@ function routeRequest(req: Request, params: Record<string, string>) {
  * Answers `req`, with the Set-Cookie headers for what a route handler set or deleted in `req.cookies` by the time it
  * returned (Bun sends them after the response's own, and leaves the Response object itself alone).
  */
-async function dispatch(inst: Instance, req: Request): Promise<{ res: Response; setCookies: string[] }> {
-  const res = await route(inst, req);
-  return { res, setCookies: requestCookies.get(req)?.toSetCookieHeaders() ?? [] };
+async function dispatch(inst: Instance, req: Request, bodySize?: number): Promise<{ res: Response; setCookies: string[] }> {
+  if (!inst.unix && !peers.has(req)) peers.set(req, localPeer(new URL(req.url).hostname));
+  let res: unknown;
+  // A body over `maxRequestBodySize` (its size known: the preview's, a loopback fetch's) never reaches the handler.
+  if (bodySize !== undefined && bodySize > inst.maxBody) res = new Response(null, { status: 413, headers: { connection: "close" } });
+  else
+    try {
+      res = await route(inst, req);
+    } catch (err) {
+      res = await failed(inst, req, err);
+    }
+  if (!(res instanceof Response)) res = notAResponse(inst, req, res);
+  return { res: res as Response, setCookies: requestCookies.get(req)?.toSetCookieHeaders() ?? [] };
+}
+
+/**
+ * A handler threw or rejected: Bun's `error` handler answers, as `this` the server. If there is none, it throws, or
+ * it returns something other than a Response, the error (its own, if it threw) is logged and Bun's default answers:
+ * in development, an HTML error page, after `GET - /path failed`; otherwise "Something went wrong!".
+ */
+async function failed(inst: Instance, req: Request, err: unknown): Promise<Response> {
+  if (err === EXIT || halted) throw err;
+  let logged = err;
+  if (inst.error)
+    try {
+      const res = await runIn<unknown>(inst.context, inst.error, inst.server, [err]);
+      if (res instanceof Response) return res;
+    } catch (e) {
+      if (e === EXIT || halted) throw e;
+      logged = e;
+    }
+  if (!inst.development) {
+    printError(logged);
+    return new Response("Something went wrong!", { status: 500, headers: { "content-type": "text/plain" } });
+  }
+  post({ type: "console", level: "error", text: `${uncaughtText(logged)}${req.method} - ${new URL(req.url).pathname} failed` });
+  const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return new Response(
+    `<!doctype html>\n<html lang="en">\n  <head>\n    <meta charset="utf-8" />\n    <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n    <title>Internal Server Error</title>\n  </head>\n  <body>\n    <pre>${esc(fmt(logged))}</pre>\n  </body>\n</html>\n`,
+    { status: 500, headers: { "content-type": "text/html;charset=utf-8" } },
+  );
+}
+
+/** A handler returned something other than a Response (and didn't upgrade): Bun logs it, then answers anyway. */
+function notAResponse(inst: Instance, req: Request, value: unknown): Response {
+  if (upgraded.has(req)) return new Response(null);
+  const shown = typeof value === "string" ? JSON.stringify(value) : bunInspect(value);
+  post({ type: "console", level: "error", text: `error: Expected a Response object, but received '${shown}'` });
+  return inst.development ? new Response("Welcome to Bun! To get started, return a Response object.") : new Response(null, { status: 204 });
 }
 
 async function route(inst: Instance, req: Request): Promise<Response> {
@@ -655,7 +852,8 @@ async function route(inst: Instance, req: Request): Promise<Response> {
     if (value instanceof Response) return value.clone();
     if (isHtmlImport(value)) return serveBundledHtml(value);
     if (typeof value === "function") return call(value, routeRequest(req, params), server);
-    const byMethod = value[req.method];
+    // A HEAD to a route with only GET gets GET's response, without its body (as Bun answers it).
+    const byMethod = value[req.method] ?? (req.method === "HEAD" ? value.GET : undefined);
     if (byMethod) return byMethod instanceof Response ? byMethod.clone() : call(byMethod, routeRequest(req, params), server);
   }
   if (handler) return call(handler, req, server);
@@ -814,6 +1012,10 @@ class BunFile extends Blob {
   readonly #end: number | undefined;
   /** The path as given, which Bun's errors name. */
   readonly #given: string;
+  /** The path as given (a `file:` URL's path), which Bun names the file by in a FormData. */
+  static givenPath(f: BunFile) {
+    return f.#given;
+  }
   constructor(path: string, type?: string, start = 0, end?: number) {
     const name = norm(nodePath.resolve(path));
     const data = vfs.readBytes(name);
@@ -878,6 +1080,8 @@ class BunFile extends Blob {
   }
   /** `FileSink`: buffers writes and saves them on `flush`/`end`, replacing the file. */
   writer() {
+    // Bun.stdout and Bun.stderr: onto the console, flushed as Bun does (fileSink.ts).
+    if (this === stdout || this === stderr) return new FileSink((b) => void (this === stdout ? process.stdout : process.stderr).write(b));
     const parts: Uint8Array[] = [];
     let written = 0;
     const flush = async () => {
@@ -904,6 +1108,34 @@ class BunFile extends Blob {
       },
     };
   }
+}
+
+// A Bun.file in a FormData is a File named by its path, as in Bun (a browser names a Blob "blob").
+for (const key of ["append", "set"] as const) {
+  const method = FormData.prototype[key] as (this: FormData, name: string, value: string | Blob, filename?: string) => void;
+  FormData.prototype[key] = function (this: FormData, name: string, value: string | Blob, filename?: string) {
+    if (filename === undefined && value instanceof BunFile) filename = BunFile.givenPath(value);
+    // Two arguments for a string: a third, even undefined, makes it the Blob overload.
+    return arguments.length < 3 && filename === undefined ? method.call(this, name, value) : method.call(this, name, value, filename);
+  } as never;
+}
+
+/**
+ * A file part's type in a parsed multipart body, as Bun gives it: from its file name's extension (Bun's table), not
+ * from the part's Content-Type (`a.txt` is `text/plain;charset=utf-8`); "" when there is none.
+ */
+const partType = (name: string) => {
+  const dot = name.lastIndexOf(".");
+  return dot > 0 && dot > name.lastIndexOf("/") ? (MIME[name.slice(dot + 1).toLowerCase()] ?? "") : "";
+};
+for (const proto of [NativeResponse.prototype, Request.prototype]) {
+  const parse = proto.formData as (this: Body) => Promise<FormData>;
+  proto.formData = async function formData(this: Body) {
+    const parsed = await parse.call(this);
+    const out = new FormData();
+    for (const [k, v] of parsed) out.append(k, typeof v === "string" ? v : new File([v], v.name, { type: partType(v.name), lastModified: v.lastModified }));
+    return out;
+  };
 }
 
 /** `Bun.S3Client`, `Bun.s3` and `s3://` URLs (s3.ts), on the worker's env and its (tracked) fetch. */
@@ -1058,17 +1290,18 @@ const fileFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = input instanceof Request ? input.url : String(input);
   if (!URL.canParse(url)) throw Object.assign(new TypeError("fetch() URL is invalid"), { code: "ERR_INVALID_URL" });
   if (url.startsWith("s3:")) return s3.fetchUrl(url, init);
+  // Bun's `unix` option: the request goes to the server on that socket path, whatever the URL's host.
+  const unix = (init as { unix?: string } | undefined)?.unix;
+  if (unix) {
+    const inst = servers.find((s) => s.unix === unix);
+    if (!inst) throw codeError(TypeError, "ENOENT", "ENOENT: Was there a typo in the url or port?");
+    return loopbackFetch(inst, new Request(input, init));
+  }
   if (!url.startsWith("file:")) {
     // A server this program started (Bun.serve, http.createServer) is answered in-process, as on a machine where
     // localhost reaches it; the browser's network can't. A child process's server lives in another worker: unreachable.
-    const u = new URL(url);
-    const inst = loopback.has(u.hostname) && u.protocol === "http:" ? servers.find((s) => s.port === Number(u.port || 80)) : undefined;
-    if (inst) {
-      const req = new Request(input, init);
-      const { res, setCookies } = await dispatch(inst, req);
-      // What a client of Bun.serve gets: its headers (the implicit content-type, Set-Cookie), no body for HEAD.
-      return new Response(req.method === "HEAD" ? null : res.body, { status: res.status, statusText: res.statusText, headers: servedHeaders(res, setCookies) });
-    }
+    const inst = ownServer(url);
+    if (inst) return loopbackFetch(inst, new Request(input, init));
     return networkFetch(input, withHeaders(input, init));
   }
   const path = norm(decodeURIComponent(new URL(url).pathname));
@@ -1076,19 +1309,132 @@ const fileFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   if (data === undefined) throw new TypeError(`fetch failed: no such file /${path}`);
   return new Response(data.slice());
 };
+
+/** The server of this program that `url` reaches on localhost, if any. */
+function ownServer(url: string | URL): Instance | undefined {
+  const u = new URL(url);
+  return loopback.has(u.hostname) && u.protocol === "http:" ? servers.find((s) => s.port === Number(u.port || 80)) : undefined;
+}
+
+/** Bun follows 126 redirects; the 127th fails. */
+const MAX_REDIRECTS = 126;
+const fetchError = (code: string, message: string) => Object.assign(new TypeError(`${message}. For more information, pass \`verbose: true\` in the second argument to fetch()`), { code });
+
+const macrotask = () =>
+  new Promise<void>((resolve) => {
+    const ch = new MessageChannel();
+    ch.port1.onmessage = () => (ch.port1.close(), resolve());
+    ch.port2.postMessage(0);
+  });
+const connectionReset = () => fetchError("ECONNRESET", "ECONNRESET: The socket connection was closed unexpectedly");
+
+/**
+ * A response body as a client of Bun.serve gets it. Bun sends the head with the first chunk, and what the stream has
+ * ready without waiting along with it: a stream that fails before then drops the connection (fetch rejects), one that
+ * fails later ends the body with the same error. A stream that ended by then has its length sent too, as Bun does.
+ */
+async function eagerBody(stream: ReadableStream<Uint8Array>): Promise<{ body: ReadableStream<Uint8Array>; length?: number }> {
+  const reader = stream.getReader();
+  const ready: Uint8Array[] = [];
+  let pending: Promise<ReadableStreamReadResult<Uint8Array>> | undefined;
+  let done = false;
+  try {
+    for (let r = await reader.read(); ; ) {
+      if (r.done) {
+        done = true;
+        break;
+      }
+      ready.push(r.value);
+      const next = reader.read();
+      const settled = await Promise.race([next, macrotask()]);
+      if (!settled) {
+        pending = next;
+        // Read later; until then a failure is this one's to report.
+        next.catch(() => {});
+        break;
+      }
+      r = settled;
+    }
+  } catch {
+    throw connectionReset();
+  }
+  const length = done ? ready.reduce((n, c) => n + c.byteLength, 0) : undefined;
+  const body = new ReadableStream<Uint8Array>({
+    async pull(c) {
+      if (ready.length) return c.enqueue(ready.shift()!);
+      if (done) return c.close();
+      try {
+        const r = await (pending ?? reader.read());
+        pending = undefined;
+        if (r.done) c.close();
+        else c.enqueue(r.value);
+      } catch {
+        c.error(connectionReset());
+      }
+    },
+    cancel: (reason) => reader.cancel(reason),
+  });
+  return { body, length };
+}
+
+/**
+ * A request to a server of this program, answered in-process. Redirects are followed as Bun's fetch follows them
+ * (`redirect: "follow"`, the default): a 303, and a 301 or 302 to a POST, go on as a GET without the body; the others
+ * keep method and body; another origin doesn't get the Authorization and Cookie headers. A hop that leaves the
+ * program's servers goes to the network. `"manual"` returns the redirect, `"error"` fails on it.
+ */
+async function loopbackFetch(inst: Instance, req: Request): Promise<Response> {
+  const mode = req.redirect;
+  // A 307 or 308 sends the body again: kept from the start, as it is read only once.
+  const body = mode === "follow" && req.body ? await req.clone().arrayBuffer() : null;
+  for (let hops = 0; ; hops++) {
+    const { res, setCookies } = await dispatch(inst, req, req.body ? body?.byteLength : undefined);
+    const location = res.headers.get("location");
+    if (mode === "manual" || !REDIRECT_STATUS.has(res.status) || location === null) {
+      // What a client of Bun.serve gets: its headers (the implicit content-type, Set-Cookie), no body for HEAD.
+      const eager = req.method !== "HEAD" && res.body ? await eagerBody(res.body) : undefined;
+      const headers = servedHeaders(res, setCookies, req.method === "HEAD");
+      if (eager?.length !== undefined && !headers.some(([k]) => k === "content-length")) headers.push(["content-length", String(eager.length)]);
+      const out = new Response(eager?.body ?? null, { status: res.status, statusText: res.statusText, headers });
+      return Object.defineProperties(out, { url: { value: req.url }, redirected: { value: hops > 0 } });
+    }
+    res.body?.cancel().catch(() => {});
+    if (mode === "error") throw fetchError("UnexpectedRedirect", `UnexpectedRedirect fetching "${req.url}"`);
+    if (hops === MAX_REDIRECTS) throw fetchError("TooManyRedirects", "TooManyRedirects: The response redirected too many times");
+    const next = new URL(location, req.url);
+    const asGet = (res.status === 303 && req.method !== "GET" && req.method !== "HEAD") || ((res.status === 301 || res.status === 302) && req.method === "POST");
+    const headers = new Headers(req.headers);
+    if (asGet) for (const h of ["content-type", "content-length", "content-encoding", "content-language", "content-location"]) headers.delete(h);
+    if (next.origin !== new URL(req.url).origin) for (const h of ["authorization", "proxy-authorization", "cookie"]) headers.delete(h);
+    const nextInit: RequestInit = { method: asGet ? "GET" : req.method, headers, body: asGet || req.method === "GET" || req.method === "HEAD" ? null : body, redirect: mode, signal: req.signal };
+    const nextInst = ownServer(next);
+    if (!nextInst) {
+      const out = await networkFetch(next, nextInit);
+      return Object.defineProperty(out, "redirected", { value: true });
+    }
+    inst = nextInst;
+    req = new Request(next, nextInit);
+  }
+}
 globalThis.fetch = trackedFn(function fetch(input: RequestInfo | URL, init?: RequestInit) {
   return fileFetch(input, init);
 }) as typeof fetch;
 
 /** The browser's WebSocket client, holding the program while it is connecting or open (loop.ts), as Bun's does. */
-if (typeof globalThis.WebSocket === "function")
-  globalThis.WebSocket = class WebSocket extends globalThis.WebSocket {
+if (typeof globalThis.WebSocket === "function") {
+  const BrowserWebSocket = class WebSocket extends globalThis.WebSocket {
     constructor(url: string | URL, protocols?: string | string[]) {
       super(url, protocols);
       hold(this);
       this.addEventListener("close", () => release(this));
     }
   };
+  // `ws://localhost:<port>` to a server of this program connects in-process, as `fetch` does over http.
+  globalThis.WebSocket = loopbackWebSocket(BrowserWebSocket, (url) => {
+    const inst = ownServer(url.href.replace(/^ws/, "http"));
+    return inst && ((headers, port) => void openSocket(inst, port, url.pathname + url.search, headers, url.href));
+  });
+}
 
 const HTML_ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#x27;" };
 /** `Bun.escapeHTML`: like Bun's, non-strings are stringified first. */
@@ -1213,6 +1559,8 @@ async function main() {
   // The shell's parser too: `$` parses as it's called, as Bun's does (a syntax error throws there).
   const [semver, shellWasm] = await Promise.all([loadSemver(), loadShellWasm(), loadResolver(vfs)]);
   setRequire(vfs, (spec, dir) => resolve(spec, dir, "require", "bun"), (spec, dir) => resolve(spec, dir, "import", "bun"), () => VFS_ROOT);
+  setPluginHost({ vfsRoot: () => VFS_ROOT, resolve: (spec, dir, kind) => resolve(spec, dir, kind, "bun"), cwd: () => process.cwd(), parseData, ...pluginModuleHost() });
+  setPluginHook(pluginRequire);
   const bun: Record<(typeof BUN_NAMES)[number], unknown> = {
     version: `${BUN_VERSION}-browser`,
     env,
@@ -1275,6 +1623,8 @@ async function main() {
     resolveSync,
     resolve: async (specifier: string, from: string | URL) => resolveSync(specifier, from),
     Glob,
+    FileSystemRouter,
+    plugin,
     S3Client: s3.S3Client,
     s3: s3.s3,
     sql,
@@ -1291,6 +1641,7 @@ async function main() {
     password,
     Cookie,
     CookieMap,
+    randomUUIDv7,
     // Bun's shell with its builtins over the project's files; other commands run as child processes.
     $: createDollar({
       ...shellHost(shellWasm),
@@ -1326,14 +1677,14 @@ async function main() {
         const inst = (m.port !== undefined && servers.find((s) => s.port === m.port)) || previewServer();
         if (!inst) return sendText(port, 503, "No Bun.serve handler registered");
         // A response being made holds the program, even after an unref'd or stopped server.
-        out = await holdUntil(dispatch(inst, serverRequest(r.path, { method: r.method, body: r.body }, r.headers)));
+        out = await holdUntil(dispatch(inst, serverRequest(r.path, { method: r.method, body: r.body }, r.headers), r.body?.byteLength));
       } catch (err) {
         if (halted) return;
         // Bun's development server (`development` is true here) reports it as uncaught, then which request failed.
         post({ type: "console", level: "error", text: `${uncaughtText(err)}${r.method} - ${new URL(r.path, "http://localhost/").pathname} failed` });
         return sendText(port, 500, fmt(err));
       }
-      await sendResponse(port, out.res, out.setCookies);
+      await sendResponse(port, out.res, out.setCookies, r.method === "HEAD");
     } else if (m.type === "ws") {
       const port = e.ports[0];
       const inst = m.port === undefined ? previewServer() : servers.find((s) => s.port === m.port);
@@ -1416,6 +1767,25 @@ async function runScript(script: string, args: string[], child: boolean) {
   }
 }
 
+/**
+ * The modules bunfig.toml (in the working directory, as Bun reads it) preloads: `preload` for a run, `[test] preload`
+ * for `bun test`, a path or a list, each resolved from that directory (a bare name is a package). Their VFS paths;
+ * throws Bun's error for one that doesn't resolve.
+ */
+function bunfigPreloads(test: boolean): string[] {
+  const dir = norm(process.cwd());
+  const text = vfs.readText(dir ? `${dir}/bunfig.toml` : "bunfig.toml");
+  if (text === undefined) return [];
+  const config = parseData(text, "toml") as { preload?: unknown; test?: { preload?: unknown } } | null;
+  const list = test ? config?.test?.preload : config?.preload;
+  const specs = typeof list === "string" ? [list] : Array.isArray(list) ? list.filter((s): s is string => typeof s === "string") : [];
+  return specs.map((spec) => {
+    const path = resolve(spec, dir, "import", "bun");
+    if (path === null) throw new Error(`preload not found "${spec}"`);
+    return path;
+  });
+}
+
 self.addEventListener("message", async (e: MessageEvent) => {
   if (e.data.type !== "start") return;
   if (e.data.vfsRoot) VFS_ROOT = e.data.vfsRoot;
@@ -1467,7 +1837,7 @@ self.addEventListener("message", async (e: MessageEvent) => {
   if (e.data.tests) {
     testing = true;
     // `bun test`: load and run each file instead of an entry.
-    const { failed, results } = await runTestFiles(e.data.tests, (f) => importUrl(`${VFS_ROOT}${f}`), (g.Bun as { version: string }).version, { update: ((e.data.args as string[] | undefined) ?? []).some((a) => a === "-u" || a === "--update-snapshots") }).catch((err) => (post({ type: "console", level: "error", text: fmt(err) }), { failed: 1, results: undefined }));
+    const { failed, results } = await runTestFiles(e.data.tests, (f) => importUrl(`${VFS_ROOT}${f}`), (g.Bun as { version: string }).version, { update: ((e.data.args as string[] | undefined) ?? []).some((a) => a === "-u" || a === "--update-snapshots"), preload: () => bunfigPreloads(true) }).catch((err) => (post({ type: "console", level: "error", text: fmt(err) }), { failed: 1, results: undefined }));
     post({ type: "ready", failed, results });
     return;
   }
@@ -1481,6 +1851,18 @@ self.addEventListener("message", async (e: MessageEvent) => {
   process.argv.splice(2, Infinity, ...((e.data.args as string[] | undefined) ?? []));
   try {
     const code = (e.data.thread as ThreadInfo | undefined)?.eval;
+    // bunfig.toml's `preload`, in order, before the entry (its runtime plugins apply to the entry's imports). Not in
+    // a worker_threads thread, which is no new `bun` process.
+    if (!e.data.thread) {
+      let preloads: string[] = [];
+      try {
+        preloads = bunfigPreloads(false);
+      } catch (err) {
+        post({ type: "console", level: "error", text: `error: ${err instanceof Error ? err.message : String(err)}` });
+        halt(1);
+      }
+      for (const p of preloads) await importUrl(`${VFS_ROOT}${p}`);
+    }
     // A .cjs/.mjs program by moduleServer.ts's ENTRY_PREFIX: served as its extension makes it, as Bun runs one.
     const entryUrl = `${VFS_ROOT}${/\.[cm][jt]s$/.test(e.data.entry) ? "__entry/" : ""}${e.data.entry}`;
     const mod = (code !== undefined ? evalThread(code) : await importUrl(entryUrl)) as { default?: ServeOptions };

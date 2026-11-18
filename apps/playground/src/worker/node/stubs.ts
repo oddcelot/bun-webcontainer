@@ -1,5 +1,5 @@
 import EventEmitter from "events";
-import { stubModule } from "./errors";
+import { codeError, stubModule } from "./errors";
 
 const lookup = (host: string, opts?: unknown, cb?: (...a: unknown[]) => void) => {
   const done = typeof opts === "function" ? opts : cb;
@@ -21,36 +21,79 @@ export const dns = stubModule("dns", "resolve resolve4 resolve6 reverse setServe
 
 export const http2 = stubModule("http2", "connect createServer createSecureServer getDefaultSettings getPackedSettings getUnpackedSettings Http2ServerRequest Http2ServerResponse", { constants: {}, sensitiveHeaders: Symbol("nodejs.http2.sensitiveHeaders") });
 export const tls = stubModule("tls", "connect createServer createSecureContext checkServerIdentity getCiphers TLSSocket Server", { DEFAULT_MIN_VERSION: "TLSv1.2", DEFAULT_MAX_VERSION: "TLSv1.3", rootCertificates: [] });
-export const v8 = stubModule("v8", "getHeapStatistics getHeapSpaceStatistics getHeapSnapshot writeHeapSnapshot serialize deserialize setFlagsFromString cachedDataVersionTag");
-export const inspector = stubModule("inspector", "open close url waitForDebugger Session", { console });
-export const cluster = stubModule("cluster", "fork disconnect setupPrimary setupMaster Worker", { isPrimary: true, isMaster: true, isWorker: false, workers: {}, settings: {} });
 
-export const constants = {};
+/** The primary of a cluster without workers: an EventEmitter, as Bun's, whose `fork` throws (no processes to fork). */
+export const cluster = Object.assign(new EventEmitter(), stubModule("cluster", "fork disconnect setupPrimary setupMaster Worker"), { isPrimary: true, isMaster: true, isWorker: false, workers: {}, settings: {}, SCHED_NONE: 1, SCHED_RR: 2, schedulingPolicy: 2 });
 
-export { async_hooks } from "./asyncHooks";
-
-class Channel extends EventEmitter {
-  hasSubscribers = false;
-  constructor(readonly name: string) {
+/** A UDP socket can be made, but not bound or used: a browser has no UDP. */
+class DgramSocket extends EventEmitter {
+  constructor(readonly type: string) {
     super();
   }
-  publish() {}
-  subscribe() {}
-  unsubscribe() {
-    return false;
+  close(cb?: () => void) {
+    if (cb) this.once("close", cb);
+    queueMicrotask(() => this.emit("close"));
+    return this;
   }
-  bindStore() {}
-  unbindStore() {}
-  runStores<R>(_data: unknown, fn: (...a: unknown[]) => R, thisArg?: unknown, ...args: unknown[]): R {
-    return fn.apply(thisArg, args);
+  ref() {
+    return this;
+  }
+  unref() {
+    return this;
   }
 }
-
-export const diagnostics_channel = {
-  channel: (name: string) => new Channel(name),
-  hasSubscribers: () => false,
-  subscribe() {},
-  unsubscribe: () => false,
-  tracingChannel: (name: string) => ({ start: new Channel(name + ":start"), end: new Channel(name + ":end"), asyncStart: new Channel(name + ":asyncStart"), asyncEnd: new Channel(name + ":asyncEnd"), error: new Channel(name + ":error"), hasSubscribers: false, subscribe() {}, unsubscribe: () => false, traceSync: <R>(fn: (...a: unknown[]) => R, _ctx?: unknown, thisArg?: unknown, ...args: unknown[]) => fn.apply(thisArg, args), tracePromise: <R>(fn: (...a: unknown[]) => R, _ctx?: unknown, thisArg?: unknown, ...args: unknown[]) => fn.apply(thisArg, args), traceCallback: <R>(fn: (...a: unknown[]) => R, _pos?: unknown, _ctx?: unknown, thisArg?: unknown, ...args: unknown[]) => fn.apply(thisArg, args) }),
-  Channel,
+for (const k of "bind connect send address remoteAddress setBroadcast setTTL setMulticastTTL setMulticastLoopback setMulticastInterface addMembership dropMembership setRecvBufferSize setSendBufferSize getRecvBufferSize getSendBufferSize".split(" ")) {
+  (DgramSocket.prototype as unknown as Record<string, unknown>)[k] = function () {
+    throw new Error(`node:dgram socket.${k} is not supported in the playground: a browser has no UDP`);
+  };
+}
+export const dgram = {
+  Socket: DgramSocket,
+  createSocket(type: string | { type: string }, listener?: (...a: unknown[]) => void) {
+    const s = new DgramSocket(typeof type === "string" ? type : type?.type);
+    if (listener) s.on("message", listener);
+    return s;
+  },
 };
+
+export const repl = stubModule("repl", "start REPLServer Recoverable", { REPL_MODE_SLOPPY: Symbol("repl-sloppy"), REPL_MODE_STRICT: Symbol("repl-strict"), builtinModules: [] });
+export const wasi = stubModule("wasi", "WASI");
+
+/** node:trace_events: categories turn on and off as Bun's do; nothing records events. */
+const enabledCategories = new Map<string, number>();
+class Tracing {
+  #categories: string[];
+  #enabled = false;
+  constructor(categories: string[]) {
+    this.#categories = categories;
+    Object.defineProperties(this, { enabled: { value: false, enumerable: true, configurable: true }, categories: { value: categories.join(","), enumerable: true, configurable: true } });
+  }
+  #set(on: boolean) {
+    if (this.#enabled === on) return;
+    this.#enabled = on;
+    Object.defineProperty(this, "enabled", { value: on, enumerable: true, configurable: true });
+    for (const c of this.#categories) {
+      const n = (enabledCategories.get(c) ?? 0) + (on ? 1 : -1);
+      if (n > 0) enabledCategories.set(c, n);
+      else enabledCategories.delete(c);
+    }
+  }
+  enable() {
+    this.#set(true);
+  }
+  disable() {
+    this.#set(false);
+  }
+}
+export const trace_events = {
+  createTracing(options: { categories: string[] }) {
+    if (typeof options !== "object" || options === null) throw codeError(TypeError, "ERR_INVALID_ARG_TYPE", `The "options" argument must be of type object.`);
+    const { categories } = options;
+    if (!Array.isArray(categories) || categories.some((c) => typeof c !== "string")) throw codeError(TypeError, "ERR_INVALID_ARG_TYPE", `The "options.categories" property must be of type string[].`);
+    if (!categories.length) throw codeError(TypeError, "ERR_TRACE_EVENTS_CATEGORY_REQUIRED", "At least one category is required");
+    return new Tracing(categories.slice());
+  },
+  getEnabledCategories: () => (enabledCategories.size ? [...enabledCategories.keys()].join(",") : undefined),
+};
+
+export { async_hooks } from "./asyncHooks";

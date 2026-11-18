@@ -14,3 +14,5 @@ rela = "rela"      # gix's rela_path
 styl = "styl"      # Stylus, a language in Expressive Code's groups (packages/astro/src/remark.ts)
 Algorithme = "Algorithme"  # Bun's misspelled alias of S3 list's checksumAlgorithm (apps/playground/src/worker/s3.ts)
 greather = "greather"      # Bun's expiresIn error message (apps/playground/src/worker/s3.ts)
+selec = "selec"            # a deliberate SQL syntax error (apps/playground/scripts/node-apis/sqlite.ts)
+compresion = "compresion"  # an npm package on Bun's default trusted list (apps/playground/src/defaultTrusted.ts)

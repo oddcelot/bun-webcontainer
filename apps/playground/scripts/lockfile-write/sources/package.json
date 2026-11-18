@@ -1,0 +1,12 @@
+{
+  "name": "sources",
+  "dependencies": {
+    "local-pkg": "file:./local",
+    "tar-pkg": "file:vendor/tar-pkg-0.3.0.tgz",
+    "t2": "./vendor/tar-pkg-0.3.0.tgz",
+    "linked-pkg": "link:linked-pkg",
+    "is-odd": "github:jonschlinkert/is-odd#3.0.1",
+    "is-even": "jonschlinkert/is-even",
+    "kind-of": "git+https://github.com/jonschlinkert/kind-of.git#6.0.3"
+  }
+}

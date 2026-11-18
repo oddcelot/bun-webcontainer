@@ -321,6 +321,71 @@ test("git.wasm: init, add, commit, status, diff, log over the VFS; native git ag
   }
 });
 
+test("git.wasm: merge (a conflict), stash and tag over the VFS; native git reads the result", async () => {
+  if (!existsSync(GIT)) return console.log(`  (skipped: ${GIT} missing)`);
+  const module = await WebAssembly.compile(readFileSync(GIT));
+  const vfs = new VFS();
+  const git = async (...args: string[]) => {
+    let out = "";
+    let err = "";
+    const { exitCode } = await runWasi(module, vfs, {
+      args: ["git", ...args],
+      env: { GIT_AUTHOR_NAME: "T", GIT_AUTHOR_EMAIL: "t@example.com" },
+      stdout: (b) => (out += dec.decode(b)),
+      stderr: (b) => (err += dec.decode(b)),
+    });
+    return { exitCode, out, err };
+  };
+  const ok = async (...args: string[]) => {
+    const r = await git(...args);
+    assert.equal(r.exitCode, 0, `git ${args.join(" ")}: ${r.err}${r.out}`);
+    return r.out;
+  };
+  vfs.write("a.txt", "a\nb\nc\n");
+  vfs.write("k.txt", "keep\n");
+  await ok("init");
+  await ok("add", ".");
+  await ok("commit", "-m", "base");
+  await ok("tag", "-a", "v1", "-m", "first release");
+  await ok("switch", "-c", "feat");
+  vfs.write("a.txt", "a\nfeat\nc\n");
+  await ok("commit", "-am", "on feat");
+  await ok("switch", "main");
+  vfs.write("a.txt", "a\nmain\nc\n");
+  await ok("commit", "-am", "on main");
+  const m = await git("merge", "feat");
+  assert.equal(m.exitCode, 1);
+  assert.equal(m.out, "Auto-merging a.txt\nCONFLICT (content): Merge conflict in a.txt\nAutomatic merge failed; fix conflicts and then commit the result.\n");
+  assert.equal(await ok("status", "-s"), "UU a.txt\n");
+  assert.equal(dec.decode(vfs.read("a.txt") as Uint8Array), "a\n<<<<<<< HEAD\nmain\n=======\nfeat\n>>>>>>> feat\nc\n");
+  vfs.write("a.txt", "a\nboth\nc\n");
+  await ok("add", "a.txt");
+  await ok("commit");
+  vfs.write("k.txt", "keep\nlocal\n");
+  vfs.write("u.txt", "untracked\n");
+  assert.match(await ok("stash", "-u"), /^Saved working directory and index state WIP on main: [0-9a-f]{7} Merge branch 'feat'\n$/);
+  assert.equal(await ok("status", "-s"), "");
+  await ok("tag", "light");
+
+  const dir = mkdtempSync(join(tmpdir(), "wasi-git-"));
+  try {
+    for (const [k, v] of vfs.files) {
+      const to = join(dir, k);
+      mkdirSync(dirname(to), { recursive: true });
+      writeFileSync(to, typeof v === "string" ? v : (v as Uint8Array));
+    }
+    const native = (...a: string[]) => execFileSync("git", ["-C", dir, ...a], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    native("fsck", "--full", "--strict");
+    assert.deepEqual(native("log", "--format=%P").split("\n").slice(0, 4).map((l) => (l ? l.split(" ").length : 0)), [2, 1, 1, 0]); // the merge has two parents
+    assert.equal(native("tag", "-n"), "light           Merge branch 'feat'\nv1              first release\n");
+    assert.match(native("stash", "list"), /^stash@\{0\}: WIP on main: [0-9a-f]{7} Merge branch 'feat'\n$/);
+    native("stash", "pop");
+    assert.equal(native("status", "--porcelain"), " M k.txt\n?? u.txt\n");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 let failed = 0;
 for (const [name, fn] of tests) {
   try {

@@ -4,7 +4,8 @@
 // on localhost.
 //
 // Not an open proxy: only the hosts below, only git's smart-HTTP requests (the ref advertisement and the upload-pack
-// and receive-pack exchanges), only from the playground's own pages, and no cookies either way. Signed in with GitHub
+// and receive-pack exchanges) and GitHub's commit tarballs (`bun install` of a `github:` dependency), only from the
+// playground's own pages, and no cookies either way. Signed in with GitHub
 // (auth.ts), the caller passes the user's token, which goes to github.com only.
 
 export const GIT_PROXY = "/git-proxy/";
@@ -14,6 +15,24 @@ const HOSTS = new Set(["github.com", "gitlab.com", "codeberg.org", "bitbucket.or
 
 /** The request headers git's smart-HTTP protocol uses; nothing else goes out. */
 const FORWARD = ["accept", "content-type", "content-encoding", "git-protocol"];
+
+/**
+ * GitHub's tarballs of a commit, for `bun install` of a `github:` dependency (src/gitDeps.ts): codeload answers only
+ * GitHub's own origins cross-origin. `/<owner>/<repo>/legacy.tar.gz/<ref>`, the tarball native Bun downloads.
+ */
+const CODELOAD = "codeload.github.com";
+
+async function tarball(req: Request, path: string, fetchFn: typeof fetch): Promise<Response> {
+  if (req.method !== "GET" || new URL(req.url).search || !/^\/[\w.-]+\/[\w.-]+\/legacy\.tar\.gz\/[\w./%-]+$/.test(path)) return fail(400, "not a GitHub tarball request");
+  let res: Response;
+  try {
+    res = await fetchFn(`https://${CODELOAD}${path}`, { headers: { "user-agent": "runbun.dev bun install" } });
+  } catch (e) {
+    return fail(502, `couldn't reach ${CODELOAD}: ${e instanceof Error ? e.message : e}`);
+  }
+  if (!res.ok) return fail(res.status, `GET https://${CODELOAD}${path} - ${res.status}`);
+  return new Response(res.body, { status: 200, headers: { "content-type": "application/x-gzip", "cache-control": "no-store" } });
+}
 
 const fail = (status: number, message: string) => new Response(message + "\n", { status, headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
 
@@ -29,6 +48,7 @@ export async function gitProxy(req: Request, rest: string, token?: string, fetch
   const slash = rest.indexOf("/");
   const host = slash < 0 ? rest : rest.slice(0, slash);
   const path = slash < 0 ? "" : rest.slice(slash);
+  if (host === CODELOAD) return tarball(req, path, fetchFn);
   if (!HOSTS.has(host)) return fail(403, `the playground's git proxy doesn't reach ${host || "that host"} (only ${[...HOSTS].join(", ")})`);
   const service = url.searchParams.get("service");
   const advertisement = req.method === "GET" && /\/info\/refs$/.test(path) && (service === "git-upload-pack" || service === "git-receive-pack") && url.search === `?service=${service}`;

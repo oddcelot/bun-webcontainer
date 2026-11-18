@@ -592,6 +592,13 @@ export function failRunning(err: unknown): boolean {
   return true;
 }
 
+/** node:test's `t.skip()` and `t.todo()` (nodeTest.ts): the running test counts as skipped or todo once it ends. */
+let runningMark: "skip" | "todo" | undefined;
+export const markRunning = (mark: "skip" | "todo") => void (runningMark = mark);
+/** The test file loading or running now (relative to the project), for node:test's `filePath`. */
+let currentFile = "";
+export const testFile = () => currentFile;
+
 /** Runs one callback with `done` support and a timeout. */
 function call(fn: Fn, timeout: number): Promise<void> {
   return new Promise<void>((resolve, reject) => {
@@ -652,6 +659,7 @@ async function runSuite(s: Suite, only: boolean, skipAll: boolean) {
     expectedAssertions = undefined;
     needAssertions = false;
     let threw = false;
+    runningMark = undefined;
     try {
       for (const a of ancestors) if (!started && a === s) for (const h of a.hooks.beforeAll) await call(h, defaultTimeout);
       started = true;
@@ -673,7 +681,15 @@ async function runSuite(s: Suite, only: boolean, skipAll: boolean) {
       (failed = true), (err = e);
     }
     const time = dim(`[${ms(performance.now() - t0)}]`);
-    if (item.failing && !threw && !failed) {
+    const mark = runningMark;
+    runningMark = undefined;
+    if (mark === "skip") {
+      totals.skip++;
+      console.log(dim(`» ${label(item)}`));
+    } else if (mark === "todo") {
+      totals.todo++;
+      console.log(`\x1b[35m✎\x1b[0m ${label(item)} ${dim("[todo]")}`);
+    } else if (item.failing && !threw && !failed) {
       totals.fail++;
       console.error(`\x1b[31m✗\x1b[0m\x1b[31m ${label(item)}\x1b[0m\n  ^ this test is marked as failing but it passed. Remove \`.failing\` if tested behavior now works`);
     } else if (failed) {
@@ -706,7 +722,7 @@ export type TestOutcome = { failed: number; results: { file: string; failed: num
  * Loads each file (its top level registers suites in `bun:test`), runs it and prints Bun's report.
  * Resolves to the number of failed tests, in all and per file (import errors count as failures).
  */
-export async function runTestFiles(files: string[], load: (file: string) => Promise<unknown>, version: string, opts: { update?: boolean; io?: SnapshotIO } = {}): Promise<TestOutcome> {
+export async function runTestFiles(files: string[], load: (file: string) => Promise<unknown>, version: string, opts: { update?: boolean; io?: SnapshotIO; preload?: () => string[] } = {}): Promise<TestOutcome> {
   update = !!opts.update;
   snapCounts.passed = snapCounts.added = snapCounts.failed = 0;
   const io = opts.io ?? (await fsIO());
@@ -716,12 +732,32 @@ export async function runTestFiles(files: string[], load: (file: string) => Prom
   expectCalls = 0;
   const results: TestOutcome["results"] = [];
   console.log(`bun test v${version.replace(/-.*/, "")}`);
+  // bunfig.toml's `[test] preload`: resolved up front, run with the first file. Its hooks are global: `beforeEach` and
+  // `afterEach` around every test, `beforeAll` before the first file's tests, `afterAll` after the last file's.
+  let preloads: string[] = [];
+  try {
+    preloads = opts.preload?.() ?? [];
+  } catch (e) {
+    console.error(`error: ${e instanceof Error ? e.message : String(e)}`);
+    return { failed: 1, results };
+  }
+  const global = newSuite("");
+  let globalStarted = false;
+  const globalHook = (hook: "beforeAll" | "afterAll") =>
+    (async () => {
+      for (const h of global.hooks[hook]) await call(h, defaultTimeout);
+    })().catch((e) => (totals.fail++, console.error(`${failure(e)}\n\x1b[31m✗\x1b[0m\x1b[31m (${hook})\x1b[0m`)));
   for (const file of files) {
     console.log(`\n${file}:`);
-    root = current = newSuite("");
+    currentFile = file;
     snapshots = new SnapshotFile(io, file, update, snapCounts);
     const before = totals.fail;
     try {
+      if (preloads.length) {
+        root = current = global;
+        for (const p of preloads.splice(0)) await load(p);
+      }
+      root = current = newSuite("", global);
       await load(file);
     } catch (e) {
       totals.fail++;
@@ -729,10 +765,12 @@ export async function runTestFiles(files: string[], load: (file: string) => Prom
       results.push({ file, failed: 1 });
       continue;
     }
+    if (!globalStarted) (globalStarted = true), await globalHook("beforeAll");
     await runSuite(root, hasOnly(root), false);
     snapshots.flush();
     results.push({ file, failed: totals.fail - before });
   }
+  if (globalStarted) await globalHook("afterAll");
   const n = totals.pass + totals.fail + totals.skip + totals.todo;
   const row = (count: number, word: string) => (count ? ` ${count} ${word}` : "");
   console.log("");

@@ -1,14 +1,21 @@
 import { Buffer } from "buffer";
 import EventEmitter from "events";
 import { capture, runIn } from "./asyncHooks";
+import dc from "./diagnosticsChannel";
 import { Server as NetServer, Socket } from "./net";
-import { hooks, upgradeRequests, type FetchHandler } from "./serve";
+import { hooks, upgradeRequests, type FetchHandler, type NodeListener } from "./serve";
 import { Readable, Writable } from "./stream";
 
 type Any = any;
 
 export const STATUS_CODES: Record<number, string> = { 100: "Continue", 101: "Switching Protocols", 102: "Processing", 103: "Early Hints", 200: "OK", 201: "Created", 202: "Accepted", 203: "Non-Authoritative Information", 204: "No Content", 205: "Reset Content", 206: "Partial Content", 300: "Multiple Choices", 301: "Moved Permanently", 302: "Found", 303: "See Other", 304: "Not Modified", 307: "Temporary Redirect", 308: "Permanent Redirect", 400: "Bad Request", 401: "Unauthorized", 402: "Payment Required", 403: "Forbidden", 404: "Not Found", 405: "Method Not Allowed", 406: "Not Acceptable", 408: "Request Timeout", 409: "Conflict", 410: "Gone", 411: "Length Required", 412: "Precondition Failed", 413: "Payload Too Large", 414: "URI Too Long", 415: "Unsupported Media Type", 416: "Range Not Satisfiable", 417: "Expectation Failed", 418: "I'm a Teapot", 421: "Misdirected Request", 422: "Unprocessable Entity", 426: "Upgrade Required", 428: "Precondition Required", 429: "Too Many Requests", 431: "Request Header Fields Too Large", 451: "Unavailable For Legal Reasons", 500: "Internal Server Error", 501: "Not Implemented", 502: "Bad Gateway", 503: "Service Unavailable", 504: "Gateway Timeout", 505: "HTTP Version Not Supported" };
 export const METHODS = ["ACL", "BIND", "CHECKOUT", "CONNECT", "COPY", "DELETE", "GET", "HEAD", "LINK", "LOCK", "M-SEARCH", "MERGE", "MKACTIVITY", "MKCALENDAR", "MKCOL", "MOVE", "NOTIFY", "OPTIONS", "PATCH", "POST", "PROPFIND", "PROPPATCH", "PURGE", "PUT", "QUERY", "REBIND", "REPORT", "SEARCH", "SOURCE", "SUBSCRIBE", "TRACE", "UNBIND", "UNLINK", "UNLOCK", "UNSUBSCRIBE"];
+
+// The diagnostics channels Bun's http client publishes (Bun publishes none for the server).
+const onRequestCreated = dc.channel("http.client.request.created");
+const onRequestStart = dc.channel("http.client.request.start");
+const onRequestError = dc.channel("http.client.request.error");
+const onResponseFinish = dc.channel("http.client.response.finish");
 
 const TOKEN = /^[\^_`a-zA-Z\-0-9!#$%&'*+.|~]+$/;
 const nullBody = (s: number) => s === 101 || s === 204 || s === 205 || s === 304 || (s >= 100 && s < 200);
@@ -235,7 +242,7 @@ export class ServerResponse extends (OutgoingMessage as Any) {
   }
 }
 
-const listeners = new WeakMap<object, FetchHandler>();
+const listeners = new WeakMap<object, NodeListener>();
 
 export class Server extends (NetServer as Any) {
   timeout = 0;
@@ -251,14 +258,17 @@ export class Server extends (NetServer as Any) {
     const l = typeof opts === "function" ? opts : handler;
     if (l) this.on("request", l);
   }
-  onListen() {
+  onListen(port: number) {
     const handler: FetchHandler = async (req, bun) => {
       // The request listeners run in the context `listen` was called in; the body's `await` below resumes outside it.
       const context = capture();
       const addr = this.address();
       const socket = new Socket();
       socket.encrypted = this.encrypted;
-      const incoming = await IncomingMessage.from(req, socket, `localhost:${addr?.port}`);
+      // A loopback request has no Host header (fetch can't set one): the host it was made to, as the client sends it;
+      // a preview request's URL is the playground's.
+      const url = URL.canParse(req.url) ? new URL(req.url) : undefined;
+      const incoming = await IncomingMessage.from(req, socket, url && Number(url.port) === addr?.port ? url.host : `localhost:${addr?.port}`);
       // A page's WebSocket (see openSocket in the runtime): "upgrade" listeners take it, `ws` accepts it.
       if (req.headers.get("upgrade")?.toLowerCase() === "websocket" && this.listenerCount("upgrade")) {
         upgradeRequests.set(incoming, (data) => (bun as { upgrade(r: Request, o: object): boolean }).upgrade(req, { data }));
@@ -276,11 +286,12 @@ export class Server extends (NetServer as Any) {
         if (!runIn(context, () => this.emit("request", incoming, res), undefined, [])) resolve(new Response("No request listener", { status: 503 }));
       }).catch((e) => new Response(String(e), { status: 500 }));
     };
-    listeners.set(this, handler);
-    hooks.set(handler);
+    const l = hooks.listen(handler, port);
+    listeners.set(this, l);
+    return l.port;
   }
   onClose() {
-    if (hooks.get() === listeners.get(this)) hooks.set(undefined);
+    listeners.get(this)?.stop();
     listeners.delete(this);
   }
   setTimeout(ms?: number, cb?: () => void) {
@@ -417,6 +428,7 @@ export class ClientRequest extends (OutgoingMessage as Any) {
     }
     if (o.timeout) this.setTimeout(o.timeout);
     queueMicrotask(() => this.emit("socket", this.socket));
+    if (onRequestCreated.hasSubscribers) onRequestCreated.publish({ request: this });
   }
   setTimeout(ms: number, cb?: () => void) {
     if (cb) this.once("timeout", cb);
@@ -442,6 +454,7 @@ export class ClientRequest extends (OutgoingMessage as Any) {
     cb();
   }
   _final(cb: () => void) {
+    if (onRequestStart.hasSubscribers) onRequestStart.publish({ request: this });
     cb();
     this.send();
   }
@@ -469,13 +482,17 @@ export class ClientRequest extends (OutgoingMessage as Any) {
     }
     this.chunks = [];
     this.touch();
-    fetch(this.url, { method: this.method, headers, body: body as BodyInit | undefined, signal: this.control.signal, redirect: "follow" }).then(
+    // Node doesn't follow redirects. The browser's network fetch can't hand one over (an opaque response), so only this
+    // program's own servers (on localhost, answered in-process) give the redirect itself.
+    const redirect = /^(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0)$/.test(this.url.hostname) ? "manual" : "follow";
+    fetch(this.url, { method: this.method, headers, body: body as BodyInit | undefined, signal: this.control.signal, redirect }).then(
       (r) => {
         if (this.destroyed) return void r.body?.cancel().catch(() => {});
         const res = new ClientResponse(this.socket, r, () => this.control.abort());
         (res as Any).req = this;
         res.onActivity = () => this.touch();
         this.res = res;
+        if (onResponseFinish.hasSubscribers) onResponseFinish.publish({ request: this, response: res });
         res.once("close", () => {
           if (!this.closed && !this.destroyed) {
             this.closed = true;
@@ -489,7 +506,9 @@ export class ClientRequest extends (OutgoingMessage as Any) {
         if (this.destroyed) return;
         // The browser's fetch hides why it failed (refused, DNS, CORS, TLS), so every failure reads as a refused connection.
         const port = Number(this.url.port) || (this.protocol === "https:" ? 443 : 80);
-        this.destroy(Object.assign(new Error(`connect ECONNREFUSED ${this.url.hostname}:${port}`), { code: "ECONNREFUSED", errno: -61, syscall: "connect", address: this.url.hostname, port, cause: e }));
+        const error = Object.assign(new Error(`connect ECONNREFUSED ${this.url.hostname}:${port}`), { code: "ECONNREFUSED", errno: -61, syscall: "connect", address: this.url.hostname, port, cause: e });
+        if (onRequestError.hasSubscribers) onRequestError.publish({ request: this, error });
+        this.destroy(error);
       },
     );
   }

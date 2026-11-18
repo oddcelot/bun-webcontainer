@@ -47,6 +47,12 @@ function save({ b, cache }: Store, key: string, body: string | Uint8Array, heade
     .catch(() => {});
 }
 
+/** Keeps a tarball fetched under another URL (a GitHub branch's) as the one of `url` (its commit's), which never changes. */
+export async function cacheTarball(url: string, bytes: Bytes) {
+  const s = await open();
+  if (s) save(s, url, bytes);
+}
+
 /**
  * A tarball, from the cache when there: a URL's tarball never changes. `verify` (an integrity check) runs on cached
  * bytes too; a cached copy that fails it is fetched again.

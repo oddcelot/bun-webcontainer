@@ -4,7 +4,8 @@ import { mirrorWorkspaces, vfsWorkspaces } from "./workspaces";
 import { createConsole } from "./console";
 import { CHECKED, diagnose } from "./diagnostics";
 import { attachStore, reportStoreProblems } from "./pkgStore";
-import { bunInstall } from "./install";
+import { bunInstall, type InstallFlags } from "./install";
+import type { ScriptRunner } from "./lifecycle";
 import { Runner, type TestResults } from "./runner";
 import { RemoteRunner } from "./remoteRunner";
 import { connectLocalBun, type LocalBun } from "./localBun";
@@ -187,7 +188,7 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
     });
   }
 
-  async function startInstall() {
+  async function startInstall(options: InstallFlags = {}) {
     if (runner instanceof RemoteRunner) {
       // `bun install` runs packages' install scripts: someone else's code too.
       if (!(await mayRunNative())) return;
@@ -205,7 +206,10 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
     await session.task("install", "Installing…", async () => {
       log("sys", "[bun install]");
       try {
-        const n = await bunInstall(vfs, semver!, log);
+        // Lifecycle scripts run in workers of their own, next to a program that may be running.
+        const local = runner;
+        const run: ScriptRunner | undefined = local ? (script, cwd, env, out, timeout) => local.exec(script, cwd, env, out, timeout) : undefined;
+        const n = await bunInstall(vfs, semver!, log, { ...options, run });
         log("sys", `[bun install] ${n} packages installed`);
       } catch (e) {
         log("error", String(e));

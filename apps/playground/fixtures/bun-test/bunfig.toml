@@ -1,0 +1,5 @@
+# `bun test` preloads [test]'s, not the top-level one (a run's): that one doesn't exist.
+preload = "./missing-run-preload.ts"
+
+[test]
+preload = ["./preload.ts"]

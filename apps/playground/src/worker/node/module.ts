@@ -131,9 +131,15 @@ const nodeModulePaths = (dir: string) => {
 };
 
 /** `node:module` needs the registry (for createRequire, builtinModules), so it is built by index.ts. */
-export function createModule(registry: Record<string, object>) {
-  const name = (id: string) => id.replace(/^node:/, "");
-  const isBuiltin = (id: string) => name(id) in registry;
+export function createModule(
+  registry: Record<string, object>,
+  builtinName: (spec: string) => string | undefined,
+  builtinModules: () => string[],
+  /** A package Bun serves from its own modules when it isn't installed (`ws`): its key in `registry`. */
+  fallback: (spec: string) => string | undefined = () => undefined,
+) {
+  const name = (id: string) => builtinName(id) ?? id;
+  const isBuiltin = (id: string) => builtinName(String(id)) !== undefined;
 
   /** The CommonJS module at `file`: from the cache, else made, cached and run (`run` fills in its exports). */
   function load(file: string, run: (m: CjsModule) => void, req: Require): CjsModule {
@@ -158,7 +164,11 @@ export function createModule(registry: Record<string, object>) {
     id = String(id);
     if (isBuiltin(id)) return registry[name(id)];
     if (id === "bun:wrap") return (bunWrap ??= evaluateBunWrap());
+    const plugged = pluginHook?.(id, from, "require");
+    if (plugged) return plugged.value;
     const path = resolveFile?.(id, requireDir(from));
+    const builtin = path ? undefined : fallback(id);
+    if (builtin) return registry[builtin];
     if (!path || !vfs) throw notFound(id, from);
     const file = "/" + path;
     if (mocks.has(path)) return mocks.get(path);
@@ -188,7 +198,11 @@ export function createModule(registry: Record<string, object>) {
     // The transpiler's helpers for decorators and `using` (see requireRuntimeImports), as required CommonJS gets them.
     if (spec === "bun:wrap") return (bunWrap ??= evaluateBunWrap());
     if (isBuiltin(spec)) return builtinNamespace(name(spec), registry[name(spec)]);
+    const plugged = pluginHook?.(spec, from, "import");
+    if (plugged) return plugged.value as object;
     const path = resolveImport?.(spec, requireDir(from));
+    const builtin = path ? undefined : fallback(spec);
+    if (builtin) return builtinNamespace(builtin, registry[builtin]);
     if (!path || !vfs) throw Object.assign(new Error(`Cannot find module '${spec}' from '${from}'`), { name: "ResolveMessage", code: "ERR_MODULE_NOT_FOUND" });
     const file = "/" + path;
     if (mocks.has(path)) return Object.assign(Object.create(null) as object, mocks.get(path));
@@ -206,8 +220,10 @@ export function createModule(registry: Record<string, object>) {
    * imports loaded the same way), run, and registered, so that a later `import` of it gets this namespace too (the page
    * serves a module that re-exports it, see moduleServer.ts). One with top-level await throws Bun's error.
    */
-  function loadEsm(path: string, src: string): object {
+  function loadEsm(path: string, src: string, plugin = false): object {
     const file = "/" + path;
+    // A runtime plugin's module (worker/plugins.ts) isn't a file the page serves: no claim, and not registered by path.
+    const claim = (what: "claim" | "done" | "fail", names?: string[]) => plugin || tellPage(what, file, names);
     if (importing.has(file)) throw requireEsmError(file, "can't load while the module is still being imported (a cycle or top-level await)");
     let code: string;
     let mappings: string | undefined;
@@ -218,10 +234,10 @@ export function createModule(registry: Record<string, object>) {
       if (e instanceof Error && e.message.startsWith("require() async module")) throw new TypeError(e.message);
       throw e;
     }
-    if (!tellPage("claim", file)) throw requireEsmError(file, "can't load while the module is being imported (another module imports it and hasn't run yet)");
+    if (!claim("claim")) throw requireEsmError(file, "can't load while the module is being imported (another module imports it and hasn't run yet)");
     const ns = Object.create(null) as object;
     Object.defineProperty(ns, Symbol.toStringTag, { value: "Module" });
-    esModules[file] = ns;
+    if (!plugin) esModules[file] = ns;
     const g = globalThis as unknown as { Bun?: { main?: string }; process?: { env?: unknown }; __dynamicImport(from: string, spec: unknown, o?: unknown): Promise<unknown>; __importMetaResolve(from: string, spec: string): string };
     const dir = dirname(file) || "/";
     const importMeta = {
@@ -248,8 +264,8 @@ export function createModule(registry: Record<string, object>) {
     try {
       new Function("hmr", `${code}\n//# sourceURL=${url}`)(hmr);
     } catch (e) {
-      delete esModules[file];
-      tellPage("fail", file);
+      if (!plugin) delete esModules[file];
+      claim("fail");
       throw e;
     }
     // The exports as a namespace has them: sorted, live (getters), not extensible.
@@ -259,7 +275,7 @@ export function createModule(registry: Record<string, object>) {
       Object.defineProperty(ns, k, d.get ? { get: d.get, enumerable: true } : { value: d.value, enumerable: true, writable: true });
     }
     Object.preventExtensions(ns);
-    tellPage("done", file, Object.keys(descs));
+    claim("done", Object.keys(descs));
     return ns;
   }
 
@@ -321,6 +337,7 @@ export function createModule(registry: Record<string, object>) {
       if (isBuiltin(id)) return id;
       const path = resolveFile?.(id, requireDir(from));
       if (path) return "/" + path;
+      if (fallback(id)) return id;
       throw notFound(id, from);
     };
     resolve.paths = (id: string) => (isBuiltin(id) ? null : nodeModulePaths(requireDir(from)));
@@ -341,7 +358,7 @@ export function createModule(registry: Record<string, object>) {
 
   const Module = Object.assign(function Module() {}, {
     createRequire,
-    builtinModules: Object.keys(registry),
+    builtinModules: builtinModules(),
     isBuiltin,
     register() {},
     registerHooks: () => ({ deregister() {} }),
@@ -361,6 +378,8 @@ export function createModule(registry: Record<string, object>) {
   hooks.require = requireFrom;
   hooks.mock = mockModule;
   hooks.decorate = decorate;
+  hooks.evalEsm = (file, src) => loadEsm(file.slice(1), src, true);
+  hooks.requireFile = (path) => (cache["/" + path] ? cache["/" + path].exports : (esModules["/" + path] ?? loadFile(path)));
   return Module;
 }
 
@@ -369,7 +388,17 @@ const hooks: {
   require?: (id: string, from: string) => unknown;
   mock?: (spec: string, from: string, exports: object) => void;
   decorate?: (req: Require, from: string) => Require;
+  evalEsm?: (file: string, src: string) => object;
+  requireFile?: (path: string) => unknown;
 } = {};
+
+/** Runtime plugins (worker/plugins.ts) for `require()` and the static imports of ES modules the worker runs itself. */
+let pluginHook: ((spec: string, from: string, kind: "require" | "import") => { value: unknown } | undefined) | undefined;
+export function setPluginHook(fn: typeof pluginHook) {
+  pluginHook = fn;
+}
+/** What worker/plugins.ts needs from the module system: running a module's source, requiring a file without plugins. */
+export const pluginModuleHost = () => ({ evalEsm: hooks.evalEsm!, requireFile: hooks.requireFile! });
 
 /** `import(x)` in CommonJS the worker runs: through the worker's `__dynamicImport`, from the module's `file:` URL. */
 function dynamicImports(code: string, file: string): string {

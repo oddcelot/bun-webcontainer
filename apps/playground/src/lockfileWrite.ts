@@ -2,12 +2,15 @@
  * `bun install` without a bun.lock: resolves package.json the way Bun does and writes the bun.lock Bun would, which
  * `installFromBunLock` then installs. Ported from bun/src/install: version choice (npm.rs `find_best_version`), reuse
  * of a resolved version (lockfile.rs `find_package_id`), hoisting (lockfile/Tree.rs `hoist_dependency`) and the text
- * format (lockfile/bun.lock.rs). Overrides, catalogs, patches and trustedDependencies are not covered.
+ * format (lockfile/bun.lock.rs), with overrides, catalogs, `file:` folders and tarballs, `link:` and GitHub dependencies.
  */
 import type { Semver } from "./semver";
 import { findWorkspaces, type Workspace } from "./workspaces";
 import { catalogRange, catalogsOf, type Catalogs } from "./catalogs";
 import { overrideLines, overridesOf, type Overrides } from "./overrides";
+import { githubDep, isGitRange, tarballRoot, type GitHubDep } from "./gitDeps";
+import { untar } from "./tar";
+import { writtenOrder } from "./lockOrder";
 
 type Group = "dependencies" | "devDependencies" | "optionalDependencies" | "peerDependencies";
 const GROUPS: Group[] = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"];
@@ -28,6 +31,8 @@ export type Manifest = {
   libc?: unknown;
   bin?: string | Record<string, string>;
   hasInstallScript?: boolean;
+  trustedDependencies?: string[];
+  patchedDependencies?: Record<string, string>;
   scripts?: Record<string, string>;
   deprecated?: string;
   dist?: { tarball: string; integrity?: string };
@@ -46,6 +51,14 @@ export type ResolveHost = {
   packageDirs(): string[];
   /** One version's full registry document: only it has `libc` (abbreviated packuments leave it out). */
   version(name: string, version: string): Promise<Manifest>;
+  /** A file of the project (a `file:` tarball), or undefined. */
+  file(path: string): Uint8Array<ArrayBuffer> | undefined;
+  /** The folder `bun link` registered for a package name (a `link:` dependency), or undefined. */
+  link(name: string): string | undefined;
+  /** GitHub's tarball (gzipped) of a repository at a ref. */
+  github(dep: GitHubDep): Promise<Uint8Array<ArrayBuffer>>;
+  /** The gunzipped bytes of a tarball. */
+  gunzip(bytes: Uint8Array): Promise<Uint8Array>;
 };
 
 /** Bun reads `libc` from the full document only for these (npm.rs `name_suggests_libc`). */
@@ -55,11 +68,14 @@ const nameSuggestsLibc = (name: string) => /linux|musl|glibc/.test(name);
 type Dep = { name: string; range: string; use?: string; group: Group; optionalPeer: boolean; /** The root's entry for a workspace, which no override reaches. */ workspace?: boolean };
 type Pkg = {
   name: string;
-  /** What follows `name@` in bun.lock: a version, a tarball URL, `file:<path>` or `workspace:<path>`. */
+  /**
+   * What follows `name@` in bun.lock: a version, a tarball URL, `file:<path>`, a tarball's path in the project,
+   * `link:<name>`, `github:<owner>/<repo>#<commit>` or `workspace:<path>`.
+   */
   resolution: string;
-  kind: "npm" | "tarball" | "folder" | "workspace";
+  kind: "npm" | "tarball" | "local" | "folder" | "link" | "github" | "workspace";
   version?: string;
-  /** An npm package's tarball URL: bun.lock writes it unless it is under registry.npmjs.org. */
+  /** An npm package's tarball URL: bun.lock writes it unless it is under registry.npmjs.org. A GitHub one's root folder. */
   registry?: string;
   integrity?: string;
   manifest: Manifest;
@@ -99,11 +115,23 @@ const major = (v: string) => Number(v.split(".")[0]);
 /** `npm:real@range`: the dependency's folder keeps its own name. */
 const alias = (r: string) => (r.match(/^npm:((?:@[^/]+\/)?[^@]+)(?:@(.*))?$/) ?? undefined);
 
-/** Why a range can't be resolved here, or undefined if it can. */
-export function unsupportedRange(range: string): string | undefined {
-  if (/^link:/.test(range)) return "link: dependencies";
-  if (/^file:.*\.t(ar\.)?gz$/.test(range)) return "file: tarballs";
-  if (/^(git\+|git:|github:|gitlab:|bitbucket:)/.test(range) || /^[\w.-]+\/[\w.-]+(#.*)?$/.test(range)) return "git dependencies";
+/** A tarball in the project: `file:x.tgz`, or a path to one (`./x.tgz`). */
+const localTarball = (r: string) => /^(file:|\.{0,2}\/).*\.t(ar\.)?gz$/.test(r);
+/** A range that names no registry package: nothing to fetch a packument for. */
+const offRegistry = (r: string) => /^(file:|link:|workspace:|\.{0,2}\/)/.test(r) || isTarballUrl(r) || isGitRange(r);
+
+/** `sha512-…` of some bytes, as bun.lock keeps a tarball's integrity. */
+async function sha512(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-512", bytes));
+  let s = "";
+  for (const b of digest) s += String.fromCharCode(b);
+  return `sha512-${btoa(s)}`;
+}
+
+/** A gunzipped tarball's package.json. */
+function tarManifest(files: Iterable<{ name: string; data: Uint8Array }>): Manifest {
+  for (const { name, data } of files) if (/^[^/]+\/package\.json$/.test(name)) return JSON.parse(new TextDecoder().decode(data));
+  throw new Error("no package.json in the tarball");
 }
 
 function pickVersion(doc: Packument, range: string, semver: Semver): string | undefined {
@@ -143,22 +171,33 @@ export function lockedPackages(packages: Record<string, unknown[]>): Pkg[] {
     if (typeof ident !== "string") continue;
     const at = ident.indexOf("@", 1);
     const name = ident.slice(0, at), resolution = ident.slice(at + 1);
-    const kind = /^\d/.test(resolution) ? "npm" : /^https?:\/\//.test(resolution) ? "tarball" : undefined;
+    const kind = /^\d/.test(resolution) ? "npm" : /^https?:\/\//.test(resolution) ? "tarball" : resolution.startsWith("github:") ? "github" : undefined;
     if (!kind || out.has(ident)) continue;
     const info = (entry.find((e) => !!e && typeof e === "object" && !Array.isArray(e)) ?? {}) as Manifest & { optionalPeers?: string[] };
     const manifest: Manifest = { ...info, peerDependenciesMeta: Object.fromEntries((info.optionalPeers ?? []).map((n) => [n, { optional: true }])) };
-    const integrity = (kind === "npm" ? entry[3] : entry[2]) as string | undefined;
-    out.set(ident, { name, resolution, kind, version: kind === "npm" ? resolution : undefined, registry: kind === "npm" && typeof entry[1] === "string" ? entry[1] : undefined, integrity, manifest, deps: depsOf(manifest, false), locked: true });
+    const integrity = (kind === "tarball" ? entry[2] : entry[3]) as string | undefined;
+    const registry = kind !== "tarball" && typeof entry[kind === "npm" ? 1 : 2] === "string" ? (entry[kind === "npm" ? 1 : 2] as string) : undefined;
+    out.set(ident, { name, resolution, kind, version: kind === "npm" ? resolution : undefined, registry, integrity, manifest, deps: depsOf(manifest, false), locked: true });
   }
   return [...out.values()];
 }
 
-/** Resolves every dependency (queue order, like Bun), then builds Bun's hoisted node_modules tree. */
-export async function resolveProject(root: Manifest, host: ResolveHost, locked: Pkg[] = []): Promise<Resolved> {
+/**
+ * Resolves every dependency (queue order, like Bun), then builds Bun's hoisted node_modules tree. `lockedRanges`: the
+ * root's dependencies as the old bun.lock lists them; a GitHub dependency whose range didn't change keeps its commit.
+ */
+export async function resolveProject(root: Manifest, host: ResolveHost, locked: Pkg[] = [], lockedRanges: Record<string, string> = {}): Promise<Resolved> {
   const { semver } = host;
   /** A locked package this range keeps, if any. */
   const keep = (name: string, range: string) =>
-    locked.find((p) => p.name === name && (p.kind === "tarball" ? p.resolution === range : p.version !== undefined && !isTarballUrl(range) && semver.satisfies(p.version, range)));
+    locked.find((p) =>
+      p.name === name &&
+      (p.kind === "tarball"
+        ? p.resolution === range
+        : p.kind === "github"
+          ? lockedRanges[name] === range
+          : p.version !== undefined && !offRegistry(range) && semver.satisfies(p.version, range)),
+    );
   const problems: string[] = [];
   const workspaces = findWorkspaces(root, host.packageDirs(), (dir) => host.folder(dir));
   const catalogs = catalogsOf(root);
@@ -222,6 +261,8 @@ export async function resolveProject(root: Manifest, host: ResolveHost, locked: 
   const pinned = new Set<string>();
   const docs = new Map<string, Promise<Packument>>();
   const refetched = new Set<string>();
+  /** GitHub tarballs by repository and ref, fetched once however many dependencies name them. */
+  const github = new Map<string, Promise<{ bytes: Uint8Array<ArrayBuffer>; tar: Uint8Array }>>();
   const doc = (name: string, range: string) => {
     let p = docs.get(name);
     if (!p) docs.set(name, (p = host.packument(name, range)));
@@ -265,21 +306,56 @@ export async function resolveProject(root: Manifest, host: ResolveHost, locked: 
       problems.push(`${dep.name}@${dep.range}: no workspace named ${realName}`);
       return;
     }
-    const why = unsupportedRange(range);
-    if (why) {
-      problems.push(`${dep.name}@${dep.range}: ${why} don't work in the browser`);
-      return;
-    }
     const kept = keep(realName, range);
     if (kept) return add(kept);
+    /** Where a relative path starts: the folder of the `file:` package that depends on it, else the project. */
+    const base = from?.kind === "folder" ? from.resolution.slice(5) : "";
+    if (range.startsWith("link:")) {
+      // A folder `bun link` registered, linked as it is: its own dependencies aren't installed for it (bun.lock says `{}`).
+      const name = range.slice(5);
+      const dir = host.link(name);
+      const manifest = dir === undefined ? undefined : host.folder(dir);
+      if (!manifest) {
+        problems.push(`${dep.name}@${dep.range}: package "${name}" is not linked (run \`bun link\` in its folder first)`);
+        return;
+      }
+      return add({ name: dep.name, resolution: range, kind: "link", manifest: {}, deps: [] });
+    }
+    if (localTarball(range)) {
+      // bun.lock keeps the path as package.json writes it, without `file:`.
+      const path = range.replace(/^file:/, "");
+      const bytes = host.file(normalizePath(path, base));
+      if (!bytes) {
+        problems.push(`${dep.name}@${dep.range}: no file ${normalizePath(path, base)}`);
+        return;
+      }
+      const manifest = tarManifest(untar(await host.gunzip(bytes)));
+      return add({ name: manifest.name ?? dep.name, resolution: path, kind: "local", integrity: await sha512(bytes), manifest, deps: depsOf(manifest, false) });
+    }
+    if (isGitRange(range)) {
+      const gh = githubDep(range);
+      if ("error" in gh) {
+        problems.push(`${dep.name}@${dep.range}: ${gh.error}`);
+        return;
+      }
+      const key = `${gh.owner}/${gh.repo}#${gh.ref}`;
+      let got = github.get(key);
+      if (!got) {
+        github.set(key, (got = host.github(gh).then(async (bytes) => ({ bytes, tar: await host.gunzip(bytes) }))));
+        got.catch(() => {});
+      }
+      const { bytes, tar } = await got;
+      const root = tarballRoot(tar);
+      if (!root) throw new Error("not a GitHub tarball");
+      const manifest = tarManifest(untar(tar));
+      return add({ name: manifest.name ?? dep.name, resolution: `github:${gh.owner}/${gh.repo}#${root.commit}`, kind: "github", registry: root.folder, integrity: await sha512(bytes), manifest, deps: depsOf(manifest, false) });
+    }
     if (isTarballUrl(range)) {
       const { bytes, manifest } = await host.tarball(range);
-      const digest = new Uint8Array(await crypto.subtle.digest("SHA-512", bytes));
-      const integrity = `sha512-${btoa(String.fromCharCode(...digest))}`;
-      return add({ name: manifest.name ?? dep.name, resolution: range, kind: "tarball", integrity, manifest, deps: depsOf(manifest, false) });
+      return add({ name: manifest.name ?? dep.name, resolution: range, kind: "tarball", integrity: await sha512(bytes), manifest, deps: depsOf(manifest, false) });
     }
     if (/^file:|^\.{0,2}\//.test(range)) {
-      const path = normalizePath(range.replace(/^file:/, ""), from?.kind === "folder" ? from.resolution.slice(5) : "");
+      const path = normalizePath(range.replace(/^file:/, ""), base);
       const manifest = host.folder(path);
       if (!manifest) {
         problems.push(`${dep.name}@${dep.range}: no package.json at ${path}`);
@@ -330,7 +406,7 @@ export async function resolveProject(root: Manifest, host: ResolveHost, locked: 
     const want = eff(d, from);
     const a = alias(want);
     const r = a ? (a[2] ?? "") : want;
-    if (!workspaceFor(a ? a[1] : d.name, r, !!a) && !r.startsWith("workspace:") && !unsupportedRange(r) && !isTarballUrl(r) && !/^file:|^\.{0,2}\//.test(r) && !keep(a ? a[1] : d.name, a ? (a[2] ?? "latest") : r)) doc(a ? a[1] : d.name, a ? (a[2] ?? "latest") : r);
+    if (!workspaceFor(a ? a[1] : d.name, r, !!a) && !offRegistry(r) && !keep(a ? a[1] : d.name, a ? (a[2] ?? "latest") : r)) doc(a ? a[1] : d.name, a ? (a[2] ?? "latest") : r);
   };
   // Workspaces come first in the root's dependencies (Behavior::cmp), by name.
   const wsDeps: Dep[] = [...wsPkgs.keys()].sort(byBytes).map((name) => ({ name, range: `workspace:${wsPkgs.get(name)!.resolution.slice(10)}`, group: "dependencies", optionalPeer: false, workspace: true }));
@@ -525,8 +601,35 @@ function entry(pkg: Pkg): string {
   const ident = q(`${pkg.name}@${pkg.resolution}`);
   if (pkg.kind === "npm") return `[${ident}, ${q(pkg.registry && !pkg.registry.startsWith(DEFAULT_REGISTRY_URL) ? pkg.registry : "")}, ${info(pkg)}, ${q(pkg.integrity ?? "")}]`;
   if (pkg.kind === "workspace") return `[${ident}]`;
-  if (pkg.kind === "tarball") return `[${ident}, ${info(pkg)}${pkg.integrity ? `, ${q(pkg.integrity)}` : ""}]`;
+  if (pkg.kind === "tarball" || pkg.kind === "local") return `[${ident}, ${info(pkg)}${pkg.integrity ? `, ${q(pkg.integrity)}` : ""}]`;
+  if (pkg.kind === "github") return `[${ident}, ${info(pkg)}, ${q(pkg.registry ?? "")}, ${q(pkg.integrity ?? "")}]`;
   return `[${ident}, ${info(pkg)}]`;
+}
+
+/**
+ * The tree's packages in the order Bun's tree iterator visits them: each node's own node_modules in turn (the root's
+ * first), its packages in the order they were placed there.
+ */
+function treeWalk(tree: Node[]): Node[] {
+  const placed = new Map<Node, Node[]>();
+  for (const n of tree.slice(1)) placed.set(n.parent!, [...(placed.get(n.parent!) ?? []), n]);
+  return tree.flatMap((n) => placed.get(n) ?? []);
+}
+
+/** The name `trustedDependencies` lists a package by: an npm package's own, any other's folder name (`trusted_name`). */
+const trustedName = (n: Node) => (n.pkg!.kind === "npm" ? n.pkg!.name : n.parent!.depth ? n.path.slice(n.parent!.path.length + 1) : n.path);
+
+/** `name@version` as `patchedDependencies` keys a package. */
+const nameAndVersion = (n: Node) => {
+  const p = n.pkg!;
+  return `${p.name}@${p.kind === "npm" ? p.version : p.kind === "workspace" ? (p.manifest.version ?? "") : p.resolution}`;
+};
+
+/** package.json's `patchedDependencies` (`"name@version": "patches/….patch"`), the string values only. */
+export function patchesOf(root: Manifest): Record<string, string> {
+  const p = root.patchedDependencies;
+  if (!p || typeof p !== "object" || Array.isArray(p)) return {};
+  return Object.fromEntries(Object.entries(p).filter((e): e is [string, string] => typeof e[1] === "string"));
 }
 
 /** The bun.lock Bun writes for this tree. */
@@ -553,6 +656,17 @@ export function writeBunLock({ root, rootDeps, workspaces, catalogs, overrides, 
   member("", root, rootDeps, false);
   for (const w of workspaces) member(w.path, w.manifest, depsOf(w.manifest, true), true);
   lines.push("  },");
+  // The trusted and patched packages the tree has, in Bun's hash map order (lockOrder.ts) over the tree's walk.
+  const walk = treeWalk(tree);
+  const trusted = Array.isArray(root.trustedDependencies) ? new Set(root.trustedDependencies) : undefined;
+  if (trusted) {
+    const found = walk.map(trustedName).filter((n) => trusted.has(n));
+    if (found.length) lines.push('  "trustedDependencies": [', ...writtenOrder(found.map((n) => ({ key: n, value: n })), trusted.size).map((n) => `    ${q(n)},`), "  ],");
+    else if (!trusted.size) lines.push('  "trustedDependencies": [],');
+  }
+  const patches = patchesOf(root);
+  const patched = walk.map(nameAndVersion).filter((k) => k in patches);
+  if (patched.length) lines.push('  "patchedDependencies": {', ...writtenOrder(patched.map((k) => ({ key: k, value: k })), Object.keys(patches).length).map((k) => `    ${q(k)}: ${q(patches[k])},`), "  },");
   if (Object.keys(overrides.rules).length || overrides.scoped.length) lines.push('  "overrides": {', ...overrideLines(overrides), "  },");
   const group = (map: Record<string, string>, indent: string) => Object.keys(map).sort(byBytes).map((n) => `${indent}${q(n)}: ${q(map[n])},`);
   if (Object.keys(catalogs.default).length) lines.push('  "catalog": {', ...group(catalogs.default, "    "), "  },");

@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseNpmrc, registryFor } from "../src/npmrc";
 import { lockedPackages, resolveProject, writeBunLock, type Manifest, type ResolveHost } from "../src/lockfileWrite";
+import { tarballPath } from "../src/gitDeps";
 
 const fixtures = new URL("./lockfile-write/", import.meta.url).pathname;
 
@@ -63,7 +64,39 @@ function host(dir: string, seen: string[] = []): ResolveHost {
       walk("");
       return out;
     },
+    file(path) {
+      const file = join(dir, path);
+      return existsSync(file) ? new Uint8Array(readFileSync(file)) : undefined;
+    },
+    // The folders the project's bun-link.json lists, registered by `bun link` for native Bun too (in `nativeEnv`'s global folder).
+    link(name) {
+      const listed = existsSync(join(dir, "bun-link.json")) ? (JSON.parse(readFileSync(join(dir, "bun-link.json"), "utf8")) as string[]) : [];
+      return listed.find((d) => existsSync(join(dir, d, "package.json")) && JSON.parse(readFileSync(join(dir, d, "package.json"), "utf8")).name === name);
+    },
+    // Straight from codeload: no CORS here, so no git proxy.
+    async github(dep) {
+      const url = `https://codeload.github.com/${tarballPath(dep)}`;
+      seen.push(url);
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`GET ${url} - ${res.status}`);
+      return new Uint8Array(await res.arrayBuffer());
+    },
+    gunzip: async (bytes) => Bun.gunzipSync(bytes as Uint8Array<ArrayBuffer>),
   };
+}
+
+/**
+ * The environment native Bun runs in for the project in `dir`: with a bun-link.json, a global folder of its own
+ * (BUN_INSTALL) where `bun link` registered each folder it lists, so the user's own links stay out of it.
+ */
+function nativeEnv(dir: string): Record<string, string | undefined> {
+  if (!existsSync(join(dir, "bun-link.json"))) return process.env;
+  const env = { ...process.env, BUN_INSTALL: join(dir, ".bun-global") };
+  for (const d of JSON.parse(readFileSync(join(dir, "bun-link.json"), "utf8")) as string[]) {
+    const r = Bun.spawnSync(["bun", "link"], { cwd: join(dir, d), env, stderr: "pipe" });
+    if (r.exitCode) throw new Error(`bun link in ${d}: ${r.stderr}`);
+  }
+  return env;
 }
 
 /** bun.lock is JSON with trailing commas. */
@@ -72,8 +105,11 @@ const parseLock = (text: string) => JSON.parse(text.replace(/,(\s*[}\]])/g, "$1"
 /** Ours and native Bun's bun.lock for the project in `dir`, `locked`: the bun.lock both start from. */
 async function both(dir: string, locked?: string, seen: string[] = []): Promise<[string, string, string[]]> {
   const root = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")) as Manifest;
-  const resolved = await resolveProject(root, host(dir, seen), locked ? lockedPackages(parseLock(locked).packages) : []);
-  const native = Bun.spawnSync(["bun", "install", "--lockfile-only", "--ignore-scripts"], { cwd: dir, stderr: "pipe" });
+  const old = locked ? parseLock(locked) : undefined;
+  const lockedRoot = old?.workspaces?.[""] ?? {};
+  const lockedRanges = { ...lockedRoot.devDependencies, ...lockedRoot.optionalDependencies, ...lockedRoot.dependencies };
+  const resolved = await resolveProject(root, host(dir, seen), old ? lockedPackages(old.packages) : [], lockedRanges);
+  const native = Bun.spawnSync(["bun", "install", "--lockfile-only", "--ignore-scripts"], { cwd: dir, stderr: "pipe", env: nativeEnv(dir) });
   if (native.exitCode) throw new Error(`native bun install: ${native.stderr}`);
   return [writeBunLock(resolved), readFileSync(join(dir, "bun.lock"), "utf8"), resolved.problems];
 }
@@ -93,7 +129,9 @@ const port = Number((await registry.stdout.getReader().read().then((r) => new Te
 const proxy = { port, stop: () => registry.kill() };
 
 let failed = 0;
-for (const name of readdirSync(fixtures)) {
+// `bun scripts/lockfile-write.ts [name...]`: only those projects.
+const only = process.argv.slice(2);
+for (const name of readdirSync(fixtures).filter((n) => !only.length || only.includes(n))) {
   const dir = mkdtempSync(join(tmpdir(), `lockfile-${name}-`));
   try {
     cpSync(join(fixtures, name), dir, { recursive: true });
@@ -115,7 +153,7 @@ for (const name of readdirSync(fixtures)) {
       failed++;
       continue;
     }
-    const frozen = Bun.spawnSync(["bun", "install", "--frozen-lockfile", "--ignore-scripts"], { cwd: dir, stderr: "pipe" });
+    const frozen = Bun.spawnSync(["bun", "install", "--frozen-lockfile", "--ignore-scripts"], { cwd: dir, stderr: "pipe", env: nativeEnv(dir) });
     if (frozen.exitCode) throw new Error(`bun install --frozen-lockfile refused it: ${frozen.stderr}`);
     console.log(`${name}: identical to bun install's bun.lock; --frozen-lockfile accepts it`);
     if (!existsSync(join(dir, "package.changed.json"))) continue;
