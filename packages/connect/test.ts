@@ -153,6 +153,42 @@ try {
   const covBadLcov = await covRun("cov4", covFiles, { coverage: ["--coverage"], lcov: "m.ts" });
   check("only an lcov.info is asked back", covBadLcov.code === -1 && /bad lcov path/.test(covBadLcov.err), covBadLcov.err);
 
+  // Test flags: -t, --timeout, --bail, --rerun-each, --todo and --only go to `bun test` (the page sends them as `testFlags`).
+  const flagFiles = {
+    "f.test.ts": `import { expect, test } from "bun:test";
+      test("alpha", () => expect(1).toBe(1));
+      test("slow", async () => { await Bun.sleep(300); });
+      test("bad one", () => expect(1).toBe(2));
+      test("bad two", () => expect(1).toBe(3));
+      test.todo("later", () => expect(1).toBe(2));`,
+    "o.test.ts": `import { test } from "bun:test";
+      test("alpha", () => {});
+      test.only("chosen", () => {});`,
+  };
+  const flagRun = (id: string, testFlags: string[], file = "f.test.ts") => run(ws, id, flagFiles, undefined, { entry: "", test: [file], testFlags });
+  const text = (r: { out: string; err: string }) => r.out + r.err;
+  check("hello lists the testflags feature", hello.t === "hello" && !!hello.features?.includes("testflags"));
+  const fOnly = await flagRun("tf1", ["--only"], "o.test.ts");
+  check("--only runs the .only test alone", /\(pass\) chosen/.test(text(fOnly)) && !/alpha/.test(text(fOnly)), text(fOnly));
+  const fName = await flagRun("tf2", ["-t=alpha"]);
+  check("-t=<pattern> becomes --test-name-pattern", /\(pass\) alpha/.test(text(fName)) && !/\(pass\) chosen/.test(text(fName)), text(fName));
+  const fTimeout = await flagRun("tf3", ["--test-name-pattern=slow", "--timeout=20"]);
+  check("--timeout fails a slow test", fTimeout.code !== 0 && /timed out after 20ms/.test(text(fTimeout)), text(fTimeout));
+  const fBail = await flagRun("tf4", ["--test-name-pattern=bad", "--bail"]);
+  check("--bail stops at the first failure", /Bailed out after 1 failure/.test(text(fBail)) && !/bad two/.test(text(fBail).replace(/.*Bailed[^]*/, "")), text(fBail));
+  const fBail2 = await flagRun("tf5", ["--test-name-pattern=bad", "--bail=2"]);
+  check("--bail=2 stops at the second", /Bailed out after 2 failures/.test(text(fBail2)), text(fBail2));
+  const fRerun = await flagRun("tf6", ["--test-name-pattern=alpha", "--rerun-each=2"]);
+  check("--rerun-each runs each file twice", /\(run #2\)/.test(text(fRerun)), text(fRerun));
+  const fAll = await flagRun("tf7", ["--todo", "--test-name-pattern=later"]);
+  check("--todo runs a todo test's body", /Expected: 2/.test(text(fAll)) && /\(todo\) later/.test(text(fAll)), text(fAll));
+  const fBadFlag = await flagRun("tf8", ["--preload=./x.ts"]);
+  check("a flag outside the allowlist is refused", fBadFlag.code === -1 && /bad test flag/.test(fBadFlag.err), fBadFlag.err);
+  const fBadValue = await flagRun("tf9", ["--timeout=-1"]);
+  check("a bad count is refused", fBadValue.code === -1 && /bad test flag/.test(fBadValue.err), fBadValue.err);
+  const fOld = await run(ws, "tf10", flagFiles, undefined, { entry: "", test: ["f.test.ts"] });
+  check("a page that sends no testFlags runs every test", /\(pass\) alpha/.test(text(fOld)) && /\(fail\) bad one/.test(text(fOld)), text(fOld));
+
   // The program under test is untrusted: what it writes outside the allowlist, over a link or past the caps stays here.
   const snapEvil = await snapRun(
     "snapevil",
