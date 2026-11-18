@@ -7,7 +7,7 @@
 import { escape } from "../shell/dollar";
 import { builtins as shellBuiltins } from "../shell/builtins";
 import { normalize } from "../shell/interp";
-import { binFile, parseBunArgs, type Has, type Pkg, type Read } from "../scripts";
+import { binFile, parseBunArgs, pathBinFile, type Has, type List, type Pkg, type Read } from "../scripts";
 import { hold, release } from "./loop";
 import { decodeVfs, Part, SyncReader, type VfsOp } from "./syncChannel";
 
@@ -46,9 +46,10 @@ const projectPath = (cwd: string, p: string) => normalize(p.startsWith("/") ? p 
 
 /**
  * What `argv` runs in `cwd`: a Launch, or why it can't (`ENOENT` for a command that isn't there, a message otherwise).
- * Like Bun, `bun <name>` runs a file of that name, else a package.json script.
+ * Like Bun, `bun <name>` runs a file of that name, else a package.json script. A bare name is a bin on `PATH` (a
+ * `node_modules/.bin`, see pathBinFile), else one of the project's dependencies'.
  */
-export function launchOf(argv: string[], cwd: string, has: Has, read: Read): Launch | { error: string; enoent?: true } {
+export function launchOf(argv: string[], cwd: string, has: Has, read: Read, PATH?: string, list: List = () => []): Launch | { error: string; enoent?: true } {
   const [name = "", ...rest] = argv;
   const base = name.split("/").pop()!;
   const file = (p: string) => {
@@ -101,7 +102,7 @@ export function launchOf(argv: string[], cwd: string, has: Has, read: Read): Lau
     if (path && SCRIPT.test(path)) return { entry: path, args: rest };
     return path ? { error: `${name}: only JavaScript and TypeScript files can be executed here` } : { error: name, enoent: true };
   }
-  const bin = binFile(base, has, read);
+  const bin = pathBinFile(base, PATH, has, read, list) ?? binFile(base, has, read);
   if (bin) return { entry: bin, args: rest };
   return { error: name, enoent: true };
 }
@@ -111,12 +112,12 @@ let post: Post = () => {
   throw new Error("child processes aren't available here");
 };
 let pid = 1;
-let files: { has: Has; read: Read } = { has: () => false, read: () => undefined };
+let files: { has: Has; read: Read; list: List } = { has: () => false, read: () => undefined, list: () => [] };
 /** The worker's way to the page (runtime.ts), this process's own id, and its copy of the project's files. */
-export function setKernel(p: Post, ownPid: number, has: Has, read: Read) {
+export function setKernel(p: Post, ownPid: number, has: Has, read: Read, list: List) {
   post = p;
   pid = ownPid;
-  files = { has, read };
+  files = { has, read, list };
 }
 
 export type SpawnOptions = { cwd: string; env: Record<string, string> };
@@ -195,7 +196,7 @@ let nextId = 0;
 /** What `argv` launches and the id its child gets; throws for a command that isn't there or can't run here. */
 function prepare(argv: string[], opts: SpawnOptions): { id: number; launch: Launch } {
   if (!argv.length || !argv[0]) throw Object.assign(new TypeError("cmd must be a non-empty array of strings"), { code: "ERR_INVALID_ARG_VALUE" });
-  const launch = launchOf(argv, opts.cwd, files.has, files.read);
+  const launch = launchOf(argv, opts.cwd, files.has, files.read, opts.env.PATH, files.list);
   if ("error" in launch) {
     if (launch.enoent) throw Object.assign(new Error(`Executable not found in $PATH: "${launch.error}"`), { code: "ENOENT", errno: -2, syscall: "posix_spawn", path: launch.error });
     throw Object.assign(new Error(launch.error), { code: "ENOTSUP", syscall: "posix_spawn", path: argv[0] });

@@ -124,7 +124,8 @@ installDialogs(g, (text) => void process.stdout.write(text));
 setStdio((level, text, partial) => post({ type: "console", level, text, partial }));
 const has = (path: string) => vfs.files.has(path);
 const read = (path: string) => vfs.readText(path);
-setKernel(post, 1, has, read);
+const listDirs = (dir: string) => vfs.readdir(dir).flatMap((e) => (e.dir ? [e.name] : []));
+setKernel(post, 1, has, read, listDirs);
 g.__nodeBuiltins = builtins;
 // node:crypto's ciphers and keys (crypto-wasm): fetched and compiled synchronously on the first call that needs them, as
 // transpiler/index.ts does for Bun.Transpiler#transformSync. The worker's sync XHR is the only way to the bytes in a
@@ -1499,8 +1500,8 @@ const shellHost = (wasm: Awaited<ReturnType<typeof loadShellWasm>>) => ({
  * A command that isn't a builtin, as a child process (processes.ts) with the command's stdin, stdout and stderr
  * joined to it; undefined for one that isn't there (`command not found`).
  */
-function externalCommand(name: string, cwd: string): ShellCommand | undefined {
-  const launch = launchOf([name], cwd, has, read);
+function externalCommand(name: string, cwd: string, PATH?: string): ShellCommand | undefined {
+  const launch = launchOf([name], cwd, has, read, PATH, listDirs);
   if ("error" in launch && launch.enoent) return;
   return async (ctx) => {
     let child: Child;
@@ -1822,7 +1823,7 @@ self.addEventListener("message", async (e: MessageEvent) => {
     for (const k of Object.keys(env)) delete env[k];
     Object.assign(env, proc.env);
     process.chdir(proc.cwd);
-    setKernel(post, proc.pid, has, read);
+    setKernel(post, proc.pid, has, read, listDirs);
     setRawStdio((fd, data) => post({ type: "stdio", fd, data }, [data.buffer]));
     setStdinPost(post, false);
     const thread = e.data.thread as ThreadInfo | undefined;

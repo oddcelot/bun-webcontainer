@@ -63,6 +63,8 @@ export type Command = { entry: string; args: string[] };
 
 export type Has = (path: string) => boolean;
 export type Read = (path: string) => string | undefined;
+/** The names of the folders in a folder. */
+export type List = (dir: string) => string[];
 
 const parse = <T>(text: string | undefined): T | undefined => {
   try {
@@ -70,16 +72,42 @@ const parse = <T>(text: string | undefined): T | undefined => {
   } catch {}
 };
 
+/** The file bin `name` of the package in `dir` (`node_modules/<pkg>`) runs, if it declares one and it is there. */
+function declaredBin(dir: string, name: string, has: Has, read: Read): string | undefined {
+  const bin = parse<{ bin?: string | Record<string, string> }>(read(`${dir}/package.json`))?.bin;
+  const file = typeof bin === "string" ? (dir.split("/").pop() === name ? bin : undefined) : bin?.[name];
+  const path = file && `${dir}/${file.replace(/^\.\//, "")}`;
+  return path && has(path) ? path : undefined;
+}
+
 /** The file a package's bin `name` runs: `node_modules/<pkg>/…` of the package that declares it, if installed. */
 export function binFile(name: string, has: Has, read: Read): string | undefined {
   const root = parse<Pkg>(read("package.json"));
   const pkgs = [name, ...Object.keys({ ...root?.dependencies, ...root?.devDependencies })];
   for (const pkg of pkgs) {
-    const meta = parse<{ name?: string; bin?: string | Record<string, string> }>(read(`node_modules/${pkg}/package.json`));
-    const bin = meta?.bin;
-    const file = typeof bin === "string" ? (pkg.split("/").pop() === name ? bin : undefined) : bin?.[name];
-    const path = file && `node_modules/${pkg}/${file.replace(/^\.\//, "")}`;
-    if (path && has(path)) return path;
+    const path = declaredBin(`node_modules/${pkg}`, name, has, read);
+    if (path) return path;
+  }
+}
+
+/**
+ * Bin `name` as a `PATH` (`/a/node_modules/.bin:/node_modules/.bin:…`) finds it: Bun links into each
+ * `node_modules/.bin` the bins of every package installed in that `node_modules` (nested and hoisted ones alike).
+ */
+export function pathBinFile(name: string, PATH: string | undefined, has: Has, read: Read, list: List): string | undefined {
+  for (const dir of PATH?.split(":") ?? []) {
+    const m = /^\/?(.*?)\/?node_modules\/\.bin\/?$/.exec(dir);
+    if (!m) continue;
+    const modules = m[1] ? `${m[1]}/node_modules` : "node_modules";
+    const own = declaredBin(`${modules}/${name}`, name, has, read);
+    if (own) return own;
+    for (const entry of list(modules)) {
+      if (entry.startsWith(".")) continue;
+      for (const pkg of entry.startsWith("@") ? list(`${modules}/${entry}`).map((n) => `${entry}/${n}`) : [entry]) {
+        const path = declaredBin(`${modules}/${pkg}`, name, has, read);
+        if (path) return path;
+      }
+    }
   }
 }
 
