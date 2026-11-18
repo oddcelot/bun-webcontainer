@@ -46,7 +46,7 @@ export const scriptEntry = (s?: string) => {
   const [bun, ...rest] = s ? words(s) : [];
   if (bun !== "bun") return undefined;
   const target = parseBunArgs(rest).target;
-  return target && /\.[cm]?[jt]sx?$/.test(target) ? target.replace(/^\.\//, "") : undefined;
+  return target && /\.([cm]?[jt]sx?|html?)$/.test(target) ? target.replace(/^\.\//, "") : undefined;
 };
 
 /** Whether a `bun <file>` script preloads modules (`--preload`, `-r`): it runs through the shell, which passes them on. */
@@ -132,6 +132,9 @@ export function commandOf(has: Has, read: Read): Command {
   for (const [e, script] of [[pkg.module], [pkg.main], [scriptEntry(pkg.scripts?.dev), pkg.scripts?.dev], [scriptEntry(pkg.scripts?.start), pkg.scripts?.start]])
     if (e && has(e.replace(/^\.\//, ""))) return script && scriptPreloads(script) ? shellCommand(script) : { entry: e.replace(/^\.\//, ""), args: [] };
   const index = ["index.ts", "index.tsx", "index.js", "src/index.ts"].find(has);
+  // A browser-only project (no program, a root page): `bun ./index.html`, as Bun runs it, unless a script runs a bin.
+  const binned = binCommand(pkg.scripts?.dev, has, read) ?? binCommand(pkg.scripts?.start, has, read);
+  if (!index && !binned && has("index.html")) return { entry: "index.html", args: [] };
   const bin = index ? undefined : (binCommand(pkg.scripts?.dev, has, read) ?? binCommand(pkg.scripts?.start, has, read));
   return bin ?? { entry: index ?? "index.ts", args: [] };
 }

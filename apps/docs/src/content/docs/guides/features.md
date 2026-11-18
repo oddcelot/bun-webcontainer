@@ -142,7 +142,7 @@ When your code starts a server (`Bun.serve`, `node:http`, or `export default { f
 - **WebSockets:** the preview page's `WebSocket` connects to your server (`Bun.serve` `upgrade`, `node:http` `upgrade`, the `ws` package). `localhost:<port>` URLs pick the server on that port. The program's own `new WebSocket("ws://localhost:<port>")` reaches its servers too.
 - **Streaming:** streamed responses and Server-Sent Events arrive as they're sent.
 - **Cookies:** kept in the browser across restarts, where the preview's scripts read and set them with `document.cookie` and DevTools lists them (HttpOnly ones stay hidden from scripts and DevTools); see them with `cookies`.
-- **HTML imports:** `import page from "./index.html"` in `Bun.serve` routes is bundled with Bun's bundler.
+- **HTML imports:** `import page from "./index.html"` in `Bun.serve` routes is bundled with Bun's bundler. A browser-only project runs the way Bun runs it: Run (or `bun ./index.html`, or a `"dev": "bun ./index.html"` script) serves the page at `/` with its scripts and styles bundled, and `bunfig.toml`'s `[serve.static] plugins` apply.
 - The preview follows the playground's light/dark mode.
 
 Limits: the server isn't reachable from outside the browser, there's no HTTP caching (conditional requests are dropped), and only the preview page can open WebSockets to it.
