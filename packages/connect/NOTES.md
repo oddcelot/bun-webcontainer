@@ -32,6 +32,14 @@ bun test.ts [secret]    # end-to-end: access checks, native APIs, sandbox, previ
   the file (1 MiB), the total (8 MiB) and the count (500). Skipped files are named in the run's stderr. The page
   re-checks all of it and applies files only to the run it started (remoteRunner.ts `applyFiles`). Not synced:
   deleted snapshot files, binary files.
+- **Coverage** (`coverage` in `hello.features`): a test run's `coverage` flags go to `bun test` after `coverageFlag`
+  (protocol.ts) allows each: `--coverage`, `--coverage-reporter=text|lcov`, `--coverage-dir=` a path inside the
+  project; anything else refuses the run. bunfig.toml's `[test]` options need nothing: the file comes with the
+  project. The page works out from flags and bunfig.toml where Bun writes lcov.info and sends that path as `lcov`
+  (`lcovPath`: a project path ending in `lcov.info`); the runner removes an old one there before the run (unless the
+  page sent one) and returns it through `changedFiles` and the `files` message, under the snapshots' rules and caps
+  (an lcov.info over 1 MiB stays behind, with a note). A file below `coverageThreshold` makes Bun exit with 1 with no
+  test failed; the page shows that as "Coverage below threshold".
 - **Sandbox**: Linux `bwrap` (root read-only, `/home` `/root` `/tmp` empty, the project dir the only writable
   bind, `--unshare-all --share-net`); macOS `sandbox-exec` (writes only to the project, home unreadable apart
   from the Bun binary; no `open`/`osascript` or LaunchServices lookups, which would start apps outside the sandbox; connecting to the runner's own port is denied, so the program can't fetch the token from

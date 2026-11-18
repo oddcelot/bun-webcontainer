@@ -28,6 +28,17 @@ export type ClientMessage =
        * `files`; `hello.features` says which kind this is.
        */
       updateSnapshots?: boolean;
+      /**
+       * A test run's coverage flags, passed on to `bun test`: `--coverage`, `--coverage-reporter=text|lcov`,
+       * `--coverage-dir=<relative path>` (`coverageFlag` is the allowlist). bunfig.toml's `[test]` options go with the
+       * project's files. Runners without `hello.features` "coverage" ignore it.
+       */
+      coverage?: string[];
+      /**
+       * The project's path of the lcov.info a coverage run writes (`<coverageDir>/lcov.info`), to send back in `files`
+       * as it sends changed snapshots. Only with "coverage".
+       */
+      lcov?: string;
     }
   | { t: "stdin"; id: string; data: string }
   | { t: "kill"; id: string };
@@ -67,6 +78,23 @@ export interface ConnectInfo {
 
 /** Features the runner reports in `hello`. */
 export const FEATURE_SNAPSHOTS = "snapshots";
+/** It passes a test run's `coverage` flags to `bun test` and sends its `lcov` file back. */
+export const FEATURE_COVERAGE = "coverage";
+
+/**
+ * A coverage flag the runner passes to `bun test` (`--name=value` form), or undefined: `--coverage`, a reporter Bun
+ * knows, or a coverage directory inside the project.
+ */
+export function coverageFlag(flag: unknown): string | undefined {
+  if (flag === "--coverage" || flag === "--coverage-reporter=text" || flag === "--coverage-reporter=lcov") return flag;
+  if (typeof flag !== "string" || !flag.startsWith("--coverage-dir=")) return undefined;
+  const dir = flag.slice(15).replace(/^\.\/+/, "").replace(/\/+$/, "");
+  return dir === "" || dir === "." || syncPath(`${dir}/lcov.info`, [`${dir}/lcov.info`]) ? flag : undefined;
+}
+
+/** The lcov.info a page may ask back (`lcov`): `lcov.info` in a directory inside the project. */
+export const lcovPath = (path: unknown): string | undefined =>
+  typeof path === "string" && /(^|\/)lcov\.info$/.test(path) ? syncPath(path, [path]) : undefined;
 
 /** What a `files` message may carry: per file, in all, and how many. The runner enforces them, and so does the page. */
 export const SYNC_LIMITS = { file: 1024 * 1024, total: 8 * 1024 * 1024, count: 500 };

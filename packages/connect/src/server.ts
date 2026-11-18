@@ -11,7 +11,7 @@ import { closeSync, constants, existsSync, fstatSync, lstatSync, openSync, readS
 import { tmpdir } from "node:os";
 import { dirname, extname, isAbsolute, join, normalize } from "node:path";
 import type { ServerWebSocket, Subprocess } from "bun";
-import { FEATURE_SNAPSHOTS, PACKED_REQUEST, PACKED_RESPONSE, SYNC_LIMITS, syncPath, type ClientMessage, type ConnectInfo, type ServerMessage } from "./protocol.ts";
+import { coverageFlag, FEATURE_COVERAGE, FEATURE_SNAPSHOTS, lcovPath, PACKED_REQUEST, PACKED_RESPONSE, SYNC_LIMITS, syncPath, type ClientMessage, type ConnectInfo, type ServerMessage } from "./protocol.ts";
 import { type FsLike, listeningPorts, peerVerdict, readNetRows, readProcs, refuse } from "./peer.ts";
 import { detectSandbox, launch, type SandboxKind } from "./sandbox.ts";
 
@@ -306,7 +306,7 @@ export function startRunner(opts: RunnerOptions = {}) {
     },
     websocket: {
       open(ws) {
-        send(ws, { t: "hello", bun: Bun.version, platform: process.platform, sandbox, features: [FEATURE_SNAPSHOTS] });
+        send(ws, { t: "hello", bun: Bun.version, platform: process.platform, sandbox, features: [FEATURE_SNAPSHOTS, FEATURE_COVERAGE] });
       },
       async message(ws, raw) {
         let msg: ClientMessage;
@@ -523,6 +523,20 @@ export function startRunner(opts: RunnerOptions = {}) {
     }
     manifests.set(project, paths);
     mkdirSync(join(dir, ".tmp"), { recursive: true });
+    // Coverage: its flags go to `bun test`; the lcov.info it writes comes back with the snapshots. One from an earlier
+    // run is removed first, so only this run's is sent.
+    const coverage: string[] = [];
+    for (const f of msg.test ? (msg.coverage ?? []) : []) {
+      const ok = coverageFlag(f);
+      if (!ok) return bad(`bad coverage flag ${String(f)}`);
+      coverage.push(ok);
+    }
+    const lcov = msg.test && msg.lcov !== undefined ? lcovPath(normalize(msg.lcov)) : undefined;
+    if (msg.test && msg.lcov !== undefined && !lcov) return bad(`bad lcov path ${String(msg.lcov)}`);
+    if (lcov && !paths.has(lcov)) {
+      if (linked(lcov, false)) return bad(`refusing to delete ${lcov}: a symlink on its path`);
+      rmSync(join(dir, lcov), { force: true });
+    }
 
     const cache = join(root, "cache", project);
     mkdirSync(cache, { recursive: true });
@@ -541,7 +555,7 @@ export function startRunner(opts: RunnerOptions = {}) {
         send(ws, { t: "started", id: msg.id, preview: `http://${ws.data.host}/__connect/preview/${token}/${msg.id}/` });
         // `bun test` writes new snapshots without a flag (not in CI: the runner's env never has CI; a project's `env`
         // could set it, and then nothing is written); with `updateSnapshots` it rewrites the changed ones too.
-        const args = msg.test ? ["test", ...(msg.updateSnapshots === true ? ["--update-snapshots"] : []), ...msg.test] : ["run", msg.entry, ...(msg.args ?? [])];
+        const args = msg.test ? ["test", ...(msg.updateSnapshots === true ? ["--update-snapshots"] : []), ...coverage, ...msg.test] : ["run", msg.entry, ...(msg.args ?? [])];
         // The project's `env` for the program and its tests, not for `bun install`.
         const { env, refused } = projectEnv(msg.env);
         if (refused.length) send(ws, { t: "out", id: msg.id, fd: 2, data: `[runbun connect] env left out: ${refused.join(", ")}\n` });
@@ -561,15 +575,17 @@ export function startRunner(opts: RunnerOptions = {}) {
             }
           })();
         result = await done;
-        if (msg.test && typeof msg.updateSnapshots === "boolean" && !run.killed) {
+        if (msg.test && (typeof msg.updateSnapshots === "boolean" || lcov) && !run.killed) {
           try {
             const sent = new Map<string, string>();
             for (const [path, data] of Object.entries(msg.files)) if (typeof data === "string") sent.set(relPath(path)!, data);
             const tests = new Set<string>();
-            for (const t of msg.test) {
-              const rel = relPath(t);
-              if (rel && sent.has(rel)) tests.add(rel);
-            }
+            if (typeof msg.updateSnapshots === "boolean")
+              for (const t of msg.test) {
+                const rel = relPath(t);
+                if (rel && sent.has(rel)) tests.add(rel);
+              }
+            if (lcov) tests.add(lcov);
             const { files, skipped } = changedFiles(dir, sent, tests);
             if (skipped.length) send(ws, { t: "out", id: msg.id, fd: 2, data: `[runbun connect] not copied back: ${skipped.join(", ")}\n` });
             if (files.length) send(ws, { t: "files", id: msg.id, files });

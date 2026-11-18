@@ -135,6 +135,24 @@ try {
   const old = await snapRun("snap6", { "a.test.ts": f1["a.test.ts"] ?? snapTest }, {});
   check("a page that doesn't ask (old pages) gets no `files`", old.code === 0 && !old.seen.includes("files"), old.seen.join());
 
+  // Coverage: the flags go to `bun test`, the lcov.info comes back; bunfig.toml's options work as they come with the files.
+  const covFiles = {
+    "m.ts": "export const used = () => 1;\nexport function unused() {\n  return 2;\n}\n",
+    "m.test.ts": `import { expect, test } from "bun:test";\nimport { used } from "./m";\ntest("c", () => expect(used()).toBe(1));\n`,
+  };
+  const covRun = (id: string, files: Record<string, string>, extra: object) => run(ws, id, files, undefined, { entry: "", test: ["m.test.ts"], updateSnapshots: false, ...extra });
+  const cov = await covRun("cov1", covFiles, { coverage: ["--coverage", "--coverage-reporter=text", "--coverage-reporter=lcov", "--coverage-dir=out/cov"], lcov: "out/cov/lcov.info" });
+  const lcovText = byPath(cov)["out/cov/lcov.info"] ?? "";
+  check("hello lists the coverage feature", hello.t === "hello" && !!hello.features?.includes("coverage"));
+  check("--coverage prints Bun's table", /File +\| % Funcs \| % Lines/.test(cov.out + cov.err) && /m\.ts +\| +50\.00/.test(cov.out + cov.err), cov.out + cov.err);
+  check("the lcov.info comes back", cov.code === 0 && /^SF:m\.ts$/m.test(lcovText) && /^FNH:1$/m.test(lcovText), cov.err + JSON.stringify(byPath(cov)));
+  const covBunfig = await covRun("cov2", { ...covFiles, "bunfig.toml": `[test]\ncoverage = true\ncoverageReporter = ["lcov"]\ncoverageThreshold = 0.9\n` }, { lcov: "coverage/lcov.info" });
+  check("bunfig.toml's coverage options apply; its threshold fails the run", covBunfig.code === 1 && /^SF:m\.ts$/m.test(byPath(covBunfig)["coverage/lcov.info"] ?? ""), covBunfig.err + covBunfig.seen.join());
+  const covBad = await covRun("cov3", covFiles, { coverage: ["--coverage-dir=../out"] });
+  check("a coverage dir outside the project is refused", covBad.code === -1 && /bad coverage flag/.test(covBad.err), covBad.err);
+  const covBadLcov = await covRun("cov4", covFiles, { coverage: ["--coverage"], lcov: "m.ts" });
+  check("only an lcov.info is asked back", covBadLcov.code === -1 && /bad lcov path/.test(covBadLcov.err), covBadLcov.err);
+
   // The program under test is untrusted: what it writes outside the allowlist, over a link or past the caps stays here.
   const snapEvil = await snapRun(
     "snapevil",
