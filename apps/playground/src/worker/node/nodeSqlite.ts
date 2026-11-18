@@ -2,9 +2,9 @@
 // file read from and written back to the VFS) and its SQL helpers. Statements bind and read the way Node's do:
 // named parameters from an object (with or without their prefix), the rest positional, booleans and undefined
 // refused, integers as numbers unless `readBigInts` (and an error past 2^53), rows as null-prototype objects.
-// sql.js binds an integral number as an INTEGER where Node binds a REAL, which only `typeof()` in SQL tells apart.
+// Numbers bind as a REAL, as Node binds them (sql.js would bind a whole one as an INTEGER).
 import type { Database as SqlJsDb } from "sql.js";
-import { Database, classify, paramTokens, type Param } from "./sqlite";
+import { Database, classify, paramTokens, rebind, type Param } from "./sqlite";
 import fs from "./fs";
 import path from "./path";
 import { fileURLToPath } from "./url";
@@ -415,7 +415,10 @@ export class StatementSync {
       throw fromSqlJs(e, this.#db);
     }
     try {
-      if (bind.length) s.bind(bind as never);
+      if (bind.length) {
+        s.bind(bind as never);
+        rebind(s, this.#values, true);
+      }
     } catch (e) {
       s.free();
       throw fromSqlJs(e, this.#db);

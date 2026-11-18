@@ -176,6 +176,20 @@ export async function sqlite(t: Case, log: (line: string) => void) {
     return d.isOpen;
   });
 
+  // Every number binds as a REAL (bun:sqlite binds a whole one as an INTEGER).
+  {
+    const d = new DatabaseSync(":memory:");
+    s("sqlite bind real", () => d.prepare("select typeof(?) a, typeof(?) b, typeof(?) c, typeof(?) d, typeof(?) e, ? f, ? g").get(1, -7, 1.5, 2 ** 40, 10n, 3, 0));
+    s("sqlite bind real named", () => d.prepare("select typeof(:a) a, typeof($b) b, :a + $b c").get({ a: 2, b: 3 }));
+    s("sqlite bind real column", () => {
+      d.exec("create table r (i integer, f real, x, t text)");
+      d.prepare("insert into r values (?, ?, ?, ?)").run(1, 2, 3, 4);
+      return d.prepare("select typeof(i) ti, typeof(f) tf, typeof(x) tx, typeof(t) tt, i, f, x, t from r").get();
+    });
+    s("sqlite bind real tag", () => d.createTagStore().get`select typeof(${5}) t, ${5} v`);
+    d.close();
+  }
+
   const file = "node-apis-sqlite.db";
   const copy = "node-apis-backup.db";
   for (const f of [file, copy]) rmSync(f, { force: true });
