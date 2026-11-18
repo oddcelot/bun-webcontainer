@@ -317,6 +317,70 @@ export async function sqlite(t: Case, log: (line: string) => void) {
     t("sqlite authorizer closed", () => errOf(() => d.setAuthorizer(null)));
   }
 
+  // Sessions: changesets and patchsets, applied with filters and conflict handlers.
+  {
+    const hex = (b: Uint8Array) => [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
+    const src = new DatabaseSync(":memory:");
+    const schema = "create table t (id integer primary key, v); create table u (k text primary key, n)";
+    src.exec(schema);
+    const all = src.createSession();
+    const onlyT = src.createSession({ table: "t", db: "main" });
+    t("sqlite session proto", () => [Object.getPrototypeOf(all) === Session.prototype, Object.getOwnPropertyNames(Session.prototype).join(), typeof all[Symbol.dispose], hex(all.changeset())].join(" "));
+    src.exec("insert into t values (1, 'a'), (2, 'b'); insert into u values ('x', 1); update t set v = 'B' where id = 2");
+    const cs = all.changeset();
+    const ps = all.patchset();
+    t("sqlite changeset", () => [cs.constructor.name, hex(cs), hex(ps), hex(onlyT.changeset())].join(" "));
+    t("sqlite session options", () => [errOf(() => src.createSession({ table: 5 } as never)), errOf(() => src.createSession({ db: 5 } as never)), errOf(() => src.createSession(5 as never)), hex(src.createSession({ table: "nope" }).changeset()), hex(src.createSession({ db: "nope" }).changeset())].join(" / "));
+    const dst = new DatabaseSync(":memory:");
+    dst.exec(schema);
+    s("sqlite applyChangeset", () => [dst.applyChangeset(cs), dst.prepare("select * from t").all(), dst.prepare("select * from u").all()]);
+    s("sqlite applyChangeset again", () => dst.applyChangeset(cs));
+    t("sqlite applyChangeset conflicts", () => {
+      const types: number[] = [];
+      const r = [constants.SQLITE_CHANGESET_OMIT, constants.SQLITE_CHANGESET_REPLACE, constants.SQLITE_CHANGESET_ABORT].map((answer) => {
+        const d = new DatabaseSync(":memory:");
+        d.exec(schema + "; insert into t values (1, 'mine'), (2, 'b'); insert into u values ('x', 9)");
+        const ok = d.applyChangeset(cs, { onConflict: (type: number) => (types.push(type), answer) });
+        return `${ok} ${show(d.prepare("select * from t").all())}`;
+      });
+      return [...r, types.join()].join(" / ");
+    });
+    t("sqlite applyChangeset filter", () => {
+      const d = new DatabaseSync(":memory:");
+      d.exec(schema);
+      const tables: string[] = [];
+      const ok = d.applyChangeset(cs, { filter: (table: string) => (tables.push(table), table === "u") });
+      return [ok, tables.join(), show(d.prepare("select count(*) n from t").get()), show(d.prepare("select count(*) n from u").get())].join(" / ");
+    });
+    t("sqlite applyChangeset patchset", () => {
+      const d = new DatabaseSync(":memory:");
+      d.exec(schema);
+      return [d.applyChangeset(ps), show(d.prepare("select * from t").all())].join(" / ");
+    });
+    t("sqlite applyChangeset errors", () =>
+      [
+        errOf(() => dst.applyChangeset(5 as never)),
+        errOf(() => dst.applyChangeset(cs, 5 as never)),
+        errOf(() => dst.applyChangeset(cs, { onConflict: 5 } as never)),
+        errOf(() => dst.applyChangeset(cs, { filter: 5 } as never)),
+        errOf(() => dst.applyChangeset(new Uint8Array([1, 2, 3]))),
+        errOf(() => dst.applyChangeset(cs, { onConflict: () => { throw new SyntaxError("oc"); } })),
+        errOf(() => dst.applyChangeset(cs, { filter: () => { throw new SyntaxError("fl"); } })),
+        errOf(() => dst.applyChangeset(cs, { onConflict: () => 1.5 } as never)),
+        errOf(() => dst.applyChangeset(cs, { onConflict: () => 7 } as never)),
+        String(dst.applyChangeset(new Uint8Array(0))),
+      ].join(" / "),
+    );
+    t("sqlite session close", () => {
+      onlyT.close();
+      const after = [errOf(() => onlyT.close()), errOf(() => onlyT.changeset()), errOf(() => onlyT.patchset())];
+      const s2 = src.createSession();
+      src.close();
+      return [...after, errOf(() => s2.changeset()), errOf(() => s2.close()), errOf(() => s2[Symbol.dispose]())].join(" / ");
+    });
+    dst.close();
+  }
+
   const file = "node-apis-sqlite.db";
   const copy = "node-apis-backup.db";
   for (const f of [file, copy]) rmSync(f, { force: true });

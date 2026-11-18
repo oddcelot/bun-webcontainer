@@ -4,7 +4,7 @@
 // refused, every number as a REAL, integers read as numbers unless `readBigInts` (and an error past 2^53), rows as
 // null-prototype objects.
 import { Database, paramsOf, type Param } from "./sqlite";
-import { DBCONFIG_DEFENSIVE, DBCONFIG_DQS_DDL, DBCONFIG_DQS_DML, DBCONFIG_ENABLE_FKEY, Conn, RawError, aggregateKey, errstr, result, resultError, valueOf, type Stmt, type Value } from "./sqliteEngine";
+import { DBCONFIG_DEFENSIVE, DBCONFIG_DQS_DDL, DBCONFIG_DQS_DML, DBCONFIG_ENABLE_FKEY, Conn, RawError, aggregateKey, deleteSession, errstr, result, resultError, sessionChanges, valueOf, type Stmt, type Value } from "./sqliteEngine";
 import fs from "./fs";
 import path from "./path";
 import { fileURLToPath } from "./url";
@@ -39,6 +39,7 @@ function fromRaw(e: unknown, db: DatabaseSync): unknown {
 const INTERNAL = Symbol("node:sqlite");
 const RAW = Symbol("raw");
 const FINALIZE = Symbol("finalize");
+const FORGET = Symbol("forget");
 
 const isBool = (o: Record<string, unknown>, k: string) => {
   if (o[k] !== undefined && typeof o[k] !== "boolean") throw argType(`The "options.${k}" argument must be a boolean.`);
@@ -87,6 +88,7 @@ export class DatabaseSync {
   #extensions = false;
   #dqs: boolean;
   #statements = new Set<StatementSync>();
+  #sessions = new Set<Session>();
 
   constructor(location: string | Uint8Array | URL, options: Options = {}) {
     this.#file = pathOf(location);
@@ -140,6 +142,9 @@ export class DatabaseSync {
   close() {
     const db = this.#db;
     for (const s of this.#statements) s[FINALIZE]();
+    // SQLite wants a connection's sessions deleted before it closes
+    for (const s of this.#sessions) s[FINALIZE]();
+    this.#sessions.clear();
     this.#statements.clear();
     this[RAW] = undefined;
     db.close();
@@ -340,14 +345,68 @@ export class DatabaseSync {
     );
   }
 
-  createSession(): never {
+  /** A session recording the changes to `options.table` (every table when absent) of database `options.db` ("main"). */
+  createSession(options: { table?: string; db?: string } = {}): Session {
     this.#db;
-    throw new Error("node:sqlite sessions are not supported in the playground");
+    if (options === null || typeof options !== "object") throw argType('The "options" argument must be an object.');
+    if (options.table !== undefined && typeof options.table !== "string") throw argType('The "options.table" argument must be a string.');
+    if (options.db !== undefined && typeof options.db !== "string") throw argType('The "options.db" argument must be a string.');
+    let ptr: number;
+    try {
+      ptr = this.#conn.createSession(options.db ?? "main", options.table ?? null);
+    } catch (e) {
+      throw fromRaw(e, this);
+    }
+    const session = new Session(INTERNAL, this, ptr);
+    this.#sessions.add(session);
+    return session;
   }
 
-  applyChangeset(): never {
+  [FORGET](s: Session) {
+    this.#sessions.delete(s);
+  }
+
+  /**
+   * Applies a changeset or patchset: `filter(table)` says whether to apply a table's changes, `onConflict(type)` what
+   * to do on a conflict (SQLITE_CHANGESET_OMIT / REPLACE / ABORT; ABORT when absent). False when it was aborted.
+   */
+  applyChangeset(changeset: Uint8Array, options: { filter?: (table: string) => unknown; onConflict?: (type: number) => unknown } = {}): boolean {
     this.#db;
-    throw new Error("node:sqlite sessions are not supported in the playground");
+    if (!(changeset instanceof Uint8Array)) throw argType('The "changeset" argument must be a Uint8Array.');
+    if (options === null || typeof options !== "object") throw argType('The "options" argument must be an object.');
+    const { filter, onConflict } = options;
+    if (onConflict !== undefined && typeof onConflict !== "function") throw argType('The "options.onConflict" argument must be a function.');
+    if (filter !== undefined && typeof filter !== "function") throw argType('The "options.filter" argument must be a function.');
+    let thrown: { e: unknown } | undefined;
+    const rc = this.#conn.applyChangeset(
+      changeset,
+      filter
+        ? (table) => {
+            if (thrown) return 0;
+            try {
+              return filter(table) ? 1 : 0;
+            } catch (e) {
+              thrown = { e };
+              return 0;
+            }
+          }
+        : null,
+      (type) => {
+        if (thrown) return 2;
+        if (!onConflict) return 2; // SQLITE_CHANGESET_ABORT
+        try {
+          const r = onConflict(type);
+          return typeof r === "number" && (r | 0) === r ? r : -1;
+        } catch (e) {
+          thrown = { e };
+          return 2;
+        }
+      },
+    );
+    if (thrown) throw thrown.e;
+    if (rc === 0) return true;
+    if (rc === 4) return false; // SQLITE_ABORT
+    throw nodeError(new Error(errstr(rc)), "ERR_SQLITE_ERROR", { errcode: rc });
   }
 }
 
@@ -595,11 +654,64 @@ class SQLTagStore {
   }
 }
 
-/** Sessions are not supported yet. */
+/** `db.createSession()`: the changes made to the database since, as a changeset or a patchset. */
 export class Session {
-  constructor() {
-    throw nodeError(new TypeError("Illegal constructor"), "ERR_ILLEGAL_CONSTRUCTOR");
+  #db: DatabaseSync | undefined;
+  #ptr = 0;
+
+  constructor(token?: symbol, db?: DatabaseSync, ptr?: number) {
+    if (token !== INTERNAL) throw nodeError(new TypeError("Illegal constructor"), "ERR_ILLEGAL_CONSTRUCTOR");
+    this.#db = db;
+    this.#ptr = ptr!;
   }
+
+  /** The session's pointer: the database must be open, and the session too. */
+  #open(): number {
+    if (!this.#db?.isOpen) throw invalidState("database is not open");
+    if (!this.#ptr) throw invalidState("session is not open");
+    return this.#ptr;
+  }
+
+  #changes(patch: boolean): Uint8Array {
+    const p = this.#open();
+    try {
+      return sessionChanges(p, patch);
+    } catch (e) {
+      throw e instanceof RawError ? sqliteError(e.message, e.errno) : e;
+    }
+  }
+
+  changeset(): Uint8Array {
+    return this.#changes(false);
+  }
+
+  patchset(): Uint8Array {
+    return this.#changes(true);
+  }
+
+  close() {
+    this.#open();
+    this[FINALIZE]();
+  }
+
+  [Symbol.dispose]() {
+    if (this.#ptr && this.#db?.isOpen) this.close();
+  }
+
+  [FINALIZE]() {
+    if (!this.#ptr) return;
+    deleteSession(this.#ptr);
+    this.#ptr = 0;
+    this.#db?.[FORGET](this);
+  }
+}
+
+// `constructor` last among Session.prototype's own keys, as in Bun.
+{
+  const p = Session.prototype as object as { constructor?: unknown };
+  const ctor = p.constructor;
+  delete p.constructor;
+  Object.defineProperty(p, "constructor", { value: ctor, writable: true, configurable: true });
 }
 
 /** `backup(db, path)`: the database's bytes written to `path`; resolves with the number of pages copied. */
