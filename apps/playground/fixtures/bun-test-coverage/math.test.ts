@@ -1,9 +1,10 @@
 import { expect, test } from "bun:test";
 import { add, branchy, Calc, defaults, gen, later, logic, loops, mul, outer, sw, tc } from "./math";
-import { asyncRest, Box, rest, restAfter, resumed, strict } from "./gens";
+import { asyncRest, Box, rest, restAfter, restNested, restObject, restPattern, resumed, strict } from "./gens";
 import { obj, once } from "./util.js";
 import { helper } from "./ignored/helper";
 const lib = require("./lib.cjs");
+const sloppy = require("./sloppy.cjs");
 
 test("math", async () => {
   expect(add(1, 2)).toBe(3);
@@ -26,6 +27,11 @@ test("generators and private chains", () => {
   restAfter(1, 2);
   strict(1);
   asyncRest();
+  expect(restPattern(1).next().value).toBe(3);
+  expect(restNested(1, 2, 3, 4).next().value).toEqual([1, 2, true]);
+  restObject(1, 2);
+  sloppy.strictGen(1);
+  sloppy.strictExpr(1, 2);
   expect(resumed(1, 2).next().value).toBe(2);
   expect(Box.peek(undefined)).toBeUndefined();
   expect(Box.call(undefined)).toBeUndefined();

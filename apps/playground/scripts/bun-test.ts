@@ -6,7 +6,7 @@
 // prints the source around a failure; the console doesn't) and is dropped on both sides.
 // Then fixtures/bun-test-coverage the same way with `--coverage` (src/coverage/): the coverage table and every
 // lcov.info the run writes have to be identical too.
-//   bun scripts/bun-test.ts [--no-native] [--no-browser]
+//   bun scripts/bun-test.ts [--no-native] [--no-browser] [--coverage-only]
 // Chrome: CHROME=<path to the binary>, else the usual install on macOS or Linux.
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -67,7 +67,7 @@ type Project = { route: string; dir: string; files: Record<string, string>; step
 const PROJECTS: Project[] = [
   { route: "/", dir: fixtures, files, steps: STEPS },
   { route: "/coverage", dir: join(app, "fixtures/bun-test-coverage"), files: coverageFiles, steps: COVERAGE_STEPS, coverage: true },
-];
+].filter((p) => !process.argv.includes("--coverage-only") || p.coverage);
 
 /** The coverage table's lines (separators, header, rows), colors dropped. */
 const coverageTable = (lines: string[]) => lines.map(plain).filter((l) => /^-+\|-{9}\|-{9}\|-+$/.test(l) || /^File +\| % Funcs/.test(l) || /\| +[\d.]+ \| +[\d.]+ \|/.test(l));
@@ -167,10 +167,12 @@ function compareCoverage(label: string, lines: string[], have: Record<string, st
   for (const p of lcovs) {
     if (have[p] === want.files[p]) continue;
     bad++;
-    const g = (have[p] ?? "").split("\n");
-    const w = (want.files[p] ?? "").split("\n");
-    const at = g.findIndex((l, i) => l !== w[i]);
-    console.error(`✗ ${label}: ${p} differs at line ${at + 1}: got ${JSON.stringify(g.slice(at, at + 3))}, want ${JSON.stringify(w.slice(at, at + 3))}`);
+    // Each file's record that differs, on a line.
+    const records = (text = "") => new Map(text.split("end_of_record\n").filter(Boolean).map((r) => [/^SF:.*$/m.exec(r)?.[0], r.trim().replaceAll("\n", " ")]));
+    const g = records(have[p]);
+    const w = records(want.files[p]);
+    const differ = [...new Set([...g.keys(), ...w.keys()])].filter((sf) => g.get(sf) !== w.get(sf));
+    console.error(`✗ ${label}: ${p} differs${differ.map((sf) => `\n  got  ${g.get(sf)}\n  want ${w.get(sf)}`).join("")}`);
   }
   if (bad === before) console.log(`✓ ${label}: coverage table (${expected.length} lines)${lcovs.size ? `, ${[...lcovs].join(", ")}` : ""} identical`);
 }
