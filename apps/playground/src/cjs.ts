@@ -89,6 +89,22 @@ export function isCommonJS(vfs: VFS, path: string, source: string): boolean {
 export const stripDirname = (code: string) => code.replace(/^var (?:__dirname|__filename) = "[^"\n]*"(?:, __filename = "[^"\n]*")?;\n/, "");
 
 /**
+ * A file's `"use strict"` directive: what comes before it (a `#!` line, comments, other directives) is the match. Bun
+ * runs a CommonJS file that has one in strict mode; its transpiler leaves the directive out of what it prints.
+ */
+export const useStrictPrologue = (source: string) =>
+  /^(?:#![^\n]*\n)?(?:\s|\/\/[^\n]*(?![^\n])|\/\*(?:[^*]|\*(?!\/))*\*\/|(?:"[^"\\\n]*"|'[^'\\\n]*')[ \t]*(?:;|(?=\r?\n)))*(?=(["'])use strict\1\s*(?:;|$|\n|\r|\/[/*]))/.exec(source);
+
+/**
+ * Transpiled CommonJS `code` strict again if its `source` was: `"use strict"` on a line of its own before it, and how
+ * many lines that added (0 or 1), so source maps move by them.
+ */
+export function keepUseStrict(source: string, code: string): [string, number] {
+  if (!useStrictPrologue(source) || /^\s*(["'])use strict\1/.test(code)) return [code, 0];
+  return [`"use strict";\n${code}`, 1];
+}
+
+/**
  * In TypeScript or JSX transpiled for CommonJS, the imports Bun's transpiler adds at the top (the automatic JSX
  * runtime's, and `bun:wrap` helpers for decorators and `using`) as requires: an import can't run in a function body.
  * Bun's own runtime fails there (a SyntaxError); this is the playground's extra. Only those imports, recognized by

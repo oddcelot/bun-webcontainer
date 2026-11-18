@@ -2,7 +2,7 @@
 // `require` in an ES module (Bun's implicit one, and `import.meta.require`) end to end: `require.resolve` (a project file,
 // a package, a built-in, a missing one), `.paths`, `.cache` and `.main`, as native Bun prints them. A project runs in the
 // embed in headless Chrome; the expected lines are native Bun's (unless --no-native, which prints what the playground did).
-//   bun scripts/esm-require.ts [--no-native]
+//   bun scripts/esm-require.ts [--no-native]   (ports: EDITOR_PORT, HOST_PORT)
 // Chrome: CHROME=<path to the binary>, else the usual install on macOS or Linux.
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -33,10 +33,41 @@ console.log("meta:", [tryResolve(imr, "./x"), typeof imr.resolve, typeof imr.res
 console.log("paths:", [typeof require.resolve.paths, require.resolve.paths("fs"), require.resolve.paths("./x")?.length, require.resolve.paths("pkg")!.length > 0].join(" "));
 console.log("cache:", [typeof require.cache, (require("./x"), Object.keys(require.cache).some((k) => k.endsWith("/x.js")))].join(" "));
 console.log("main:", [typeof require.main, typeof require.extensions].join(" "));
+// Strict mode follows the file's top-level "use strict" (a literal require, and one the worker runs itself).
+const strictFiles = ["./strict/s.cjs", "./strict/comment.cjs", "./strict/sloppy.cjs", "./strict/sloppy.ts", "./strict/s.ts", "./strict/s.js"];
+console.log("strict literal:", [require("./strict/s.cjs"), require("./strict/comment.cjs"), require("./strict/sloppy.cjs"), require("./strict/sloppy.ts"), require("./strict/s.ts"), require("./strict/s.js")].join(" | "));
+for (const f of strictFiles) delete require.cache[require.resolve(f)];
+console.log("strict computed:", strictFiles.map((f) => require(f)).join(" | "));
+console.log("strict where:", require("./strict/where.ts"), (delete require.cache[require.resolve("./strict/where.ts")], require(["./strict", "where.ts"].join("/"))));
 console.log("__end__");
 `,
   "other.ts": `console.log("other loaded");`,
+  ...strictCases(),
 };
+
+/**
+ * CommonJS files that report whether they run in strict mode. (Bun also drops a function's "use strict" in a sloppy
+ * file, which then runs sloppy; the playground runs plain JavaScript as written, so that one stays strict.)
+ */
+function strictCases(): Record<string, string> {
+  const probe = `const r = [];
+try { undeclared = 1; delete globalThis.undeclared; r.push("assign"); } catch (e) { r.push(e.constructor.name); }
+r.push((function () { return this === undefined ? "undefined" : this === globalThis ? "global" : typeof this; })());
+try { const o = Object.freeze({ a: 1 }); o.a = 2; r.push("frozen"); } catch (e) { r.push(e.constructor.name); }
+try { (function () { return arguments.callee; })(); r.push("callee"); } catch (e) { r.push(e.constructor.name); }
+module.exports = r.join(",");
+`;
+  return {
+    "strict/s.cjs": `"use strict";\n${probe}`,
+    "strict/comment.cjs": `// a comment\n/* and another */\n'use strict';\n${probe}`,
+    "strict/sloppy.cjs": probe,
+    "strict/sloppy.ts": `// Not "use strict": a comment.\n/* nor "use strict" */\n"use client";\n${probe.replace("const r = []", "const r: string[] = []")}`,
+    "strict/s.ts": `"use strict";\n${probe.replace("const r = []", "const r: string[] = []")}`,
+    "strict/s.js": `"use strict";\n${probe}`,
+    // Its line in a stack trace stays the file's.
+    "strict/where.ts": `"use strict";\nconst at: number = 1;\nmodule.exports = String(new Error("here").stack).split("\\n")[1].replace(/^.*\\//, "");\n`,
+  };
+}
 
 let bad = 0;
 const compare = (label: string, got: string[], want: string[]) => {

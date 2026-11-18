@@ -1,5 +1,5 @@
 import { BASE } from "./base";
-import { commonJSFacade, exportNames as commonJSExportNames, isCommonJS, JS_LIKE, moduleKindOf, reexports, requireRuntimeImports, stripDirname, wrapCommonJS, wrappedBodyLine } from "./cjs";
+import { commonJSFacade, exportNames as commonJSExportNames, isCommonJS, JS_LIKE, keepUseStrict, moduleKindOf, reexports, requireRuntimeImports, stripDirname, wrapCommonJS, wrappedBodyLine } from "./cjs";
 import { firstLineLength, insertColumns, shiftFirstColumn } from "./sourceMap";
 import bunWrap from "./bunWrap.js?raw";
 import { loadTranspiler, type Resolver } from "./transpiler";
@@ -416,7 +416,10 @@ async function serveCommonJS(vfs: VFS, path: string, onError: (msg: string) => v
       probes = table;
       body = stripDirname(js);
       if (body !== js) stripped = 1;
-      body = requireRuntimeImports(body);
+      // Its "use strict" back, on a line of its own: strict mode follows the file, as in Bun.
+      let added: number;
+      [body, added] = keepUseStrict(src, requireRuntimeImports(body));
+      stripped -= added;
       inner = mappings;
     } catch (e) {
       if (e instanceof LazyMiss) throw e; // loaded and served again (withLoaded)
