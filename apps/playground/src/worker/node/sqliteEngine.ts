@@ -190,6 +190,16 @@ export class Conn {
     if (rc) throw this.error(base);
   }
 
+  /** sqlite3_limit: sets limit `id` to `value` (a negative one leaves it) and returns what it was. */
+  limit(id: number, value: number): number {
+    return x.sqlite3_limit(this.ptr, id, value);
+  }
+
+  /** sqlite3_busy_timeout: how long a statement waits for a lock (0: it doesn't). */
+  busyTimeout(ms: number) {
+    this.check(x.sqlite3_busy_timeout(this.ptr, ms));
+  }
+
   dbConfig(op: number, on: number) {
     capi.sqlite3_db_config(this.ptr, op, on, 0);
   }

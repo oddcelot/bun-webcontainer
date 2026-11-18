@@ -66,7 +66,13 @@ interface Options {
   allowBareNamedParameters?: boolean;
   allowUnknownNamedParameters?: boolean;
   timeout?: number;
+  defensive?: boolean;
+  limits?: Record<string, number>;
 }
+
+/** `db.limits`' names, by SQLITE_LIMIT_* id. */
+const LIMITS = ["length", "sqlLength", "column", "exprDepth", "compoundSelect", "vdbeOp", "functionArg", "attach", "likePatternLength", "variableNumber", "triggerDepth"];
+const INT32 = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= -(2 ** 31) && v < 2 ** 31;
 
 /** A user function's arguments: integers as BigInts with `big`, else as numbers (an error past 2^53). */
 function argsOf(args: number[], big: boolean): unknown[] {
@@ -87,6 +93,11 @@ export class DatabaseSync {
   #opts: Required<Pick<Options, "readOnly" | "enableForeignKeyConstraints" | "allowExtension" | "readBigInts" | "returnArrays" | "allowBareNamedParameters" | "allowUnknownNamedParameters">>;
   #extensions = false;
   #dqs: boolean;
+  #defensive: boolean;
+  #timeout: number;
+  /** options.limits, by SQLITE_LIMIT_* id (-1: not given). */
+  #initialLimits: number[];
+  #limits: object | undefined;
   #statements = new Set<StatementSync>();
   #sessions = new Set<Session>();
 
@@ -95,7 +106,6 @@ export class DatabaseSync {
     if (options === null || typeof options !== "object") throw argType('The "options" argument must be an object.');
     const o = options as Record<string, unknown>;
     for (const k of ["open", "enableDoubleQuotedStringLiterals"]) isBool(o, k);
-    if (o.timeout !== undefined && !Number.isInteger(o.timeout)) throw argType('The "options.timeout" argument must be an integer.');
     this.#opts = {
       readOnly: isBool(o, "readOnly") ?? false,
       enableForeignKeyConstraints: isBool(o, "enableForeignKeyConstraints") ?? true,
@@ -105,6 +115,20 @@ export class DatabaseSync {
       allowBareNamedParameters: isBool(o, "allowBareNamedParameters") ?? true,
       allowUnknownNamedParameters: isBool(o, "allowUnknownNamedParameters") ?? false,
     };
+    this.#defensive = isBool(o, "defensive") ?? true;
+    this.#initialLimits = LIMITS.map(() => -1);
+    if (o.limits !== undefined) {
+      if (!o.limits || typeof o.limits !== "object") throw argType('The "options.limits" argument must be an object.');
+      LIMITS.forEach((name, id) => {
+        const v = (o.limits as Record<string, unknown>)[name];
+        if (v === undefined) return;
+        if (!INT32(v)) throw argType(`The "options.limits.${name}" argument must be an integer.`);
+        if (v < 0) throw nodeError(new RangeError(`The "options.limits.${name}" argument must be non-negative.`), "ERR_OUT_OF_RANGE");
+        this.#initialLimits[id] = v;
+      });
+    }
+    if (o.timeout !== undefined && !INT32(o.timeout)) throw argType('The "options.timeout" argument must be an integer.');
+    this.#timeout = (o.timeout as number | undefined) ?? 0;
     this.#dqs = options.enableDoubleQuotedStringLiterals === true;
     if (options.open !== false) this.open();
   }
@@ -137,7 +161,42 @@ export class DatabaseSync {
     c.dbConfig(DBCONFIG_DQS_DML, +this.#dqs);
     c.dbConfig(DBCONFIG_DQS_DDL, +this.#dqs);
     c.dbConfig(DBCONFIG_ENABLE_FKEY, +this.#opts.enableForeignKeyConstraints);
-    c.dbConfig(DBCONFIG_DEFENSIVE, 1);
+    c.dbConfig(DBCONFIG_DEFENSIVE, +this.#defensive);
+    this.#initialLimits.forEach((v, id) => v >= 0 && c.limit(id, v));
+    c.busyTimeout(this.#timeout);
+  }
+
+  /**
+   * The connection's limits (sqlite3_limit) by Node's names: reading one gives its value, setting one (a non-negative
+   * integer, or Infinity for the build's maximum) lowers or raises it.
+   */
+  get limits(): Record<string, number> {
+    if (this.#limits) return this.#limits as Record<string, number>;
+    const conn = () => {
+      if (!this[RAW]) throw invalidState("database is not open");
+      return this[RAW].conn;
+    };
+    const id = (k: string | symbol) => (typeof k === "string" ? LIMITS.indexOf(k) : -1);
+    this.#limits = new Proxy(
+      {},
+      {
+        get: (t, k, r) => (id(k) >= 0 ? conn().limit(id(k), -1) : Reflect.get(t, k, r)),
+        set: (t, k, v, r) => {
+          if (id(k) < 0) return Reflect.set(t, k, v, r);
+          const c = conn();
+          if (v === Infinity) v = 2 ** 31 - 1;
+          else if (!INT32(v)) throw argType("Limit value must be a non-negative integer or Infinity.");
+          else if (v < 0) throw nodeError(new RangeError("Limit value must be non-negative."), "ERR_OUT_OF_RANGE");
+          c.limit(id(k), v);
+          return true;
+        },
+        has: (t, k) => id(k) >= 0 || Reflect.has(t, k),
+        ownKeys: (t) => [...LIMITS, ...Reflect.ownKeys(t)],
+        getOwnPropertyDescriptor: (t, k) => (id(k) >= 0 ? { value: this[RAW]?.conn.limit(id(k), -1), writable: true, enumerable: true, configurable: true } : Reflect.getOwnPropertyDescriptor(t, k)),
+        deleteProperty: (t, k) => id(k) < 0 && Reflect.deleteProperty(t, k),
+      },
+    );
+    return this.#limits as Record<string, number>;
   }
 
   close() {

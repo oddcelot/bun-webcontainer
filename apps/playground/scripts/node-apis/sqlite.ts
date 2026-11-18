@@ -397,6 +397,48 @@ export async function sqlite(t: Case, log: (line: string) => void) {
       return [l, existsSync(file), v.a, err].join(" | ");
     });
     t("sqlite readOnly missing", () => errOf(() => new DatabaseSync("node-apis-missing.db", { readOnly: true })));
+    t("sqlite limits", () => {
+      const d = new DatabaseSync(":memory:");
+      const l = d.limits as Record<string, number>;
+      // length, functionArg and variableNumber are the build's maximums, which differ (compatibility/node.md)
+      const same = ["sqlLength", "column", "exprDepth", "compoundSelect", "vdbeOp", "attach", "likePatternLength", "triggerDepth"];
+      const r: unknown[] = [Object.keys(l).join(), l === d.limits, "length" in l, same.map((k) => l[k]).join()];
+      l.column = 10;
+      r.push(l.column, errOf(() => d.exec(`create table t(${Array.from({ length: 11 }, (_, i) => "c" + i).join(",")})`)));
+      l.column = Infinity;
+      r.push(l.column, errOf(() => (l.column = -1)), errOf(() => (l.column = 1.5)), errOf(() => (l.column = "5" as never)));
+      (l as Record<string, unknown>).foo = 1;
+      r.push((l as Record<string, unknown>).foo, Object.keys(l).length);
+      d.close();
+      r.push(errOf(() => l.column), errOf(() => (l.column = 5)), "column" in l);
+      return r.join(" | ");
+    });
+    t("sqlite limits option", () => {
+      const o = new DatabaseSync(":memory:", { limits: { attach: 2, column: 50 } } as never);
+      const l = o.limits as Record<string, number>;
+      return [l.attach, l.column, errOf(() => new DatabaseSync(":memory:", { limits: { attach: -1 } } as never)), errOf(() => new DatabaseSync(":memory:", { limits: { attach: 1.5 } } as never)), errOf(() => new DatabaseSync(":memory:", { limits: 5 } as never)), errOf(() => new DatabaseSync(":memory:", { limits: { nope: 5 } } as never))].join(" | ");
+    });
+    t("sqlite timeout option", () => [1.5, Infinity, -5, 2 ** 31].map((timeout) => errOf(() => new DatabaseSync(":memory:", { timeout }))).join(" | "));
+    t("sqlite defensive option", () => {
+      const q = new DatabaseSync(":memory:", { defensive: false } as never);
+      q.exec("pragma writable_schema = 1");
+      return [errOf(() => new DatabaseSync(":memory:", { defensive: 5 } as never)), errOf(() => q.exec("update sqlite_master set name = name"))].join(" | ");
+    });
+    t("sqlite timeout", () => {
+      const a = new DatabaseSync(file);
+      const b = new DatabaseSync(file, { timeout: 150 });
+      const z = new DatabaseSync(file);
+      a.exec("begin immediate");
+      let at = performance.now();
+      const e1 = errOf(() => b.exec("insert into x values (1)"));
+      const waited = performance.now() - at;
+      at = performance.now();
+      const e2 = errOf(() => z.exec("insert into x values (1)"));
+      const at0 = performance.now() - at;
+      a.exec("rollback");
+      for (const d of [a, b, z]) d.close();
+      return [e1, waited >= 140 && waited < 1000, e2, at0 < 50].join(" | ");
+    });
     t("sqlite file wal", () => {
       const a = new DatabaseSync(file);
       const mode = show(a.prepare("pragma journal_mode = wal").get());
