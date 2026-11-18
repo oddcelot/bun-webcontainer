@@ -1,3 +1,4 @@
+import { charDiff, isUtf8Cont } from "./charDiff";
 import { fakeTimers, real, resetFakeTimers } from "./fakeTimers";
 import { dedent, serialize, SnapshotFile, withMatchers, type SnapshotCounts, type SnapshotIO } from "./snapshot";
 import { formatLog } from "../inspect";
@@ -25,9 +26,25 @@ let defaultTimeout = 5000;
 
 // ---- formatting ----
 
-/** Bun's value format: JSON-like, one entry per line, trailing commas. */
-function pretty(v: unknown, ind = "", seen: unknown[] = []): string {
-  if (typeof v === "string") return JSON.stringify(v);
+/** Code point order, as Bun sorts property names (`"10"` before `"2"`, unlike `Object.keys`). */
+function byCodePoint(a: string, b: string): number {
+  for (let i = 0, j = 0; i < a.length && j < b.length; ) {
+    const x = a.codePointAt(i)!;
+    const y = b.codePointAt(j)!;
+    if (x !== y) return x - y;
+    i += x > 0xffff ? 2 : 1;
+    j += y > 0xffff ? 2 : 1;
+  }
+  return a.length - b.length;
+}
+
+/**
+ * Bun's value format: JSON-like, one entry per line, trailing commas. `forDiff`: as Bun's diffs (JestPrettyFormat)
+ * print it, the keys in code point order and strings in quotes as they are (not escaped; one of several lines inside
+ * an object or array on lines of its own, unindented).
+ */
+function pretty(v: unknown, ind = "", seen: unknown[] = [], forDiff = false): string {
+  if (typeof v === "string") return !forDiff ? JSON.stringify(v) : seen.length && v.includes("\n") ? `\n"${v}"\n` : `"${v}"`;
   if (typeof v === "bigint") return `${v}n`;
   if (typeof v !== "object" || v === null) return typeof v === "function" ? `[Function: ${v.name || "(anonymous)"}]` : String(v);
   if (v instanceof Asym) return v.label;
@@ -35,7 +52,10 @@ function pretty(v: unknown, ind = "", seen: unknown[] = []): string {
   const proto = Object.getPrototypeOf(v);
   const isArr = Array.isArray(v);
   if (!isArr && proto !== Object.prototype && proto !== null) return inspect(v, { depth: 2 });
-  const entries = isArr ? (v as unknown[]).map((x) => pretty(x, ind + "  ", [...seen, v])) : Object.keys(v).map((k) => `${JSON.stringify(k)}: ${pretty((v as Record<string, unknown>)[k], ind + "  ", [...seen, v])}`);
+  const inner = (x: unknown) => pretty(x, ind + "  ", [...seen, v], forDiff);
+  const keys = Object.keys(v);
+  if (forDiff) keys.sort(byCodePoint);
+  const entries = isArr ? (v as unknown[]).map(inner) : keys.map((k) => `${JSON.stringify(k)}: ${inner((v as Record<string, unknown>)[k])}`);
   const [open, close] = isArr ? ["[", "]"] : ["{", "}"];
   return entries.length ? `${open}\n${entries.map((e) => `${ind}  ${e},\n`).join("")}${ind}${close}` : open + close;
 }
@@ -45,47 +65,125 @@ const DIFF = { chunkOver: 2 * 1024, context: 5, truncateOver: 2 * 1024, truncate
 const utf8 = new TextEncoder();
 const fromUtf8 = new TextDecoder();
 
-/** A line longer than 2 KiB (in UTF-8) with its middle elided, as Bun does. */
-function truncateLine(line: string): string {
-  const bytes = utf8.encode(line);
-  if (bytes.length <= DIFF.truncateOver) return line;
-  const cont = (i: number) => i < bytes.length && (bytes[i] & 0xc0) === 0x80;
-  let head = DIFF.truncateKeep;
-  let tail = bytes.length - DIFF.truncateKeep;
-  while (head > 0 && cont(head)) head--;
-  while (cont(tail)) tail++;
-  return `${fromUtf8.decode(bytes.subarray(0, head))}... (${tail - head} bytes truncated) ...${fromUtf8.decode(bytes.subarray(tail))}`;
+/** Whether diffs are coloured, as Bun colours them on a terminal: the console's `bun test`, not a spawned one's pipe. */
+let diffColors = true;
+
+const ANSI = { red: "\x1b[31m", green: "\x1b[32m", yellow: "\x1b[33m", dim: "\x1b[2m", invert: "\x1b[7m", brightWhite: "\x1b[97m", reset: "\x1b[0m" };
+/** A row's prefix and colours: `- ` green for the expected side, `+ ` red for the received one, dim context. */
+type Style = { prefix: string; prefixColor: string; textColor: string };
+const INSERTED: Style = { prefix: "+ ", prefixColor: ANSI.red, textColor: ANSI.red };
+const REMOVED: Style = { prefix: "- ", prefixColor: ANSI.green, textColor: ANSI.green };
+const EQUAL: Style = { prefix: "  ", prefixColor: "", textColor: ANSI.dim };
+const SINGLE_INSERTED: Style = { ...INSERTED, prefix: "Received: ", prefixColor: "" };
+const SINGLE_REMOVED: Style = { ...REMOVED, prefix: "Expected: ", prefixColor: "" };
+
+const NEWLINE = 10;
+function maxLineLen(text: Uint8Array): number {
+  let max = 0;
+  let start = 0;
+  for (let i = 0; i <= text.length; i++) if (i === text.length || text[i] === NEWLINE) (max = Math.max(max, i - start)), (start = i + 1);
+  return max;
 }
 
-/** A piece of a row (UTF-8), each of its lines cut on its own; a line break goes on in a new row after `prefix`. */
-const piece = (bytes: Uint8Array, prefix: string) => fromUtf8.decode(bytes).split("\n").map(truncateLine).join(`\n${prefix}`);
-
-/**
- * A change: the rows of what it removes, then of what it inserts. Bun diffs the two by character to colour what
- * changed; without colours, that shows only where a line over 2 KiB is cut, as it cuts each piece (changed or not) on
- * its own. The pieces here: the start both share, the middle, the end both share (Bun's character diff can find more).
- */
-function modified(removed: string, inserted: string, removedPrefix: string, insertedPrefix: string): string {
-  const r = utf8.encode(removed);
-  const i = utf8.encode(inserted);
-  const whole = () => `${removedPrefix}${piece(r, removedPrefix)}\n${insertedPrefix}${piece(i, insertedPrefix)}`;
-  const larger = Math.max(r.length, i.length);
-  if (larger > 30 && Math.min(r.length, i.length) * 3 < larger) return whole();
-  const long = (text: string) => text.split("\n").some((l) => utf8.encode(l).length > DIFF.truncateOver);
-  if (!long(removed) && !long(inserted)) return whole();
-  const cont = (b: Uint8Array, at: number) => at < b.length && (b[at] & 0xc0) === 0x80;
-  let p = 0;
-  while (p < r.length && p < i.length && r[p] === i[p]) p++;
-  while (p > 0 && (cont(r, p) || cont(i, p))) p--;
-  let s = 0;
-  while (s < r.length - p && s < i.length - p && r[r.length - 1 - s] === i[i.length - 1 - s]) s++;
-  while (s > 0 && (cont(r, r.length - s) || cont(i, i.length - s))) s--;
-  // Most of a side changed: Bun doesn't highlight it.
-  const most = (b: Uint8Array) => b.length - p - s > 10 && b.length - p - s > Math.floor(b.length / 3) * 2;
-  if (most(r) || most(i)) return whole();
-  const side = (b: Uint8Array, prefix: string) =>
-    prefix + [b.subarray(0, p), b.subarray(p, b.length - s), b.subarray(b.length - s)].filter((x) => x.length).map((x) => piece(x, prefix)).join("");
-  return `${side(r, removedPrefix)}\n${side(i, insertedPrefix)}`;
+/** Bun's `Printer`: the rows of a diff, with colours or without. */
+class DiffPrinter {
+  out = "";
+  constructor(readonly colors: boolean) {}
+  color(c: string) {
+    if (this.colors) this.out += c;
+  }
+  bytes(b: Uint8Array) {
+    this.out += fromUtf8.decode(b);
+  }
+  prefix(style: Style) {
+    this.color(style.prefixColor);
+    this.out += style.prefix;
+    this.color(ANSI.reset);
+  }
+  /** `text` as whole rows: prefix, content, newline for each line. */
+  rows(text: Uint8Array, style: Style) {
+    this.prefix(style);
+    this.segment(text, style);
+    this.out += "\n";
+  }
+  /** `text` continuing the current row; a line break in it starts a new row with `style`'s prefix. Lines over 2 KiB lose their middle. */
+  segment(text: Uint8Array, style: Style) {
+    this.color(style.textColor);
+    let start = 0;
+    for (;;) {
+      let end = text.indexOf(NEWLINE, start);
+      if (end < 0) end = text.length;
+      const line = text.subarray(start, end);
+      if (line.length <= DIFF.truncateOver) this.bytes(line);
+      else this.truncatedLine(line, style);
+      if (end === text.length) break;
+      this.color(ANSI.reset);
+      this.out += "\n";
+      this.prefix(style);
+      this.color(style.textColor);
+      start = end + 1;
+    }
+    this.color(ANSI.reset);
+  }
+  truncatedLine(line: Uint8Array, style: Style) {
+    let head = DIFF.truncateKeep;
+    let tail = line.length - DIFF.truncateKeep;
+    while (head > 0 && isUtf8Cont(line, head)) head--;
+    while (isUtf8Cont(line, tail)) tail++;
+    this.bytes(line.subarray(0, head));
+    this.color(ANSI.reset);
+    this.color(ANSI.brightWhite);
+    this.out += `... (${tail - head} bytes truncated) ...`;
+    this.color(ANSI.reset);
+    this.color(style.textColor);
+    this.bytes(line.subarray(tail));
+  }
+  withoutHighlight(removed: Uint8Array, inserted: Uint8Array, rs: Style, is: Style, singleLine: boolean) {
+    this.prefix(rs);
+    this.segment(removed, REMOVED);
+    this.out += "\n";
+    this.prefix(is);
+    this.segment(inserted, INSERTED);
+    if (!singleLine) this.out += "\n";
+  }
+  /**
+   * A change: what it removes, then what it inserts, the characters that changed highlighted (with a background
+   * where only whitespace changed). Without colours that shows only where a line over 2 KiB is cut, as each piece
+   * is cut on its own.
+   */
+  modified(removed: Uint8Array, inserted: Uint8Array, singleLine: boolean) {
+    const [rs, is] = singleLine ? [SINGLE_REMOVED, SINGLE_INSERTED] : [REMOVED, INSERTED];
+    const larger = Math.max(removed.length, inserted.length);
+    const smaller = Math.min(removed.length, inserted.length);
+    if (larger > 30 && smaller * 3 < larger) return this.withoutHighlight(removed, inserted, rs, is, singleLine);
+    if (!this.colors && maxLineLen(removed) <= DIFF.truncateOver && maxLineLen(inserted) <= DIFF.truncateOver) return this.withoutHighlight(removed, inserted, rs, is, singleLine);
+    const hunks = charDiff(removed, inserted);
+    const del = hunks.reduce((n, h) => n + h.aHi - h.aLo, 0);
+    const ins = hunks.reduce((n, h) => n + h.bHi - h.bLo, 0);
+    // More than 2/3 of one side changed, or one long line shredded into an edit every few characters: noise.
+    const noise =
+      (del > 10 && del > Math.floor(removed.length / 3) * 2) ||
+      (ins > 10 && ins > Math.floor(inserted.length / 3) * 2) ||
+      (!removed.includes(NEWLINE) && !inserted.includes(NEWLINE) && hunks.length > 32 && hunks.length * 16 > smaller);
+    const splits = hunks.some((h) => isUtf8Cont(removed, h.aLo) || isUtf8Cont(removed, h.aHi) || isUtf8Cont(inserted, h.bLo) || isUtf8Cont(inserted, h.bHi));
+    if (noise || splits) return this.withoutHighlight(removed, inserted, rs, is, singleLine);
+    const side = (text: Uint8Array, style: Style, whitespace: Style, lo: "aLo" | "bLo", hi: "aHi" | "bHi") => {
+      let prev = 0;
+      for (const h of hunks) {
+        if (h[lo] > prev) this.segment(text.subarray(prev, h[lo]), style);
+        const changed = text.subarray(h[lo], h[hi]);
+        if (changed.length) this.segment(changed, changed.every((c) => c <= 0x20 || c === 0x7f) ? whitespace : style);
+        prev = h[hi];
+      }
+      if (text.length > prev) this.segment(text.subarray(prev), style);
+    };
+    this.prefix(rs);
+    side(removed, REMOVED, { ...REMOVED, textColor: ANSI.green + ANSI.invert }, "aLo", "aHi");
+    this.out += "\n";
+    this.prefix(is);
+    side(inserted, INSERTED, { ...INSERTED, textColor: ANSI.red + ANSI.invert }, "bLo", "bHi");
+    if (!singleLine) this.out += "\n";
+  }
 }
 
 type Segment = { kind: "equal"; lines: string[] } | { kind: "change"; removed: string[]; inserted: string[] } | { kind: "skipped"; count: number };
@@ -96,7 +194,11 @@ type Segment = { kind: "equal"; lines: string[] } | { kind: "change"; removed: s
  * hunk headers (`@@ -2,3 +2,6 @@`). From a line-level LCS; two single lines are `Expected:` and `Received:`.
  */
 function diffText(expectedText: string, receivedText: string): string {
-  if (!expectedText.includes("\n") && !receivedText.includes("\n")) return modified(expectedText, receivedText, "Expected: ", "Received: ");
+  const p = new DiffPrinter(diffColors);
+  if (!expectedText.includes("\n") && !receivedText.includes("\n")) {
+    p.modified(utf8.encode(expectedText), utf8.encode(receivedText), true);
+    return p.out;
+  }
   const a = expectedText.split("\n");
   const b = receivedText.split("\n");
   const lcs = Array.from({ length: a.length + 1 }, () => new Array<number>(b.length + 1).fill(0));
@@ -133,8 +235,7 @@ function diffText(expectedText: string, receivedText: string): string {
       ];
     });
   }
-  const rows: string[] = [];
-  const add = (prefix: string, lines: string[]) => lines.forEach((l) => rows.push(`${prefix}${truncateLine(l)}`));
+  const text = (lines: string[]) => utf8.encode(lines.join("\n"));
   let oldLine = 1;
   let newLine = 1;
   let minus = 0;
@@ -157,24 +258,36 @@ function diffText(expectedText: string, receivedText: string): string {
         nOld += t.kind === "equal" ? t.lines.length : t.removed.length;
         nNew += t.kind === "equal" ? t.lines.length : t.inserted.length;
       }
-      rows.push(`@@ -${oldLine},${nOld} +${newLine},${nNew} @@`);
+      p.color(ANSI.yellow);
+      p.out += `@@ -${oldLine},${nOld} +${newLine},${nNew} @@`;
+      p.color(ANSI.reset);
+      p.out += "\n";
     }
     if (s.kind === "equal") {
-      add("  ", s.lines);
+      p.rows(text(s.lines), EQUAL);
       oldLine += s.lines.length;
       newLine += s.lines.length;
     } else {
-      if (s.removed.length && s.inserted.length) rows.push(modified(s.removed.join("\n"), s.inserted.join("\n"), "- ", "+ "));
-      else add(s.removed.length ? "- " : "+ ", s.removed.length ? s.removed : s.inserted);
+      if (s.removed.length && s.inserted.length) p.modified(text(s.removed), text(s.inserted), false);
+      else if (s.removed.length) p.rows(text(s.removed), REMOVED);
+      else p.rows(text(s.inserted), INSERTED);
       oldLine += s.removed.length;
       newLine += s.inserted.length;
       minus += s.removed.length;
       plus += s.inserted.length;
     }
   }
-  return `${rows.join("\n")}\n\n- Expected  - ${minus}\n+ Received  + ${plus}`;
+  p.out += "\n";
+  p.color(REMOVED.prefixColor);
+  p.out += `- Expected  - ${minus}`;
+  p.color(ANSI.reset);
+  p.out += "\n";
+  p.color(INSERTED.prefixColor);
+  p.out += `+ Received  + ${plus}`;
+  p.color(ANSI.reset);
+  return p.out;
 }
-const diff = (expected: unknown, received: unknown) => diffText(pretty(expected), pretty(received));
+const diff = (expected: unknown, received: unknown) => diffText(pretty(expected, "", [], true), pretty(received, "", [], true));
 
 // ---- equality ----
 
@@ -217,6 +330,7 @@ const num = (v: unknown, name: string) => {
   if (typeof v !== "number" && typeof v !== "bigint") throw new TypeError(`expect(received).${name}(): received value must be a number or bigint`);
   return v;
 };
+const isObject = (v: unknown) => typeof v === "object" && v !== null;
 const lenOf = (v: unknown) => (v as { length?: number } | null)?.length;
 
 type Call = { args: unknown[] };
@@ -227,7 +341,8 @@ const callsOf = (v: unknown): Call[] => {
 };
 
 const matchers: Record<string, (r: any, ...a: any[]) => Result | ((ctx: Ctx) => Result | Promise<Result>)> = {
-  toBe: (r, e) => ({ pass: Object.is(r, e), expected: e, received: r }),
+  // Two values that aren't objects print as Bun's diff does (`Expected:`/`Received:`, or lines for multi-line strings).
+  toBe: (r, e) => ({ pass: Object.is(r, e), expected: e, received: r, diff: !isObject(r) && !isObject(e) }),
   toEqual: (r, e) => ({ pass: equals(r, e), expected: e, received: r, diff: true }),
   toStrictEqual: (r, e) => ({ pass: equals(r, e, true), expected: e, received: r, diff: true }),
   toBeTruthy: (r) => ({ pass: !!r, received: r, label: "Expected truthy" }),
@@ -256,7 +371,7 @@ const matchers: Record<string, (r: any, ...a: any[]) => Result | ((ctx: Ctx) => 
     return { pass: found && (!val.length || equals(cur, val[0])), expected: val.length ? val[0] : path, received: val.length ? cur : r, label: val.length ? "Expected" : "Expected path" };
   },
   toMatch: (r, e) => ({ pass: typeof r === "string" && (e instanceof RegExp ? e.test(r) : r.includes(e)), expected: e, received: r, label: "Expected to match" }),
-  toMatchObject: (r, e) => ({ pass: subset(r, e), expected: e, received: r, diff: true }),
+  toMatchObject: (r, e) => ({ pass: subset(r, e), expected: e, received: r, diff: isObject(e) }),
   toThrow: (r, e) => (ctx) => {
     let threw = false;
     let err: unknown;
@@ -400,7 +515,7 @@ function verdict(name: string, args: unknown[], not: boolean, ctx: Ctx, res: Res
   const label = res.label ?? "Expected";
   const hasExpected = "expected" in res;
   if (not) detail = hasExpected ? `${label}: not ${pretty(res.expected)}` : `Received: ${pretty(res.received)}`;
-  else if (res.diff && typeof res.expected === "object" && res.expected !== null) detail = diff(res.expected, res.received);
+  else if (res.diff) detail = diff(res.expected, res.received);
   else detail = hasExpected ? `${label}: ${pretty(res.expected)}\n${res.rlabel ?? "Received"}: ${pretty(res.received)}` : `${label}\nReceived: ${pretty(res.received)}`;
   throw new ExpectError(`${sig}\n\n${detail}`);
 }
@@ -668,8 +783,10 @@ const hook = (h: Hook) => (fn: Fn) => void current.hooks[h].push(fn);
  * line) and stderr (the rest) as Bun writes them to a pipe.
  */
 let report = { log: (text: string) => console.log(text), error: (text: string) => console.error(text) };
+/** A spawned `bun test`'s report: Bun writes it to a pipe, its diffs without colours. */
 export function setReport(r: typeof report) {
   report = r;
+  diffColors = false;
 }
 
 const paint = (n: number, s: string) => `\x1b[${n}m${s}\x1b[0m`;
@@ -751,95 +868,150 @@ function failure(e: unknown): string {
 
 const names = (s: Suite): string[] => (s.parent ? [...names(s.parent), ...(s.name ? [s.name] : [])] : []);
 
-async function runSuite(s: Suite, only: boolean, skipAll: boolean) {
+/**
+ * What becomes of a test: left out (`.only` elsewhere), filtered out by `-t`, skipped, todo, or run. In a file with
+ * `.only` tests (any file, with `--only`), the others don't run or count, as in Bun.
+ */
+function fate(s: Suite, item: Case, only: boolean, skipAll: boolean): "hidden" | "filtered" | "skip" | "todo" | "run" {
+  const inOnly = (): boolean => {
+    for (let p: Suite | undefined = s; p; p = p.parent) if (p.mode === "only") return true;
+    return false;
+  };
+  if (only && item.mode !== "only" && !inOnly()) return "hidden";
+  if (runOpts.namePattern && !runOpts.namePattern.test([...names(s), item.name].join(" "))) return "filtered";
+  if (skipAll || s.mode === "skip" || item.mode === "skip") return "skip";
+  // `--todo`: a todo test with a body runs, and fails if it passes.
+  if ((item.mode === "todo" || s.mode === "todo") && !(runOpts.todo && item.body)) return "todo";
+  return "run";
+}
+
+/** Whether a test of `s`, or of a suite in it, runs. */
+const runsAny = (s: Suite, only: boolean, skipAll: boolean): boolean =>
+  s.items.some((i) => (i.kind === "suite" ? runsAny(i, only, skipAll || s.mode === "skip" || i.mode === "skip") : fate(s, i, only, skipAll) === "run"));
+
+/**
+ * Runs a suite: its `beforeAll` hooks, its tests and suites in order, its `afterAll` hooks. As in Bun, the hooks run
+ * for every suite (even one without tests) unless `-t` or `.only` picks tests, and then only around a suite with a
+ * test that runs. A hook that throws fails as a test of its own, `<suite> > (unnamed)`; after a `beforeAll`, nothing
+ * else of the suite runs but its `afterAll` hooks. In a skipped (or todo) suite each `beforeAll`/`afterAll` counts as
+ * a skipped (todo) test.
+ */
+async function runSuite(s: Suite, only: boolean, skipAll: boolean, allHooks: boolean) {
   const ancestors: Suite[] = [];
   for (let p: Suite | undefined = s; p; p = p.parent) ancestors.unshift(p);
-  let started = false;
   const label = (c: Case) => [...names(s), c.name].join(" > ");
+  const hookLabel = [...names(s), "(unnamed)"].join(" > ");
   const todo = s.mode === "todo";
-  for (const item of s.items) {
-    if (item.kind === "suite") {
-      await runSuite(item, only, skipAll || s.mode === "skip" || item.mode === "skip");
-      continue;
-    }
-    // In a file with `.only` tests (any file, with `--only`), the others don't run or count, as in Bun; `-t` filters
-    // the rest, counted as filtered out.
-    if (only && item.mode !== "only" && !ancestors.some((a) => a.mode === "only")) continue;
-    if (runOpts.namePattern && !runOpts.namePattern.test([...names(s), item.name].join(" "))) {
-      totals.filtered++;
-      continue;
-    }
-    if (skipAll || s.mode === "skip" || item.mode === "skip") {
-      totals.skip++;
-      report.log(listed("skip", dim(`» ${label(item)}`)));
-      continue;
-    }
-    // `--todo`: a todo test with a body runs, and fails if it passes.
-    const todoRun = (item.mode === "todo" || todo) && runOpts.todo && item.body;
-    if ((item.mode === "todo" || todo) && !todoRun) {
-      totals.todo++;
-      report.log(listed("todo", `\x1b[35m✎\x1b[0m ${label(item)} ${dim("[todo]")}`));
-      continue;
-    }
-    testName = [...names(s), item.name].join(" ");
-    const t0 = performance.now();
-    let err: unknown;
-    let failed = false;
-    testAssertions = 0;
-    expectedAssertions = undefined;
-    needAssertions = false;
-    let threw = false;
-    runningMark = undefined;
-    try {
-      for (const a of ancestors) if (!started && a === s) for (const h of a.hooks.beforeAll) await call(h, defaultTimeout);
-      started = true;
-      for (const a of ancestors) for (const h of a.hooks.beforeEach) await call(h, defaultTimeout);
-      try {
-        await call(item.fn, item.timeout);
-        if (expectedAssertions !== undefined && testAssertions !== expectedAssertions) {
-          throw new AssertionError(`expected ${expectedAssertions} assertion${expectedAssertions === 1 ? "" : "s"}, but test ended with ${testAssertions} assertion${testAssertions === 1 ? "" : "s"}`);
+  const useHooks = allHooks || runsAny(s, only, skipAll);
+  const inactive = skipAll || s.mode === "skip" ? "skip" : todo && !runOpts.todo ? "todo" : undefined;
+  /** The suite's `beforeAll` or `afterAll` hooks, in turn until one throws: whether none did. */
+  const hooks = async (fns: Fn[]) => {
+    if (!useHooks) return true;
+    for (const fn of fns) {
+      if (inactive === "skip") (totals.skip++, report.log(listed("skip", dim(`» ${hookLabel}`))));
+      else if (inactive === "todo") (totals.todo++, report.log(listed("todo", `\x1b[35m✎\x1b[0m ${hookLabel} ${dim("[todo]")}`)));
+      else {
+        const t0 = performance.now();
+        try {
+          await call(fn, defaultTimeout);
+        } catch (e) {
+          report.error(`${failure(e)}\n${listed("fail", `\x1b[31m✗\x1b[0m\x1b[31m ${hookLabel}\x1b[0m ${dim(`[${ms(performance.now() - t0)}]`)}`)}`);
+          countFailure();
+          return false;
         }
-        if (needAssertions && testAssertions === 0) throw new AssertionError("received 0 assertions, but expected at least one assertion to be called");
-      } catch (e) {
-        // `.failing`: the test is meant to throw; the afterEach hooks run all the same.
-        if (!item.failing) throw e;
-        threw = true;
-      } finally {
-        for (const a of [...ancestors].reverse()) for (const h of a.hooks.afterEach) await call(h, defaultTimeout);
       }
-    } catch (e) {
-      (failed = true), (err = e);
     }
-    const time = dim(`[${ms(performance.now() - t0)}]`);
-    const mark = runningMark;
-    runningMark = undefined;
-    if (mark === "skip") {
-      totals.skip++;
-      report.log(listed("skip", dim(`» ${label(item)}`)));
-    } else if (mark === "todo") {
-      totals.todo++;
-      report.log(listed("todo", `\x1b[35m✎\x1b[0m ${label(item)} ${dim("[todo]")}`));
-    } else if (todoRun && failed) {
-      totals.todo++;
-      report.error(`${failure(err)}\n${listed("todo", `\x1b[35m✎\x1b[0m ${label(item)} ${time}`)}`);
-    } else if (todoRun) {
-      report.error(listed("fail", `\x1b[31m✗\x1b[0m\x1b[31m ${label(item)}\x1b[0m ${time}\n  ^ this test is marked as todo but passes. Remove \`.todo\` if tested behavior now works`));
-      countFailure();
-    } else if (item.failing && !threw && !failed) {
-      report.error(listed("fail", `\x1b[31m✗\x1b[0m\x1b[31m ${label(item)}\x1b[0m\n  ^ this test is marked as failing but it passed. Remove \`.failing\` if tested behavior now works`));
-      countFailure();
-    } else if (failed && err instanceof Timeout && err.ms === item.timeout) {
-      report.error(listed("fail", `\x1b[31m✗\x1b[0m\x1b[31m ${label(item)}\x1b[0m ${time}\n  ^ this test timed out after ${err.ms}ms.`));
-      countFailure();
-    } else if (failed) {
-      report.error(`${failure(err)}\n${listed("fail", `\x1b[31m✗\x1b[0m\x1b[31m ${label(item)}\x1b[0m ${time}`)}`);
-      countFailure();
-    } else {
-      totals.pass++;
-      report.log(`\x1b[32m✓\x1b[0m ${label(item)} ${time}`);
+    return true;
+  };
+  if (await hooks(s.hooks.beforeAll))
+    for (const item of s.items) {
+      if (item.kind === "suite") {
+        await runSuite(item, only, skipAll || s.mode === "skip" || item.mode === "skip", allHooks);
+        continue;
+      }
+      await runCase(s, item, ancestors, fate(s, item, only, skipAll), label(item));
+    }
+  await hooks(s.hooks.afterAll);
+}
+
+/** One test of `s` (`ancestors`: the suites it is in, outermost first), with its `beforeEach`/`afterEach` hooks. */
+async function runCase(s: Suite, item: Case, ancestors: Suite[], what: ReturnType<typeof fate>, label: string) {
+  if (what === "hidden") return;
+  if (what === "filtered") return void totals.filtered++;
+  if (what === "skip") {
+    totals.skip++;
+    report.log(listed("skip", dim(`» ${label}`)));
+    return;
+  }
+  if (what === "todo") {
+    totals.todo++;
+    report.log(listed("todo", `\x1b[35m✎\x1b[0m ${label} ${dim("[todo]")}`));
+    return;
+  }
+const todoRun = item.mode === "todo" || s.mode === "todo";
+  testName = [...names(s), item.name].join(" ");
+  const t0 = performance.now();
+  let err: unknown;
+  let failed = false;
+  testAssertions = 0;
+  expectedAssertions = undefined;
+  needAssertions = false;
+  let threw = false;
+  runningMark = undefined;
+  const fail = (e: unknown) => void (failed || ((failed = true), (err = e)));
+  // As in Bun: a `beforeEach` that throws skips the rest of them and the test, not the `afterEach` hooks; an
+  // `afterEach` that throws skips the ones after it.
+  try {
+    for (const a of ancestors) for (const h of a.hooks.beforeEach) await call(h, defaultTimeout);
+  } catch (e) {
+    fail(e);
+  }
+  if (!failed) {
+    try {
+      await call(item.fn, item.timeout);
+      if (expectedAssertions !== undefined && testAssertions !== expectedAssertions) {
+        throw new AssertionError(`expected ${expectedAssertions} assertion${expectedAssertions === 1 ? "" : "s"}, but test ended with ${testAssertions} assertion${testAssertions === 1 ? "" : "s"}`);
+      }
+      if (needAssertions && testAssertions === 0) throw new AssertionError("received 0 assertions, but expected at least one assertion to be called");
+    } catch (e) {
+      // `.failing`: the test is meant to throw; the afterEach hooks run all the same.
+      if (item.failing) threw = true;
+      else fail(e);
     }
   }
-  if (started) for (const h of s.hooks.afterAll) await call(h, defaultTimeout).catch((e) => (report.error(`${failure(e)}\n${listed("fail", `\x1b[31m✗\x1b[0m\x1b[31m ${names(s).join(" > ")} (afterAll)\x1b[0m`)}`), countFailure()));
+  try {
+    for (const a of [...ancestors].reverse()) for (const h of a.hooks.afterEach) await call(h, defaultTimeout);
+  } catch (e) {
+    fail(e);
+  }
+  const time = dim(`[${ms(performance.now() - t0)}]`);
+  const mark = runningMark;
+  runningMark = undefined;
+  if (mark === "skip") {
+    totals.skip++;
+    report.log(listed("skip", dim(`» ${label}`)));
+  } else if (mark === "todo") {
+    totals.todo++;
+    report.log(listed("todo", `\x1b[35m✎\x1b[0m ${label} ${dim("[todo]")}`));
+  } else if (todoRun && failed) {
+    totals.todo++;
+    report.error(`${failure(err)}\n${listed("todo", `\x1b[35m✎\x1b[0m ${label} ${time}`)}`);
+  } else if (todoRun) {
+    report.error(listed("fail", `\x1b[31m✗\x1b[0m\x1b[31m ${label}\x1b[0m ${time}\n  ^ this test is marked as todo but passes. Remove \`.todo\` if tested behavior now works`));
+    countFailure();
+  } else if (item.failing && !threw && !failed) {
+    report.error(listed("fail", `\x1b[31m✗\x1b[0m\x1b[31m ${label}\x1b[0m\n  ^ this test is marked as failing but it passed. Remove \`.failing\` if tested behavior now works`));
+    countFailure();
+  } else if (failed && err instanceof Timeout && err.ms === item.timeout) {
+    report.error(listed("fail", `\x1b[31m✗\x1b[0m\x1b[31m ${label}\x1b[0m ${time}\n  ^ this test timed out after ${err.ms}ms.`));
+    countFailure();
+  } else if (failed) {
+    report.error(`${failure(err)}\n${listed("fail", `\x1b[31m✗\x1b[0m\x1b[31m ${label}\x1b[0m ${time}`)}`);
+    countFailure();
+  } else {
+    totals.pass++;
+    report.log(`\x1b[32m✓\x1b[0m ${label} ${time}`);
+  }
 }
 
 /** Snapshot files in the project, through the worker's `fs`. */
@@ -923,7 +1095,7 @@ export async function runTestFiles(
           }
           if (!globalStarted) (globalStarted = true), await globalHook("beforeAll");
         }
-        await runSuite(root, runOpts.only || hasOnly(root), false);
+        await runSuite(root, runOpts.only || hasOnly(root), false, !hasOnly(root) && !runOpts.namePattern);
       }
       // (A file that didn't load leaves its snapshot file as it is.)
       if (results.at(-1)?.file === file) continue;
