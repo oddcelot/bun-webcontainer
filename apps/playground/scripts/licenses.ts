@@ -240,6 +240,26 @@ SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS.`,
   };
 }
 
+/**
+ * SQLite, compiled to wasm in @sqlite.org/sqlite-wasm's sqlite3.wasm (bun:sqlite, node:sqlite): in the public domain.
+ * The package ships no license file of its own.
+ */
+export function sqliteNotice(): Notice {
+  return {
+    name: "SQLite (in @sqlite.org/sqlite-wasm's wasm)",
+    license: "Public Domain",
+    url: "https://sqlite.org/copyright.html",
+    texts: [
+      `The author disclaims copyright to this source code.  In place of
+a legal notice, here is a blessing:
+
+   May you do good and not evil.
+   May you find forgiveness for yourself and forgive others.
+   May you share freely, never taking more than you give.`,
+    ],
+  };
+}
+
 /** The npm package a bundled module came from (the last node_modules/<name> in its path), or undefined for our own. */
 export function npmPackageDir(moduleId: string): string | undefined {
   const path = moduleId.replace(/^\0/, "").split("?")[0];

@@ -10,7 +10,7 @@ import { rolldown, type OutputBundle } from "rolldown";
 import { defaultClientConditions, defineConfig, runnerImport, type Plugin } from "vite";
 import { BUN_VERSION } from "./src/worker/bunVersion";
 import type { AuthEnv } from "./worker/auth";
-import { npmNotice, npmPackageDir, postgresNotice, render, rustNotices } from "./scripts/licenses";
+import { npmNotice, npmPackageDir, postgresNotice, render, rustNotices, sqliteNotice } from "./scripts/licenses";
 
 const isolation = {
   "Cross-Origin-Opener-Policy": "same-origin",
@@ -373,7 +373,9 @@ function thirdPartyLicenses(): Plugin {
       const npm = [...bundledPackages].flatMap((dir) => npmNotice(dir) ?? []);
       // Postgres itself is inside PGlite's wasm: shipped whenever the package is.
       const postgres = [...bundledPackages].some((dir) => dir.endsWith(join("@electric-sql", "pglite"))) ? [postgresNotice()] : [];
-      this.emitFile({ type: "asset", fileName: "third-party-licenses.txt", source: render([...npm, ...postgres, ...rustNotices(BUN_VERSION)]) });
+      // So is SQLite, inside @sqlite.org/sqlite-wasm's.
+      const sqlite = [...bundledPackages].some((dir) => dir.endsWith(join("@sqlite.org", "sqlite-wasm"))) ? [sqliteNotice()] : [];
+      this.emitFile({ type: "asset", fileName: "third-party-licenses.txt", source: render([...npm, ...postgres, ...sqlite, ...rustNotices(BUN_VERSION)]) });
     },
   };
 }
