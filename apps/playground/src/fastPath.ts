@@ -411,15 +411,33 @@ const FORWARDED = new Set(["log", "warn", "error"]);
 /** A page's stack has its modules' whole sources in it, as data: URLs. */
 const trim = (text: string) => text.replace(/data:[^\s]*?(?=:\d+:\d+)/g, "data:…").slice(0, 4000);
 
+/** Most characters of console text one run takes from the frame, whatever it posts. */
+const MAX_CHARS = 1024 * 1024;
+/** What the current run has logged; {@link runFast} resets it. */
+let taken = { lines: 0, chars: 0, capped: false };
+
+/** Logs a page line unless the run is over its caps (MAX_LINES lines, MAX_CHARS characters), then says so once. */
+function take(level: "warn" | "error" | "log", text: string) {
+  if (!shown || taken.capped) return;
+  if (taken.lines >= MAX_LINES || taken.chars + text.length > MAX_CHARS) {
+    taken.capped = true;
+    shown.log("warn", `[fast] … more lines dropped (the editor logs at most ${MAX_LINES} lines or ${MAX_CHARS >> 20} MB of a run's console)`);
+    return;
+  }
+  taken.lines++;
+  taken.chars += text.length;
+  shown.log(level, text);
+}
+
 addEventListener("message", (e) => {
   const d = e.data as { tag?: unknown; text?: unknown; lines?: unknown } | null;
   if (!shown || e.source !== shown.frame.contentWindow || d?.tag !== TAG) return;
-  if (typeof d.text === "string") shown.log("error", trim(d.text));
+  if (typeof d.text === "string") take("error", trim(d.text));
   else if (Array.isArray(d.lines)) {
     // The frame is the page's: take only well-formed lines, and no more than a run forwards in one message.
     for (const line of d.lines.slice(0, MAX_LINES + 1) as unknown[]) {
       if (!Array.isArray(line) || typeof line[0] !== "string" || typeof line[1] !== "string" || !FORWARDED.has(line[0])) continue;
-      shown.log(line[0] as "log" | "warn" | "error", trim(line[1]));
+      take(line[0] as "log" | "warn" | "error", trim(line[1]));
     }
   }
 });
@@ -443,6 +461,7 @@ export async function runFast(vfs: VFS, frame: HTMLIFrameElement | undefined, lo
   }
   log("sys", `[fast] packages come from ${CDN}: ${fast.packages.join(", ") || "none"}`);
   shown = { frame, log };
+  taken = { lines: 0, chars: 0, capped: false };
   frame.setAttribute("sandbox", SANDBOX);
   frame.srcdoc = fast.html;
   log("sys", `[fast] ${fast.modules} modules transpiled${fast.solid ? " (JSX by Solid 2's compiler)" : ""}, preview set after ${Math.round(performance.now() - t)} ms`);
