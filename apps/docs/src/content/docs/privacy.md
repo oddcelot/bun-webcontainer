@@ -53,7 +53,7 @@ Signing in (in the Git view's menu, or **Clone a repository**) lets the playgrou
 - **npm**: installing packages fetches them from `registry.npmjs.org` ([npm's privacy policy](https://docs.npmjs.com/policies/privacy)).
 - **GitHub**: opening a repository fetches it from `api.github.com` and `raw.githubusercontent.com` ([GitHub's privacy statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement)).
 
-- **Git hosts**: `git clone`, `fetch` and `pull` in the console reach GitHub, GitLab, Codeberg or Bitbucket through runbun.dev's git proxy, because those hosts don't accept requests from other sites' pages. The proxy passes git's requests on and the answers back without keeping them; the git host sees runbun.dev's Cloudflare address, not yours. Nothing is sent unless you run one of those commands.
+- **Git hosts**: `git clone`, `fetch` and `pull` in the console reach GitHub, GitLab, Codeberg or Bitbucket through runbun.dev's git proxy, because those hosts don't accept requests from other sites' pages. The proxy passes git's requests on and the answers back without keeping them; the git host sees runbun.dev's Cloudflare address, not yours. `bun install` clones a git dependency on GitLab, Codeberg or Bitbucket the same way. Nothing is sent unless you run one of those commands or install such a dependency.
 
 Apart from the git proxy, these requests go straight from your browser to those services, and only when you install, import or fetch something.
 

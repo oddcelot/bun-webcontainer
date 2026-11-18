@@ -8,7 +8,7 @@
 // with `bun` in a temp folder). Then a trusted script that needs a native build fails, said so, without holding the
 // install. The trusted dependency's script calls bins of its own dependencies: a nested one (semver 6 under it, the
 // root has 7) and a hoisted one the root doesn't depend on (mkdirp), as each node_modules/.bin has them. Needs the
-// network (registry.npmjs.org, codeload.github.com).
+// network (registry.npmjs.org, codeload.github.com, gitlab.com: a git dependency git.wasm clones).
 //   bun scripts/install-sources.ts
 // Chrome: CHROME=<path to the binary>, else the usual install on macOS or Linux.
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -66,6 +66,7 @@ const pkg = {
     "tar-pkg": "file:vendor/tar-pkg-0.3.0.tgz",
     "linked-pkg": "link:linked-pkg",
     "is-odd": "github:jonschlinkert/is-odd#3.0.1",
+    "left-pad": "gitlab:Red54/left-pad#76979f0",
     "is-number": "7.0.0",
     "ms": "2.1.3",
     "semver": "7.6.3",
@@ -97,6 +98,7 @@ console.log("tar:", require("tar-pkg"));
 console.log("linked:", require("linked-pkg"));
 console.log("is-odd:", require("is-odd")(3), require("is-odd/package.json").version);
 console.log("patched:", isNumber.patched === true, isNumber(5));
+console.log("left-pad:", JSON.stringify(require("left-pad")("7", 3, "0")), readFileSync("node_modules/left-pad/.bun-tag", "utf8"), existsSync("node_modules/left-pad/.git"));
 console.log("trusted:", readFileSync("node_modules/trusted-dep/built.txt", "utf8"));
 console.log("trusted bins:", readFileSync("node_modules/trusted-dep/sv.txt", "utf8").split("\\n")[0], existsSync("node_modules/trusted-dep/made/dir"));
 console.log("untrusted ran:", existsSync("node_modules/untrusted-dep/built.txt"));

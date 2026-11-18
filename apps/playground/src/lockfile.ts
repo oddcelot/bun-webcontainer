@@ -4,7 +4,7 @@ import { fetchTarball, registryOf } from "./pkgCache";
 import { vfsWorkspaces } from "./workspaces";
 import { catalogChanges, catalogsOf } from "./catalogs";
 import { flattenOverrides, overridesInLock, overridesOf } from "./overrides";
-import { lockedGitHub, tarballPath, type GitHubDep } from "./gitDeps";
+import { lockedGitHub, lockedGitRepo, tarballPath, type GitHubDep } from "./gitDeps";
 import { links } from "./links";
 import { BASE } from "./base";
 import { applyPatchFile } from "./patches";
@@ -250,9 +250,9 @@ export async function pristineFiles(vfs: Pick<VFS, "files" | "readBytes" | "read
 /**
  * Installs exactly what `bun.lock` lists: every package at its locked version and install path
  * (nested keys go to nested `node_modules`), each tarball checked against its integrity hash.
- * npm packages, tarball URLs, GitHub tarballs, `file:` folders or tarballs, and workspaces and `link:` folders (copied
- * to node_modules); other git entries are reported and skipped. A package bun.lock's `patchedDependencies` names gets
- * its patch applied.
+ * npm packages, tarball URLs, GitHub tarballs, other git repositories (cloned at the commit, gitClone.ts), `file:`
+ * folders or tarballs, and workspaces and `link:` folders (copied to node_modules); git entries git.wasm can't clone
+ * are reported and skipped. A package bun.lock's `patchedDependencies` names gets its patch applied.
  */
 export async function installFromBunLock(vfs: VFS, lockText: string, log: Log): Promise<number> {
   const lock = parseBunLock(lockText);
@@ -290,7 +290,8 @@ export async function installFromBunLock(vfs: VFS, lockText: string, log: Log): 
       const kind = resolutionKind(res);
       if (kind === "root") return;
       const gh = kind === "git" ? lockedGitHub(res) : undefined;
-      if (kind === "git" && !gh) return log("error", `skipped ${key}@${res}: git dependencies other than GitHub's need a git clone, which doesn't work in the browser`);
+      const repo = kind === "git" && !gh ? lockedGitRepo(res) : undefined;
+      if (kind === "git" && !gh && !repo) return log("error", `skipped ${key}@${res}: the playground clones git dependencies over https from gitlab.com, codeberg.org and bitbucket.org (GitHub's come as tarballs)`);
       if (platformRestricted(meta) && optional.has(splitKey(key).at(-1)!)) {
         log("log", `- ${key}@${res} (optional, not for this platform)`);
         return;
@@ -315,6 +316,12 @@ export async function installFromBunLock(vfs: VFS, lockText: string, log: Log): 
           const files = vfs.list(from).filter((p) => !p.slice(from.length + 1).split("/").includes("node_modules"));
           if (!files.some((p) => p === `${from}/package.json`)) throw new Error(`no package.json in ${from || "."}`);
           for (const p of files) put(p.slice(from.length + 1), vfs.read(p)!);
+        } else if (repo) {
+          // The checkout, without .git, and the commit in `.bun-tag`, as Bun installs a cloned dependency.
+          const { gitCheckout } = await import("./gitClone");
+          const { files } = await gitCheckout(repo.clone, repo.commit, names.at(-1)!);
+          for (const [name, data] of files) put(name, data);
+          put(".bun-tag", repo.commit);
         } else {
           const { tgz, url } = await packageTarball(vfs, id, entry, folders);
           // Kept as bytes, text included (see INSTALLED_AS_BYTES).
