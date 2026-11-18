@@ -6,7 +6,7 @@ import { Input } from "@runbun/ui/solid/Input";
 import { Menu, MenuGroup, MenuItem, MenuSeparator, MenuTrigger } from "@runbun/ui/solid/Menu";
 import { Tip } from "@runbun/ui/solid/Tip";
 import { isMac } from "../keymap";
-import type { Commit, FileChange } from "../git/parse";
+import { CONFLICT_KINDS, type Commit, type FileChange, type Stash } from "../git/parse";
 import { askRepo } from "./ProjectPicker";
 import { account, loadAccount, signIn, signInAvailable, signOut } from "../account";
 import { AppContext } from "./context";
@@ -81,8 +81,8 @@ export function GitPanel() {
   const s = git.state;
   const [message, setMessage] = createSignal("");
   const [amending, setAmending] = createSignal(false);
-  const [open, setOpen] = createSignal({ staged: true, changes: true, history: true });
-  const toggle = (k: "staged" | "changes" | "history") => setOpen((o) => ({ ...o, [k]: !o[k] }));
+  const [open, setOpen] = createSignal({ conflicts: true, staged: true, changes: true, stashes: true, history: true });
+  const toggle = (k: keyof ReturnType<typeof open>) => setOpen((o) => ({ ...o, [k]: !o[k] }));
   const [ask, setAsk] = createSignal<Ask | null>(null);
   // git refuses `-d` for a branch whose commits are on no other branch: ask again before `-D` loses them.
   const deleteBranch = (b: string) =>
@@ -91,17 +91,32 @@ export function GitPanel() {
       setAsk({ title: `Delete ${b} anyway?`, body: "Its commits are on no other branch and will be lost.", label: "Delete anyway", run: () => void git.deleteBranch(b, true) });
     });
   const [naming, setNaming] = createSignal(false);
-  const [showing, setShowing] = createSignal<{ commit: Commit; text: string } | null>(null);
+  /** A commit's `git show`, or a stash's `git stash show -p`, in a dialog. */
+  const [showing, setShowing] = createSignal<{ title: string; description: string; text: string } | null>(null);
   let branchButton: HTMLButtonElement | undefined;
 
   const paths = (list: FileChange[]) => list.flatMap((c) => (c.orig ? [c.path, c.orig] : [c.path]));
-  const canCommit = () => !!message().trim() && (amending() ? s.hasHead : s.staged.length > 0 || s.changes.length > 0);
-  const label = () => (amending() ? "Amend" : s.staged.length ? "Commit" : "Commit all");
+  // During a merge the box may stay empty (git's prepared message is used), and only once nothing is conflicted.
+  const canCommit = () =>
+    s.merging ? !s.conflicts.length : !!message().trim() && (amending() ? s.hasHead : s.staged.length > 0 || s.changes.length > 0);
+  const label = () => (s.merging ? "Commit merge" : amending() ? "Amend" : s.staged.length ? "Commit" : "Commit all");
   const commitTip = () =>
-    amending() ? "Amend the last commit" : s.staged.length ? "Commit the staged changes" : "Stage everything and commit";
+    s.merging
+      ? s.conflicts.length
+        ? "Resolve the conflicts first"
+        : "Commit the merge"
+      : amending()
+        ? "Amend the last commit"
+        : s.staged.length
+          ? "Commit the staged changes"
+          : "Stage everything and commit";
 
   async function commit() {
     if (!canCommit() || s.busy) return;
+    if (s.merging) {
+      if (await git.commitMerge(message().trim())) setMessage("");
+      return;
+    }
     if (await git.commit(message().trim(), { amend: amending(), all: !amending() && !s.staged.length })) {
       setMessage("");
       setAmending(false);
@@ -142,9 +157,38 @@ export function GitPanel() {
   const pullTip = () => (s.behind ? `Pull ${plural(s.behind, "commit")} from ${s.upstream}` : `Pull from ${s.upstream}`);
 
   async function showCommit(commit: Commit) {
-    setShowing({ commit, text: "Reading the commit…" });
-    setShowing({ commit, text: await git.show(commit.hash) });
+    const head = { title: commit.subject, description: `${commit.short} by ${commit.author}, ${ago(commit.time)}` };
+    setShowing({ ...head, text: "Reading the commit…" });
+    setShowing({ ...head, text: await git.show(commit.hash) });
   }
+  async function showStash(st: Stash) {
+    const head = { title: st.label, description: `stash@{${st.index}}${st.branch ? `, made on ${st.branch}` : ""}` };
+    setShowing({ ...head, text: "Reading the stash…" });
+    setShowing({ ...head, text: await git.showStash(st.index) });
+  }
+  // Marking a file resolved that still has conflict markers is likely a slip: ask first.
+  function resolve(list: FileChange[]) {
+    const marked = list.filter((c) => git.hasMarkers(c.path));
+    if (!marked.length) return void git.resolve(list.map((c) => c.path));
+    setAsk({
+      title: marked.length === 1 ? `${split(marked[0].path)[0]} still has conflict markers` : `${marked.length} files still have conflict markers`,
+      body: "Lines between <<<<<<< and >>>>>>> are both sides of a conflict. Mark as resolved anyway? The markers are committed as they are.",
+      label: "Mark as resolved",
+      run: () => void git.resolve(list.map((c) => c.path)),
+    });
+  }
+  function abortMerge() {
+    setAsk({
+      title: "Abort the merge?",
+      body: "Puts the files the merge changed back as they were before it, your edits to them included. Other changes stay.",
+      label: "Abort merge",
+      run: () => void git.abortMerge(),
+    });
+  }
+  function dropStash(st: Stash) {
+    setAsk({ title: `Drop ${st.label}?`, body: `Deletes stash@{${st.index}} and the changes in it. This can't be undone.`, label: "Drop stash", run: () => void git.dropStash(st.index) });
+  }
+  const conflictTitle = (c: FileChange) => `${c.path} (conflict: ${CONFLICT_KINDS[c.conflict ?? ""] ?? c.conflict})`;
 
   const Row = (props: { c: FileChange; staged: boolean }) => {
     const parts = () => split(props.c.path);
@@ -202,6 +246,14 @@ export function GitPanel() {
             </MenuGroup>
             <MenuSeparator />
             <MenuItem icon="i-lucide-plus" label="Create branch…" disabled={!s.hasHead} onSelect={() => later(() => setNaming(true))} />
+            <Show when={s.hasHead && s.branches.some((b) => b !== s.branch)}>
+              <MenuSeparator />
+              <MenuGroup label={`Merge into ${s.branch ?? "HEAD"}`}>
+                <For each={s.branches.filter((b) => b !== s.branch)}>
+                  {(b) => <MenuItem icon="i-lucide-git-merge" label={b} disabled={s.busy || !!s.merging || s.conflicts.length > 0} onSelect={() => void git.merge(b)} />}
+                </For>
+              </MenuGroup>
+            </Show>
             <Show when={s.branches.some((b) => b !== s.branch)}>
               <MenuSeparator />
               <MenuGroup label="Delete branch">
@@ -273,6 +325,26 @@ export function GitPanel() {
             </div>
           )}
         </Show>
+        <Show when={s.merging || s.conflicts.length}>
+          <div class="git-merge" role="status">
+            <div class="top">
+              <i class="i-lucide-git-merge" aria-hidden="true" />
+              <strong title={s.merging ?? undefined}>{s.merging ?? "Applying a stash"}</strong>
+              <Show when={s.merging}>
+                <Button disabled={s.busy} onClick={abortMerge}>
+                  Abort
+                </Button>
+              </Show>
+            </div>
+            <p>
+              {s.conflicts.length
+                ? `${plural(s.conflicts.length, "conflicted file")}: edit, then mark resolved.`
+                : s.merging
+                  ? "Conflicts resolved: commit the merge."
+                  : "Conflicts resolved."}
+            </p>
+          </div>
+        </Show>
         <div class="git-commit">
           <Input
             multiline
@@ -280,7 +352,7 @@ export function GitPanel() {
             data-commit-message=""
             rows={3}
             aria-label="Commit message"
-            placeholder={`Message (${isMac ? "⌘" : "Ctrl+"}Enter to commit)`}
+            placeholder={s.merging ? `${s.merging} (${isMac ? "⌘" : "Ctrl+"}Enter to commit)` : `Message (${isMac ? "⌘" : "Ctrl+"}Enter to commit)`}
             value={message()}
             onInput={(e) => setMessage(e.currentTarget.value)}
             onKeyDown={(e) => {
@@ -304,7 +376,14 @@ export function GitPanel() {
               }
             >
               <MenuItem icon="i-lucide-pencil" label={amending() ? "Amending the last commit" : "Amend last commit"} disabled={!s.hasHead || amending()} onSelect={startAmend} />
-              <MenuItem icon="i-lucide-undo-2" label="Undo last commit…" disabled={!s.hasHead} onSelect={() => later(undoCommit)} />
+              <MenuItem icon="i-lucide-undo-2" label="Undo last commit…" disabled={!s.hasHead || !!s.merging} onSelect={() => later(undoCommit)} />
+              <MenuSeparator />
+              <MenuItem
+                icon="i-lucide-archive"
+                label="Stash all changes"
+                disabled={s.busy || !s.hasHead || !!s.merging || s.conflicts.length > 0 || !(s.staged.length || s.changes.length)}
+                onSelect={() => void git.stash()}
+              />
               <Show when={s.remotes.length}>
                 <MenuSeparator />
                 <MenuItem icon="i-lucide-refresh-ccw" label="Fetch" disabled={s.busy} onSelect={() => void git.fetch()} />
@@ -329,6 +408,37 @@ export function GitPanel() {
           </Show>
         </div>
         <div class="git-scroll">
+          <Show when={s.conflicts.length}>
+            <Section
+              title="Merge Changes"
+              count={s.conflicts.length}
+              open={open().conflicts}
+              onToggle={() => toggle("conflicts")}
+              actions={<Act icon="i-lucide-check-check" tip="Mark all as resolved" onClick={() => resolve(s.conflicts)} />}
+            >
+              <For each={s.conflicts}>
+                {(c) => (
+                  <li class="git-row">
+                    <button type="button" class="git-file" title={conflictTitle(c)} onClick={() => ws.showChange(c.path)}>
+                      <span class="name">{split(c.path)[0]}</span>
+                      <Show when={split(c.path)[1]}>
+                        <span class="dir">{split(c.path)[1]}</span>
+                      </Show>
+                    </button>
+                    <span class="git-acts">
+                      <Show when={c.conflict !== "DD"}>
+                        <Act icon="i-lucide-file-pen-line" tip="Open the file" onClick={() => ws.open(c.path)} />
+                      </Show>
+                      <Act icon="i-lucide-check" tip="Mark as resolved" onClick={() => resolve([c])} />
+                    </span>
+                    <span class="code" data-code="!" aria-label={`Conflict: ${CONFLICT_KINDS[c.conflict ?? ""] ?? ""}`}>
+                      !
+                    </span>
+                  </li>
+                )}
+              </For>
+            </Section>
+          </Show>
           <Show when={s.staged.length}>
             <Section
               title="Staged Changes"
@@ -361,6 +471,28 @@ export function GitPanel() {
               {(c) => <Row c={c} staged={false} />}
             </For>
           </Section>
+          <Show when={s.stashes.length}>
+            <Section title="Stashes" count={s.stashes.length} open={open().stashes} onToggle={() => toggle("stashes")}>
+              <For each={s.stashes}>
+                {(st) => (
+                  <li class="git-row">
+                    <button type="button" class="git-commit-item" title={`stash@{${st.index}}: ${st.message}`} onClick={() => void showStash(st)}>
+                      <span class="subject">{st.label}</span>
+                      <span class="meta">
+                        <code>stash@{`{${st.index}}`}</code>
+                        <Show when={st.branch}> on {st.branch}</Show>
+                      </span>
+                    </button>
+                    <span class="git-acts">
+                      <Act icon="i-lucide-archive-restore" tip="Apply (keep the stash)" disabled={s.busy} onClick={() => void git.applyStash(st.index)} />
+                      <Act icon="i-lucide-package-open" tip="Pop (apply and drop)" disabled={s.busy} onClick={() => void git.popStash(st.index)} />
+                      <Act icon="i-lucide-trash-2" tip="Drop the stash" disabled={s.busy} onClick={() => dropStash(st)} />
+                    </span>
+                  </li>
+                )}
+              </For>
+            </Section>
+          </Show>
           <Section title="History" count={s.commits.length} open={open().history} onToggle={() => toggle("history")}>
             <For each={s.commits} fallback={<li class="git-none">No commits yet.</li>}>
               {(c) => (
@@ -415,10 +547,8 @@ export function GitPanel() {
         <Show when={showing()}>
           {(c) => (
             <>
-              <DialogTitle>{c().commit.subject}</DialogTitle>
-              <DialogDescription>
-                {c().commit.short} by {c().commit.author}, {ago(c().commit.time)}
-              </DialogDescription>
+              <DialogTitle>{c().title}</DialogTitle>
+              <DialogDescription>{c().description}</DialogDescription>
               <pre class="git-show-text" tabindex="0">
                 {c().text}
               </pre>

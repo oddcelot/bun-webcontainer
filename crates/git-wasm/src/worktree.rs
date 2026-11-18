@@ -310,13 +310,14 @@ struct Opts {
     create: Option<String>,
     detach: bool,
     force: bool,
+    quiet: bool,
     pos: Vec<String>,
     /// arguments after `--`, when it was given
     paths: Option<Vec<String>>,
 }
 
 fn parse(args: &[String], checkout: bool) -> Result<Opts, Exit> {
-    let mut o = Opts { create: None, detach: false, force: false, pos: Vec::new(), paths: None };
+    let mut o = Opts { create: None, detach: false, force: false, quiet: false, pos: Vec::new(), paths: None };
     let mut it = args.iter();
     let want = |it: &mut std::slice::Iter<String>, flag: &str| {
         it.next().cloned().ok_or(Exit { code: 129, msg: format!("error: switch `{flag}' requires a value") })
@@ -328,7 +329,7 @@ fn parse(args: &[String], checkout: bool) -> Result<Opts, Exit> {
             "-b" if checkout => o.create = Some(want(&mut it, "b")?),
             "-d" | "--detach" => o.detach = true,
             "-f" | "--force" | "--discard-changes" => o.force = true,
-            "-q" | "--quiet" => {}
+            "-q" | "--quiet" => o.quiet = true,
             a if a.starts_with('-') && a.len() > 1 => return Err(Exit { code: 129, msg: format!("error: unknown option `{}'", a.trim_start_matches('-')) }),
             a => o.pos.push(a.to_string()),
         }
@@ -339,6 +340,34 @@ fn parse(args: &[String], checkout: bool) -> Result<Opts, Exit> {
 pub fn move_to(ctx: &Ctx, target: &gix::Commit<'_>, force: bool) -> Result<(), Exit> {
     let t = commit_flat(ctx, target)?;
     if force { hard_reset(ctx, &t, true) } else { switch_tree(ctx, &t) }
+}
+
+/// After moving to another commit, checkout's list of the local changes it carried over: `diff-index --name-status`
+/// of the new HEAD against the index and the worktree (`M\tfile`), unless forced or quiet.
+fn show_local_changes(ctx: &Ctx, o: &Opts, new_head: &gix::Commit<'_>) -> Result<(), Exit> {
+    if o.quiet || o.force {
+        return Ok(());
+    }
+    let (h, idx) = (commit_flat(ctx, new_head)?, flat_index(&load_index(ctx)?));
+    let wt: std::collections::HashMap<BString, Kind> = worktree_changes(ctx, gix::status::UntrackedFiles::None)?
+        .into_iter()
+        .filter(|w| !matches!(w.kind, Kind::Untracked))
+        .map(|w| (w.path, w.kind))
+        .collect();
+    let mut s = String::new();
+    for p in h.keys().chain(idx.keys()).collect::<BTreeSet<_>>() {
+        let gone = matches!(wt.get(p), Some(Kind::Deleted));
+        let code = match (h.get(p), idx.get(p)) {
+            (Some(_), None) => 'D',
+            (None, Some(_)) if !gone => 'A',
+            (Some(_), Some(_)) if gone => 'D',
+            (Some(a), Some(b)) if a != b || wt.contains_key(p) => 'M',
+            _ => continue,
+        };
+        s += &format!("{code}\t{}\n", crate::status::quote_path(&path_str(p), false));
+    }
+    out(&s);
+    Ok(())
 }
 
 fn from_label(ctx: &Ctx) -> String {
@@ -360,37 +389,55 @@ fn switch_branch(ctx: &Ctx, o: &Opts) -> Res {
                 move_to(ctx, &c, o.force)?;
                 let repo = crate::history::with_committer(ctx)?;
                 repo.reference(format!("refs/heads/{new}"), c.id, PreviousValue::MustNotExist, format!("branch: Created from {start}"))?;
+                // without a start point git doesn't touch the worktree, so it has nothing to list
+                if !o.pos.is_empty() {
+                    show_local_changes(ctx, o, &c)?;
+                }
             }
             None if start == "HEAD" => {} // unborn: the branch is created by the first commit
             None => return fatal(format!("invalid reference: {start}")),
         }
         set_head_branch(ctx, new, &format!("checkout: moving from {from} to {new}"))?;
-        eprintln!("Switched to a new branch '{new}'");
+        if !o.quiet {
+            eprintln!("Switched to a new branch '{new}'");
+        }
         return Ok(0);
     }
-    let Some(name) = o.pos.first() else { return fatal("missing branch or commit argument") };
+    let head = "HEAD".to_string();
+    let Some(name) = o.pos.first().or(o.detach.then_some(&head)) else { return fatal("missing branch or commit argument") };
     if !o.detach && branch_exists(ctx, name) {
         if ctx.repo.head_name()?.is_some_and(|n| n.shorten() == name.as_str()) {
-            eprintln!("Already on '{name}'");
+            if !o.quiet {
+                eprintln!("Already on '{name}'");
+            }
+            if let Ok(c) = ctx.repo.head_commit() {
+                show_local_changes(ctx, o, &c)?;
+            }
             return Ok(0);
         }
         let c = commit_of(ctx, &format!("refs/heads/{name}")).ok_or_else(|| Exit { code: 128, msg: format!("fatal: invalid reference: {name}") })?;
         move_to(ctx, &c, o.force)?;
         set_head_branch(ctx, name, &format!("checkout: moving from {from} to {name}"))?;
-        eprintln!("Switched to branch '{name}'");
+        if !o.quiet {
+            eprintln!("Switched to branch '{name}'");
+        }
+        show_local_changes(ctx, o, &c)?;
         return Ok(0);
     }
     let Some(c) = commit_of(ctx, name) else { return fatal(format!("invalid reference: {name}")) };
     if !o.detach {
         return fatal(format!("a branch is expected, got '{name}'"));
     }
-    detach(ctx, &c, &from, o.force)
+    detach(ctx, &c, &from, o)
 }
 
-fn detach(ctx: &Ctx, c: &gix::Commit<'_>, from: &str, force: bool) -> Res {
-    move_to(ctx, c, force)?;
+fn detach(ctx: &Ctx, c: &gix::Commit<'_>, from: &str, o: &Opts) -> Res {
+    move_to(ctx, c, o.force)?;
     detach_head(ctx, c.id, &format!("checkout: moving from {from} to {}", short(c.id)))?;
-    eprintln!("HEAD is now at {} {}", short(c.id), subject(c));
+    if !o.quiet {
+        eprintln!("HEAD is now at {} {}", short(c.id), subject(c));
+    }
+    show_local_changes(ctx, o, c)?;
     Ok(0)
 }
 
@@ -421,6 +468,9 @@ pub fn checkout(ctx: &Ctx, args: &[String]) -> Res {
     if o.create.is_some() {
         return switch_branch(ctx, &o);
     }
+    if o.detach && o.pos.is_empty() {
+        return switch_branch(ctx, &o);
+    }
     let Some(first) = o.pos.first() else { return Ok(0) };
     if o.pos.len() == 1 && !o.detach && branch_exists(ctx, first) {
         return switch_branch(ctx, &o);
@@ -429,7 +479,7 @@ pub fn checkout(ctx: &Ctx, args: &[String]) -> Res {
         if o.pos.len() > 1 {
             return restore_paths(ctx, &Specs::new(&o.pos[1..]), Some(commit_flat(ctx, &c)?), true, true, false);
         }
-        return detach(ctx, &c, &from, o.force);
+        return detach(ctx, &c, &from, &o);
     }
     restore_paths(ctx, &Specs::new(&o.pos), None, false, true, false)
 }

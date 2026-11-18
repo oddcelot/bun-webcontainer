@@ -145,13 +145,62 @@ fn walk(dir: &std::path::Path, rel: &BString, files: &mut Vec<BString>) {
     }
 }
 
+const PATCH: &str = "stash --patch picks hunks interactively, which the playground can't do: stash whole files with `git stash push -- <path>...`, or the staged changes with `git stash --staged`";
+
+/// The tracked files as they are in the worktree (for the paths `picked` takes; the index's version for the others).
+fn worktree_flat(ctx: &Ctx, idx: &Flat, picked: impl Fn(&BString) -> bool) -> Result<Flat, Exit> {
+    let mut w = idx.clone();
+    for c in worktree_changes(ctx, gix::status::UntrackedFiles::None)? {
+        if !picked(&c.path) {
+            continue;
+        }
+        match c.kind {
+            Kind::Deleted => {
+                w.remove(&c.path);
+            }
+            Kind::Modified => {
+                let id = ctx.repo.write_blob(std::fs::read(crate::worktree::disk(c.path.as_ref()))?)?.detach();
+                w.insert(c.path.clone(), (c.entry.map_or(0o100644, |e| e.0), id));
+            }
+            Kind::Untracked => {}
+        }
+    }
+    Ok(w)
+}
+
+/// What `push` does with the stash commit: store it in refs/stash and clean up (`push`, `save`), or only print its id
+/// (`create`).
+#[derive(PartialEq)]
+enum Mode {
+    Push { save: bool, implicit: bool },
+    Create,
+}
+
 /// `implicit`: `git stash [<options>]` without `push`, which takes pathspecs only after `--`.
 fn push(ctx: &Ctx, args: &[String], save: bool, implicit: bool) -> Res {
-    let (mut msg, mut untracked, mut all, mut keep_index, mut quiet) = (None, false, false, false, false);
+    make(ctx, args, Mode::Push { save, implicit })
+}
+
+/// `stash create [<message>]`: the stash commit of the tracked changes, its id printed; nothing else changes.
+fn create(ctx: &Ctx, args: &[String]) -> Res {
+    make(ctx, args, Mode::Create)
+}
+
+fn make(ctx: &Ctx, args: &[String], mode: Mode) -> Res {
+    let (save, implicit) = match mode {
+        Mode::Push { save, implicit } => (save, implicit),
+        Mode::Create => (true, false),
+    };
+    let create = mode == Mode::Create;
+    // `stash push`'s failures exit 128 where `stash`'s exit 1 (git returns them differently)
+    let fail = if matches!(mode, Mode::Push { save: false, implicit: false }) { 128 } else { 1 };
+    let (mut msg, mut untracked, mut all, mut keep_index, mut quiet, mut staged_only) = (None, false, false, false, false, false);
     let (mut words, mut paths, mut only_paths) = (Vec::new(), Vec::new(), false);
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
+            // create's arguments are all the message
+            a if create => words.push(a.to_string()),
             _ if only_paths => paths.push(a.clone()),
             "--" if !save => only_paths = true,
             "-m" | "--message" => msg = it.next().cloned(),
@@ -164,7 +213,9 @@ fn push(ctx: &Ctx, args: &[String], save: bool, implicit: bool) -> Res {
             "-q" | "--quiet" => quiet = true,
             a if a.starts_with("--message=") => msg = Some(a[10..].to_string()),
             a if a.starts_with("-m") && a.len() > 2 => msg = Some(a[2..].to_string()),
-            "-p" | "--patch" | "-S" | "--staged" => return fatal(format!("stash {a} is not supported in the playground")),
+            "-S" | "--staged" => staged_only = true,
+            "--no-staged" => staged_only = false,
+            "-p" | "--patch" => return fatal(PATCH),
             a if a.starts_with('-') && a.len() > 1 => return Err(Exit { code: 129, msg: format!("error: unknown option `{}'", a.trim_start_matches('-')) }),
             a if save => words.push(a.to_string()),
             a if implicit => return fatal(format!("subcommand wasn't specified; 'push' can't be assumed due to unexpected token '{a}'")),
@@ -173,6 +224,9 @@ fn push(ctx: &Ctx, args: &[String], save: bool, implicit: bool) -> Res {
     }
     if save && !words.is_empty() {
         msg = Some(words.join(" "));
+    }
+    if staged_only && (untracked || all) {
+        return Err(Exit { code: fail, msg: "Can't use --staged and --include-untracked or --all at the same time".into() });
     }
     let Ok(head) = ctx.repo.head_commit() else {
         return Err(Exit { code: 1, msg: "You do not have the initial commit yet".into() });
@@ -197,34 +251,25 @@ fn push(ctx: &Ctx, args: &[String], save: bool, implicit: bool) -> Res {
             return Err(Exit { code: 1, msg: format!("error: pathspec ':(prefix:0){bad}' did not match any file(s) known to git\nDid you forget to 'git add'?") });
         }
     }
-    // the worktree's version of the tracked files (of those the pathspecs pick; the index's for the others)
-    let mut w = idx.clone();
-    for c in worktree_changes(ctx, gix::status::UntrackedFiles::None)? {
-        if !picked(&c.path) {
-            continue;
-        }
-        match c.kind {
-            Kind::Deleted => {
-                w.remove(&c.path);
-            }
-            Kind::Modified => {
-                let id = ctx.repo.write_blob(std::fs::read(crate::worktree::disk(c.path.as_ref()))?)?.detach();
-                w.insert(c.path.clone(), (c.entry.map_or(0o100644, |e| e.0), id));
-            }
-            Kind::Untracked => {}
-        }
-    }
+    // the worktree's version of the tracked files (of those the pathspecs pick; the index's for the others);
+    // --staged stashes the index as the worktree
+    let wt = worktree_flat(ctx, &idx, picked)?;
+    let w = if staged_only { idx.clone() } else { wt.clone() };
     let mut new_files = Flat::new();
     for p in new_paths.into_iter().filter(|p| picked(p)) {
         let id = ctx.repo.write_blob(std::fs::read(crate::worktree::disk(p.as_ref()))?)?.detach();
         new_files.insert(p, (0o100644, id));
     }
     let staged = h.keys().chain(idx.keys()).any(|p| h.get(p) != idx.get(p) && picked(p));
-    if !staged && w == idx && new_files.is_empty() {
-        if !quiet {
+    if !staged && wt == idx && new_files.is_empty() {
+        if !quiet && !create {
             out("No local changes to save\n");
         }
         return Ok(0);
+    }
+    // (--staged stashes the whole index, whatever the pathspecs pick)
+    if staged_only && h == idx {
+        return Err(Exit { code: fail, msg: "No staged changes".into() });
     }
     let branch = ctx.repo.head_name()?.map_or("(no branch)".to_string(), |n| n.shorten().to_str_lossy().into_owned());
     let subject = head.message_raw_sloppy().to_str_lossy().lines().next().unwrap_or("").to_string();
@@ -246,6 +291,10 @@ fn push(ctx: &Ctx, args: &[String], save: bool, implicit: bool) -> Res {
         None => format!("WIP on {on}"),
     };
     let id = commit(message.clone(), write_tree(ctx, &w)?, parents)?;
+    if create {
+        out(&format!("{id}\n"));
+        return Ok(0);
+    }
     with_committer(ctx)?.edit_reference(RefEdit {
         change: Change::Update {
             log: LogChange { mode: RefLog::AndReference, force_create_reflog: true, message: message.as_str().into() },
@@ -260,6 +309,9 @@ fn push(ctx: &Ctx, args: &[String], save: bool, implicit: bool) -> Res {
     }
     for p in new_files.keys() {
         remove_path(p);
+    }
+    if staged_only {
+        return unstage_staged(ctx, &h, &idx, picked, keep_index).map(|ok| if ok { 0 } else { fail });
     }
     if paths.is_empty() {
         hard_reset(ctx, &h, true)?;
@@ -286,6 +338,86 @@ fn push(ctx: &Ctx, args: &[String], save: bool, implicit: bool) -> Res {
     }
     set_index(ctx, &next)?;
     write_files(ctx, &files)?;
+    Ok(0)
+}
+
+/// After `stash --staged`: the staged changes come out of the worktree (`git apply -R` of the staged diff: a three-way
+/// merge from the index to HEAD onto the worktree's files; all of them, as git's, whatever the pathspecs pick) and,
+/// without `-k`, the picked paths' out of the index; changes made on top of them in the worktree stay. When they can't
+/// come out, the stash stays and nothing changes (false).
+fn unstage_staged(ctx: &Ctx, h: &Flat, idx: &Flat, picked: impl Fn(&BString) -> bool, keep_index: bool) -> Result<bool, Exit> {
+    let wt = worktree_flat(ctx, idx, |_| true)?;
+    let (mut back, mut next) = (idx.clone(), idx.clone());
+    for p in h.keys().chain(idx.keys()).filter(|p| h.get(*p) != idx.get(*p)).cloned().collect::<Vec<_>>() {
+        for (t, take) in [(&mut back, true), (&mut next, picked(&p))] {
+            if take {
+                match h.get(&p) {
+                    Some(e) => t.insert(p.clone(), *e),
+                    None => t.remove(&p),
+                };
+            }
+        }
+    }
+    let labels = gix::merge::blob::builtin_driver::text::Labels { ancestor: None, current: None, other: None };
+    let mut o = ctx.repo.merge_trees(write_tree(ctx, idx)?, write_tree(ctx, &wt)?, write_tree(ctx, &back)?, labels, ctx.repo.tree_merge_options()?)?;
+    if o.has_unresolved_conflicts(gix::merge::tree::TreatAsUnresolved::git()) {
+        eprintln!("Cannot remove worktree changes");
+        return Ok(false);
+    }
+    let merged = flat_tree(ctx, o.tree.write()?.detach())?;
+    let mut files = Flat::new();
+    for p in wt.keys().chain(merged.keys()).filter(|p| wt.get(*p) != merged.get(*p)).cloned().collect::<Vec<_>>() {
+        match merged.get(&p) {
+            Some(e) => {
+                files.insert(p, *e);
+            }
+            None => remove_path(&p),
+        }
+    }
+    if !keep_index {
+        set_index(ctx, &next)?;
+    }
+    write_files(ctx, &files)?;
+    Ok(true)
+}
+
+/// `stash store [-m <message>] [-q] <commit>`: put a stash commit (from `stash create`) on the list.
+fn store(ctx: &Ctx, args: &[String]) -> Res {
+    let (mut msg, mut revs) = (None, Vec::new());
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "-m" | "--message" => msg = it.next().cloned(),
+            "-q" | "--quiet" => {}
+            a if a.starts_with("--message=") => msg = Some(a[10..].to_string()),
+            a if a.starts_with("-m") && a.len() > 2 => msg = Some(a[2..].to_string()),
+            a if a.starts_with('-') && a.len() > 1 => return Err(Exit { code: 129, msg: format!("error: unknown option `{}'", a.trim_start_matches('-')) }),
+            a => revs.push(a.to_string()),
+        }
+    }
+    let [rev] = revs.as_slice() else {
+        return Err(Exit { code: 128, msg: "\"git stash store\" requires one <commit> argument".into() });
+    };
+    let Some(id) = ctx.repo.rev_parse_single(rev.as_str()).ok().and_then(|i| i.object().ok()?.peel_to_commit().ok()).map(|c| c.id) else {
+        return Err(Exit { code: 128, msg: format!("Cannot update refs/stash with {rev}") });
+    };
+    if ctx.repo.find_commit(id)?.parent_ids().count() < 2 {
+        return fatal(format!("'{id}' is not a stash-like commit"));
+    }
+    // the same commit again adds no entry (the ref doesn't move)
+    if entries().last().is_some_and(|e| e.new == id) {
+        return Ok(0);
+    }
+    let message = msg.unwrap_or_else(|| "Created via \"git stash store\".".into());
+    with_committer(ctx)?.edit_reference(RefEdit {
+        change: Change::Update {
+            log: LogChange { mode: RefLog::AndReference, force_create_reflog: true, message: message.as_str().into() },
+            expected: PreviousValue::Any,
+            new: gix::refs::Target::Object(id),
+        },
+        name: "refs/stash".try_into()?,
+        deref: false,
+    })?;
     Ok(0)
 }
 
@@ -480,6 +612,8 @@ pub fn stash(ctx: &Ctx, args: &[String]) -> Res {
         "pop" => apply(ctx, rest, true),
         "drop" => drop(ctx, spec, quiet),
         "branch" => branch(ctx, rest),
+        "create" => create(ctx, rest),
+        "store" => store(ctx, rest),
         "clear" => write_entries(ctx, &[]).map(|_| 0),
         _ => Err(Exit { code: 129, msg: format!("error: unknown subcommand: `{sub}'") }),
     }

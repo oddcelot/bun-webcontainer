@@ -1968,6 +1968,43 @@ main [data-kb-resizable-root] { height: 100%; }
       overflow-wrap: anywhere;
     }
   }
+  /* A merge in progress (or a stash's conflicts): what is going on, and Abort. */
+  .git-merge {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    gap: 2px;
+    margin: 0 var(--pad) 4px;
+    padding: 4px 4px 6px 8px;
+    border: 1px solid color-mix(in srgb, var(--warn) 55%, var(--panel));
+    border-radius: var(--inner-radius);
+    background: color-mix(in srgb, var(--warn) 12%, var(--panel));
+    line-height: 1.4;
+
+    .top {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-height: var(--control-height);
+    }
+    i {
+      flex: none;
+      color: var(--warn);
+      font-size: 14px;
+    }
+    strong {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      font-weight: 600;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    p {
+      margin: 0;
+      color: var(--muted);
+    }
+  }
   .git-commit {
     display: flex;
     flex: none;

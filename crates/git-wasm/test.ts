@@ -467,8 +467,14 @@ try {
 
   await twin("switch feat", p3, ["switch", "feat"]);
   await twin("checkout feat", p3, ["checkout", "feat"]);
-  await twin("switch carries dirty file", p3, ["switch", "feat"], { setup: (d) => write(d, "c.txt", "c dirty\n") });
-  await twin("switch carries staged file", p3, ["switch", "feat"], { setup: (d) => { write(d, "c.txt", "c staged\n"); nat(d, "add", "c.txt"); } });
+  await twin("switch carries dirty file", p3, ["switch", "feat"], { setup: (d) => write(d, "c.txt", "c dirty\n"), out: true, err: true });
+  await twin("switch carries staged file", p3, ["switch", "feat"], { setup: (d) => { write(d, "c.txt", "c staged\n"); nat(d, "add", "c.txt"); }, out: true });
+  // the changes checkout carries over: `M\tc.txt`, staged new `A`, deleted `D`, staged and changed again; none with -q, -f or -c alone
+  const carried = (d: string) => { write(d, "c.txt", "c dirty\n"); write(d, "s p.txt", "s\n"); write(d, "gone.txt", "g\n"); nat(d, "add", "s p.txt", "gone.txt"); rmSync(join(d, "gone.txt")); write(d, "dir/z.txt", "z\n"); nat(d, "add", "dir/z.txt"); write(d, "dir/z.txt", "z2\n"); write(d, "u.txt", "u\n"); };
+  for (const a of [["switch", "feat"], ["checkout", "feat"], ["checkout", "-q", "feat"], ["switch", "main"], ["checkout", "main"], ["switch", "-c", "nb"], ["switch", "-c", "nb", "feat"], ["checkout", "-b", "nb", "main"], ["checkout", "--detach"], ["switch", "--detach", "feat"], ["checkout", "-f", "feat"]]) {
+    await twin(`${a.join(" ")} lists carried changes`, p3, a, { setup: carried, out: true, err: true });
+  }
+  await twin("checkout b.txt deleted lists D", p3, ["checkout", "feat"], { setup: (d) => rmSync(join(d, "c.txt")), out: true, err: true });
   await twin("switch carries untracked", p3, ["switch", "feat"], { setup: (d) => write(d, "u.txt", "u\n") });
   await twin("switch untracked dir beside", p3, ["switch", "feat"], { setup: (d) => write(d, "deep/other.txt", "o\n") });
   const conflict = await twin("switch refuses dirty", p3, ["switch", "feat"], { setup: (d) => write(d, "a.txt", "a dirty\n"), err: true });
@@ -671,6 +677,28 @@ try {
   await twin("merge into unborn refuses untracked", p8, ["merge", "b1"], { ...ms, setup: (d) => { orphan(d); write(d, "one.txt", "mine\n"); } });
   for (const a of [["b1", "b2"], ["--squash", "b1"], ["--no-ff", "b1"]]) await twin(`merge into unborn ${a.join(" ")}`, p8, ["merge", ...a], { ...ms, setup: orphan });
   await twin("merge detached", p8, ["merge", "--no-ff", "b1"], { ...ms, setup: (d) => nat(d, "switch", "-q", "--detach") });
+  // strategies (-s) and their options (-X)
+  const strategies = [
+    ["-s", "ours", "feat"], ["--strategy=ours", "--no-commit", "feat"], ["-sours", "--squash", "feat"], ["-s", "ours", "--ff-only", "feat"], ["-s", "ours", "main"],
+    ["-s", "recursive", "feat"], ["--strategy", "ort", "feat"], ["-s", "nope", "feat"], ["-s"], ["-X"],
+    ["-X", "ours", "feat"], ["-Xtheirs", "feat"], ["--strategy-option=theirs", "--no-commit", "feat"], ["-s", "recursive", "-X", "theirs", "feat"],
+    ["-X", "no-renames", "feat"], ["-X", "find-renames=50%", "feat"], ["-X", "rename-threshold=9", "feat"], ["-X", "histogram", "feat"], ["-X", "diff-algorithm=minimal", "feat"],
+    ["-X", "bogus", "feat"], ["-X", "find-renames=abc", "feat"], ["-X", "diff-algorithm=nope", "feat"], ["-s", "ours", "-X", "bogus", "feat"],
+  ];
+  for (const a of strategies) await twin(`merge ${a.join(" ")}`, p5c, ["merge", ...a], ms);
+  await twin("merge -s ours ff possible", p5, ["merge", "-s", "ours", "feat"], ms);
+  await twin("merge -s ours dirty elsewhere", p5c, ["merge", "-s", "ours", "feat"], { ...ms, setup: (d) => write(d, "k.txt", "dirty\n") });
+  await twin("merge -s ours refuses staged", p5c, ["merge", "-s", "ours", "feat"], { ...ms, setup: (d) => { write(d, "k.txt", "staged\n"); nat(d, "add", "k.txt"); } });
+  await twin("merge -s ours octopus", p8, ["merge", "-s", "ours", "b1", "b2"], ms);
+  await twin("merge -s octopus", p8, ["merge", "-s", "octopus", "b1", "b2", "b3"], ms);
+  await twin("merge -X theirs octopus", p8, ["merge", "-X", "theirs", "b1", "b2", "b4"], { ...ms, markers: true });
+  await twin("merge -s octopus fast-forward", p5, ["merge", "-s", "octopus", "feat"], ms);
+  for (const a of [["-s", "resolve", "feat"], ["-s", "subtree", "feat"], ["-s", "octopus", "feat"], ["-s", "ort", "b1", "b2"], ["-X", "patience", "feat"], ["-X", "ignore-space-change", "feat"]]) {
+    const p = a.includes("b1") ? p8 : p5c;
+    r = await git(p, ["merge", ...a], ident);
+    check(`merge ${a.join(" ")} unsupported`, r.code === 128 && /^fatal: .*(not supported|merges one branch|needs two or more)/.test(r.err) && !existsSync(join(p, ".git/MERGE_HEAD")), JSON.stringify(r));
+  }
+  await twin("merge -X theirs status", p5c, ["merge", "-X", "theirs", "feat"], { ...ms, extra: (d) => mergeState(d) + longStatus(d) });
 
   // ---- tag ------------------------------------------------------------------------------------------------------------
   // the tags as refs and objects (an annotated tag's id differs: its tagger's time)
@@ -712,6 +740,19 @@ try {
   await twin("tag --sort creates", p6v, ["tag", "--sort=refname", "newtag"], ts);
   await twin("tag.sort", p6v, ["tag"], { ...ts, setup: (d) => nat(d, "config", "tag.sort", "-version:refname") });
   await twin("tag.sort, --sort wins", p6v, ["tag", "--sort=refname"], { ...ts, setup: (d) => nat(d, "config", "tag.sort", "-version:refname") });
+  // -F, the message cleanup, --points-at, --merged, --format, -i
+  const msgFile = (d: string) => write(d, "msg.txt", "  \n\nfirst line   \n# a comment\n\n\n\nsecond\n\n");
+  const tagF = [["-F", "msg.txt", "f1"], ["--file=msg.txt", "f2", "feat"], ["-a", "-F", "msg.txt", "f3"], ["-Fmsg.txt", "f4"], ["-F", "msg.txt", "-m", "x", "f5"], ["-F", "nope.txt", "f6"], ["-F", "comments.txt", "f7"], ["-m", "a\n# c\n\nb  ", "f8"], ["-m", "one", "-m", "\n\ntwo\n\n", "f9"], ["-F"]];
+  for (const a of tagF) await twin(`tag ${a.join(" ")}`, p6, ["tag", ...a], { ...ts, setup: (d) => { msgFile(d); write(d, "comments.txt", "# only\n"); } });
+  const filters = [["--points-at"], ["--points-at", "HEAD~1"], ["--points-at", "feat"], ["--points-at", native(p6v, ["rev-parse", "ann"]).trim()], ["--points-at=feat", "l*"], ["--points-at", "nope"], ["--merged"], ["--merged", "HEAD~1"], ["--merged=feat"], ["--no-merged"], ["--no-merged", "HEAD~1"], ["--merged", "HEAD", "--no-merged", "HEAD~1"], ["--merged", "nope"], ["--merged", "HEAD~1", "--sort=-v:refname", "v1*"]];
+  const formats = ["%(refname)", "%(refname:short) %(objecttype) %(*objecttype) %(objectname:short) %(*objectname)", "%(refname:lstrip=1)|%(refname:strip=2)|%(objectname:short=10)", "%(subject)|%(body)|%(contents:subject)|%(contents:body)|%(contents)", "%(contents:lines=1)|%(contents:lines=2)", "%(taggername) %(taggeremail) %(taggeremail:trim) %(*authorname) %(*authoremail) %(tag) %(type)", "%(creatordate)|%(creatordate:short)|%(taggerdate:iso)|%(*committerdate:unix)|%(creatordate:raw)", "%(objectsize) %(*subject)", "100%% %41%2a %zz %", "", "%(nope)", "%(refname"];
+  for (const a of [...filters, ...formats.map((f) => [`--format=${f}`]), ["--format", "%(refname:short)", "-l", "[a-l]*"], ["--format"], ["-n", "--format=%(refname)"]]) await twin(`tag ${a.join(" ")}`, p6v, ["tag", ...a], ts);
+  const mixed = (d: string) => { nat(d, "tag", "Alpha"); nat(d, "tag", "beta"); nat(d, "tag", "BETA2"); };
+  for (const a of [["-i"], ["-i", "-l", "b*"], ["-l", "b*"], ["--ignore-case", "--sort=-refname", "-l", "*A*"], ["-i", "--sort=v:refname"]]) await twin(`tag ${a.join(" ")}`, p6, ["tag", ...a], { ...ts, setup: mixed });
+  for (const a of [["-s", "v9"], ["-u", "key", "v9"], ["--sign", "-m", "x", "v9"], ["-F", "-", "v9"]]) {
+    r = await git(p6, ["tag", ...a], ident);
+    check(`tag ${a.join(" ")} unsupported`, r.code === 128 && /not supported in the playground/.test(r.err) && !existsSync(join(p6, ".git/refs/tags/v9")), JSON.stringify(r));
+  }
   r = await git(empty, ["tag", "v0"], ident);
   check("tag unborn", r.code === 128 && r.err === "fatal: Failed to resolve 'HEAD' as a valid ref.\n", JSON.stringify(r));
   await twin("show annotated tag", p6, ["show", "ann"], { out: true });
@@ -824,10 +865,42 @@ try {
   }
   same("native pops our pathspec stash", (natIn(A, "stash", "pop", "--index"), state(A)), (natIn(B, "stash", "pop", "--index"), state(B)));
   await twin("stash -- path without changes", p7, ["stash", "--", "dir"], ss);
+  // --staged: only what is staged, taken out of the index and the worktree (changes made on top of it stay)
+  const stagedOnTop = (d: string) => { dirty(d); write(d, "a.txt", "a\nB\nc\n"); nat(d, "add", "a.txt"); write(d, "a.txt", "a\nB\nc\nA\n"); };
+  for (const a of [["-S"], ["push", "--staged", "-m", "only staged"], ["--staged", "-k"], ["-S", "--", "n2.txt"], ["-S", "--", "k.txt"], ["-S", "-u"], ["push", "-S", "-a"], ["-q", "-S"]]) {
+    await twin(`stash ${a.join(" ")}`, p7, ["stash", ...a], { ...ss, setup: stagedOnTop });
+  }
+  same("native pops our --staged stash", (natIn(A, "stash", "pop", "--index"), state(A)), (natIn(B, "stash", "pop", "--index"), state(B)));
+  await twin("stash -S nothing staged", p7, ["stash", "-S"], { ...ss, setup: (d) => write(d, "a.txt", "unstaged\n") });
+  await twin("stash push -S nothing staged", p7, ["stash", "push", "-S"], { ...ss, setup: (d) => write(d, "a.txt", "unstaged\n") });
+  await twin("stash -S nothing at all", p7, ["stash", "-S"], ss);
+  // the staged change and the worktree's conflict: git apply -R fails, the stash is kept and nothing else changes
+  const cantRemove = (d: string) => { write(d, "a.txt", "a\nB\nc\n"); nat(d, "add", "a.txt"); write(d, "a.txt", "a\nC\nc\n"); };
+  await twin("stash -S can't remove", p7, ["stash", "-S"], { ...ss, err: false, setup: cantRemove });
+  await twin("stash push -S can't remove", p7, ["stash", "push", "-S"], { ...ss, err: false, setup: cantRemove });
+  r = await git(p7, ["stash", "-p"], ident);
+  check("stash -p unsupported", r.code === 128 && r.err.includes("--patch") && r.err.includes("git stash push -- <path>") && !existsSync(join(p7, ".git/refs/stash")), JSON.stringify(r));
+  // create: the stash commit without touching anything; store: put one on the list
+  const stashCommit = (d: string, id: string) => !id ? "-" : ["%T|%s|%B", "%T", "%T"].map((f, i) => natIn(d, "log", "-1", `--format=${f}`, [id, `${id}^1`, `${id}^2`][i]).stdout).join("|");
+  for (const a of [[], ["my", "message"], ["-u"]]) {
+    for (const d of [A, B]) {
+      rmSync(d, { recursive: true, force: true });
+      cpSync(p7, d, { recursive: true });
+      dirty(d);
+    }
+    const ours = await git(A, ["stash", "create", ...a], ident);
+    const nativeRun = natIn(B, "stash", "create", ...a);
+    check(`stash create ${a.join(" ")}: exit`, ours.code === nativeRun.status && ours.err === nativeRun.stderr, JSON.stringify(ours));
+    same(`stash create ${a.join(" ")}: commit`, stashCommit(A, ours.out.trim()), stashCommit(B, nativeRun.stdout.trim()));
+    same(`stash create ${a.join(" ")}: state`, state(A) + stashState(A), state(B) + stashState(B));
+  }
+  await twin("stash create clean", p7, ["stash", "create"], ss);
+  const made = (d: string) => { dirty(d); const id = natIn(d, "stash", "create").stdout.trim(); nat(d, "update-ref", "refs/heads/made", id); nat(d, "reset", "-q", "--hard"); };
+  for (const a of [["made"], ["-m", "custom", "made"], ["-q", "made"], ["HEAD"], ["nope"], [], ["made", "HEAD"]]) await twin(`stash store ${a.join(" ")}`, p7s, ["stash", "store", ...a], { ...ss, setup: made });
+  await twin("stash store twice", p7s, ["stash", "store", "made"], { ...ss, setup: (d) => { made(d); nat(d, "stash", "store", "made"); } });
   // stash branch: a branch at the stash's base, the stash applied with --index and dropped
   for (const a of [["nb"], ["nb", "1"], ["nb", "stash@{2}"], [], ["main"], ["nb", "7"]]) await twin(`stash branch ${a.join(" ")}`, p7s, ["stash", "branch", ...a], ss);
-  // (stdout: our checkout doesn't list the changes it carries over, `M\tb.txt`)
-  await twin("stash branch with local changes in the way", p7s, ["stash", "branch", "nb"], { ...ss, out: false, setup: (d) => write(d, "b.txt", "mine\n") });
+  await twin("stash branch with local changes in the way", p7s, ["stash", "branch", "nb"], { ...ss, setup: (d) => write(d, "b.txt", "mine\n") });
   // (stderr: git apply's `error: patch failed: b.txt:1` lines come first)
   await twin("stash apply --index conflict", p7s, ["stash", "apply", "--index"], { ...ss, err: false, setup: (d) => { write(d, "b.txt", "conflicting\n"); nat(d, "commit", "-qam", "conflicting"); }, head: "tree" });
 

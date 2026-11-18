@@ -43,8 +43,17 @@ Output the panel parses (byte-identical to native git, checked by `test.ts`):
   reversed; `tag.sort` without one): `refname`, `version:refname`/`v:refname` (git's versioncmp, glibc's strverscmp,
   without `versionsort.suffix`), `creatordate` (tagger date, else committer date, else 0), `objectname`, each with
   `-`; other keys are `unknown field name` (exit 128). `--contains [<commit>]`/`--no-contains` (HEAD as the last
-  argument; they imply `-l` and leave out tags of trees and blobs). Not done: `-s`/`-u` (signing), `-F`, `--points-at`,
-  `--merged`, `--format`, `-i`.
+  argument; they imply `-l` and leave out tags of trees and blobs). `--merged [<commit>]`/`--no-merged` (the tag's
+  commit reachable from it, or not; tags of trees and blobs left out), `--points-at [<object>]` (the ref's object, or
+  what an annotated tag points at), `-i` (patterns and the name order ignore case; `version:refname` doesn't, as in
+  git). `--format=<fmt>`: `%%`, `%xx`, and the atoms `refname[:short|lstrip=N|strip=N]`, `objectname[:short[=N]]`,
+  `objecttype`, `objectsize`, `type`, `tag`, `subject`, `body`, `contents[:subject|body|lines=N]`,
+  `tagger|author|committer[name|email[:trim]|date]`, `creator`, `creatordate`, each also as `*atom` (the tagged
+  object's); dates take `:short`, `:iso`, `:iso-strict`, `:rfc`, `:unix`, `:raw`. Unknown atoms are git's `unknown field
+  name` (exit 128); `%(align)`, `%(if)` and the like are clear errors. `-F <file>` (relative to the project; `-F -`
+  is a clear error, there is no stdin) and `-m` messages go through git's stripspace (comment lines, trailing
+  whitespace and extra blank lines go); `-F` with `-m` is refused as git does. `-s`/`-u` (signing) exit 128: there is
+  no key to sign with. Not done: `versionsort.suffix`.
 - `rev-parse [--verify] [-q] [--short] [--abbrev-ref] <rev>`, `--show-toplevel`, `--is-inside-work-tree`, `--git-dir`.
 - `config <key> [<value>]`, `--get`, `--unset`, `--list|-l`, `--local`: the repository's `/.git/config` only;
   `--global`, `--system`, `--file` exit 128 with `only --local config in the playground`. Unset key: exit 1.
@@ -54,8 +63,10 @@ Moving between trees (`worktree.rs`): `switch|checkout <branch>`, `-c|-b <new> [
 [<rev>] [-- <path>]`; `commit --amend [-m] [--no-edit]` (keeps author and date). Switching is git's two-way merge: a
 path that differs between the two commits is replaced only when the index and the file still match HEAD; otherwise
 nothing is touched and it exits 1 with git's `Your local changes ... would be overwritten by checkout` (or the untracked
-files message). Local changes to paths both commits share are carried over. Differences: `checkout` doesn't print the
-`M\tfile` lines for carried changes, and detaching prints one `HEAD is now at` line instead of git's advice. Files are
+files message). Local changes to paths both commits share are carried over, and listed as git lists them
+(`M\tfile`, `A`, `D`: diff-index of the new HEAD; not with `-q`, `-f`, or `-c`/`-b` without a start point).
+`--detach` alone detaches at HEAD. Difference: detaching prints one `HEAD is now at` line instead of git's advice
+(and no `Previous HEAD position was`). Files are
 written from blobs without filters (no autocrlf, symlinks become plain files), so gix's `worktree-mutation` (and the
 `io-close` WASI patch it would need) isn't used. `reset --merge|--keep` are not implemented (`merge --abort` does what `reset --merge` does after a merge).
 
@@ -80,8 +91,16 @@ in the way. `--no-commit` stops before the commit with MERGE_HEAD/MERGE_MSG (`co
 no MERGE_HEAD but SQUASH_MSG (`Squashed commit of the following:` and the commits in log's medium format), which
 `commit` takes as its message (then MERGE_MSG's `# Conflicts:`, cleaned up as `--no-edit` does). Merging into an
 unborn branch checks out the commit (one only; refuses untracked files in the way, keeps staged ones). `stash apply`
-with unmerged paths prints git's `<path>: needs merge` and `error: could not write index` (exit 128). Not done:
-strategies (`-s`, `-X`).
+with unmerged paths prints git's `<path>: needs merge` and `error: could not write index` (exit 128). Strategies
+(`-s`, also for `pull`): `ort` and `recursive` (the same merge, named as asked), `ours` (a merge commit with HEAD's
+tree; it never fast-forwards, ignores `--ff-only` as git does, refuses staged changes: `Merge with strategy ours
+failed.`, exit 2), `octopus` (for two or more heads; one is a clear error). `resolve` and `subtree` exit 128 as not
+supported; an unknown name is git's `Could not find merge strategy` (exit 1). `-X` (ort's options; the octopus ignores
+them as git's script does): `ours`/`theirs` (gix's file favor: a conflicting hunk takes that side, binaries and
+symlinks too; modify/delete still conflicts), `no-renames`, `find-renames[=<n>]`/`rename-threshold=<n>` (git's
+rename scores: `50%`, `5`), `histogram`, `diff-algorithm=myers|minimal|histogram`, `no-renormalize`. `patience`,
+`ignore-*-space*`, `renormalize` and `subtree` are not supported (exit 128); others are git's `unknown strategy
+option` (exit 128).
 
 Stashing (`stash.rs`): `stash [push] [-m <msg>] [-u|-a] [-k] [-q] [[--] <pathspec>...]`, `save [<msg>]`, `list`, `show [-p] [--stat] [<stash>]`,
 `apply [--index] [-q] [<stash>]`, `pop`, `drop [-q] [<stash>]`, `clear`; `<stash>` is `stash@{n}` or `n`. The commits
@@ -99,7 +118,16 @@ ignored files too (gix's dirwalk emitting ignored entries; an ignored directory'
 and untracked files; i is still the whole index, as git's; then only those paths go back to HEAD (with `-k` to the
 index), the others keep their changes; a spec matching nothing in the index (or the untracked files with `-u`) is
 git's `pathspec ':(prefix:0)x' did not match` (exit 1). `stash branch <name> [<stash>]` switches to a new branch at the
-stash's base and pops it with `--index`. Not done: `--patch`, `--staged`, `stash create|store`.
+stash's base and pops it with `--index`. `-S`/`--staged` stashes the index (w is i's tree), then takes the staged
+changes out of the worktree as git's `apply -R` of the staged diff does (a three-way merge from the index to HEAD onto
+the worktree's files, so changes made on top stay; all staged paths, as git's, whatever the pathspecs pick) and, unless
+`-k`, the picked paths out of the index; when that fails the stash stays, `Cannot remove worktree changes` (without
+git apply's `error: patch failed` lines; a merge can succeed where `apply` finds no context). It refuses `-u`/`-a`,
+and `No staged changes`; these fail with 1, or 128 under `stash push`, as git's. `stash create [<message>]` prints a
+stash commit's id (tracked changes only; every argument is the message) and changes nothing; `stash store [-m <msg>]
+[-q] <commit>` puts it on the list (`Created via "git stash store".`; a commit with fewer than two parents is `not a
+stash-like commit`; storing the newest entry again adds none). `--patch` is interactive: a clear error (exit 128)
+pointing to pathspecs and `--staged`.
 
 `test.ts` runs a scripted session under node's WASI and compares status, diff, log, show and every mutation with native
 git: "twin" runs execute the same command on two copies of a project (ours vs native) and compare `status`, `ls-files -s`,
@@ -154,7 +182,7 @@ imports synchronously, and checks the results with native git (125 checks, `pull
   match native output.
 - Packed clones read fine. This repo (933 commits, 3.4 MiB pack, 578 files): full log walk, HEAD tree and status in
   ~65 ms under node's WASI (native `git status`: 33 ms).
-- Size (the CLI): 4.01 MB stripped, 1.11 MB brotli (3.96 MB and 1.10 MB before octopus, squash, pull merges, stash
+- Size (the CLI): 4.08 MB stripped, 1.14 MB brotli (4.01 MB and 1.11 MB before merge strategies, stash --staged/create/store and tag --format/--merged/--points-at; 3.96 MB and 1.10 MB before octopus, squash, pull merges, stash
   pathspecs and tag sorting; 3.6 MB and 1.0 MB before merge, stash and tag; 2.97 MB and
   0.86 MB before the network commands).
 - WASI surface: 25 `wasi_snapshot_preview1` imports (`path_open`, `fd_read`/`fd_write`/`fd_seek`, `fd_readdir`,

@@ -3,7 +3,21 @@ import type { GitStatus, GitStatusEntry } from "@pierre/trees";
 import type { VFS } from "@runbun/vfs";
 import { contents, setHeadBaseline, snapshot, type Baseline } from "../changes";
 import { git, type GitProgress, type GitResult } from "./git";
-import { LOG_FORMAT, parseBranches, parseLog, parseStatus, stagedChanges, worktreeChanges, type Commit, type FileChange, type StatusEntry } from "./parse";
+import {
+  LOG_FORMAT,
+  conflictedChanges,
+  mergeTitle,
+  parseBranches,
+  parseLog,
+  parseStashes,
+  parseStatus,
+  stagedChanges,
+  worktreeChanges,
+  type Commit,
+  type FileChange,
+  type Stash,
+  type StatusEntry,
+} from "./parse";
 
 /** How long after the last change to the project's files the status is read again. */
 const DEBOUNCE = 300;
@@ -21,6 +35,12 @@ const savedView = (): ExplorerView => {
 
 /** Whether a key press is in the commit message box, which Mod+Enter commits from (not Run). */
 export const inCommitBox = (e: Event) => e.target instanceof Element && !!e.target.closest("[data-commit-message]");
+
+/** git's output when a merge stopped on conflicts (`CONFLICT (content): Merge conflict in a.txt`). */
+const CONFLICTED = /^CONFLICT \(/m;
+
+/** Conflict markers git left in a file: a line starting `<<<<<<< `. */
+const MARKERS = /^<{7}(?: |$)/m;
 
 /** The tree's name for a status letter. */
 const TREE_STATUS: Record<string, GitStatus> = { M: "modified", A: "added", D: "deleted", R: "renamed", C: "added", T: "modified", U: "untracked", "!": "modified" };
@@ -44,6 +64,12 @@ export function createGit(vfs: VFS, opts: { enabled: () => boolean; log: (level:
     hasHead: false,
     staged: [] as FileChange[],
     changes: [] as FileChange[],
+    /** Paths a merge or an applied stash left conflicted (unmerged in the index). */
+    conflicts: [] as FileChange[],
+    /** A merge is in progress (.git/MERGE_HEAD): its title from MERGE_MSG (`Merge branch 'feat'`). */
+    merging: null as string | null,
+    /** `git stash list`, newest first (read with the panel open). */
+    stashes: [] as Stash[],
     commits: [] as Commit[],
     branches: [] as string[],
     /** The branch's upstream (`origin/main`), and how far the two have moved apart. */
@@ -90,6 +116,9 @@ export function createGit(vfs: VFS, opts: { enabled: () => boolean; log: (level:
         s.hasHead = false;
         s.staged = [];
         s.changes = [];
+        s.conflicts = [];
+        s.merging = null;
+        s.stashes = [];
         s.commits = [];
         s.branches = [];
         s.upstream = null;
@@ -112,6 +141,7 @@ export function createGit(vfs: VFS, opts: { enabled: () => boolean; log: (level:
     let commits: Commit[] | undefined;
     let branches: string[] | undefined;
     let remotes: string[] | undefined;
+    let stashes: Stash[] | undefined;
     if (hasHead) oid = (await run(["rev-parse", "--verify", "-q", "HEAD"])).stdout.trim();
     if (panel) {
       if (hasHead) {
@@ -119,12 +149,19 @@ export function createGit(vfs: VFS, opts: { enabled: () => boolean; log: (level:
         if (!log.exitCode) commits = parseLog(log.stdout);
         const list = await run(["branch", "--format=%(refname:short)"]);
         if (!list.exitCode) branches = parseBranches(list.stdout);
-      } else branches = status.branch ? [status.branch] : [];
+        const stashed = await run(["stash", "list"]);
+        if (!stashed.exitCode) stashes = parseStashes(stashed.stdout);
+      } else {
+        branches = status.branch ? [status.branch] : [];
+        stashes = [];
+      }
       const list = await run(["remote"]);
       if (!list.exitCode) remotes = list.stdout.split("\n").filter(Boolean);
     }
     const staged = stagedChanges(status.entries);
     const changes = worktreeChanges(status.entries);
+    const conflicts = conflictedChanges(status.entries);
+    const merging = vfs.files.has(".git/MERGE_HEAD") ? mergeTitle(vfs.readText(".git/MERGE_MSG") ?? "") || "Merge" : null;
     setState((s) => {
       s.repo = true;
       s.loaded = true;
@@ -132,6 +169,9 @@ export function createGit(vfs: VFS, opts: { enabled: () => boolean; log: (level:
       s.hasHead = hasHead;
       reconcile(staged, "path")(s.staged);
       reconcile(changes, "path")(s.changes);
+      reconcile(conflicts, "path")(s.conflicts);
+      s.merging = merging;
+      if (stashes) reconcile(stashes, "index")(s.stashes);
       if (commits) reconcile(commits, "hash")(s.commits);
       else if (!hasHead) s.commits = [];
       if (branches) s.branches = branches;
@@ -231,8 +271,9 @@ export function createGit(vfs: VFS, opts: { enabled: () => boolean; log: (level:
       result = out || undefined;
       if (result?.exitCode) {
         const text = message(result);
-        setState((s) => void (s.error = text));
-        opts.log("error", `[git] ${text}`);
+        // A merge (or pull, or stash) that stopped on conflicts: the Merge Changes section and the banner say so.
+        if (!CONFLICTED.test(result.stdout)) setState((s) => void (s.error = text));
+        opts.log(CONFLICTED.test(result.stdout) ? "warn" : "error", `[git] ${(result.stdout + result.stderr).trim() || text}`);
       }
     } catch (e) {
       setState((s) => void (s.error = String(e)));
@@ -317,8 +358,28 @@ export function createGit(vfs: VFS, opts: { enabled: () => boolean; log: (level:
     /** `force`: `-D`, for a branch whose commits are on no other branch (they're lost). */
     deleteBranch: (name: string, force = false) => act(["branch", force ? "-D" : "-d", name]).then(ok),
     fetch: () => sync("fetch", ["fetch"]),
-    /** Fetch, then fast-forward or merge (a conflict leaves the merge for the terminal to finish). */
+    /** Fetch, then fast-forward or merge; a conflict leaves the merge for the panel's Merge Changes to finish. */
     pull: () => sync("pull", ["pull"]),
+    /** Merges a branch into the current one (a fast-forward when it can). */
+    merge: (branch: string) => act(["merge", branch]).then(ok),
+    /** Ends the merge in progress, putting back what the merge changed (`merge --abort`). */
+    abortMerge: () => act(["merge", "--abort"]).then(ok),
+    /** The merge commit: the message typed, else the one git prepared (MERGE_MSG). */
+    commitMerge: (msg: string) => act(msg ? ["commit", "-m", msg] : ["commit", "--no-edit"]).then(ok),
+    /** Marks conflicted paths resolved: `git add` (a path deleted in the worktree is removed from the index). */
+    resolve: (paths: string[]) => act(["add", "-A", "--", ...paths]).then(ok),
+    /** The file still has conflict markers (`<<<<<<< `). */
+    hasMarkers: (path: string) => MARKERS.test(vfs.readText(path) ?? ""),
+    /** Sets every change aside, new files too (`stash push -u`). */
+    stash: () => act(["stash", "push", "-u"]).then(ok),
+    applyStash: (index: number) => act(["stash", "apply", `stash@{${index}}`]).then(ok),
+    popStash: (index: number) => act(["stash", "pop", `stash@{${index}}`]).then(ok),
+    dropStash: (index: number) => act(["stash", "drop", `stash@{${index}}`]).then(ok),
+    /** What `git stash show -p` prints for a stash. */
+    async showStash(index: number) {
+      const r = await run(["stash", "show", "-p", `stash@{${index}}`]);
+      return r.exitCode ? message(r) : r.stdout;
+    },
     /** To the upstream; a branch without one (or whose upstream is gone) is published to `pushRemote` and tracks it. */
     push() {
       const remote = state.upstream && !state.gone ? null : pushRemote();

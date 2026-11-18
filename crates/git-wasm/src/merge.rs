@@ -177,6 +177,7 @@ fn abort(ctx: &Ctx) -> Res {
 }
 
 /// What `merge` and `pull` were asked to do.
+#[derive(Clone)]
 pub struct Opts {
     pub no_ff: bool,
     pub ff_only: bool,
@@ -188,11 +189,15 @@ pub struct Opts {
     pub msgs: Vec<String>,
     /// the reflog message's prefix: `merge feat`, `pull`
     pub reflog: String,
+    /// `-s`: `ort` (also when none is given), `recursive` (ort by another name), `ours`, `octopus`
+    pub strategy: Option<String>,
+    /// `-X`: the strategy's options
+    pub xopts: Vec<String>,
 }
 
 impl Default for Opts {
     fn default() -> Self {
-        Opts { no_ff: false, ff_only: false, squash: false, commit: true, stat: true, quiet: false, msgs: Vec::new(), reflog: "merge".into() }
+        Opts { no_ff: false, ff_only: false, squash: false, commit: true, stat: true, quiet: false, msgs: Vec::new(), reflog: "merge".into(), strategy: None, xopts: Vec::new() }
     }
 }
 
@@ -215,12 +220,89 @@ impl Opts {
                 Some(m) => self.msgs.push(m.clone()),
                 None => return Err(Exit { code: 129, msg: "error: switch `m' requires a value".into() }),
             },
+            "-s" | "--strategy" | "-X" | "--strategy-option" => match it.next() {
+                Some(v) if matches!(a, "-s" | "--strategy") => self.strategy(v)?,
+                Some(v) => self.xopts.push(v.clone()),
+                None if a.starts_with("--") => return Err(Exit { code: 129, msg: format!("error: option `{}' requires a value", &a[2..]) }),
+                None => return Err(Exit { code: 129, msg: format!("error: switch `{}' requires a value", &a[1..]) }),
+            },
+            a if a.starts_with("--strategy=") => self.strategy(&a[11..])?,
+            a if a.starts_with("--strategy-option=") => self.xopts.push(a[18..].to_string()),
+            a if a.starts_with("-s") && a.len() > 2 => self.strategy(&a[2..])?,
+            a if a.starts_with("-X") && a.len() > 2 => self.xopts.push(a[2..].to_string()),
             a if a.starts_with("--message=") => self.msgs.push(a[10..].to_string()),
             a if a.starts_with("-m") && a.len() > 2 => self.msgs.push(a[2..].to_string()),
             _ => return Ok(false),
         }
         Ok(true)
     }
+}
+
+const STRATEGIES: [&str; 6] = ["octopus", "ours", "recursive", "resolve", "subtree", "ort"];
+
+impl Opts {
+    fn strategy(&mut self, name: &str) -> Result<(), Exit> {
+        if !STRATEGIES.contains(&name) {
+            return Err(Exit { code: 1, msg: format!("Could not find merge strategy '{name}'.\nAvailable strategies are: octopus ours recursive resolve subtree.") });
+        }
+        if matches!(name, "resolve" | "subtree") {
+            return fatal(format!("merge strategy '{name}' is not supported in the playground (ort, recursive, ours and octopus are)"));
+        }
+        if self.strategy.as_deref().is_some_and(|s| s != name) {
+            return fatal("only one merge strategy (-s) at a time is supported in the playground");
+        }
+        self.strategy = Some(name.to_string());
+        Ok(())
+    }
+
+    /// The tree merge's options with `-X`'s: `ours`/`theirs` (the side a conflicting hunk takes), `no-renames`,
+    /// `find-renames[=<n>]`/`rename-threshold=<n>`, `histogram`, `diff-algorithm=myers|minimal|histogram`.
+    pub fn tree_options(&self, ctx: &Ctx) -> Result<gix::merge::tree::Options, Exit> {
+        use gix::merge::blob::builtin_driver::{binary, text};
+        let mut inner: gix::merge::plumbing::tree::Options = ctx.repo.tree_merge_options()?.into();
+        for x in &self.xopts {
+            let unknown = || Err(Exit { code: 128, msg: format!("fatal: unknown strategy option: -X{x}") });
+            let unsupported = || fatal(format!("-X{x} is not supported in the playground"));
+            match x.as_str() {
+                "ours" | "theirs" => {
+                    let (b, t) = if x == "ours" { (binary::ResolveWith::Ours, text::Conflict::ResolveWithOurs) } else { (binary::ResolveWith::Theirs, text::Conflict::ResolveWithTheirs) };
+                    (inner.symlink_conflicts, inner.blob_merge.resolve_binary_with, inner.blob_merge.text.conflict) = (Some(b), Some(b), t);
+                }
+                "no-renames" => inner.rewrites = None,
+                "find-renames" => inner.rewrites = Some(inner.rewrites.unwrap_or_default()),
+                "histogram" => inner.blob_merge.text.diff_algorithm = gix::diff::blob::Algorithm::Histogram,
+                "no-renormalize" => {}
+                x if x.starts_with("diff-algorithm=") => {
+                    inner.blob_merge.text.diff_algorithm = match &x[15..] {
+                        "myers" | "default" => gix::diff::blob::Algorithm::Myers,
+                        "minimal" => gix::diff::blob::Algorithm::MyersMinimal,
+                        "histogram" => gix::diff::blob::Algorithm::Histogram,
+                        "patience" => return unsupported(),
+                        _ => return unknown(),
+                    }
+                }
+                x if x.starts_with("find-renames=") || x.starts_with("rename-threshold=") => {
+                    let Some(score) = rename_score(&x[x.find('=').unwrap_or(0) + 1..]) else { return unknown() };
+                    inner.rewrites = Some(gix::diff::Rewrites { percentage: Some(score), ..inner.rewrites.unwrap_or_default() });
+                }
+                "patience" | "ignore-space-change" | "ignore-all-space" | "ignore-space-at-eol" | "ignore-cr-at-eol" | "renormalize" | "subtree" => return unsupported(),
+                x if x.starts_with("subtree=") => return unsupported(),
+                _ => return unknown(),
+            }
+        }
+        Ok(inner.into())
+    }
+}
+
+/// git's parse_rename_score: `50%` is a half, as are `5` and `50` (digits after an implied `0.`).
+fn rename_score(s: &str) -> Option<f32> {
+    if let Some(p) = s.strip_suffix('%') {
+        return p.parse::<f32>().ok().filter(|_| p.bytes().all(|b| b.is_ascii_digit() || b == b'.')).map(|v| (v / 100.0).min(1.0));
+    }
+    if s.is_empty() || !s.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    format!("0.{s}").parse().ok()
 }
 
 pub fn merge(ctx: &Ctx, args: &[String]) -> Res {
@@ -296,7 +378,10 @@ pub fn run(ctx: &Ctx, o: &Opts, heads: Vec<Head<'_>>) -> Res {
     let subsumed = remotes.iter().any(|r| is_ancestor(ctx, head.id, r.commit.id));
     let message = if o.msgs.is_empty() { default_message(ctx, &remotes)? } else { o.msgs.join("\n\n") };
     let h = commit_flat(ctx, &head)?;
-    if remotes.len() == 1 && subsumed && !o.no_ff {
+    let strategy = o.strategy.as_deref().unwrap_or(if remotes.len() > 1 { "octopus" } else { "ort" });
+    // `ours` never fast-forwards: the merge commit is the point
+    let ours = strategy == "ours";
+    if remotes.len() == 1 && subsumed && !o.no_ff && !ours {
         let theirs = &remotes[0].commit;
         let t = commit_flat(ctx, theirs)?;
         say(&format!("Updating {}..{}\n", short(head.id), short(theirs.id)));
@@ -314,11 +399,25 @@ pub fn run(ctx: &Ctx, o: &Opts, heads: Vec<Head<'_>>) -> Res {
         }
         return Ok(0);
     }
-    if o.ff_only {
+    if o.ff_only && !ours {
         return Err(Exit { code: 128, msg: DIVERGING.into() });
     }
+    if ours {
+        // the merge commit keeps HEAD's tree; only staged changes stop it
+        if !staged_paths(ctx, &h)?.is_empty() {
+            return Err(Exit { code: 2, msg: "Merge with strategy ours failed.".into() });
+        }
+        let o = Opts { no_ff: true, ..o.clone() };
+        return finish(ctx, &o, &head, &remotes, head.tree_id()?.detach(), (&h, &h), false, false, "ours", &message);
+    }
     if remotes.len() > 1 {
+        if strategy != "octopus" {
+            return fatal(format!("merge strategy '{strategy}' merges one branch at a time: merge several with the default (octopus) strategy"));
+        }
         return octopus(ctx, o, &head, &h, &remotes, subsumed, &message);
+    }
+    if strategy == "octopus" {
+        return fatal("merge strategy 'octopus' needs two or more branches to merge: merge one with the default (ort) strategy");
     }
     let (theirs, spec) = (&remotes[0].commit, remotes[0].label.as_str());
     if ctx.repo.merge_base(head.id, theirs.id).ok().flatten().is_none() {
@@ -330,7 +429,7 @@ pub fn run(ctx: &Ctx, o: &Opts, heads: Vec<Head<'_>>) -> Res {
         return Err(Exit { code: 2, msg: format!("error: Your local changes to the following files would be overwritten by merge:\n  {}\nMerge with strategy ort failed.", staged.join("\n  ")) });
     }
     let labels = gix::merge::blob::builtin_driver::text::Labels { ancestor: None, current: Some(BStr::new("HEAD")), other: Some(BStr::new(spec)) };
-    let options = ctx.repo.tree_merge_options()?;
+    let options = o.tree_options(ctx)?;
     let mut outcome = ctx.repo.merge_commits(head.id, theirs.id, labels, options.into())?;
     let tree = outcome.tree_merge.tree.write()?.detach();
     let merged = flat_tree(ctx, tree)?;
@@ -338,7 +437,7 @@ pub fn run(ctx: &Ctx, o: &Opts, heads: Vec<Head<'_>>) -> Res {
     for line in conflict_messages(&outcome.tree_merge.conflicts, "HEAD", spec) {
         say(&format!("{line}\n"));
     }
-    finish(ctx, o, &head, &remotes, tree, (&h, &merged), conflicted, subsumed, "ort", &message)
+    finish(ctx, o, &head, &remotes, tree, (&h, &merged), conflicted, subsumed, strategy, &message)
 }
 
 /// The paths whose index entry differs from `h`.
@@ -387,7 +486,7 @@ fn finish(ctx: &Ctx, o: &Opts, head: &gix::Commit<'_>, remotes: &[Head<'_>], tre
     let id = ctx.repo.new_commit_as(sig.to_ref(&mut b1), sig.to_ref(&mut b2), format!("{message}\n"), tree, parents)?.id;
     move_head(ctx, id, &format!("{}: Merge made by the '{strategy}' strategy.", o.reflog))?;
     say(&format!("Merge made by the '{strategy}' strategy.\n"));
-    if o.stat {
+    if o.stat && strategy != "ours" {
         say(&crate::diff::stat(ctx, h, merged, true)?);
     }
     Ok(0)
@@ -465,6 +564,7 @@ fn octopus(ctx: &Ctx, o: &Opts, head: &gix::Commit<'_>, h: &Flat, remotes: &[Hea
         }
         Ok(())
     };
+    // git-merge-octopus takes no strategy options
     let options = ctx.repo.tree_merge_options()?;
     let how = TreatAsUnresolved::git();
     let (mut mrc, mut mrt, mut mrt_id) = (vec![head.id], h.clone(), head.tree_id()?.detach());

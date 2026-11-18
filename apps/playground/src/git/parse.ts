@@ -66,6 +66,8 @@ export type FileChange = {
   code: string;
   /** An untracked directory (git lists it whole): `path` ends with `/`. */
   dir?: boolean;
+  /** A conflicted path's `XY` (`UU`, `AA`, `UD`, …), see CONFLICT_KINDS. */
+  conflict?: string;
 };
 
 const conflicted = (e: StatusEntry) => e.x === "U" || e.y === "U" || (e.x === "A" && e.y === "A") || (e.x === "D" && e.y === "D");
@@ -77,13 +79,12 @@ export function stagedChanges(entries: StatusEntry[]): FileChange[] {
     .map((e) => ({ path: e.path, orig: e.orig, code: e.x }));
 }
 
-/** What is not staged: the worktree column, untracked files and conflicts. */
+/** What is not staged: the worktree column and untracked files (conflicts are conflictedChanges'). */
 export function worktreeChanges(entries: StatusEntry[]): FileChange[] {
   const out: FileChange[] = [];
   for (const e of entries) {
-    if (e.x === "!") continue;
+    if (e.x === "!" || conflicted(e)) continue;
     if (e.x === "?") out.push({ path: e.path, code: "U", dir: e.path.endsWith("/") });
-    else if (conflicted(e)) out.push({ path: e.path, code: "!" });
     else if (e.y !== " ") out.push({ path: e.path, code: e.y });
   }
   return out;
@@ -110,4 +111,50 @@ export function parseBranches(out: string): string[] {
     .split("\n")
     .map((l) => l.replace(/^[*+ ]+/, "").trim())
     .filter((l) => l && !l.startsWith("("));
+}
+
+/** What each side did to a conflicted path, by its `XY` in `git status`. */
+export const CONFLICT_KINDS: Record<string, string> = {
+  UU: "both modified",
+  AA: "both added",
+  DD: "both deleted",
+  AU: "added by us",
+  UA: "added by them",
+  DU: "deleted by us",
+  UD: "deleted by them",
+};
+
+/** The paths a merge (or a stash applied) left conflicted, for the Merge Changes section. */
+export function conflictedChanges(entries: StatusEntry[]): FileChange[] {
+  return entries.filter(conflicted).map((e) => ({ path: e.path, code: "!", conflict: e.x + e.y }));
+}
+
+/** A merge's title from `.git/MERGE_MSG` (`Merge branch 'feat'`): its first line that isn't a comment. */
+export function mergeTitle(msg: string): string {
+  return msg.split("\n").find((l) => l.trim() && !l.startsWith("#"))?.trim() ?? "";
+}
+
+export type Stash = {
+  /** n in `stash@{n}`, newest first. */
+  index: number;
+  /** As stored: `On main: wip`, `WIP on main: abc1234 subject`. */
+  message: string;
+  /** What the list shows: the message given to `stash -m`, else git's `WIP on main: abc1234 subject`. */
+  label: string;
+  /** The branch it was made on (`(no branch)` when detached). */
+  branch: string;
+};
+
+/** `git stash list`: `stash@{0}: On main: message` lines. */
+export function parseStashes(out: string): Stash[] {
+  const list: Stash[] = [];
+  for (const line of out.split("\n")) {
+    const m = /^stash@\{(\d+)\}: (.*)$/.exec(line);
+    if (!m) continue;
+    const message = m[2];
+    const on = /^On ([^:]+): (.*)$/.exec(message);
+    const wip = /^WIP on ([^:]+): /.exec(message);
+    list.push({ index: Number(m[1]), message, label: on ? on[2] : message, branch: (on ?? wip)?.[1] ?? "" });
+  }
+  return list;
 }
