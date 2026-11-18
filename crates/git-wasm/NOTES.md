@@ -154,7 +154,8 @@ imports synchronously, and checks the results with native git (125 checks, `pull
   match native output.
 - Packed clones read fine. This repo (933 commits, 3.4 MiB pack, 578 files): full log walk, HEAD tree and status in
   ~65 ms under node's WASI (native `git status`: 33 ms).
-- Size (the CLI): 3.96 MB stripped, 1.10 MB brotli (3.6 MB and 1.0 MB before merge, stash and tag; 2.97 MB and
+- Size (the CLI): 4.01 MB stripped, 1.11 MB brotli (3.96 MB and 1.10 MB before octopus, squash, pull merges, stash
+  pathspecs and tag sorting; 3.6 MB and 1.0 MB before merge, stash and tag; 2.97 MB and
   0.86 MB before the network commands).
 - WASI surface: 25 `wasi_snapshot_preview1` imports (`path_open`, `fd_read`/`fd_write`/`fd_seek`, `fd_readdir`,
   `path_filestat_get`, `path_rename`, `path_unlink_file`, `path_create_directory`, …). A browser build needs those
