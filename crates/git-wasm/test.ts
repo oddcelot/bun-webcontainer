@@ -467,8 +467,14 @@ try {
 
   await twin("switch feat", p3, ["switch", "feat"]);
   await twin("checkout feat", p3, ["checkout", "feat"]);
-  await twin("switch carries dirty file", p3, ["switch", "feat"], { setup: (d) => write(d, "c.txt", "c dirty\n") });
-  await twin("switch carries staged file", p3, ["switch", "feat"], { setup: (d) => { write(d, "c.txt", "c staged\n"); nat(d, "add", "c.txt"); } });
+  await twin("switch carries dirty file", p3, ["switch", "feat"], { setup: (d) => write(d, "c.txt", "c dirty\n"), out: true, err: true });
+  await twin("switch carries staged file", p3, ["switch", "feat"], { setup: (d) => { write(d, "c.txt", "c staged\n"); nat(d, "add", "c.txt"); }, out: true });
+  // the changes checkout carries over: `M\tc.txt`, staged new `A`, deleted `D`, staged and changed again; none with -q, -f or -c alone
+  const carried = (d: string) => { write(d, "c.txt", "c dirty\n"); write(d, "s p.txt", "s\n"); write(d, "gone.txt", "g\n"); nat(d, "add", "s p.txt", "gone.txt"); rmSync(join(d, "gone.txt")); write(d, "dir/z.txt", "z\n"); nat(d, "add", "dir/z.txt"); write(d, "dir/z.txt", "z2\n"); write(d, "u.txt", "u\n"); };
+  for (const a of [["switch", "feat"], ["checkout", "feat"], ["checkout", "-q", "feat"], ["switch", "main"], ["checkout", "main"], ["switch", "-c", "nb"], ["switch", "-c", "nb", "feat"], ["checkout", "-b", "nb", "main"], ["checkout", "--detach"], ["switch", "--detach", "feat"], ["checkout", "-f", "feat"]]) {
+    await twin(`${a.join(" ")} lists carried changes`, p3, a, { setup: carried, out: true, err: true });
+  }
+  await twin("checkout b.txt deleted lists D", p3, ["checkout", "feat"], { setup: (d) => rmSync(join(d, "c.txt")), out: true, err: true });
   await twin("switch carries untracked", p3, ["switch", "feat"], { setup: (d) => write(d, "u.txt", "u\n") });
   await twin("switch untracked dir beside", p3, ["switch", "feat"], { setup: (d) => write(d, "deep/other.txt", "o\n") });
   const conflict = await twin("switch refuses dirty", p3, ["switch", "feat"], { setup: (d) => write(d, "a.txt", "a dirty\n"), err: true });
@@ -848,8 +854,7 @@ try {
   await twin("stash -- path without changes", p7, ["stash", "--", "dir"], ss);
   // stash branch: a branch at the stash's base, the stash applied with --index and dropped
   for (const a of [["nb"], ["nb", "1"], ["nb", "stash@{2}"], [], ["main"], ["nb", "7"]]) await twin(`stash branch ${a.join(" ")}`, p7s, ["stash", "branch", ...a], ss);
-  // (stdout: our checkout doesn't list the changes it carries over, `M\tb.txt`)
-  await twin("stash branch with local changes in the way", p7s, ["stash", "branch", "nb"], { ...ss, out: false, setup: (d) => write(d, "b.txt", "mine\n") });
+  await twin("stash branch with local changes in the way", p7s, ["stash", "branch", "nb"], { ...ss, setup: (d) => write(d, "b.txt", "mine\n") });
   // (stderr: git apply's `error: patch failed: b.txt:1` lines come first)
   await twin("stash apply --index conflict", p7s, ["stash", "apply", "--index"], { ...ss, err: false, setup: (d) => { write(d, "b.txt", "conflicting\n"); nat(d, "commit", "-qam", "conflicting"); }, head: "tree" });
 

@@ -54,8 +54,10 @@ Moving between trees (`worktree.rs`): `switch|checkout <branch>`, `-c|-b <new> [
 [<rev>] [-- <path>]`; `commit --amend [-m] [--no-edit]` (keeps author and date). Switching is git's two-way merge: a
 path that differs between the two commits is replaced only when the index and the file still match HEAD; otherwise
 nothing is touched and it exits 1 with git's `Your local changes ... would be overwritten by checkout` (or the untracked
-files message). Local changes to paths both commits share are carried over. Differences: `checkout` doesn't print the
-`M\tfile` lines for carried changes, and detaching prints one `HEAD is now at` line instead of git's advice. Files are
+files message). Local changes to paths both commits share are carried over, and listed as git lists them
+(`M\tfile`, `A`, `D`: diff-index of the new HEAD; not with `-q`, `-f`, or `-c`/`-b` without a start point).
+`--detach` alone detaches at HEAD. Difference: detaching prints one `HEAD is now at` line instead of git's advice
+(and no `Previous HEAD position was`). Files are
 written from blobs without filters (no autocrlf, symlinks become plain files), so gix's `worktree-mutation` (and the
 `io-close` WASI patch it would need) isn't used. `reset --merge|--keep` are not implemented (`merge --abort` does what `reset --merge` does after a merge).
 
