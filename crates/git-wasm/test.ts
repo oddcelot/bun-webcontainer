@@ -740,6 +740,19 @@ try {
   await twin("tag --sort creates", p6v, ["tag", "--sort=refname", "newtag"], ts);
   await twin("tag.sort", p6v, ["tag"], { ...ts, setup: (d) => nat(d, "config", "tag.sort", "-version:refname") });
   await twin("tag.sort, --sort wins", p6v, ["tag", "--sort=refname"], { ...ts, setup: (d) => nat(d, "config", "tag.sort", "-version:refname") });
+  // -F, the message cleanup, --points-at, --merged, --format, -i
+  const msgFile = (d: string) => write(d, "msg.txt", "  \n\nfirst line   \n# a comment\n\n\n\nsecond\n\n");
+  const tagF = [["-F", "msg.txt", "f1"], ["--file=msg.txt", "f2", "feat"], ["-a", "-F", "msg.txt", "f3"], ["-Fmsg.txt", "f4"], ["-F", "msg.txt", "-m", "x", "f5"], ["-F", "nope.txt", "f6"], ["-F", "comments.txt", "f7"], ["-m", "a\n# c\n\nb  ", "f8"], ["-m", "one", "-m", "\n\ntwo\n\n", "f9"], ["-F"]];
+  for (const a of tagF) await twin(`tag ${a.join(" ")}`, p6, ["tag", ...a], { ...ts, setup: (d) => { msgFile(d); write(d, "comments.txt", "# only\n"); } });
+  const filters = [["--points-at"], ["--points-at", "HEAD~1"], ["--points-at", "feat"], ["--points-at", native(p6v, ["rev-parse", "ann"]).trim()], ["--points-at=feat", "l*"], ["--points-at", "nope"], ["--merged"], ["--merged", "HEAD~1"], ["--merged=feat"], ["--no-merged"], ["--no-merged", "HEAD~1"], ["--merged", "HEAD", "--no-merged", "HEAD~1"], ["--merged", "nope"], ["--merged", "HEAD~1", "--sort=-v:refname", "v1*"]];
+  const formats = ["%(refname)", "%(refname:short) %(objecttype) %(*objecttype) %(objectname:short) %(*objectname)", "%(refname:lstrip=1)|%(refname:strip=2)|%(objectname:short=10)", "%(subject)|%(body)|%(contents:subject)|%(contents:body)|%(contents)", "%(contents:lines=1)|%(contents:lines=2)", "%(taggername) %(taggeremail) %(taggeremail:trim) %(*authorname) %(*authoremail) %(tag) %(type)", "%(creatordate)|%(creatordate:short)|%(taggerdate:iso)|%(*committerdate:unix)|%(creatordate:raw)", "%(objectsize) %(*subject)", "100%% %41%2a %zz %", "", "%(nope)", "%(refname"];
+  for (const a of [...filters, ...formats.map((f) => [`--format=${f}`]), ["--format", "%(refname:short)", "-l", "[a-l]*"], ["--format"], ["-n", "--format=%(refname)"]]) await twin(`tag ${a.join(" ")}`, p6v, ["tag", ...a], ts);
+  const mixed = (d: string) => { nat(d, "tag", "Alpha"); nat(d, "tag", "beta"); nat(d, "tag", "BETA2"); };
+  for (const a of [["-i"], ["-i", "-l", "b*"], ["-l", "b*"], ["--ignore-case", "--sort=-refname", "-l", "*A*"], ["-i", "--sort=v:refname"]]) await twin(`tag ${a.join(" ")}`, p6, ["tag", ...a], { ...ts, setup: mixed });
+  for (const a of [["-s", "v9"], ["-u", "key", "v9"], ["--sign", "-m", "x", "v9"], ["-F", "-", "v9"]]) {
+    r = await git(p6, ["tag", ...a], ident);
+    check(`tag ${a.join(" ")} unsupported`, r.code === 128 && /not supported in the playground/.test(r.err) && !existsSync(join(p6, ".git/refs/tags/v9")), JSON.stringify(r));
+  }
   r = await git(empty, ["tag", "v0"], ident);
   check("tag unborn", r.code === 128 && r.err === "fatal: Failed to resolve 'HEAD' as a valid ref.\n", JSON.stringify(r));
   await twin("show annotated tag", p6, ["show", "ann"], { out: true });

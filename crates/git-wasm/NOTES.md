@@ -43,8 +43,17 @@ Output the panel parses (byte-identical to native git, checked by `test.ts`):
   reversed; `tag.sort` without one): `refname`, `version:refname`/`v:refname` (git's versioncmp, glibc's strverscmp,
   without `versionsort.suffix`), `creatordate` (tagger date, else committer date, else 0), `objectname`, each with
   `-`; other keys are `unknown field name` (exit 128). `--contains [<commit>]`/`--no-contains` (HEAD as the last
-  argument; they imply `-l` and leave out tags of trees and blobs). Not done: `-s`/`-u` (signing), `-F`, `--points-at`,
-  `--merged`, `--format`, `-i`.
+  argument; they imply `-l` and leave out tags of trees and blobs). `--merged [<commit>]`/`--no-merged` (the tag's
+  commit reachable from it, or not; tags of trees and blobs left out), `--points-at [<object>]` (the ref's object, or
+  what an annotated tag points at), `-i` (patterns and the name order ignore case; `version:refname` doesn't, as in
+  git). `--format=<fmt>`: `%%`, `%xx`, and the atoms `refname[:short|lstrip=N|strip=N]`, `objectname[:short[=N]]`,
+  `objecttype`, `objectsize`, `type`, `tag`, `subject`, `body`, `contents[:subject|body|lines=N]`,
+  `tagger|author|committer[name|email[:trim]|date]`, `creator`, `creatordate`, each also as `*atom` (the tagged
+  object's); dates take `:short`, `:iso`, `:iso-strict`, `:rfc`, `:unix`, `:raw`. Unknown atoms are git's `unknown field
+  name` (exit 128); `%(align)`, `%(if)` and the like are clear errors. `-F <file>` (relative to the project; `-F -`
+  is a clear error, there is no stdin) and `-m` messages go through git's stripspace (comment lines, trailing
+  whitespace and extra blank lines go); `-F` with `-m` is refused as git does. `-s`/`-u` (signing) exit 128: there is
+  no key to sign with. Not done: `versionsort.suffix`.
 - `rev-parse [--verify] [-q] [--short] [--abbrev-ref] <rev>`, `--show-toplevel`, `--is-inside-work-tree`, `--git-dir`.
 - `config <key> [<value>]`, `--get`, `--unset`, `--list|-l`, `--local`: the repository's `/.git/config` only;
   `--global`, `--system`, `--file` exit 128 with `only --local config in the playground`. Unset key: exit 1.
