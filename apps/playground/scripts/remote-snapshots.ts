@@ -104,12 +104,24 @@ try {
     eq("nothing was written", vfs.exists("__snapshots__/a.test.ts.snap"), false);
   }
 
-  // 4. Other flags are still refused.
+  // 4. Other flags are still refused; -t, --timeout, --bail, --rerun-each, --todo and --only go over, with "testflags".
   {
     sent = [];
-    const { r } = make(["snapshots"]);
-    eq("another flag is refused", (await r.runTests(["a.test.ts"], ["--bail"])).failed, 1);
+    const { r } = make(["snapshots", "testflags"]);
+    eq("another flag is refused", (await r.runTests(["a.test.ts"], ["--preload=./x.ts"])).failed, 1);
     eq("and nothing is sent", sent.length, 0);
+    await r.runTests(["a.test.ts"], ["-t=alpha", "--timeout=50", "--bail", "--rerun-each=2", "--todo", "--only"]);
+    const run = sent.find((m) => m.t === "run") as Extract<ClientMessage, { t: "run" }>;
+    eq("the run passes the test flags", run.testFlags, ["-t=alpha", "--timeout=50", "--bail", "--rerun-each=2", "--todo", "--only"]);
+    eq("and no coverage", run.coverage, undefined);
+  }
+  {
+    sent = [];
+    const lines: string[] = [];
+    const { r } = make(["snapshots"], lines);
+    eq("an old runner is refused a test flag", (await r.runTests(["a.test.ts"], ["--bail"])).failed, 1);
+    eq("with a message that says to update it", lines.some((l) => /can.t pass them on.*update @runbun\/connect/.test(l)), true);
+    eq("nothing was sent", sent.length, 0);
   }
 
   // 5. Coverage: the flags go over, the table prints, the lcov.info lands in the VFS; a threshold below fails the run.

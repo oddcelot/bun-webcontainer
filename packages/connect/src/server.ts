@@ -11,7 +11,7 @@ import { closeSync, constants, existsSync, fstatSync, lstatSync, openSync, readS
 import { tmpdir } from "node:os";
 import { dirname, extname, isAbsolute, join, normalize } from "node:path";
 import type { ServerWebSocket, Subprocess } from "bun";
-import { coverageFlag, FEATURE_COVERAGE, FEATURE_SNAPSHOTS, lcovPath, PACKED_REQUEST, PACKED_RESPONSE, SYNC_LIMITS, syncPath, type ClientMessage, type ConnectInfo, type ServerMessage } from "./protocol.ts";
+import { coverageFlag, FEATURE_COVERAGE, FEATURE_SNAPSHOTS, FEATURE_TESTFLAGS, lcovPath, PACKED_REQUEST, PACKED_RESPONSE, SYNC_LIMITS, syncPath, testFlag, type ClientMessage, type ConnectInfo, type ServerMessage } from "./protocol.ts";
 import { type FsLike, listeningPorts, peerVerdict, readNetRows, readProcs, refuse } from "./peer.ts";
 import { detectSandbox, launch, type SandboxKind } from "./sandbox.ts";
 
@@ -306,7 +306,7 @@ export function startRunner(opts: RunnerOptions = {}) {
     },
     websocket: {
       open(ws) {
-        send(ws, { t: "hello", bun: Bun.version, platform: process.platform, sandbox, features: [FEATURE_SNAPSHOTS, FEATURE_COVERAGE] });
+        send(ws, { t: "hello", bun: Bun.version, platform: process.platform, sandbox, features: [FEATURE_SNAPSHOTS, FEATURE_COVERAGE, FEATURE_TESTFLAGS] });
       },
       async message(ws, raw) {
         let msg: ClientMessage;
@@ -531,6 +531,13 @@ export function startRunner(opts: RunnerOptions = {}) {
       if (!ok) return bad(`bad coverage flag ${String(f)}`);
       coverage.push(ok);
     }
+    // The other `bun test` flags (-t, --timeout, --bail, --rerun-each, --todo, --only), each from the allowlist.
+    const testFlags: string[] = [];
+    for (const f of msg.test ? (msg.testFlags ?? []) : []) {
+      const ok = testFlag(f);
+      if (!ok) return bad(`bad test flag ${String(f)}`);
+      testFlags.push(ok);
+    }
     const lcov = msg.test && msg.lcov !== undefined ? lcovPath(normalize(msg.lcov)) : undefined;
     if (msg.test && msg.lcov !== undefined && !lcov) return bad(`bad lcov path ${String(msg.lcov)}`);
     if (lcov && !paths.has(lcov)) {
@@ -555,7 +562,7 @@ export function startRunner(opts: RunnerOptions = {}) {
         send(ws, { t: "started", id: msg.id, preview: `http://${ws.data.host}/__connect/preview/${token}/${msg.id}/` });
         // `bun test` writes new snapshots without a flag (not in CI: the runner's env never has CI; a project's `env`
         // could set it, and then nothing is written); with `updateSnapshots` it rewrites the changed ones too.
-        const args = msg.test ? ["test", ...(msg.updateSnapshots === true ? ["--update-snapshots"] : []), ...coverage, ...msg.test] : ["run", msg.entry, ...(msg.args ?? [])];
+        const args = msg.test ? ["test", ...(msg.updateSnapshots === true ? ["--update-snapshots"] : []), ...coverage, ...testFlags, ...msg.test] : ["run", msg.entry, ...(msg.args ?? [])];
         // The project's `env` for the program and its tests, not for `bun install`.
         const { env, refused } = projectEnv(msg.env);
         if (refused.length) send(ws, { t: "out", id: msg.id, fd: 2, data: `[runbun connect] env left out: ${refused.join(", ")}\n` });

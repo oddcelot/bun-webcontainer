@@ -1008,6 +1008,8 @@ async function runChildTests(filters: string[], flags: string[], cwd: string) {
     ...options,
     preload: () => bunfigPreloads(true),
     coverage: finish,
+    // Named as Bun does for a child: relative to its working directory.
+    label: (f) => (root && f.startsWith(`${root}/`) ? f.slice(root.length + 1) : f),
   }).catch((err) => (write(2, `${fmt(err)}\n`), { failed: 1, coverageFailed: undefined }));
   testing = false;
   exit(failed || coverageFailed ? 1 : 0);

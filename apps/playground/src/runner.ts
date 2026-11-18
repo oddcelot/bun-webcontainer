@@ -456,9 +456,12 @@ export class Runner {
     return { failed: this.failed, results: this.results, ...(this.coverageFailed && { coverageFailed: true }) };
   }
 
-  /** Whether a test run with these flags has coverage (bunfig.toml's `[test]` too), and which files it counts in. */
-  protected async coverage(args: string[]): Promise<CoverageOptions | undefined> {
-    const text = this.vfs.readText("bunfig.toml");
+  /**
+   * Whether a test run with these flags has coverage (the `[test]` of the bunfig.toml in `cwd`, a VFS path: Bun reads
+   * only the working directory's, it doesn't look in parents), and which files it counts in.
+   */
+  protected async coverage(args: string[], cwd = "/"): Promise<CoverageOptions | undefined> {
+    const text = this.bunfig(cwd);
     if (!args.some(isCoverageFlag) && !text?.includes("coverage")) return undefined;
     try {
       await loadResolver(this.vfs);
@@ -468,6 +471,12 @@ export class Runner {
     } catch {
       return undefined; // the worker reports what's wrong
     }
+  }
+
+  /** The text of the bunfig.toml in the VFS directory `cwd`. */
+  private bunfig(cwd: string): string | undefined {
+    const dir = cwd.replace(/^\/+|\/+$/g, "");
+    return this.vfs.readText(dir ? `${dir}/bunfig.toml` : "bunfig.toml");
   }
 
   async start(entry: string, tests?: string[], args: string[] = []): Promise<void> {
@@ -709,8 +718,8 @@ export class Runner {
       worker.postMessage({ type: "start", entry, script, childTest: test, args, execArgv, run, files: this.vfs.files, dirs: this.vfs.dirs, vfsRoot: vfsRoot(), proc: { pid: m.id, ppid, cwd: m.cwd, env: m.env }, ...thread }, m.port ? [m.port] : []);
     // A `bun test --coverage` (or one bunfig.toml's `[test]` turns coverage on for) counts what it loads, served so
     // until it ends; it starts once that is set up.
-    if (test && (args.some(isCoverageFlag) || this.vfs.readText("bunfig.toml")?.includes("coverage")))
-      void this.coverage(args).then((opts) => {
+    if (test && (args.some(isCoverageFlag) || this.bunfig(m.cwd)?.includes("coverage")))
+      void this.coverage(args, m.cwd).then((opts) => {
         if (proc.ended) return;
         proc.coverage = opts;
         covering(opts, true);

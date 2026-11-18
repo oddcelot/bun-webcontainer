@@ -39,6 +39,12 @@ export type ClientMessage =
        * as it sends changed snapshots. Only with "coverage".
        */
       lcov?: string;
+      /**
+       * A test run's other flags, passed on to `bun test`: `--test-name-pattern=<regex>` (or `-t=`), `--timeout=<ms>`,
+       * `--bail`, `--bail=<n>`, `--rerun-each=<n>`, `--todo`, `--only` (`testFlag` is the allowlist; anything else
+       * refuses the run). Runners without `hello.features` "testflags" ignore it, and would run every test.
+       */
+      testFlags?: string[];
     }
   | { t: "stdin"; id: string; data: string }
   | { t: "kill"; id: string };
@@ -80,6 +86,26 @@ export interface ConnectInfo {
 export const FEATURE_SNAPSHOTS = "snapshots";
 /** It passes a test run's `coverage` flags to `bun test` and sends its `lcov` file back. */
 export const FEATURE_COVERAGE = "coverage";
+
+/** It passes a test run's `testFlags` (-t, --timeout, --bail, --rerun-each, --todo, --only) to `bun test`. */
+export const FEATURE_TESTFLAGS = "testflags";
+
+/**
+ * A `bun test` flag besides coverage's and `-u` that the runner passes on (`--name=value` form), or undefined: the
+ * name pattern (`-t=x` is `--test-name-pattern=x`; any text without NUL, one argument and never a shell line), counts
+ * as unsigned integers, `--bail` alone, `--todo` and `--only`.
+ */
+export function testFlag(flag: unknown): string | undefined {
+  if (typeof flag !== "string") return undefined;
+  if (flag === "--todo" || flag === "--only" || flag === "--bail") return flag;
+  const eq = flag.indexOf("=");
+  if (eq < 0) return undefined;
+  const name = flag.slice(0, eq);
+  const value = flag.slice(eq + 1);
+  if (name === "-t" || name === "--test-name-pattern") return value.length <= 4096 && !value.includes("\0") ? `--test-name-pattern=${value}` : undefined;
+  if (name === "--timeout" || name === "--rerun-each" || name === "--bail") return /^\d{1,9}$/.test(value) ? `${name}=${value}` : undefined;
+  return undefined;
+}
 
 /**
  * A coverage flag the runner passes to `bun test` (`--name=value` form), or undefined: `--coverage`, a reporter Bun
