@@ -147,6 +147,43 @@ const STATIC_IMPORT = /(?:^|[\n;])\s*(?:import|export)\s+(?!type\b)(?:[\w$*{},\s
 const importSpecs = new Map<string, { src: string; specs: string[] }>();
 
 /**
+ * The project files `roots` reach through static imports, literal dynamic imports and literal requires, resolved as
+ * `target` resolves them (a rough scan, like importedByEsm's): the roots themselves, and files outside node_modules
+ * (a package's files stay leaves: they change with an install). `.html` files are leaves too; CSS comes without its
+ * `__css/` prefix. Used by watchScope.ts to tell which edits only the page's own scripts see.
+ */
+export function reachableFiles(vfs: VFS, roots: string[], target: ModuleTarget): Set<string> {
+  const before = TARGET;
+  TARGET = target;
+  const seen = new Set<string>();
+  try {
+    const todo = [...roots];
+    while (todo.length) {
+      const path = norm(todo.pop()!);
+      if (seen.has(path)) continue;
+      seen.add(path);
+      if (path.includes("node_modules/") || !JS_LIKE.test(path)) continue;
+      const src = vfs.readText(path);
+      if (src === undefined) continue;
+      const dir = dirname(path);
+      const specs = new Set([...src.matchAll(STATIC_IMPORT)].map((m) => m[1]));
+      for (const m of src.matchAll(/(?<![\w$.])(?:import|require)\(\s*(["'])([^"'\n]+)\1\s*\)/g)) specs.add(m[2]);
+      for (const spec of specs) {
+        let t: string | null = null;
+        try {
+          t = resolveTarget(vfs, spec, dir);
+        } catch {}
+        if (t?.startsWith("__css/")) todo.push(t.slice(6));
+        else if (t && !t.startsWith("__")) todo.push(t);
+      }
+    }
+  } finally {
+    TARGET = before;
+  }
+  return seen;
+}
+
+/**
  * Whether an ES module statically imports the ES module at VFS `target`: a project file, or (for a package's file) one
  * of the same package. A literal `require()` of such a module is imported up front in the worker, as before it ran ES
  * modules synchronously: the imported instance may be fetched but not run yet when the `require` runs, and the

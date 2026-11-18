@@ -22,6 +22,7 @@ import { createSession, type Status } from "./ui/session";
 import { createGit } from "./git/store";
 import { createWorkspace } from "./ui/workspace";
 import { VFS } from "@runbun/vfs";
+import { clientOnly } from "./watchScope";
 
 /**
  * The engine both pages share (index.html's full playground and embed.html): the VFS, the console, the session the UI
@@ -151,6 +152,9 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
     return commandOf((path) => vfs.files.has(path), (path) => vfs.readText(path));
   }
 
+  /** Files edited since the program last started (not the program's own writes): see clientOnly in watchScope.ts. */
+  const changed = new Set<string>();
+
   /** What the last Run started, to start it again after `bun test` (which replaces the server) or a save. */
   let lastEntry: string | undefined;
   let lastArgs: string[] = [];
@@ -164,6 +168,7 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
     if (!runner) return cantRun();
     if (runner instanceof RemoteRunner && !(await mayRunNative())) return;
     workspace.saveAll();
+    changed.clear();
     await session.task("run", swap ? "Restarting…" : "Starting…", async (): Promise<Status | void> => {
       log("sys", `[run] ${[entry, ...args].join(" ")}`);
       lastEntry = entry;
@@ -371,8 +376,9 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
     }
   }
 
-  vfs.onChange(({ path, removed }) => {
+  vfs.onChange(({ path, removed, unchanged }) => {
     if (removed) workspace.close(path);
+    if (!unchanged && !runner?.applying) changed.add(path);
   });
 
   // --- Restart on save, like `bun --watch`
@@ -423,6 +429,12 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
       return;
     }
     waitingFor = undefined;
+    if (lastEntry !== undefined && runner && !(runner instanceof RemoteRunner) && runner.running && clientOnly(vfs, lastEntry, changed)) {
+      changed.clear();
+      log("sys", "[watch] only the page changed: reloading the preview");
+      previews.reload();
+      return;
+    }
     clearConsole();
     log("sys", "[watch] restarting");
     void run(lastEntry, lastArgs, true);
