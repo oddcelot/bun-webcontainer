@@ -316,9 +316,28 @@ export class DatabaseSync {
     this.#conn.dbConfig(DBCONFIG_DEFENSIVE, +active);
   }
 
+  /**
+   * `callback(action, arg1, arg2, dbName, triggerOrView)` decides at prepare time: SQLITE_OK, SQLITE_DENY or
+   * SQLITE_IGNORE. What it throws, or a bad answer, fails the statement with that error.
+   */
   setAuthorizer(callback: Fn | null) {
-    this.#db;
-    if (callback !== null && callback !== undefined) throw new Error("node:sqlite.setAuthorizer is not supported in the playground");
+    const db = this.#db;
+    if (callback !== null && typeof callback !== "function") throw argType('The "callback" argument must be a function or null.');
+    const deny = (e: unknown) => ((db._pending = e), 1);
+    this.#conn.setAuthorizer(
+      callback &&
+        ((action, a, b, c, d) => {
+          let r;
+          try {
+            r = callback(action, a, b, c, d);
+          } catch (e) {
+            return deny(e);
+          }
+          if (typeof r !== "number" || !Number.isInteger(r)) return deny(new TypeError("Authorizer callback must return an integer authorization code"));
+          if (r < 0 || r > 2) return deny(new RangeError("Authorizer callback returned a invalid authorization code"));
+          return r;
+        }),
+    );
   }
 
   createSession(): never {

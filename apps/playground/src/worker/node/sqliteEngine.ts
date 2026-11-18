@@ -221,8 +221,9 @@ export class Conn {
 
   close() {
     for (const s of this.stmts) s.finalize();
-    for (const f of this.functions) w.uninstallFunction(f);
     x.sqlite3_close_v2(this.ptr);
+    for (const f of this.functions) w.uninstallFunction(f);
+    if (this.authorizer) w.uninstallFunction(this.authorizer);
     this.ptr = 0;
   }
 
@@ -257,16 +258,19 @@ export class Conn {
     }
   }
 
+  /** The function-table slot of the authorizer, replaced with it. */
+  private authorizer = 0;
+
   /** sqlite3_set_authorizer: `cb(action, arg1, arg2, dbName, trigger)` returns SQLITE_OK / DENY / IGNORE; null clears it. */
   setAuthorizer(cb: ((action: number, a: string | null, b: string | null, c: string | null, d: string | null) => number) | null) {
-    const p = cb ? this.install("i(pipppp)", (_u: number, action: number, a: number, b: number, c: number, d: number) => cb(action, str(a), str(b), str(c), str(d))) : 0;
-    this.check(x.sqlite3_set_authorizer(this.ptr, p, 0));
-  }
-
-  /** sqlite3_update_hook: `cb(op, dbName, table, rowid)`; null clears it. */
-  setUpdateHook(cb: ((op: number, db: string, table: string, rowid: bigint) => void) | null) {
-    const p = cb ? this.install("v(pippj)", (_u: number, op: number, db: number, table: number, rowid: bigint) => cb(op, str(db) ?? "", str(table) ?? "", BigInt(rowid))) : 0;
-    x.sqlite3_update_hook(this.ptr, p, 0);
+    const p = cb ? w.installFunction("i(pipppp)", (_u: number, action: number, a: number, b: number, c: number, d: number) => cb(action, str(a), str(b), str(c), str(d))) : 0;
+    const rc = x.sqlite3_set_authorizer(this.ptr, p, 0);
+    if (rc) {
+      if (p) w.uninstallFunction(p);
+      throw this.error();
+    }
+    if (this.authorizer) w.uninstallFunction(this.authorizer);
+    this.authorizer = p;
   }
 
   /** A session (sqlite3session_create) on database `db`, attached to `table` (every table when null). */

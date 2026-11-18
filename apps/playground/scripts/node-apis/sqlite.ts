@@ -285,6 +285,38 @@ export async function sqlite(t: Case, log: (line: string) => void) {
     d.close();
   }
 
+  // setAuthorizer: what the callback sees, and what each answer does.
+  {
+    const d = new DatabaseSync(":memory:");
+    d.exec("create table t (a, b); insert into t values (1, 2)");
+    const seen: string[] = [];
+    d.setAuthorizer((...args: unknown[]) => (seen.push(args.map(String).join(":")), constants.SQLITE_OK));
+    d.prepare("select a from t").all();
+    d.prepare("insert into t values (3, 4)").run();
+    d.prepare("update t set a = 1 where b = 2").run();
+    d.exec("create table z (q); begin; savepoint s; release s; commit");
+    d.prepare("select count(*), abs(1) from t").get();
+    t("sqlite authorizer args", () => seen.join(" "));
+    const answer = (f: (action: number, a: unknown, b: unknown) => unknown) => d.setAuthorizer(f as never);
+    answer((action, _a, b) => (action === constants.SQLITE_READ && b === "b" ? constants.SQLITE_DENY : constants.SQLITE_OK));
+    t("sqlite authorizer deny read", () => [show(d.prepare("select a from t").all()), errOf(() => d.prepare("select a, b from t"))].join(" / "));
+    answer((action, _a, b) => (action === constants.SQLITE_READ && b === "b" ? constants.SQLITE_IGNORE : constants.SQLITE_OK));
+    s("sqlite authorizer ignore read", () => d.prepare("select a, b from t").all());
+    answer((action) => (action === constants.SQLITE_INSERT ? constants.SQLITE_DENY : constants.SQLITE_OK));
+    t("sqlite authorizer deny insert", () => errOf(() => d.prepare("insert into t values (5, 6)")));
+    answer((action) => (action === constants.SQLITE_FUNCTION ? constants.SQLITE_DENY : constants.SQLITE_OK));
+    t("sqlite authorizer deny function", () => errOf(() => d.prepare("select abs(1)")));
+    answer(() => {
+      throw new SyntaxError("from the callback");
+    });
+    t("sqlite authorizer throws", () => errOf(() => d.prepare("select 1")));
+    t("sqlite authorizer bad answers", () => [1.5, "x", undefined, true, 2n, 99, -1].map((v) => (answer(() => v), errOf(() => d.prepare("select 1")))).join(" / "));
+    t("sqlite authorizer clear", () => [d.setAuthorizer(null), show(d.prepare("select a from t").get())].join(" / "));
+    t("sqlite authorizer bad callback", () => [errOf(() => d.setAuthorizer(5 as never)), errOf(() => d.setAuthorizer(undefined as never))].join(" / "));
+    d.close();
+    t("sqlite authorizer closed", () => errOf(() => d.setAuthorizer(null)));
+  }
+
   const file = "node-apis-sqlite.db";
   const copy = "node-apis-backup.db";
   for (const f of [file, copy]) rmSync(f, { force: true });
