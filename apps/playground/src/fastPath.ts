@@ -12,8 +12,11 @@ import { parseBunLock } from "./lockfile";
 import { tsconfigFor } from "./tsconfig";
 import { loadTranspiler, transpile } from "./transpiler";
 
-/** Whether this page was opened with `?fast`. */
-export const fastPathOn = (): boolean => new URLSearchParams(location.search).has("fast");
+let fastPref = () => false;
+/** The settings toggle's getter (workspace.ts), so this module stays free of UI state. */
+export const bindFastPref = (get: () => boolean) => void (fastPref = get);
+/** Whether the fast path is on: the "Fast path" toggle, or `?fast` in the page's URL (for links). */
+export const fastPathOn = (): boolean => fastPref() || new URLSearchParams(location.search).has("fast");
 
 const CDN = "https://esm.sh";
 const JS = /\.[cm]?[jt]sx?$/;

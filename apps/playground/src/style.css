@@ -1105,7 +1105,7 @@ header button:not(.select-trigger), #docs, #clear, #request button { display: in
     color: var(--accent);
   }
 }
-/* Auto-save and Watch: two icon toggles joined like Run's pair; off reads muted. */
+/* Auto-save, Watch and Fast path: three icon toggles joined like Run's pair; off reads muted. */
 #save-group {
   display: inline-flex;
 
@@ -1122,6 +1122,11 @@ header button:not(.select-trigger), #docs, #clear, #request button { display: in
   }
 
   > #watch {
+    margin-left: -1px;
+    border-radius: 0;
+  }
+
+  > #fast {
     margin-left: -1px;
     border-radius: 0 6px 6px 0;
   }

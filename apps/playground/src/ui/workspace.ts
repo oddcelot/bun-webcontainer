@@ -3,10 +3,12 @@ import type { Panel, Sized } from "../projectConfig";
 import type { EditorCursor, EditorDiagnostic } from "../editors/types";
 import { pref } from "../prefs";
 import { EMBEDDED } from "../theme";
+import { bindFastPref } from "../fastPath";
 
 const AUTOSAVE_KEY = "runbun:autosave";
 const WATCH_KEY = "runbun:watch";
 const FORMAT_ON_SAVE_KEY = "runbun:format-on-save";
+const FAST_KEY = "runbun:fast";
 
 /**
  * Which files are open in tabs, which one is active, and which have edits not yet written to the VFS. Writes go
@@ -38,6 +40,11 @@ export function createWorkspace() {
   const [formatOnSave, setFormatOnSave] = EMBEDDED
     ? createSignal(false)
     : pref(FORMAT_ON_SAVE_KEY, false, { serialize: (on) => (on ? "on" : "off"), deserialize: (s) => s === "on" });
+  /** Run browser-only projects through an import map, packages from esm.sh, with no install (fastPath.ts); read on the next Run. */
+  const [fast, setFast] = EMBEDDED
+    ? createSignal(false)
+    : pref(FAST_KEY, false, { serialize: (on) => (on ? "on" : "off"), deserialize: (s) => s === "on" });
+  bindFastPref(fast);
   const saved = new Set<() => void>();
   // Read-only declaration files a definition opened (TypeScript's libs, Bun's bundled types), by their checker path:
   // not the VFS's, which has no leading "/" or scheme. Kept out of the store: lib.dom.d.ts is megabytes.
@@ -74,6 +81,8 @@ export function createWorkspace() {
     setWatch,
     formatOnSave,
     setFormatOnSave,
+    fast,
+    setFast,
     /** Calls `fn` after each save the reader made (as they type, or Ctrl/Cmd+S), not those before Run; returns the unsubscribe. */
     onSaved(fn: () => void) {
       saved.add(fn);
