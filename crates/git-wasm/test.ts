@@ -1055,6 +1055,20 @@ try {
   await rebaseSeq("rebase conflict -X theirs", [["rebase", "-X", "theirs", "dconf"]]);
   await rebaseSeq("rebase conflict -Xours", [["rebase", "-Xours", "dconf"]]);
   await rebaseSeq("rebase conflict, advice off", [["rebase", "dconf"]], (d) => nat(d, "config", "advice.mergeConflict", "false"));
+  // rebase <upstream> <branch>: the branch is switched to first (when up to date), or rebased from wherever HEAD is
+  const onMain = (d: string) => nat(d, "switch", "-q", "main");
+  await rebaseSeq("rebase <upstream> <branch>", [["rebase", "main", "feat"], ["status", "-s"]], onMain);
+  await rebaseSeq("rebase <upstream> <branch> on it", [["rebase", "main", "feat"]]);
+  await rebaseSeq("rebase <upstream> <branch> up to date", [["rebase", "feat~2", "feat"], ["rebase", "-q", "main", "m1"]], onMain);
+  await rebaseSeq("rebase <upstream> <commit>", [["rebase", "main", "feat~1"]], onMain);
+  await rebaseSeq("rebase <upstream> <commit> up to date", [["rebase", "base", "feat~1"], ["rebase", "feat", "HEAD"]], (d) => { onMain(d); nat(d, "tag", "base", "main~2"); });
+  await rebaseSeq("rebase <upstream> <no such branch>", [["rebase", "main", "nope"]], onMain);
+  await rebaseSeq("rebase <upstream> <branch> behind", [["rebase", "main", "behind"]]);
+  await rebaseSeq("rebase <upstream> <branch> with untracked in the way", [["rebase", "feat", "behind"]], (d) => { onMain(d); write(d, "n.txt", "mine\n"); });
+  await rebaseSeq("rebase <upstream> <branch> conflict, abort", [["rebase", "dconf", "feat"], ["status"], ["rebase", "--abort"]], onMain);
+  await rebaseSeq("rebase <upstream> <branch> conflict, continue", [["rebase", "dconf", "feat"], resolve("A\nb\nc\nresolved\ne\nf\nG\n"), ["rebase", "--continue"]], onMain);
+  await rebaseSeq("rebase <upstream> <branch> --onto", [["rebase", "--onto", "m1", "feat~2", "feat"]], onMain);
+  await rebaseSeq("rebase -", [["rebase", "-"]], (d) => { onMain(d); nat(d, "switch", "-q", "feat"); });
   for (const d of [A, B]) {
     rmSync(d, { recursive: true, force: true });
     cpSync(pr, d, { recursive: true });
@@ -1068,6 +1082,8 @@ try {
     check("rebase: our --continue of native's stop: exit", ours.code === nat2.status, ours.err + nat2.stderr);
     same("rebase: our --continue of native's stop: state", [files(A).join("\n"), chain(A), branchAt(A), native(A, ["status", "--porcelain", "-b"])].join("\n--\n"), [files(B).join("\n"), chain(B), branchAt(B), native(B, ["status", "--porcelain", "-b"])].join("\n--\n"));
   }
+  r = await git(A, ["rebase", "main", "feat", "x"], ident);
+  check("rebase too many arguments: usage", r.code === 129 && r.err.startsWith("usage: git rebase [-i] [options]") && nativeCode(A, ["rebase", "main", "feat", "x"]) === 129, JSON.stringify(r));
   r = await git(A, ["rebase", "-i", "main"], ident);
   check("rebase -i refused", r.code === 128 && r.err.includes("not supported in the playground"), JSON.stringify(r));
 

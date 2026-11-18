@@ -137,7 +137,7 @@ pub fn rebase(ctx: &Ctx, args: &[String]) -> Res {
                 None => return Err(Exit { code: 129, msg: "error: option `strategy' requires a value".into() }),
             },
             "-i" | "--interactive" | "-x" | "--exec" | "-r" | "--rebase-merges" | "--root" | "--autosquash" | "--edit-todo" | "--apply" | "--autostash" | "--update-refs" | "--keep-base" | "--signoff" | "--reapply-cherry-picks" | "-f" | "--force-rebase" | "--no-ff" => {
-                return fatal(format!("git rebase {a} is not supported in the playground (git rebase [--onto <newbase>] [<upstream>], --continue, --skip, --abort, --quit are)"));
+                return fatal(format!("git rebase {a} is not supported in the playground (git rebase [--onto <newbase>] [<upstream> [<branch>]], --continue, --skip, --abort, --quit are)"));
             }
             a if a.starts_with("--rebase-merges=") || a.starts_with("--exec=") || a.starts_with("--strategy=") => {
                 return fatal(format!("git rebase {a} is not supported in the playground"));
@@ -163,11 +163,11 @@ pub fn rebase(ctx: &Ctx, args: &[String]) -> Res {
     if in_progress() {
         return fatal(IN_PROGRESS);
     }
-    if pos.len() > 1 {
-        return fatal("git rebase <upstream> <branch> is not supported in the playground: switch to the branch, then rebase it");
+    if pos.len() > 2 {
+        return Err(Exit { code: 129, msg: "usage: git rebase [-i] [options] [--exec <cmd>] [--onto <newbase> | --keep-base] [<upstream> [<branch>]]".into() });
     }
-    let Ok(head) = ctx.repo.head_commit() else { return fatal("invalid upstream 'HEAD'") };
     let upstream_name = match pos.first() {
+        Some(u) if u == "-" => "@{-1}".to_string(),
         Some(u) => u.clone(),
         None => {
             let branch = ctx.repo.head_name()?.map(|n| n.shorten().to_str_lossy().into_owned());
@@ -182,33 +182,78 @@ pub fn rebase(ctx: &Ctx, args: &[String]) -> Res {
     };
     let commit_of = |rev: &str| ctx.repo.rev_parse_single(rev).ok().and_then(|id| id.object().ok()?.peel_to_commit().ok()).map(|c| c.id);
     let Some(upstream) = commit_of(&upstream_name) else { return fatal(format!("invalid upstream '{upstream_name}'")) };
+    // `rebase <upstream> <branch>`: that branch (or commit) is what gets rebased; git switches to it first
+    let (head, head_name, branch_name, switch_to) = match pos.get(1) {
+        Some(b) => match ctx.repo.try_find_reference(format!("refs/heads/{b}").as_str()).ok().flatten().and_then(|mut r| r.peel_to_id().ok().map(|id| id.detach())) {
+            Some(id) => (id, Some(format!("refs/heads/{b}")), b.clone(), Some(b.clone())),
+            None => match commit_of(b) {
+                Some(id) => (id, None, b.clone(), Some(b.clone())),
+                None => return fatal(format!("no such branch/commit '{b}'")),
+            },
+        },
+        None => {
+            let Ok(head) = ctx.repo.head_commit() else { return fatal("Could not resolve HEAD to a commit") };
+            let head_name = ctx.repo.head_name()?.map(|n| n.as_bstr().to_str_lossy().into_owned());
+            let branch_name = head_name.as_deref().map_or("HEAD".to_string(), |n| n.trim_start_matches("refs/heads/").to_string());
+            (head.id, head_name, branch_name, None)
+        }
+    };
+    let onto_name = onto.clone().unwrap_or_else(|| upstream_name.clone());
     let onto_id = match &onto {
         Some(o) => commit_of(o).ok_or_else(|| Exit { code: 128, msg: format!("fatal: Does not point to a valid commit '{o}'") })?,
         None => upstream,
     };
-    start(ctx, head.id, upstream, onto_id, &Start { quiet, xopts, upstream_name })
+    start(ctx, head, upstream, onto_id, &Start { quiet, xopts, onto_name, head_name, branch_name, switch_to })
 }
 
 /// How a rebase was asked for.
 pub struct Start {
     pub quiet: bool,
     pub xopts: Vec<String>,
-    /// as typed, for the reflog
-    pub upstream_name: String,
+    /// onto as typed, for the reflog
+    pub onto_name: String,
+    /// the branch being rebased (`refs/heads/<name>`), or None for a detached HEAD
+    pub head_name: Option<String>,
+    /// the branch (or commit, or `HEAD`) as `Current branch <name> is up to date` names it
+    pub branch_name: String,
+    /// `rebase <upstream> <branch>`'s branch, switched to when there is nothing to replay
+    pub switch_to: Option<String>,
 }
 
-/// Rebase HEAD's commits since `upstream` onto `onto`.
+impl Start {
+    /// A rebase of HEAD (the branch it is on, or a detached HEAD).
+    pub fn of_head(ctx: &Ctx, quiet: bool, xopts: Vec<String>, onto_name: String) -> Result<Self, Exit> {
+        let head_name = ctx.repo.head_name()?.map(|n| n.as_bstr().to_str_lossy().into_owned());
+        let branch_name = head_name.as_deref().map_or("HEAD".to_string(), |n| n.trim_start_matches("refs/heads/").to_string());
+        Ok(Start { quiet, xopts, onto_name, head_name, branch_name, switch_to: None })
+    }
+}
+
+/// Rebase `head`'s commits since `upstream` onto `onto`.
 pub fn start(ctx: &Ctx, head: ObjectId, upstream: ObjectId, onto: ObjectId, o: &Start) -> Res {
     require_clean(ctx, "rebase")?;
-    let head_name = ctx.repo.head_name()?.map(|n| n.as_bstr().to_str_lossy().into_owned());
-    let branch_label = head_name.as_deref().map(|n| n.trim_start_matches("refs/heads/").to_string());
-    // can_fast_forward: onto already in HEAD's history, and nothing of upstream's left out
+    let head_name = o.head_name.clone();
+    // can_fast_forward: onto already in head's history (linearly), and nothing of upstream's left out
     let base = ctx.repo.merge_base(onto, head).ok().flatten().map(|b| b.detach());
-    if base == Some(onto) && ctx.repo.merge_base(upstream, head).ok().flatten().map(|b| b.detach()) == Some(onto) {
+    if base == Some(onto) && ctx.repo.merge_base(upstream, head).ok().flatten().map(|b| b.detach()) == Some(onto) && linear(ctx, onto, head)? {
+        if let Some(to) = &o.switch_to {
+            // checkout_up_to_date
+            let target = commit_flat(ctx, &ctx.repo.find_commit(head)?)?;
+            if let Err(e) = two_way(ctx, &flat_head(ctx)?, &target, "checkout") {
+                eprintln!("{}\nerror: could not switch to {to}", e.msg);
+                return Ok(1);
+            }
+            let msg = format!("rebase: checkout {to}");
+            match head_name.as_deref().and_then(|n| n.strip_prefix("refs/heads/")) {
+                Some(b) => set_head_branch(ctx, b, &msg)?,
+                None => detach(ctx, head, &msg)?,
+            }
+        }
         if !o.quiet {
-            match &branch_label {
-                Some(b) => out(&format!("Current branch {b} is up to date.\n")),
-                None => out("HEAD is up to date.\n"),
+            if o.branch_name == "HEAD" {
+                out("HEAD is up to date.\n");
+            } else {
+                out(&format!("Current branch {} is up to date.\n", o.branch_name));
             }
         }
         return Ok(0);
@@ -270,8 +315,22 @@ pub fn start(ctx: &Ctx, head: ObjectId, upstream: ObjectId, onto: ObjectId, o: &
     write("msgnum", "0\n")?;
     write("end", &format!("{}\n", picks.len()))?;
     crate::merge::write_state("ORIG_HEAD", &format!("{head}\n"))?;
-    detach(ctx, onto, &format!("rebase (start): checkout {}", o.upstream_name))?;
+    detach(ctx, onto, &format!("rebase (start): checkout {}", o.onto_name))?;
     run_todo(ctx)
+}
+
+/// is_linear_history: no merge between `from` (an ancestor) and `to`, following first parents.
+fn linear(ctx: &Ctx, from: ObjectId, mut to: ObjectId) -> Result<bool, Exit> {
+    while to != from {
+        let c = ctx.repo.find_commit(to)?;
+        let parents: Vec<ObjectId> = c.parent_ids().map(|p| p.detach()).collect();
+        match parents.as_slice() {
+            [] => return Ok(true),
+            [p] => to = *p,
+            _ => return Ok(false),
+        }
+    }
+    Ok(true)
 }
 
 fn detach(ctx: &Ctx, id: ObjectId, msg: &str) -> Result<(), Exit> {

@@ -275,7 +275,7 @@ pub fn pull(ctx: &Ctx, args: &[String]) -> Res {
             let behind = ctx.repo.merge_base(head.id, target.id).ok().flatten().is_some_and(|b| b.detach() == head.id);
             if !behind {
                 crate::http::report("Updating files");
-                let start = crate::rebase::Start { quiet: o.quiet, xopts: o.xopts.clone(), upstream_name: format!("{name}/{short}") };
+                let start = crate::rebase::Start::of_head(ctx, o.quiet, o.xopts.clone(), format!("{name}/{short}"))?;
                 return crate::rebase::start(ctx, head.id, target.id, target.id, &start);
             }
             o.ff_only = true;

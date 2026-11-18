@@ -140,8 +140,11 @@ stash commit's id (tracked changes only; every argument is the message) and chan
 stash-like commit`; storing the newest entry again adds none). `--patch` is interactive: a clear error (exit 128)
 pointing to pathspecs and `--staged`.
 
-Rebasing (`rebase.rs`): `rebase [--onto <newbase>] [<upstream>]` (no upstream: the branch's), `-q`, `-X <option>`
-(merge's), `--continue`, `--skip`, `--abort`, `--quit`; the merge backend's linear case. The commits of
+Rebasing (`rebase.rs`): `rebase [--onto <newbase>] [<upstream> [<branch>]]` (no upstream: the branch's; `-` is
+`@{-1}`), `-q`, `-X <option>` (merge's), `--continue`, `--skip`, `--abort`, `--quit`; the merge backend's linear case.
+With `<branch>`, that branch (or a commit, detached) is rebased from wherever HEAD is: HEAD detaches at onto as usual
+and the end moves that branch; with nothing to replay it is switched to (`rebase: checkout <branch>`, a two-way
+merge) and `Current branch <branch> is up to date.`; `no such branch/commit 'x'` otherwise. The commits of
 `upstream..HEAD` without merges, oldest first, less those whose patch upstream already has (a patch-id over the
 diff without index lines, hunk headers and whitespace; `warning: skipped previously applied commit`), become the todo
 list. HEAD detaches at onto (a two-way merge, so untracked files in the way stop it: `could not detach HEAD`), then
@@ -158,7 +161,7 @@ branch and reattaches HEAD (`Successfully rebased and updated refs/heads/feat.`)
 stderr. `status` shows the rebase as git's long format does (`interactive rebase in progress; onto abc1234`, the last
 two commands done and the next two, the hints); `switch` refuses during one. Not supported (clear errors, exit 128):
 `-i` and the todo editing it needs, `--exec`, `--rebase-merges`, `--root`, `--autosquash`, `--autostash`,
-`--update-refs`, `--apply`, `-f`, `--reapply-cherry-picks`, `rebase <upstream> <branch>`; `--fork-point` isn't used
+`--update-refs`, `--apply`, `-f`, `--reapply-cherry-picks`; `--fork-point` isn't used
 (the merge base is), so commits an upstream rewrote are only left out when their patch matches.
 
 `test.ts` runs a scripted session under node's WASI and compares status, diff, log, show and every mutation with native
