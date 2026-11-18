@@ -852,6 +852,39 @@ try {
   }
   same("native pops our pathspec stash", (natIn(A, "stash", "pop", "--index"), state(A)), (natIn(B, "stash", "pop", "--index"), state(B)));
   await twin("stash -- path without changes", p7, ["stash", "--", "dir"], ss);
+  // --staged: only what is staged, taken out of the index and the worktree (changes made on top of it stay)
+  const stagedOnTop = (d: string) => { dirty(d); write(d, "a.txt", "a\nB\nc\n"); nat(d, "add", "a.txt"); write(d, "a.txt", "a\nB\nc\nA\n"); };
+  for (const a of [["-S"], ["push", "--staged", "-m", "only staged"], ["--staged", "-k"], ["-S", "--", "n2.txt"], ["-S", "--", "k.txt"], ["-S", "-u"], ["push", "-S", "-a"], ["-q", "-S"]]) {
+    await twin(`stash ${a.join(" ")}`, p7, ["stash", ...a], { ...ss, setup: stagedOnTop });
+  }
+  same("native pops our --staged stash", (natIn(A, "stash", "pop", "--index"), state(A)), (natIn(B, "stash", "pop", "--index"), state(B)));
+  await twin("stash -S nothing staged", p7, ["stash", "-S"], { ...ss, setup: (d) => write(d, "a.txt", "unstaged\n") });
+  await twin("stash push -S nothing staged", p7, ["stash", "push", "-S"], { ...ss, setup: (d) => write(d, "a.txt", "unstaged\n") });
+  await twin("stash -S nothing at all", p7, ["stash", "-S"], ss);
+  // the staged change and the worktree's conflict: git apply -R fails, the stash is kept and nothing else changes
+  const cantRemove = (d: string) => { write(d, "a.txt", "a\nB\nc\n"); nat(d, "add", "a.txt"); write(d, "a.txt", "a\nC\nc\n"); };
+  await twin("stash -S can't remove", p7, ["stash", "-S"], { ...ss, err: false, setup: cantRemove });
+  await twin("stash push -S can't remove", p7, ["stash", "push", "-S"], { ...ss, err: false, setup: cantRemove });
+  r = await git(p7, ["stash", "-p"], ident);
+  check("stash -p unsupported", r.code === 128 && r.err.includes("--patch") && r.err.includes("git stash push -- <path>") && !existsSync(join(p7, ".git/refs/stash")), JSON.stringify(r));
+  // create: the stash commit without touching anything; store: put one on the list
+  const stashCommit = (d: string, id: string) => !id ? "-" : ["%T|%s|%B", "%T", "%T"].map((f, i) => natIn(d, "log", "-1", `--format=${f}`, [id, `${id}^1`, `${id}^2`][i]).stdout).join("|");
+  for (const a of [[], ["my", "message"], ["-u"]]) {
+    for (const d of [A, B]) {
+      rmSync(d, { recursive: true, force: true });
+      cpSync(p7, d, { recursive: true });
+      dirty(d);
+    }
+    const ours = await git(A, ["stash", "create", ...a], ident);
+    const nativeRun = natIn(B, "stash", "create", ...a);
+    check(`stash create ${a.join(" ")}: exit`, ours.code === nativeRun.status && ours.err === nativeRun.stderr, JSON.stringify(ours));
+    same(`stash create ${a.join(" ")}: commit`, stashCommit(A, ours.out.trim()), stashCommit(B, nativeRun.stdout.trim()));
+    same(`stash create ${a.join(" ")}: state`, state(A) + stashState(A), state(B) + stashState(B));
+  }
+  await twin("stash create clean", p7, ["stash", "create"], ss);
+  const made = (d: string) => { dirty(d); const id = natIn(d, "stash", "create").stdout.trim(); nat(d, "update-ref", "refs/heads/made", id); nat(d, "reset", "-q", "--hard"); };
+  for (const a of [["made"], ["-m", "custom", "made"], ["-q", "made"], ["HEAD"], ["nope"], [], ["made", "HEAD"]]) await twin(`stash store ${a.join(" ")}`, p7s, ["stash", "store", ...a], { ...ss, setup: made });
+  await twin("stash store twice", p7s, ["stash", "store", "made"], { ...ss, setup: (d) => { made(d); nat(d, "stash", "store", "made"); } });
   // stash branch: a branch at the stash's base, the stash applied with --index and dropped
   for (const a of [["nb"], ["nb", "1"], ["nb", "stash@{2}"], [], ["main"], ["nb", "7"]]) await twin(`stash branch ${a.join(" ")}`, p7s, ["stash", "branch", ...a], ss);
   await twin("stash branch with local changes in the way", p7s, ["stash", "branch", "nb"], { ...ss, setup: (d) => write(d, "b.txt", "mine\n") });

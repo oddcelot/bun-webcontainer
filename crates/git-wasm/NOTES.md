@@ -109,7 +109,16 @@ ignored files too (gix's dirwalk emitting ignored entries; an ignored directory'
 and untracked files; i is still the whole index, as git's; then only those paths go back to HEAD (with `-k` to the
 index), the others keep their changes; a spec matching nothing in the index (or the untracked files with `-u`) is
 git's `pathspec ':(prefix:0)x' did not match` (exit 1). `stash branch <name> [<stash>]` switches to a new branch at the
-stash's base and pops it with `--index`. Not done: `--patch`, `--staged`, `stash create|store`.
+stash's base and pops it with `--index`. `-S`/`--staged` stashes the index (w is i's tree), then takes the staged
+changes out of the worktree as git's `apply -R` of the staged diff does (a three-way merge from the index to HEAD onto
+the worktree's files, so changes made on top stay; all staged paths, as git's, whatever the pathspecs pick) and, unless
+`-k`, the picked paths out of the index; when that fails the stash stays, `Cannot remove worktree changes` (without
+git apply's `error: patch failed` lines; a merge can succeed where `apply` finds no context). It refuses `-u`/`-a`,
+and `No staged changes`; these fail with 1, or 128 under `stash push`, as git's. `stash create [<message>]` prints a
+stash commit's id (tracked changes only; every argument is the message) and changes nothing; `stash store [-m <msg>]
+[-q] <commit>` puts it on the list (`Created via "git stash store".`; a commit with fewer than two parents is `not a
+stash-like commit`; storing the newest entry again adds none). `--patch` is interactive: a clear error (exit 128)
+pointing to pathspecs and `--staged`.
 
 `test.ts` runs a scripted session under node's WASI and compares status, diff, log, show and every mutation with native
 git: "twin" runs execute the same command on two copies of a project (ours vs native) and compare `status`, `ls-files -s`,

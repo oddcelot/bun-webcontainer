@@ -116,7 +116,7 @@ Supported in the playground:
    checkout   Switch branches or restore files (<branch>, -b <new>, <rev> -- <path>...)
    merge      Join a branch into the current one (<rev>..., --no-ff, --ff-only, --squash, --no-commit, -m <msg>, -s ours, -X ours|theirs, --abort, --continue)
    tag        List, create or delete tags (-l [<pattern>...], -n<num>, --sort=<key>, --contains, -a, -m <msg>, -f, -d)
-   stash      Set changes aside (push [-m <msg>] [-u|-a] [-k] [-- <path>...], save, list, show [-p], apply [--index], pop, drop, clear, branch)
+   stash      Set changes aside (push [-m <msg>] [-u|-a] [-k] [-S] [-- <path>...], save, list, show [-p], apply [--index], pop, drop, clear, branch, create, store)
    clean      Remove untracked files (-n, -f, -d)
    config     Get and set options in the repository config (--get, --unset, --list)
    rev-parse  Print the object id of a revision (--verify, --abbrev-ref)
