@@ -288,7 +288,7 @@ pub fn pull(ctx: &Ctx, args: &[String]) -> Res {
                     Some(fp) if mb(head.id, target.id).and_then(|m| mb(m, fp)) != Some(fp) => fp,
                     _ => target.id,
                 };
-                let start = crate::rebase::Start::of_head(ctx, o.quiet, o.xopts.clone(), target.id.to_string())?;
+                let start = crate::rebase::Start::of_head(ctx, o.quiet, o.xopts.clone(), target.id.to_string(), false)?;
                 return crate::rebase::start(ctx, head.id, upstream, target.id, &start);
             }
             o.ff_only = true;

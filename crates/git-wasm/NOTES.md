@@ -163,8 +163,16 @@ the commit is dropped); `commit` without `-m` during a stop takes `MERGE_MSG` (t
 branch and reattaches HEAD (`Successfully rebased and updated refs/heads/feat.`). Progress is `Rebasing (n/m)\r` on
 stderr. `status` shows the rebase as git's long format does (`interactive rebase in progress; onto abc1234`, the last
 two commands done and the next two, the hints); `switch` refuses during one. Not supported (clear errors, exit 128):
-`-i` and the todo editing it needs, `--exec`, `--rebase-merges`, `--root`, `--autosquash`, `--autostash`,
+`-i` and the todo editing it needs, `--exec`, `--rebase-merges`, `--root`, `--autosquash`,
 `--update-refs`, `--apply`, `-f`, `--reapply-cherry-picks`.
+
+`--autostash` (`rebase.autoStash`; `--no-autostash`): before the clean-tree check the tracked changes become a stash
+commit (`stash create autostash`, not on the list) kept in `.git/rebase-merge/autostash`, `Created autostash: abc1234`,
+and the tree is reset to HEAD. When the rebase ends (done, up to date, `--abort`, or HEAD couldn't detach) it is
+applied as `stash apply` with its output dropped: `Applied autostash.`, or, when it conflicts, it goes on the stash list
+(`autostash`) with git's message; `--quit` puts it on the list (`Autostash exists; creating a new stash entry.`).
+`pull` takes neither `--autostash` nor `rebase.autoStash` yet (it refuses
+local changes before a rebase).
 
 The fork point (`--fork-point`, on without an upstream argument unless `rebase.forkPoint=false`; `--no-fork-point`):
 git's get_fork_point over the upstream's reflog (`.git/logs/<ref>`: the first entry's old id and every new one, else the

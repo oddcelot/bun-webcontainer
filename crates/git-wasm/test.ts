@@ -1157,6 +1157,21 @@ try {
   await rebaseSeq("rebase fork point without a reflog", [["rebase"]], (d) => { onFp(d); rmSync(join(d, ".git/logs/refs/heads/up")); });
   await rebaseSeq("rebase fork point, ambiguous", [["rebase", "--fork-point", "up"]], (d) => { onFp(d); nat(d, "tag", "up", "main"); });
   await rebaseSeq("rebase ambiguous upstream", [["rebase", "up"], ["status", "-sb"]], (d) => { onFp(d); nat(d, "tag", "up", "main~1"); });
+  // --autostash (rebase.autoStash): local changes stashed first (`Created autostash`), applied again at the end
+  const dirtyK = (d: string) => write(d, "k.txt", "dirty\n");
+  await rebaseSeq("rebase --autostash", [["rebase", "--autostash", "main"], ["stash", "list"]], dirtyK);
+  await rebaseSeq("rebase rebase.autoStash", [["rebase", "main"]], (d) => { dirtyK(d); nat(d, "config", "rebase.autoStash", "true"); });
+  await rebaseSeq("rebase --no-autostash", [["rebase", "--no-autostash", "main"]], (d) => { dirtyK(d); nat(d, "config", "rebase.autoStash", "true"); });
+  await rebaseSeq("rebase --autostash, nothing to stash", [["rebase", "--autostash", "main"]], (d) => write(d, "u.txt", "untracked\n"));
+  await rebaseSeq("rebase --autostash staged", [["rebase", "--autostash", "main"]], (d) => { write(d, "s.txt", "staged\n"); nat(d, "add", "s.txt"); write(d, "n.txt", "changed\n"); nat(d, "add", "n.txt"); dirtyK(d); });
+  await rebaseSeq("rebase --autostash up to date", [["rebase", "--autostash", "feat~2"]], dirtyK);
+  await rebaseSeq("rebase --autostash <upstream> <branch>", [["rebase", "--autostash", "main", "feat"]], (d) => { onMain(d); write(d, "x.txt", "dirty x\n"); });
+  await rebaseSeq("rebase --autostash, untracked in the way", [["rebase", "--autostash", "main"]], (d) => { dirtyK(d); write(d, "x.txt", "mine\n"); });
+  await rebaseSeq("rebase --autostash conflicting", [["rebase", "--autostash", "main"], ["stash", "list"], ["status", "-s"]], (d) => write(d, "f.txt", "Z\nb\nc\nD\ne\nf\nG\n"));
+  await rebaseSeq("rebase --autostash conflict, continue", [["rebase", "--autostash", "dconf"], resolve("A\nb\nc\nresolved\ne\nf\nG\n"), ["rebase", "--continue"], ["stash", "list"]], dirtyK);
+  await rebaseSeq("rebase --autostash conflict, abort", [["rebase", "--autostash", "dconf"], ["rebase", "--abort"], ["stash", "list"]], dirtyK);
+  await rebaseSeq("rebase --autostash conflict, skip", [["rebase", "--autostash", "dconf"], ["rebase", "--skip"]], dirtyK);
+  await rebaseSeq("rebase --autostash conflict, quit", [["rebase", "--autostash", "dconf"], ["rebase", "--quit"], ["stash", "list"]], dirtyK);
   await rebaseSeq("rebase -", [["rebase", "-"]], (d) => { onMain(d); nat(d, "switch", "-q", "feat"); });
   for (const d of [A, B]) {
     rmSync(d, { recursive: true, force: true });

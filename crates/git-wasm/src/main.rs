@@ -62,8 +62,45 @@ impl Ctx {
     }
 }
 
+thread_local! {
+    /// While set (`silenced`), what `out` and `err_line` print is dropped: a command run as git runs one with its
+    /// output discarded (`stash apply` for an autostash).
+    static SILENT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    /// While set (`captured`), what `out` prints is kept here instead.
+    static CAPTURE: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+}
+
 pub fn out(s: &str) {
+    if SILENT.get() {
+        return;
+    }
+    if CAPTURE.with_borrow_mut(|c| c.as_mut().map(|buf| buf.push_str(s)).is_some()) {
+        return;
+    }
     let _ = std::io::stdout().write_all(s.as_bytes());
+}
+
+/// A line on stderr, unless silenced.
+pub fn err_line(s: &str) {
+    if !SILENT.get() {
+        eprintln!("{s}");
+    }
+}
+
+/// Run `f` with its output (`out`, `err_line`) dropped.
+pub fn silenced<T>(f: impl FnOnce() -> T) -> T {
+    let before = SILENT.replace(true);
+    let r = f();
+    SILENT.set(before);
+    r
+}
+
+/// Run `f`, returning what it printed with `out` instead of printing it.
+pub fn captured<T>(f: impl FnOnce() -> T) -> (T, String) {
+    let before = CAPTURE.replace(Some(String::new()));
+    let r = f();
+    let text = CAPTURE.replace(before).unwrap_or_default();
+    (r, text)
 }
 
 pub fn out_bytes(b: &[u8]) {
@@ -115,7 +152,7 @@ Supported in the playground:
    branch     List, create, delete (-d, -D), rename (-m) branches, --show-current, --format
    switch     Switch branches (<branch>, -c <new> [<start>], --detach, -f)
    checkout   Switch branches or restore files (<branch>, -b <new>, <rev> -- <path>...)
-   rebase     Replay the branch's commits onto another ([--onto <newbase>] [<upstream> [<branch>]], --[no-]fork-point, -X <opt>, -q, --continue, --skip, --abort, --quit)
+   rebase     Replay the branch's commits onto another ([--onto <newbase>] [<upstream> [<branch>]], --[no-]fork-point, --autostash, -X <opt>, -q, --continue, --skip, --abort, --quit)
    merge      Join a branch into the current one (<rev>..., --no-ff, --ff-only, --squash, --no-commit, -m <msg>, -s ours, -X ours|theirs, --abort, --continue)
    tag        List, create or delete tags (-l [<pattern>...], -n<num>, --sort=<key>, --contains, --merged, --points-at, --format, -i, -a, -m <msg>, -F <file>, -f, -d)
    stash      Set changes aside (push [-m <msg>] [-u|-a] [-k] [-S] [-- <path>...], save, list, show [-p], apply [--index], pop, drop, clear, branch, create, store)

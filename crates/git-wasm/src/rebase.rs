@@ -120,6 +120,7 @@ If you wish to set tracking information for this branch you can do so with:
 
 pub fn rebase(ctx: &Ctx, args: &[String]) -> Res {
     let (mut quiet, mut onto, mut xopts, mut pos, mut action) = (false, None, Vec::new(), Vec::new(), None);
+    let mut autostash = ctx.repo.config_snapshot().boolean("rebase.autoStash").unwrap_or(false);
     // --fork-point: unset (None) it is on only without an upstream argument; rebase.forkPoint=false turns it off
     let mut fork_point = match ctx.repo.config_snapshot().boolean("rebase.forkPoint") {
         Some(false) => Some(false),
@@ -132,7 +133,9 @@ pub fn rebase(ctx: &Ctx, args: &[String]) -> Res {
             "-q" | "--quiet" => quiet = true,
             "--fork-point" => fork_point = Some(true),
             "--no-fork-point" => fork_point = Some(false),
-            "-v" | "--verbose" | "--stat" | "-n" | "--no-stat" | "-m" | "--merge" | "--no-autostash" | "--no-update-refs" | "--no-autosquash" => {}
+            "--autostash" => autostash = true,
+            "--no-autostash" => autostash = false,
+            "-v" | "--verbose" | "--stat" | "-n" | "--no-stat" | "-m" | "--merge" | "--no-update-refs" | "--no-autosquash" => {}
             "--onto" => onto = Some(it.next().cloned().ok_or(Exit { code: 129, msg: "error: option `onto' requires a value".into() })?),
             a if a.starts_with("--onto=") => onto = Some(a[7..].to_string()),
             "-X" | "--strategy-option" => xopts.push(it.next().cloned().ok_or(Exit { code: 129, msg: "error: option `strategy-option' requires a value".into() })?),
@@ -143,7 +146,7 @@ pub fn rebase(ctx: &Ctx, args: &[String]) -> Res {
                 Some(s) => return fatal(format!("rebase strategy '{s}' is not supported in the playground (ort is)")),
                 None => return Err(Exit { code: 129, msg: "error: option `strategy' requires a value".into() }),
             },
-            "-i" | "--interactive" | "-x" | "--exec" | "-r" | "--rebase-merges" | "--root" | "--autosquash" | "--edit-todo" | "--apply" | "--autostash" | "--update-refs" | "--keep-base" | "--signoff" | "--reapply-cherry-picks" | "-f" | "--force-rebase" | "--no-ff" => {
+            "-i" | "--interactive" | "-x" | "--exec" | "-r" | "--rebase-merges" | "--root" | "--autosquash" | "--edit-todo" | "--apply" | "--update-refs" | "--keep-base" | "--signoff" | "--reapply-cherry-picks" | "-f" | "--force-rebase" | "--no-ff" => {
                 return fatal(format!("git rebase {a} is not supported in the playground (git rebase [--onto <newbase>] [<upstream> [<branch>]], --continue, --skip, --abort, --quit are)"));
             }
             a if a.starts_with("--rebase-merges=") || a.starts_with("--exec=") || a.starts_with("--strategy=") => {
@@ -162,6 +165,8 @@ pub fn rebase(ctx: &Ctx, args: &[String]) -> Res {
             "--skip" => skip(ctx),
             "--abort" => abort(ctx),
             _ => {
+                // the autostash goes on the stash list
+                take_autostash(ctx, false)?;
                 std::fs::remove_dir_all(DIR)?;
                 Ok(0)
             }
@@ -217,7 +222,7 @@ pub fn rebase(ctx: &Ctx, args: &[String]) -> Res {
         None => upstream,
     };
     let restrict = if fork_point == Some(true) { fork_point_of(ctx, &upstream_name, head)? } else { None };
-    start(ctx, head, upstream, onto_id, &Start { quiet, xopts, onto_name, head_name, branch_name, switch_to, restrict })
+    start(ctx, head, upstream, onto_id, &Start { quiet, xopts, onto_name, head_name, branch_name, switch_to, restrict, autostash })
 }
 
 /// The refs a short name could stand for (repo_dwim_ref's matches).
@@ -298,19 +303,53 @@ pub struct Start {
     pub switch_to: Option<String>,
     /// the fork point (`--fork-point`): commits before it aren't replayed
     pub restrict: Option<ObjectId>,
+    /// `--autostash`: local changes set aside first (`.git/rebase-merge/autostash`), applied again at the end
+    pub autostash: bool,
 }
 
 impl Start {
     /// A rebase of HEAD (the branch it is on, or a detached HEAD).
-    pub fn of_head(ctx: &Ctx, quiet: bool, xopts: Vec<String>, onto_name: String) -> Result<Self, Exit> {
+    pub fn of_head(ctx: &Ctx, quiet: bool, xopts: Vec<String>, onto_name: String, autostash: bool) -> Result<Self, Exit> {
         let head_name = ctx.repo.head_name()?.map(|n| n.as_bstr().to_str_lossy().into_owned());
         let branch_name = head_name.as_deref().map_or("HEAD".to_string(), |n| n.trim_start_matches("refs/heads/").to_string());
-        Ok(Start { quiet, xopts, onto_name, head_name, branch_name, switch_to: None, restrict: None })
+        Ok(Start { quiet, xopts, onto_name, head_name, branch_name, switch_to: None, restrict: None, autostash })
     }
+}
+
+/// create_autostash: the tracked changes stashed (not on the list) and reset away, the stash's id in the state
+/// directory for the end of the rebase.
+pub fn make_autostash(ctx: &Ctx) -> Result<(), Exit> {
+    if let Some(id) = crate::stash::create_autostash(ctx)? {
+        std::fs::create_dir_all(DIR)?;
+        write("autostash", &format!("{id}\n"))?;
+        out(&format!("Created autostash: {}\n", short(id)));
+        hard_reset(ctx, &flat_head(ctx)?, true)?;
+    }
+    Ok(())
+}
+
+/// apply_autostash (`attempt`) or save_autostash: the stash taken at the start back, or on the stash list.
+fn take_autostash(ctx: &Ctx, attempt: bool) -> Result<(), Exit> {
+    let Some(id) = read("autostash").and_then(|s| ObjectId::from_hex(s.trim().as_bytes()).ok()) else { return Ok(()) };
+    crate::stash::apply_autostash(ctx, id, attempt)?;
+    let _ = std::fs::remove_file(path("autostash"));
+    Ok(())
+}
+
+/// The rebase ends before it started (up to date, or HEAD couldn't detach): the autostash back, the state gone.
+fn end_early(ctx: &Ctx) -> Result<(), Exit> {
+    take_autostash(ctx, true)?;
+    if in_progress() {
+        std::fs::remove_dir_all(DIR)?;
+    }
+    Ok(())
 }
 
 /// Rebase `head`'s commits since `upstream` onto `onto`.
 pub fn start(ctx: &Ctx, head: ObjectId, upstream: ObjectId, onto: ObjectId, o: &Start) -> Res {
+    if o.autostash {
+        make_autostash(ctx)?;
+    }
     require_clean(ctx, "rebase")?;
     let head_name = o.head_name.clone();
     // can_fast_forward: onto already in head's history (linearly), and nothing of upstream's left out
@@ -325,6 +364,7 @@ pub fn start(ctx: &Ctx, head: ObjectId, upstream: ObjectId, onto: ObjectId, o: &
             let target = commit_flat(ctx, &ctx.repo.find_commit(head)?)?;
             if let Err(e) = two_way(ctx, &flat_head(ctx)?, &target, "checkout") {
                 eprintln!("{}\nerror: could not switch to {to}", e.msg);
+                end_early(ctx)?;
                 return Ok(1);
             }
             let msg = format!("rebase: checkout {to}");
@@ -340,6 +380,7 @@ pub fn start(ctx: &Ctx, head: ObjectId, upstream: ObjectId, onto: ObjectId, o: &
                 out(&format!("Current branch {} is up to date.\n", o.branch_name));
             }
         }
+        end_early(ctx)?;
         return Ok(0);
     }
     // upstream..HEAD (and not before the fork point) without merges, oldest first; what upstream already has (the same
@@ -376,7 +417,9 @@ pub fn start(ctx: &Ctx, head: ObjectId, upstream: ObjectId, onto: ObjectId, o: &
     let h = flat_head(ctx)?;
     let onto_commit = ctx.repo.find_commit(onto)?;
     if let Err(e) = two_way(ctx, &h, &commit_flat(ctx, &onto_commit)?, "checkout") {
-        eprintln!("{}\nerror: could not detach HEAD", e.msg);
+        eprintln!("{}", e.msg);
+        end_early(ctx)?;
+        eprintln!("error: could not detach HEAD");
         return Ok(1);
     }
     std::fs::create_dir_all(DIR)?;
@@ -615,6 +658,7 @@ fn abort(ctx: &Ctx) -> Res {
     }
     clear_stop();
     let _ = std::fs::remove_file("/.git/REBASE_HEAD");
+    take_autostash(ctx, true)?;
     std::fs::remove_dir_all(DIR)?;
     Ok(0)
 }
@@ -638,6 +682,7 @@ fn finish(ctx: &Ctx, quiet: bool) -> Res {
         crate::merge::write_state("ORIG_HEAD", &format!("{orig}\n"))?;
     }
     clear_stop();
+    take_autostash(ctx, true)?;
     std::fs::remove_dir_all(DIR)?;
     if !quiet {
         eprintln!("Successfully rebased and updated {what}.");

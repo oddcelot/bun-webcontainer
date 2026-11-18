@@ -498,7 +498,13 @@ fn apply(ctx: &Ctx, args: &[String], pop: bool) -> Res {
     }
     let list = entries();
     let (n, _) = pick(spec.as_ref(), list.len())?;
-    let s = load(ctx, list[list.len() - 1 - n].new)?;
+    apply_commit(ctx, list[list.len() - 1 - n].new, keep_index, quiet, pop.then_some(spec.as_ref()))
+}
+
+/// Apply the stash commit `id`; `pop`: then drop the entry `spec` names (when it applied cleanly).
+fn apply_commit(ctx: &Ctx, id: ObjectId, keep_index: bool, quiet: bool, pop_spec: Option<Option<&String>>) -> Res {
+    let pop = pop_spec.is_some();
+    let s = load(ctx, id)?;
     let index = load_index(ctx)?;
     let conflicted = unmerged(&index);
     if !conflicted.is_empty() {
@@ -506,7 +512,7 @@ fn apply(ctx: &Ctx, args: &[String], pop: bool) -> Res {
         for p in conflicted.keys() {
             out(&format!("{}: needs merge\n", path_str(p)));
         }
-        eprintln!("error: could not write index");
+        crate::err_line("error: could not write index");
         if pop {
             out("The stash entry is kept in case you need it again.\n");
         }
@@ -534,9 +540,9 @@ fn apply(ctx: &Ctx, args: &[String], pop: bool) -> Res {
     let conflicted = match apply_merged(ctx, &current, &merged, &outcome) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("{}", e.msg);
+            crate::err_line(&e.msg);
             if keep_index {
-                eprintln!("Index was not unstashed.");
+                crate::err_line("Index was not unstashed.");
             }
             if !quiet {
                 out(&long(ctx, &compute(ctx)?)?);
@@ -548,7 +554,7 @@ fn apply(ctx: &Ctx, args: &[String], pop: bool) -> Res {
         out(&format!("{line}\n"));
     }
     if conflicted && keep_index {
-        eprintln!("Index was not unstashed.");
+        crate::err_line("Index was not unstashed.");
     }
     if !conflicted {
         match new_index {
@@ -568,13 +574,13 @@ fn apply(ctx: &Ctx, args: &[String], pop: bool) -> Res {
         files.retain(|p, _| {
             let taken = crate::worktree::disk(p.as_ref()).exists();
             if taken {
-                eprintln!("{} already exists, no checkout", p.to_str_lossy());
+                crate::err_line(&format!("{} already exists, no checkout", p.to_str_lossy()));
             }
             !taken
         });
         write_files(ctx, &files)?;
         if files.len() < flat_tree(ctx, u)?.len() {
-            eprintln!("error: could not restore untracked files from stash");
+            crate::err_line("error: could not restore untracked files from stash");
             code = 128;
         }
     }
@@ -590,10 +596,39 @@ fn apply(ctx: &Ctx, args: &[String], pop: bool) -> Res {
         }
         return Ok(1);
     }
-    if pop {
-        return drop(ctx, spec.as_ref(), quiet);
+    if let Some(spec) = pop_spec {
+        return drop(ctx, spec, quiet);
     }
     Ok(0)
+}
+
+/// create_autostash: the tracked changes as a stash commit (`stash create autostash`), not on the list; None when
+/// there are none. The caller resets to HEAD.
+pub fn create_autostash(ctx: &Ctx) -> Result<Option<ObjectId>, Exit> {
+    let (r, text) = crate::captured(|| make(ctx, &["autostash".to_string()], Mode::Create));
+    if r.is_err() {
+        return fatal("Cannot autostash");
+    }
+    Ok(ObjectId::from_hex(text.trim().as_bytes()).ok())
+}
+
+/// apply_save_autostash_oid: `stash apply <id>` with its output dropped (`Applied autostash.`), else the stash goes on
+/// the list (`stash store -m autostash`) with git's message. `attempt`: false only stores it (`rebase --quit`).
+pub fn apply_autostash(ctx: &Ctx, id: ObjectId, attempt: bool) -> Result<(), Exit> {
+    let code = if attempt { crate::silenced(|| apply_commit(ctx, id, false, false, None)).unwrap_or(128) } else { 0 };
+    if attempt && code == 0 {
+        eprintln!("Applied autostash.");
+        return Ok(());
+    }
+    store(ctx, &["-m".into(), "autostash".into(), "-q".into(), id.to_string()])?;
+    if !attempt {
+        eprint!("Autostash exists; creating a new stash entry.\nYour changes are safe in the stash.\nYou can run \"git stash pop\" or \"git stash drop\" at any time.\n");
+    } else if code == 1 {
+        eprint!("Your local changes are stashed, however applying them\nresulted in conflicts.  You can either resolve the conflicts\nand then discard the stash with \"git stash drop\", or, if you\ndo not want to resolve them now, run \"git reset --hard\" and\napply the local changes later by running \"git stash pop\".\n");
+    } else {
+        eprintln!("error: could not apply autostash; your changes are safe in the stash");
+    }
+    Ok(())
 }
 
 pub fn stash(ctx: &Ctx, args: &[String]) -> Res {
