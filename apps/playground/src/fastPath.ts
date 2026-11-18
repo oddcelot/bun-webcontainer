@@ -114,6 +114,62 @@ const base64 = (bytes: Uint8Array) => {
   return btoa(s);
 };
 
+const IDENT = /-?(?:[A-Za-z_\u0080-\uffff]|\\.)(?:[\w\u0080-\uffff-]|\\.)*/y;
+const RESERVED = new Set("break case catch class const continue debugger default delete do else enum export extends false finally for function if import in instanceof new null return super switch this throw true try typeof var void while with yield let static await implements interface package private protected public arguments eval".split(" "));
+
+/**
+ * A CSS module's source with each class selector made unique to the file (`.box` becomes `.styles_box_1a2b3c`, the hash
+ * of the path), and the map from the written names to the new ones. Comments, strings and url() are skipped, and
+ * `:global(.x)` keeps `.x` as written. Keyframe and custom-property names aren't scoped, nor is `composes` followed.
+ */
+export function scopeCss(css: string, file: string): { css: string; map: Record<string, string> } {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < file.length; i++) h = Math.imul(h ^ file.charCodeAt(i), 0x01000193);
+  const suffix = (h >>> 0).toString(36);
+  const base = file.slice(file.lastIndexOf("/") + 1).replace(/\.module\.css$/, "").replace(/[^\w-]/g, "_");
+  const map: Record<string, string> = {};
+  let out = "";
+  let i = 0;
+  const copyTo = (end: number) => ((out += css.slice(i, end)), (i = end));
+  while (i < css.length) {
+    const c = css[i];
+    if (c === "/" && css[i + 1] === "*") {
+      const end = css.indexOf("*/", i + 2);
+      copyTo(end < 0 ? css.length : end + 2);
+    } else if (c === '"' || c === "'") {
+      let j = i + 1;
+      while (j < css.length && css[j] !== c) j += css[j] === "\\" ? 2 : 1;
+      copyTo(Math.min(j + 1, css.length));
+    } else if ((c === "u" || c === "U") && /^url\(\s*[^\s"')]/i.test(css.slice(i, i + 64)) && !/[\w-]/.test(css[i - 1] ?? "")) {
+      const end = css.indexOf(")", i);
+      copyTo(end < 0 ? css.length : end + 1);
+    } else if (c === ":" && css.startsWith(":global(", i)) {
+      let depth = 1;
+      let j = i + 8;
+      for (; j < css.length && depth; j++) depth += css[j] === "(" ? 1 : css[j] === ")" ? -1 : 0;
+      out += css.slice(i + 8, j - 1);
+      i = j;
+    } else if (c === ".") {
+      IDENT.lastIndex = i + 1;
+      const m = IDENT.exec(css);
+      if (!m) copyTo(i + 1);
+      else {
+        out += `.${(map[m[0]] ??= `${base}_${m[0]}_${suffix}`)}`;
+        i += 1 + m[0].length;
+      }
+    } else copyTo(i + 1);
+  }
+  return { css: out, map };
+}
+
+/** A CSS module's exports: the class map as the default, and each class that is a valid identifier by name too. */
+const cssModuleExports = (map: Record<string, string>) =>
+  `const classes = ${JSON.stringify(map)};\nexport default classes;\n` +
+  Object.keys(map)
+    .filter((k) => /^[A-Za-z_$][\w$]*$/.test(k) && !RESERVED.has(k))
+    .map((k) => `export const ${k} = classes[${JSON.stringify(k)}];\n`)
+    .join("");
+
 /** What {@link buildFast} made. */
 export type Fast = { html: string; modules: number; packages: string[]; solid: boolean; ms: { transpile: number } };
 
@@ -151,8 +207,9 @@ export async function buildFast(vfs: VFS): Promise<Fast> {
     const src = vfs.readText(path) ?? "";
     let code: string;
     if (path.endsWith(".css")) {
-      const css = cssUrls(src, path);
-      code = `const s = document.createElement("style"); s.dataset.src = ${JSON.stringify(path)}; s.textContent = ${JSON.stringify(css)}; document.head.append(s);\nexport default {};`;
+      const scoped = /\.module\.css$/.test(path) ? scopeCss(src, path) : undefined;
+      const css = cssUrls(scoped?.css ?? src, path);
+      code = `const s = document.createElement("style"); s.dataset.src = ${JSON.stringify(path)}; s.textContent = ${JSON.stringify(css)}; document.head.append(s);\n${scoped ? cssModuleExports(scoped.map) : "export default {};"}`;
     } else if (path.endsWith(".json")) {
       code = `export default ${src};`;
     } else {
