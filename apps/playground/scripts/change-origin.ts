@@ -14,7 +14,7 @@ const eq = (what: string, got: unknown, want: unknown) => {
 Bun.plugin({
   name: "runner-deps",
   setup(b) {
-    const stub = "export const resetSyncEsm = () => {}, serveModule = () => {}, vfsRoot = () => '/', serveLazyRead = () => {}, splitPackage = () => {};";
+    const stub = "export const resetSyncEsm = () => {}, serveModule = () => {}, vfsRoot = () => '/', serveLazyRead = () => {}, splitPackage = () => {}, setCoverage = () => {};";
     b.onLoad({ filter: /\/src\/(moduleServer|pkgStore)\.ts$/ }, () => ({ contents: stub, loader: "js" }));
   },
 });
