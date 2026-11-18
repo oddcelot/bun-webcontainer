@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { add, branchy, Calc, defaults, gen, later, logic, loops, mul, outer, sw, tc } from "./math";
+import { asyncRest, Box, rest, restAfter, resumed, strict } from "./gens";
 import { obj, once } from "./util.js";
 import { helper } from "./ignored/helper";
 const lib = require("./lib.cjs");
@@ -18,6 +19,17 @@ test("math", async () => {
   expect(await later(2)).toBe(2);
   gen();
   outer();
+});
+
+test("generators and private chains", () => {
+  rest(1, 2);
+  restAfter(1, 2);
+  strict(1);
+  asyncRest();
+  expect(resumed(1, 2).next().value).toBe(2);
+  expect(Box.peek(undefined)).toBeUndefined();
+  expect(Box.call(undefined)).toBeUndefined();
+  expect(Box.deep({ box: new Box() })).toBe(1);
 });
 
 test("util", () => {
