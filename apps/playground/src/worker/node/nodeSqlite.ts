@@ -2,9 +2,9 @@
 // file read from and written back to the VFS) and its SQL helpers. Statements bind and read the way Node's do:
 // named parameters from an object (with or without their prefix), the rest positional, booleans and undefined
 // refused, integers as numbers unless `readBigInts` (and an error past 2^53), rows as null-prototype objects.
-// sql.js binds an integral number as an INTEGER where Node binds a REAL, which only `typeof()` in SQL tells apart.
+// Numbers bind as a REAL, as Node binds them (sql.js would bind a whole one as an INTEGER).
 import type { Database as SqlJsDb } from "sql.js";
-import { Database, classify, paramTokens, type Param } from "./sqlite";
+import { Database, classify, paramTokens, rebind, type Param } from "./sqlite";
 import fs from "./fs";
 import path from "./path";
 import { fileURLToPath } from "./url";
@@ -105,6 +105,7 @@ export class DatabaseSync {
   #file: string;
   #opts: Required<Pick<Options, "readOnly" | "enableForeignKeyConstraints" | "allowExtension" | "readBigInts" | "returnArrays" | "allowBareNamedParameters" | "allowUnknownNamedParameters">>;
   #extensions = false;
+  #dqs: boolean;
   #statements = new Set<StatementSync>();
 
   constructor(location: string | Uint8Array | URL, options: Options = {}) {
@@ -122,6 +123,7 @@ export class DatabaseSync {
       allowBareNamedParameters: isBool(o, "allowBareNamedParameters") ?? true,
       allowUnknownNamedParameters: isBool(o, "allowUnknownNamedParameters") ?? false,
     };
+    this.#dqs = options.enableDoubleQuotedStringLiterals === true;
     if (options.open !== false) this.open();
   }
 
@@ -183,11 +185,51 @@ export class DatabaseSync {
     if (TX.test(sql)) (db as unknown as { inTx: boolean }).inTx = this.isTransaction;
   }
 
+  /**
+   * Node turns SQLite's double-quoted string literals off (`enableDoubleQuotedStringLiterals`), sql.js leaves them on
+   * and exports no sqlite3_db_config. So a statement with a "..." is prepared once more with each as a `...`
+   * identifier, which never falls back to a string: if that names no column, it is the error Node's SQLite gives.
+   */
+  #checkQuotes(sql: string) {
+    if (this.#dqs || !sql.includes('"')) return;
+    const { quoted } = paramTokens(sql);
+    if (!quoted.length) return;
+    const names = new Set<string>();
+    let out = "";
+    let at = 0;
+    for (const [start, end] of quoted) {
+      const name = sql.slice(start + 1, end - 1).replace(/""/g, '"');
+      names.add(name);
+      out += `${sql.slice(at, start)}\`${name.replace(/`/g, "``")}\``;
+      at = end;
+    }
+    let message = "";
+    try {
+      this.#db._raw.prepare(out + sql.slice(at)).free();
+    } catch (e) {
+      message = e instanceof Error ? e.message : "";
+    }
+    const m = /^no such column: (.*)$/.exec(message);
+    if (m && names.has(m[1])) throw sqliteError(`no such column: "${m[1]}" - should this be a string literal in single-quotes?`, 1);
+  }
+
   exec(sql: string) {
     if (typeof sql !== "string") throw argType('The "sql" argument must be a string.');
     const db = this.#db;
     try {
-      db._raw.run(sql);
+      if (this.#dqs || !sql.includes('"')) db._raw.run(sql);
+      else {
+        // one statement at a time, each checked before it runs (a later one can use what an earlier one made)
+        for (const s of db._raw.iterateStatements(sql)) {
+          try {
+            this.#checkQuotes(s.getSQL());
+            while (s.step());
+          } catch (e) {
+            s.free();
+            throw e;
+          }
+        }
+      }
     } catch (e) {
       throw fromSqlJs(e, this);
     } finally {
@@ -203,6 +245,7 @@ export class DatabaseSync {
     } catch (e) {
       throw fromSqlJs(e, this);
     }
+    this.#checkQuotes(sql);
     const s = new StatementSync(INTERNAL, this, sql, this.#opts);
     this.#statements.add(s);
     return s;
@@ -415,7 +458,10 @@ export class StatementSync {
       throw fromSqlJs(e, this.#db);
     }
     try {
-      if (bind.length) s.bind(bind as never);
+      if (bind.length) {
+        s.bind(bind as never);
+        rebind(s, this.#values, true);
+      }
     } catch (e) {
       s.free();
       throw fromSqlJs(e, this.#db);

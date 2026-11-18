@@ -57,7 +57,6 @@ export const dgram = {
 };
 
 export const repl = stubModule("repl", "start REPLServer Recoverable", { REPL_MODE_SLOPPY: Symbol("repl-sloppy"), REPL_MODE_STRICT: Symbol("repl-strict"), builtinModules: [] });
-export const wasi = stubModule("wasi", "WASI");
 
 /** node:trace_events: categories turn on and off as Bun's do; nothing records events. */
 const enabledCategories = new Map<string, number>();

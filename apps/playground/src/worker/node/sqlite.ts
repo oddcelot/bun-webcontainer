@@ -15,6 +15,34 @@ import { quietTimeout } from "../loop";
 
 let SQL: SqlJsStatic | undefined;
 
+/** The own property of sql.js's Statement that holds its sqlite3_stmt pointer (a minified name), once found. */
+let stmtKey: string | undefined;
+
+/**
+ * Binds what sql.js binds otherwise than SQLite's C API would: a BigInt goes in as text (as an INTEGER here when it
+ * fits 32 bits: sql.js exports no sqlite3_bind_int64), and with `reals` (node:sqlite) every number as a REAL where
+ * sql.js binds a whole one as an INTEGER. The statement's pointer is the own number property that sqlite3_sql maps
+ * back to its SQL; if none does (another sql.js), the values stay as sql.js bound them.
+ */
+export function rebind(s: ReturnType<SqlJsDb["prepare"]>, values: Map<number, unknown>, reals: boolean) {
+  const again = (v: unknown) => (reals && typeof v === "number") || (typeof v === "bigint" && v >= -(2n ** 31n) && v < 2n ** 31n);
+  if (![...values.values()].some(again)) return;
+  const m = SQL as unknown as Record<string, (...a: number[]) => number> & { UTF8ToString(p: number): string };
+  const o = s as unknown as Record<string, unknown>;
+  const ptrOf = (k: string) => (typeof o[k] === "number" && (o[k] as number) >= 1024 ? (o[k] as number) : 0);
+  if (stmtKey === undefined || !ptrOf(stmtKey)) {
+    const sql = s.getSQL();
+    stmtKey = Object.keys(o).find((k) => ptrOf(k) && m.UTF8ToString(m._sqlite3_sql(ptrOf(k))) === sql);
+    if (stmtKey === undefined) return;
+  }
+  const ptr = ptrOf(stmtKey);
+  values.forEach((v, i) => {
+    if (!again(v)) return;
+    if (typeof v === "bigint") m._sqlite3_bind_int(ptr, i, Number(v));
+    else m._sqlite3_bind_double(ptr, i, v as number);
+  });
+}
+
 (globalThis as Record<string, unknown>).__loadBunSqlite = async () => {
   if (SQL) return;
   const { default: init } = await import("sql.js");
@@ -136,9 +164,13 @@ export interface Param {
   name?: string;
 }
 
-/** The parameter tokens of `sql`, skipping strings, quoted identifiers and comments, numbered as SQLite numbers them. */
-export function paramTokens(sql: string): { params: Param[]; count: number } {
+/**
+ * The parameter tokens of `sql`, skipping strings, quoted identifiers and comments, numbered as SQLite numbers them;
+ * and the [start, end) of each double-quoted token (node:sqlite's check of double-quoted strings).
+ */
+export function paramTokens(sql: string): { params: Param[]; count: number; quoted: [number, number][] } {
   const params: Param[] = [];
+  const quoted: [number, number][] = [];
   const named = new Map<string, number>();
   let count = 0;
   for (let i = 0; i < sql.length; ) {
@@ -152,6 +184,7 @@ export function paramTokens(sql: string): { params: Param[]; count: number } {
         if (c === "[" || sql[j + 1] !== close) break;
         j++; // a doubled quote is an escaped one
       }
+      if (c === '"' && j < sql.length) quoted.push([i, j + 1]);
       i = j + 1;
     } else if (two === "--") {
       const j = sql.indexOf("\n", i);
@@ -176,7 +209,7 @@ export function paramTokens(sql: string): { params: Param[]; count: number } {
       i = j;
     } else i++;
   }
-  return { params, count };
+  return { params, count, quoted };
 }
 
 const BIGINT_MAX = 2n ** 63n - 1n;
@@ -282,6 +315,7 @@ export class Statement<R = unknown, P extends unknown[] = any[]> {
     }
     try {
       s.bind(bind);
+      rebind(s, values, false);
       while (s.step()) if (fn(s) === false) break;
     } catch (e) {
       throw sqliteError(e, undefined, this.db._raw);
@@ -526,8 +560,18 @@ export class Database {
     if (!sql.trim()) throw new Error("SQL string mustn't be blank");
     this._note(sql);
     const before = this._changes();
-    const { bind } = bindings(params, paramTokens(sql), this._strict, false, this._safe);
-    this.raw(sql, () => (params.length ? this._raw.run(sql, bind) : this._raw.run(sql)));
+    const { bind, values } = bindings(params, paramTokens(sql), this._strict, false, this._safe);
+    this.raw(sql, () => {
+      if (!params.length) return this._raw.run(sql);
+      // sql.js's run(sql, params), with the values rebound
+      const s = this._raw.prepare(sql, bind);
+      try {
+        rebind(s, values, false);
+        s.step();
+      } finally {
+        s.free();
+      }
+    });
     return this._meta(before);
   }
 

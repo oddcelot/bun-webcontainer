@@ -18,7 +18,10 @@ const EDITOR = `http://localhost:${PORT}`;
 const DIFFERENT: Record<string, [string, string]> = {};
 
 const dir = join(import.meta.dir, "node-apis");
-const files: Record<string, string> = Object.fromEntries(readdirSync(dir).map((f) => [f, readFileSync(join(dir, f), "utf8")]));
+// A project's files are text: wasi.wasm goes as wasi.wasm.b64 (node-apis/wasi.ts reads either).
+const files: Record<string, string> = Object.fromEntries(
+  readdirSync(dir).map((f) => (f.endsWith(".wasm") ? [`${f}.b64`, readFileSync(join(dir, f)).toString("base64")] : [f, readFileSync(join(dir, f), "utf8")])),
+);
 
 let bad = 0;
 const labelOf = (line: string) => line.slice(0, line.indexOf(": "));

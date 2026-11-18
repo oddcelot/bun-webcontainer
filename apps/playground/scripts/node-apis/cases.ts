@@ -4,6 +4,7 @@ import { diagnosticsChannel } from "./diagnostics_channel.ts";
 import { sqlite } from "./sqlite.ts";
 import { v8Cases } from "./v8.ts";
 import { misc } from "./misc.ts";
+import { wasiCases } from "./wasi.ts";
 import module, { createRequire } from "node:module";
 
 export type Case = (label: string, f: () => unknown) => void;
@@ -24,4 +25,4 @@ export async function run(log: (line: string) => void) {
   await sqlite(t, log);
   v8Cases(t);
   await misc(t, log);
-}
+  await wasiCases(t, log);}

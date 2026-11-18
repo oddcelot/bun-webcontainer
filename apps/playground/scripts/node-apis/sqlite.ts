@@ -176,6 +176,39 @@ export async function sqlite(t: Case, log: (line: string) => void) {
     return d.isOpen;
   });
 
+  // Every number binds as a REAL (bun:sqlite binds a whole one as an INTEGER).
+  {
+    const d = new DatabaseSync(":memory:");
+    s("sqlite bind real", () => d.prepare("select typeof(?) a, typeof(?) b, typeof(?) c, typeof(?) d, typeof(?) e, ? f, ? g").get(1, -7, 1.5, 2 ** 40, 10n, 3, 0));
+    s("sqlite bind real named", () => d.prepare("select typeof(:a) a, typeof($b) b, :a + $b c").get({ a: 2, b: 3 }));
+    s("sqlite bind real column", () => {
+      d.exec("create table r (i integer, f real, x, t text)");
+      d.prepare("insert into r values (?, ?, ?, ?)").run(1, 2, 3, 4);
+      return d.prepare("select typeof(i) ti, typeof(f) tf, typeof(x) tx, typeof(t) tt, i, f, x, t from r").get();
+    });
+    s("sqlite bind real tag", () => d.createTagStore().get`select typeof(${5}) t, ${5} v`);
+    d.close();
+  }
+
+  // Double-quoted string literals are off unless enableDoubleQuotedStringLiterals.
+  {
+    const d = new DatabaseSync(":memory:");
+    d.exec(`create table "q t" ("my col" text, x)`);
+    d.exec(`insert into "q t" values ('a', 1)`);
+    t("sqlite dqs select", () => errOf(() => d.prepare(`select "abc" as s`)));
+    t("sqlite dqs identifiers", () => show(d.prepare(`select "my col", "q t".x as "the ""x""" from "q t" where "my col" = 'a'`).all()));
+    t("sqlite dqs where", () => errOf(() => d.prepare(`select x from "q t" where x = "nope"`)));
+    t("sqlite dqs exec", () => errOf(() => d.exec(`insert into "q t" values ('b', 2); select "zz"; insert into "q t" values ('c', 3)`)));
+    t("sqlite dqs exec ran", () => show(d.prepare(`select count(*) n from "q t"`).get()));
+    t("sqlite dqs check", () => errOf(() => d.exec(`create table c2 (a check (a <> "x"))`)));
+    t("sqlite dqs default", () => errOf(() => d.exec(`create table c3 (a default "x")`)));
+    t("sqlite dqs in string", () => show(d.prepare(`select 'say "hi"' s -- "comment"`).get()));
+    d.close();
+    const on = new DatabaseSync(":memory:", { enableDoubleQuotedStringLiterals: true });
+    t("sqlite dqs enabled", () => show(on.prepare(`select "abc" as s`).get()));
+    on.close();
+  }
+
   const file = "node-apis-sqlite.db";
   const copy = "node-apis-backup.db";
   for (const f of [file, copy]) rmSync(f, { force: true });

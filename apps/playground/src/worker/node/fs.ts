@@ -19,6 +19,27 @@ export function setFs(v: VFS, m: Mirror) {
   mirror = m;
 }
 
+/** The VFS for node:wasi's host, its changes mirrored to the page as this module's are; and a path's key. */
+export function wasiFs() {
+  const v = vfs;
+  return {
+    keyOf,
+    vfs: {
+      files: v.files,
+      mtimes: v.mtimes,
+      isDir: (k: string) => v.isDir(k),
+      exists: (k: string) => v.exists(k),
+      data: (k: string) => v.data(k),
+      size: (k: string) => v.size(k),
+      readdir: (k: string) => v.readdir(k),
+      write: (k: string, d: FileData) => (v.write(k, d), mirror("write", k, d)),
+      mkdir: (k: string) => (v.mkdir(k), mirror("mkdir", k)),
+      remove: (k: string) => (v.remove(k), mirror("remove", k)),
+      rename: (a: string, b: string) => (v.rename(a, b), mirror("rename", a, b)),
+    },
+  };
+}
+
 const START = Date.now();
 const enc = new TextEncoder();
 const dec = new TextDecoder("utf-8", { ignoreBOM: true });
