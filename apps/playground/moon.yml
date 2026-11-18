@@ -224,7 +224,8 @@ tasks:
   test-bun-test:
     # `bun:test` end to end (scripts/bun-test.ts): the files of fixtures/bun-test run through the console's `bun test`
     # in headless Chrome, and its summary, failures and snapshot files are compared with native `bun test`'s for the
-    # same files. Needs Chrome, so it isn't part of `test`.
+    # same files; then fixtures/bun-test-coverage with `--coverage`, whose table and lcov.info must be native's too.
+    # Needs Chrome, so it isn't part of `test`.
     command: 'bun scripts/bun-test.ts'
     toolchains: ['bun']
     options:

@@ -4,6 +4,8 @@
 // summary (pass / fail / skip / todo, expect() calls, tests and files), every failing test's name and error text, and
 // the snapshot files the run writes (`__snapshots__/*.snap`, byte for byte). The report's decoration differs (Bun
 // prints the source around a failure; the console doesn't) and is dropped on both sides.
+// Then fixtures/bun-test-coverage the same way with `--coverage` (src/coverage/): the coverage table and every
+// lcov.info the run writes have to be identical too.
 //   bun scripts/bun-test.ts [--no-native] [--no-browser]
 // Chrome: CHROME=<path to the binary>, else the usual install on macOS or Linux.
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -26,6 +28,8 @@ const STEPS: Step[] = [
   { args: [] },
   { args: ["-u"] },
   { args: [], env: { CI: "1" }, edit: { "__snapshots__/snapshot.test.ts.snap": null, ...CI_ON } },
+  // Counting what runs changes none of it.
+  { args: ["--coverage"], env: { CI: "1" } },
 ];
 
 // What differs on purpose, by "file :: test": only that it fails on both sides is compared.
@@ -42,6 +46,32 @@ const read = (dir: string, root = dir): Record<string, string> => {
   return out;
 };
 const files = read(fixtures);
+
+// Coverage: the table on its own, the reporters by flag (both forms), then all of bunfig.toml's options (its threshold
+// fails the run).
+const COVERAGE_BUNFIG = `[test]
+coverage = true
+coverageReporter = ["text", "lcov"]
+coverageDir = "out/cov"
+coverageSkipTestFiles = false
+coveragePathIgnorePatterns = ["ignored/**"]
+coverageThreshold = { lines = 0.95, functions = 0.5 }
+`;
+const COVERAGE_STEPS: Step[] = [
+  { args: ["--coverage"] },
+  { args: ["--coverage", "--coverage-reporter", "text", "--coverage-reporter=lcov"] },
+  { args: [], edit: { "bunfig.toml": COVERAGE_BUNFIG } },
+];
+const coverageFiles = read(join(app, "fixtures/bun-test-coverage"));
+type Project = { route: string; dir: string; files: Record<string, string>; steps: Step[]; coverage?: boolean };
+const PROJECTS: Project[] = [
+  { route: "/", dir: fixtures, files, steps: STEPS },
+  { route: "/coverage", dir: join(app, "fixtures/bun-test-coverage"), files: coverageFiles, steps: COVERAGE_STEPS, coverage: true },
+];
+
+/** The coverage table's lines (separators, header, rows), colors dropped. */
+const coverageTable = (lines: string[]) => lines.map(plain).filter((l) => /^-+\|-{9}\|-{9}\|-+$/.test(l) || /^File +\| % Funcs/.test(l) || /\| +[\d.]+ \| +[\d.]+ \|/.test(l));
+const isLcov = (p: string) => p.endsWith("lcov.info");
 
 // eslint-disable-next-line no-control-regex
 const plain = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "");
@@ -127,25 +157,47 @@ function applyEdit(project: Record<string, string>, edit?: Step["edit"]) {
   else project[p] = text;
 }
 
+/** The coverage table and lcov files of a run agree with native Bun's. */
+function compareCoverage(label: string, lines: string[], have: Record<string, string>, want: { lines: string[]; files: Record<string, string> }) {
+  const before = bad;
+  const got = coverageTable(lines);
+  const expected = coverageTable(want.lines);
+  if (JSON.stringify(got) !== JSON.stringify(expected)) (bad++, console.error(`✗ ${label}: coverage table\n  got\n${got.join("\n")}\n  want\n${expected.join("\n")}`));
+  const lcovs = new Set([...Object.keys(have), ...Object.keys(want.files)].filter(isLcov));
+  for (const p of lcovs) {
+    if (have[p] === want.files[p]) continue;
+    bad++;
+    const g = (have[p] ?? "").split("\n");
+    const w = (want.files[p] ?? "").split("\n");
+    const at = g.findIndex((l, i) => l !== w[i]);
+    console.error(`✗ ${label}: ${p} differs at line ${at + 1}: got ${JSON.stringify(g.slice(at, at + 3))}, want ${JSON.stringify(w.slice(at, at + 3))}`);
+  }
+  if (bad === before) console.log(`✓ ${label}: coverage table (${expected.length} lines)${lcovs.size ? `, ${[...lcovs].join(", ")}` : ""} identical`);
+}
+
 // Native Bun first: the expectations are its behavior.
-const native: { out: ReturnType<typeof digest>; files: Record<string, string> }[] = [];
+const native = new Map<Project, { out: ReturnType<typeof digest>; lines: string[]; files: Record<string, string> }[]>();
 if (!process.argv.includes("--no-native")) {
-  const dir = mkdtempSync(join(tmpdir(), "bun-test-"));
-  try {
-    cpSync(fixtures, dir, { recursive: true });
-    for (const step of STEPS) {
-      for (const [p, text] of Object.entries(step.edit ?? {})) {
-        if (text === null) rmSync(join(dir, p), { force: true });
-        else (mkdirSync(join(dir, p, ".."), { recursive: true }), writeFileSync(join(dir, p), text));
+  for (const project of PROJECTS) {
+    const runs: { out: ReturnType<typeof digest>; lines: string[]; files: Record<string, string> }[] = [];
+    native.set(project, runs);
+    const dir = mkdtempSync(join(tmpdir(), "bun-test-"));
+    try {
+      cpSync(project.dir, dir, { recursive: true });
+      for (const step of project.steps) {
+        for (const [p, text] of Object.entries(step.edit ?? {})) {
+          if (text === null) rmSync(join(dir, p), { force: true });
+          else (mkdirSync(join(dir, p, ".."), { recursive: true }), writeFileSync(join(dir, p), text));
+        }
+        const env = { ...process.env, ...step.env, NO_COLOR: "1" } as Record<string, string | undefined>;
+        if (!step.env?.CI) delete env.CI;
+        const r = Bun.spawnSync(["bun", "test", ...step.args], { cwd: dir, env });
+        const lines = (r.stdout.toString() + "\n" + r.stderr.toString()).split("\n");
+        runs.push({ out: digest(lines), lines, files: read(dir) });
       }
-      const env = { ...process.env, ...step.env, NO_COLOR: "1" } as Record<string, string | undefined>;
-      if (!step.env?.CI) delete env.CI;
-      const r = Bun.spawnSync(["bun", "test", ...step.args], { cwd: dir, env });
-      const out = digest((r.stdout.toString() + "\n" + r.stderr.toString()).split("\n"));
-      native.push({ out, files: read(dir) });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
   }
 }
 
@@ -167,12 +219,12 @@ const vite = Bun.spawn(["bunx", "vite", "--port", String(PORT), "--strictPort"],
 });
 const host = Bun.serve({
   port: HOST_PORT,
-  fetch: () =>
+  fetch: (req) =>
     new Response(
       `<!doctype html><body><iframe id="f" style="width:900px;height:600px" src="${EDITOR}/embed?init=1&mode=console" allow="cross-origin-isolated"></iframe>
 <script>
   window.lines = []; window.events = [];
-  const files = ${JSON.stringify({ ...files, "index.ts": "" })};
+  const files = ${JSON.stringify({ ...PROJECTS.find((p) => p.route === new URL(req.url).pathname)?.files, "index.ts": "" })};
   let id = 0; const pending = new Map();
   window.rpc = (method, params) => new Promise((resolve, reject) => {
     const i = ++id; pending.set(i, { resolve, reject });
@@ -204,31 +256,35 @@ try {
     const crashes: string[] = [];
     page.on("pageerror", (e) => crashes.push(e instanceof Error ? e.message : String(e)));
     if (process.env.DEBUG) page.on("console", (m) => console.error("console", m.text()));
-    await page.goto(`http://localhost:${HOST_PORT}/`);
-    await page.waitForFunction(() => (window as unknown as W).events.includes("ready"), { timeout: 60_000 });
-    const embed = page.frames().find((f) => f.url().includes("/embed"))!;
-    await Bun.sleep(3000); // the embed runs index.ts after init
-    const project = { ...files };
-    for (const [i, step] of STEPS.entries()) {
-      for (const [p, text] of Object.entries(step.edit ?? {})) await page.evaluate((path, t) => (window as unknown as W).rpc(t === null ? "removeFile" : "writeFile", { path, text: t }), p, text);
-      applyEdit(project, step.edit);
-      const mark = (await page.evaluate(() => (window as unknown as W).lines)).length;
-      await embed.focus(".xterm-helper-textarea");
-      await page.keyboard.type(`bun test ${step.args.join(" ")}\n`);
-      await page.waitForFunction((n: number) => (window as unknown as W).lines.slice(n).some((l) => /^Ran \d+ tests? across/.test(l) || /^\[exited with code/.test(l)), { timeout: 60_000 }, mark).catch(() => {});
-      await Bun.sleep(300);
-      const lines = (await page.evaluate(() => (window as unknown as W).lines)).slice(mark);
-      const label = `bun test ${step.args.join(" ")}`.trim();
-      const got = digest(lines);
-      if (native[i]) compare(label, got, native[i].out);
-      else console.log(`${label}: ${got.summary.join(", ")}`);
-      if (native[i]) {
-        const listed = (await page.evaluate(() => (window as unknown as W).rpc("listFiles"))) as string[];
-        const have: Record<string, string> = {};
-        for (const p of listed) if (isTracked(p)) have[p] = (await page.evaluate((path) => (window as unknown as W).rpc("readFile", { path }), p)) as string;
-        compareSnaps(`${label} snapshots`, have, native[i].files);
+    for (const project of PROJECTS) {
+      await page.goto(`http://localhost:${HOST_PORT}${project.route}`);
+      await page.waitForFunction(() => (window as unknown as W).events.includes("ready"), { timeout: 60_000 });
+      const embed = page.frames().find((f) => f.url().includes("/embed"))!;
+      await Bun.sleep(3000); // the embed runs index.ts after init
+      const files = { ...project.files };
+      const expected = native.get(project) ?? [];
+      for (const [i, step] of project.steps.entries()) {
+        for (const [p, text] of Object.entries(step.edit ?? {})) await page.evaluate((path, t) => (window as unknown as W).rpc(t === null ? "removeFile" : "writeFile", { path, text: t }), p, text);
+        applyEdit(files, step.edit);
+        const mark = (await page.evaluate(() => (window as unknown as W).lines)).length;
+        await embed.focus(".xterm-helper-textarea");
+        await page.keyboard.type(`bun test ${step.args.join(" ")}\n`);
+        await page.waitForFunction((n: number) => (window as unknown as W).lines.slice(n).some((l) => /^Ran \d+ tests? across/.test(l) || /^\[exited with code/.test(l)), { timeout: 60_000 }, mark).catch(() => {});
+        await Bun.sleep(300);
+        const lines = (await page.evaluate(() => (window as unknown as W).lines)).slice(mark);
+        const label = `${project.coverage ? "coverage: " : ""}bun test ${step.args.join(" ")}`.trim();
+        const got = digest(lines);
+        if (expected[i]) compare(label, got, expected[i].out);
+        else console.log(`${label}: ${got.summary.join(", ")}`);
+        if (expected[i]) {
+          const listed = (await page.evaluate(() => (window as unknown as W).rpc("listFiles"))) as string[];
+          const have: Record<string, string> = {};
+          for (const p of listed) if (isTracked(p) || isLcov(p)) have[p] = (await page.evaluate((path) => (window as unknown as W).rpc("readFile", { path }), p)) as string;
+          if (project.coverage || step.args.includes("--coverage")) compareCoverage(label, lines, have, expected[i]);
+          if (!project.coverage) compareSnaps(`${label} snapshots`, have, expected[i].files);
+        }
+        if (bad && process.env.DEBUG) console.error(lines.join("\n"));
       }
-      if (bad && process.env.DEBUG) console.error(lines.join("\n"));
     }
     for (const c of crashes) (bad++, console.error(`✗ page error: ${c}`));
   } finally {
