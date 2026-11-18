@@ -174,8 +174,8 @@ export async function buildFast(vfs: VFS): Promise<Fast> {
     imports[`${name}/`] ??= `${CDN}/${name}${version ? `@${version}` : ""}/`;
   }
   const map = `<script type="importmap">${JSON.stringify({ imports })}</script>`;
-  // The map and the error reporter come before any script of the page.
-  const head = REPORT + map;
+  // The storage stand-ins, the error reporter and the map come before any script of the page.
+  const head = STORAGE + REPORT + map;
   const out = /<head[^>]*>/i.test(doc) ? doc.replace(/<head[^>]*>/i, (m) => m + head) : head + doc;
   return { html: out, modules: seen.size, packages: [...packages], solid: !!solid, ms: { transpile: Math.round(t1 - t0) } };
 }
@@ -184,6 +184,34 @@ export async function buildFast(vfs: VFS): Promise<Fast> {
 const TAG = "runbun-fast";
 /** Reports the page's uncaught errors and unhandled rejections to the editor, which logs them in the console. */
 const REPORT = `<script>for (const type of ["error", "unhandledrejection"]) addEventListener(type, (e) => { const err = e.error ?? e.reason; parent.postMessage({ tag: ${JSON.stringify(TAG)}, text: String((err && err.stack) || err || e.message) }, "*"); });</script>`;
+/**
+ * localStorage and sessionStorage throw in an opaque origin: in-memory stand-ins with the whole Storage interface (and
+ * `storage.key = value`, `in`, `Object.keys`), per run: a Run starts the page, and its storage, over.
+ */
+const STORAGE = `<script>(() => {
+  const make = () => {
+    const m = new Map();
+    const api = {
+      getItem: (k) => (m.has(String(k)) ? m.get(String(k)) : null),
+      setItem: (k, v) => void m.set(String(k), String(v)),
+      removeItem: (k) => void m.delete(String(k)),
+      clear: () => m.clear(),
+      key: (i) => [...m.keys()][Number(i)] ?? null,
+    };
+    return new Proxy(api, {
+      get: (t, p) => (p === "length" ? m.size : p === Symbol.toStringTag ? "Storage" : p in t ? t[p] : typeof p === "string" && m.has(p) ? m.get(p) : undefined),
+      set: (t, p, v) => (typeof p === "string" && m.set(p, String(v)), true),
+      deleteProperty: (t, p) => (m.delete(p), true),
+      has: (t, p) => p in t || m.has(p),
+      ownKeys: () => [...m.keys()],
+      getOwnPropertyDescriptor: (t, p) => (m.has(p) ? { value: m.get(p), enumerable: true, configurable: true, writable: true } : undefined),
+    });
+  };
+  for (const name of ["localStorage", "sessionStorage"]) {
+    const value = make();
+    Object.defineProperty(window, name, { configurable: true, enumerable: true, get: () => value });
+  }
+})();</script>`;
 const SANDBOX = "allow-scripts allow-forms allow-modals allow-popups allow-downloads";
 
 let shown: { frame: HTMLIFrameElement; log: Log } | undefined;
