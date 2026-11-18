@@ -54,7 +54,7 @@ non-text file or a path outside the project is left behind.
 
 `bun test --coverage` (with `--coverage-reporter` and `--coverage-dir`, or bunfig.toml's `[test]` coverage options)
 runs with native Bun too: its table prints in the console, and the `lcov.info` it writes comes back into the project
-the same way.
+the same way. So do `-t`, `--timeout`, `--bail`, `--rerun-each`, `--todo` and `--only`.
 
 Each run is stopped, with everything it started, past `--max-memory` (MB, all its processes together; default 2048) or
 `--max-processes` (default 64). These are checked twice a second, so they aren't a hard cap.
