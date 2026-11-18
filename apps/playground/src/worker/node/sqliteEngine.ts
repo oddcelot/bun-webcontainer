@@ -490,8 +490,19 @@ export class Stmt {
     x.sqlite3_clear_bindings(this.ptr);
   }
 
-  reset() {
-    x.sqlite3_reset(this.ptr);
+  /** sqlite3_reset: the result code of the last run (0 when it ended well). */
+  reset(): number {
+    return x.sqlite3_reset(this.ptr);
+  }
+
+  /** How many times the statement ran (SQLITE_STMTSTATUS_RUN): a number only this run has. */
+  get runCount(): number {
+    return x.sqlite3_stmt_status(this.ptr, 6, 0);
+  }
+
+  /** sqlite3_stmt_busy: stepped and not reset since. */
+  get busy(): boolean {
+    return !!x.sqlite3_stmt_busy(this.ptr);
   }
 
   /** One sqlite3_step: true for a row, false when done; an error resets the statement and throws. */
@@ -536,6 +547,23 @@ export class Stmt {
 }
 
 // --- function arguments and results -----------------------------------------------------------------------------------
+
+/** Column `i` of the current row as bytes, as Bun's raw() gives it: an INTEGER as its int64, a FLOAT as its double (little-endian), TEXT as UTF-8. */
+export function columnBytes(s: Stmt, i: number): Uint8Array | null {
+  const p = s.ptr;
+  switch (x.sqlite3_column_type(p, i)) {
+    case INTEGER:
+      return new Uint8Array(new BigInt64Array([BigInt(x.sqlite3_column_int64(p, i))]).buffer);
+    case FLOAT:
+      return new Uint8Array(new Float64Array([x.sqlite3_column_double(p, i)]).buffer);
+    case TEXT:
+      return bytes(x.sqlite3_column_text(p, i), x.sqlite3_column_bytes(p, i));
+    case BLOB:
+      return bytes(x.sqlite3_column_blob(p, i), x.sqlite3_column_bytes(p, i));
+    default:
+      return null;
+  }
+}
 
 /** sqlite3_value `v` as a JS value; an INTEGER as a BigInt with `big`, else as a number. */
 export function valueOf(v: number, big: boolean): Value {

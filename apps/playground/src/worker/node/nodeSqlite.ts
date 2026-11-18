@@ -1,9 +1,9 @@
-// node:sqlite (`DatabaseSync`, `StatementSync`) as Bun has it, over bun:sqlite's `Database` (sqlite.ts: a file database
-// read and written in place in the VFS) and the SQLite C API (sqliteEngine.ts). Statements bind and read the way Node's
-// do: named parameters from an object (with or without their prefix), the rest positional, booleans and undefined
-// refused, every number as a REAL, integers read as numbers unless `readBigInts` (and an error past 2^53), rows as
-// null-prototype objects.
-import { Database, paramsOf, type Param } from "./sqlite";
+// node:sqlite (`DatabaseSync`, `StatementSync`) as Bun has it, over bun:sqlite's connections (sqlite.ts' `Handle`: a
+// file database read and written in place in the VFS) and the SQLite C API (sqliteEngine.ts). Statements bind and
+// read the way Node's do: named parameters from an object (with or without their prefix), the rest positional,
+// booleans and undefined refused, every number as a REAL, integers read as numbers unless `readBigInts` (and an error
+// past 2^53), rows as null-prototype objects.
+import { Handle, paramsOf, type Param } from "./sqlite";
 import { DBCONFIG_DEFENSIVE, DBCONFIG_DQS_DDL, DBCONFIG_DQS_DML, DBCONFIG_ENABLE_FKEY, Conn, RawError, createAggregate, deleteSession, errstr, result, resultError, sessionChanges, valueOf, type Stmt, type Value } from "./sqliteEngine";
 import fs from "./fs";
 import path from "./path";
@@ -29,8 +29,8 @@ function sqliteError(message: string, errcode: number): Error {
 /** A SQLite error as Node's; a user function's own error (`pending`) passes through. */
 function fromRaw(e: unknown, db: DatabaseSync): unknown {
   const raw = db[RAW];
-  const own = raw?._pending;
-  if (raw) raw._pending = undefined;
+  const own = raw?.pending;
+  if (raw) raw.pending = undefined;
   if (own !== undefined) return own;
   if (!(e instanceof RawError)) return e;
   return sqliteError(e.message, e.errno);
@@ -82,7 +82,7 @@ function toNumber(v: bigint): number {
 }
 
 export class DatabaseSync {
-  [RAW]: Database | undefined;
+  [RAW]: Handle | undefined;
   #file: string;
   #opts: Required<Pick<Options, "readOnly" | "enableForeignKeyConstraints" | "allowExtension" | "readBigInts" | "returnArrays" | "allowBareNamedParameters" | "allowUnknownNamedParameters">>;
   #extensions = false;
@@ -110,19 +110,20 @@ export class DatabaseSync {
   }
 
   /** The bun:sqlite database, open. */
-  get #db(): Database {
+  get #db(): Handle {
     if (!this[RAW]) throw invalidState("database is not open");
     return this[RAW];
   }
 
   get #conn(): Conn {
-    return this.#db._conn;
+    return this.#db.conn;
   }
 
   open() {
     if (this[RAW]) throw invalidState("database is already open");
     try {
-      this[RAW] = new Database(this.#file, { readonly: this.#opts.readOnly, create: !this.#opts.readOnly });
+      // SQLITE_OPEN_READONLY, or READWRITE | CREATE
+      this[RAW] = Handle.open(this.#file || ":memory:", this.#opts.readOnly ? 1 : 6);
     } catch (e) {
       if (e instanceof Error && e.name === "SQLiteError") throw sqliteError(e.message, (e as Error & { errno: number }).errno);
       throw e;
@@ -147,7 +148,7 @@ export class DatabaseSync {
     this.#sessions.clear();
     this.#statements.clear();
     this[RAW] = undefined;
-    db.close();
+    db.conn.close();
   }
 
   [Symbol.dispose]() {
@@ -172,7 +173,7 @@ export class DatabaseSync {
     if (typeof sql !== "string") throw argType('The "sql" argument must be a string.');
     const db = this.#db;
     try {
-      db._conn.eachStatement(sql, (s) => {
+      db.conn.eachStatement(sql, (s) => {
         while (s.step());
       });
     } catch (e) {
@@ -208,7 +209,7 @@ export class DatabaseSync {
   /** The function failed with `e`: rethrown as is when it is the program's own error (`own`), else as Node's. */
   #fail(ctx: number, e: unknown, own = true) {
     const db = this[RAW];
-    if (own && db) db._pending = e;
+    if (own && db) db.pending = e;
     resultError(ctx, e instanceof Error ? e.message : String(e));
   }
 
@@ -275,7 +276,7 @@ export class DatabaseSync {
     if (!(buffer instanceof Uint8Array)) throw argType('The "buffer" argument must be an instance of Uint8Array.');
     const db = this.#db;
     try {
-      db._conn.load(buffer);
+      db.conn.load(buffer);
     } catch (e) {
       throw fromRaw(e, this);
     }
@@ -309,7 +310,7 @@ export class DatabaseSync {
   setAuthorizer(callback: Fn | null) {
     const db = this.#db;
     if (callback !== null && typeof callback !== "function") throw argType('The "callback" argument must be a function or null.');
-    const deny = (e: unknown) => ((db._pending = e), 1);
+    const deny = (e: unknown) => ((db.pending = e), 1);
     this.#conn.setAuthorizer(
       callback &&
         ((action, a, b, c, d) => {
@@ -515,7 +516,7 @@ export class StatementSync {
   run(...args: unknown[]): { changes: number | bigint; lastInsertRowid: number | bigint } {
     return this.#each(args, (s) => {
       if (s) while (this.#step(s) !== undefined);
-      const conn = this.#db[RAW]!._conn;
+      const conn = this.#db[RAW]!.conn;
       const changes = conn.changes();
       const id = conn.lastInsertRowid();
       return this.#readBigInts ? { changes: BigInt(changes), lastInsertRowid: id } : { changes, lastInsertRowid: Number(id) };

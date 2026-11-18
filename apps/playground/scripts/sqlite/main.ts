@@ -1,4 +1,4 @@
-import { constants, Database, SQLiteError } from "bun:sqlite";
+import { constants, Database, SQLiteError, Statement } from "bun:sqlite";
 // Each probe prints its label and the value, or the error's fields; scripts/sqlite.ts compares with native Bun.
 const p = async (l: string, f: () => any) => { try { const r = await f(); console.log(l, typeof r === "bigint" ? r + "n" : JSON.stringify(r, (k, v) => typeof v === "bigint" ? v + "n" : v)); } catch (e: any) { console.log(l, "THROW", e instanceof SQLiteError ? "-" : e?.constructor?.name, e.name, e.code, e.errno, e.byteOffset, e instanceof SQLiteError, e.message); } };
 const db = new Database(":memory:");
@@ -194,5 +194,51 @@ await p("agg-nostart", () => { db.aggregate("nost", { step: (a: unknown, v: numb
   await p("hook-closed-set", () => { const d = new Database(":memory:"); d.close(); d.onInsert = () => {}; });
   await p("hook-same-fn", () => { const d = new Database(":memory:"); const f = () => {}; d.onInsert = f; return [d.onInsert === f, d.onUpdate]; });
   await p("busy-in-callback", () => { const d = new Database(":memory:"); d.run("create table t(x)"); const r: any[] = []; const st = d.prepare("select 1"); const tryIt = (f: () => unknown) => { try { f(); r.push("ok"); } catch (e: any) { r.push(e.name + ": " + e.message); } }; d.function("f", () => { tryIt(() => d.query("select 1").get()); return 1; }); d.query("select f()").get(); d.onInsert = () => { for (const f of [() => d.run("select 1"), () => d.prepare("select 1"), () => d.serialize(), () => d.inTransaction, () => (d.onInsert = null), () => d.function("g", () => 1), () => st.get(), () => d.close()]) tryIt(f); }; d.run("insert into t values (1)"); d.aggregate("ag", { start: 0, step: (a: number, _x: unknown) => (tryIt(() => st.all()), a) }); d.query("select ag(x) from t").get(); return r; });
+}
+// The rest of Bun's surface: names, handle, open, setCustomSQLite, close(throwOnError), the query cache, prepare's
+// params and flags, transactions' properties, statements' native/reader/readonly/raw, toJSON, a lazy iterate().
+{
+  const own = (o: any) => Object.getOwnPropertyNames(o).sort().join(",");
+  const tryIt = (f: () => unknown) => { try { return f(); } catch (e: any) { return `${e.name}: ${e.message}`; } };
+  const d = new Database(":memory:");
+  d.run("create table t(id integer primary key, v)");
+  d.run("insert into t(v) values (3), (5), (1)");
+  const s = d.query("select id, v from t order by id");
+  await p("names", () => [own(Database.prototype), own(Database), own(Statement.prototype), Object.keys(s), own(Object.getPrototypeOf(s.native)), Object.keys(d), Object.keys(constants).length]);
+  await p("handle", () => { const a = new Database(":memory:"); const b = Database.deserialize(a.serialize()); const c = Database.open(":memory:"); return [typeof a.handle, b.handle - a.handle, c.handle - a.handle, (a.close(), a.handle - c.handle + 2)]; });
+  await p("open", () => [Database.open(":memory:") instanceof Database, tryIt(() => Database.open("nofile.db", { readonly: true }))]);
+  await p("custom-sqlite", () => [tryIt(() => Database.setCustomSQLite(5 as any)), tryIt(() => Database.setCustomSQLite("a\0b"))]);
+  await p("sqlite-type", () => [(d as any)[Symbol.for("sqlite-type")], Object.getOwnPropertyDescriptor(Database.prototype, Symbol.for("sqlite-type"))]);
+  await p("ctor", () => [tryIt(() => new Database(":memory:", { readOnly: true } as any)), tryIt(() => new Database(":memory:", { readonly: true })), tryIt(() => new Database("", { readonly: true })), tryIt(() => new Database(5 as any)), new Database(undefined).filename, new Database("  :memory:  ").filename, new Database(d.serialize()).filename, tryIt(() => new Database(":memory:", 1)), tryIt(() => new Database(":memory:", 0)), new Database(":memory:", null as any).filename, Database.deserialize(d.serialize(), 1 as any).filename, Database.deserialize(new Uint16Array(d.serialize().buffer) as any).query("select count(*) n from t").get()]);
+  await p("exec-proto", () => [Database.prototype.exec === Database.prototype.run, Object.hasOwn(d, "exec"), JSON.stringify(d)]);
+  await p("sql-errors", () => [tryIt(() => d.query(5 as any)), tryIt(() => d.prepare(5 as any)), tryIt(() => d.prepare("")), tryIt(() => d.prepare("  ")), tryIt(() => d.query("  ")), tryIt(() => d.run("  ")), tryIt(() => d.run(5 as any)), tryIt(() => d.prepare("select 1", undefined, 99)), tryIt(() => d.prepare("select 1", undefined, -1))]);
+  await p("dispose", () => { const x = new Database(":memory:"); const st = x.prepare("select 1"); st[Symbol.dispose](); const r: any[] = [st.isFinalized]; x[Symbol.dispose](); r.push(tryIt(() => x.query("select 1"))); return r; });
+  await p("maxcache", () => { const x = new Database(":memory:"); const a = x.query("select 0"); for (let i = 1; i <= 20; i++) x.query(`select ${i}`); return [Database.MAX_QUERY_CACHE_SIZE, (x as any)[Symbol.for("Bun.Database.cache.count")], x.query("select 0") === a, a.isFinalized, a.get()]; });
+  await p("maxcache-lru", () => { const x = new Database(":memory:"); const a = x.query("select 0"); for (let i = 1; i < 20; i++) x.query(`select ${i}`); x.query("select 0"); x.query("select 99"); return [x.query("select 0") === a, (x as any)[Symbol.for("Bun.Database.cache.count")]]; });
+  await p("prepare-params", () => { const st = d.prepare("select ? a, ? b", [1, 2] as any); return [st.get(), st.toString(), st.get(3, 4), d.prepare("select $a a", { $a: 5 } as any).get(), d.prepare("select 1 x", undefined, constants.SQLITE_PREPARE_PERSISTENT | constants.SQLITE_PREPARE_NO_VTAB).get(), tryIt(() => d.prepare("select ? a", ["x", "y"] as any))]; });
+  await p("close-prepared", () => { const x = new Database(":memory:"); const a = x.prepare("select 1 x"); const q = x.query("select 2 y"); x.close(); const r: any[] = [a.isFinalized, q.isFinalized, tryIt(() => a.get()), tryIt(() => q.get()), tryIt(() => x.query("select 1")), tryIt(() => x.run("select 1")), tryIt(() => x.inTransaction), tryIt(() => x.serialize()), x.handle >= 0]; a.finalize(); return r; });
+  await p("close-true", () => { const x = new Database(":memory:"); const a = x.prepare("select 1 x"); x.close(true); return [a.isFinalized, tryIt(() => a.get())]; });
+  await p("close-misc", () => { const x = new Database(":memory:"); x.close(); x.close(); x.close(true); const y = new Database(":memory:"); y.run("begin"); return [new Database(":memory:").close(), y.close(true)]; });
+  await p("close-file", () => { const x = new Database("closefile.db"); x.run("create table if not exists t(v)"); const a = x.prepare("insert into t values (1)"); x.close(); a.run(); a.finalize(); const y = new Database("closefile.db"); const r = y.query("select count(*) n from t").get(); y.close(); require("node:fs").rmSync("closefile.db"); return r; });
+  await p("tx-props", () => { const f = d.transaction(() => 1); return [Object.keys(f), f.database === d, typeof f.deferred, f.deferred.database === d, (f.immediate as any).immediate === f.immediate, Object.getOwnPropertyNames(f).sort(), tryIt(() => d.transaction(5 as any))]; });
+  await p("tx-this", () => { const o = { k: 1, f: d.transaction(function (this: any) { return this?.k; }) }; return o.f(); });
+  await p("tx-async-later", () => { const x = new Database(":memory:"); x.run("create table q(x)"); const f = x.transaction(async () => { x.run("insert into q values (1)"); await 0; }); f(); return [x.inTransaction, x.query("select count(*) n from q").get()]; });
+  await p("tx-nested-names", () => { const x = new Database(":memory:"); const r: any[] = []; x.transaction(() => x.transaction(() => r.push(x.inTransaction))())(); return r; });
+  await p("stmt-reader", () => [s.reader, s.readonly, d.query("insert into t(v) values (1)").reader, d.query("insert into t(v) values (1)").readonly, d.query("insert into t(v) values (1) returning id").reader, d.query("pragma user_version").reader, d.query("begin").readonly, tryIt(() => { const x = d.prepare("select 1"); x.finalize(); return x.reader; })]);
+  await p("stmt-raw", () => [d.query("select 1 a, 'b' b, x'0102' c, null d, 1.5 e, -2 f").raw().map((r) => r.map((v) => (v instanceof Uint8Array ? `${v.constructor.name}:${[...v]}` : v))), d.query("select ? a").raw(5).map((r) => r.map((v) => [...v!]))]);
+  await p("stmt-tojson", () => [s.toJSON(), JSON.stringify(s), Object.prototype.toString.call(s), String(s)]);
+  await p("stmt-native", () => { const n: any = s.native; return [typeof n, n.toString(), n.columns, n.columnsCount, n.paramsCount, n.readonly, n.isFinalized, n.safeIntegers, typeof n.runCount, n.all([]), Object.prototype.toString.call(n), n.constructor === Object, n.get(), n.values()]; });
+  await p("iter-lazy", () => { let n = 0; const x = new Database(":memory:"); x.function("tick", () => ++n); x.run("create table q(x); insert into q values (1),(2),(3)"); const it = x.query("select tick() t from q").iterate(); const first = it.next(); return [first.value, n, it.return!(undefined), n]; });
+  await p("iter-invalid", () => { const it = s.iterate(); it.next(); s.all(); return tryIt(() => it.next()); });
+  await p("iter-invalid2", () => { const it = s.iterate(); s.all(); return [...it]; });
+  await p("iter-symbol", () => [...(s as any)].length);
+  await p("iter-break-reset", () => { for (const _ of s.iterate()) break; return s.all().length; });
+  await p("iter-throws", () => { const x = new Database(":memory:"); x.function("boom", () => { throw new RangeError("b"); }); x.run("create table q(x); insert into q values (1),(2)"); const it = x.query("select boom() from q").iterate(); return tryIt(() => it.next()); });
+  await p("iter-proto", () => [Object.prototype.toString.call(s.iterate()), typeof s.iterate().next]);
+  await p("iter-args", () => [...d.query("select ? a union all select ?").iterate(1, 2)]);
+  await p("iter-safe", () => [...d.query("select 5 a").safeIntegers(true).iterate()]);
+  await p("iter-insert-returning", () => { const x = new Database(":memory:"); x.run("create table q(x)"); const it = x.query("insert into q values (1),(2) returning x").iterate(); it.next(); it.return!(undefined); return x.query("select count(*) n from q").get(); });
+  await p("iter-closed", () => { const x = new Database(":memory:"); x.run("create table q(x); insert into q values (1),(2)"); const it = x.prepare("select x from q").iterate(); it.next(); x.close(); return it.next(); });
+  await p("run-changes", () => { const x = new Database(":memory:"); x.run("create table q(x); create table log(y); create trigger tr after insert on q begin insert into log values (new.x); insert into log values (new.x); end"); return [x.run("insert into q values (1), (2)"), x.query("insert into q values (3)").run(), x.run("select 1"), x.run("insert into q values (4); select 1"), x.query("select 1").run()]; });
 }
 console.log("__end__");
