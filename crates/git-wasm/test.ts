@@ -698,6 +698,20 @@ try {
   await twin("tag bad name", p6, ["tag", "bad..name"], ts);
   await twin("tag bad rev", p6, ["tag", "x", "nope"], ts);
   await twin("tag nested", p6, ["tag", "-a", "nested", "-m", "n", "ann"], ts);
+  // --sort and --contains
+  const p6v = join(tmp, "p6v");
+  cpSync(p6, p6v, { recursive: true });
+  for (const t of ["v1.10", "v1.9", "v1.9-rc1", "v2.0", "v10", "v1.09", "v1.009"]) nat(p6v, "tag", t, "HEAD~1");
+  const dated = (name: string, date: string, ...rest: string[]) => spawnSync("git", ["-C", p6v, "tag", "-a", name, "-m", name, ...rest], { env: { ...natEnv, GIT_COMMITTER_DATE: date } });
+  dated("old", "2001-01-01T00:00:00Z", "HEAD~1");
+  dated("future", "2101-01-01T00:00:00Z", "HEAD~1");
+  nat(p6v, "tag", "tree", "HEAD^{tree}");
+  const sorts = [["--sort=refname"], ["--sort=-refname"], ["--sort=version:refname"], ["--sort=-v:refname"], ["--sort", "creatordate"], ["--sort=-creatordate"], ["--sort=objectname"], ["--sort=refname", "--sort=-creatordate"], ["--sort=-v:refname", "-l", "v1*"], ["-n", "--sort=-version:refname"], ["--sort=nope"], ["--sort"], ["--sort=-creatordate", "--no-sort"]];
+  const containing = [["--contains"], ["--contains", "HEAD~1"], ["--contains=HEAD"], ["--contains", "feat"], ["--contains", "ann"], ["--no-contains", "HEAD"], ["--contains", "HEAD~1", "--no-contains", "HEAD"], ["--contains", "HEAD~1", "--sort=-v:refname"], ["-l", "--contains"], ["--contains", "HEAD~1", "v*"], ["--contains", "nope"], ["--contains", "tree"], ["--contains", "HEAD~1", "--contains", "HEAD"]];
+  for (const a of [...sorts, ...containing]) await twin(`tag ${a.join(" ")}`, p6v, ["tag", ...a], ts);
+  await twin("tag --sort creates", p6v, ["tag", "--sort=refname", "newtag"], ts);
+  await twin("tag.sort", p6v, ["tag"], { ...ts, setup: (d) => nat(d, "config", "tag.sort", "-version:refname") });
+  await twin("tag.sort, --sort wins", p6v, ["tag", "--sort=refname"], { ...ts, setup: (d) => nat(d, "config", "tag.sort", "-version:refname") });
   r = await git(empty, ["tag", "v0"], ident);
   check("tag unborn", r.code === 128 && r.err === "fatal: Failed to resolve 'HEAD' as a valid ref.\n", JSON.stringify(r));
   await twin("show annotated tag", p6, ["show", "ann"], { out: true });

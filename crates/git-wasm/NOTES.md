@@ -39,7 +39,12 @@ Output the panel parses (byte-identical to native git, checked by `test.ts`):
   `%(align:15)` name, then the annotation's, else the commit's, first lines), `<name> [<rev>]`, `-a`/`-m <msg>`
   (annotated: a tag object with the identity as tagger; `-a` without `-m` is git's `no tag message?`, there is no
   editor), `-f` (`Updated tag 'v1' (was abc1234)`), `-d <name>...`; `show <tag>` prints an annotated tag's header and
-  message before the commit. Not done: `--sort`, `--contains`, `-s`/`-u` (signing), `-F`.
+  message before the commit. `--sort=<key>` (repeatable, the last decides first, ties by name ascending even when
+  reversed; `tag.sort` without one): `refname`, `version:refname`/`v:refname` (git's versioncmp, glibc's strverscmp,
+  without `versionsort.suffix`), `creatordate` (tagger date, else committer date, else 0), `objectname`, each with
+  `-`; other keys are `unknown field name` (exit 128). `--contains [<commit>]`/`--no-contains` (HEAD as the last
+  argument; they imply `-l` and leave out tags of trees and blobs). Not done: `-s`/`-u` (signing), `-F`, `--points-at`,
+  `--merged`, `--format`, `-i`.
 - `rev-parse [--verify] [-q] [--short] [--abbrev-ref] <rev>`, `--show-toplevel`, `--is-inside-work-tree`, `--git-dir`.
 - `config <key> [<value>]`, `--get`, `--unset`, `--list|-l`, `--local`: the repository's `/.git/config` only;
   `--global`, `--system`, `--file` exit 128 with `only --local config in the playground`. Unset key: exit 1.
