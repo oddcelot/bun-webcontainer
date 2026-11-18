@@ -164,8 +164,16 @@ branch and reattaches HEAD (`Successfully rebased and updated refs/heads/feat.`)
 stderr. `status` shows the rebase as git's long format does (`interactive rebase in progress; onto abc1234`, the last
 two commands done and the next two, the hints); `switch` refuses during one. Not supported (clear errors, exit 128):
 `-i` and the todo editing it needs, `--exec`, `--rebase-merges`, `--root`, `--autosquash`, `--autostash`,
-`--update-refs`, `--apply`, `-f`, `--reapply-cherry-picks`; `--fork-point` isn't used
-(the merge base is), so commits an upstream rewrote are only left out when their patch matches.
+`--update-refs`, `--apply`, `-f`, `--reapply-cherry-picks`.
+
+The fork point (`--fork-point`, on without an upstream argument unless `rebase.forkPoint=false`; `--no-fork-point`):
+git's get_fork_point over the upstream's reflog (`.git/logs/<ref>`: the first entry's old id and every new one, else the
+ref's commit), the one best common ancestor of HEAD and those commits when it is one of them; commits before it aren't
+replayed, so a commit the upstream dropped (rewritten, force-pushed) stays dropped. The name is the ref's full name
+(DWIM over git's rules: `No such ref`, `Ambiguous refname`, and get_oid's `warning: refname 'x' is ambiguous.` for the
+upstream and onto). `pull --rebase` takes the fork point of the tracking ref before fetching (failures ignored) and
+rebases `--onto <fetched> <fork point>` unless the fork point is where HEAD and the fetched commit meet anyway, as
+git's pull does.
 
 `test.ts` runs a scripted session under node's WASI and compares status, diff, log, show and every mutation with native
 git: "twin" runs execute the same command on two copies of a project (ours vs native) and compare `status`, `ls-files -s`,

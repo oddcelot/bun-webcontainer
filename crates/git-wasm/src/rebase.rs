@@ -120,11 +120,18 @@ If you wish to set tracking information for this branch you can do so with:
 
 pub fn rebase(ctx: &Ctx, args: &[String]) -> Res {
     let (mut quiet, mut onto, mut xopts, mut pos, mut action) = (false, None, Vec::new(), Vec::new(), None);
+    // --fork-point: unset (None) it is on only without an upstream argument; rebase.forkPoint=false turns it off
+    let mut fork_point = match ctx.repo.config_snapshot().boolean("rebase.forkPoint") {
+        Some(false) => Some(false),
+        _ => None,
+    };
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
             "--continue" | "--abort" | "--skip" | "--quit" => action = Some(a.clone()),
             "-q" | "--quiet" => quiet = true,
+            "--fork-point" => fork_point = Some(true),
+            "--no-fork-point" => fork_point = Some(false),
             "-v" | "--verbose" | "--stat" | "-n" | "--no-stat" | "-m" | "--merge" | "--no-autostash" | "--no-update-refs" | "--no-autosquash" => {}
             "--onto" => onto = Some(it.next().cloned().ok_or(Exit { code: 129, msg: "error: option `onto' requires a value".into() })?),
             a if a.starts_with("--onto=") => onto = Some(a[7..].to_string()),
@@ -172,7 +179,11 @@ pub fn rebase(ctx: &Ctx, args: &[String]) -> Res {
         None => {
             let branch = ctx.repo.head_name()?.map(|n| n.shorten().to_str_lossy().into_owned());
             match branch.as_ref().and_then(|b| crate::status::upstream(ctx, b)) {
-                Some((short, _)) => short,
+                // the tracking ref's full name, as branch_get_upstream gives it
+                Some((_, full)) => {
+                    fork_point.get_or_insert(true);
+                    full
+                }
                 None => {
                     out(&NO_UPSTREAM.replace("{branch}", branch.as_deref().unwrap_or("<branch>")));
                     return Ok(1);
@@ -181,6 +192,7 @@ pub fn rebase(ctx: &Ctx, args: &[String]) -> Res {
         }
     };
     let commit_of = |rev: &str| ctx.repo.rev_parse_single(rev).ok().and_then(|id| id.object().ok()?.peel_to_commit().ok()).map(|c| c.id);
+    warn_ambiguous(ctx, &upstream_name);
     let Some(upstream) = commit_of(&upstream_name) else { return fatal(format!("invalid upstream '{upstream_name}'")) };
     // `rebase <upstream> <branch>`: that branch (or commit) is what gets rebased; git switches to it first
     let (head, head_name, branch_name, switch_to) = match pos.get(1) {
@@ -199,11 +211,77 @@ pub fn rebase(ctx: &Ctx, args: &[String]) -> Res {
         }
     };
     let onto_name = onto.clone().unwrap_or_else(|| upstream_name.clone());
+    warn_ambiguous(ctx, &onto_name);
     let onto_id = match &onto {
         Some(o) => commit_of(o).ok_or_else(|| Exit { code: 128, msg: format!("fatal: Does not point to a valid commit '{o}'") })?,
         None => upstream,
     };
-    start(ctx, head, upstream, onto_id, &Start { quiet, xopts, onto_name, head_name, branch_name, switch_to })
+    let restrict = if fork_point == Some(true) { fork_point_of(ctx, &upstream_name, head)? } else { None };
+    start(ctx, head, upstream, onto_id, &Start { quiet, xopts, onto_name, head_name, branch_name, switch_to, restrict })
+}
+
+/// The refs a short name could stand for (repo_dwim_ref's matches).
+fn dwim_matches(ctx: &Ctx, name: &str) -> Vec<String> {
+    crate::status::REF_RULES
+        .iter()
+        .map(|rule| rule.replace("{}", name))
+        .filter(|r| (r == "HEAD" || r.starts_with("refs/")) && ctx.repo.try_find_reference(r.as_str()).ok().flatten().is_some())
+        .collect()
+}
+
+/// get_oid's warning when a name stands for more than one ref.
+fn warn_ambiguous(ctx: &Ctx, name: &str) {
+    if dwim_matches(ctx, name).len() > 1 {
+        eprintln!("warning: refname '{name}' is ambiguous.");
+    }
+}
+
+/// repo_dwim_ref: the full name of the one ref `name` stands for.
+fn dwim_ref(ctx: &Ctx, name: &str) -> Result<String, Exit> {
+    let found = dwim_matches(ctx, name);
+    match found.as_slice() {
+        [] => fatal(format!("No such ref: '{name}'")),
+        [one] => Ok(one.clone()),
+        _ => fatal(format!("Ambiguous refname: '{name}'")),
+    }
+}
+
+/// get_fork_point (`merge-base --fork-point <ref> <commit>`): of the commits `ref` pointed at by its reflog (or its
+/// commit, without one), the one where `commit` forked: the single best common ancestor of `commit` and all of them,
+/// when it is one of them. A rebase then leaves out what came before it, even commits the upstream since dropped.
+pub fn fork_point_of(ctx: &Ctx, refname: &str, commit: ObjectId) -> Result<Option<ObjectId>, Exit> {
+    let full = dwim_ref(ctx, refname)?;
+    let mut revs: Vec<ObjectId> = Vec::new();
+    let log = std::fs::read_to_string(format!("/.git/logs/{full}")).unwrap_or_default();
+    for (i, line) in log.lines().enumerate() {
+        let mut w = line.split(' ');
+        let (old, new) = (w.next().unwrap_or(""), w.next().unwrap_or(""));
+        // the first entry's old value too (collect_one_reflog_ent), then each new one; no nulls, no repeats
+        for id in if i == 0 { vec![old, new] } else { vec![new] } {
+            if let Ok(id) = ObjectId::from_hex(id.as_bytes()) {
+                if !id.is_null() && !revs.contains(&id) && ctx.repo.find_commit(id).is_ok() {
+                    revs.push(id);
+                }
+            }
+        }
+    }
+    if revs.is_empty() {
+        let mut r = ctx.repo.find_reference(full.as_str())?;
+        revs.push(r.peel_to_id()?.detach());
+    }
+    // the merge bases of commit and the reflog's commits: the common ancestors no other common ancestor has as parent
+    let mut ours: std::collections::HashMap<ObjectId, Vec<ObjectId>> = std::collections::HashMap::new();
+    for info in ctx.repo.rev_walk([commit]).all()? {
+        let info = info?;
+        ours.insert(info.id, info.parent_ids.to_vec());
+    }
+    let common: HashSet<ObjectId> = ctx.repo.rev_walk(revs.clone()).all()?.filter_map(Result::ok).map(|i| i.id).filter(|id| ours.contains_key(id)).collect();
+    let parents: HashSet<ObjectId> = common.iter().flat_map(|id| ours[id].iter().copied()).collect();
+    let best: Vec<ObjectId> = common.iter().copied().filter(|id| !parents.contains(id)).collect();
+    Ok(match best.as_slice() {
+        [one] if revs.contains(one) => Some(*one),
+        _ => None,
+    })
 }
 
 /// How a rebase was asked for.
@@ -218,6 +296,8 @@ pub struct Start {
     pub branch_name: String,
     /// `rebase <upstream> <branch>`'s branch, switched to when there is nothing to replay
     pub switch_to: Option<String>,
+    /// the fork point (`--fork-point`): commits before it aren't replayed
+    pub restrict: Option<ObjectId>,
 }
 
 impl Start {
@@ -225,7 +305,7 @@ impl Start {
     pub fn of_head(ctx: &Ctx, quiet: bool, xopts: Vec<String>, onto_name: String) -> Result<Self, Exit> {
         let head_name = ctx.repo.head_name()?.map(|n| n.as_bstr().to_str_lossy().into_owned());
         let branch_name = head_name.as_deref().map_or("HEAD".to_string(), |n| n.trim_start_matches("refs/heads/").to_string());
-        Ok(Start { quiet, xopts, onto_name, head_name, branch_name, switch_to: None })
+        Ok(Start { quiet, xopts, onto_name, head_name, branch_name, switch_to: None, restrict: None })
     }
 }
 
@@ -235,7 +315,11 @@ pub fn start(ctx: &Ctx, head: ObjectId, upstream: ObjectId, onto: ObjectId, o: &
     let head_name = o.head_name.clone();
     // can_fast_forward: onto already in head's history (linearly), and nothing of upstream's left out
     let base = ctx.repo.merge_base(onto, head).ok().flatten().map(|b| b.detach());
-    if base == Some(onto) && ctx.repo.merge_base(upstream, head).ok().flatten().map(|b| b.detach()) == Some(onto) && linear(ctx, onto, head)? {
+    if base == Some(onto)
+        && o.restrict.is_none_or(|r| Some(r) == base)
+        && ctx.repo.merge_base(upstream, head).ok().flatten().map(|b| b.detach()) == Some(onto)
+        && linear(ctx, onto, head)?
+    {
         if let Some(to) = &o.switch_to {
             // checkout_up_to_date
             let target = commit_flat(ctx, &ctx.repo.find_commit(head)?)?;
@@ -258,9 +342,10 @@ pub fn start(ctx: &Ctx, head: ObjectId, upstream: ObjectId, onto: ObjectId, o: &
         }
         return Ok(0);
     }
-    // upstream..HEAD without merges, oldest first; what upstream already has (the same patch) is left out
+    // upstream..HEAD (and not before the fork point) without merges, oldest first; what upstream already has (the same
+    // patch) is left out
     let mut picks: Vec<ObjectId> = Vec::new();
-    for info in ctx.repo.rev_walk([head]).with_hidden([upstream]).all()? {
+    for info in ctx.repo.rev_walk([head]).with_hidden(std::iter::once(upstream).chain(o.restrict)).all()? {
         let info = info?;
         if info.parent_ids.len() <= 1 {
             picks.push(info.id);

@@ -293,6 +293,11 @@ try {
     at("commit", "-qm", "z: mine");
   };
   await pullTwin("fetch forced update", ["fetch"], { setup: forked });
+  // the fork point: y, which origin/main had (its reflog says), isn't replayed; only z is
+  await pullTwin("pull --rebase fork point", ["pull", "--rebase"], { setup: forked });
+  await pullTwin("pull --rebase fork point without a reflog", ["pull", "--rebase"], { setup: (d) => { forked(d); rmSync(join(d, ".git/logs/refs/remotes/origin/main")); } });
+  // what the fork point leaves out, without one: y replayed too
+  await pullTwin("pull --rebase fork point gone", ["pull", "--rebase"], { setup: (d) => { forked(d); native(d, "update-ref", "refs/remotes/origin/main", "main~2"); } });
   await pullTwin("pull --rebase refuses a dirty file", ["pull", "--rebase"], { setup: (d) => write(d, "c.txt", "dirty\n") });
   await pullTwin("pull --rebase refuses staged changes", ["pull", "--rebase"], { setup: (d) => { write(d, "new.txt", "staged\n"); native(d, "add", "new.txt"); } });
   await pullTwin("pull --rebase keeps untracked files", ["pull", "--rebase"], { setup: (d) => write(d, "local.txt", "untracked\n") });

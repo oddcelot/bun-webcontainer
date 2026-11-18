@@ -1038,6 +1038,25 @@ try {
   prn("switch", "-q", "same");
   write(pr, "f.txt", "A\nb\nc\nd\ne\nf\nG\n");
   prn("commit", "-qam", "s: last line too");
+  // fork points: `up` had u1 when fp branched off it, then dropped it (its reflog remembers); fp tracks up
+  prn("switch", "-qc", "up", "main");
+  write(pr, "u.txt", "u1\n");
+  prn("add", "u.txt");
+  prn("commit", "-qm", "u1: dropped later");
+  prn("switch", "-qc", "fp");
+  write(pr, "p.txt", "p\n");
+  prn("add", "p.txt");
+  prn("commit", "-qm", "p: on u1");
+  prn("switch", "-q", "up");
+  prn("reset", "-q", "--hard", "main");
+  write(pr, "w.txt", "w\n");
+  prn("add", "w.txt");
+  prn("commit", "-qm", "u2: instead");
+  prn("branch", "fp2");
+  prn("config", "branch.fp.remote", ".");
+  prn("config", "branch.fp.merge", "refs/heads/up");
+  prn("config", "branch.fp2.remote", ".");
+  prn("config", "branch.fp2.merge", "refs/heads/up");
   prn("switch", "-q", "--detach", "main");
   prn("switch", "-q", "feat");
   const known = new Set(prn("rev-list", "--all").split("\n").filter(Boolean));
@@ -1124,6 +1143,20 @@ try {
   await rebaseSeq("rebase <upstream> <branch> conflict, abort", [["rebase", "dconf", "feat"], ["status"], ["rebase", "--abort"]], onMain);
   await rebaseSeq("rebase <upstream> <branch> conflict, continue", [["rebase", "dconf", "feat"], resolve("A\nb\nc\nresolved\ne\nf\nG\n"), ["rebase", "--continue"]], onMain);
   await rebaseSeq("rebase <upstream> <branch> --onto", [["rebase", "--onto", "m1", "feat~2", "feat"]], onMain);
+  // --fork-point: on without an upstream argument (u1 isn't replayed: up dropped it), off with one
+  const onFp = (d: string) => nat(d, "switch", "-q", "fp");
+  await rebaseSeq("rebase fork point", [["rebase"], ["rebase"]], onFp);
+  await rebaseSeq("rebase <upstream> without fork point", [["rebase", "up"]], onFp);
+  await rebaseSeq("rebase --fork-point <upstream>", [["rebase", "--fork-point", "up"]], onFp);
+  await rebaseSeq("rebase --no-fork-point", [["rebase", "--no-fork-point"]], onFp);
+  await rebaseSeq("rebase rebase.forkPoint=false", [["rebase"]], (d) => { onFp(d); nat(d, "config", "rebase.forkPoint", "false"); });
+  await rebaseSeq("rebase rebase.forkPoint=false --fork-point", [["rebase", "--fork-point"]], (d) => { onFp(d); nat(d, "config", "rebase.forkPoint", "false"); });
+  await rebaseSeq("rebase --fork-point <commit>", [["rebase", "--fork-point", "up~1"]], onFp);
+  await rebaseSeq("rebase --fork-point <branch> <branch>", [["rebase", "--fork-point", "up", "fp"]], onMain);
+  await rebaseSeq("rebase fork point, up to date", [["rebase"]], (d) => nat(d, "switch", "-q", "fp2"));
+  await rebaseSeq("rebase fork point without a reflog", [["rebase"]], (d) => { onFp(d); rmSync(join(d, ".git/logs/refs/heads/up")); });
+  await rebaseSeq("rebase fork point, ambiguous", [["rebase", "--fork-point", "up"]], (d) => { onFp(d); nat(d, "tag", "up", "main"); });
+  await rebaseSeq("rebase ambiguous upstream", [["rebase", "up"], ["status", "-sb"]], (d) => { onFp(d); nat(d, "tag", "up", "main~1"); });
   await rebaseSeq("rebase -", [["rebase", "-"]], (d) => { onMain(d); nat(d, "switch", "-q", "feat"); });
   for (const d of [A, B]) {
     rmSync(d, { recursive: true, force: true });
