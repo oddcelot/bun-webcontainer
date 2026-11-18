@@ -153,7 +153,7 @@ console.log(db.query("select * from todos where done = ?").all(0));
 ### `bun:test`
 
 - ✅ `test`/`it`/`describe` with `.skip`, `.only`, `.todo`, `.each`, `.if`, `.skipIf`, `.todoIf`, `.failing` (passes when the test throws, fails with Bun's message when it doesn't), and `.concurrent`/`.serial` (accepted; tests run one after another)
-- ✅ `beforeAll`, `beforeEach`, `afterEach`, `afterAll`, `setDefaultTimeout`
+- ✅ `beforeAll`, `beforeEach`, `afterEach`, `afterAll`, `setDefaultTimeout`. As in Bun, a `beforeAll` or `afterAll` that throws fails as a test of its own, `<describe> > (unnamed)`; after a failed `beforeAll` the rest of its `describe` doesn't run, its `afterAll` hooks do. A `beforeEach` that throws fails the test, and its `afterEach` hooks still run
 - ✅ `bunfig.toml`'s `[test] preload`: run once before the test files (a runtime plugin it registers serves their imports); its hooks are global, as in Bun (`beforeEach`/`afterEach` around every test, `beforeAll`/`afterAll` once). The top-level `preload` is for runs, not `bun test`, as in Bun 1.4
 - ✅ `mock()`, `spyOn()`, `jest.fn`, `jest.spyOn`
 - ✅ `expect` with `.not`, `.resolves`, `.rejects`, asymmetric matchers (`anything`, `any`, `objectContaining`, `arrayContaining`, `stringContaining`, `stringMatching`) and the common matchers (`toBe`, `toEqual`, `toStrictEqual`, `toThrow`, `toMatchObject`, `toHaveProperty`, `toHaveBeenCalledWith`, …), plus Bun's extras (`toBeEmpty`, `toBeOneOf`, `toSatisfy`, `toStartWith`, `toEndWith`, `toInclude`, `toBeArray`, `toBeString`, `toBeNumber`, `toBeFunction`, `toHaveReturned*`, …)

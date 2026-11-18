@@ -769,95 +769,150 @@ function failure(e: unknown): string {
 
 const names = (s: Suite): string[] => (s.parent ? [...names(s.parent), ...(s.name ? [s.name] : [])] : []);
 
-async function runSuite(s: Suite, only: boolean, skipAll: boolean) {
+/**
+ * What becomes of a test: left out (`.only` elsewhere), filtered out by `-t`, skipped, todo, or run. In a file with
+ * `.only` tests (any file, with `--only`), the others don't run or count, as in Bun.
+ */
+function fate(s: Suite, item: Case, only: boolean, skipAll: boolean): "hidden" | "filtered" | "skip" | "todo" | "run" {
+  const inOnly = (): boolean => {
+    for (let p: Suite | undefined = s; p; p = p.parent) if (p.mode === "only") return true;
+    return false;
+  };
+  if (only && item.mode !== "only" && !inOnly()) return "hidden";
+  if (runOpts.namePattern && !runOpts.namePattern.test([...names(s), item.name].join(" "))) return "filtered";
+  if (skipAll || s.mode === "skip" || item.mode === "skip") return "skip";
+  // `--todo`: a todo test with a body runs, and fails if it passes.
+  if ((item.mode === "todo" || s.mode === "todo") && !(runOpts.todo && item.body)) return "todo";
+  return "run";
+}
+
+/** Whether a test of `s`, or of a suite in it, runs. */
+const runsAny = (s: Suite, only: boolean, skipAll: boolean): boolean =>
+  s.items.some((i) => (i.kind === "suite" ? runsAny(i, only, skipAll || s.mode === "skip" || i.mode === "skip") : fate(s, i, only, skipAll) === "run"));
+
+/**
+ * Runs a suite: its `beforeAll` hooks, its tests and suites in order, its `afterAll` hooks. As in Bun, the hooks run
+ * for every suite (even one without tests) unless `-t` or `.only` picks tests, and then only around a suite with a
+ * test that runs. A hook that throws fails as a test of its own, `<suite> > (unnamed)`; after a `beforeAll`, nothing
+ * else of the suite runs but its `afterAll` hooks. In a skipped (or todo) suite each `beforeAll`/`afterAll` counts as
+ * a skipped (todo) test.
+ */
+async function runSuite(s: Suite, only: boolean, skipAll: boolean, allHooks: boolean) {
   const ancestors: Suite[] = [];
   for (let p: Suite | undefined = s; p; p = p.parent) ancestors.unshift(p);
-  let started = false;
   const label = (c: Case) => [...names(s), c.name].join(" > ");
+  const hookLabel = [...names(s), "(unnamed)"].join(" > ");
   const todo = s.mode === "todo";
-  for (const item of s.items) {
-    if (item.kind === "suite") {
-      await runSuite(item, only, skipAll || s.mode === "skip" || item.mode === "skip");
-      continue;
-    }
-    // In a file with `.only` tests (any file, with `--only`), the others don't run or count, as in Bun; `-t` filters
-    // the rest, counted as filtered out.
-    if (only && item.mode !== "only" && !ancestors.some((a) => a.mode === "only")) continue;
-    if (runOpts.namePattern && !runOpts.namePattern.test([...names(s), item.name].join(" "))) {
-      totals.filtered++;
-      continue;
-    }
-    if (skipAll || s.mode === "skip" || item.mode === "skip") {
-      totals.skip++;
-      report.log(listed("skip", dim(`» ${label(item)}`)));
-      continue;
-    }
-    // `--todo`: a todo test with a body runs, and fails if it passes.
-    const todoRun = (item.mode === "todo" || todo) && runOpts.todo && item.body;
-    if ((item.mode === "todo" || todo) && !todoRun) {
-      totals.todo++;
-      report.log(listed("todo", `\x1b[35m✎\x1b[0m ${label(item)} ${dim("[todo]")}`));
-      continue;
-    }
-    testName = [...names(s), item.name].join(" ");
-    const t0 = performance.now();
-    let err: unknown;
-    let failed = false;
-    testAssertions = 0;
-    expectedAssertions = undefined;
-    needAssertions = false;
-    let threw = false;
-    runningMark = undefined;
-    try {
-      for (const a of ancestors) if (!started && a === s) for (const h of a.hooks.beforeAll) await call(h, defaultTimeout);
-      started = true;
-      for (const a of ancestors) for (const h of a.hooks.beforeEach) await call(h, defaultTimeout);
-      try {
-        await call(item.fn, item.timeout);
-        if (expectedAssertions !== undefined && testAssertions !== expectedAssertions) {
-          throw new AssertionError(`expected ${expectedAssertions} assertion${expectedAssertions === 1 ? "" : "s"}, but test ended with ${testAssertions} assertion${testAssertions === 1 ? "" : "s"}`);
+  const useHooks = allHooks || runsAny(s, only, skipAll);
+  const inactive = skipAll || s.mode === "skip" ? "skip" : todo && !runOpts.todo ? "todo" : undefined;
+  /** The suite's `beforeAll` or `afterAll` hooks, in turn until one throws: whether none did. */
+  const hooks = async (fns: Fn[]) => {
+    if (!useHooks) return true;
+    for (const fn of fns) {
+      if (inactive === "skip") (totals.skip++, report.log(listed("skip", dim(`» ${hookLabel}`))));
+      else if (inactive === "todo") (totals.todo++, report.log(listed("todo", `\x1b[35m✎\x1b[0m ${hookLabel} ${dim("[todo]")}`)));
+      else {
+        const t0 = performance.now();
+        try {
+          await call(fn, defaultTimeout);
+        } catch (e) {
+          report.error(`${failure(e)}\n${listed("fail", `\x1b[31m✗\x1b[0m\x1b[31m ${hookLabel}\x1b[0m ${dim(`[${ms(performance.now() - t0)}]`)}`)}`);
+          countFailure();
+          return false;
         }
-        if (needAssertions && testAssertions === 0) throw new AssertionError("received 0 assertions, but expected at least one assertion to be called");
-      } catch (e) {
-        // `.failing`: the test is meant to throw; the afterEach hooks run all the same.
-        if (!item.failing) throw e;
-        threw = true;
-      } finally {
-        for (const a of [...ancestors].reverse()) for (const h of a.hooks.afterEach) await call(h, defaultTimeout);
       }
-    } catch (e) {
-      (failed = true), (err = e);
     }
-    const time = dim(`[${ms(performance.now() - t0)}]`);
-    const mark = runningMark;
-    runningMark = undefined;
-    if (mark === "skip") {
-      totals.skip++;
-      report.log(listed("skip", dim(`» ${label(item)}`)));
-    } else if (mark === "todo") {
-      totals.todo++;
-      report.log(listed("todo", `\x1b[35m✎\x1b[0m ${label(item)} ${dim("[todo]")}`));
-    } else if (todoRun && failed) {
-      totals.todo++;
-      report.error(`${failure(err)}\n${listed("todo", `\x1b[35m✎\x1b[0m ${label(item)} ${time}`)}`);
-    } else if (todoRun) {
-      report.error(listed("fail", `\x1b[31m✗\x1b[0m\x1b[31m ${label(item)}\x1b[0m ${time}\n  ^ this test is marked as todo but passes. Remove \`.todo\` if tested behavior now works`));
-      countFailure();
-    } else if (item.failing && !threw && !failed) {
-      report.error(listed("fail", `\x1b[31m✗\x1b[0m\x1b[31m ${label(item)}\x1b[0m\n  ^ this test is marked as failing but it passed. Remove \`.failing\` if tested behavior now works`));
-      countFailure();
-    } else if (failed && err instanceof Timeout && err.ms === item.timeout) {
-      report.error(listed("fail", `\x1b[31m✗\x1b[0m\x1b[31m ${label(item)}\x1b[0m ${time}\n  ^ this test timed out after ${err.ms}ms.`));
-      countFailure();
-    } else if (failed) {
-      report.error(`${failure(err)}\n${listed("fail", `\x1b[31m✗\x1b[0m\x1b[31m ${label(item)}\x1b[0m ${time}`)}`);
-      countFailure();
-    } else {
-      totals.pass++;
-      report.log(`\x1b[32m✓\x1b[0m ${label(item)} ${time}`);
+    return true;
+  };
+  if (await hooks(s.hooks.beforeAll))
+    for (const item of s.items) {
+      if (item.kind === "suite") {
+        await runSuite(item, only, skipAll || s.mode === "skip" || item.mode === "skip", allHooks);
+        continue;
+      }
+      await runCase(s, item, ancestors, fate(s, item, only, skipAll), label(item));
+    }
+  await hooks(s.hooks.afterAll);
+}
+
+/** One test of `s` (`ancestors`: the suites it is in, outermost first), with its `beforeEach`/`afterEach` hooks. */
+async function runCase(s: Suite, item: Case, ancestors: Suite[], what: ReturnType<typeof fate>, label: string) {
+  if (what === "hidden") return;
+  if (what === "filtered") return void totals.filtered++;
+  if (what === "skip") {
+    totals.skip++;
+    report.log(listed("skip", dim(`» ${label}`)));
+    return;
+  }
+  if (what === "todo") {
+    totals.todo++;
+    report.log(listed("todo", `\x1b[35m✎\x1b[0m ${label} ${dim("[todo]")}`));
+    return;
+  }
+const todoRun = item.mode === "todo" || s.mode === "todo";
+  testName = [...names(s), item.name].join(" ");
+  const t0 = performance.now();
+  let err: unknown;
+  let failed = false;
+  testAssertions = 0;
+  expectedAssertions = undefined;
+  needAssertions = false;
+  let threw = false;
+  runningMark = undefined;
+  const fail = (e: unknown) => void (failed || ((failed = true), (err = e)));
+  // As in Bun: a `beforeEach` that throws skips the rest of them and the test, not the `afterEach` hooks; an
+  // `afterEach` that throws skips the ones after it.
+  try {
+    for (const a of ancestors) for (const h of a.hooks.beforeEach) await call(h, defaultTimeout);
+  } catch (e) {
+    fail(e);
+  }
+  if (!failed) {
+    try {
+      await call(item.fn, item.timeout);
+      if (expectedAssertions !== undefined && testAssertions !== expectedAssertions) {
+        throw new AssertionError(`expected ${expectedAssertions} assertion${expectedAssertions === 1 ? "" : "s"}, but test ended with ${testAssertions} assertion${testAssertions === 1 ? "" : "s"}`);
+      }
+      if (needAssertions && testAssertions === 0) throw new AssertionError("received 0 assertions, but expected at least one assertion to be called");
+    } catch (e) {
+      // `.failing`: the test is meant to throw; the afterEach hooks run all the same.
+      if (item.failing) threw = true;
+      else fail(e);
     }
   }
-  if (started) for (const h of s.hooks.afterAll) await call(h, defaultTimeout).catch((e) => (report.error(`${failure(e)}\n${listed("fail", `\x1b[31m✗\x1b[0m\x1b[31m ${names(s).join(" > ")} (afterAll)\x1b[0m`)}`), countFailure()));
+  try {
+    for (const a of [...ancestors].reverse()) for (const h of a.hooks.afterEach) await call(h, defaultTimeout);
+  } catch (e) {
+    fail(e);
+  }
+  const time = dim(`[${ms(performance.now() - t0)}]`);
+  const mark = runningMark;
+  runningMark = undefined;
+  if (mark === "skip") {
+    totals.skip++;
+    report.log(listed("skip", dim(`» ${label}`)));
+  } else if (mark === "todo") {
+    totals.todo++;
+    report.log(listed("todo", `\x1b[35m✎\x1b[0m ${label} ${dim("[todo]")}`));
+  } else if (todoRun && failed) {
+    totals.todo++;
+    report.error(`${failure(err)}\n${listed("todo", `\x1b[35m✎\x1b[0m ${label} ${time}`)}`);
+  } else if (todoRun) {
+    report.error(listed("fail", `\x1b[31m✗\x1b[0m\x1b[31m ${label}\x1b[0m ${time}\n  ^ this test is marked as todo but passes. Remove \`.todo\` if tested behavior now works`));
+    countFailure();
+  } else if (item.failing && !threw && !failed) {
+    report.error(listed("fail", `\x1b[31m✗\x1b[0m\x1b[31m ${label}\x1b[0m\n  ^ this test is marked as failing but it passed. Remove \`.failing\` if tested behavior now works`));
+    countFailure();
+  } else if (failed && err instanceof Timeout && err.ms === item.timeout) {
+    report.error(listed("fail", `\x1b[31m✗\x1b[0m\x1b[31m ${label}\x1b[0m ${time}\n  ^ this test timed out after ${err.ms}ms.`));
+    countFailure();
+  } else if (failed) {
+    report.error(`${failure(err)}\n${listed("fail", `\x1b[31m✗\x1b[0m\x1b[31m ${label}\x1b[0m ${time}`)}`);
+    countFailure();
+  } else {
+    totals.pass++;
+    report.log(`\x1b[32m✓\x1b[0m ${label} ${time}`);
+  }
 }
 
 /** Snapshot files in the project, through the worker's `fs`. */
@@ -941,7 +996,7 @@ export async function runTestFiles(
           }
           if (!globalStarted) (globalStarted = true), await globalHook("beforeAll");
         }
-        await runSuite(root, runOpts.only || hasOnly(root), false);
+        await runSuite(root, runOpts.only || hasOnly(root), false, !hasOnly(root) && !runOpts.namePattern);
       }
       // (A file that didn't load leaves its snapshot file as it is.)
       if (results.at(-1)?.file === file) continue;
