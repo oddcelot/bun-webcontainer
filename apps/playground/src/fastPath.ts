@@ -95,6 +95,25 @@ function loadSolidJsx(): Promise<SolidJsx> {
   }));
 }
 
+/** Most bytes of project files one page inlines as data: URLs (what index.html and the stylesheets refer to); over it, the project runs the normal way. */
+const ASSET_CAP = 2 * 1024 * 1024;
+/** Thrown by {@link buildFast} when the project can't use the fast path after all; the message says why. */
+class Disqualified extends Error {}
+
+const MIME: Record<string, string> = {
+  svg: "image/svg+xml", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", avif: "image/avif",
+  ico: "image/x-icon", bmp: "image/bmp", mp4: "video/mp4", webm: "video/webm", ogv: "video/ogg", mov: "video/quicktime",
+  mp3: "audio/mpeg", wav: "audio/wav", ogg: "audio/ogg", oga: "audio/ogg", m4a: "audio/mp4", flac: "audio/flac", vtt: "text/vtt",
+  woff: "font/woff", woff2: "font/woff2", ttf: "font/ttf", otf: "font/otf", webmanifest: "application/manifest+json",
+  json: "application/json", css: "text/css", js: "text/javascript", txt: "text/plain",
+};
+const mimeOf = (path: string) => MIME[path.slice(path.lastIndexOf(".") + 1).toLowerCase()] ?? "application/octet-stream";
+const base64 = (bytes: Uint8Array) => {
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+};
+
 /** What {@link buildFast} made. */
 export type Fast = { html: string; modules: number; packages: string[]; solid: boolean; ms: { transpile: number } };
 
@@ -108,13 +127,32 @@ export async function buildFast(vfs: VFS): Promise<Fast> {
   const bare = new Set<string>();
   const seen = new Set<string>();
 
+  // Project files the page refers to by URL (images, icons, fonts in url()): inlined as data: URLs, up to ASSET_CAP in all, counted per reference.
+  let inlined = 0;
+  function asset(url: string, from: string): string | undefined {
+    const m = /^([^?#]*)(?:\?[^#]*)?(#.*)?$/.exec(url.trim());
+    if (!m?.[1] || /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(m[1])) return;
+    const path = m[1].startsWith("/") ? norm(m[1].slice(1)) : norm(`${dirname(from)}/${m[1]}`);
+    const bytes = vfs.files.has(path) ? vfs.readBytes(path) : undefined;
+    if (!bytes) return;
+    if ((inlined += bytes.length) > ASSET_CAP) throw new Disqualified(`the files the page refers to are over ${ASSET_CAP >> 20} MB in all (${path} is the one that crossed it)`);
+    return `data:${mimeOf(path)};base64,${base64(bytes)}${m[2] ?? ""}`;
+  }
+  /** `css` (of the file `from`) with its url(…) of project files inlined. */
+  const cssUrls = (css: string, from: string) =>
+    css.replace(/url\(\s*(?:"([^"]*)"|'([^']*)'|([^)"'\s]*))\s*\)/gi, (all, a?: string, b?: string, c?: string) => {
+      const data = asset(a ?? b ?? c ?? "", from);
+      return data ? `url("${data}")` : all;
+    });
+
   async function module(path: string): Promise<void> {
     if (seen.has(path)) return;
     seen.add(path);
     const src = vfs.readText(path) ?? "";
     let code: string;
     if (path.endsWith(".css")) {
-      code = `const s = document.createElement("style"); s.dataset.src = ${JSON.stringify(path)}; s.textContent = ${JSON.stringify(src)}; document.head.append(s);\nexport default {};`;
+      const css = cssUrls(src, path);
+      code = `const s = document.createElement("style"); s.dataset.src = ${JSON.stringify(path)}; s.textContent = ${JSON.stringify(css)}; document.head.append(s);\nexport default {};`;
     } else if (path.endsWith(".json")) {
       code = `export default ${src};`;
     } else {
@@ -149,8 +187,19 @@ export async function buildFast(vfs: VFS): Promise<Fast> {
     if (!/rel=["']stylesheet["']/i.test(a + b) || /^(?:https?:)?\/\//.test(href)) return all;
     const path = resolveLocal(vfs, href, "index.html");
     if (!path) return all;
-    return `<link${a}href="${dataUrl(vfs.readText(path) ?? "", "text/css")}"${b}>`;
+    return `<link${a}href="${dataUrl(cssUrls(vfs.readText(path) ?? "", path), "text/css")}"${b}>`;
   });
+  // What the page shows or links to: <img>, <source>, <video poster>, icons and the manifest, and url() in <style>.
+  doc = doc.replace(/<(img|source|video|audio|track|link)\b[^>]*>/gi, (tag, name: string) => {
+    if (name.toLowerCase() === "link" && !/\brel=["']?[^"'>]*\b(?:icon|apple-touch-icon|manifest|preload)\b/i.test(tag)) return tag;
+    return tag.replace(/(\s(?:src|srcset|poster|href)=)(?:"([^"]*)"|'([^']*)')/gi, (all, head: string, dq?: string, sq?: string) => {
+      const value = dq ?? sq ?? "";
+      const attr = head.trim().toLowerCase();
+      const out = attr === "srcset=" ? value.split(",").map((c) => c.trim().replace(/^(\S+)/, (u) => asset(u, "index.html") ?? u)).join(", ") : (asset(value, "index.html") ?? value);
+      return `${head}"${out.replace(/"/g, "&quot;")}"`;
+    });
+  });
+  doc = doc.replace(/(<style\b[^>]*>)([\s\S]*?)(<\/style>)/gi, (_, open: string, css: string, close: string) => open + cssUrls(css, "index.html") + close);
   await Promise.all(entries.map(module));
   const t1 = performance.now();
 
@@ -303,7 +352,14 @@ export async function runFast(vfs: VFS, frame: HTMLIFrameElement | undefined, lo
   }
   if (!frame) throw new Error("no preview frame");
   const t = performance.now();
-  const fast = await buildFast(vfs);
+  let fast: Fast;
+  try {
+    fast = await buildFast(vfs);
+  } catch (e) {
+    if (!(e instanceof Disqualified)) throw e;
+    log("sys", `[fast] not used, running normally: ${e.message}`);
+    return undefined;
+  }
   log("sys", `[fast] packages come from ${CDN}: ${fast.packages.join(", ") || "none"}`);
   shown = { frame, log };
   frame.setAttribute("sandbox", SANDBOX);
