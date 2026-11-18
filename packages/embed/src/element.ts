@@ -25,6 +25,7 @@ const PARAMS = [
   "family",
   "fonts",
   "readonly",
+  "fast",
   "persist",
   "example",
   "repo",
@@ -442,7 +443,7 @@ export class BunPlayground extends HTMLElement {
     const base = this.#base();
     const url = new URL("embed", base);
     for (const p of PARAMS) {
-      const v = p === "readonly" || p === "autorun" ? this.#bool(p) : this.#get(p);
+      const v = p === "readonly" || p === "autorun" || p === "fast" ? this.#bool(p) : this.#get(p);
       if (v !== null) url.searchParams.set(p, v);
     }
     url.searchParams.set("init", "1");

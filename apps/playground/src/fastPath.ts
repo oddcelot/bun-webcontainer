@@ -16,7 +16,10 @@ let fastPref = () => false;
 /** The settings toggle's getter (workspace.ts), so this module stays free of UI state. */
 export const bindFastPref = (get: () => boolean) => void (fastPref = get);
 /** Whether the fast path is on: the "Fast path" toggle, or `?fast` in the page's URL (for links). */
-export const fastPathOn = (): boolean => fastPref() || new URLSearchParams(location.search).has("fast");
+export const fastPathOn = (): boolean => {
+  const url = new URLSearchParams(location.search).get("fast");
+  return fastPref() || (url !== null && url !== "false");
+};
 
 const CDN = "https://esm.sh";
 const JS = /\.[cm]?[jt]sx?$/;

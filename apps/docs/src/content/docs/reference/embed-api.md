@@ -28,6 +28,7 @@ The element's attributes and the iframe's URL parameters share names.
 | `fonts` | stylesheet URLs, whitespace-separated | none | Loaded inside the embed, for the fonts `--font-ui` and `--font-mono` name. |
 | `vars` | JSON object | none | Chrome CSS variables to set on top of the theme's. Element only; see [Theming](#theming). |
 | `readonly` | boolean | `false` | The editor takes no edits. Run still works. |
+| `fast` | boolean | `false` | Run a browser-only project through the [fast path](/guides/features/#fast-path-for-browser-only-projects): no install, packages from esm.sh. A project that doesn't qualify runs the normal way. Experimental; a playground older than that ignores it. |
 | `persist` | key | none | Keeps edits in the reader's browser under this key. Without it every load starts from the source. |
 | `expand` | empty, a mode, `false` | none | A button that opens the embed in a modal over the page. With a mode (`expand="full"`) it switches to that mode while open, with that mode's features plus your `features` (so `types` stays on, `-name` stays locked). While it's open the page behind is inert (no clicks, no focus) and doesn't scroll, and scrolling inside the embed doesn't carry over to it. Escape or the button closes it, and the embed is back inline as it was: its mode, features, layout and open tabs. |
 | `status` | `toast`, `bar` | `toast` | Where the run status shows: a toast over the panes' bottom-right corner that fades a few seconds after it settles (errors stay), or a pill beside Run. |
