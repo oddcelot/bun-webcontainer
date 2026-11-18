@@ -80,8 +80,16 @@ in the way. `--no-commit` stops before the commit with MERGE_HEAD/MERGE_MSG (`co
 no MERGE_HEAD but SQUASH_MSG (`Squashed commit of the following:` and the commits in log's medium format), which
 `commit` takes as its message (then MERGE_MSG's `# Conflicts:`, cleaned up as `--no-edit` does). Merging into an
 unborn branch checks out the commit (one only; refuses untracked files in the way, keeps staged ones). `stash apply`
-with unmerged paths prints git's `<path>: needs merge` and `error: could not write index` (exit 128). Not done:
-strategies (`-s`, `-X`).
+with unmerged paths prints git's `<path>: needs merge` and `error: could not write index` (exit 128). Strategies
+(`-s`, also for `pull`): `ort` and `recursive` (the same merge, named as asked), `ours` (a merge commit with HEAD's
+tree; it never fast-forwards, ignores `--ff-only` as git does, refuses staged changes: `Merge with strategy ours
+failed.`, exit 2), `octopus` (for two or more heads; one is a clear error). `resolve` and `subtree` exit 128 as not
+supported; an unknown name is git's `Could not find merge strategy` (exit 1). `-X` (ort's options; the octopus ignores
+them as git's script does): `ours`/`theirs` (gix's file favor: a conflicting hunk takes that side, binaries and
+symlinks too; modify/delete still conflicts), `no-renames`, `find-renames[=<n>]`/`rename-threshold=<n>` (git's
+rename scores: `50%`, `5`), `histogram`, `diff-algorithm=myers|minimal|histogram`, `no-renormalize`. `patience`,
+`ignore-*-space*`, `renormalize` and `subtree` are not supported (exit 128); others are git's `unknown strategy
+option` (exit 128).
 
 Stashing (`stash.rs`): `stash [push] [-m <msg>] [-u|-a] [-k] [-q] [[--] <pathspec>...]`, `save [<msg>]`, `list`, `show [-p] [--stat] [<stash>]`,
 `apply [--index] [-q] [<stash>]`, `pop`, `drop [-q] [<stash>]`, `clear`; `<stash>` is `stash@{n}` or `n`. The commits

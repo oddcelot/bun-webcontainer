@@ -671,6 +671,28 @@ try {
   await twin("merge into unborn refuses untracked", p8, ["merge", "b1"], { ...ms, setup: (d) => { orphan(d); write(d, "one.txt", "mine\n"); } });
   for (const a of [["b1", "b2"], ["--squash", "b1"], ["--no-ff", "b1"]]) await twin(`merge into unborn ${a.join(" ")}`, p8, ["merge", ...a], { ...ms, setup: orphan });
   await twin("merge detached", p8, ["merge", "--no-ff", "b1"], { ...ms, setup: (d) => nat(d, "switch", "-q", "--detach") });
+  // strategies (-s) and their options (-X)
+  const strategies = [
+    ["-s", "ours", "feat"], ["--strategy=ours", "--no-commit", "feat"], ["-sours", "--squash", "feat"], ["-s", "ours", "--ff-only", "feat"], ["-s", "ours", "main"],
+    ["-s", "recursive", "feat"], ["--strategy", "ort", "feat"], ["-s", "nope", "feat"], ["-s"], ["-X"],
+    ["-X", "ours", "feat"], ["-Xtheirs", "feat"], ["--strategy-option=theirs", "--no-commit", "feat"], ["-s", "recursive", "-X", "theirs", "feat"],
+    ["-X", "no-renames", "feat"], ["-X", "find-renames=50%", "feat"], ["-X", "rename-threshold=9", "feat"], ["-X", "histogram", "feat"], ["-X", "diff-algorithm=minimal", "feat"],
+    ["-X", "bogus", "feat"], ["-X", "find-renames=abc", "feat"], ["-X", "diff-algorithm=nope", "feat"], ["-s", "ours", "-X", "bogus", "feat"],
+  ];
+  for (const a of strategies) await twin(`merge ${a.join(" ")}`, p5c, ["merge", ...a], ms);
+  await twin("merge -s ours ff possible", p5, ["merge", "-s", "ours", "feat"], ms);
+  await twin("merge -s ours dirty elsewhere", p5c, ["merge", "-s", "ours", "feat"], { ...ms, setup: (d) => write(d, "k.txt", "dirty\n") });
+  await twin("merge -s ours refuses staged", p5c, ["merge", "-s", "ours", "feat"], { ...ms, setup: (d) => { write(d, "k.txt", "staged\n"); nat(d, "add", "k.txt"); } });
+  await twin("merge -s ours octopus", p8, ["merge", "-s", "ours", "b1", "b2"], ms);
+  await twin("merge -s octopus", p8, ["merge", "-s", "octopus", "b1", "b2", "b3"], ms);
+  await twin("merge -X theirs octopus", p8, ["merge", "-X", "theirs", "b1", "b2", "b4"], { ...ms, markers: true });
+  await twin("merge -s octopus fast-forward", p5, ["merge", "-s", "octopus", "feat"], ms);
+  for (const a of [["-s", "resolve", "feat"], ["-s", "subtree", "feat"], ["-s", "octopus", "feat"], ["-s", "ort", "b1", "b2"], ["-X", "patience", "feat"], ["-X", "ignore-space-change", "feat"]]) {
+    const p = a.includes("b1") ? p8 : p5c;
+    r = await git(p, ["merge", ...a], ident);
+    check(`merge ${a.join(" ")} unsupported`, r.code === 128 && /^fatal: .*(not supported|merges one branch|needs two or more)/.test(r.err) && !existsSync(join(p, ".git/MERGE_HEAD")), JSON.stringify(r));
+  }
+  await twin("merge -X theirs status", p5c, ["merge", "-X", "theirs", "feat"], { ...ms, extra: (d) => mergeState(d) + longStatus(d) });
 
   // ---- tag ------------------------------------------------------------------------------------------------------------
   // the tags as refs and objects (an annotated tag's id differs: its tagger's time)

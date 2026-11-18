@@ -114,7 +114,7 @@ Supported in the playground:
    branch     List, create, delete (-d, -D), rename (-m) branches, --show-current, --format
    switch     Switch branches (<branch>, -c <new> [<start>], --detach, -f)
    checkout   Switch branches or restore files (<branch>, -b <new>, <rev> -- <path>...)
-   merge      Join a branch into the current one (<rev>..., --no-ff, --ff-only, --squash, --no-commit, -m <msg>, --abort, --continue)
+   merge      Join a branch into the current one (<rev>..., --no-ff, --ff-only, --squash, --no-commit, -m <msg>, -s ours, -X ours|theirs, --abort, --continue)
    tag        List, create or delete tags (-l [<pattern>...], -n<num>, --sort=<key>, --contains, -a, -m <msg>, -f, -d)
    stash      Set changes aside (push [-m <msg>] [-u|-a] [-k] [-- <path>...], save, list, show [-p], apply [--index], pop, drop, clear, branch)
    clean      Remove untracked files (-n, -f, -d)
