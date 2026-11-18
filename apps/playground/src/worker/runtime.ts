@@ -46,6 +46,8 @@ import process, { env } from "./node/process";
 import { enableTTY, resizeTTY } from "./node/tty";
 import { isDeepStrictEqual } from "./node/util";
 import { failRunning, runTestFiles } from "./node/test";
+import { finishCoverage, startCoverage } from "./coverage";
+import { coverageOptions } from "../coverage/options";
 import { BUN_REVISION, BUN_VERSION } from "./bunVersion";
 import * as fflate from "fflate";
 import { bunZstdCompress, bunZstdCompressSync, bunZstdDecompress, bunZstdDecompressSync } from "./compress";
@@ -1794,6 +1796,33 @@ function bunfigPreloadSpecs(test: boolean): string[] {
   return typeof list === "string" ? [list] : Array.isArray(list) ? list.filter((s): s is string => typeof s === "string") : [];
 }
 
+/**
+ * `bun test --coverage` (the flags, bunfig.toml's `[test]`): the files that load from now on count, and what reports
+ * them once the tests are done (whether that fails the run). Undefined without coverage; throws Bun's error for an
+ * option it rejects.
+ */
+async function testCoverage(flags: string[]): Promise<(() => boolean) | undefined> {
+  const dir = norm(process.cwd());
+  const text = vfs.readText(dir ? `${dir}/bunfig.toml` : "bunfig.toml");
+  const config = text === undefined ? undefined : (parseData(text, "toml") as { test?: Record<string, unknown> } | null);
+  const opts = coverageOptions(flags, config?.test);
+  if (!opts.enabled) return undefined;
+  await startCoverage(opts);
+  const { default: fs } = await import("./node/fs");
+  const ignore = opts.ignorePatterns.map((p) => new Glob(p));
+  return () =>
+    finishCoverage(
+      opts,
+      dir,
+      (path) => ignore.some((p) => p.match(path)),
+      (table) => console.error(table),
+      (path, lcov) => {
+        fs.mkdirSync(`/${path}`.replace(/\/[^/]*$/, "") || "/", { recursive: true });
+        fs.writeFileSync(`/${path}`, lcov);
+      },
+    );
+}
+
 /** A preload's VFS path, resolved from the working directory (a bare name is a package); throws Bun's error if none. */
 function resolvePreload(spec: string): string {
   const path = resolve(spec, norm(process.cwd()), "import", "bun");
@@ -1852,8 +1881,17 @@ self.addEventListener("message", async (e: MessageEvent) => {
   if (e.data.tests) {
     testing = true;
     // `bun test`: load and run each file instead of an entry.
-    const { failed, results } = await runTestFiles(e.data.tests, (f) => importUrl(`${VFS_ROOT}${f}`), (g.Bun as { version: string }).version, { update: ((e.data.args as string[] | undefined) ?? []).some((a) => a === "-u" || a === "--update-snapshots"), preload: () => bunfigPreloads(true) }).catch((err) => (post({ type: "console", level: "error", text: fmt(err) }), { failed: 1, results: undefined }));
-    post({ type: "ready", failed, results });
+    const args = (e.data.args as string[] | undefined) ?? [];
+    let finish: (() => boolean) | undefined;
+    try {
+      finish = await testCoverage(args);
+    } catch (err) {
+      post({ type: "console", level: "error", text: `error: ${err instanceof Error ? err.message : String(err)}` });
+      post({ type: "ready", failed: 1 });
+      return;
+    }
+    const { failed, results, coverageFailed } = await runTestFiles(e.data.tests, (f) => importUrl(`${VFS_ROOT}${f}`), (g.Bun as { version: string }).version, { update: args.some((a) => a === "-u" || a === "--update-snapshots"), preload: () => bunfigPreloads(true), coverage: finish }).catch((err) => (post({ type: "console", level: "error", text: fmt(err) }), { failed: 1, results: undefined, coverageFailed: undefined }));
+    post({ type: "ready", failed, results, coverageFailed });
     return;
   }
   // A package.json script's line (scripts.ts shellCommand), unless the project has a file named `sh`.

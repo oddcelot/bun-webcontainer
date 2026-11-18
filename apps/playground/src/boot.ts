@@ -240,7 +240,8 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
           tested = await runner!.runTests(files, args);
           const { failed } = tested;
           if (stoppedTest) return { state: "idle", text: "Stopped" };
-          return failed ? { state: "error", text: `${failed} test${failed === 1 ? "" : "s"} failed` } : { state: "idle", text: "Tests passed" };
+          if (failed) return { state: "error", text: `${failed} test${failed === 1 ? "" : "s"} failed` };
+          return tested.coverageFailed ? { state: "error", text: "Coverage below threshold" } : { state: "idle", text: "Tests passed" };
         });
       } finally {
         testing = false;

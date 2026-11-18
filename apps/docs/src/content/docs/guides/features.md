@@ -59,7 +59,7 @@ A terminal with colors, clickable links, history (<kbd>↑</kbd>/<kbd>↓</kbd>)
 | Command | Does |
 |---|---|
 | `bun run <script\|file>`, `bun <file>` | Run a `package.json` script or a file; `--preload <file>` (`-r`, `--require`, `--import`) runs a module first, after `bunfig.toml`'s `preload`, as in Bun |
-| `bun test [-u] [filter…]` | Run `*.test.*` / `*.spec.*` files with [`bun:test`](/compatibility/bun/#buntest) |
+| `bun test [-u] [--coverage] [filter…]` | Run `*.test.*` / `*.spec.*` files with [`bun:test`](/compatibility/bun/#buntest); `--coverage` reports which lines and functions ran |
 | `bun install` (`i`) | Install dependencies |
 | `bun add <pkg[@range]> [-d]` (`a`) | Add a dependency |
 | `bun remove <pkg>` (`rm`) | Remove a dependency |

@@ -12,6 +12,9 @@ import { XHR } from "../xhr";
 const debug = () => (globalThis as { __dbg?: { active?: boolean; file(id: number, path: string, table: unknown): void } }).__dbg;
 /** In a debug run, the project's own files (not installed packages) get the step debugger's probes. */
 const instrumented = (path: string) => !!debug()?.active && !/(^|\/)node_modules\//.test(path);
+/** In a `bun test --coverage` run, what counts the files the worker runs itself (worker/coverage.ts). */
+const coverage = () =>
+  (globalThis as { __bwcCoverage?: { covers(path: string): boolean; instrument(path: string, code: string, mappings: string, source: string | undefined, script: boolean): [string, string] } }).__bwcCoverage;
 /** A file instrumented here: its probe table, as a served module registers its own. */
 function registerProbes(path: string, table: string) {
   const t = JSON.parse(table) as { file: number };
@@ -225,7 +228,11 @@ export function createModule(
     let mappings: string | undefined;
     let probes: string | undefined;
     try {
-      [code, mappings, probes] = transpileSyncEsm(src, file, tsconfigFor(vfs!, path), true, instrumented(path)).split("\0");
+      const debugging = instrumented(path);
+      const cover = !plugin && !debugging ? coverage() : undefined;
+      const counted = !!cover?.covers(path);
+      [code, mappings, probes] = transpileSyncEsm(src, file, tsconfigFor(vfs!, path), true, debugging, counted).split("\0");
+      if (counted && mappings !== undefined) [code, mappings] = cover!.instrument(path, code, mappings, undefined, true);
     } catch (e) {
       if (e instanceof Error && e.message.startsWith("require() async module")) throw new TypeError(e.message);
       throw e;
@@ -293,9 +300,13 @@ export function createModule(
     let mappings: string | undefined;
     let stripped = 0;
     const debug = instrumented(path);
+    // In a coverage run, its counters go in what the transpiler printed (plain JavaScript too).
+    const cover = debug ? undefined : coverage();
+    const counted = !!cover?.covers(path);
     const transpile = () => {
-      const [js, map, probes] = transpileSync(src, file, tsconfigFor(vfs!, path), true, debug).split("\0");
+      let [js, map, probes] = transpileSync(src, file, tsconfigFor(vfs!, path), true, debug, counted).split("\0");
       if (probes) registerProbes(path, probes);
+      if (counted && map !== undefined) [js, map] = cover!.instrument(path, js, map, src, true);
       const body = stripDirname(js);
       stripped = body === js ? 0 : 1;
       mappings = map;
@@ -307,7 +318,7 @@ export function createModule(
     const esm = JS_LIKE.test(path) ? moduleKindOf(vfs!, path, src) === "esm" : MARKDOWN.test(path) || packageType(vfs!, path) === "module" || hasModuleSyntax(src);
     if (esm) return loadEsm(path, src);
     // In a debug run the project's plain JavaScript is transpiled too, for its probes.
-    let code = debug || /\.[cm]?(ts|tsx|jsx)$/.test(path) ? transpile() : src;
+    let code = debug || counted || /\.[cm]?(ts|tsx|jsx)$/.test(path) ? transpile() : src;
     const url = encodeURI(`file://${file}`);
     const compile = () => {
       registerSource(url, FUNCTION_HEADER_LINES - stripped, mappings, true);

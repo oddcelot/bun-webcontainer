@@ -15,6 +15,7 @@ import { makePatch, patchPath } from "./patches";
 import { pristineFiles } from "./lockfile";
 import { binCommand, cliPreloads, isTestFile, parseBunArgs, scriptChecks, scriptEntry, scriptPreloads, shellCommand, type Pkg } from "./scripts";
 import { escape } from "./shell/dollar";
+import { COVERAGE_VALUE_FLAGS, isCoverageFlag } from "./coverage/options";
 
 type Log = (level: string, text: string) => void;
 
@@ -46,7 +47,7 @@ const HELP = `Bun's shell: quotes, pipes |, && || ;, redirects > >> < 2>&1, $VAR
 
 bun run <script|file>  run a script or a file
 bun <file>             run a file
-bun test [-u] [filter...]  run test files (stops the server); -u updates snapshots
+bun test [-u] [--coverage] [filter...]  run test files (stops the server); -u updates snapshots
 bun install, bun i     install dependencies
 bun add <pkg> [-d]     add (dev) dependencies
 bun remove <pkg>       remove dependencies
@@ -148,15 +149,28 @@ export function createShell(host: ShellHost) {
     return (!(check || scriptChecks(script)) || (await checkFirst(entry!))) && host.run(entry!);
   }
 
-  /** The only `bun test` flag here: rewrite the snapshot files and inline snapshots (the playground's CI is never set). */
+  /**
+   * The `bun test` flags here: rewrite the snapshot files and inline snapshots (the playground's CI is never set), and
+   * coverage's (`--coverage`, `--coverage-reporter`, `--coverage-dir`; passed on as `--name=value`).
+   */
   const UPDATE_FLAGS = ["-u", "--update-snapshots"];
   async function test(args: string[]) {
-    const flag = args.find((a) => a.startsWith("-") && !UPDATE_FLAGS.includes(a));
-    if (flag) return fail(`error: bun test ${flag} is not supported here`);
-    const filters = args.filter((a) => !a.startsWith("-")).map((a) => a.replace(/^\.\//, ""));
+    const flags: string[] = [];
+    const filters: string[] = [];
+    for (let i = 0; i < args.length; i++) {
+      const a = args[i];
+      if (!a.startsWith("-")) filters.push(a.replace(/^\.\//, ""));
+      else if (UPDATE_FLAGS.includes(a) || isCoverageFlag(a)) {
+        // `--coverage-dir out` as `--coverage-dir=out`.
+        if (COVERAGE_VALUE_FLAGS.includes(a)) {
+          if (i + 1 >= args.length) return fail(`error: missing value for ${a}`);
+          flags.push(`${a}=${args[++i]}`);
+        } else flags.push(a);
+      } else return fail(`error: bun test ${a} is not supported here`);
+    }
     const files = [...vfs.files.keys()].filter((f) => isTestFile(f) && (!filters.length || filters.some((x) => f.includes(x)))).sort();
     if (!files.length) return fail(`error: No tests found${filters.length ? ` matching ${filters.join(", ")}` : ""}!\n\nTest files match *.test.ts, *_test.ts, *.spec.ts or *_spec.ts (also .tsx .js .jsx), outside node_modules.`);
-    await host.test(files, args.filter((a) => a.startsWith("-")));
+    await host.test(files, flags);
   }
 
   async function add(args: string[]) {

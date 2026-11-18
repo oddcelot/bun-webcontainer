@@ -1,7 +1,9 @@
 import { CookieJar, parseSetCookie, pathMatches, type Cookie } from "./cookieJar";
 import { PreviewCookies, dirOf, pagePath } from "./previewCookies";
 import { PANEL_COOKIE, joinCookies } from "./request";
-import { resetSyncEsm, serveModule, vfsRoot } from "./moduleServer";
+import { resetSyncEsm, serveModule, setCoverage, vfsRoot } from "./moduleServer";
+import { coverageOptions, isCoverageFlag, type CoverageOptions } from "./coverage/options";
+import { loadResolver, parseData } from "./resolver";
 import type { VFS } from "@runbun/vfs";
 import { serveLazyRead } from "./pkgStore";
 import { withSyncRelay } from "./worker/syncChannel";
@@ -42,7 +44,7 @@ const PREVIOUS = "[previous] ";
 export type LogFn = (level: string, text: string, partial?: boolean) => void;
 
 /** What a `bun test` run found: failed tests in all, and per test file that ran (worker/node/test.ts TestOutcome). */
-export type TestResults = { failed: number; results?: { file: string; failed: number }[] };
+export type TestResults = { failed: number; results?: { file: string; failed: number }[]; coverageFailed?: boolean };
 
 /** How a program's start went: up (its entry ran), ended itself (with this code), or neither in time. */
 type Outcome = { kind: "ready" } | { kind: "exit"; code: number } | { kind: "timeout" } | { kind: "error"; message: string } | { kind: "cancelled" };
@@ -423,14 +425,36 @@ export class Runner {
 
   /** Failed tests of the last `runTests`. */
   failed = 0;
+  /** Whether the last `runTests` had a file below its `coverageThreshold`. */
+  coverageFailed = false;
   /** Failed tests per file of the last `runTests`; undefined when it ended before reporting (process.exit). */
   results: TestResults["results"];
 
   /** `bun test`: runs test files in a fresh worker (replacing any server) and resolves when the run is over. */
   async runTests(files: string[], args: string[] = []): Promise<TestResults> {
-    await this.start("", files, args);
-    await this.stop();
-    return { failed: this.failed, results: this.results };
+    // `--coverage`: the project's files are served counting what runs, for this run only.
+    setCoverage(await this.coverage(args));
+    try {
+      await this.start("", files, args);
+      await this.stop();
+    } finally {
+      setCoverage(undefined);
+    }
+    return { failed: this.failed, results: this.results, ...(this.coverageFailed && { coverageFailed: true }) };
+  }
+
+  /** Whether a test run with these flags has coverage (bunfig.toml's `[test]` too), and which files it counts in. */
+  private async coverage(args: string[]): Promise<Pick<CoverageOptions, "skipTestFiles"> | undefined> {
+    const text = this.vfs.readText("bunfig.toml");
+    if (!args.some(isCoverageFlag) && !text?.includes("coverage")) return undefined;
+    try {
+      await loadResolver(this.vfs);
+      const config = text === undefined ? undefined : (parseData(text, "toml") as { test?: Record<string, unknown> } | null);
+      const opts = coverageOptions(args, config?.test);
+      return opts.enabled ? opts : undefined;
+    } catch {
+      return undefined; // the worker reports what's wrong
+    }
   }
 
   async start(entry: string, tests?: string[], args: string[] = []): Promise<void> {
@@ -448,6 +472,7 @@ export class Runner {
     resetSyncEsm();
     this.exitCode = undefined;
     this.results = undefined;
+    this.coverageFailed = false;
     const { worker, outcome, cancel } = this.boot(entry, tests, args, content);
     this.worker = worker;
     // Stop settles it as cancelled, once the worker is gone (retire).
@@ -578,6 +603,7 @@ export class Runner {
         // From a worker Stop already let go of (still flushing): its report doesn't count.
         if (this.worker !== worker && this.next?.worker !== worker) return;
         this.failed = m.failed ?? 0;
+        this.coverageFailed = !!m.coverageFailed;
         this.results = m.results;
         done({ kind: "ready" });
       } else if (m.type === "exit") {

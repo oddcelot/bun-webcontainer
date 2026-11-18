@@ -5,6 +5,7 @@ import { SKIP } from "./persist";
 import { readConfig } from "./projectConfig";
 import { isShellCommand } from "./scripts";
 import { Runner, type LogFn, type TestResults } from "./runner";
+import { isCoverageFlag } from "./coverage/options";
 
 /** A program that neither serves nor exits by then is running: Run is done starting. */
 const SETTLE_MS = 1500;
@@ -115,6 +116,12 @@ export class RemoteRunner extends Runner {
   override async runTests(files: string[], args: string[] = []): Promise<TestResults> {
     // The runner tests a copy of the project in a temp folder it then removes; it sends the changed snapshots back
     // (an older runner doesn't, and they would be lost).
+    // The runner takes no other flags of `bun test`.
+    const coverage = args.filter(isCoverageFlag);
+    if (coverage.length) {
+      this.out("error", `[local] bun test ${coverage.join(" ")}: coverage runs only in the browser; switch Local Bun off for it.`);
+      return { failed: 1 };
+    }
     if (args.length && !(args.every((a) => UPDATE_FLAGS.includes(a)) && this.local.features.includes(FEATURE_SNAPSHOTS))) {
       const old = UPDATE_FLAGS.includes(args[0]!) ? " with this runner (update @runbun/connect to update them here)" : "";
       this.out("error", `[local] bun test ${args.join(" ")}: snapshots update only in the browser${old}; switch Local Bun off to update them.`);
