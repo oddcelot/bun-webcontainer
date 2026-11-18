@@ -1,53 +1,14 @@
-// `bun:sqlite` on top of sql.js (SQLite compiled to wasm). sql.js loads asynchronously, so the wrapper module of
+// `bun:sqlite` on SQLite compiled to wasm (sqliteEngine.ts, the official build), driven through the C API as Bun's
+// bindings drive the native library: statements stay prepared, values bind with sqlite3_bind_*, errors carry the
+// extended result code and sqlite3_error_offset. The engine loads asynchronously, so the wrapper module of
 // `bun:sqlite` awaits `globalThis.__loadBunSqlite()` first; after that `new Database()` is synchronous.
-// File databases persist: the bytes are read from the worker's VFS on open and written back with `db.export()`
+// File databases persist: the bytes are read from the worker's VFS on open and written back with sqlite3_serialize
 // (debounced after a write, and on close). Writes go through the fs shim, so the page's file tree and OPFS mirror see them.
-//
-// What sql.js does not expose is rebuilt here: the extended result code of an error (SQLiteError derives it from the
-// message), the bound-parameter count and expanded SQL (a small tokenizer over the SQL text), and the autocommit state
-// (tracked from the transaction statements that run). Exact 64-bit integers come from sql.js's `useBigInt` reads.
-import type { BindParams, Database as SqlJsDb, SqlJsStatic } from "sql.js";
-import wasmUrl from "sql.js/dist/sql-wasm.wasm?url";
 import { norm } from "@runbun/vfs";
 import fs from "./fs";
 import path from "./path";
 import { quietTimeout } from "../loop";
-
-let SQL: SqlJsStatic | undefined;
-
-/** The own property of sql.js's Statement that holds its sqlite3_stmt pointer (a minified name), once found. */
-let stmtKey: string | undefined;
-
-/**
- * Binds what sql.js binds otherwise than SQLite's C API would: a BigInt goes in as text (as an INTEGER here when it
- * fits 32 bits: sql.js exports no sqlite3_bind_int64), and with `reals` (node:sqlite) every number as a REAL where
- * sql.js binds a whole one as an INTEGER. The statement's pointer is the own number property that sqlite3_sql maps
- * back to its SQL; if none does (another sql.js), the values stay as sql.js bound them.
- */
-export function rebind(s: ReturnType<SqlJsDb["prepare"]>, values: Map<number, unknown>, reals: boolean) {
-  const again = (v: unknown) => (reals && typeof v === "number") || (typeof v === "bigint" && v >= -(2n ** 31n) && v < 2n ** 31n);
-  if (![...values.values()].some(again)) return;
-  const m = SQL as unknown as Record<string, (...a: number[]) => number> & { UTF8ToString(p: number): string };
-  const o = s as unknown as Record<string, unknown>;
-  const ptrOf = (k: string) => (typeof o[k] === "number" && (o[k] as number) >= 1024 ? (o[k] as number) : 0);
-  if (stmtKey === undefined || !ptrOf(stmtKey)) {
-    const sql = s.getSQL();
-    stmtKey = Object.keys(o).find((k) => ptrOf(k) && m.UTF8ToString(m._sqlite3_sql(ptrOf(k))) === sql);
-    if (stmtKey === undefined) return;
-  }
-  const ptr = ptrOf(stmtKey);
-  values.forEach((v, i) => {
-    if (!again(v)) return;
-    if (typeof v === "bigint") m._sqlite3_bind_int(ptr, i, Number(v));
-    else m._sqlite3_bind_double(ptr, i, v as number);
-  });
-}
-
-(globalThis as Record<string, unknown>).__loadBunSqlite = async () => {
-  if (SQL) return;
-  const { default: init } = await import("sql.js");
-  SQL = await init({ locateFile: () => new URL(wasmUrl, location.href).href });
-};
+import { Conn, DBCONFIG_DEFENSIVE, DBCONFIG_DQS_DDL, DBCONFIG_DQS_DML, RawError, loaded, rcName, type Stmt, type Value } from "./sqliteEngine";
 
 type Params = unknown[] | Record<string, unknown>;
 interface Options {
@@ -59,7 +20,6 @@ interface Options {
 }
 
 const FLUSH_MS = 200;
-const isRead = (sql: string) => /^\s*(select|explain|values)\b|^\s*pragma\s+[\w.]+\s*(;|$)/i.test(sql);
 
 // --- SQLiteError -------------------------------------------------------------------------------------------------
 
@@ -77,74 +37,13 @@ export class SQLiteError extends Error {
   }
 }
 
-const CODES: Record<number, string> = {
-  1: "SQLITE_ERROR",
-  3: "SQLITE_PERM",
-  4: "SQLITE_ABORT",
-  5: "SQLITE_BUSY",
-  6: "SQLITE_LOCKED",
-  7: "SQLITE_NOMEM",
-  8: "SQLITE_READONLY",
-  9: "SQLITE_INTERRUPT",
-  10: "SQLITE_IOERR",
-  11: "SQLITE_CORRUPT",
-  13: "SQLITE_FULL",
-  14: "SQLITE_CANTOPEN",
-  18: "SQLITE_TOOBIG",
-  19: "SQLITE_CONSTRAINT",
-  20: "SQLITE_MISMATCH",
-  21: "SQLITE_MISUSE",
-  25: "SQLITE_RANGE",
-  26: "SQLITE_NOTADB",
-  275: "SQLITE_CONSTRAINT_CHECK",
-  787: "SQLITE_CONSTRAINT_FOREIGNKEY",
-  1299: "SQLITE_CONSTRAINT_NOTNULL",
-  1555: "SQLITE_CONSTRAINT_PRIMARYKEY",
-  1811: "SQLITE_CONSTRAINT_TRIGGER",
-  2067: "SQLITE_CONSTRAINT_UNIQUE",
-};
-
-const utf8 = new TextEncoder();
-
-/** The result code of an error sql.js threw (it only keeps sqlite3_errmsg): the extended one for constraints. */
-export function classify(message: string, db: SqlJsDb | undefined): number {
-  const unique = /^UNIQUE constraint failed: (.+)$/.exec(message);
-  if (unique) {
-    // A PRIMARY KEY violation has the same message; it is one when the failed columns are the table's key
-    const cols = unique[1].split(", ").map((c) => c.split("."));
-    const table = cols[0][0];
-    try {
-      const info = db?.exec(`pragma table_info(${JSON.stringify(table)})`)[0];
-      if (info && cols.every(([, c]) => info.values.some((r) => r[1] === c && (r[5] as number) > 0)) && !/^index /.test(unique[1])) return 1555;
-    } catch {}
-    return 2067;
-  }
-  if (/^NOT NULL constraint failed/.test(message)) return 1299;
-  if (/^CHECK constraint failed/.test(message)) return 275;
-  if (/^FOREIGN KEY constraint failed/.test(message)) return 787;
-  if (/constraint failed/.test(message)) return 19;
-  if (/readonly database/.test(message)) return 8;
-  if (/unable to open database file/.test(message)) return 14;
-  if (/file is not a database/.test(message)) return 26;
-  if (/database is locked/.test(message)) return 5;
-  if (/database table is locked/.test(message)) return 6;
-  if (/database or disk is full/.test(message)) return 13;
-  if (/datatype mismatch/.test(message)) return 20;
-  if (/string or blob too big/.test(message)) return 18;
-  if (/column index out of range|bind or column index/.test(message)) return 25;
-  if (/malformed|corrupt/.test(message)) return 11;
-  if (/^interrupted/.test(message)) return 9;
-  return 1;
-}
-
-/** sql.js throws `Error(sqlite3_errmsg)`; turn that into what Bun throws. `sql` is the text that was being prepared. */
-function sqliteError(e: unknown, sql: string | undefined, db: SqlJsDb | undefined): unknown {
-  if (e instanceof SQLiteError || !(e instanceof Error) || e.name !== "Error") return e;
-  const errno = classify(e.message, db);
-  const near = /^near "([^"]*)": syntax error$/.exec(e.message);
-  const at = near && sql !== undefined ? sql.indexOf(near[1]) : -1;
-  const byteOffset = at >= 0 ? utf8.encode(sql!.slice(0, at)).length : -1;
-  return new SQLiteError(e.message, { code: CODES[errno] ?? "SQLITE_ERROR", errno, byteOffset }, INTERNAL);
+/** What Bun throws for a SQLite error; a user function's own error (`pending`) passes through. */
+function sqliteError(e: unknown, db?: Database): unknown {
+  const own = db?._pending;
+  if (db) db._pending = undefined;
+  if (own !== undefined) return own;
+  if (!(e instanceof RawError)) return e;
+  return new SQLiteError(e.message, { code: rcName(e.errno) ?? "SQLITE_ERROR", errno: e.errno, byteOffset: e.byteOffset }, INTERNAL);
 }
 
 function cantOpen(): SQLiteError {
@@ -154,69 +53,30 @@ function cantOpen(): SQLiteError {
 // --- parameters --------------------------------------------------------------------------------------------------
 
 export interface Param {
-  /** The token as written (`?`, `?3`, `$a`, `:a`, `@a`). */
-  text: string;
-  start: number;
-  end: number;
+  /** The name as written (`$a`, `:a`, `@a`); undefined for `?`/`?N`. */
+  text?: string;
   /** SQLite's 1-based index for it (named parameters share one per name). */
   index: number;
   /** The name without its prefix; undefined for `?`/`?N`. */
   name?: string;
 }
 
-/**
- * The parameter tokens of `sql`, skipping strings, quoted identifiers and comments, numbered as SQLite numbers them;
- * and the [start, end) of each double-quoted token (node:sqlite's check of double-quoted strings).
- */
-export function paramTokens(sql: string): { params: Param[]; count: number; quoted: [number, number][] } {
+/** The parameters of statement `s`, as SQLite numbers them. */
+export function paramsOf(s: Stmt): { params: Param[]; count: number } {
+  const count = s.paramCount;
   const params: Param[] = [];
-  const quoted: [number, number][] = [];
-  const named = new Map<string, number>();
-  let count = 0;
-  for (let i = 0; i < sql.length; ) {
-    const c = sql[i];
-    const two = sql.slice(i, i + 2);
-    if (c === "'" || c === '"' || c === "`" || c === "[") {
-      const close = c === "[" ? "]" : c;
-      let j = i + 1;
-      for (; j < sql.length; j++) {
-        if (sql[j] !== close) continue;
-        if (c === "[" || sql[j + 1] !== close) break;
-        j++; // a doubled quote is an escaped one
-      }
-      if (c === '"' && j < sql.length) quoted.push([i, j + 1]);
-      i = j + 1;
-    } else if (two === "--") {
-      const j = sql.indexOf("\n", i);
-      i = j < 0 ? sql.length : j + 1;
-    } else if (two === "/*") {
-      const j = sql.indexOf("*/", i + 2);
-      i = j < 0 ? sql.length : j + 2;
-    } else if (c === "?") {
-      let j = i + 1;
-      while (/\d/.test(sql[j] ?? "")) j++;
-      const n = j > i + 1 ? Number(sql.slice(i + 1, j)) : ++count;
-      count = Math.max(count, n);
-      params.push({ text: sql.slice(i, j), start: i, end: j, index: n });
-      i = j;
-    } else if ((c === ":" || c === "@" || c === "$") && /[\w]/.test(sql[i + 1] ?? "") && !(c === "$" && /\w/.test(sql[i - 1] ?? ""))) {
-      let j = i + 1;
-      while (/\w/.test(sql[j] ?? "")) j++;
-      const text = sql.slice(i, j);
-      let n = named.get(text);
-      if (n === undefined) named.set(text, (n = ++count));
-      params.push({ text, start: i, end: j, index: n, name: text.slice(1) });
-      i = j;
-    } else i++;
+  for (let i = 1; i <= count; i++) {
+    const text = s.paramName(i);
+    params.push(text === null || text[0] === "?" ? { index: i } : { text, index: i, name: text.slice(1) });
   }
-  return { params, count, quoted };
+  return { params, count };
 }
 
 const BIGINT_MAX = 2n ** 63n - 1n;
 const BIGINT_MIN = -(2n ** 63n);
 
-/** `safe` (safeIntegers): a BigInt outside the 64-bit range is an error; without it Bun binds whatever fits. */
-function bindable(v: unknown, safe = false): unknown {
+/** `safe` (safeIntegers): a BigInt outside the 64-bit range is an error; without it Bun binds its low 64 bits. */
+function bindable(v: unknown, safe = false): Value {
   switch (typeof v) {
     case "undefined":
       return null;
@@ -236,121 +96,97 @@ function bindable(v: unknown, safe = false): unknown {
   throw new TypeError("Binding expected string, TypedArray, boolean, number, bigint or null");
 }
 
-const isNamed = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !ArrayBuffer.isView(v) && !(v instanceof ArrayBuffer) && !Array.isArray(v);
+const isNamed = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !ArrayBuffer.isView(v) && !(v instanceof ArrayBuffer) && !Array.isArray(v) && !(v instanceof Date);
 
 /**
- * What the arguments of `all(...)`, `run(...)` and friends bind: an array or several values bind to `?` in order, an
- * object by name (a key may drop its `$`/`:`/`@` prefix; with `strict`, a name the object lacks is an error, else NULL).
+ * Binds the arguments of `all(...)`, `run(...)` and friends to `s`: an array or several values bind to `?` in order,
+ * an object by name (a key may drop its `$`/`:`/`@` prefix; with `strict`, a name the object lacks is an error, else
+ * NULL). No arguments leave the last call's values bound.
  */
-function bindings(args: unknown[], tokens: { params: Param[]; count: number }, strict: boolean, checkCount: boolean, safe: boolean): { bind: BindParams; values: Map<number, unknown> } {
-  const values = new Map<number, unknown>();
+function bindArgs(s: Stmt, args: unknown[], strict: boolean, checkCount: boolean, safe: boolean) {
+  if (!args.length) return;
   const first = args[0];
+  const toks = paramsOf(s);
   if (args.length === 1 && isNamed(first)) {
-    const out: Record<string, unknown> = {};
-    for (const p of tokens.params) {
+    s.clearBindings();
+    for (const p of toks.params) {
       if (!p.name) continue;
-      const has = p.text in first ? p.text : p.name in first ? p.name : undefined;
+      const has = p.text! in first ? p.text! : p.name in first ? p.name : undefined;
       if (has === undefined) {
         if (strict) throw new Error(`Missing parameter "${p.name}"`);
-        out[p.text] = null;
-      } else out[p.text] = bindable(first[has], safe);
-      values.set(p.index, out[p.text]);
+        continue;
+      }
+      s.bind(p.index, bindable(first[has], safe));
     }
-    return { bind: out as BindParams, values };
+    return;
   }
   const list = args.length === 1 && Array.isArray(first) ? first : args;
-  if (checkCount && list.length && list.length !== tokens.count) throw new Error(`SQLite query expected ${tokens.count} values, received ${list.length}`);
-  const out = list.map((v) => bindable(v, safe));
-  out.forEach((v, i) => values.set(i + 1, v));
-  return { bind: out as BindParams, values };
-}
-
-function literal(v: unknown): string {
-  if (v === null || v === undefined) return "NULL";
-  if (typeof v === "string") return `'${v.replace(/'/g, "''")}'`;
-  if (v instanceof Uint8Array) return `x'${[...v].map((b) => b.toString(16).padStart(2, "0")).join("")}'`;
-  return String(v);
+  if (checkCount && list.length && list.length !== toks.count) throw new Error(`SQLite query expected ${toks.count} values, received ${list.length}`);
+  s.clearBindings();
+  list.forEach((v, i) => s.bind(i + 1, bindable(v, safe)));
 }
 
 // --- statements --------------------------------------------------------------------------------------------------
 
-/** sql.js 1.16 reads INTEGER columns as exact BigInt with `useBigInt`; its typings predate that. */
-const rows = (safe: boolean) => ({ useBigInt: safe });
-interface Loose {
-  get(params: null, config: object): unknown[];
-  getAsObject(params: null, config: object): Record<string, unknown>;
-  exec(sql: string, params: null, config: object): { values: unknown[][] }[];
-}
+const TYPES: Record<number, string> = { 1: "INTEGER", 2: "FLOAT", 3: "TEXT", 4: "BLOB", 5: "NULL" };
 
 export class Statement<R = unknown, P extends unknown[] = any[]> {
   private cls: (new (...args: any[]) => unknown) | undefined;
   private safe: boolean;
-  private done = false;
-  private tokens: ReturnType<typeof paramTokens> | undefined;
-  private lastValues = new Map<number, unknown>();
+  /** The prepared statement; null once finalized. */
+  private s: Stmt | null;
 
   constructor(
     private db: Database,
     readonly native: string,
+    s: Stmt,
   ) {
     this.safe = db._safe;
+    this.s = s;
   }
 
-  private get toks() {
-    return (this.tokens ??= paramTokens(this.native));
-  }
-
-  /** Runs the statement, calling `fn` with the open sql.js statement for each row until it returns false. */
-  private each(params: unknown[], fn: (s: ReturnType<SqlJsDb["prepare"]>) => boolean | void): void {
-    if (this.done) throw new Error("Statement has finalized");
+  private live(): Stmt {
+    if (!this.s) throw new Error("Statement has finalized");
     this.db._open("Database has closed", Error);
-    this.db._note(this.native);
-    const { bind, values } = bindings(params, this.toks, this.db._strict, true, this.safe);
-    this.lastValues = values;
-    let s: ReturnType<SqlJsDb["prepare"]>;
+    return this.s;
+  }
+
+  /** Runs the statement, calling `fn` for each row until it returns false. */
+  private each(params: unknown[], fn: (s: Stmt) => boolean | void): void {
+    const s = this.live();
+    s.reset();
     try {
-      s = this.db._raw.prepare(this.native);
-    } catch (e) {
-      throw sqliteError(e, this.native, this.db._raw);
-    }
-    try {
-      s.bind(bind);
-      rebind(s, values, false);
+      bindArgs(s, params, this.db._strict, true, this.safe);
+      if (!s.readonly) this.db._wrote();
       while (s.step()) if (fn(s) === false) break;
     } catch (e) {
-      throw sqliteError(e, undefined, this.db._raw);
+      throw sqliteError(e, this.db);
     } finally {
-      s.free();
+      s.reset();
     }
   }
 
-  private row(s: ReturnType<SqlJsDb["prepare"]>): R {
-    const row = (s as unknown as Loose).getAsObject(null, rows(this.safe)) as R;
-    if (this.cls) Object.setPrototypeOf(row, this.cls.prototype);
-    return row;
+  private row(s: Stmt): R {
+    const row: Record<string, unknown> = this.cls ? Object.create(this.cls.prototype) : {};
+    for (let i = 0, n = s.columnCount; i < n; i++) row[s.columnName(i)] = s.column(i, this.safe);
+    return row as R;
+  }
+
+  private list(s: Stmt): unknown[] {
+    return Array.from({ length: s.columnCount }, (_, i) => s.column(i, this.safe));
   }
 
   get columnNames(): string[] {
-    if (this.done) throw new Error("Statement has finalized");
-    this.db._open("Database has closed", Error);
-    try {
-      const s = this.db._raw.prepare(this.native);
-      try {
-        return s.getColumnNames();
-      } finally {
-        s.free();
-      }
-    } catch (e) {
-      throw sqliteError(e, this.native, this.db._raw);
-    }
+    const s = this.live();
+    return Array.from({ length: s.columnCount }, (_, i) => s.columnName(i));
   }
 
   get paramsCount(): number {
-    return this.toks.count;
+    return this.live().paramCount;
   }
 
   get isFinalized(): boolean {
-    return this.done;
+    return !this.s;
   }
 
   /** Rows come back as instances of `Class` (prototype set, constructor not called). */
@@ -386,7 +222,7 @@ export class Statement<R = unknown, P extends unknown[] = any[]> {
 
   values(...params: P): unknown[][] {
     const out: unknown[][] = [];
-    this.each(params, (s) => void out.push((s as unknown as Loose).get(null, rows(this.safe))));
+    this.each(params, (s) => void out.push(this.list(s)));
     return out;
   }
 
@@ -400,15 +236,9 @@ export class Statement<R = unknown, P extends unknown[] = any[]> {
     return this.db._meta(before, this.safe);
   }
 
-  /** The SQL with the last bound values written in (NULL for those not bound), as SQLite's `sqlite3_expanded_sql`. */
+  /** The SQL with the last bound values written in (NULL for those not bound): `sqlite3_expanded_sql`. */
   toString(): string {
-    let out = "";
-    let at = 0;
-    for (const p of this.toks.params) {
-      out += this.native.slice(at, p.start) + literal(this.lastValues.get(p.index));
-      at = p.end;
-    }
-    return out + this.native.slice(at);
+    return this.live().expanded;
   }
 
   toJSON(): string {
@@ -416,7 +246,8 @@ export class Statement<R = unknown, P extends unknown[] = any[]> {
   }
 
   finalize(): void {
-    this.done = true;
+    this.s?.finalize();
+    this.s = null;
     this.db._forget(this);
   }
 }
@@ -435,21 +266,22 @@ const toBuffer = (bytes: Uint8Array): Uint8Array => {
 };
 
 export class Database {
-  _raw: SqlJsDb;
+  _conn: Conn;
   _strict: boolean;
   _safe: boolean;
+  /** An error a user function threw, rethrown instead of the SQLite error it caused. */
+  _pending: unknown;
   readonly filename: string;
   private cache = new Map<string, Statement>();
   /** VFS key of the backing file; undefined for in-memory databases and readonly ones (which never write back). */
   private file: string | undefined;
   private dirty = false;
-  private inTx = false;
   private closed = false;
   private depth = 0;
   private timer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(filename: string | Uint8Array = ":memory:", options: number | Options = {}) {
-    if (!SQL) throw new Error("bun:sqlite is not loaded yet");
+    if (!loaded()) throw new Error("bun:sqlite is not loaded yet");
     const o: Options = typeof options === "object" && options ? options : {};
     this._strict = !!o.strict;
     this._safe = !!o.safeIntegers;
@@ -461,26 +293,33 @@ export class Database {
       create = !!(options & 4);
     } else if (readonly && (o.create || o.readwrite)) throw new TypeError('A read-only database ("readonly: true" or "readwrite: false") cannot have "create: true" or "readwrite: true"');
     this.filename = filename instanceof Uint8Array ? "" : String(filename);
-    if (filename instanceof Uint8Array || filename === "" || filename === ":memory:") {
-      this._raw = new SQL.Database(filename instanceof Uint8Array ? filename : undefined);
-    } else {
-      const key = norm(path.resolve(String(filename)));
-      let bytes: Uint8Array | undefined;
+    let image: Uint8Array | undefined;
+    let key: string | undefined;
+    if (filename instanceof Uint8Array) image = filename;
+    else if (filename !== "" && filename !== ":memory:") {
+      key = norm(path.resolve(String(filename)));
       if (fs.existsSync(key)) {
         try {
-          bytes = fs.readFileSync(key) as Uint8Array;
+          image = fs.readFileSync(key) as Uint8Array;
         } catch {
           throw cantOpen();
         }
       } else if (!create) throw cantOpen();
-      this._raw = new SQL.Database(bytes?.byteLength ? bytes : undefined);
-      if (!readonly) {
-        this.file = key;
-        openFiles.add(this);
-        if (!bytes) this.touch(); // Bun creates the file on open
-      }
     }
-    if (readonly) this._raw.run("pragma query_only = 1");
+    try {
+      this._conn = new Conn(image?.byteLength ? image : undefined, readonly);
+    } catch (e) {
+      throw sqliteError(e);
+    }
+    // As Bun opens a database: defensive, and double-quoted string literals as the library has them (on).
+    this._conn.dbConfig(DBCONFIG_DEFENSIVE, 1);
+    this._conn.dbConfig(DBCONFIG_DQS_DML, 1);
+    this._conn.dbConfig(DBCONFIG_DQS_DDL, 1);
+    if (key !== undefined && !readonly) {
+      this.file = key;
+      openFiles.add(this);
+      if (!image) this.touch(); // Bun creates the file on open
+    }
   }
 
   /** A database from the bytes `serialize()` returned (or any SQLite file). `true` or `{ readonly: true }` opens it read-only. */
@@ -492,12 +331,12 @@ export class Database {
     return new Database(bytes, o);
   }
 
-  /** Runs `fn` on the raw database, throwing what Bun throws for a SQLite error. */
-  private raw<T>(sql: string | undefined, fn: () => T): T {
+  /** Runs `fn` on the connection, throwing what Bun throws for a SQLite error. */
+  private raw<T>(fn: () => T): T {
     try {
       return fn();
     } catch (e) {
-      throw sqliteError(e, sql, this._raw);
+      throw sqliteError(e, this);
     }
   }
 
@@ -510,44 +349,33 @@ export class Database {
     this.timer ??= quietTimeout(() => this.flush(), FLUSH_MS);
   }
 
-  /** Called with the SQL of everything that runs: reads leave the database clean, transaction statements move `inTransaction`. */
-  _note(sql: string) {
-    if (/^\s*(begin|savepoint)\b/i.test(sql)) this.inTx = true;
-    else if (/^\s*(commit|end|rollback)\b(?!\s+(transaction\s+)?to\b)/i.test(sql)) this.inTx = false;
-    if (!this.file || isRead(sql)) return;
-    this.touch();
+  /** A statement that can write is about to run: the file needs writing back. */
+  _wrote() {
+    if (this.file) this.touch();
   }
 
   get inTransaction(): boolean {
     this._open();
-    return this.inTx;
+    return !this._conn.autocommit;
   }
 
-  /** Write the database back to the VFS now. sql.js `export()` closes and reopens the connection, so skip it mid-transaction. */
+  /** Write the database back to the VFS now (later when a transaction is open: its writes aren't committed yet). */
   flush() {
     clearTimeout(this.timer);
     this.timer = undefined;
-    if (!this.file || !this.dirty) return;
-    if (this.inTx) return void this.touch();
+    if (!this.file || !this.dirty || this.closed) return;
+    if (!this._conn.autocommit) return void this.touch();
     this.dirty = false;
-    fs.writeFileSync(this.file, this.bytes());
-  }
-
-  /** The database file's bytes. `export()` also resets per-connection pragmas, so put `foreign_keys` back. */
-  private bytes(): Uint8Array {
-    const fk = this._raw.exec("pragma foreign_keys")[0]?.values[0][0];
-    const bytes = this._raw.export();
-    if (fk) this._raw.run("pragma foreign_keys = on");
-    return bytes;
+    fs.writeFileSync(this.file, this._conn.serialize());
   }
 
   _changes(): number {
-    return this._raw.exec("select total_changes()")[0].values[0][0] as number;
+    return this._conn.totalChanges();
   }
 
   /** `changes` is what the statement changed (as SQLite's total_changes grew), not the last write's count. */
   _meta(before: number, safe = this._safe) {
-    const id = (this._raw as unknown as Loose).exec("select last_insert_rowid()", null, rows(true))[0].values[0][0] as bigint;
+    const id = this._conn.lastInsertRowid();
     return { changes: this._changes() - before, lastInsertRowid: safe ? id : Number(id) };
   }
 
@@ -555,50 +383,44 @@ export class Database {
     for (const [k, v] of this.cache) if (v === s) this.cache.delete(k);
   }
 
+  /** Runs every statement of `sql`; the first gets `params`. */
   run(sql: string, ...params: unknown[]) {
     this._open();
     if (!sql.trim()) throw new Error("SQL string mustn't be blank");
-    this._note(sql);
     const before = this._changes();
-    const { bind, values } = bindings(params, paramTokens(sql), this._strict, false, this._safe);
-    this.raw(sql, () => {
-      if (!params.length) return this._raw.run(sql);
-      // sql.js's run(sql, params), with the values rebound
-      const s = this._raw.prepare(sql, bind);
-      try {
-        rebind(s, values, false);
-        s.step();
-      } finally {
-        s.free();
-      }
-    });
+    this.raw(() =>
+      this._conn.eachStatement(sql, (s, i) => {
+        if (i === 0) bindArgs(s, params, this._strict, false, this._safe);
+        if (!s.readonly) this._wrote();
+        while (s.step());
+      }),
+    );
     return this._meta(before);
   }
 
   exec = this.run;
 
-  /** Fail now, as Bun does, when `sql` does not compile. */
-  private check(sql: string) {
+  /** The prepared first statement of `sql`; fails now, as Bun does, when it doesn't compile. */
+  private compile(sql: string): Stmt {
     this._open();
     if (!sql.trim()) throw new Error("SQL query cannot be empty.");
-    this.raw(sql, () => this._raw.prepare(sql).free());
+    const s = this.raw(() => this._conn.prepare(sql));
+    if (!s) throw new RangeError("Invalid SQL statement");
+    return s;
   }
 
   query<R = unknown, P extends Params = any>(sql: string): Statement<R, P extends unknown[] ? P : [P]> {
     let s = this.cache.get(sql);
-    if (!s) {
-      this.check(sql);
-      this.cache.set(sql, (s = new Statement(this, sql)));
-    }
+    if (!s) this.cache.set(sql, (s = new Statement(this, sql, this.compile(sql))));
     return s as never;
   }
 
   prepare<R = unknown, P extends Params = any>(sql: string): Statement<R, P extends unknown[] ? P : [P]> {
-    this.check(sql);
-    return new Statement(this, sql) as never;
+    return new Statement(this, sql, this.compile(sql)) as never;
   }
 
   clearQueryCache(): void {
+    for (const s of this.cache.values()) s.finalize();
     this.cache.clear();
   }
 
@@ -607,22 +429,19 @@ export class Database {
     const make = (mode: string) =>
       (...args: A): T => {
         this._open();
-        const nested = this.inTx;
+        const nested = !this._conn.autocommit;
         const sp = `bun_sqlite_${this.depth++}`;
         try {
-          this.raw(undefined, () => this._raw.run(nested ? `savepoint ${sp}` : `begin ${mode}`));
-          this.inTx = true;
+          this.raw(() => this._conn.exec(nested ? `savepoint ${sp}` : `begin ${mode}`));
           try {
             const r = fn(...args);
-            this.raw(undefined, () => this._raw.run(nested ? `release ${sp}` : "commit"));
-            this.inTx = nested;
-            this._note("insert"); // the transaction wrote something
+            this.raw(() => this._conn.exec(nested ? `release ${sp}` : "commit"));
+            this._wrote();
             return r;
           } catch (e) {
             try {
-              this._raw.run(nested ? `rollback to ${sp}; release ${sp}` : "rollback");
+              this._conn.exec(nested ? `rollback to ${sp}; release ${sp}` : "rollback");
             } catch {}
-            this.inTx = nested;
             throw e;
           }
         } finally {
@@ -632,9 +451,9 @@ export class Database {
     return Object.assign(make(""), { deferred: make("deferred"), immediate: make("immediate"), exclusive: make("exclusive") });
   }
 
-  serialize(_name?: string): Uint8Array {
+  serialize(name = "main"): Uint8Array {
     this._open();
-    return toBuffer(this.bytes());
+    return toBuffer(this.raw(() => this._conn.serialize(name)));
   }
 
   loadExtension(_name: string, _entryPoint?: string): void {
@@ -648,7 +467,7 @@ export class Database {
     openFiles.delete(this);
     this.closed = true;
     this.cache.clear();
-    this._raw.close();
+    this._conn.close();
   }
 }
 

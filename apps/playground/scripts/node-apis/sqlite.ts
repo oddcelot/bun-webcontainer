@@ -209,6 +209,36 @@ export async function sqlite(t: Case, log: (line: string) => void) {
     on.close();
   }
 
+  // The C API's own answers: transaction state, 64-bit integers, defensive mode, deserialize checks.
+  {
+    const d = new DatabaseSync(":memory:", { readBigInts: true });
+    t("sqlite isTransaction nested", () => {
+      const r: boolean[] = [];
+      d.exec("begin; savepoint s");
+      r.push(d.isTransaction);
+      d.exec("rollback to s");
+      r.push(d.isTransaction);
+      d.exec("rollback");
+      r.push(d.isTransaction);
+      return r.join();
+    });
+    s("sqlite bind int64", () => d.prepare("select typeof(?) t, ? v, ? m").get(2n ** 62n + 1n, 2n ** 62n + 1n, -(2n ** 63n)));
+    t("sqlite expanded int64", () => {
+      const st = d.prepare("select ?, ?");
+      st.get(2n ** 62n + 1n, -0);
+      return st.expandedSQL;
+    });
+    t("sqlite defensive", () => {
+      d.exec("create table q (x); pragma writable_schema = on");
+      const before = [show(d.prepare("pragma writable_schema").get()), errOf(() => d.exec("update sqlite_master set name = 'zz' where name = 'q'"))];
+      d.enableDefensive(false);
+      d.exec("pragma writable_schema = on");
+      return [...before, show(d.prepare("pragma writable_schema").get()), errOf(() => d.enableDefensive(1 as never))].join(" / ");
+    });
+    t("sqlite deserialize garbage", () => errOf(() => d.deserialize(new Uint8Array(512).fill(7))));
+    d.close();
+  }
+
   const file = "node-apis-sqlite.db";
   const copy = "node-apis-backup.db";
   for (const f of [file, copy]) rmSync(f, { force: true });

@@ -1,24 +1,16 @@
-// node:sqlite (`DatabaseSync`, `StatementSync`) as Bun has it, over bun:sqlite's `Database` (sqlite.ts: sql.js, the
-// file read from and written back to the VFS) and its SQL helpers. Statements bind and read the way Node's do:
-// named parameters from an object (with or without their prefix), the rest positional, booleans and undefined
-// refused, integers as numbers unless `readBigInts` (and an error past 2^53), rows as null-prototype objects.
-// Numbers bind as a REAL, as Node binds them (sql.js would bind a whole one as an INTEGER).
-import type { Database as SqlJsDb } from "sql.js";
-import { Database, classify, paramTokens, rebind, type Param } from "./sqlite";
+// node:sqlite (`DatabaseSync`, `StatementSync`) as Bun has it, over bun:sqlite's `Database` (sqlite.ts: the file read
+// from and written back to the VFS) and the SQLite C API (sqliteEngine.ts). Statements bind and read the way Node's
+// do: named parameters from an object (with or without their prefix), the rest positional, booleans and undefined
+// refused, every number as a REAL, integers read as numbers unless `readBigInts` (and an error past 2^53), rows as
+// null-prototype objects.
+import { Database, paramsOf, type Param } from "./sqlite";
+import { DBCONFIG_DEFENSIVE, DBCONFIG_DQS_DDL, DBCONFIG_DQS_DML, DBCONFIG_ENABLE_FKEY, Conn, RawError, aggregateKey, errstr, result, resultError, valueOf, type Stmt, type Value } from "./sqliteEngine";
 import fs from "./fs";
 import path from "./path";
 import { fileURLToPath } from "./url";
 
 type Row = Record<string, unknown>;
 type Fn = (...args: any[]) => any;
-type RawStatement = ReturnType<SqlJsDb["prepare"]>;
-
-/** sql.js 1.16 reads INTEGER columns as exact BigInt with `useBigInt`; its typings predate that. */
-interface Loose {
-  get(params: null, config: object): unknown[];
-  getAsObject(params: null, config: object): Record<string, unknown>;
-}
-const BIG = { useBigInt: true };
 
 /** An error with a Node `code` that, as in Bun, isn't one of its enumerable keys. */
 function nodeError<E extends Error>(err: E, code: string, extra: object = {}): E {
@@ -29,45 +21,23 @@ function nodeError<E extends Error>(err: E, code: string, extra: object = {}): E
 const invalidState = (message: string) => nodeError(new Error(message), "ERR_INVALID_STATE");
 const argType = (message: string) => nodeError(new TypeError(message), "ERR_INVALID_ARG_TYPE");
 
-// sqlite3_errstr of each primary result code.
-const ERRSTR: Record<number, string> = {
-  1: "SQL logic error",
-  3: "access permission denied",
-  4: "query aborted",
-  5: "database is locked",
-  6: "database table is locked",
-  7: "out of memory",
-  8: "attempt to write a readonly database",
-  9: "interrupted",
-  10: "disk I/O error",
-  11: "database disk image is malformed",
-  13: "database or disk is full",
-  14: "unable to open database file",
-  18: "string or blob too big",
-  19: "constraint failed",
-  20: "datatype mismatch",
-  21: "bad parameter or other API misuse",
-  25: "column index out of range",
-  26: "file is not a database",
-};
-
+/** Node's error for SQLite result code `errcode` (the extended one) with `message`. */
 function sqliteError(message: string, errcode: number): Error {
-  return nodeError(new Error(message), "ERR_SQLITE_ERROR", { errcode, errstr: ERRSTR[errcode & 0xff] ?? "unknown error" });
+  return nodeError(new Error(message), "ERR_SQLITE_ERROR", { errcode, errstr: errstr(errcode) });
 }
 
-/** What sql.js threw (`Error(sqlite3_errmsg)`), as Node's error; a user function's own error passes through. */
-function fromSqlJs(e: unknown, db: DatabaseSync): unknown {
-  const own = db[PENDING];
-  db[PENDING] = undefined;
+/** A SQLite error as Node's; a user function's own error (`pending`) passes through. */
+function fromRaw(e: unknown, db: DatabaseSync): unknown {
+  const raw = db[RAW];
+  const own = raw?._pending;
+  if (raw) raw._pending = undefined;
   if (own !== undefined) return own;
-  if (!(e instanceof Error) || e.name !== "Error" || "code" in e) return e;
-  return sqliteError(e.message, classify(e.message, db[RAW]?._raw));
+  if (!(e instanceof RawError)) return e;
+  return sqliteError(e.message, e.errno);
 }
 
 const INTERNAL = Symbol("node:sqlite");
 const RAW = Symbol("raw");
-const PENDING = Symbol("pending");
-const NOTE = Symbol("note");
 const FINALIZE = Symbol("finalize");
 
 const isBool = (o: Record<string, unknown>, k: string) => {
@@ -97,11 +67,21 @@ interface Options {
   timeout?: number;
 }
 
-const TX = /\b(begin|commit|end|rollback|savepoint|release)\b/i;
+/** A user function's arguments: integers as BigInts with `big`, else as numbers (an error past 2^53). */
+function argsOf(args: number[], big: boolean): unknown[] {
+  return args.map((a) => {
+    const v = valueOf(a, true);
+    return typeof v === "bigint" && !big ? toNumber(v) : v;
+  });
+}
+
+function toNumber(v: bigint): number {
+  if (v > BigInt(Number.MAX_SAFE_INTEGER) || v < BigInt(Number.MIN_SAFE_INTEGER)) throw nodeError(new RangeError(`Value is too large to be represented as a JavaScript number: ${v}`), "ERR_OUT_OF_RANGE");
+  return Number(v);
+}
 
 export class DatabaseSync {
   [RAW]: Database | undefined;
-  [PENDING]: unknown;
   #file: string;
   #opts: Required<Pick<Options, "readOnly" | "enableForeignKeyConstraints" | "allowExtension" | "readBigInts" | "returnArrays" | "allowBareNamedParameters" | "allowUnknownNamedParameters">>;
   #extensions = false;
@@ -133,6 +113,10 @@ export class DatabaseSync {
     return this[RAW];
   }
 
+  get #conn(): Conn {
+    return this.#db._conn;
+  }
+
   open() {
     if (this[RAW]) throw invalidState("database is already open");
     try {
@@ -141,7 +125,16 @@ export class DatabaseSync {
       if (e instanceof Error && e.name === "SQLiteError") throw sqliteError(e.message, (e as Error & { errno: number }).errno);
       throw e;
     }
-    if (this.#opts.enableForeignKeyConstraints) this[RAW]._raw.run("pragma foreign_keys = on");
+    this.#configure();
+  }
+
+  /** What Node sets on a connection it opens: double-quoted strings, foreign keys, defensive mode. */
+  #configure() {
+    const c = this.#conn;
+    c.dbConfig(DBCONFIG_DQS_DML, +this.#dqs);
+    c.dbConfig(DBCONFIG_DQS_DDL, +this.#dqs);
+    c.dbConfig(DBCONFIG_ENABLE_FKEY, +this.#opts.enableForeignKeyConstraints);
+    c.dbConfig(DBCONFIG_DEFENSIVE, 1);
   }
 
   close() {
@@ -160,16 +153,8 @@ export class DatabaseSync {
     return !!this[RAW];
   }
 
-  /** sql.js doesn't export sqlite3_get_autocommit: BEGIN fails exactly when a transaction is open. */
   get isTransaction(): boolean {
-    const raw = this.#db._raw;
-    try {
-      raw.run("begin");
-    } catch {
-      return true;
-    }
-    raw.run("commit");
-    return false;
+    return !this.#conn.autocommit;
   }
 
   location(dbName = "main"): string | null {
@@ -178,135 +163,130 @@ export class DatabaseSync {
     return path.resolve(this.#file);
   }
 
-  /** After SQL ran: bun:sqlite's Database flushes to the VFS when no transaction is open. */
-  [NOTE](sql: string) {
-    const db = this.#db;
-    db._note(sql);
-    if (TX.test(sql)) (db as unknown as { inTx: boolean }).inTx = this.isTransaction;
-  }
-
-  /**
-   * Node turns SQLite's double-quoted string literals off (`enableDoubleQuotedStringLiterals`), sql.js leaves them on
-   * and exports no sqlite3_db_config. So a statement with a "..." is prepared once more with each as a `...`
-   * identifier, which never falls back to a string: if that names no column, it is the error Node's SQLite gives.
-   */
-  #checkQuotes(sql: string) {
-    if (this.#dqs || !sql.includes('"')) return;
-    const { quoted } = paramTokens(sql);
-    if (!quoted.length) return;
-    const names = new Set<string>();
-    let out = "";
-    let at = 0;
-    for (const [start, end] of quoted) {
-      const name = sql.slice(start + 1, end - 1).replace(/""/g, '"');
-      names.add(name);
-      out += `${sql.slice(at, start)}\`${name.replace(/`/g, "``")}\``;
-      at = end;
-    }
-    let message = "";
-    try {
-      this.#db._raw.prepare(out + sql.slice(at)).free();
-    } catch (e) {
-      message = e instanceof Error ? e.message : "";
-    }
-    const m = /^no such column: (.*)$/.exec(message);
-    if (m && names.has(m[1])) throw sqliteError(`no such column: "${m[1]}" - should this be a string literal in single-quotes?`, 1);
-  }
-
   exec(sql: string) {
     if (typeof sql !== "string") throw argType('The "sql" argument must be a string.');
     const db = this.#db;
     try {
-      if (this.#dqs || !sql.includes('"')) db._raw.run(sql);
-      else {
-        // one statement at a time, each checked before it runs (a later one can use what an earlier one made)
-        for (const s of db._raw.iterateStatements(sql)) {
-          try {
-            this.#checkQuotes(s.getSQL());
-            while (s.step());
-          } catch (e) {
-            s.free();
-            throw e;
-          }
-        }
-      }
+      db._conn.eachStatement(sql, (s) => {
+        if (!s.readonly) db._wrote();
+        while (s.step());
+      });
     } catch (e) {
-      throw fromSqlJs(e, this);
-    } finally {
-      this[NOTE](sql);
+      throw fromRaw(e, this);
     }
   }
 
   prepare(sql: string): StatementSync {
     if (typeof sql !== "string") throw argType('The "sql" argument must be a string.');
-    const db = this.#db;
+    let raw: Stmt | null;
     try {
-      db._raw.prepare(sql).free();
+      raw = this.#conn.prepare(sql);
     } catch (e) {
-      throw fromSqlJs(e, this);
+      throw fromRaw(e, this);
     }
-    this.#checkQuotes(sql);
-    const s = new StatementSync(INTERNAL, this, sql, this.#opts);
+    const s = new StatementSync(INTERNAL, this, sql, raw, this.#opts);
     this.#statements.add(s);
     return s;
   }
 
-  /** A user function: its errors reach the caller as thrown, its result must be a SQLite value. */
-  #wrap(fn: Fn, bigArgs: boolean): Fn {
-    return (...args: unknown[]) => {
-      try {
-        const r = fn(...(bigArgs ? args.map((a) => (typeof a === "number" && Number.isInteger(a) ? BigInt(a) : a)) : args));
-        if (r === undefined || r === null) return null;
-        if (typeof r === "number" || typeof r === "string") return r;
-        if (typeof r === "bigint") return r;
-        if (ArrayBuffer.isView(r)) return new Uint8Array(r.buffer, r.byteOffset, r.byteLength);
-      } catch (e) {
-        this[PENDING] = e;
-        throw e;
-      }
-      throw new Error("Returned JavaScript value cannot be converted to a SQLite value");
-    };
+  /** A user function's result as SQLite's, or the error Node gives for a value it can't store. */
+  #result(ctx: number, r: unknown) {
+    if (r === undefined || r === null || typeof r === "number" || typeof r === "string" || typeof r === "bigint") return result(ctx, (r ?? null) as Value);
+    if (ArrayBuffer.isView(r)) return result(ctx, new Uint8Array(r.buffer, r.byteOffset, r.byteLength));
+    this.#fail(ctx, new Error("Returned JavaScript value cannot be converted to a SQLite value"), false);
+  }
+
+  /** The function failed with `e`: rethrown as is when it is the program's own error (`own`), else as Node's. */
+  #fail(ctx: number, e: unknown, own = true) {
+    const db = this[RAW];
+    if (own && db) db._pending = e;
+    resultError(ctx, e instanceof Error ? e.message : String(e));
   }
 
   function(name: string, options: { varargs?: boolean; useBigIntArguments?: boolean; deterministic?: boolean; directOnly?: boolean } | Fn, fn?: Fn) {
     if (typeof options === "function") (fn = options), (options = {});
     if (typeof name !== "string") throw argType('The "name" argument must be a string.');
     if (typeof fn !== "function") throw argType('The "function" argument must be a function.');
-    const wrapped = this.#wrap(fn, !!options?.useBigIntArguments);
-    Object.defineProperty(wrapped, "length", { value: options?.varargs ? -1 : fn.length });
-    this.#db._raw.create_function(name, wrapped);
+    const big = !!options?.useBigIntArguments;
+    const f = fn;
+    const flags = (options?.deterministic ? 0x800 : 0) | (options?.directOnly ? 0x80000 : 0);
+    try {
+      this.#conn.createFunction(name, options?.varargs ? -1 : f.length, flags, {
+        func: (ctx, args) => {
+          let r;
+          try {
+            r = f(...argsOf(args, big));
+          } catch (e) {
+            return this.#fail(ctx, e);
+          }
+          this.#result(ctx, r);
+        },
+      });
+    } catch (e) {
+      throw fromRaw(e, this);
+    }
   }
 
-  aggregate(name: string, options: { start?: unknown; step: Fn; result?: Fn; inverse?: Fn; varargs?: boolean; useBigIntArguments?: boolean }) {
+  aggregate(name: string, options: { start?: unknown; step: Fn; result?: Fn; inverse?: Fn; varargs?: boolean; useBigIntArguments?: boolean; deterministic?: boolean; directOnly?: boolean }) {
     if (typeof name !== "string") throw argType('The "name" argument must be a string.');
     if (!options || typeof options !== "object") throw argType('The "options" argument must be an object.');
     if (typeof options.step !== "function") throw argType('The "options.step" argument must be a function.');
-    const { start, step, result } = options;
+    const { start, step, result: done, inverse } = options;
     const big = !!options.useBigIntArguments;
-    const stepFn = (acc: unknown, ...args: unknown[]) => {
+    const flags = (options.deterministic ? 0x800 : 0) | (options.directOnly ? 0x80000 : 0);
+    // The accumulator of each group, by its sqlite3_aggregate_context.
+    const accs = new Map<number, unknown>();
+    const acc = (ctx: number) => {
+      const key = aggregateKey(ctx, true);
+      if (!accs.has(key)) accs.set(key, typeof start === "function" ? start() : start);
+      return key;
+    };
+    const update = (f: Fn) => (ctx: number, args: number[]) => {
       try {
-        return step(acc, ...(big ? args.map((a) => (typeof a === "number" && Number.isInteger(a) ? BigInt(a) : a)) : args));
+        const key = acc(ctx);
+        accs.set(key, f(accs.get(key), ...argsOf(args, big)));
       } catch (e) {
-        this[PENDING] = e;
-        throw e;
+        this.#fail(ctx, e);
       }
     };
-    Object.defineProperty(stepFn, "length", { value: options.varargs ? 0 : step.length });
-    const finalize = this.#wrap((acc: unknown) => (result ? result(acc) : acc), false);
-    (this.#db._raw as unknown as { create_aggregate(n: string, o: object): void }).create_aggregate(name, { init: () => (typeof start === "function" ? start() : start), step: stepFn, finalize });
+    const value = (final: boolean) => (ctx: number) => {
+      let r;
+      try {
+        const key = acc(ctx);
+        const v = accs.get(key);
+        if (final) accs.delete(key);
+        r = done ? done(v) : v;
+      } catch (e) {
+        return this.#fail(ctx, e);
+      }
+      this.#result(ctx, r);
+    };
+    const nArg = options.varargs ? -1 : Math.max(step.length, inverse?.length ?? 0, 1) - 1;
+    try {
+      this.#conn.createFunction(name, nArg, flags, { step: update(step), final: value(true), ...(inverse ? { value: value(false), inverse: update(inverse) } : {}) });
+    } catch (e) {
+      throw fromRaw(e, this);
+    }
   }
 
-  serialize(_dbName = "main"): Uint8Array {
-    return new Uint8Array(this.#db.serialize());
+  serialize(dbName = "main"): Uint8Array {
+    this.#db;
+    try {
+      return this.#conn.serialize(dbName);
+    } catch (e) {
+      throw fromRaw(e, this);
+    }
   }
 
   deserialize(buffer: Uint8Array, _options?: object) {
     if (!(buffer instanceof Uint8Array)) throw argType('The "buffer" argument must be an instance of Uint8Array.');
     const db = this.#db;
-    const next = new Database(buffer);
-    db._raw.close();
-    db._raw = next._raw;
-    db._note("insert");
+    try {
+      db._conn.load(buffer);
+    } catch (e) {
+      throw fromRaw(e, this);
+    }
+    db._wrote();
   }
 
   createTagStore(maxSize = 1000): SQLTagStore {
@@ -325,8 +305,9 @@ export class DatabaseSync {
     throw new Error("node:sqlite.loadExtension is not supported in the playground: no native code in a browser");
   }
 
-  enableDefensive(_active: boolean) {
-    this.#db;
+  enableDefensive(active: boolean) {
+    if (typeof active !== "boolean") throw argType('The "active" argument must be a boolean.');
+    this.#conn.dbConfig(DBCONFIG_DEFENSIVE, +active);
   }
 
   setAuthorizer(callback: Fn | null) {
@@ -346,7 +327,7 @@ export class DatabaseSync {
 }
 
 /** A value Node binds, or the TypeError it throws for parameter `index`. */
-function bindable(v: unknown, index: number): unknown {
+function bindable(v: unknown, index: number): Value {
   switch (typeof v) {
     case "number":
     case "string":
@@ -361,37 +342,23 @@ function bindable(v: unknown, index: number): unknown {
   throw argType(`Provided value cannot be bound to SQLite parameter ${index}.`);
 }
 
-/** SQLite's literal for a value in `sqlite3_expanded_sql`: a number is a REAL as Node binds it (`5.0`, `1.0e+20`). */
-function literal(v: unknown): string {
-  if (v === null || v === undefined) return "NULL";
-  if (typeof v === "string") return `'${v.replace(/'/g, "''")}'`;
-  if (v instanceof Uint8Array) return `x'${[...v].map((b) => b.toString(16).padStart(2, "0")).join("")}'`;
-  if (typeof v === "number") {
-    if (!Number.isFinite(v)) return v > 0 ? "Inf" : v < 0 ? "-Inf" : "NULL";
-    const s = v.toPrecision(15).replace(/(\.\d*?)0+(e|$)/, "$1$2").replace(/\.(e|$)/, "$1");
-    const [m, e] = s.split("e");
-    const mant = m.includes(".") ? m : `${m}.0`;
-    return e === undefined ? mant : `${mant}e${e[0] === "-" ? "-" : "+"}${e.replace(/^[+-]/, "").padStart(2, "0")}`;
-  }
-  return String(v);
-}
-
 export class StatementSync {
   #db: DatabaseSync;
   #sql: string;
+  #raw: Stmt | null;
   #tokens: { params: Param[]; count: number };
-  #values = new Map<number, unknown>();
   #done = false;
   #readBigInts: boolean;
   #returnArrays: boolean;
   #allowBare: boolean;
   #allowUnknown: boolean;
 
-  constructor(token: symbol, db: DatabaseSync, sql: string, o: { readBigInts: boolean; returnArrays: boolean; allowBareNamedParameters: boolean; allowUnknownNamedParameters: boolean }) {
+  constructor(token: symbol, db: DatabaseSync, sql: string, raw: Stmt | null, o: { readBigInts: boolean; returnArrays: boolean; allowBareNamedParameters: boolean; allowUnknownNamedParameters: boolean }) {
     if (token !== INTERNAL) throw nodeError(new TypeError("Illegal constructor"), "ERR_ILLEGAL_CONSTRUCTOR");
     this.#db = db;
     this.#sql = sql;
-    this.#tokens = paramTokens(sql);
+    this.#raw = raw;
+    this.#tokens = raw ? paramsOf(raw) : { params: [], count: 0 };
     this.#readBigInts = o.readBigInts;
     this.#returnArrays = o.returnArrays;
     this.#allowBare = o.allowBareNamedParameters;
@@ -406,21 +373,15 @@ export class StatementSync {
     return this.#sql;
   }
 
-  /** The SQL with the bound values written in (NULL for those not bound), as `sqlite3_expanded_sql`. */
+  /** The SQL with the bound values written in (NULL for those not bound): `sqlite3_expanded_sql`. */
   get expandedSQL(): string {
-    let out = "";
-    let at = 0;
-    for (const p of this.#tokens.params) {
-      out += this.#sql.slice(at, p.start) + literal(this.#values.get(p.index));
-      at = p.end;
-    }
-    return out + this.#sql.slice(at);
+    return this.#raw ? this.#raw.expanded : this.#sql;
   }
 
-  /** The values by SQLite's parameter index: an object's by name, then the rest of the arguments for the unnamed ones. */
-  #bind(args: unknown[]): unknown[] {
-    const values = new Map<number, unknown>();
+  /** Binds an object's values by name, then the rest of the arguments to the unnamed parameters. */
+  #bind(s: Stmt, args: unknown[]) {
     const { params, count } = this.#tokens;
+    s.clearBindings();
     let positional = args;
     const first = args[0];
     if (first !== null && typeof first === "object" && !ArrayBuffer.isView(first)) {
@@ -431,7 +392,7 @@ export class StatementSync {
           if (this.#allowUnknown) continue;
           throw invalidState(`Unknown named parameter '${key}'`);
         }
-        values.set(p.index, bindable((first as Row)[key], p.index));
+        s.bind(p.index, bindable((first as Row)[key], p.index), true);
       }
     }
     const named = new Set(params.filter((p) => p.name !== undefined).map((p) => p.index));
@@ -439,96 +400,84 @@ export class StatementSync {
     for (const v of positional) {
       while (named.has(index)) index++;
       if (index > count) throw sqliteError("column index out of range", 25);
-      values.set(index, bindable(v, index));
+      s.bind(index, bindable(v, index), true);
       index++;
     }
-    this.#values = values;
-    return Array.from({ length: count }, (_, i) => (values.has(i + 1) ? values.get(i + 1) : null));
   }
 
-  /** The prepared sql.js statement with `args` bound; the caller frees it. */
-  #start(args: unknown[]): RawStatement {
+  /** The prepared statement, reset, with `args` bound. */
+  #start(args: unknown[]): Stmt | null {
     if (this.#done) throw invalidState("statement has been finalized");
     const raw = this.#db[RAW]!;
-    const bind = this.#bind(args);
-    let s: RawStatement;
+    const s = this.#raw;
+    if (!s) return null;
+    s.reset();
     try {
-      s = raw._raw.prepare(this.#sql);
+      this.#bind(s, args);
     } catch (e) {
-      throw fromSqlJs(e, this.#db);
+      throw fromRaw(e, this.#db);
     }
-    try {
-      if (bind.length) {
-        s.bind(bind as never);
-        rebind(s, this.#values, true);
-      }
-    } catch (e) {
-      s.free();
-      throw fromSqlJs(e, this.#db);
-    }
+    if (!s.readonly) raw._wrote();
     return s;
   }
 
   /** The next row, or undefined at the end. */
-  #step(s: RawStatement): unknown {
+  #step(s: Stmt): unknown {
     try {
       if (!s.step()) return undefined;
     } catch (e) {
-      throw fromSqlJs(e, this.#db);
+      throw fromRaw(e, this.#db);
     }
-    if (this.#returnArrays) return (s as unknown as Loose).get(null, BIG).map((v) => this.#value(v));
-    const row = (s as unknown as Loose).getAsObject(null, BIG);
+    const n = s.columnCount;
+    if (this.#returnArrays) return Array.from({ length: n }, (_, i) => this.#value(s.column(i, true)));
     const out: Row = Object.create(null);
-    for (const k of Object.keys(row)) out[k] = this.#value(row[k]);
+    for (let i = 0; i < n; i++) out[s.columnName(i)] = this.#value(s.column(i, true));
     return out;
   }
 
   #value(v: unknown): unknown {
     if (typeof v !== "bigint" || this.#readBigInts) return v;
-    if (v > BigInt(Number.MAX_SAFE_INTEGER) || v < BigInt(Number.MIN_SAFE_INTEGER)) throw nodeError(new RangeError(`Value is too large to be represented as a JavaScript number: ${v}`), "ERR_OUT_OF_RANGE");
-    return Number(v);
+    return toNumber(v);
   }
 
-  #each<T>(args: unknown[], fn: (s: RawStatement) => T): T {
+  #each<T>(args: unknown[], fn: (s: Stmt | null) => T): T {
     const s = this.#start(args);
     try {
       return fn(s);
     } finally {
-      s.free();
-      this.#db[NOTE](this.#sql);
+      s?.reset();
     }
   }
 
   run(...args: unknown[]): { changes: number | bigint; lastInsertRowid: number | bigint } {
     return this.#each(args, (s) => {
-      while (this.#step(s) !== undefined);
-      const raw = this.#db[RAW]!._raw;
-      const changes = raw.getRowsModified();
-      const id = (raw as unknown as { exec(sql: string, p: null, c: object): { values: unknown[][] }[] }).exec("select last_insert_rowid()", null, BIG)[0].values[0][0] as bigint;
+      if (s) while (this.#step(s) !== undefined);
+      const conn = this.#db[RAW]!._conn;
+      const changes = conn.changes();
+      const id = conn.lastInsertRowid();
       return this.#readBigInts ? { changes: BigInt(changes), lastInsertRowid: id } : { changes, lastInsertRowid: Number(id) };
     });
   }
 
   get(...args: unknown[]): unknown {
-    return this.#each(args, (s) => this.#step(s));
+    return this.#each(args, (s) => (s ? this.#step(s) : undefined));
   }
 
   all(...args: unknown[]): unknown[] {
     return this.#each(args, (s) => {
       const rows: unknown[] = [];
-      for (let r; (r = this.#step(s)) !== undefined; ) rows.push(r);
+      if (s) for (let r; (r = this.#step(s)) !== undefined; ) rows.push(r);
       return rows;
     });
   }
 
   /** Rows one step at a time, as an iterator (`[object Iterator]`) with `next` and `return`. */
   iterate(...args: unknown[]): Iterator<unknown> {
-    let s: RawStatement | undefined = this.#start(args);
+    let s: Stmt | null | undefined = this.#start(args);
     const done = () => Object.assign(Object.create(null), { done: true, value: null });
     const finish = () => {
-      s?.free();
+      s?.reset();
       s = undefined;
-      this.#db[NOTE](this.#sql);
     };
     const it = Object.create(ITERATOR);
     it.next = () => {
@@ -547,15 +496,12 @@ export class StatementSync {
     return it;
   }
 
-  /** The result columns: names only (sql.js has no sqlite3_column_table_name or _decltype), the rest null. */
+  /** The result columns: names only, the rest null. */
   columns(): { column: null; database: null; name: string; table: null; type: null }[] {
     if (this.#done) throw invalidState("statement has been finalized");
-    const s = this.#db[RAW]!._raw.prepare(this.#sql);
-    try {
-      return s.getColumnNames().map((name) => Object.assign(Object.create(null), { column: null, database: null, name, table: null, type: null }));
-    } finally {
-      s.free();
-    }
+    const s = this.#raw;
+    if (!s) return [];
+    return Array.from({ length: s.columnCount }, (_, i) => Object.assign(Object.create(null), { column: null, database: null, name: s.columnName(i), table: null, type: null }));
   }
 
   setReadBigInts(enabled: boolean) {
@@ -624,7 +570,7 @@ class SQLTagStore {
   }
 }
 
-/** Sessions need sqlite3session, which sql.js doesn't build. */
+/** Sessions are not supported yet. */
 export class Session {
   constructor() {
     throw nodeError(new TypeError("Illegal constructor"), "ERR_ILLEGAL_CONSTRUCTOR");

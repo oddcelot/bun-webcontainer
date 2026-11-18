@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// bun:sqlite in the browser (src/worker/node/sqlite.ts, on sql.js) against native Bun: scripts/sqlite/main.ts runs in
+// bun:sqlite in the browser (src/worker/node/sqlite.ts, on SQLite's wasm build) against native Bun: scripts/sqlite/main.ts runs in
 // the embed in headless Chrome and prints one line per probe (SQLiteError fields, safeIntegers, Statement.as,
 // serialize/deserialize, strict, columnNames, paramsCount, finalize, toString, inTransaction, ...). The expected lines are
 // what native Bun prints for the same program (run with `bun` in a temp folder).

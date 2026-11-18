@@ -31,6 +31,7 @@
     "@shikijs/langs": "4.6.0",
     "@solid-primitives/storage": "5.0.0",
     "@solidjs/web": "catalog:",
+    "@sqlite.org/sqlite-wasm": "3.54.1-build1",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-unicode-graphemes": "^0.4.0",
     "@xterm/addon-web-links": "^0.12.0",

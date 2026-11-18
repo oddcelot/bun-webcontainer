@@ -36,4 +36,4 @@ console.log(db.query("SELECT count(*) AS total FROM todos").get());
 
 ## In the playground
 
-`bun:sqlite` here is built on [sql.js](https://sql.js.org/), SQLite compiled to WebAssembly. A file database is saved in the project, so it's still there after a reload. A few APIs are missing; [Bun APIs](/compatibility/bun/) lists them.
+`bun:sqlite` here is built on [SQLite's official WebAssembly build](https://sqlite.org/wasm). A file database is saved in the project, so it's still there after a reload. A few APIs are missing; [Bun APIs](/compatibility/bun/) lists them.
