@@ -114,7 +114,7 @@ Supported in the playground:
    branch     List, create, delete (-d, -D), rename (-m) branches, --show-current, --format
    switch     Switch branches (<branch>, -c <new> [<start>], --detach, -f)
    checkout   Switch branches or restore files (<branch>, -b <new>, <rev> -- <path>...)
-   merge      Join a branch into the current one (<rev>, --no-ff, --ff-only, -m <msg>, --abort, --continue)
+   merge      Join a branch into the current one (<rev>..., --no-ff, --ff-only, --squash, --no-commit, -m <msg>, --abort, --continue)
    tag        List, create or delete tags (-l [<pattern>...], -n<num>, -a, -m <msg>, -f, -d)
    stash      Set changes aside (push [-m <msg>] [-u], save, list, show [-p], apply [--index], pop, drop, clear)
    clean      Remove untracked files (-n, -f, -d)
@@ -122,7 +122,7 @@ Supported in the playground:
    rev-parse  Print the object id of a revision (--verify, --abbrev-ref)
    clone      Clone a repository into the (empty) project (<url> [.], --depth <n>, -b <branch>)
    fetch      Download objects and refs from a remote ([<remote>], --depth <n>)
-   pull       Fetch, then fast-forward the current branch ([<remote> [<branch>]])
+   pull       Fetch, then merge into the current branch ([<remote> [<branch>]], --ff-only, --no-ff)
    push       Update a remote branch ([<remote> [[+]<src>[:<dst>]...]], -f, -u, -d, -n)
    remote     Manage remotes (-v, add <name> <url>, remove, get-url, set-url)
 ";
