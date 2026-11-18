@@ -344,8 +344,9 @@ function builtinModule(name: string): string {
   const names = exportNames(name);
   // bun:sqlite's wasm (node:sqlite's too) loads asynchronously, before anything is exported
   const pre = name === "bun:sqlite" || name === "sqlite" ? "await globalThis.__loadBunSqlite();\n" : "";
+  // A built-in with `__esModule` (bun:sqlite) has its default export as `default`, as an ES module would.
   return `${pre}const m = globalThis.__nodeBuiltins[${JSON.stringify(name)}];
-export default m;
+export default m.__esModule ? m.default : m;
 export const __cjs = m;
 ${names.length ? `export const { ${names.join(", ")} } = m;` : ""}`;
 }

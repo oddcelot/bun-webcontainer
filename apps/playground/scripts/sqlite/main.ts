@@ -204,6 +204,8 @@ await p("agg-nostart", () => { db.aggregate("nost", { step: (a: unknown, v: numb
   d.run("create table t(id integer primary key, v)");
   d.run("insert into t(v) values (3), (5), (1)");
   const s = d.query("select id, v from t order by id");
+  // (__cjs: every built-in module of the playground has it)
+  await p("module", async () => { const ns: any = await import("bun:sqlite"); const cjs = require("bun:sqlite"); return [ns.default === Database, Object.keys(ns).filter((k) => k !== "__cjs").sort(), Object.keys(cjs).sort(), cjs.default === Database, cjs.Database === Database]; });
   await p("names", () => [own(Database.prototype), own(Database), own(Statement.prototype), Object.keys(s), own(Object.getPrototypeOf(s.native)), Object.keys(d), Object.keys(constants).length]);
   await p("handle", () => { const a = new Database(":memory:"); const b = Database.deserialize(a.serialize()); const c = Database.open(":memory:"); return [typeof a.handle, b.handle - a.handle, c.handle - a.handle, (a.close(), a.handle - c.handle + 2)]; });
   await p("open", () => [Database.open(":memory:") instanceof Database, tryIt(() => Database.open("nofile.db", { readonly: true }))]);

@@ -1173,4 +1173,5 @@ export const constants = {
   SQLITE_FCNTL_RESET_CACHE: 42,
 };
 
-export default { Database, Statement, SQLiteError, constants };
+// As Bun's module object: `import Database from "bun:sqlite"` is the class.
+export default { __esModule: true, Database, Statement, constants, default: Database, SQLiteError };
