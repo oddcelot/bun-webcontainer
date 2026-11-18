@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { VFS } from "@runbun/vfs";
 import { createWasi, runWasi } from "./wasi.ts";
+import { conflictedChanges, mergeTitle, parseStashes, parseStatus, stagedChanges, worktreeChanges } from "./parse.ts";
 
 const E = { OK: 0, BADF: 8, EXIST: 20, INVAL: 28, ISDIR: 31, NOENT: 44, NOTDIR: 54, NOTEMPTY: 55, NOTSUP: 58, NOTCAPABLE: 76 };
 const O = { CREAT: 1, DIRECTORY: 2, EXCL: 4, TRUNC: 8 };
@@ -403,6 +404,93 @@ test("git.wasm: merge (a conflict), stash and tag over the VFS; native git reads
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("git.wasm: the Git panel's merge and stash commands, read back with its parsers", async () => {
+  if (!existsSync(GIT)) return console.log(`  (skipped: ${GIT} missing)`);
+  const module = await WebAssembly.compile(readFileSync(GIT));
+  const vfs = new VFS();
+  const git = async (...args: string[]) => {
+    let out = "";
+    let err = "";
+    const { exitCode } = await runWasi(module, vfs, { args: ["git", ...args], env: { GIT_AUTHOR_NAME: "T", GIT_AUTHOR_EMAIL: "t@example.com" }, stdout: (b) => (out += dec.decode(b)), stderr: (b) => (err += dec.decode(b)) });
+    return { exitCode, out, err };
+  };
+  const ok = async (...args: string[]) => {
+    const r = await git(...args);
+    assert.equal(r.exitCode, 0, `git ${args.join(" ")}: ${r.err}${r.out}`);
+    return r.out;
+  };
+  // what the store reads after each action (git/store.ts read())
+  const panel = async () => {
+    const entries = parseStatus((await git("status", "--porcelain", "-b", "-z", "-uall")).out).entries;
+    return {
+      conflicts: conflictedChanges(entries).map((c) => `${c.conflict} ${c.path}`),
+      changes: worktreeChanges(entries).map((c) => `${c.code} ${c.path}`),
+      staged: stagedChanges(entries).map((c) => `${c.code} ${c.path}`),
+      merging: vfs.files.has(".git/MERGE_HEAD") ? mergeTitle(vfs.readText(".git/MERGE_MSG") ?? "") : null,
+      stashes: parseStashes((await git("stash", "list")).out).map((s) => s.label),
+    };
+  };
+  vfs.write("a.txt", "a\nb\nc\n");
+  vfs.write("gone.txt", "g\n");
+  await ok("init");
+  await ok("add", ".");
+  await ok("commit", "-m", "base");
+  await ok("switch", "-c", "feat");
+  vfs.write("a.txt", "a\nfeat\nc\n");
+  vfs.write("gone.txt", "g on feat\n");
+  await ok("commit", "-am", "on feat");
+  await ok("switch", "main");
+  vfs.write("a.txt", "a\nmain\nc\n");
+  vfs.remove("gone.txt");
+  await ok("commit", "-am", "on main");
+
+  // the branch menu's merge: conflicts, the banner's title; the panel's "Mark as resolved" and "Commit merge"
+  const m = await git("merge", "feat");
+  assert.equal(m.exitCode, 1);
+  assert.match(m.out, /^CONFLICT \(/m); // store.ts shows it as the Merge Changes section, not as an error
+  assert.deepEqual(await panel(), { conflicts: ["UU a.txt", "DU gone.txt"], changes: [], staged: [], merging: "Merge branch 'feat'", stashes: [] });
+  assert.equal((await git("commit", "--no-edit")).exitCode, 128); // refused while conflicted
+  vfs.write("a.txt", "a\nboth\nc\n");
+  vfs.remove("gone.txt");
+  await ok("add", "-A", "--", "a.txt", "gone.txt");
+  assert.deepEqual(await panel(), { conflicts: [], changes: [], staged: ["M a.txt"], merging: "Merge branch 'feat'", stashes: [] });
+  await ok("commit", "--no-edit");
+  assert.equal((await panel()).merging, null);
+  assert.equal(await ok("log", "-1", "--format=%s %p"), `Merge branch 'feat' ${(await ok("log", "-1", "--format=%h", "HEAD~1")).trim()} ${(await ok("log", "-1", "--format=%h", "feat")).trim()}\n`);
+
+  // abort: the banner's Abort
+  await ok("switch", "-c", "other", "HEAD~1");
+  vfs.write("a.txt", "a\nother\nc\n");
+  await ok("commit", "-am", "on other");
+  assert.equal((await git("merge", "feat")).exitCode, 1);
+  assert.equal((await panel()).merging, "Merge branch 'feat' into other");
+  await ok("merge", "--abort");
+  assert.deepEqual(await panel(), { conflicts: [], changes: [], staged: [], merging: null, stashes: [] });
+  assert.equal(vfs.readText("a.txt"), "a\nother\nc\n");
+
+  // stashes: "Stash all changes" (untracked too), the list, apply, pop (a conflict keeps it), drop
+  vfs.write("a.txt", "a\nstashed\nc\n");
+  vfs.write("new.txt", "new\n");
+  await ok("stash", "push", "-u");
+  assert.deepEqual(await panel(), { conflicts: [], changes: [], staged: [], merging: null, stashes: [`WIP on other: ${(await ok("log", "-1", "--format=%h")).trim()} on other`] });
+  assert.match(await ok("stash", "show", "-p", "stash@{0}"), /^\+stashed$/m);
+  await ok("stash", "apply", "stash@{0}");
+  assert.deepEqual((await panel()).changes, ["M a.txt", "U new.txt"]);
+  await ok("reset", "--hard");
+  vfs.remove("new.txt");
+  vfs.write("a.txt", "a\nmine\nc\n");
+  await ok("commit", "-am", "mine");
+  const pop = await git("stash", "pop", "stash@{0}");
+  assert.equal(pop.exitCode, 1);
+  assert.match(pop.out, /^CONFLICT \(content\)/m);
+  const after = await panel();
+  assert.deepEqual([after.conflicts, after.merging, after.stashes.length], [["UU a.txt"], null, 1]); // the banner: "Applying a stash"
+  await ok("reset", "--hard");
+  vfs.remove("new.txt");
+  await ok("stash", "drop", "stash@{0}");
+  assert.deepEqual((await panel()).stashes, []);
 });
 
 let failed = 0;
