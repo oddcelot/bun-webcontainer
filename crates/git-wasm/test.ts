@@ -762,12 +762,29 @@ try {
   await twin("tag --sort creates", p6v, ["tag", "--sort=refname", "newtag"], ts);
   await twin("tag.sort", p6v, ["tag"], { ...ts, setup: (d) => nat(d, "config", "tag.sort", "-version:refname") });
   await twin("tag.sort, --sort wins", p6v, ["tag", "--sort=refname"], { ...ts, setup: (d) => nat(d, "config", "tag.sort", "-version:refname") });
+  // versionsort.suffix: prereleases before the release, in the suffixes' order (and git's quirks where they overlap)
+  const pre = join(tmp, "p6pre");
+  cpSync(p6v, pre, { recursive: true });
+  for (const t of ["v2.0-rc1", "v2.0-rc2", "v2.0-beta", "v2.0-beta2", "v2.0.1", "v2.0-pre", "v2.0-bfoo", "v2.0-rc"]) nat(pre, "tag", t, "HEAD~1");
+  const suffixes = (...values: string[]) => (d: string) => { for (const v of values) nat(d, "config", "--add", "versionsort.suffix", v); };
+  for (const [name, sfx] of [["-rc", ["-rc"]], ["-beta -rc", ["-beta", "-rc"]], ["-rc -beta -pre", ["-rc", "-beta", "-pre"]], ["-b -beta (overlap)", ["-b", "-beta"]], [". (dots)", ["."]], ["none set", []]] as const) {
+    await twin(`tag versionsort.suffix ${name}`, pre, ["tag", "--sort=v:refname", "-l", "v2*"], { ...ts, setup: suffixes(...sfx) });
+    await twin(`tag versionsort.suffix ${name}, reversed`, pre, ["tag", "--sort=-version:refname"], { ...ts, setup: suffixes(...sfx) });
+  }
   // -F, the message cleanup, --points-at, --merged, --format, -i
   const msgFile = (d: string) => write(d, "msg.txt", "  \n\nfirst line   \n# a comment\n\n\n\nsecond\n\n");
   const tagF = [["-F", "msg.txt", "f1"], ["--file=msg.txt", "f2", "feat"], ["-a", "-F", "msg.txt", "f3"], ["-Fmsg.txt", "f4"], ["-F", "msg.txt", "-m", "x", "f5"], ["-F", "nope.txt", "f6"], ["-F", "comments.txt", "f7"], ["-m", "a\n# c\n\nb  ", "f8"], ["-m", "one", "-m", "\n\ntwo\n\n", "f9"], ["-F"]];
   for (const a of tagF) await twin(`tag ${a.join(" ")}`, p6, ["tag", ...a], { ...ts, setup: (d) => { msgFile(d); write(d, "comments.txt", "# only\n"); } });
   const filters = [["--points-at"], ["--points-at", "HEAD~1"], ["--points-at", "feat"], ["--points-at", native(p6v, ["rev-parse", "ann"]).trim()], ["--points-at=feat", "l*"], ["--points-at", "nope"], ["--merged"], ["--merged", "HEAD~1"], ["--merged=feat"], ["--no-merged"], ["--no-merged", "HEAD~1"], ["--merged", "HEAD", "--no-merged", "HEAD~1"], ["--merged", "nope"], ["--merged", "HEAD~1", "--sort=-v:refname", "v1*"]];
-  const formats = ["%(refname)", "%(refname:short) %(objecttype) %(*objecttype) %(objectname:short) %(*objectname)", "%(refname:lstrip=1)|%(refname:strip=2)|%(objectname:short=10)", "%(subject)|%(body)|%(contents:subject)|%(contents:body)|%(contents)", "%(contents:lines=1)|%(contents:lines=2)", "%(taggername) %(taggeremail) %(taggeremail:trim) %(*authorname) %(*authoremail) %(tag) %(type)", "%(creatordate)|%(creatordate:short)|%(taggerdate:iso)|%(*committerdate:unix)|%(creatordate:raw)", "%(objectsize) %(*subject)", "100%% %41%2a %zz %", "", "%(nope)", "%(refname"];
+  const formats = ["%(refname)", "%(refname:short) %(objecttype) %(*objecttype) %(objectname:short) %(*objectname)", "%(refname:lstrip=1)|%(refname:strip=2)|%(objectname:short=10)", "%(subject)|%(body)|%(contents:subject)|%(contents:body)|%(contents)", "%(contents:lines=1)|%(contents:lines=2)", "%(taggername) %(taggeremail) %(taggeremail:trim) %(*authorname) %(*authoremail) %(tag) %(type)", "%(creatordate)|%(creatordate:short)|%(taggerdate:iso)|%(*committerdate:unix)|%(creatordate:raw)", "%(objectsize) %(*subject)", "100%% %41%2a %zz %", "", "%(nope)", "%(refname",
+    // %(align) and %(if): padding, nesting, the comparisons, and git's errors for misuse
+    "%(align:12)%(refname:short)%(end)|", "%(align:12,right)%(refname:short)%(end)|%(align:position=middle,width=9)%(objecttype)%(end)|", "%(align:width=3)%(refname:short)%(end)|",
+    "%(align:16,middle)[%(align:6,right)%(objecttype)%(end)]%(end)|", "%(align)x%(end)", "%(align:wide)x%(end)", "%(align:5,top)x%(end)", "%(align:5,position=top)x%(end)",
+    "%(refname:short) %(if)%(*objecttype)%(then)annotated %(*objecttype)%(else)lightweight%(end)", "%(if)%(contents:body)%(then)has a body%(end)",
+    "%(if:equals=commit)%(objecttype)%(then)c%(else)not c: %(objecttype)%(end)", "%(if:notequals=v1.9)%(refname:short)%(then)%(refname:short)%(end)",
+    "%(if)%(taggername)%(then)%(align:10,right)%(taggername)%(end)%(else)-%(end)|", "%(if)%(if)%(tag)%(then)x%(end)%(then)nested%(else)none%(end)",
+    "%(if) %(then)space%(else)blank%(end)", "%(then)", "%(if)x%(else)y%(end)", "%(if)x%(then)y%(then)z%(end)", "%(if)x%(then)y%(else)z%(else)w%(end)", "%(if)x%(then)y%(else)z%(then)%(end)",
+    "%(if)x%(end)", "%(end)", "%(if)x%(then)y", "%(align:4)x", "%(if:sure)x%(then)%(end)", "%(then:x)", "%(else)", "%(if)x%(then)%(end:y)|"];
   for (const a of [...filters, ...formats.map((f) => [`--format=${f}`]), ["--format", "%(refname:short)", "-l", "[a-l]*"], ["--format"], ["-n", "--format=%(refname)"]]) await twin(`tag ${a.join(" ")}`, p6v, ["tag", ...a], ts);
   const mixed = (d: string) => { nat(d, "tag", "Alpha"); nat(d, "tag", "beta"); nat(d, "tag", "BETA2"); };
   for (const a of [["-i"], ["-i", "-l", "b*"], ["-l", "b*"], ["--ignore-case", "--sort=-refname", "-l", "*A*"], ["-i", "--sort=v:refname"]]) await twin(`tag ${a.join(" ")}`, p6, ["tag", ...a], { ...ts, setup: mixed });
