@@ -40,52 +40,139 @@ function pretty(v: unknown, ind = "", seen: unknown[] = []): string {
   return entries.length ? `${open}\n${entries.map((e) => `${ind}  ${e},\n`).join("")}${ind}${close}` : open + close;
 }
 
+/** What native Bun's diff printer (test_runner/diff/printDiff.rs) does for a person, not an agent. */
+const DIFF = { chunkOver: 2 * 1024, context: 5, truncateOver: 2 * 1024, truncateKeep: 100 };
+const utf8 = new TextEncoder();
+const fromUtf8 = new TextDecoder();
+
+/** A line longer than 2 KiB (in UTF-8) with its middle elided, as Bun does. */
+function truncateLine(line: string): string {
+  const bytes = utf8.encode(line);
+  if (bytes.length <= DIFF.truncateOver) return line;
+  const cont = (i: number) => i < bytes.length && (bytes[i] & 0xc0) === 0x80;
+  let head = DIFF.truncateKeep;
+  let tail = bytes.length - DIFF.truncateKeep;
+  while (head > 0 && cont(head)) head--;
+  while (cont(tail)) tail++;
+  return `${fromUtf8.decode(bytes.subarray(0, head))}... (${tail - head} bytes truncated) ...${fromUtf8.decode(bytes.subarray(tail))}`;
+}
+
+/** A piece of a row (UTF-8), each of its lines cut on its own; a line break goes on in a new row after `prefix`. */
+const piece = (bytes: Uint8Array, prefix: string) => fromUtf8.decode(bytes).split("\n").map(truncateLine).join(`\n${prefix}`);
+
 /**
- * Bun's line diff of two texts: hunks (`@@ -2,3 +2,6 @@`) with a line of context around each change, then the
- * `- Expected  - n` / `+ Received  + n` totals. From a line-level LCS.
+ * A change: the rows of what it removes, then of what it inserts. Bun diffs the two by character to colour what
+ * changed; without colours, that shows only where a line over 2 KiB is cut, as it cuts each piece (changed or not) on
+ * its own. The pieces here: the start both share, the middle, the end both share (Bun's character diff can find more).
+ */
+function modified(removed: string, inserted: string, removedPrefix: string, insertedPrefix: string): string {
+  const r = utf8.encode(removed);
+  const i = utf8.encode(inserted);
+  const whole = () => `${removedPrefix}${piece(r, removedPrefix)}\n${insertedPrefix}${piece(i, insertedPrefix)}`;
+  const larger = Math.max(r.length, i.length);
+  if (larger > 30 && Math.min(r.length, i.length) * 3 < larger) return whole();
+  const long = (text: string) => text.split("\n").some((l) => utf8.encode(l).length > DIFF.truncateOver);
+  if (!long(removed) && !long(inserted)) return whole();
+  const cont = (b: Uint8Array, at: number) => at < b.length && (b[at] & 0xc0) === 0x80;
+  let p = 0;
+  while (p < r.length && p < i.length && r[p] === i[p]) p++;
+  while (p > 0 && (cont(r, p) || cont(i, p))) p--;
+  let s = 0;
+  while (s < r.length - p && s < i.length - p && r[r.length - 1 - s] === i[i.length - 1 - s]) s++;
+  while (s > 0 && (cont(r, r.length - s) || cont(i, i.length - s))) s--;
+  // Most of a side changed: Bun doesn't highlight it.
+  const most = (b: Uint8Array) => b.length - p - s > 10 && b.length - p - s > Math.floor(b.length / 3) * 2;
+  if (most(r) || most(i)) return whole();
+  const side = (b: Uint8Array, prefix: string) =>
+    prefix + [b.subarray(0, p), b.subarray(p, b.length - s), b.subarray(b.length - s)].filter((x) => x.length).map((x) => piece(x, prefix)).join("");
+  return `${side(r, removedPrefix)}\n${side(i, insertedPrefix)}`;
+}
+
+type Segment = { kind: "equal"; lines: string[] } | { kind: "change"; removed: string[]; inserted: string[] } | { kind: "skipped"; count: number };
+
+/**
+ * Bun's line diff of two texts: every line, `- ` for the expected side and `+ ` for the received one, then the
+ * `- Expected  - n` / `+ Received  + n` totals. Over 2 KiB, only 5 lines of context around each change remain, under
+ * hunk headers (`@@ -2,3 +2,6 @@`). From a line-level LCS; two single lines are `Expected:` and `Received:`.
  */
 function diffText(expectedText: string, receivedText: string): string {
+  if (!expectedText.includes("\n") && !receivedText.includes("\n")) return modified(expectedText, receivedText, "Expected: ", "Received: ");
   const a = expectedText.split("\n");
   const b = receivedText.split("\n");
   const lcs = Array.from({ length: a.length + 1 }, () => new Array<number>(b.length + 1).fill(0));
   for (let i = a.length - 1; i >= 0; i--) for (let j = b.length - 1; j >= 0; j--) lcs[i][j] = a[i] === b[j] ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
-  const out: { sign: " " | "-" | "+"; text: string }[] = [];
+  // Runs of equal lines, and between them each change: what it removes, then what it inserts.
+  let segments: Segment[] = [];
   let i = 0;
   let j = 0;
   while (i < a.length || j < b.length) {
-    if (i < a.length && j < b.length && a[i] === b[j]) out.push({ sign: " ", text: a[i++] }), j++;
-    else if (i < a.length && (j === b.length || lcs[i + 1][j] >= lcs[i][j + 1])) out.push({ sign: "-", text: a[i++] });
-    else out.push({ sign: "+", text: b[j++] });
-  }
-  const keep = out.map((l, k) => l.sign !== " " || out[k - 1]?.sign !== undefined && out[k - 1].sign !== " " || (out[k + 1] !== undefined && out[k + 1].sign !== " "));
-  const hunks: string[] = [];
-  let k = 0;
-  let oldLine = 1;
-  let newLine = 1;
-  while (k < out.length) {
-    if (!keep[k]) {
-      oldLine++;
-      newLine++;
-      k++;
+    const s = segments.at(-1);
+    if (i < a.length && j < b.length && a[i] === b[j]) {
+      if (s?.kind === "equal") s.lines.push(a[i]);
+      else segments.push({ kind: "equal", lines: [a[i]] });
+      i++;
+      j++;
       continue;
     }
-    const startOld = oldLine;
-    const startNew = newLine;
-    let nOld = 0;
-    let nNew = 0;
-    const lines: string[] = [];
-    for (; k < out.length && keep[k]; k++) {
-      lines.push(`${out[k].sign} ${out[k].text}`);
-      if (out[k].sign !== "+") nOld++;
-      if (out[k].sign !== "-") nNew++;
-    }
-    oldLine += nOld;
-    newLine += nNew;
-    hunks.push(`@@ -${startOld},${nOld} +${startNew},${nNew} @@\n${lines.join("\n")}`);
+    const change = s?.kind === "change" ? s : (segments[segments.push({ kind: "change", removed: [], inserted: [] }) - 1] as Segment & { kind: "change" });
+    if (i < a.length && (j === b.length || lcs[i + 1][j] >= lcs[i][j + 1])) change.removed.push(a[i++]);
+    else change.inserted.push(b[j++]);
   }
-  const minus = out.filter((l) => l.sign === "-").length;
-  const plus = out.filter((l) => l.sign === "+").length;
-  return `${hunks.join("\n")}\n\n- Expected  - ${minus}\n+ Received  + ${plus}`;
+  if (utf8.encode(expectedText).length > DIFF.chunkOver || utf8.encode(receivedText).length > DIFF.chunkOver) {
+    // Only the context next to each change remains of an equal run.
+    const n = segments.length;
+    segments = segments.flatMap((s, k): Segment[] => {
+      if (s.kind !== "equal") return [s];
+      const head = k > 0 ? DIFF.context : 0;
+      const tail = k + 1 < n ? DIFF.context : 0;
+      if (s.lines.length <= head + tail) return [s];
+      return [
+        ...(head ? [{ kind: "equal" as const, lines: s.lines.slice(0, head) }] : []),
+        { kind: "skipped" as const, count: s.lines.length - head - tail },
+        ...(tail ? [{ kind: "equal" as const, lines: s.lines.slice(-tail) }] : []),
+      ];
+    });
+  }
+  const rows: string[] = [];
+  const add = (prefix: string, lines: string[]) => lines.forEach((l) => rows.push(`${prefix}${truncateLine(l)}`));
+  let oldLine = 1;
+  let newLine = 1;
+  let minus = 0;
+  let plus = 0;
+  // A hunk header starts each group of rows after elided lines (and the first, if any were elided).
+  let header = segments.some((s) => s.kind === "skipped");
+  for (const [k, s] of segments.entries()) {
+    if (s.kind === "skipped") {
+      header = true;
+      oldLine += s.count;
+      newLine += s.count;
+      continue;
+    }
+    if (header) {
+      header = false;
+      let nOld = 0;
+      let nNew = 0;
+      for (const t of segments.slice(k)) {
+        if (t.kind === "skipped") break;
+        nOld += t.kind === "equal" ? t.lines.length : t.removed.length;
+        nNew += t.kind === "equal" ? t.lines.length : t.inserted.length;
+      }
+      rows.push(`@@ -${oldLine},${nOld} +${newLine},${nNew} @@`);
+    }
+    if (s.kind === "equal") {
+      add("  ", s.lines);
+      oldLine += s.lines.length;
+      newLine += s.lines.length;
+    } else {
+      if (s.removed.length && s.inserted.length) rows.push(modified(s.removed.join("\n"), s.inserted.join("\n"), "- ", "+ "));
+      else add(s.removed.length ? "- " : "+ ", s.removed.length ? s.removed : s.inserted);
+      oldLine += s.removed.length;
+      newLine += s.inserted.length;
+      minus += s.removed.length;
+      plus += s.inserted.length;
+    }
+  }
+  return `${rows.join("\n")}\n\n- Expected  - ${minus}\n+ Received  + ${plus}`;
 }
 const diff = (expected: unknown, received: unknown) => diffText(pretty(expected), pretty(received));
 
