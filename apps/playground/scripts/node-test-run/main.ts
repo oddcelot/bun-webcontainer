@@ -1,15 +1,30 @@
-// `bun test` as a child process, and node:test's run(), which runs each file in one.
+// `bun test` as a child process (its flags too), and node:test's run(), which runs each file in one.
+import { readFileSync, rmSync } from "node:fs";
 import { relative } from "node:path";
 import { run } from "node:test";
 
 console.log("__start__");
 
-/** What a `bun test` printed that has to agree: its results and totals (no timings, no error excerpts). */
+/**
+ * What a `bun test` printed that has to agree: its results and totals, the first line of an error, what `--bail` and
+ * `-t` say, the coverage table (no timings, no error excerpts).
+ */
 const kept = (text: string) =>
   text
     .split("\n")
     .map((l) => l.replace(/ \[[\d.]+m?s\]$/, ""))
-    .filter((l) => /^\((pass|fail|skip|todo)\) /.test(l) || /^ \d+ (pass|fail|skip|todo)$/.test(l) || /^Ran \d+ tests? across/.test(l) || /^[\w.]+\.test\.ts:$/.test(l))
+    .filter(
+      (l) =>
+        /^\((pass|fail|skip|todo)\) /.test(l) ||
+        /^ \d+ (pass|fail|skip|todo|filtered out|expect\(\) calls)$/.test(l) ||
+        /^Ran \d+ tests? across/.test(l) ||
+        /^[\w.]+\.test\.ts:( \(run #\d+\))?$/.test(l) ||
+        /^ {2}\^ this test/.test(l) ||
+        /^(error: |Bailed out after )/.test(l) ||
+        /^-+\|/.test(l) ||
+        /^ *\S.*\| +[\d.]+ \| +[\d.]+ \|/.test(l) ||
+        /^File +\|/.test(l),
+    )
     .map((l) => l.replace(/^(Ran .*?\.).*/, "$1"));
 
 async function spawned(label: string, cmd: string[]) {
@@ -23,6 +38,24 @@ async function spawned(label: string, cmd: string[]) {
 await spawned("spawn", ["bun", "test", "a.test.ts"]);
 await spawned("spawn ok", ["bun", "test", "./b.test.ts"]);
 await spawned("script", ["bun", "run", "test"]);
+
+// Its flags, as the console's `bun test` takes them.
+await spawned("-t", ["bun", "test", "-t", "twice", "e.test.ts"]);
+await spawned("-t describe", ["bun", "test", "--test-name-pattern=^math", "e.test.ts"]);
+await spawned("-t skip", ["bun", "test", "-t", "skip|plain", "e.test.ts"]);
+await spawned("-t none", ["bun", "test", "-t", "nomatch", "e.test.ts"]);
+await spawned("--timeout", ["bun", "test", "--timeout", "20", "e.test.ts"]);
+await spawned("--bail", ["bun", "test", "--bail", "e.test.ts"]);
+await spawned("--bail=2", ["bun", "test", "--bail=2", "--timeout=20", "e.test.ts"]);
+await spawned("--rerun-each", ["bun", "test", "--rerun-each", "2", "f.test.ts"]);
+await spawned("--todo", ["bun", "test", "--todo", "e.test.ts"]);
+await spawned(".only", ["bun", "test", "f.test.ts"]);
+await spawned("--only", ["bun", "test", "--only", "e.test.ts", "f.test.ts"]);
+await spawned("--coverage", ["bun", "test", "--coverage", "e.test.ts"]);
+await spawned("--coverage lcov", ["bun", "test", "--coverage-reporter=lcov", "--coverage-dir", "cov", "e.test.ts"]);
+console.log(`lcov: ${readFileSync("cov/lcov.info", "utf8").trim().split("\n").join(" ")}`);
+rmSync("cov", { recursive: true, force: true });
+for (const bad of [["--timeout", "x"], ["--bail=0"], ["--rerun-each", "-1"], ["-t", "("]]) await spawned(`bad ${bad.join(" ")}`, ["bun", "test", ...bad, "e.test.ts"]);
 
 const stream = run({ files: ["a.test.ts", "b.test.ts", "c.test.ts", "d.test.ts"] });
 stream.on("data", (e: { type: string; data: Record<string, any> }) => {

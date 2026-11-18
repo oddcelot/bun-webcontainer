@@ -48,6 +48,7 @@ import { isDeepStrictEqual } from "./node/util";
 import { failRunning, runTestFiles, setReport } from "./node/test";
 import { finishCoverage, startCoverage } from "./coverage";
 import { coverageOptions } from "../coverage/options";
+import { splitTestArgs, testOptions, type TestOptions } from "../testArgs";
 import { BUN_REVISION, BUN_VERSION } from "./bunVersion";
 import * as fflate from "fflate";
 import { bunZstdCompress, bunZstdCompressSync, bunZstdDecompress, bunZstdDecompressSync } from "./compress";
@@ -961,9 +962,15 @@ async function runChildTests(filters: string[], flags: string[], cwd: string) {
     const data = enc.encode(text);
     post({ type: "stdio", fd, data }, [data.buffer]);
   };
-  const unsupported = flags.find((f) => f !== "-u" && f !== "--update-snapshots");
-  if (unsupported) {
-    write(2, `error: bun test ${unsupported} isn't supported in a spawned process here\n`);
+  // The flags as the console's `bun test` takes them (processes.ts passes on a command line it rejects, for this).
+  const split = splitTestArgs([...flags, ...filters]);
+  let options: TestOptions;
+  try {
+    if (split.error !== undefined) throw new Error(split.error.replace(/^error: /, ""));
+    ({ filters, flags } = split);
+    options = testOptions(flags);
+  } catch (err) {
+    write(2, `error: ${err instanceof Error ? err.message : String(err)}\n`);
     return exit(1);
   }
   const GLYPHS: Record<string, string> = { "✓": "(pass)", "✗": "(fail)", "»": "(skip)", "✎": "(todo)" };
@@ -987,13 +994,23 @@ async function runChildTests(filters: string[], flags: string[], cwd: string) {
     write(2, `error: No tests found${filters.length ? ` matching ${filters.join(", ")}` : ""}!\n`);
     return exit(1);
   }
+  // `--coverage` (bunfig.toml's too): the page serves the project's files with counters while this process runs
+  // (runner.ts spawn); the table goes to stderr.
+  let finish: (() => boolean) | undefined;
+  try {
+    finish = await testCoverage(flags, (table) => write(2, `${plain(table)}\n`));
+  } catch (err) {
+    write(2, `error: ${err instanceof Error ? err.message : String(err)}\n`);
+    return exit(1);
+  }
   testing = true;
-  const { failed } = await runTestFiles([...files].sort(), (f) => importUrl(`${VFS_ROOT}${f}`), (g.Bun as { version: string }).version, {
-    update: flags.length > 0,
+  const { failed, coverageFailed } = await runTestFiles([...files].sort(), (f) => importUrl(`${VFS_ROOT}${f}`), (g.Bun as { version: string }).version, {
+    ...options,
     preload: () => bunfigPreloads(true),
-  }).catch((err) => (write(2, `${fmt(err)}\n`), { failed: 1 }));
+    coverage: finish,
+  }).catch((err) => (write(2, `${fmt(err)}\n`), { failed: 1, coverageFailed: undefined }));
   testing = false;
-  exit(failed ? 1 : 0);
+  exit(failed || coverageFailed ? 1 : 0);
 }
 
 /** What `halt` throws where it can't block; the error handlers ignore it. */
@@ -1856,7 +1873,7 @@ function bunfigPreloadSpecs(test: boolean): string[] {
  * them once the tests are done (whether that fails the run). Undefined without coverage; throws Bun's error for an
  * option it rejects.
  */
-async function testCoverage(flags: string[]): Promise<(() => boolean) | undefined> {
+async function testCoverage(flags: string[], print: (table: string) => void = (table) => console.error(table)): Promise<(() => boolean) | undefined> {
   const dir = norm(process.cwd());
   const text = vfs.readText(dir ? `${dir}/bunfig.toml` : "bunfig.toml");
   const config = text === undefined ? undefined : (parseData(text, "toml") as { test?: Record<string, unknown> } | null);
@@ -1870,7 +1887,7 @@ async function testCoverage(flags: string[]): Promise<(() => boolean) | undefine
       opts,
       dir,
       (path) => ignore.some((p) => p.match(path)),
-      (table) => console.error(table),
+      print,
       (path, lcov) => {
         fs.mkdirSync(`/${path}`.replace(/\/[^/]*$/, "") || "/", { recursive: true });
         fs.writeFileSync(`/${path}`, lcov);
@@ -1942,14 +1959,16 @@ self.addEventListener("message", async (e: MessageEvent) => {
     // `bun test`: load and run each file instead of an entry.
     const args = (e.data.args as string[] | undefined) ?? [];
     let finish: (() => boolean) | undefined;
+    let options: TestOptions;
     try {
+      options = testOptions(args);
       finish = await testCoverage(args);
     } catch (err) {
       post({ type: "console", level: "error", text: `error: ${err instanceof Error ? err.message : String(err)}` });
       post({ type: "ready", failed: 1 });
       return;
     }
-    const { failed, results, coverageFailed } = await runTestFiles(e.data.tests, (f) => importUrl(`${VFS_ROOT}${f}`), (g.Bun as { version: string }).version, { update: args.some((a) => a === "-u" || a === "--update-snapshots"), preload: () => bunfigPreloads(true), coverage: finish }).catch((err) => (post({ type: "console", level: "error", text: fmt(err) }), { failed: 1, results: undefined, coverageFailed: undefined }));
+    const { failed, results, coverageFailed } = await runTestFiles(e.data.tests, (f) => importUrl(`${VFS_ROOT}${f}`), (g.Bun as { version: string }).version, { ...options, preload: () => bunfigPreloads(true), coverage: finish }).catch((err) => (post({ type: "console", level: "error", text: fmt(err) }), { failed: 1, results: undefined, coverageFailed: undefined }));
     post({ type: "ready", failed, results, coverageFailed });
     return;
   }

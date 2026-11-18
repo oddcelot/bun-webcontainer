@@ -60,6 +60,8 @@ coverageThreshold = { lines = 0.95, functions = 0.5 }
 const COVERAGE_STEPS: Step[] = [
   { args: ["--coverage"] },
   { args: ["--coverage", "--coverage-reporter", "text", "--coverage-reporter=lcov"] },
+  // With the tests -t leaves out, what they would have run doesn't count.
+  { args: ["--coverage", "-t", "util"] },
   { args: [], edit: { "bunfig.toml": COVERAGE_BUNFIG } },
 ];
 const coverageFiles = read(join(app, "fixtures/bun-test-coverage"));

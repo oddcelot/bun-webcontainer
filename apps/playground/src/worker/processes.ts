@@ -8,6 +8,7 @@ import { escape } from "../shell/dollar";
 import { builtins as shellBuiltins } from "../shell/builtins";
 import { normalize } from "../shell/interp";
 import { binFile, parseBunArgs, pathBinFile, type Has, type List, type Pkg, type Read } from "../scripts";
+import { splitTestArgs } from "../testArgs";
 import { hold, release } from "./loop";
 import { decodeVfs, Part, SyncReader, type VfsOp } from "./syncChannel";
 
@@ -41,9 +42,6 @@ const SCRIPT = /\.[cm]?[jt]sx?$/;
 const SHELLS = new Set(["sh", "bash", "zsh", "dash"]);
 /** Bun's subcommands, which a spawned `bun` can't run here (a file or script of that name still runs). */
 const SUBCOMMANDS = new Set(["install", "i", "add", "a", "remove", "rm", "update", "link", "unlink", "pm", "test", "build", "init", "create", "upgrade", "x", "repl", "exec", "publish", "outdated", "audit", "info", "why", "patch", "fmt", "check"]);
-
-/** `bun test` flags with a value, passed on as `--name=value`. */
-const TEST_VALUE_FLAGS = ["--coverage-reporter", "--coverage-dir", "--timeout", "-t", "--test-name-pattern"];
 
 /** Where the files live, relative to the project root as the VFS names them (`src/a.ts`). */
 const projectPath = (cwd: string, p: string) => normalize(p.startsWith("/") ? p : `${cwd}/${p}`).slice(1);
@@ -86,15 +84,10 @@ export function launchOf(argv: string[], cwd: string, has: Has, read: Read, PATH
     if (!target) return { error: `${base}: a spawned ${base} needs a file to run` };
     // `bun test` is the test runner even with a file or script named `test`, as in Bun.
     if (base === "bun" && target === "test" && !flags.run) {
-      const words = args;
-      const test: string[] = [];
-      const testArgs: string[] = [];
-      for (let j = 0; j < words.length; j++) {
-        const w = words[j]!;
-        if (!w.startsWith("-")) test.push(w);
-        else if (TEST_VALUE_FLAGS.includes(w) && j + 1 < args.length) testArgs.push(`${w}=${args[++j]}`);
-        else testArgs.push(w);
-      }
+      // Filters and flags as the console's `bun test` splits them; a command line it rejects goes as it is, for the
+      // child to print why and exit with 1 (runtime.ts runChildTests).
+      const split = splitTestArgs(args);
+      const [test, testArgs] = split.error === undefined ? [split.filters, split.flags] : [[], args];
       return { test, args: testArgs, ...(flags.execArgv?.length && { execArgv: flags.execArgv }) };
     }
     const entry = file(target);
