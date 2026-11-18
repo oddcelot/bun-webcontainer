@@ -148,6 +148,19 @@ export function Header() {
         >
           <i class={ws.watch() ? "i-lucide-refresh-cw" : "i-lucide-refresh-cw-off"} aria-hidden="true" />
         </Tip>
+        <Tip
+          id="fast"
+          aria-label="Fast path (experimental)"
+          aria-pressed={ws.fast() ? "true" : "false"}
+          tip={
+            ws.fast()
+              ? "Fast path (experimental): browser-only projects run without an install, packages from esm.sh. Applies on the next Run. Click to turn off."
+              : "Fast path (experimental): run browser-only projects without an install, loading packages from esm.sh. Applies on the next Run. Click to turn on."
+          }
+          onClick={() => ws.setFast(!ws.fast())}
+        >
+          <i class={ws.fast() ? "i-lucide-zap" : "i-lucide-zap-off"} aria-hidden="true" />
+        </Tip>
       </span>
       <Tip as="a" id="docs" href={DOCS} target="_blank" rel="noopener" tip="Documentation (opens in a new tab)">
         <i class="i-lucide-book-open" aria-hidden="true" /> Docs
