@@ -39,6 +39,9 @@ function split(path: string): [name: string, dir: string] {
 /** A dialog from a menu item opens a moment after the menu closes: the menu's focus return would take the focus the dialog just moved. */
 const later = (fn: () => void) => void setTimeout(fn, 50);
 
+/** Text that may wrap after each `/` too (a branch's `feature/name`), not only at spaces and hyphens. */
+const breakable = (text: string) => text.split(/(?<=\/)/).flatMap((part, i) => (i ? [<wbr />, part] : [part]));
+
 type Ask = { title: string; body: string; label: string; run(): void };
 
 /** A small icon button with a tooltip, for the rows' and sections' actions. */
@@ -96,15 +99,18 @@ export function GitPanel() {
   let branchButton: HTMLButtonElement | undefined;
 
   const paths = (list: FileChange[]) => list.flatMap((c) => (c.orig ? [c.path, c.orig] : [c.path]));
-  // During a merge the box may stay empty (git's prepared message is used), and only once nothing is conflicted.
+  // During a merge the box may stay empty (git's prepared message is used), and only once nothing is conflicted; a
+  // rebase's step keeps its commit's message.
   const canCommit = () =>
-    s.merging ? !s.conflicts.length : !!message().trim() && (amending() ? s.hasHead : s.staged.length > 0 || s.changes.length > 0);
-  const label = () => (s.merging ? "Commit merge" : amending() ? "Amend" : s.staged.length ? "Commit" : "Commit all");
+    s.merging || s.rebasing ? !s.conflicts.length : !!message().trim() && (amending() ? s.hasHead : s.staged.length > 0 || s.changes.length > 0);
+  const label = () => (s.rebasing ? "Continue rebase" : s.merging ? "Commit merge" : amending() ? "Amend" : s.staged.length ? "Commit" : "Commit all");
   const commitTip = () =>
-    s.merging
+    s.merging || s.rebasing
       ? s.conflicts.length
         ? "Resolve the conflicts first"
-        : "Commit the merge"
+        : s.rebasing
+          ? "Commit this step and replay the remaining commits"
+          : "Commit the merge"
       : amending()
         ? "Amend the last commit"
         : s.staged.length
@@ -113,6 +119,10 @@ export function GitPanel() {
 
   async function commit() {
     if (!canCommit() || s.busy) return;
+    if (s.rebasing) {
+      await git.continueRebase();
+      return;
+    }
     if (s.merging) {
       if (await git.commitMerge(message().trim())) setMessage("");
       return;
@@ -185,6 +195,14 @@ export function GitPanel() {
       run: () => void git.abortMerge(),
     });
   }
+  function abortRebase() {
+    setAsk({
+      title: "Abort the rebase?",
+      body: "Puts the branch and its files back as they were before the rebase. The commits replayed so far are dropped.",
+      label: "Abort rebase",
+      run: () => void git.abortRebase(),
+    });
+  }
   function dropStash(st: Stash) {
     setAsk({ title: `Drop ${st.label}?`, body: `Deletes stash@{${st.index}} and the changes in it. This can't be undone.`, label: "Drop stash", run: () => void git.dropStash(st.index) });
   }
@@ -250,7 +268,7 @@ export function GitPanel() {
               <MenuSeparator />
               <MenuGroup label={`Merge into ${s.branch ?? "HEAD"}`}>
                 <For each={s.branches.filter((b) => b !== s.branch)}>
-                  {(b) => <MenuItem icon="i-lucide-git-merge" label={b} disabled={s.busy || !!s.merging || s.conflicts.length > 0} onSelect={() => void git.merge(b)} />}
+                  {(b) => <MenuItem icon="i-lucide-git-merge" label={b} disabled={s.busy || !!s.merging || !!s.rebasing || s.conflicts.length > 0} onSelect={() => void git.merge(b)} />}
                 </For>
               </MenuGroup>
             </Show>
@@ -325,13 +343,13 @@ export function GitPanel() {
             </div>
           )}
         </Show>
-        <Show when={s.merging || s.conflicts.length}>
+        <Show when={s.merging || s.rebasing || s.conflicts.length}>
           <div class="git-merge" role="status">
             <div class="top">
-              <i class="i-lucide-git-merge" aria-hidden="true" />
-              <strong title={s.merging ?? undefined}>{s.merging ?? "Applying a stash"}</strong>
-              <Show when={s.merging}>
-                <Button disabled={s.busy} onClick={abortMerge}>
+              <i class={s.rebasing ? "i-lucide-git-pull-request-arrow" : "i-lucide-git-merge"} aria-hidden="true" />
+              <strong>{breakable(s.rebasing ?? s.merging ?? "Applying a stash")}</strong>
+              <Show when={s.merging || s.rebasing}>
+                <Button disabled={s.busy} onClick={() => (s.rebasing ? abortRebase() : abortMerge())}>
                   Abort
                 </Button>
               </Show>
@@ -339,10 +357,17 @@ export function GitPanel() {
             <p>
               {s.conflicts.length
                 ? `${plural(s.conflicts.length, "conflicted file")}: edit, then mark resolved.`
-                : s.merging
-                  ? "Conflicts resolved: commit the merge."
-                  : "Conflicts resolved."}
+                : s.rebasing
+                  ? "Conflicts resolved: continue the rebase."
+                  : s.merging
+                    ? "Conflicts resolved: commit the merge."
+                    : "Conflicts resolved."}
             </p>
+            <Show when={s.rebasing}>
+              <button type="button" class="git-skip" disabled={s.busy} onClick={() => void git.skipRebase()}>
+                Skip this commit
+              </button>
+            </Show>
           </div>
         </Show>
         <div class="git-commit">
@@ -352,7 +377,14 @@ export function GitPanel() {
             data-commit-message=""
             rows={3}
             aria-label="Commit message"
-            placeholder={s.merging ? `${s.merging} (${isMac ? "⌘" : "Ctrl+"}Enter to commit)` : `Message (${isMac ? "⌘" : "Ctrl+"}Enter to commit)`}
+            placeholder={
+              s.rebasing
+                ? `The commit keeps its message (${isMac ? "⌘" : "Ctrl+"}Enter to continue)`
+                : s.merging
+                  ? `${s.merging} (${isMac ? "⌘" : "Ctrl+"}Enter to commit)`
+                  : `Message (${isMac ? "⌘" : "Ctrl+"}Enter to commit)`
+            }
+            disabled={!!s.rebasing}
             value={message()}
             onInput={(e) => setMessage(e.currentTarget.value)}
             onKeyDown={(e) => {
@@ -376,12 +408,12 @@ export function GitPanel() {
               }
             >
               <MenuItem icon="i-lucide-pencil" label={amending() ? "Amending the last commit" : "Amend last commit"} disabled={!s.hasHead || amending()} onSelect={startAmend} />
-              <MenuItem icon="i-lucide-undo-2" label="Undo last commit…" disabled={!s.hasHead || !!s.merging} onSelect={() => later(undoCommit)} />
+              <MenuItem icon="i-lucide-undo-2" label="Undo last commit…" disabled={!s.hasHead || !!s.merging || !!s.rebasing} onSelect={() => later(undoCommit)} />
               <MenuSeparator />
               <MenuItem
                 icon="i-lucide-archive"
                 label="Stash all changes"
-                disabled={s.busy || !s.hasHead || !!s.merging || s.conflicts.length > 0 || !(s.staged.length || s.changes.length)}
+                disabled={s.busy || !s.hasHead || !!s.merging || !!s.rebasing || s.conflicts.length > 0 || !(s.staged.length || s.changes.length)}
                 onSelect={() => void git.stash()}
               />
               <Show when={s.remotes.length}>

@@ -10,19 +10,24 @@
     font: inherit;
     cursor: pointer;
 
-    &:hover {
+    &:hover:not(:disabled) {
       background: var(--control-hover);
     }
     &:focus-visible {
       outline: 1px solid var(--accent);
       outline-offset: -1px;
     }
+    /* Dimmed, and no hover: it reads as unavailable next to an enabled one, a primary one included. */
+    &:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
 
     &.primary {
       border-color: var(--accent);
       background: color-mix(in srgb, var(--accent) 22%, var(--panel));
 
-      &:hover {
+      &:hover:not(:disabled) {
         background: color-mix(in srgb, var(--accent) 34%, var(--panel));
       }
     }

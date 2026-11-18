@@ -68,6 +68,8 @@ export function createGit(vfs: VFS, opts: { enabled: () => boolean; log: (level:
     conflicts: [] as FileChange[],
     /** A merge is in progress (.git/MERGE_HEAD): its title from MERGE_MSG (`Merge branch 'feat'`). */
     merging: null as string | null,
+    /** A rebase stopped on a conflict (.git/rebase-merge/): `Rebasing feat (2/3)`. */
+    rebasing: null as string | null,
     /** `git stash list`, newest first (read with the panel open). */
     stashes: [] as Stash[],
     commits: [] as Commit[],
@@ -118,6 +120,7 @@ export function createGit(vfs: VFS, opts: { enabled: () => boolean; log: (level:
         s.changes = [];
         s.conflicts = [];
         s.merging = null;
+        s.rebasing = null;
         s.stashes = [];
         s.commits = [];
         s.branches = [];
@@ -162,6 +165,11 @@ export function createGit(vfs: VFS, opts: { enabled: () => boolean; log: (level:
     const changes = worktreeChanges(status.entries);
     const conflicts = conflictedChanges(status.entries);
     const merging = vfs.files.has(".git/MERGE_HEAD") ? mergeTitle(vfs.readText(".git/MERGE_MSG") ?? "") || "Merge" : null;
+    // a rebase stopped on a commit: the branch (or HEAD) and how far it got
+    const rebaseFile = (name: string) => vfs.readText(`.git/rebase-merge/${name}`)?.trim() ?? "";
+    const rebasing = vfs.files.has(".git/rebase-merge/head-name")
+      ? `Rebasing ${rebaseFile("head-name").replace(/^refs\/heads\//, "").replace(/^detached HEAD$/, "HEAD")}${rebaseFile("end") ? ` (${rebaseFile("msgnum")}/${rebaseFile("end")})` : ""}`
+      : null;
     setState((s) => {
       s.repo = true;
       s.loaded = true;
@@ -171,6 +179,7 @@ export function createGit(vfs: VFS, opts: { enabled: () => boolean; log: (level:
       reconcile(changes, "path")(s.changes);
       reconcile(conflicts, "path")(s.conflicts);
       s.merging = merging;
+      s.rebasing = rebasing;
       if (stashes) reconcile(stashes, "index")(s.stashes);
       if (commits) reconcile(commits, "hash")(s.commits);
       else if (!hasHead) s.commits = [];
@@ -366,6 +375,12 @@ export function createGit(vfs: VFS, opts: { enabled: () => boolean; log: (level:
     abortMerge: () => act(["merge", "--abort"]).then(ok),
     /** The merge commit: the message typed, else the one git prepared (MERGE_MSG). */
     commitMerge: (msg: string) => act(msg ? ["commit", "-m", msg] : ["commit", "--no-edit"]).then(ok),
+    /** Commits the stopped commit as resolved and replays the rest (`rebase --continue`). */
+    continueRebase: () => act(["rebase", "--continue"]).then(ok),
+    /** Leaves the stopped commit out and replays the rest (`rebase --skip`). */
+    skipRebase: () => act(["rebase", "--skip"]).then(ok),
+    /** Back to the branch as it was before the rebase (`rebase --abort`). */
+    abortRebase: () => act(["rebase", "--abort"]).then(ok),
     /** Marks conflicted paths resolved: `git add` (a path deleted in the worktree is removed from the index). */
     resolve: (paths: string[]) => act(["add", "-A", "--", ...paths]).then(ok),
     /** The file still has conflict markers (`<<<<<<< `). */

@@ -86,9 +86,10 @@ fn first_lines(text: &str, n: usize) -> String {
     s
 }
 
-/// glibc's strverscmp, as git's versioncmp (without `versionsort.suffix`): digit runs compare as numbers, a run with
-/// leading zeros as a fraction.
-pub fn versioncmp(a: &[u8], b: &[u8]) -> std::cmp::Ordering {
+/// git's versioncmp: glibc's strverscmp (digit runs compare as numbers, a run with leading zeros as a fraction), but
+/// a name with one of the `versionsort.suffix` values where the two first differ sorts before one without (`v1.0-rc1`
+/// before `v1.0`), and by the suffixes' order when both have one (swap_prereleases).
+pub fn versioncmp(a: &[u8], b: &[u8], suffixes: &[String]) -> std::cmp::Ordering {
     use std::cmp::Ordering;
     const S_N: usize = 0;
     const S_I: usize = 3;
@@ -116,6 +117,9 @@ pub fn versioncmp(a: &[u8], b: &[u8]) -> std::cmp::Ordering {
         i += 1;
         state += class(c1);
     }
+    if let Some(o) = swap_prereleases(a, b, i - 1, suffixes) {
+        return o;
+    }
     let diff = (c1 as i32).cmp(&(c2 as i32));
     match RESULT[state * 3 + class(c2)] {
         CMP => diff,
@@ -130,6 +134,36 @@ pub fn versioncmp(a: &[u8], b: &[u8]) -> std::cmp::Ordering {
             if at(b, j).is_ascii_digit() { Ordering::Less } else { diff }
         }
         r => r.cmp(&0),
+    }
+}
+
+/// version.c's swap_prereleases: the configured suffix each name has around `off` (where they first differ), the
+/// one starting earliest (then the longest); `None` when neither has one or both the same.
+fn swap_prereleases(a: &[u8], b: &[u8], off: usize, suffixes: &[String]) -> Option<std::cmp::Ordering> {
+    // (the suffix's index in the config, where it starts, its length)
+    let find = |name: &[u8], m: &mut (Option<usize>, usize, Option<usize>), conf: usize, suffix: &[u8], start: usize| {
+        let end = if m.2.is_none_or(|len| len < suffix.len()) { Some(m.1) } else { m.1.checked_sub(1) };
+        let Some(end) = end else { return };
+        for i in start..=end {
+            if name.get(i..).is_some_and(|rest| rest.starts_with(suffix)) {
+                *m = (Some(conf), i, Some(suffix.len()));
+                return;
+            }
+        }
+    };
+    let (mut m1, mut m2) = ((None, off, None), (None, off, None));
+    for (conf, suffix) in suffixes.iter().enumerate() {
+        let suffix = suffix.as_bytes();
+        let start = off.saturating_sub(suffix.len());
+        find(a, &mut m1, conf, suffix, start);
+        find(b, &mut m2, conf, suffix, start);
+    }
+    match (m1.0, m2.0) {
+        (None, None) => None,
+        (x, y) if x == y => None,
+        (Some(x), Some(y)) => Some(x.cmp(&y)),
+        (Some(_), None) => Some(std::cmp::Ordering::Less),
+        (None, Some(_)) => Some(std::cmp::Ordering::Greater),
     }
 }
 
@@ -194,10 +228,57 @@ struct Filter {
 
 // ---- --format: ref-filter's atoms for tags ----------------------------------------------------------------------------
 
-/// A piece of a `--format`: literal bytes, or an atom (`*` for the tagged object's).
+/// A piece of a `--format`: literal bytes, an atom (`*` for the tagged object's), or one of the atoms that shape the
+/// output around them: `%(align)`, `%(if)`, `%(then)`, `%(else)`, `%(end)`.
 enum Tok {
     Lit(Vec<u8>),
     Atom { deref: bool, name: String, arg: Option<String> },
+    Align { width: usize, pos: Pos },
+    If(Cmp),
+    Then,
+    Else,
+    End,
+}
+
+#[derive(Clone, Copy)]
+enum Pos {
+    Left,
+    Middle,
+    Right,
+}
+
+/// `%(if)`'s test: non-empty (not only whitespace), or `equals=`/`notequals=` a string.
+#[derive(Clone)]
+enum Cmp {
+    NonEmpty,
+    Equals(String),
+    NotEquals(String),
+}
+
+/// `%(align:<width>[,<position>])`, also `width=<n>`/`position=<p>` in any order (ref-filter's align_atom_parser).
+fn parse_align(arg: Option<&str>) -> Result<Tok, Exit> {
+    let (mut width, mut pos) = (None, Pos::Left);
+    let position = |p: &str| match p {
+        "left" => Some(Pos::Left),
+        "middle" => Some(Pos::Middle),
+        "right" => Some(Pos::Right),
+        _ => None,
+    };
+    for part in arg.unwrap_or("").split(',').filter(|p| !p.is_empty()) {
+        if let Some(w) = part.strip_prefix("width=") {
+            width = Some(w.parse::<u32>().map_err(|_| Exit { code: 128, msg: format!("fatal: unrecognized width:{w}") })?);
+        } else if let Some(p) = part.strip_prefix("position=") {
+            pos = position(p).ok_or_else(|| Exit { code: 128, msg: format!("fatal: unrecognized position:{p}") })?;
+        } else if let Some(p) = position(part) {
+            pos = p;
+        } else {
+            width = Some(part.parse::<u32>().map_err(|_| Exit { code: 128, msg: format!("fatal: unrecognized %(align) argument: {part}") })?);
+        }
+    }
+    match width {
+        Some(w) => Ok(Tok::Align { width: w as usize, pos }),
+        None => fatal("expected format: %(align:<width>,<position>)"),
+    }
 }
 
 const ATOMS: [&str; 21] = [
@@ -231,7 +312,26 @@ fn parse_format(fmt: &str) -> Result<Vec<Tok>, Exit> {
                     Some((n, a)) => (n, Some(a.to_string())),
                     None => (spec, None),
                 };
-                if matches!(name, "align" | "if" | "then" | "else" | "end" | "color" | "upstream" | "push" | "symref" | "signature" | "trailers" | "describe" | "ahead-behind" | "is-base" | "worktreepath" | "rest" | "raw" | "HEAD" | "tree" | "parent" | "numparent" | "deltabase" | "object") {
+                if !deref {
+                    let ctl = match (name, arg.as_deref()) {
+                        ("align", a) => Some(parse_align(a)?),
+                        ("if", None) => Some(Tok::If(Cmp::NonEmpty)),
+                        ("if", Some(a)) if a.starts_with("equals=") => Some(Tok::If(Cmp::Equals(a[7..].to_string()))),
+                        ("if", Some(a)) if a.starts_with("notequals=") => Some(Tok::If(Cmp::NotEquals(a[10..].to_string()))),
+                        ("if", Some(a)) => return fatal(format!("unrecognized %(if) argument: {a}")),
+                        // as git, these ignore an argument
+                        ("then", _) => Some(Tok::Then),
+                        ("else", _) => Some(Tok::Else),
+                        ("end", _) => Some(Tok::End),
+                        _ => None,
+                    };
+                    if let Some(t) = ctl {
+                        toks.push(Tok::Lit(std::mem::take(&mut lit)));
+                        toks.push(t);
+                        continue;
+                    }
+                }
+                if matches!(name, "color" | "upstream" | "push" | "symref" | "signature" | "trailers" | "describe" | "ahead-behind" | "is-base" | "worktreepath" | "rest" | "raw" | "HEAD" | "tree" | "parent" | "numparent" | "deltabase" | "object") {
                     return fatal(format!("%({name}) is not supported in the playground's tag --format"));
                 }
                 if !ATOMS.contains(&name) {
@@ -356,22 +456,104 @@ fn atom(ctx: &Ctx, refname: &str, id: ObjectId, name: &str, arg: Option<&str>) -
     })
 }
 
+/// An open `%(align)` or `%(if)` while rendering: what it has collected so far (ref-filter's formatting stack).
+enum Frame {
+    Top,
+    Align(usize, Pos),
+    If { cmp: Cmp, then: bool, els: bool, yes: bool },
+    /// the `%(else)` part, above its `%(if)`
+    Else,
+}
+
+/// Pad `text` to `width` columns (strbuf_utf8_align); longer text stays as it is.
+fn align(text: &[u8], width: usize, pos: Pos) -> Vec<u8> {
+    let cols = text.to_str_lossy().chars().count();
+    let pad = width.saturating_sub(cols);
+    let (left, right) = match pos {
+        Pos::Left => (0, pad),
+        Pos::Right => (pad, 0),
+        Pos::Middle => (pad / 2, pad - pad / 2),
+    };
+    [vec![b' '; left], text.to_vec(), vec![b' '; right]].concat()
+}
+
 fn render(ctx: &Ctx, toks: &[Tok], name: &str, id: ObjectId) -> Result<Vec<u8>, Exit> {
     let refname = format!("refs/tags/{name}");
-    let mut line = Vec::new();
+    let mut stack: Vec<(Frame, Vec<u8>)> = vec![(Frame::Top, Vec::new())];
+    let top = |stack: &mut Vec<(Frame, Vec<u8>)>| -> usize { stack.len() - 1 };
     for t in toks {
+        let at = top(&mut stack);
         match t {
-            Tok::Lit(b) => line.extend_from_slice(b),
-            Tok::Atom { deref: false, name, arg } => line.extend_from_slice(atom(ctx, &refname, id, name, arg.as_deref())?.as_bytes()),
+            Tok::Lit(b) => stack[at].1.extend_from_slice(b),
+            Tok::Atom { deref: false, name, arg } => stack[at].1.extend_from_slice(atom(ctx, &refname, id, name, arg.as_deref())?.as_bytes()),
             Tok::Atom { deref: true, name, arg } => {
                 let obj = ctx.repo.find_object(id)?;
                 if obj.kind == gix::object::Kind::Tag {
                     let target = obj.into_tag().target_id()?.detach();
-                    line.extend_from_slice(atom(ctx, &refname, target, name, arg.as_deref())?.as_bytes());
+                    stack[at].1.extend_from_slice(atom(ctx, &refname, target, name, arg.as_deref())?.as_bytes());
                 }
+            }
+            Tok::Align { width, pos } => stack.push((Frame::Align(*width, *pos), Vec::new())),
+            Tok::If(cmp) => stack.push((Frame::If { cmp: cmp.clone(), then: false, els: false, yes: false }, Vec::new())),
+            Tok::Then => {
+                let (frame, out) = &mut stack[at];
+                if matches!(frame, Frame::Else) {
+                    return fatal("format: %(then) atom used more than once");
+                }
+                let Frame::If { cmp, then, els, yes } = frame else { return fatal("format: %(then) atom used without a %(if) atom") };
+                if *then {
+                    return fatal("format: %(then) atom used more than once");
+                }
+                if *els {
+                    return fatal("format: %(then) atom used after %(else)");
+                }
+                *yes = match cmp {
+                    Cmp::Equals(v) => out.as_slice() == v.as_bytes(),
+                    Cmp::NotEquals(v) => out.as_slice() != v.as_bytes(),
+                    Cmp::NonEmpty => !out.iter().all(u8::is_ascii_whitespace),
+                };
+                *then = true;
+                out.clear();
+            }
+            Tok::Else => {
+                if matches!(stack[at].0, Frame::Else) {
+                    return fatal("format: %(else) atom used more than once");
+                }
+                let Frame::If { then, els, .. } = &mut stack[at].0 else { return fatal("format: %(else) atom used without a %(if) atom") };
+                if !*then {
+                    return fatal("format: %(else) atom used without a %(then) atom");
+                }
+                if *els {
+                    return fatal("format: %(else) atom used more than once");
+                }
+                *els = true;
+                stack.push((Frame::Else, Vec::new()));
+            }
+            Tok::End => {
+                if at == 0 {
+                    return fatal("format: %(end) atom used without corresponding atom");
+                }
+                let (frame, text) = stack.pop().unwrap_or((Frame::Top, Vec::new()));
+                let text = match frame {
+                    Frame::Align(width, pos) => align(&text, width, pos),
+                    Frame::If { then: false, .. } => return fatal("format: %(if) atom used without a %(then) atom"),
+                    Frame::If { yes, .. } => if yes { text } else { Vec::new() },
+                    Frame::Else => {
+                        // the `%(if)` below holds the `%(then)` part
+                        let (cond, then_part) = stack.pop().unwrap_or((Frame::Top, Vec::new()));
+                        if matches!(cond, Frame::If { yes: true, .. }) { then_part } else { text }
+                    }
+                    Frame::Top => text,
+                };
+                let at = top(&mut stack);
+                stack[at].1.extend_from_slice(&text);
             }
         }
     }
+    if stack.len() > 1 {
+        return fatal("format: %(end) atom missing");
+    }
+    let mut line = stack.pop().map(|f| f.1).unwrap_or_default();
     line.push(b'\n');
     Ok(line)
 }
@@ -416,10 +598,12 @@ fn list(ctx: &Ctx, f: &Filter) -> Res {
     if f.icase {
         picked.sort_by_key(|a| lower(&a.0));
     }
+    let suffixes: Vec<String> = ctx.repo.config_snapshot().strings("versionsort.suffix").unwrap_or_default().iter().map(|v| v.to_str_lossy().into_owned()).collect();
     picked.sort_by(|a, b| {
         for k in f.sort.iter().rev() {
             let o = match k.field.as_str() {
-                "version:refname" => versioncmp(a.0.as_bytes(), b.0.as_bytes()),
+                // on the full refname, as ref-filter compares it
+                "version:refname" => versioncmp(format!("refs/tags/{}", a.0).as_bytes(), format!("refs/tags/{}", b.0).as_bytes(), &suffixes),
                 "creatordate" => a.2.cmp(&b.2),
                 "objectname" => a.1.cmp(&b.1),
                 _ => lower(&a.0).cmp(&lower(&b.0)),

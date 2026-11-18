@@ -231,7 +231,7 @@ try {
   const pullState = (d: string) => [native(d, "status", "--porcelain", "-b", "-uall"), native(d, "ls-files", "-s"), native(d, "log", "-1", "--format=%T|%P|%B"), native(d, "rev-parse", "origin/main"), files(d).join("\n")].join("\n--\n")
     .replaceAll(native(a, "rev-parse", "HEAD").trim(), "<HEAD>"); // the merge's parents: ids differ only by the merge commit
   const fetchLines = (err: string) => err.split("\n").filter((l) => !/^(From |\s+[0-9a-f]{7}\.\.| \* )/.test(l)).join("\n");
-  async function pullTwin(name: string, args: string[], opts: { setup?: (d: string) => void; ours?: (r: Run) => boolean } = {}) {
+  async function pullTwin(name: string, args: string[], opts: { setup?: (d: string) => void; ours?: (r: Run) => boolean; raw?: boolean } = {}) {
     for (const d of [pa, pb]) {
       rmSync(d, { recursive: true, force: true });
       cpSync(a, d, { recursive: true });
@@ -242,7 +242,8 @@ try {
       check(name, opts.ours(ours), JSON.stringify(ours));
       return;
     }
-    const nat = spawnSync("git", ["-C", pb, "-c", "pull.rebase=false", ...args], { encoding: "utf8", env });
+    // pull.rebase=false as the default (native git refuses divergent branches without one); `raw`: the repo's config decides
+    const nat = spawnSync("git", ["-C", pb, ...(opts.raw ? [] : ["-c", "pull.rebase=false"]), ...args], { encoding: "utf8", env });
     check(`${name}: exit`, ours.code === nat.status, `ours ${ours.code} native ${nat.status}\n${ours.err}\n${nat.stderr}`);
     check(`${name}: stdout`, ours.out === nat.stdout, `ours:\n${ours.out}\nnative:\n${nat.stdout}`);
     check(`${name}: stderr`, fetchLines(ours.err) === fetchLines(nat.stderr), `ours:\n${ours.err}\nnative:\n${nat.stderr}`);
@@ -267,10 +268,21 @@ try {
   await pullTwin("pull into another branch", ["pull", "origin", "main"], { setup: (d) => native(d, "switch", "-q", "-c", "feat") });
   await pullTwin("pull --squash", ["pull", "--squash"]);
   await pullTwin("pull --no-commit", ["pull", "--no-commit"]);
-  const noRebase = (r: Run) => r.code === 128 && r.err.includes("rebase is not supported in the playground yet") && !requests.length;
+  // pull --rebase: the local commit replayed onto the upstream; a fast-forward when there is none
+  await pullTwin("pull --rebase", ["pull", "--rebase"]);
+  await pullTwin("pull -r -q", ["pull", "-r", "-q"]);
+  await pullTwin("pull --rebase=true", ["pull", "--rebase=true"]);
+  await pullTwin("pull pull.rebase=true", ["pull"], { raw: true, setup: (d) => native(d, "config", "pull.rebase", "true") });
+  await pullTwin("pull branch.main.rebase=true", ["pull"], { raw: true, setup: (d) => native(d, "config", "branch.main.rebase", "true") });
+  await pullTwin("pull --rebase fast-forward", ["pull", "--rebase"], { setup: behind });
+  await pullTwin("pull --rebase conflict", ["pull", "--rebase"], { setup: (d) => { write(d, "c.txt", "mine\n"); native(d, "commit", "-qam", "mine"); } });
+  // one local commit (the new commits' ids differ, so their children's parents would)
+  await pullTwin("pull --rebase -X theirs", ["pull", "--rebase", "-X", "theirs"], { setup: (d) => { write(d, "c.txt", "mine\n"); native(d, "commit", "-q", "-a", "--amend", "-m", "mine"); } });
+  await pullTwin("pull --rebase refuses a dirty file", ["pull", "--rebase"], { setup: (d) => write(d, "c.txt", "dirty\n") });
+  await pullTwin("pull --rebase refuses staged changes", ["pull", "--rebase"], { setup: (d) => { write(d, "new.txt", "staged\n"); native(d, "add", "new.txt"); } });
+  await pullTwin("pull --rebase keeps untracked files", ["pull", "--rebase"], { setup: (d) => write(d, "local.txt", "untracked\n") });
   requests = [];
-  await pullTwin("pull --rebase: refused before fetching", ["pull", "--rebase"], { ours: noRebase });
-  await pullTwin("pull pull.rebase=true: refused", ["pull"], { setup: (d) => native(d, "config", "pull.rebase", "true"), ours: noRebase });
+  await pullTwin("pull --rebase=merges: refused", ["pull", "--rebase=merges"], { ours: (r) => r.code === 128 && r.err.includes("not supported in the playground") && !requests.length });
   await pullTwin("pull --no-rebase overrides pull.rebase", ["pull", "--no-rebase"], { setup: (d) => native(d, "config", "pull.rebase", "true") });
   check("pull: `a` still diverged", native(a, "log", "-1", "--format=%s").trim() === "local");
 

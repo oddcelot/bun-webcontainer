@@ -40,7 +40,7 @@ pub fn short(id: ObjectId) -> String {
 }
 
 pub fn commit(ctx: &Ctx, args: &[String]) -> Res {
-    let (mut msgs, mut all, mut allow_empty, mut amend) = (Vec::new(), false, false, false);
+    let (mut msgs, mut all, mut allow_empty, mut amend, mut quiet) = (Vec::new(), false, false, false, false);
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -58,7 +58,8 @@ pub fn commit(ctx: &Ctx, args: &[String]) -> Res {
             "-a" | "--all" => all = true,
             "--allow-empty" => allow_empty = true,
             "--amend" => amend = true,
-            "--no-edit" | "-q" | "--quiet" => {}
+            "-q" | "--quiet" => quiet = true,
+            "--no-edit" => {}
             a if a.starts_with("--message=") => msgs.push(a["--message=".len()..].to_string()),
             a if a.starts_with("-m") && a.len() > 2 => msgs.push(a[2..].to_string()),
             _ => {}
@@ -134,7 +135,9 @@ pub fn commit(ctx: &Ctx, args: &[String]) -> Res {
         move_head(ctx, id, &format!("commit (merge): {summary}"))?;
         crate::merge::clear_state();
         // like git, a merge commit's summary has no diffstat
-        out(&format!("[{} {}] {summary}\n", branch_name(ctx)?, short(id)));
+        if !quiet {
+            out(&format!("[{} {}] {summary}\n", summary_branch(ctx)?, short(id)));
+        }
         return Ok(0);
     }
     let id = match &prev {
@@ -149,11 +152,27 @@ pub fn commit(ctx: &Ctx, args: &[String]) -> Res {
     };
 
     crate::merge::clear_state();
+    if !quiet {
+        summary(ctx, id, &base, &flat, &message, parents.is_empty())?;
+    }
+    Ok(0)
+}
+
+/// The branch a commit's summary names: `detached HEAD` when there is none.
+fn summary_branch(ctx: &Ctx) -> Result<String, Exit> {
+    Ok(match ctx.repo.head_name()? {
+        Some(_) => branch_name(ctx)?,
+        None => "detached HEAD".into(),
+    })
+}
+
+/// commit's summary: `[main abc1234] subject`, the diffstat's last line and the creations, deletions and renames.
+pub fn summary(ctx: &Ctx, id: ObjectId, base: &crate::status::Flat, flat: &crate::status::Flat, message: &str, root: bool) -> Result<(), Exit> {
     let (mut diff_out, mut st) = (String::new(), Stats::default());
-    diff_flats(ctx, &base, &flat, &mut diff_out, &mut st)?;
-    let root = if parents.is_empty() { " (root-commit)" } else { "" };
+    diff_flats(ctx, base, flat, &mut diff_out, &mut st)?;
+    let root = if root { " (root-commit)" } else { "" };
     let summary = message.lines().next().unwrap_or("");
-    out(&format!("[{}{root} {}] {summary}\n", branch_name(ctx)?, short(id)));
+    out(&format!("[{}{root} {}] {summary}\n", summary_branch(ctx)?, short(id)));
     let mut line = format!(" {}", plural(st.files, "file changed", "files changed"));
     if st.ins > 0 || st.del == 0 {
         line += &format!(", {}", plural(st.ins as usize, "insertion(+)", "insertions(+)"));
@@ -166,12 +185,12 @@ pub fn commit(ctx: &Ctx, args: &[String]) -> Res {
     let renamed_to: std::collections::HashSet<String> = st.renames.iter().map(|r| r.1.clone()).collect();
     let renamed_from: std::collections::HashSet<String> = st.renames.iter().map(|r| r.0.clone()).collect();
     let mut lines: Vec<(String, String)> = Vec::new();
-    for (p, (m, _)) in &flat {
+    for (p, (m, _)) in flat {
         if !base.contains_key(p) && !renamed_to.contains(&p.to_str_lossy().into_owned()) {
             lines.push((p.to_str_lossy().into_owned(), format!(" create mode {m:o} {}\n", p.to_str_lossy())));
         }
     }
-    for (p, (m, _)) in &base {
+    for (p, (m, _)) in base {
         if !flat.contains_key(p) && !renamed_from.contains(&p.to_str_lossy().into_owned()) {
             lines.push((p.to_str_lossy().into_owned(), format!(" delete mode {m:o} {}\n", p.to_str_lossy())));
         }
@@ -183,7 +202,7 @@ pub fn commit(ctx: &Ctx, args: &[String]) -> Res {
     for (_, l) in lines {
         out(&l);
     }
-    Ok(0)
+    Ok(())
 }
 
 /// git's `--cleanup=whitespace` (what `commit --no-edit` does to a prepared message): no trailing whitespace, no

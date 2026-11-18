@@ -384,9 +384,11 @@ fn switch_branch(ctx: &Ctx, o: &Opts) -> Res {
             return fatal(format!("a branch named '{new}' already exists"));
         }
         let start = o.pos.first().map(String::as_str).unwrap_or("HEAD");
+        let was = before(ctx);
         match commit_of(ctx, start) {
             Some(c) => {
                 move_to(ctx, &c, o.force)?;
+                leaving_detached(ctx, &was, c.id, o.quiet)?;
                 let repo = crate::history::with_committer(ctx)?;
                 repo.reference(format!("refs/heads/{new}"), c.id, PreviousValue::MustNotExist, format!("branch: Created from {start}"))?;
                 // without a start point git doesn't touch the worktree, so it has nothing to list
@@ -416,8 +418,10 @@ fn switch_branch(ctx: &Ctx, o: &Opts) -> Res {
             return Ok(0);
         }
         let c = commit_of(ctx, &format!("refs/heads/{name}")).ok_or_else(|| Exit { code: 128, msg: format!("fatal: invalid reference: {name}") })?;
+        let was = before(ctx);
         move_to(ctx, &c, o.force)?;
         set_head_branch(ctx, name, &format!("checkout: moving from {from} to {name}"))?;
+        leaving_detached(ctx, &was, c.id, o.quiet)?;
         if !o.quiet {
             eprintln!("Switched to branch '{name}'");
         }
@@ -428,13 +432,83 @@ fn switch_branch(ctx: &Ctx, o: &Opts) -> Res {
     if !o.detach {
         return fatal(format!("a branch is expected, got '{name}'"));
     }
-    detach(ctx, &c, &from, o)
+    detach(ctx, &c, name, &from, o)
 }
 
-fn detach(ctx: &Ctx, c: &gix::Commit<'_>, from: &str, o: &Opts) -> Res {
+const DETACH_ADVICE: &str = "You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+";
+
+fn advice(ctx: &Ctx, key: &str) -> bool {
+    ctx.repo.config_snapshot().boolean(key).unwrap_or(true)
+}
+
+/// Where HEAD was before a switch, for checkout's messages about leaving a detached HEAD.
+pub struct Before {
+    on_branch: bool,
+    commit: Option<ObjectId>,
+}
+
+pub fn before(ctx: &Ctx) -> Before {
+    Before { on_branch: ctx.repo.head_name().ok().flatten().is_some(), commit: ctx.repo.head_id().ok().map(|i| i.detach()) }
+}
+
+/// Leaving a detached HEAD for another commit (checkout.c's orphaned_commit_warning): `Previous HEAD position was`,
+/// or, when commits only it reaches would be lost, git's warning listing them.
+pub fn leaving_detached(ctx: &Ctx, before: &Before, new: ObjectId, quiet: bool) -> Result<(), Exit> {
+    let Some(old) = before.commit.filter(|o| !before.on_branch && !quiet && *o != new) else { return Ok(()) };
+    let mut hidden: Vec<ObjectId> = vec![new];
+    for r in ctx.repo.references()?.all()?.filter_map(Result::ok) {
+        if let Ok(id) = r.into_fully_peeled_id() {
+            hidden.push(id.detach());
+        }
+    }
+    let lost: Vec<ObjectId> = ctx.repo.rev_walk([old]).with_hidden(hidden).all()?.filter_map(Result::ok).map(|i| i.id).collect();
+    let line = |id: ObjectId| -> Result<String, Exit> { Ok(format!("  {} {}\n", short(id), subject(&ctx.repo.find_commit(id)?))) };
+    if lost.is_empty() {
+        eprintln!("Previous HEAD position was {} {}", short(old), subject(&ctx.repo.find_commit(old)?));
+        return Ok(());
+    }
+    let mut list = String::new();
+    for id in lost.iter().take(4) {
+        list += &line(*id)?;
+    }
+    match lost.len() {
+        n if n == 5 => list += &line(lost[4])?,
+        n if n > 5 => list += &format!(" ... and {} more.\n", n - 4),
+        _ => {}
+    }
+    let n = lost.len();
+    let (commits, them) = if n == 1 { ("commit", "it") } else { ("commits", "them") };
+    eprint!("Warning: you are leaving {n} {commits} behind, not connected to\nany of your branches:\n\n{list}\n");
+    if advice(ctx, "advice.detachedHead") {
+        eprint!("If you want to keep {them} by creating a new branch, this may be a good time\nto do so with:\n\n git branch <new-branch-name> {}\n\n", short(old));
+    }
+    Ok(())
+}
+
+/// Detach HEAD at `c`, which `name` named: from a branch (not with `--detach`), git's advice about the detached HEAD.
+fn detach(ctx: &Ctx, c: &gix::Commit<'_>, name: &str, from: &str, o: &Opts) -> Res {
+    let was = before(ctx);
     move_to(ctx, c, o.force)?;
-    detach_head(ctx, c.id, &format!("checkout: moving from {from} to {}", short(c.id)))?;
+    detach_head(ctx, c.id, &format!("checkout: moving from {from} to {name}"))?;
+    leaving_detached(ctx, &was, c.id, o.quiet)?;
     if !o.quiet {
+        if was.on_branch && !o.detach && advice(ctx, "advice.detachedHead") {
+            eprint!("Note: switching to '{name}'.\n\n{DETACH_ADVICE}\n");
+        }
         eprintln!("HEAD is now at {} {}", short(c.id), subject(c));
     }
     show_local_changes(ctx, o, c)?;
@@ -445,6 +519,9 @@ pub fn switch(ctx: &Ctx, args: &[String]) -> Res {
     let o = parse(args, false)?;
     if crate::status::merging() {
         return fatal("cannot switch branch while merging\nConsider \"git merge --quit\" or \"git worktree add\".");
+    }
+    if crate::rebase::in_progress() {
+        return fatal("cannot switch branch while rebasing\nConsider \"git rebase --quit\" or \"git worktree add\".");
     }
     switch_branch(ctx, &o)
 }
@@ -479,7 +556,7 @@ pub fn checkout(ctx: &Ctx, args: &[String]) -> Res {
         if o.pos.len() > 1 {
             return restore_paths(ctx, &Specs::new(&o.pos[1..]), Some(commit_flat(ctx, &c)?), true, true, false);
         }
-        return detach(ctx, &c, &from, &o);
+        return detach(ctx, &c, first, &from, &o);
     }
     restore_paths(ctx, &Specs::new(&o.pos), None, false, true, false)
 }

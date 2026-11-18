@@ -207,7 +207,8 @@ pub fn fetch(ctx: &Ctx, args: &[String]) -> Res {
 }
 
 /// `pull`: fetch, then merge the upstream into the current branch as `merge` does (git's `pull.rebase=false`; a
-/// fast-forward when it can). `--ff-only`/`--no-ff`/`pull.ff`; rebasing isn't supported.
+/// fast-forward when it can), `--ff-only`/`--no-ff`/`pull.ff`; or with `--rebase` (`pull.rebase`,
+/// `branch.<name>.rebase`) rebase onto it (rebase.rs), a fast-forward when there is nothing to replay.
 pub fn pull(ctx: &Ctx, args: &[String]) -> Res {
     let snapshot = ctx.repo.config_snapshot();
     let mut o = crate::merge::Opts::default();
@@ -215,9 +216,9 @@ pub fn pull(ctx: &Ctx, args: &[String]) -> Res {
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
-            "-r" | "--rebase" => rebase = Some(true),
-            "--no-rebase" => rebase = Some(false),
-            a if a.starts_with("--rebase=") => rebase = Some(a != "--rebase=false"),
+            "-r" | "--rebase" => rebase = Some("true".to_string()),
+            "--no-rebase" => rebase = Some("false".to_string()),
+            a if a.starts_with("--rebase=") => rebase = Some(a[9..].to_string()),
             "--depth" => rest.extend([a.clone(), it.next().cloned().unwrap_or_default()]),
             a if a.starts_with("--depth=") => rest.push(a.to_string()),
             a if o.take(a, &mut it)? => ff_given |= matches!(a, "--ff" | "--no-ff" | "--ff-only"),
@@ -227,12 +228,16 @@ pub fn pull(ctx: &Ctx, args: &[String]) -> Res {
     }
     let branch = ctx.repo.head_name().ok().flatten().map(|n| n.shorten().to_string());
     let configured = |key: &str| snapshot.string(key).map(|v| v.to_string());
-    let rebase = rebase.or_else(|| {
-        let v = branch.as_ref().and_then(|b| configured(&format!("branch.{b}.rebase"))).or_else(|| configured("pull.rebase"))?;
-        Some(!matches!(v.as_str(), "false" | "no" | "off" | "0"))
-    });
-    if rebase == Some(true) {
-        return fatal("rebase is not supported in the playground yet: `git pull --no-rebase` merges the upstream instead");
+    let rebase = rebase.or_else(|| branch.as_ref().and_then(|b| configured(&format!("branch.{b}.rebase"))).or_else(|| configured("pull.rebase")));
+    let rebase = match rebase.as_deref() {
+        None | Some("false" | "no" | "off" | "0") => false,
+        Some("true" | "yes" | "on" | "1") => true,
+        Some(v @ ("merges" | "m" | "interactive" | "i")) => return fatal(format!("pull --rebase={v} is not supported in the playground (--rebase is)")),
+        Some(v) => return fatal(format!("invalid value for '--rebase': '{v}'")),
+    };
+    if rebase {
+        // before fetching, as git
+        crate::rebase::require_clean(ctx, "pull with rebase").map_err(|e| Exit { code: 128, ..e })?;
     }
     if !ff_given {
         match configured("pull.ff").as_deref() {
@@ -264,6 +269,19 @@ pub fn pull(ctx: &Ctx, args: &[String]) -> Res {
     let source = url.strip_suffix(".git").unwrap_or(url).to_string();
     o.reflog = std::iter::once("pull").chain(args.iter().map(String::as_str)).collect::<Vec<_>>().join(" ");
     let label = target.id.to_string();
+    if rebase {
+        if let Ok(head) = ctx.repo.head_commit() {
+            // HEAD in the upstream's history: a fast-forward, as `merge --ff-only` (git's pull does the same)
+            let behind = ctx.repo.merge_base(head.id, target.id).ok().flatten().is_some_and(|b| b.detach() == head.id);
+            if !behind {
+                crate::http::report("Updating files");
+                let start = crate::rebase::Start { quiet: o.quiet, xopts: o.xopts.clone(), upstream_name: format!("{name}/{short}") };
+                return crate::rebase::start(ctx, head.id, target.id, target.id, &start);
+            }
+            o.ff_only = true;
+            o.no_ff = false;
+        }
+    }
     let head = crate::merge::Head { commit: target, label, kind: "branch", name: short, tag_message: None, source: Some(source) };
     crate::http::report("Updating files");
     crate::merge::run(ctx, &o, vec![head])
