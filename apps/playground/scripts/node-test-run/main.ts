@@ -27,8 +27,8 @@ const kept = (text: string) =>
     )
     .map((l) => l.replace(/^(Ran .*?\.).*/, "$1"));
 
-async function spawned(label: string, cmd: string[]) {
-  const p = Bun.spawn(cmd, { stdout: "pipe", stderr: "pipe" });
+async function spawned(label: string, cmd: string[], cwd?: string) {
+  const p = Bun.spawn(cmd, { stdout: "pipe", stderr: "pipe", cwd });
   const [out, err, code] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text(), p.exited]);
   console.log(`${label} exit: ${code}`);
   for (const l of out.split("\n")) if (l) console.log(`${label} stdout: ${l.replace(/^bun test v.*/, "bun test v")}`);
@@ -55,6 +55,9 @@ await spawned("--coverage", ["bun", "test", "--coverage", "e.test.ts"]);
 await spawned("--coverage lcov", ["bun", "test", "--coverage-reporter=lcov", "--coverage-dir", "cov", "e.test.ts"]);
 console.log(`lcov: ${readFileSync("cov/lcov.info", "utf8").trim().split("\n").join(" ")}`);
 rmSync("cov", { recursive: true, force: true });
+// Coverage from the bunfig.toml of the child's own working directory (no flag): sub/ has one, sub/deep/ none (Bun doesn't look in parents).
+await spawned("bunfig cwd", ["bun", "test", "s.test.ts"], "sub");
+await spawned("bunfig parent", ["bun", "test", "d.test.ts"], "sub/deep");
 for (const bad of [["--timeout", "x"], ["--bail=0"], ["--rerun-each", "-1"], ["-t", "("]]) await spawned(`bad ${bad.join(" ")}`, ["bun", "test", ...bad, "e.test.ts"]);
 
 const stream = run({ files: ["a.test.ts", "b.test.ts", "c.test.ts", "d.test.ts"] });

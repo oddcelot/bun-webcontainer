@@ -865,7 +865,7 @@ export async function runTestFiles(
   files: string[],
   load: (file: string) => Promise<unknown>,
   version: string,
-  opts: Partial<TestOptions> & { io?: SnapshotIO; preload?: () => string[]; coverage?: () => boolean } = {},
+  opts: Partial<TestOptions> & { io?: SnapshotIO; preload?: () => string[]; coverage?: () => boolean; label?: (file: string) => string } = {},
 ): Promise<TestOutcome> {
   update = !!opts.update;
   runOpts = { namePattern: opts.namePattern, bail: opts.bail, todo: !!opts.todo, only: !!opts.only };
@@ -906,7 +906,7 @@ export async function runTestFiles(
       const before = totals.fail;
       // `--rerun-each`: the tests the file registered run that many times.
       for (let run = 1; run <= runs; run++) {
-        report.log(`\n${file}:${runs > 1 ? ` (run #${run})` : ""}`);
+        report.log(`\n${opts.label?.(file) ?? file}:${runs > 1 ? ` (run #${run})` : ""}`);
         if (run === 1) {
           try {
             if (preloads.length) {
