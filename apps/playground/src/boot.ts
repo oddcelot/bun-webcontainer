@@ -9,6 +9,7 @@ import type { ScriptRunner } from "./lifecycle";
 import { Runner, type TestResults } from "./runner";
 import { RemoteRunner } from "./remoteRunner";
 import { connectLocalBun, type LocalBun } from "./localBun";
+import { fastPathOn, qualifies, runFast } from "./fastPath";
 import { setVfsOwner } from "./moduleServer";
 import { setPreviewOwner } from "./preview";
 import { CONTENT_ORIGIN } from "./contentOrigin";
@@ -169,6 +170,11 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
       lastEntry = entry;
       lastArgs = args;
       try {
+        // SPIKE bwc-me5n: `?fast` runs a browser-only project through an import map, no worker.
+        if (fastPathOn() && !swap && !(runner instanceof RemoteRunner)) {
+          const text = await runFast(vfs, previews.frames.get(previews.state.active), log);
+          if (text) return { state: "idle", text };
+        }
         if (swap && !(runner instanceof RemoteRunner)) {
           const result = await runner!.swap(entry!, args);
           if (result.kind === "superseded") return; // what came after it sets the status
@@ -202,6 +208,8 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
     }
     if (!semver) return cantRun();
     workspace.saveAll();
+    // SPIKE bwc-me5n: nothing to install for a project the import-map fast path runs.
+    if (fastPathOn() && qualifies(vfs)) return void log("sys", "[bun install] skipped: the fast path serves packages from esm.sh");
     // A running server keeps running through an install, so the status goes back to what it was.
     await session.task("install", "Installing…", async () => {
       log("sys", "[bun install]");
