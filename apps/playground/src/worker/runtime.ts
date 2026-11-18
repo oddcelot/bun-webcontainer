@@ -704,6 +704,21 @@ vfs.onChange(() => {
 });
 
 /**
+ * bunfig.toml's `[serve.static] plugins` (in the working directory), loaded: the plugins Bun's dev server and
+ * `Bun.serve`'s HTML imports bundle with. Their `setup` runs for each bundle, as `Bun.build`'s plugins' do.
+ */
+async function staticPlugins(): Promise<unknown[] | undefined> {
+  const dir = norm(process.cwd());
+  const text = vfs.readText(dir ? `${dir}/bunfig.toml` : "bunfig.toml");
+  if (text === undefined) return;
+  const list = ((parseData(text, "toml") as { serve?: { static?: { plugins?: unknown } } } | null)?.serve?.static?.plugins ?? []) as unknown;
+  const specs = typeof list === "string" ? [list] : Array.isArray(list) ? list.filter((x): x is string => typeof x === "string") : [];
+  const out: unknown[] = [];
+  for (const spec of specs) out.push(((await importUrl(`${VFS_ROOT}${resolvePreload(spec)}`)) as { default?: unknown }).default);
+  return out;
+}
+
+/**
  * Bundles an HTML import with Bun's bundler (browser target, scripts and stylesheets become hashed chunks under
  * ASSET_PREFIX). Null when bundling fails; the errors go to the console.
  */
@@ -711,9 +726,11 @@ function bundleHtml(imp: HtmlImport): Promise<HtmlBundle> {
   let p = htmlBundles.get(imp.__htmlImport);
   if (p) return p;
   p = (async (): Promise<HtmlBundle> => {
-    const res = await bundle(vfs, { cwd: "/", entryPoints: ["/" + norm(imp.__htmlImport)], target: "browser", format: "esm", outdir: "/__bundle", publicPath: ASSET_PREFIX, sourcemap: "inline", minify: false });
+    const plugins = await BuildPlugins.setup(await staticPlugins(), { entrypoints: [imp.__htmlImport], target: "browser" });
+    const res = await bundle(vfs, { cwd: "/", entryPoints: ["/" + norm(imp.__htmlImport)], target: "browser", format: "esm", outdir: "/__bundle", publicPath: ASSET_PREFIX, sourcemap: "inline", minify: false }, plugins);
     for (const l of res.logs) if (l.level === "error" || l.level === "warning") console[l.level === "error" ? "error" : "warn"](`[bundler] ${formatLog(l)}`);
     const page = res.outputs.find((o) => o.loader === "html");
+    await plugins?.end({ success: res.success, outputs: [], logs: [] });
     if (!res.success || !page) return null;
     const assets = new Map<string, Asset>();
     for (const o of res.outputs) {
@@ -1904,6 +1921,16 @@ function resolvePreload(spec: string): string {
   return path;
 }
 
+/** `bun ./index.html [--port n]`: serves the page (and what it imports) at every path, as Bun's HTML dev server. */
+function serveHtmlEntry(entry: string, args: string[]): Record<string, never> {
+  const started = performance.now();
+  const at = args.findIndex((a) => a === "--port" || a.startsWith("--port="));
+  const given = at < 0 ? undefined : args[at]!.includes("=") ? args[at]!.split("=")[1] : args[at + 1];
+  const server = listen({ ...(given !== undefined && { port: Number(given) }), development: true, routes: { "/*": { __htmlImport: norm(entry) } } }).server as { url: URL };
+  post({ type: "console", level: "log", text: `Bun v${BUN_VERSION} dev server ready in ${(performance.now() - started).toFixed(2)} ms\n\nurl: ${server.url}` });
+  return {};
+}
+
 self.addEventListener("message", async (e: MessageEvent) => {
   if (e.data.type !== "start") return;
   if (e.data.vfsRoot) VFS_ROOT = e.data.vfsRoot;
@@ -2012,7 +2039,9 @@ self.addEventListener("message", async (e: MessageEvent) => {
     }
     // A .cjs/.mjs program by moduleServer.ts's ENTRY_PREFIX: served as its extension makes it, as Bun runs one.
     const entryUrl = `${VFS_ROOT}${/\.[cm][jt]s$/.test(e.data.entry) ? "__entry/" : ""}${e.data.entry}`;
-    const mod = (code !== undefined ? evalThread(code) : await importUrl(entryUrl)) as { default?: ServeOptions };
+    // `bun ./index.html`: Bun's dev server, which bundles the page like an HTML import and serves it.
+    const htmlEntry = code === undefined && /\.html?$/.test(e.data.entry);
+    const mod = (htmlEntry ? serveHtmlEntry(e.data.entry, process.argv.slice(2)) : code !== undefined ? evalThread(code) : await importUrl(entryUrl)) as { default?: ServeOptions };
     // Bun serves an entry whose default export has a fetch handler (Hono's `export default app`), unless that
     // port is already served (Elysia's `export default app.listen(3000)`).
     const def = mod.default;
