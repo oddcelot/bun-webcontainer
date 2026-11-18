@@ -179,7 +179,14 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
         const frame = previews.frames.get(previews.state.active);
         if (fastPathOn() && !(runner instanceof RemoteRunner)) {
           const text = await runFast(vfs, frame, log);
-          if (text) return { state: "idle", text };
+          if (text) {
+            // The preview didn't need node_modules, the editor's types do: install after it, in the background.
+            if (missingDeps()) {
+              log("sys", "[fast] installing packages in the background, for the editor's types");
+              void install({ afterFast: true });
+            }
+            return { state: "idle", text };
+          }
         }
         leaveFast(frame);
         if (swap && !(runner instanceof RemoteRunner)) {
@@ -201,7 +208,8 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
     });
   }
 
-  async function startInstall(options: InstallFlags = {}) {
+  /** `afterFast`: the install a fast-path run starts for the editor's types, which the skip below mustn't catch. */
+  async function startInstall({ afterFast, ...options }: InstallFlags & { afterFast?: boolean } = {}) {
     if (runner instanceof RemoteRunner) {
       // `bun install` runs packages' install scripts: someone else's code too.
       if (!(await mayRunNative())) return;
@@ -215,8 +223,8 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
     }
     if (!semver) return cantRun();
     workspace.saveAll();
-    // Nothing to install for a project the fast path runs.
-    if (fastPathOn() && qualifies(vfs)) return void log("sys", "[bun install] skipped: the fast path serves packages from esm.sh");
+    // Nothing to install before a project the fast path runs: its run installs afterwards, for the types.
+    if (!afterFast && fastPathOn() && qualifies(vfs)) return void log("sys", "[bun install] skipped: the fast path serves packages from esm.sh");
     // A running server keeps running through an install, so the status goes back to what it was.
     await session.task("install", "Installing…", async () => {
       log("sys", "[bun install]");
