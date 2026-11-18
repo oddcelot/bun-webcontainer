@@ -214,7 +214,8 @@ export function Preview() {
                     ref={(el) => p.frames.set(id, el)}
                     onLoad={(e) => {
                       // On the content origin the page's window is cross-origin: its bridge does all of this (previewBridge.ts).
-                      if (CONTENT_ORIGIN) return;
+                      // The fast path's sandboxed document (fastPath.ts) is cross-origin too, and has no server to open tabs on.
+                      if (CONTENT_ORIGIN || e.currentTarget.hasAttribute("srcdoc")) return;
                       p.loaded(id, e.currentTarget);
                       const win = e.currentTarget.contentWindow;
                       win?.addEventListener("keydown", forwardKeys);
