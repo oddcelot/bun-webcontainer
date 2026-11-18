@@ -81,6 +81,8 @@ pub fn commit(ctx: &Ctx, args: &[String]) -> Res {
         (Some(m), squash) => Some(squash.unwrap_or_default() + &m),
         (None, squash) => squash.map(|s| s + &std::fs::read_to_string("/.git/MERGE_MSG").unwrap_or_default()),
     };
+    // a rebase stopped on a conflict: the stopped commit's message (and the conflicts) it prepared in MERGE_MSG
+    let merge_msg = merge_msg.or_else(|| crate::rebase::in_progress().then(|| std::fs::read_to_string("/.git/MERGE_MSG").ok()).flatten());
     if msgs.is_empty() && prev.is_none() && merge_msg.is_none() {
         return fatal("no commit message given: use -m <msg>");
     }

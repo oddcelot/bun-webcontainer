@@ -998,7 +998,8 @@ try {
       .join("\n") + `\nrebasing: ${existsSync(join(d, ".git/rebase-merge"))}`;
   const chain = (d: string) => mask(spawnSync("git", ["-C", d, "log", "--format=%T|%an|%ae|%at|%B|%H", "HEAD", "--"], { encoding: "utf8", env: natEnv }).stdout);
   const branchAt = (d: string) => mask(spawnSync("git", ["-C", d, "log", "-1", "--format=%T %H", "feat"], { encoding: "utf8", env: natEnv }).stdout);
-  type Step = string[] | ((d: string) => void);
+  // a step: the same git command on both, a change to both copies, or our command and native's equivalent
+  type Step = string[] | ((d: string) => void) | { ours: string[]; native: string[] };
   async function rebaseSeq(name: string, steps: Step[], setup?: (d: string) => void) {
     for (const d of [A, B]) {
       rmSync(d, { recursive: true, force: true });
@@ -1012,9 +1013,10 @@ try {
         step(B);
         continue;
       }
-      const at = `${name} #${i} git ${step.join(" ")}`;
-      const ours = await git(A, step, ident);
-      const nat = spawnSync("git", ["-C", B, ...step], { encoding: "utf8", env: natEnv });
+      const [oursArgs, nativeArgs] = Array.isArray(step) ? [step, step] : [step.ours, step.native];
+      const at = `${name} #${i} git ${oursArgs.join(" ")}`;
+      const ours = await git(A, oursArgs, ident);
+      const nat = spawnSync("git", ["-C", B, ...nativeArgs], { encoding: "utf8", env: natEnv });
       check(`${at}: exit`, ours.code === nat.status, `ours ${ours.code} native ${nat.status}\n${ours.err}\n${nat.stderr}`);
       same(`${at}: stdout`, mask(ours.out), mask(nat.stdout));
       same(`${at}: stderr`, mask(ours.err), mask(nat.stderr));
@@ -1052,6 +1054,10 @@ try {
   await rebaseSeq("rebase conflict, again", [["rebase", "dconf"], ["rebase", "main"], ["switch", "main"], ["merge", "main"]]);
   await rebaseSeq("rebase conflict, unstaged at continue", [["rebase", "dconf"], resolve("A\nb\nc\nresolved\ne\nf\nG\n"), (d) => write(d, "k.txt", "dirty\n"), ["rebase", "--continue"]]);
   await rebaseSeq("rebase conflict, commit then continue", [["rebase", "dconf"], resolve("A\nb\nc\nresolved\ne\nf\nG\n"), ["commit", "-q", "-m", "by hand"], ["status"], ["rebase", "--continue"]]);
+  // commit without -m during a stop: MERGE_MSG, as --no-edit (there is no editor), the conflicts' comments with it
+  await rebaseSeq("rebase conflict, commit without -m", [["rebase", "dconf"], resolve("A\nb\nc\nresolved\ne\nf\nG\n"), { ours: ["commit"], native: ["commit", "--no-edit"] }, ["status"], ["rebase", "--continue"]]);
+  await rebaseSeq("rebase conflict, commit --no-edit", [["rebase", "dconf"], resolve("A\nb\nc\nresolved\ne\nf\nG\n"), ["commit", "--no-edit", "-q"], ["rebase", "--continue"]]);
+  await rebaseSeq("rebase conflict, commit -a without -m", [["rebase", "dconf"], (d) => write(d, "f.txt", "A\nb\nc\nresolved\ne\nf\nG\n"), { ours: ["commit", "-a"], native: ["commit", "-a", "--no-edit"] }, ["rebase", "--continue"]]);
   await rebaseSeq("rebase conflict -X theirs", [["rebase", "-X", "theirs", "dconf"]]);
   await rebaseSeq("rebase conflict -Xours", [["rebase", "-Xours", "dconf"]]);
   await rebaseSeq("rebase conflict, advice off", [["rebase", "dconf"]], (d) => nat(d, "config", "advice.mergeConflict", "false"));

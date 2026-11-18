@@ -156,7 +156,7 @@ messages (only for a pick that stops), `error: could not apply`, the advice, and
 `onto`, `orig-head`, `git-rebase-todo` with ` # empty` marks, `done`, `msgnum`, `end`, `message`, `author-script`,
 `stopped-sha`, `interactive`), `REBASE_HEAD` and `MERGE_MSG`, so native git continues ours and we continue native
 git's. `--continue` commits what is staged as the stopped commit (`[detached HEAD abc1234] subject`; nothing staged:
-the commit is dropped); `--skip` resets to HEAD; `--abort` goes back to `orig-head` and the branch; the end moves the
+the commit is dropped); `commit` without `-m` during a stop takes `MERGE_MSG` (the stopped commit's message and the `# Conflicts:` comments), as `--no-edit` does, the author being the committer as in git; `--skip` resets to HEAD; `--abort` goes back to `orig-head` and the branch; the end moves the
 branch and reattaches HEAD (`Successfully rebased and updated refs/heads/feat.`). Progress is `Rebasing (n/m)\r` on
 stderr. `status` shows the rebase as git's long format does (`interactive rebase in progress; onto abc1234`, the last
 two commands done and the next two, the hints); `switch` refuses during one. Not supported (clear errors, exit 128):
