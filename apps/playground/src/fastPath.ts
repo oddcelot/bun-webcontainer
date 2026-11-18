@@ -174,8 +174,8 @@ export async function buildFast(vfs: VFS): Promise<Fast> {
     imports[`${name}/`] ??= `${CDN}/${name}${version ? `@${version}` : ""}/`;
   }
   const map = `<script type="importmap">${JSON.stringify({ imports })}</script>`;
-  // The storage stand-ins, the error reporter and the map come before any script of the page.
-  const head = STORAGE + REPORT + map;
+  // The storage stand-ins, the error reporter, the console forwarder and the map come before any script of the page.
+  const head = STORAGE + REPORT + CONSOLE + map;
   const out = /<head[^>]*>/i.test(doc) ? doc.replace(/<head[^>]*>/i, (m) => m + head) : head + doc;
   return { html: out, modules: seen.size, packages: [...packages], solid: !!solid, ms: { transpile: Math.round(t1 - t0) } };
 }
@@ -212,16 +212,86 @@ const STORAGE = `<script>(() => {
     Object.defineProperty(window, name, { configurable: true, enumerable: true, get: () => value });
   }
 })();</script>`;
+/** Most console lines one run forwards: a hot loop mustn't flood the editor; the rest is one "dropped" line. */
+const MAX_LINES = 1000;
+/**
+ * Forwards console.log/info/debug (as `log`), warn and error to the editor, still calling the originals. Arguments are
+ * shown as a console would (strings as they are, errors with their stack, objects to a depth of 2 and 20 entries), the
+ * lines are batched into one message per microtask burst, and past MAX_LINES the page says so once and stops.
+ */
+const CONSOLE = `<script>(() => {
+  const MAX = ${MAX_LINES}, LEVELS = { log: "log", info: "log", debug: "log", warn: "warn", error: "error" };
+  let sent = 0, queue = [], scheduled = false;
+  const flush = () => { scheduled = false; const lines = queue; queue = []; parent.postMessage({ tag: ${JSON.stringify(TAG)}, lines }, "*"); };
+  const push = (level, text) => {
+    if (sent > MAX) return;
+    queue.push(sent === MAX ? ["warn", "… more lines dropped (the preview forwards " + MAX + " per run)"] : [level, text]);
+    sent++;
+    if (!scheduled) { scheduled = true; queueMicrotask(flush); }
+  };
+  const clip = (s, n) => (s.length > n ? s.slice(0, n) + "…" : s);
+  const show = (v, depth, seen) => {
+    try {
+      switch (typeof v) {
+        case "string": return depth ? JSON.stringify(clip(v, 200)) : v;
+        case "function": return "[Function" + (v.name ? ": " + v.name : " (anonymous)") + "]";
+        case "bigint": return v + "n";
+        case "object": if (v === null) return "null"; break;
+        default: return String(v);
+      }
+      if (v instanceof Error) return depth ? "[" + String(v) + "]" : String(v.stack || v);
+      if (typeof Node !== "undefined" && v instanceof Node) return "<" + v.nodeName.toLowerCase() + ">";
+      if (v instanceof Date) return isNaN(v) ? "Invalid Date" : v.toISOString();
+      if (v instanceof RegExp) return String(v);
+      if (seen.includes(v)) return "[Circular]";
+      const name = v.constructor && v.constructor.name;
+      const list = (items, total) => items.join(", ") + (total > items.length ? ", … " + (total - items.length) + " more" : "");
+      const next = seen.concat([v]);
+      if (Array.isArray(v)) {
+        if (depth > 2) return "[Array]";
+        return v.length ? "[ " + list(v.slice(0, 20).map((x) => show(x, depth + 1, next)), v.length) + " ]" : "[]";
+      }
+      if (v instanceof Map || v instanceof Set) {
+        if (depth > 2) return "[" + name + "]";
+        const items = [...v].slice(0, 20).map((x) => (v instanceof Map ? show(x[0], depth + 1, next) + " => " + show(x[1], depth + 1, next) : show(x, depth + 1, next)));
+        return name + "(" + v.size + ") { " + list(items, v.size) + " }";
+      }
+      if (depth > 2) return "[" + (name || "Object") + "]";
+      const keys = Object.keys(v);
+      const prefix = name && name !== "Object" ? name + " " : "";
+      return keys.length ? prefix + "{ " + list(keys.slice(0, 20).map((k) => k + ": " + show(v[k], depth + 1, next)), keys.length) + " }" : prefix + "{}";
+    } catch (e) {
+      return "[unprintable]";
+    }
+  };
+  for (const method of Object.keys(LEVELS)) {
+    const original = console[method];
+    console[method] = function (...args) {
+      try { push(LEVELS[method], clip(args.map((a) => show(a, 0, [])).join(" "), 4000)); } catch {}
+      return original.apply(this, args);
+    };
+  }
+})();</script>`;
 const SANDBOX = "allow-scripts allow-forms allow-modals allow-popups allow-downloads";
 
 let shown: { frame: HTMLIFrameElement; log: Log } | undefined;
-type Log = (level: "sys" | "error" | "log", text: string) => void;
+type Log = (level: "sys" | "error" | "warn" | "log", text: string) => void;
+
+const FORWARDED = new Set(["log", "warn", "error"]);
+/** A page's stack has its modules' whole sources in it, as data: URLs. */
+const trim = (text: string) => text.replace(/data:[^\s]*?(?=:\d+:\d+)/g, "data:…").slice(0, 4000);
 
 addEventListener("message", (e) => {
-  const d = e.data as { tag?: unknown; text?: unknown } | null;
-  if (!shown || e.source !== shown.frame.contentWindow || d?.tag !== TAG || typeof d.text !== "string") return;
-  // A module's own data: URL is its whole source: out of the stack.
-  shown.log("error", d.text.replace(/data:[^\s]*?(?=:\d+:\d+)/g, "data:…").slice(0, 4000));
+  const d = e.data as { tag?: unknown; text?: unknown; lines?: unknown } | null;
+  if (!shown || e.source !== shown.frame.contentWindow || d?.tag !== TAG) return;
+  if (typeof d.text === "string") shown.log("error", trim(d.text));
+  else if (Array.isArray(d.lines)) {
+    // The frame is the page's: take only well-formed lines, and no more than a run forwards in one message.
+    for (const line of d.lines.slice(0, MAX_LINES + 1) as unknown[]) {
+      if (!Array.isArray(line) || typeof line[0] !== "string" || typeof line[1] !== "string" || !FORWARDED.has(line[0])) continue;
+      shown.log(line[0] as "log" | "warn" | "error", trim(line[1]));
+    }
+  }
 });
 
 /** Builds the preview in `frame`; the status text for the run, or undefined (after a `sys` line saying why) when the project doesn't qualify. */
