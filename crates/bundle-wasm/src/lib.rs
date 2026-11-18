@@ -13,7 +13,7 @@
 //!   packages: "bundle"|"external", drop[], rootDir, env: "inline"|"disable"|"PREFIX*" (`Bun.build`'s; "load-only" is the
 //!   CLI's `--env=disable`), envVars{} (the process env: the wasm has none of its own),
 //!   plugins: bool (the host's `bun_plugin.*` imports answer the plugin hooks, see plugins.rs)}`
-//! Result JSON: `{success, outputs: [{path, kind, loader, hash, contents, encoding?}], logs: [{level,
+//! Result JSON: `{success, outputs: [{path, kind, loader, inputLoader, hash, contents, encoding?}], logs: [{level,
 //!   message, file, line, column}]}`. `contents` is text, or base64 with `encoding: "base64"` when the
 //!   output isn't valid UTF-8 (images, wasm and other binary assets).
 
@@ -161,7 +161,8 @@ fn run(
     let outdir = string(cfg, "outdir").unwrap_or_default();
     // `write: true` makes the bundler write the files into `outdir` itself (through the VFS) and the
     // outputs come back without contents; otherwise (the default) everything is returned in memory.
-    t.options.supports_multiple_outputs = !outdir.is_empty() || flag(cfg, "splitting") || t.options.entry_points.len() > 1;
+    // As `Bun.build` (native leaves `from_api`'s `true`): an in-memory build returns every output, CSS and assets too.
+    t.options.supports_multiple_outputs = true;
     // (`from_api` defaults `output_dir` to "out", which would make the bundler write.)
     t.options.output_dir = if flag(cfg, "write") { outdir } else { Box::default() };
     if let Some(p) = string(cfg, "publicPath") {
@@ -251,7 +252,9 @@ fn run(
             let mut o = json!({
                 "path": String::from_utf8_lossy(&f.dest_path),
                 "kind": kind,
-                "loader": format!("{:?}", f.loader),
+                "loader": <&'static str>::from(f.loader),
+                // What `BuildArtifact.loader` reports (output_file_jsc.rs): the entry point's loader for its chunks.
+                "inputLoader": <&'static str>::from(f.input_loader),
                 "hash": format!("{}", f.hash),
                 "value": value,
             });
@@ -269,18 +272,16 @@ fn run(
 }
 
 fn bun_paths_longest(entries: &[&[u8]]) -> Box<[u8]> {
-    // longest common directory prefix
+    // The longest common directory, by whole path components (`/src/css` for `/src/css/a.ts` and `/src/css/b.ts`).
     let mut it = entries.iter().map(|e| bun_core::dirname(e).unwrap_or(b"/"));
     let Some(first) = it.next() else { return Box::from(&b"/"[..]) };
-    let mut len = first.len();
+    let mut common: Vec<&[u8]> = first.split(|c| *c == b'/').collect();
     for d in it {
-        len = len.min(first.iter().zip(d).take_while(|(a, b)| a == b).count());
+        let n = common.iter().zip(d.split(|c| *c == b'/')).take_while(|(a, b)| *a == b).count();
+        common.truncate(n);
     }
-    let mut p = &first[..len];
-    if let Some(i) = p.iter().rposition(|c| *c == b'/') {
-        if len != first.len() || i != len { p = &p[..i.max(1)]; }
-    }
-    p.into()
+    let p = common.join(&b'/');
+    if p.is_empty() { Box::from(&b"/"[..]) } else { p.into() }
 }
 
 #[repr(C)]

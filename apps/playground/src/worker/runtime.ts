@@ -712,7 +712,7 @@ function bundleHtml(imp: HtmlImport): Promise<HtmlBundle> {
   p = (async (): Promise<HtmlBundle> => {
     const res = await bundle(vfs, { cwd: "/", entryPoints: ["/" + norm(imp.__htmlImport)], target: "browser", format: "esm", outdir: "/__bundle", publicPath: ASSET_PREFIX, sourcemap: "inline", minify: false });
     for (const l of res.logs) if (l.level === "error" || l.level === "warning") console[l.level === "error" ? "error" : "warn"](`[bundler] ${formatLog(l)}`);
-    const page = res.outputs.find((o) => o.loader.toLowerCase() === "html");
+    const page = res.outputs.find((o) => o.loader === "html");
     if (!res.success || !page) return null;
     const assets = new Map<string, Asset>();
     for (const o of res.outputs) {
@@ -1231,6 +1231,16 @@ function buildEnv(e: BuildOptions["env"]): Pick<BundleConfig, "env" | "envVars">
 }
 
 /**
+ * `Bun.build`'s naming as `JSBundler.Config` reads it: chunks are `chunk-[hash]` (the CLI's, the bundler's default
+ * here, are `[name]-[hash]`) and given templates get a leading `./` (it goes into the outputs' hashes).
+ */
+function buildNaming(naming: BuildOptions["naming"]): BundleConfig["naming"] {
+  const dot = (t: string | undefined) => (t === undefined || t.startsWith("./") ? t : `./${t}`);
+  const n = typeof naming === "string" ? { entry: naming } : (naming ?? {});
+  return { entry: dot(n.entry), chunk: dot(n.chunk) ?? "./chunk-[hash].[ext]", asset: dot(n.asset) };
+}
+
+/**
  * `Bun.build` through Bun's own bundler (compiled to wasm, see bundler.ts). Outputs are Blobs in memory; with
  * `outdir` they are also written to the VFS through `write`, so the page sees them. Failures throw an
  * AggregateError of the logs, as in Bun, unless `throw: false`.
@@ -1253,7 +1263,7 @@ async function build(opts: BuildOptions) {
     define: opts.define,
     conditions: typeof opts.conditions === "string" ? [opts.conditions] : opts.conditions,
     sourcemap: sm === true ? "linked" : sm === false ? "none" : sm,
-    naming: typeof opts.naming === "string" ? { entry: opts.naming } : opts.naming,
+    naming: buildNaming(opts.naming),
     publicPath: opts.publicPath,
     banner: opts.banner,
     footer: opts.footer,
@@ -1276,10 +1286,9 @@ async function build(opts: BuildOptions) {
   const outputs: BuildArtifact[] = [];
   for (const o of res.outputs) {
     const rel = o.path.replace(/^\.\//, "");
-    const loader = o.loader.toLowerCase();
     const blob = new ArtifactBlob([o.contents], { type: mimeOf(rel) });
     const path = outdir ? nodePath.join(outdir, rel) : `./${rel}`;
-    outputs.push(Object.assign(blob, { path, kind: o.kind as BuildArtifact["kind"], loader, hash: o.hash && o.hash !== "0" ? o.hash : null, sourcemap: null as BuildArtifact | null }));
+    outputs.push(Object.assign(blob, { path, kind: o.kind as BuildArtifact["kind"], loader: o.inputLoader, hash: o.hash && o.hash !== "0" ? o.hash : null, sourcemap: null as BuildArtifact | null }));
   }
   for (const o of outputs) o.sourcemap = outputs.find((m) => m.kind === "sourcemap" && m.path === `${o.path}.map`) ?? null;
   if (outdir) for (const o of outputs) await writeFile(o.path, o);

@@ -213,6 +213,13 @@ compareOptions("root: default (common dir)", ["src/a/x.ts", "src/b/y.ts"], {}, [
 compareOptions("root: src", ["src/a/x.ts", "src/b/y.ts"], { rootDir: "/src" }, ["--root=src"]);
 compareOptions("root: project root", ["src/a/x.ts", "src/b/y.ts"], { rootDir: "/" }, ["--root=."]);
 
+// The playground's entry points are absolute; their common folder is the root, as native's (`bun build src/a src/b`).
+test("root: default for absolute entries in one folder", () => {
+  const r = wasmBundle({ entryPoints: ["/src/greet.ts", "/src/other.ts"], outdir: "out" });
+  assert.ok(r.success, JSON.stringify(r.logs));
+  assert.deepEqual(r.outputs.map((o: { path: string }) => o.path), ["./greet.js", "./other.js"]);
+});
+
 test("write: true writes into the VFS and returns no contents", () => {
   const r = wasmBundle({ entryPoints: ["src/greet.ts"], outdir: "/wrote", write: true });
   assert.ok(r.success, JSON.stringify(r.logs));
@@ -231,6 +238,21 @@ test("inline sourcemap", () => {
   const r = wasmBundle({ entryPoints: ["src/greet.ts"], sourcemap: "inline" });
   assert.ok(r.success, JSON.stringify(r.logs));
   assert.match(r.outputs[0].contents, /sourceMappingURL=data:application\/json;base64,/);
+});
+
+// `Bun.build` without `outdir`: every output comes back in memory, as with one (native's BuildArtifact.loader is
+// `inputLoader`: the entry's loader, on its CSS too).
+test("in-memory build returns the CSS and asset outputs too", () => {
+  const out = (r: { outputs: { path: string; kind: string; loader: string; inputLoader: string; hash: string; contents: string }[] }) =>
+    r.outputs.map(({ path, kind, loader, inputLoader, hash, contents }) => ({ path, kind, loader, inputLoader, hash, contents }));
+  const mem = wasmBundle({ entryPoints: ["src/assets.ts"] });
+  assert.ok(mem.success, JSON.stringify(mem.logs));
+  const dir = wasmBundle({ entryPoints: ["src/assets.ts"], outdir: "out" });
+  assert.deepEqual(out(mem), out(dir));
+  assert.deepEqual(out(mem).map((o) => [o.path, o.kind, o.loader, o.inputLoader]), [
+    ["./assets.js", "entry-point", "js", "ts"],
+    ["./assets.css", "asset", "css", "ts"],
+  ]);
 });
 
 test("binary assets come back as base64 bytes", () => {
