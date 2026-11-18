@@ -792,6 +792,30 @@ try {
   };
   for (const a of [["apply"], ["pop"], ["apply", "--index", "1"]]) await twin(`stash ${a.join(" ")} mid-merge`, p7s, ["stash", ...a], { ...ss, setup: midMerge, head: "tree" });
   await twin("stash apply in a resolved merge", p7s, ["stash", "apply", "1"], { ...ss, setup: (d) => { midMerge(d); write(d, "a.txt", "both\n"); nat(d, "add", "a.txt"); }, head: "tree" });
+  // --keep-index, --all, pathspecs
+  const ignored = (d: string) => {
+    dirty(d);
+    writeFileSync(join(d, ".git/info/exclude"), "*.log\nbuild/\n");
+    write(d, "debug.log", "log\n");
+    write(d, "build/out.js", "out\n");
+    write(d, "build/deep/more.js", "more\n");
+  };
+  for (const a of [["-k"], ["--keep-index", "-u"], ["push", "-k", "-m", "kept"]]) await twin(`stash ${a.join(" ")}`, p7, ["stash", ...a], { ...ss, setup: dirty });
+  same("native pops our -k stash", (natIn(A, "stash", "pop", "--index"), state(A)), (natIn(B, "stash", "pop", "--index"), state(B)));
+  for (const a of [["-a"], ["--all", "-k"], ["-a", "--", "build"], ["-u"]]) await twin(`stash ${a.join(" ")} (ignored files)`, p7, ["stash", ...a], { ...ss, setup: ignored });
+  same("native pops our -a stash", (natIn(A, "stash", "pop"), state(A)), (natIn(B, "stash", "pop"), state(B)));
+  await twin("stash -a -u", p7, ["stash", "-a", "-u"], { ...ss, setup: ignored, out: false, err: false });
+  for (const a of [["push", "--", "a.txt"], ["push", "a.txt", "b.txt"], ["--", "k.txt"], ["--", "n2.txt"], ["push", "-m", "some", "--", "a.txt"], ["-u", "--", "u.txt"], ["-u", "ud"], ["push", "-u", "ud"], ["-u", "--", "a.txt", "ud/deep.txt"], ["-k", "--", "b.txt"], ["-k", "--", "a.txt", "n2.txt"], ["-q", "--", "a.txt"], ["--", "."], ["--", "dir"], ["--", "nope"], ["--", "a.txt", "nope"], ["--", "u.txt"]]) {
+    await twin(`stash ${a.join(" ")}`, p7, ["stash", ...a], { ...ss, setup: dirty });
+  }
+  same("native pops our pathspec stash", (natIn(A, "stash", "pop", "--index"), state(A)), (natIn(B, "stash", "pop", "--index"), state(B)));
+  await twin("stash -- path without changes", p7, ["stash", "--", "dir"], ss);
+  // stash branch: a branch at the stash's base, the stash applied with --index and dropped
+  for (const a of [["nb"], ["nb", "1"], ["nb", "stash@{2}"], [], ["main"], ["nb", "7"]]) await twin(`stash branch ${a.join(" ")}`, p7s, ["stash", "branch", ...a], ss);
+  // (stdout: our checkout doesn't list the changes it carries over, `M\tb.txt`)
+  await twin("stash branch with local changes in the way", p7s, ["stash", "branch", "nb"], { ...ss, out: false, setup: (d) => write(d, "b.txt", "mine\n") });
+  // (stderr: git apply's `error: patch failed: b.txt:1` lines come first)
+  await twin("stash apply --index conflict", p7s, ["stash", "apply", "--index"], { ...ss, err: false, setup: (d) => { write(d, "b.txt", "conflicting\n"); nat(d, "commit", "-qam", "conflicting"); }, head: "tree" });
 
   // ---- config ---------------------------------------------------------------------------------------------------------
   const p4 = join(tmp, "p4");

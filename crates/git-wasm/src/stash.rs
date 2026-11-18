@@ -5,9 +5,9 @@ use crate::history::{short, signature, with_committer, write_tree};
 use crate::merge::{apply_merged, conflict_messages};
 use crate::status::{Flat, Kind, compute, flat_head, flat_index, flat_tree, load_index, long, unmerged, worktree_changes};
 use crate::worktree::{hard_reset, remove_path, set_index, write_files};
-use crate::{Ctx, Exit, Res, fatal, out, path_str};
+use crate::{Ctx, Exit, Res, Specs, fatal, out, path_str};
 use gix::ObjectId;
-use gix::bstr::{BStr, ByteSlice};
+use gix::bstr::{BStr, BString, ByteSlice};
 use gix::refs::transaction::{Change, LogChange, PreviousValue, RefEdit, RefLog};
 
 const LOG: &str = "/.git/logs/refs/stash";
@@ -107,22 +107,68 @@ fn load(ctx: &Ctx, id: ObjectId) -> Result<Stash, Exit> {
     })
 }
 
-fn push(ctx: &Ctx, args: &[String], save: bool) -> Res {
-    let (mut msg, mut untracked, mut quiet, mut words) = (None, false, false, Vec::new());
+/// The untracked files (`-u`), with `-a` the ignored ones too (an ignored directory's files one by one).
+fn untracked_files(ctx: &Ctx, ignored: bool) -> Result<Vec<BString>, Exit> {
+    use gix::status::index_worktree::Item;
+    let platform = ctx
+        .repo
+        .status(gix::progress::Discard)?
+        .untracked_files(gix::status::UntrackedFiles::Files)
+        .index_worktree_rewrites(None)
+        .dirwalk_options(|o| o.emit_ignored(ignored.then_some(gix::dir::walk::EmissionMode::Matching)));
+    let mut files = Vec::new();
+    for item in platform.into_index_worktree_iter(Vec::<BString>::new())? {
+        let Item::DirectoryContents { entry, .. } = item? else { continue };
+        if !matches!(entry.status, gix::dir::entry::Status::Untracked | gix::dir::entry::Status::Ignored(_)) {
+            continue;
+        }
+        if matches!(entry.disk_kind, Some(gix::dir::entry::Kind::Directory)) {
+            walk(&crate::worktree::disk(entry.rela_path.as_ref()), &entry.rela_path, &mut files);
+        } else {
+            files.push(entry.rela_path);
+        }
+    }
+    files.sort();
+    Ok(files)
+}
+
+fn walk(dir: &std::path::Path, rel: &BString, files: &mut Vec<BString>) {
+    for e in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+        let mut p = rel.clone();
+        p.push(b'/');
+        p.extend_from_slice(e.file_name().to_string_lossy().as_bytes());
+        if e.file_type().is_ok_and(|t| t.is_dir()) {
+            walk(&e.path(), &p, files);
+        } else {
+            files.push(p);
+        }
+    }
+}
+
+/// `implicit`: `git stash [<options>]` without `push`, which takes pathspecs only after `--`.
+fn push(ctx: &Ctx, args: &[String], save: bool, implicit: bool) -> Res {
+    let (mut msg, mut untracked, mut all, mut keep_index, mut quiet) = (None, false, false, false, false);
+    let (mut words, mut paths, mut only_paths) = (Vec::new(), Vec::new(), false);
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
+            _ if only_paths => paths.push(a.clone()),
+            "--" if !save => only_paths = true,
             "-m" | "--message" => msg = it.next().cloned(),
-            "-u" | "--include-untracked" => untracked = true,
+            // the later of -u and -a wins
+            "-u" | "--include-untracked" => (untracked, all) = (true, false),
+            "--no-include-untracked" => (untracked, all) = (false, false),
+            "-a" | "--all" => (untracked, all) = (false, true),
+            "-k" | "--keep-index" => keep_index = true,
+            "--no-keep-index" => keep_index = false,
             "-q" | "--quiet" => quiet = true,
             a if a.starts_with("--message=") => msg = Some(a[10..].to_string()),
             a if a.starts_with("-m") && a.len() > 2 => msg = Some(a[2..].to_string()),
-            "-k" | "--keep-index" | "-a" | "--all" | "-p" | "--patch" | "-S" | "--staged" | "--" => {
-                return fatal(format!("stash {a} is not supported in the playground"));
-            }
+            "-p" | "--patch" | "-S" | "--staged" => return fatal(format!("stash {a} is not supported in the playground")),
             a if a.starts_with('-') && a.len() > 1 => return Err(Exit { code: 129, msg: format!("error: unknown option `{}'", a.trim_start_matches('-')) }),
             a if save => words.push(a.to_string()),
-            _ => return fatal("stash with pathspecs is not supported in the playground"),
+            a if implicit => return fatal(format!("subcommand wasn't specified; 'push' can't be assumed due to unexpected token '{a}'")),
+            a => paths.push(a.to_string()),
         }
     }
     if save && !words.is_empty() {
@@ -139,28 +185,42 @@ fn push(ctx: &Ctx, args: &[String], save: bool) -> Res {
         return fatal("could not save index tree");
     }
     let (h, idx) = (flat_head(ctx)?, flat_index(&index));
-    // the worktree's version of the tracked files
+    let specs = Specs::new(&paths);
+    let picked = |p: &BString| specs.matches(&path_str(p));
+    let new_paths = if untracked || all { untracked_files(ctx, all)? } else { Vec::new() };
+    // every pathspec must name something in the index (or, with -u/-a, an untracked file)
+    if !paths.is_empty() {
+        for p in idx.keys().chain(&new_paths) {
+            picked(p);
+        }
+        if let Some(bad) = specs.unmatched() {
+            return Err(Exit { code: 1, msg: format!("error: pathspec ':(prefix:0){bad}' did not match any file(s) known to git\nDid you forget to 'git add'?") });
+        }
+    }
+    // the worktree's version of the tracked files (of those the pathspecs pick; the index's for the others)
     let mut w = idx.clone();
-    let mut new_files = Flat::new();
-    let mode = if untracked { gix::status::UntrackedFiles::Files } else { gix::status::UntrackedFiles::None };
-    for c in worktree_changes(ctx, mode)? {
-        let disk = crate::worktree::disk(c.path.as_ref());
+    for c in worktree_changes(ctx, gix::status::UntrackedFiles::None)? {
+        if !picked(&c.path) {
+            continue;
+        }
         match c.kind {
             Kind::Deleted => {
                 w.remove(&c.path);
             }
             Kind::Modified => {
-                let id = ctx.repo.write_blob(std::fs::read(&disk)?)?.detach();
-                let m = c.entry.map_or(0o100644, |e| e.0);
-                w.insert(c.path.clone(), (m, id));
+                let id = ctx.repo.write_blob(std::fs::read(crate::worktree::disk(c.path.as_ref()))?)?.detach();
+                w.insert(c.path.clone(), (c.entry.map_or(0o100644, |e| e.0), id));
             }
-            Kind::Untracked => {
-                let id = ctx.repo.write_blob(std::fs::read(&disk)?)?.detach();
-                new_files.insert(c.path.clone(), (0o100644, id));
-            }
+            Kind::Untracked => {}
         }
     }
-    if idx == h && w == idx && new_files.is_empty() {
+    let mut new_files = Flat::new();
+    for p in new_paths.into_iter().filter(|p| picked(p)) {
+        let id = ctx.repo.write_blob(std::fs::read(crate::worktree::disk(p.as_ref()))?)?.detach();
+        new_files.insert(p, (0o100644, id));
+    }
+    let staged = h.keys().chain(idx.keys()).any(|p| h.get(p) != idx.get(p) && picked(p));
+    if !staged && w == idx && new_files.is_empty() {
         if !quiet {
             out("No local changes to save\n");
         }
@@ -174,6 +234,7 @@ fn push(ctx: &Ctx, args: &[String], save: bool) -> Res {
         let (mut b1, mut b2) = (gix::date::parse::TimeBuf::default(), gix::date::parse::TimeBuf::default());
         Ok(ctx.repo.new_commit_as(sig.to_ref(&mut b1), sig.to_ref(&mut b2), message, tree, parents)?.id)
     };
+    // i is the whole index, also with pathspecs (as git's)
     let i = commit(format!("index on {on}\n"), write_tree(ctx, &idx)?, vec![head.id])?;
     let mut parents = vec![head.id, i];
     if !new_files.is_empty() {
@@ -197,11 +258,54 @@ fn push(ctx: &Ctx, args: &[String], save: bool) -> Res {
     if !quiet {
         out(&format!("Saved working directory and index state {message}\n"));
     }
-    hard_reset(ctx, &h, true)?;
     for p in new_files.keys() {
         remove_path(p);
     }
+    if paths.is_empty() {
+        hard_reset(ctx, &h, true)?;
+        if keep_index {
+            hard_reset(ctx, &idx, true)?;
+        }
+        return Ok(0);
+    }
+    // only the picked paths go back to HEAD (with -k: to the index), in the index and the worktree
+    let target = if keep_index { &idx } else { &h };
+    let mut next = idx.clone();
+    let mut files = Flat::new();
+    for p in h.keys().chain(idx.keys()).filter(|p| picked(p)).cloned().collect::<std::collections::BTreeSet<_>>() {
+        match target.get(&p) {
+            Some(e) => {
+                next.insert(p.clone(), *e);
+                files.insert(p, *e);
+            }
+            None => {
+                next.remove(&p);
+                remove_path(&p);
+            }
+        }
+    }
+    set_index(ctx, &next)?;
+    write_files(ctx, &files)?;
     Ok(0)
+}
+
+/// `stash branch <name> [<stash>]`: a new branch at the stash's base, the stash applied with `--index`, then dropped.
+fn branch(ctx: &Ctx, args: &[String]) -> Res {
+    let ops: Vec<&String> = args.iter().filter(|a| !a.starts_with('-')).collect();
+    let Some(name) = ops.first() else {
+        return Err(Exit { code: 128, msg: "No branch name specified".into() });
+    };
+    let list = entries();
+    let (n, _) = pick(ops.get(1).copied(), list.len())?;
+    let base = ctx.repo.find_commit(list[list.len() - 1 - n].new)?.parent_ids().next().map(|p| p.detach());
+    let Some(base) = base else { return fatal("not a stash-like commit") };
+    let code = crate::worktree::switch(ctx, &["-c".into(), name.to_string(), base.to_string()])?;
+    if code != 0 {
+        return Ok(code);
+    }
+    let mut rest = vec!["--index".to_string()];
+    rest.extend(ops.get(1).map(|s| s.to_string()));
+    apply(ctx, &rest, true)
 }
 
 fn list() -> Res {
@@ -287,7 +391,7 @@ fn apply(ctx: &Ctx, args: &[String], pop: bool) -> Res {
     let new_index = if keep_index && s.index != s.base {
         let mut o = ctx.repo.merge_trees(s.base, current_tree, s.index, labels("Updated upstream", "Stashed changes"), ctx.repo.tree_merge_options()?)?;
         if o.has_unresolved_conflicts(gix::merge::tree::TreatAsUnresolved::git()) {
-            return Err(Exit { code: 1, msg: "Conflicts in index. Try without --index.".into() });
+            return Err(Exit { code: 128, msg: "error: conflicts in index. Try without --index.".into() });
         }
         Some(flat_tree(ctx, o.tree.write()?.detach())?)
     } else {
@@ -299,6 +403,9 @@ fn apply(ctx: &Ctx, args: &[String], pop: bool) -> Res {
         Ok(c) => c,
         Err(e) => {
             eprintln!("{}", e.msg);
+            if keep_index {
+                eprintln!("Index was not unstashed.");
+            }
             if !quiet {
                 out(&long(ctx, &compute(ctx)?)?);
             }
@@ -307,6 +414,9 @@ fn apply(ctx: &Ctx, args: &[String], pop: bool) -> Res {
     };
     for line in conflict_messages(&outcome.conflicts, "Updated upstream", "Stashed changes") {
         out(&format!("{line}\n"));
+    }
+    if conflicted && keep_index {
+        eprintln!("Index was not unstashed.");
     }
     if !conflicted {
         match new_index {
@@ -355,20 +465,21 @@ fn apply(ctx: &Ctx, args: &[String], pop: bool) -> Res {
 }
 
 pub fn stash(ctx: &Ctx, args: &[String]) -> Res {
-    let (sub, rest) = match args.first() {
-        Some(a) if !a.starts_with('-') => (a.as_str(), &args[1..]),
-        _ => ("push", args),
+    let (sub, rest, implicit) = match args.first() {
+        Some(a) if !a.starts_with('-') => (a.as_str(), &args[1..], false),
+        _ => ("push", args, true),
     };
     let spec = rest.iter().find(|a| !a.starts_with('-'));
     let quiet = rest.iter().any(|a| a == "-q" || a == "--quiet");
     match sub {
-        "push" => push(ctx, rest, false),
-        "save" => push(ctx, rest, true),
+        "push" => push(ctx, rest, false, implicit),
+        "save" => push(ctx, rest, true, false),
         "list" => list(),
         "show" => show(ctx, rest),
         "apply" => apply(ctx, rest, false),
         "pop" => apply(ctx, rest, true),
         "drop" => drop(ctx, spec, quiet),
+        "branch" => branch(ctx, rest),
         "clear" => write_entries(ctx, &[]).map(|_| 0),
         _ => Err(Exit { code: 129, msg: format!("error: unknown subcommand: `{sub}'") }),
     }

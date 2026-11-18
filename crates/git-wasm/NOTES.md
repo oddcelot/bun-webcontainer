@@ -78,7 +78,7 @@ unborn branch checks out the commit (one only; refuses untracked files in the wa
 with unmerged paths prints git's `<path>: needs merge` and `error: could not write index` (exit 128). Not done:
 strategies (`-s`, `-X`).
 
-Stashing (`stash.rs`): `stash [push] [-m <msg>] [-u] [-q]`, `save [<msg>]`, `list`, `show [-p] [--stat] [<stash>]`,
+Stashing (`stash.rs`): `stash [push] [-m <msg>] [-u|-a] [-k] [-q] [[--] <pathspec>...]`, `save [<msg>]`, `list`, `show [-p] [--stat] [<stash>]`,
 `apply [--index] [-q] [<stash>]`, `pop`, `drop [-q] [<stash>]`, `clear`; `<stash>` is `stash@{n}` or `n`. The commits
 are git's: w (the tracked files as in the worktree; its message `WIP on main: abc1234 subject` or `On main: <msg>`,
 without a trailing newline as git writes it) with parents HEAD, i (the index: `index on ...`) and with `-u` u (the
@@ -87,8 +87,14 @@ untracked files, a root commit: `untracked files on ...`); refs/stash's reflog i
 `apply` merges w's tree onto the current index with w's first parent as the base (gix `merge_trees`, labels `Updated
 upstream` / `Stashed changes`), through the same two-way merge as `merge`; without `--index` what the stash staged
 comes back unstaged, but for new files (git's `unstage_changes_unless_new`); then it restores u's files and prints the
-long status. A conflict keeps the entry (`The stash entry is kept in case you need it again.`, exit 1). Not done:
-`--keep-index`, `--all`, `--patch`, `--staged`, pathspecs, `stash branch`, `stash create|store`.
+long status. A conflict keeps the entry (`The stash entry is kept in case you need it again.`, exit 1; with `--index`
+also `Index was not unstashed.`). `-k` leaves the index and puts its version back in the worktree; `-a` stashes the
+ignored files too (gix's dirwalk emitting ignored entries; an ignored directory's files read one by one); the later of
+`-u`/`-a` wins. Pathspecs (plain `stash` takes them only after `--`, as git) stash the picked paths' worktree changes
+and untracked files; i is still the whole index, as git's; then only those paths go back to HEAD (with `-k` to the
+index), the others keep their changes; a spec matching nothing in the index (or the untracked files with `-u`) is
+git's `pathspec ':(prefix:0)x' did not match` (exit 1). `stash branch <name> [<stash>]` switches to a new branch at the
+stash's base and pops it with `--index`. Not done: `--patch`, `--staged`, `stash create|store`.
 
 `test.ts` runs a scripted session under node's WASI and compares status, diff, log, show and every mutation with native
 git: "twin" runs execute the same command on two copies of a project (ours vs native) and compare `status`, `ls-files -s`,
