@@ -4,6 +4,16 @@ Notable changes per release of `@runbun/connect`, the local runner for runbun.de
 `connect-v<version>` and has a GitHub Release with its section. The runner talks to the playground over its own
 protocol (`src/protocol.ts`); the deployed runbun.dev and the runner from npm can differ in version.
 
+## 0.4.0 — 2026-11-18
+
+`bun test --coverage` works with Local Bun: the runner passes the coverage flags to Bun and sends the `lcov.info` back
+to the playground. Nothing needs action to upgrade; the playground asks older runners to update when you use
+`--coverage`.
+
+- **Added** — **`bun test --coverage` runs with Local Bun.** The runner passes `--coverage`, `--coverage-reporter` and
+  a `--coverage-dir` inside the project to Bun and sends the `lcov.info` it writes back to the playground, where it
+  used to refuse coverage runs.
+
 ## 0.3.0 — 2026-11-17
 
 `bun test -u` works with Local Bun: the runner sends the snapshots a test run wrote back to the playground. Nothing
