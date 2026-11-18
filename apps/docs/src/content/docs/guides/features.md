@@ -154,7 +154,8 @@ Experimental, and off unless you ask: turn on **Fast path** (the lightning icon 
 - **What qualifies:** an `index.html` at the project's root, with no project file that uses `Bun.`, `node:`, `bun:`, `require()` or `process.env`, `process.argv` or `process.cwd`. Otherwise the project runs the normal way, and the console says which file ruled it out (`[fast] not used, running normally: index.ts uses Bun.`).
 - **Packages:** versions come from `bun.lock`, else from the `package.json` range. The package names and versions are sent to esm.sh, a third-party service, so the page needs a network and doesn't work offline, and `node_modules` isn't used or written.
 - **The page** runs in a sandboxed frame (scripts, forms, dialogs, popups and downloads; no access to the playground's storage). Uncaught errors and unhandled rejections show in the console.
-- **Not supported:** assets loaded with `import.meta.url`, `fetch` to a server of the project (there is none), Solid's JSX (it needs its own compiler), and source-mapped stack traces.
+- **Solid 2:** a project that depends on `@solidjs/web` (or on `solid-js` 2) has its JSX compiled by Solid's own compiler, `@solidjs/compiler`, which loads (about 6 MB) the first time such a project runs. Solid 1's JSX isn't compiled; use `solid-js/html` there.
+- **Not supported:** assets loaded with `import.meta.url`, `fetch` to a server of the project (there is none), and source-mapped stack traces.
 
 For example, a React counter qualifies: it has an `index.html` at the root and nothing that needs Bun or Node. This one runs here with the fast path on (an embed's `fast` attribute):
 
@@ -193,6 +194,52 @@ createRoot(document.getElementById("root")!).render(<Counter />);
 ```
 
 [Open it in the playground with the fast path on](https://runbun.dev/?fast#code=XVHBbtswDP0Vlicbc-3kOMf2YcUOvXbHaQNciem02pQh0UEDw_8-SHYyoCcRfO-Rj3oLXrA-Fni2AwWsF7Rs6KP8I-OANTYPxmm5TgSx0Slu9hegeXXmmiqAxtgLWNMq9M6Jwq6pjL3cwKC9nQTimFbh6Mw8kEIIXrcKq7G3XEr4SKqNus2v9gVNte_EAm9krNGOk_MCC8yBfkgvBCucvRtBoadei8KT4jtJe-qFXpyTT7RH48ZKD5Z4Uyg-z6zFOoYnN7OQz3JYoiHtOAj81LFbQCBJ-C9o7w6yQ36KTE8ye4bmdRZxDI6fBqvf2yXLoe3uyixNgi9wzNcuMcjAkporiB0pNNU2oTspXqO1_1dkxul5JJbyjeT7QLH8dn022S2C_CEvPbEhnzX7IVB10R8WOPX6vX-j8m9wjDWm8xRyP5LCGhSe-yCPyQl5hcUGT95eekkM8TPt3ZjqJroFuwOGprietaUQCWlJBPZ0ouT38Wt5KA-75g7GTD4RIr6mX8B1_Qc), and press **Run**: no install, and the console lists `react` and `react-dom` from esm.sh.
+
+A Solid 2 counter runs the same way, its JSX compiled by Solid's compiler:
+
+```html playground mode=preview group=fast-solid fast title="index.html"
+<!doctype html>
+<html>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/main.tsx"></script>
+  </body>
+</html>
+```
+
+```tsx playground mode=preview group=fast-solid fast title="main.tsx"
+import { createSignal } from "solid-js";
+import { render } from "@solidjs/web";
+
+function Counter() {
+  const [count, setCount] = createSignal(0);
+  return <button onClick={() => setCount(count() + 1)}>Clicked {count()} times</button>;
+}
+
+render(() => <Counter />, document.getElementById("root")!);
+```
+
+```json playground mode=preview group=fast-solid fast title="package.json"
+{
+  "name": "fast-solid-counter",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@solidjs/web": "^2.0.1",
+    "solid-js": "^2.0.1"
+  }
+}
+```
+
+```json playground mode=preview group=fast-solid fast title="tsconfig.json"
+{
+  "compilerOptions": {
+    "jsx": "preserve",
+    "jsxImportSource": "@solidjs/web",
+    "strict": true
+  }
+}
+```
 
 ## Installing packages
 
