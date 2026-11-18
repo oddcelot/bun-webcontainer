@@ -638,7 +638,7 @@ export class Runner {
    * A child process a program started (worker/processes.ts spawnChild): a worker of its own on the project's files as
    * they are now, its stdout and stderr (console lines included) back to the parent as bytes, its exit as a report.
    */
-  private spawn(parent: Worker, m: { id: number; launch: { entry?: string; script?: string; args: string[] }; cwd: string; env: Record<string, string>; thread?: object; port?: MessagePort }) {
+  private spawn(parent: Worker, m: { id: number; launch: { entry?: string; script?: string; args: string[]; execArgv?: string[]; run?: boolean }; cwd: string; env: Record<string, string>; thread?: object; port?: MessagePort }) {
     const ppid = this.procs.get(parent)?.id ?? 1;
     const worker = this.newWorker();
     const proc: Proc = { worker, parent, id: m.id, ended: false };
@@ -663,10 +663,10 @@ export class Runner {
       out(2, enc.encode(`worker error: ${e.message}\n`));
       this.endChild(proc, 1, null);
     };
-    const { entry, script, args } = m.launch;
+    const { entry, script, args, execArgv, run } = m.launch;
     // A worker_threads thread also gets its channel to the Worker (worker/node/worker_threads.ts).
     const thread = m.port ? { thread: m.thread, port: m.port } : {};
-    worker.postMessage({ type: "start", entry, script, args, files: this.vfs.files, dirs: this.vfs.dirs, vfsRoot: vfsRoot(), proc: { pid: m.id, ppid, cwd: m.cwd, env: m.env }, ...thread }, m.port ? [m.port] : []);
+    worker.postMessage({ type: "start", entry, script, args, execArgv, run, files: this.vfs.files, dirs: this.vfs.dirs, vfsRoot: vfsRoot(), proc: { pid: m.id, ppid, cwd: m.cwd, env: m.env }, ...thread }, m.port ? [m.port] : []);
     // Before its code runs (the worker handles it ahead of the start, which awaits the wasm), so its first Bun.serve sees them.
     this.shareTaken(worker);
   }

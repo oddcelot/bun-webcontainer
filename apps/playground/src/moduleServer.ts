@@ -11,7 +11,7 @@ import { inRanges, isMethod, literalRanges } from "./literals";
 import { DATA_FILE, dataFormat, loadResolver, parseDataFile, resolve, type DataFormat, type ResolveKind } from "./resolver";
 import { dirname, isLazy, LazyMiss, norm, withLoaded, type VFS } from "@runbun/vfs";
 import hostNames, { version as hostVersion } from "virtual:host-package-names";
-import { builtinName, bunFallback, exportNames, NODE_PREFIXED } from "./worker/node";
+import { builtinName, BUN_PACKAGE_ALIASES, exportNames, NODE_PREFIXED } from "./worker/node";
 import { pluginUrl, routesThroughPlugins, splitNamespace, type PluginAnswer, type PluginFilters } from "./pluginRoutes";
 
 export type ModuleResponse = { status: number; body: string };
@@ -101,7 +101,7 @@ function esmDirname(code: string, path: string): string {
 
 /**
  * Bun has a synchronous `import.meta.require` (Vite uses it for `ws`), which is also `require` in an ES module.
- * Literal specifiers that resolve become static imports; Node built-ins and `bun:<spec>` fallbacks come from the
+ * Literal specifiers that resolve become static imports; Node built-ins and the packages Bun has its own of come from the
  * registry; in the worker, anything else loads when called (see worker/node/module.ts).
  *
  * A free `require`'s literal specifiers load when required, as in Bun (ES modules too: the worker runs them
@@ -135,7 +135,7 @@ function hoistMetaRequire(vfs: VFS, code: string, path: string, dir: string, url
   const n = String(id).replace(/^node:/, "");
   if (n in b && (n !== id || !${JSON.stringify(NODE_PREFIXED)}.includes(n))) return b[n];
   if (id in t) return "__cjs" in t[id] ? t[id].__cjs : t[id];
-  if ("bun:" + id in b) return b["bun:" + id];
+  if (Object.hasOwn(${JSON.stringify(BUN_PACKAGE_ALIASES)}, id)) return b[${JSON.stringify(BUN_PACKAGE_ALIASES)}[id]];
   if (globalThis.__cjsRequire) return globalThis.__cjsRequire(id, ${JSON.stringify("/" + path)});
   throw new Error("Can't require " + JSON.stringify(id) + ". Only installed packages and built-ins work, with a literal name.");
 }))({ ${table} }, globalThis.__nodeBuiltins);`.replace(/\n\s*/g, " ") + code.replace(/\bimport\.meta\.require\b/g, "__metaRequire");
@@ -197,10 +197,7 @@ function resolveSpecifier(vfs: VFS, spec: string, dir: string, kind: ResolveKind
   if (spec.startsWith("node:") || builtin !== undefined) return builtin !== undefined ? `__node/${builtin}` : null;
   // A `file:` URL names a path, as in the config Vite bundles and imports (`import … from "file:///node_modules/vite/…"`).
   if (spec.startsWith("file:")) spec = decodeURIComponent(new URL(spec).pathname);
-  const t = resolveWith(vfs, spec, dir, kind);
-  // `ws` that isn't installed is Bun's own, as in Bun.
-  const fallback = t === null ? bunFallback(spec) : undefined;
-  return fallback ? `__node/${fallback}` : t;
+  return resolveWith(vfs, spec, dir, kind);
 }
 
 /** The transpiler's resolver: where each specifier in a module of `dir` is served. */

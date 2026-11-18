@@ -1,7 +1,7 @@
 // `Bun.resolveSync`, `Bun.resolve` and `import.meta.resolve` over the VFS, with Bun's resolver (resolve-wasm, loaded by
 // runtime.ts). Paths are VFS paths with a leading `/`, as `import.meta.path` has them.
 import { resolve } from "../resolver";
-import { builtinName, bunFallback } from "./node";
+import { builtinName, isBunPackage } from "./node";
 import nodePath from "./node/path";
 import process from "./node/process";
 import { fileURLToPath, pathToFileURL } from "./node/url";
@@ -24,11 +24,11 @@ export class ResolveMessage extends Error {
 
 const isPath = (spec: string) => /^(\.\.?(\/|$)|\/|file:)/.test(spec);
 
-/** `fs` -> `node:fs`, `bun:sqlite`, `bun`: what Bun resolves a built-in to, or undefined. */
+/** `fs` -> `node:fs`, `bun:sqlite`, `bun`, `ws/lib/websocket` -> `ws`: what Bun resolves a built-in to, or undefined. */
 function builtin(spec: string): string | undefined {
   const name = builtinName(spec);
   if (name === undefined) return undefined;
-  return name === "bun" || name.startsWith("bun:") ? name : `node:${name}`;
+  return name === "bun" || name.startsWith("bun:") || isBunPackage(spec) ? name : `node:${name}`;
 }
 
 /** The VFS path (leading `/`) `spec` resolves to from directory `dir` (absolute), or null. */
@@ -48,7 +48,6 @@ export function resolveSync(specifier: string, from: string | URL): string {
   if (b) return b;
   const referrer = from instanceof URL || String(from).startsWith("file:") ? fileURLToPath(from) : String(from);
   const r = resolvePath(spec, nodePath.resolve(process.cwd(), referrer));
-  if (r === null && bunFallback(spec)) return spec;
   if (r === null) throw new ResolveMessage(spec, referrer);
   return r;
 }
@@ -65,8 +64,6 @@ export function importMetaResolve(file: string, specifier: string): string {
   if (isPath(spec)) return new URL(spec, pathToFileURL(file)).href;
   if (/^[a-z][a-z\d+.-]*:/i.test(spec)) return spec;
   const r = resolvePath(spec, nodePath.dirname(file));
-  // `ws` that isn't installed: Bun's own, by its name.
-  if (r === null && bunFallback(spec)) return spec;
   if (r === null) throw new ResolveMessage(spec, file);
   return pathToFileURL(r).href;
 }

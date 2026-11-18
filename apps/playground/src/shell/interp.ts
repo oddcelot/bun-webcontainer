@@ -243,8 +243,8 @@ export type ShellOptions = {
   builtins: Record<string, Command>;
   /** The host's commands (the console's bun, git, help…), after the builtins. */
   commands?: Record<string, Command>;
-  /** Any other command the host can start in `cwd` (a program's child process, worker/processes.ts); undefined: not found. */
-  external?: (name: string, cwd: string) => Command | undefined;
+  /** Any other command the host can start in `cwd` with `PATH` (a program's child process, worker/processes.ts); undefined: not found. */
+  external?: (name: string, cwd: string, PATH?: string) => Command | undefined;
   home?: string;
   signal?: AbortSignal;
 };
@@ -569,7 +569,7 @@ export class Shell {
     const name = argv[0]!;
     const redirected = await this.redirect(node.redirect, node.redirect_file, io, env, objs, name);
     if (typeof redirected === "number") return redirected;
-    const run = this.opts.builtins[name] ?? this.opts.commands?.[name] ?? this.opts.external?.(name, env.cwd);
+    const run = this.opts.builtins[name] ?? this.opts.commands?.[name] ?? this.opts.external?.(name, env.cwd, local.PATH ?? env.get("PATH"));
     try {
       if (!run) {
         await redirected.io.stderr.write(`bun: command not found: ${name}\n`);
@@ -582,7 +582,7 @@ export class Shell {
         env: { ...Object.fromEntries(env.exported), ...local },
         fs: this.opts.fs,
         path: (p) => resolvePath(env.cwd, p),
-        known: (n) => (Object.hasOwn(this.opts.builtins, n) ? "builtin" : (this.opts.commands && Object.hasOwn(this.opts.commands, n)) || this.opts.external?.(n, env.cwd) ? "command" : undefined),
+        known: (n) => (Object.hasOwn(this.opts.builtins, n) ? "builtin" : (this.opts.commands && Object.hasOwn(this.opts.commands, n)) || this.opts.external?.(n, env.cwd, env.get("PATH")) ? "command" : undefined),
         signal: this.signal,
       };
       return await run(ctx);

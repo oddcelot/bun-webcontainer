@@ -58,7 +58,7 @@ A terminal with colors, clickable links, history (<kbd>↑</kbd>/<kbd>↓</kbd>)
 
 | Command | Does |
 |---|---|
-| `bun run <script\|file>`, `bun <file>` | Run a `package.json` script or a file |
+| `bun run <script\|file>`, `bun <file>` | Run a `package.json` script or a file; `--preload <file>` (`-r`, `--require`, `--import`) runs a module first, after `bunfig.toml`'s `preload`, as in Bun |
 | `bun test [-u] [filter…]` | Run `*.test.*` / `*.spec.*` files with [`bun:test`](/compatibility/bun/#buntest) |
 | `bun install` (`i`) | Install dependencies |
 | `bun add <pkg[@range]> [-d]` (`a`) | Add a dependency |
@@ -102,7 +102,7 @@ With remotes on GitHub, GitLab, Codeberg or Bitbucket (`https://` URLs): `remote
 **Run** starts your code in a Web Worker. It runs the first of:
 
 1. `module` or `main` in `package.json`
-2. the file in `scripts.dev` or `scripts.start` (`"dev": "bun --watch src/index.ts"` works)
+2. the file in `scripts.dev` or `scripts.start` (`"dev": "bun --watch src/index.ts"` works, and so does `"dev": "bun --preload ./setup.ts src/index.ts"`, which runs through Bun's shell)
 3. `index.ts`, `index.tsx`, `index.js` or `src/index.ts`
 
 - Press **Run** (<kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Enter</kbd>) again to restart. Stop with <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>.</kbd>, or <kbd>Ctrl</kbd>+<kbd>C</kbd> in the console.

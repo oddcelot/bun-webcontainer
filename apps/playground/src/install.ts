@@ -3,6 +3,7 @@ import { githubTarballUrl, gunzip, installFromBunLock, installPath, packageFiles
 import { lockedPackages, resolveProject, writeBunLock, type Manifest, type ResolveHost } from "./lockfileWrite";
 import { cacheTarball, fetchPackument, fetchTarball, fetchVersion, setNpmrc } from "./pkgCache";
 import { tarballRoot } from "./gitDeps";
+import { gitCheckout } from "./gitClone";
 import { links } from "./links";
 import { parseNpmrc } from "./npmrc";
 import { packageDirs, vfsWorkspaces } from "./workspaces";
@@ -58,6 +59,11 @@ function resolveHost(vfs: VFS, semver: Semver): ResolveHost {
       const root = tarballRoot(await gunzip(bytes));
       if (root) await cacheTarball(githubTarballUrl({ ...dep, ref: root.commit }), bytes);
       return bytes;
+    },
+    async git(dep, name) {
+      const { commit, files } = await gitCheckout(dep.clone, dep.ref, name);
+      const pkg = files.get("package.json");
+      return { commit, manifest: pkg && (JSON.parse(new TextDecoder().decode(pkg)) as Manifest) };
     },
     gunzip,
   };

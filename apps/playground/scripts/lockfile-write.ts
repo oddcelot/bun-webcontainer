@@ -81,6 +81,24 @@ function host(dir: string, seen: string[] = []): ResolveHost {
       if (!res.ok) throw new Error(`GET ${url} - ${res.status}`);
       return new Uint8Array(await res.arrayBuffer());
     },
+    // Native git where the playground has git.wasm (src/gitClone.ts): the same ref to commit, the same package.json.
+    async git(dep) {
+      const tmp = mkdtempSync(join(tmpdir(), "lockfile-write-git-"));
+      try {
+        seen.push(dep.clone);
+        const git = (...args: string[]) => Bun.spawnSync(["git", ...args], { cwd: tmp, stderr: "pipe" });
+        const cloned = git("clone", "--quiet", dep.clone, ".");
+        if (cloned.exitCode) throw new Error(`git clone ${dep.clone}: ${cloned.stderr}`);
+        const commit = dep.ref
+          ? [dep.ref, `origin/${dep.ref}`].map((r) => git("rev-parse", "--verify", "-q", `${r}^{commit}`).stdout.toString().trim()).find(Boolean)
+          : git("rev-parse", "HEAD").stdout.toString().trim();
+        if (!commit) throw new Error(`no commit matching "${dep.ref}"`);
+        const pkg = git("show", `${commit}:package.json`);
+        return { commit, manifest: pkg.exitCode ? undefined : (JSON.parse(pkg.stdout.toString()) as Manifest) };
+      } finally {
+        rmSync(tmp, { recursive: true, force: true });
+      }
+    },
     gunzip: async (bytes) => Bun.gunzipSync(bytes as Uint8Array<ArrayBuffer>),
   };
 }

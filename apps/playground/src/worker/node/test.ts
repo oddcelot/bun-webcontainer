@@ -1,5 +1,6 @@
 import { fakeTimers, real, resetFakeTimers } from "./fakeTimers";
 import { dedent, serialize, SnapshotFile, withMatchers, type SnapshotCounts, type SnapshotIO } from "./snapshot";
+import { formatLog } from "../inspect";
 import { inspect, isDeepStrictEqual } from "./util";
 
 // `bun:test`: a compact Jest-style runner. Files register suites while they load; `runTestFiles` loads each file in
@@ -621,9 +622,10 @@ function call(fn: Fn, timeout: number): Promise<void> {
 type Totals = { pass: number; fail: number; skip: number; todo: number };
 const totals: Totals = { pass: 0, fail: 0, skip: 0, todo: 0 };
 
+/** How Bun reports what failed a test: an error as its printer has it (source, own properties, frames, cause). */
 function failure(e: unknown): string {
   if (e instanceof ExpectError) return `error: ${e.message}`;
-  if (e instanceof Error) return e.name === "Error" ? `error: ${e.message}` : `${e.name}: ${e.message}`;
+  if (e instanceof Error) return formatLog([e], "error").replace(/\n+$/, "");
   return `error: ${pretty(e)}`;
 }
 

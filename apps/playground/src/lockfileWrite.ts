@@ -8,7 +8,7 @@ import type { Semver } from "./semver";
 import { findWorkspaces, type Workspace } from "./workspaces";
 import { catalogRange, catalogsOf, type Catalogs } from "./catalogs";
 import { overrideLines, overridesOf, type Overrides } from "./overrides";
-import { githubDep, isGitRange, tarballRoot, type GitHubDep } from "./gitDeps";
+import { githubDep, gitRepoDep, isGitRange, tarballRoot, type GitHubDep, type GitRepoDep } from "./gitDeps";
 import { untar } from "./tar";
 import { writtenOrder } from "./lockOrder";
 
@@ -57,6 +57,8 @@ export type ResolveHost = {
   link(name: string): string | undefined;
   /** GitHub's tarball (gzipped) of a repository at a ref. */
   github(dep: GitHubDep): Promise<Uint8Array<ArrayBuffer>>;
+  /** Another git repository, cloned at its ref: the commit, and its package.json if it has one. `name`: for errors. */
+  git(dep: GitRepoDep, name: string): Promise<{ commit: string; manifest: Manifest | undefined }>;
   /** The gunzipped bytes of a tarball. */
   gunzip(bytes: Uint8Array): Promise<Uint8Array>;
 };
@@ -70,12 +72,15 @@ type Pkg = {
   name: string;
   /**
    * What follows `name@` in bun.lock: a version, a tarball URL, `file:<path>`, a tarball's path in the project,
-   * `link:<name>`, `github:<owner>/<repo>#<commit>` or `workspace:<path>`.
+   * `link:<name>`, `github:<owner>/<repo>#<commit>`, `git+<url>#<commit>` or `workspace:<path>`.
    */
   resolution: string;
-  kind: "npm" | "tarball" | "local" | "folder" | "link" | "github" | "workspace";
+  kind: "npm" | "tarball" | "local" | "folder" | "link" | "github" | "git" | "workspace";
   version?: string;
-  /** An npm package's tarball URL: bun.lock writes it unless it is under registry.npmjs.org. A GitHub one's root folder. */
+  /**
+   * An npm package's tarball URL: bun.lock writes it unless it is under registry.npmjs.org. A GitHub one's root folder,
+   * another git one's commit.
+   */
   registry?: string;
   integrity?: string;
   manifest: Manifest;
@@ -171,11 +176,11 @@ export function lockedPackages(packages: Record<string, unknown[]>): Pkg[] {
     if (typeof ident !== "string") continue;
     const at = ident.indexOf("@", 1);
     const name = ident.slice(0, at), resolution = ident.slice(at + 1);
-    const kind = /^\d/.test(resolution) ? "npm" : /^https?:\/\//.test(resolution) ? "tarball" : resolution.startsWith("github:") ? "github" : undefined;
+    const kind = /^\d/.test(resolution) ? "npm" : /^https?:\/\//.test(resolution) ? "tarball" : resolution.startsWith("github:") ? "github" : resolution.startsWith("git+") ? "git" : undefined;
     if (!kind || out.has(ident)) continue;
     const info = (entry.find((e) => !!e && typeof e === "object" && !Array.isArray(e)) ?? {}) as Manifest & { optionalPeers?: string[] };
     const manifest: Manifest = { ...info, peerDependenciesMeta: Object.fromEntries((info.optionalPeers ?? []).map((n) => [n, { optional: true }])) };
-    const integrity = (kind === "tarball" ? entry[2] : entry[3]) as string | undefined;
+    const integrity = (kind === "tarball" ? entry[2] : kind === "git" ? undefined : entry[3]) as string | undefined;
     const registry = kind !== "tarball" && typeof entry[kind === "npm" ? 1 : 2] === "string" ? (entry[kind === "npm" ? 1 : 2] as string) : undefined;
     out.set(ident, { name, resolution, kind, version: kind === "npm" ? resolution : undefined, registry, integrity, manifest, deps: depsOf(manifest, false), locked: true });
   }
@@ -194,7 +199,7 @@ export async function resolveProject(root: Manifest, host: ResolveHost, locked: 
       p.name === name &&
       (p.kind === "tarball"
         ? p.resolution === range
-        : p.kind === "github"
+        : p.kind === "github" || p.kind === "git"
           ? lockedRanges[name] === range
           : p.version !== undefined && !offRegistry(range) && semver.satisfies(p.version, range)),
     );
@@ -335,8 +340,20 @@ export async function resolveProject(root: Manifest, host: ResolveHost, locked: 
     if (isGitRange(range)) {
       const gh = githubDep(range);
       if ("error" in gh) {
-        problems.push(`${dep.name}@${dep.range}: ${gh.error}`);
-        return;
+        // Not GitHub's: a clone (gitClone.ts), from a host the git proxy reaches.
+        const repo = gitRepoDep(range);
+        if ("error" in repo) {
+          problems.push(`${dep.name}@${dep.range}: ${repo.error}`);
+          return;
+        }
+        let commit: string, manifest: Manifest | undefined;
+        try {
+          ({ commit, manifest } = await host.git(repo, dep.name));
+        } catch (e) {
+          problems.push(`${dep.name}@${dep.range}: ${e instanceof Error ? e.message : e}`);
+          return;
+        }
+        return add({ name: manifest?.name ?? repo.fallbackName, resolution: `${repo.lock}#${commit}`, kind: "git", registry: commit, manifest: manifest ?? {}, deps: depsOf(manifest ?? {}, false) });
       }
       const key = `${gh.owner}/${gh.repo}#${gh.ref}`;
       let got = github.get(key);
@@ -603,6 +620,7 @@ function entry(pkg: Pkg): string {
   if (pkg.kind === "workspace") return `[${ident}]`;
   if (pkg.kind === "tarball" || pkg.kind === "local") return `[${ident}, ${info(pkg)}${pkg.integrity ? `, ${q(pkg.integrity)}` : ""}]`;
   if (pkg.kind === "github") return `[${ident}, ${info(pkg)}, ${q(pkg.registry ?? "")}, ${q(pkg.integrity ?? "")}]`;
+  if (pkg.kind === "git") return `[${ident}, ${info(pkg)}, ${q(pkg.registry ?? "")}]`;
   return `[${ident}, ${info(pkg)}]`;
 }
 

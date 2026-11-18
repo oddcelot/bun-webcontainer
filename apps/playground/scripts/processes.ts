@@ -52,7 +52,14 @@ const files: Record<string, string> = {
   "syncfs.ts": `import { readFileSync, writeFileSync } from "node:fs";\nwriteFileSync("sync-out.txt", "child read " + readFileSync("from-parent.txt", "utf8"));`,
   "big.ts": `process.stdout.write("x".repeat(${5 * MiB}));\nprocess.stderr.write("y".repeat(${3 * MiB}));`,
   "nestedsync.ts": `console.log("ns:", Bun.spawnSync(["bun", "child.ts", "deep"]).stdout.toString().trim());`,
-  "package.json": JSON.stringify({ name: "procs", scripts: { greet: "echo from-script && bun child.ts s", build: "echo built && bun child.ts b > built.txt && cat built.txt", serve: "echo serving && bun server.ts" } }),
+  "package.json": JSON.stringify({ name: "procs", scripts: { greet: "echo from-script && bun child.ts s", build: "echo built && bun child.ts b > built.txt && cat built.txt", serve: "echo serving && bun server.ts", preloaded: "bun -r ./pre-b.ts child.ts ps" } }),
+  // Preloads on the command line, and a folder whose bunfig.toml preloads too.
+  "pre-a.ts": `console.log("pre-a", JSON.stringify(process.execArgv));`,
+  "pre-b.ts": `console.log("pre-b");`,
+  "pre/bunfig.toml": `preload = ["./a.ts"]`,
+  "pre/a.ts": `console.log("pre/a");`,
+  "pre/b.ts": `console.log("pre/b");`,
+  "pre/main.ts": `console.log("pre/main", JSON.stringify(process.execArgv));`,
   "server.ts": `Bun.serve({ port: 3001, fetch: (req) => new Response("child server " + new URL(req.url).pathname) });\nconsole.log("listening");`,
   "two.ts": `Bun.serve({ port: 3003, fetch: (req) => new Response("program " + new URL(req.url).pathname) });\nBun.spawn(["bun", "server.ts"], { stdout: "inherit" });`,
   "inuse.ts":`try {\n  Bun.serve({ port: 3002, fetch: () => new Response("child") });\n  console.log("served");\n  process.exit(0);\n} catch (e) {\n  const { code, syscall, errno, message } = e as Error & { code: string; syscall: string; errno: number };\n  console.log(code, syscall, errno, message);\n}`,
@@ -180,6 +187,22 @@ log("$ code:", (await $\`bun child.ts\`.env({ ...process.env, CODE: "4" }).nothr
 {
   const p = Bun.spawn(["bun", "run", "greet"]);
   log("script:", (await new Response(p.stdout).text()).trim().split("\\n").join(" | "));
+}
+// preloads on the command line (\`-r\`, \`--preload\` & co.), in order, after bunfig.toml's; with \`bun run\`, bunfig.toml's
+// replace them (Bun 1.4)
+{
+  const out = async (argv: string[], sub = "") => {
+    const p = Bun.spawn(argv, { cwd: require("node:path").join(process.cwd(), sub), stderr: "pipe" });
+    const lines = (await new Response(p.stdout).text()).trim().split("\\n").join(" | ");
+    const err = (await new Response(p.stderr).text()).trim().split("\\n").filter((l) => l.startsWith("error:")).join(" | ");
+    return [lines, err, await p.exited].join(" / ");
+  };
+  log("preload:", await out(["bun", "-r", "./pre-a.ts", "--preload=./pre-b.ts", "child.ts", "pr"]));
+  log("preload run:", await out(["bun", "run", "--require", "./pre-b.ts", "child.ts"]));
+  log("preload bunfig:", await out(["bun", "--import", "./b.ts", "main.ts"], "/pre"));
+  log("preload bunfig run:", await out(["bun", "run", "-r", "./b.ts", "main.ts"], "/pre"));
+  log("preload missing:", await out(["bun", "-r", "./pre-b.ts", "-r", "./nope.ts", "child.ts"]));
+  log("preload script:", await out(["bun", "run", "preloaded"]));
 }
 // a grandchild
 {
@@ -310,6 +333,12 @@ const EXPECTED = [
   "$: child dollar -",
   "$ code: 4",
   "script: from-script | child s -",
+  'preload: pre-a ["-r","./pre-a.ts","--preload=./pre-b.ts"] | pre-b | child pr - /  / 0',
+  "preload run: pre-b | child  - /  / 0",
+  'preload bunfig: pre/a | pre/b | pre/main ["--import","./b.ts"] /  / 0',
+  'preload bunfig run: pre/a | pre/main ["-r","./b.ts"] /  / 0',
+  'preload missing: pre-b / error: preload not found "./nope.ts" / 1',
+  "preload script: pre-b | child ps - /  / 0",
   "nested: child grand -",
   "wt main: true 0 null",
   'wt hello: [false,1,{"n":2},"w1",["a1"]] 1 online',
@@ -444,6 +473,21 @@ try {
     const ran = after.filter((l) => want.includes(l));
     if (JSON.stringify(ran) === JSON.stringify(want)) console.log("✓ console bun run <shell line>");
     else (bad++, console.error(`✗ console bun run build\n  got  ${JSON.stringify(after)}\n  want ${JSON.stringify(want)}`));
+    // The console's `bun -r <file> <file>` and `bun run` of a script with a preload: the preloads run first.
+    for (const [line, wantLines] of [
+      ["bun -r ./pre-a.ts --preload ./pre-b.ts child.ts con", ['pre-a ["-r","./pre-a.ts","--preload","./pre-b.ts"]', "pre-b", "child con -"]],
+      ["bun run preloaded", ["pre-b", "child ps -"]],
+      ["cd pre && bun --preload ./b.ts main.ts", ["pre/a", "pre/b", 'pre/main ["--preload","./b.ts"]']],
+    ] as const) {
+      const mark = (await page.evaluate(() => (window as unknown as { lines: string[] }).lines)).length;
+      await page.keyboard.type(line + "\n");
+      await page.waitForFunction((n: number) => (window as unknown as { lines: string[] }).lines.slice(n).some((l) => l.includes("exited with code")), { timeout: 30_000 }, mark).catch(() => {});
+      const lines = (await page.evaluate(() => (window as unknown as { lines: string[] }).lines)).slice(mark);
+      const ran = lines.filter((l) => (wantLines as readonly string[]).includes(l));
+      if (JSON.stringify(ran) === JSON.stringify(wantLines)) console.log(`✓ console ${line}`);
+      else (bad++, console.error(`✗ console ${line}\n  got  ${JSON.stringify(lines)}\n  want ${JSON.stringify(wantLines)}`));
+    }
+    await page.keyboard.type("cd /\n");
     // A server a child process starts (the shell's `bun server.ts`; the program, Bun's shell, serves nothing) answers
     // the preview. Fetched from a frame of the origin whose service worker serves previews.
     const mark = (await page.evaluate(() => (window as unknown as { lines: string[] }).lines)).length;
