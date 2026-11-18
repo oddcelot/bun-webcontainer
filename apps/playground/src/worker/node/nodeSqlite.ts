@@ -1,5 +1,5 @@
-// node:sqlite (`DatabaseSync`, `StatementSync`) as Bun has it, over bun:sqlite's `Database` (sqlite.ts: the file read
-// from and written back to the VFS) and the SQLite C API (sqliteEngine.ts). Statements bind and read the way Node's
+// node:sqlite (`DatabaseSync`, `StatementSync`) as Bun has it, over bun:sqlite's `Database` (sqlite.ts: a file database
+// read and written in place in the VFS) and the SQLite C API (sqliteEngine.ts). Statements bind and read the way Node's
 // do: named parameters from an object (with or without their prefix), the rest positional, booleans and undefined
 // refused, every number as a REAL, integers read as numbers unless `readBigInts` (and an error past 2^53), rows as
 // null-prototype objects.
@@ -173,7 +173,6 @@ export class DatabaseSync {
     const db = this.#db;
     try {
       db._conn.eachStatement(sql, (s) => {
-        if (!s.readonly) db._wrote();
         while (s.step());
       });
     } catch (e) {
@@ -280,7 +279,6 @@ export class DatabaseSync {
     } catch (e) {
       throw fromRaw(e, this);
     }
-    db._wrote();
   }
 
   createTagStore(maxSize = 1000): SQLTagStore {
@@ -475,7 +473,6 @@ export class StatementSync {
   /** The prepared statement, reset, with `args` bound. */
   #start(args: unknown[]): Stmt | null {
     if (this.#done) throw invalidState("statement has been finalized");
-    const raw = this.#db[RAW]!;
     const s = this.#raw;
     if (!s) return null;
     s.reset();
@@ -484,7 +481,6 @@ export class StatementSync {
     } catch (e) {
       throw fromRaw(e, this.#db);
     }
-    if (!s.readonly) raw._wrote();
     return s;
   }
 

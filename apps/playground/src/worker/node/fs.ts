@@ -19,6 +19,21 @@ export function setFs(v: VFS, m: Mirror) {
   mirror = m;
 }
 
+/**
+ * The worker's VFS, and a path's current state sent to the page (its bytes, or that it is gone): for SQLite's VFS
+ * (sqliteVfs.ts), which writes to the worker's copy on every commit and to the page at most every so often.
+ */
+export function rawFs() {
+  return {
+    vfs,
+    mirror(k: string) {
+      const d = vfs.files.get(k);
+      if (d === undefined) mirror("remove", k);
+      else mirror("write", k, d instanceof Uint8Array ? d.slice() : d);
+    },
+  };
+}
+
 /** The VFS for node:wasi's host, its changes mirrored to the page as this module's are; and a path's key. */
 export function wasiFs() {
   const v = vfs;

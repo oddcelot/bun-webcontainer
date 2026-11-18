@@ -2,13 +2,11 @@
 // bindings drive the native library: statements stay prepared, values bind with sqlite3_bind_*, errors carry the
 // extended result code and sqlite3_error_offset. The engine loads asynchronously, so the wrapper module of
 // `bun:sqlite` awaits `globalThis.__loadBunSqlite()` first; after that `new Database()` is synchronous.
-// File databases persist: the bytes are read from the worker's VFS on open and written back with sqlite3_serialize
-// (debounced after a write, and on close). Writes go through the fs shim, so the page's file tree and OPFS mirror see them.
+// A file database is a file of the program's VFS that SQLite reads and writes in place (sqliteVfs.ts), with its
+// journal or WAL next to it, so the page's file tree and storage see it as they see any file the program writes.
 import { norm } from "@runbun/vfs";
-import fs from "./fs";
 import path from "./path";
-import { quietTimeout } from "../loop";
-import { Conn, DBCONFIG_DEFENSIVE, DBCONFIG_DQS_DDL, DBCONFIG_DQS_DML, RawError, createAggregate, loaded, rcName, result, resultError, valueOf, type Stmt, type Value } from "./sqliteEngine";
+import { Conn, DBCONFIG_DEFENSIVE, DBCONFIG_DQS_DDL, DBCONFIG_DQS_DML, RawError, createAggregate, loaded, shutdown, rcName, result, resultError, valueOf, type Stmt, type Value } from "./sqliteEngine";
 
 type Fn = (...args: any[]) => any;
 
@@ -20,8 +18,6 @@ interface Options {
   strict?: boolean;
   safeIntegers?: boolean;
 }
-
-const FLUSH_MS = 200;
 
 // --- SQLiteError -------------------------------------------------------------------------------------------------
 
@@ -46,10 +42,6 @@ function sqliteError(e: unknown, db?: Database): unknown {
   if (own !== undefined) return own;
   if (!(e instanceof RawError)) return e;
   return new SQLiteError(e.message, { code: rcName(e.errno) ?? "SQLITE_ERROR", errno: e.errno, byteOffset: e.byteOffset }, INTERNAL);
-}
-
-function cantOpen(): SQLiteError {
-  return new SQLiteError("unable to open database file", { code: "SQLITE_CANTOPEN", errno: 14, byteOffset: -1 }, INTERNAL);
 }
 
 // --- parameters --------------------------------------------------------------------------------------------------
@@ -184,7 +176,6 @@ export class Statement<R = unknown, P extends unknown[] = any[]> {
     s.reset();
     try {
       bindArgs(s, params, this.db._strict, true, this.safe);
-      if (!s.readonly) this.db._wrote();
       while (s.step()) if (fn(s) === false) break;
     } catch (e) {
       throw sqliteError(e, this.db);
@@ -300,12 +291,9 @@ export class Statement<R = unknown, P extends unknown[] = any[]> {
   }
 }
 
-/** File databases still open: flushed when the worker is about to be stopped (see flushDatabases). */
-const openFiles = new Set<Database>();
-
-/** Writes every open file database back now; the runtime calls this before Run/Stop terminates the worker. */
+/** Closes the databases still open and sends their files to the page; the runtime calls this before Run/Stop terminates the worker. */
 export function flushDatabases() {
-  for (const db of openFiles) db.flush();
+  shutdown();
 }
 
 const toBuffer = (bytes: Uint8Array): Uint8Array => {
@@ -321,12 +309,8 @@ export class Database {
   _pending: unknown;
   readonly filename: string;
   private cache = new Map<string, Statement>();
-  /** VFS key of the backing file; undefined for in-memory databases and readonly ones (which never write back). */
-  private file: string | undefined;
-  private dirty = false;
   private closed = false;
   private depth = 0;
-  private timer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(filename: string | Uint8Array = ":memory:", options: number | Options = {}) {
     if (!loaded()) throw new Error("bun:sqlite is not loaded yet");
@@ -341,21 +325,10 @@ export class Database {
       create = !!(options & 4);
     } else if (readonly && (o.create || o.readwrite)) throw new TypeError('A read-only database ("readonly: true" or "readwrite: false") cannot have "create: true" or "readwrite: true"');
     this.filename = filename instanceof Uint8Array ? "" : String(filename);
-    let image: Uint8Array | undefined;
-    let key: string | undefined;
-    if (filename instanceof Uint8Array) image = filename;
-    else if (filename !== "" && filename !== ":memory:") {
-      key = norm(path.resolve(String(filename)));
-      if (fs.existsSync(key)) {
-        try {
-          image = fs.readFileSync(key) as Uint8Array;
-        } catch {
-          throw cantOpen();
-        }
-      } else if (!create) throw cantOpen();
-    }
+    const name = filename instanceof Uint8Array || filename === "" || filename === ":memory:" ? ":memory:" : "/" + norm(path.resolve(String(filename)));
     try {
-      this._conn = new Conn(image?.byteLength ? image : undefined, readonly);
+      if (filename instanceof Uint8Array) this._conn = Conn.memory(filename, readonly);
+      else this._conn = new Conn(name, readonly ? 1 : create ? 6 : 2);
     } catch (e) {
       throw sqliteError(e);
     }
@@ -363,11 +336,6 @@ export class Database {
     this._conn.dbConfig(DBCONFIG_DEFENSIVE, 1);
     this._conn.dbConfig(DBCONFIG_DQS_DML, 1);
     this._conn.dbConfig(DBCONFIG_DQS_DDL, 1);
-    if (key !== undefined && !readonly) {
-      this.file = key;
-      openFiles.add(this);
-      if (!image) this.touch(); // Bun creates the file on open
-    }
   }
 
   /** A database from the bytes `serialize()` returned (or any SQLite file). `true` or `{ readonly: true }` opens it read-only. */
@@ -392,29 +360,9 @@ export class Database {
     if (this.closed) throw new E(message);
   }
 
-  private touch() {
-    this.dirty = true;
-    this.timer ??= quietTimeout(() => this.flush(), FLUSH_MS);
-  }
-
-  /** A statement that can write is about to run: the file needs writing back. */
-  _wrote() {
-    if (this.file) this.touch();
-  }
-
   get inTransaction(): boolean {
     this._open();
     return !this._conn.autocommit;
-  }
-
-  /** Write the database back to the VFS now (later when a transaction is open: its writes aren't committed yet). */
-  flush() {
-    clearTimeout(this.timer);
-    this.timer = undefined;
-    if (!this.file || !this.dirty || this.closed) return;
-    if (!this._conn.autocommit) return void this.touch();
-    this.dirty = false;
-    fs.writeFileSync(this.file, this._conn.serialize());
   }
 
   _changes(): number {
@@ -439,7 +387,6 @@ export class Database {
     this.raw(() =>
       this._conn.eachStatement(sql, (s, i) => {
         if (i === 0) bindArgs(s, params, this._strict, false, this._safe);
-        if (!s.readonly) this._wrote();
         while (s.step());
       }),
     );
@@ -484,7 +431,6 @@ export class Database {
           try {
             const r = fn(...args);
             this.raw(() => this._conn.exec(nested ? `release ${sp}` : "commit"));
-            this._wrote();
             return r;
           } catch (e) {
             try {
@@ -589,8 +535,6 @@ export class Database {
 
   close(): void {
     if (this.closed) return;
-    this.flush();
-    openFiles.delete(this);
     this.closed = true;
     this.cache.clear();
     this._conn.close();

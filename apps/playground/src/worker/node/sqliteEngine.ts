@@ -1,11 +1,15 @@
 // SQLite itself for bun:sqlite (sqlite.ts) and node:sqlite (nodeSqlite.ts): the official wasm build
-// (@sqlite.org/sqlite-wasm), driven through its C API as Bun's bindings drive the native library. Databases live in
-// wasm memory (no OPFS, no threads, no SharedArrayBuffer): a file database is read from the VFS on open
-// (sqlite3_deserialize) and written back with sqlite3_serialize by its owner.
+// (@sqlite.org/sqlite-wasm), driven through its C API as Bun's bindings drive the native library. A file database is
+// a file of the program's VFS, read and written in place through a SQLite VFS of our own (sqliteVfs.ts; no OPFS, no
+// threads, no SharedArrayBuffer); `:memory:` and deserialized databases live in wasm memory.
 //
 // The engine loads on first use: the wrapper module of `bun:sqlite`/`node:sqlite` awaits `globalThis.__loadBunSqlite()`
 // (moduleServer.ts), after which everything here is synchronous.
 import wasmUrl from "@sqlite.org/sqlite-wasm/sqlite3.wasm?url";
+import { norm } from "@runbun/vfs";
+import { rawFs } from "./fs";
+import { quietTimeout } from "../loop";
+import { installVfs, type SqliteVfs } from "./sqliteVfs";
 
 type Fn = (...args: any[]) => any;
 interface Wasm {
@@ -24,8 +28,21 @@ interface Wasm {
 let x: Record<string, Fn>;
 let w: Wasm;
 let capi: Record<string, any>;
+let files: SqliteVfs | undefined;
 
 export const loaded = () => !!w;
+
+/** Connections still open. */
+const open = new Set<Conn>();
+
+/**
+ * The program is over (the worker is about to stop): closes every connection still open, as native Bun does when a
+ * process exits (an open transaction rolls back, a WAL is checkpointed and deleted), and sends the files to the page.
+ */
+export function shutdown() {
+  for (const c of open) c.close();
+  files?.flush();
+}
 
 (globalThis as Record<string, unknown>).__loadBunSqlite = async () => {
   if (w) return;
@@ -35,11 +52,21 @@ export const loaded = () => !!w;
   g.sqlite3ApiConfig = { warn: quiet, debug: quiet, log: quiet, error: quiet, disable: { vfs: { opfs: true, "opfs-vfs": true, "opfs-sahpool": true, "opfs-wl": true } } };
   try {
     const { default: init } = await import("@sqlite.org/sqlite-wasm");
-    const sqlite3 = (await (init as unknown as (o: object) => Promise<{ wasm: Wasm; capi: Record<string, any> }>)({
+    const sqlite3 = (await (init as unknown as (o: object) => Promise<unknown>)({
       locateFile: () => new URL(wasmUrl, location.href).href,
       print: quiet,
       printErr: quiet,
     })) as { wasm: Wasm; capi: Record<string, any> };
+    const fs = rawFs();
+    files = installVfs(sqlite3, {
+      read: (p) => fs.vfs.readBytes(p),
+      exists: (p) => fs.vfs.files.has(norm(p)),
+      isDir: (p) => fs.vfs.isDir(p),
+      write: (p, data) => fs.vfs.write(p, data),
+      remove: (p) => fs.vfs.remove(p),
+      mirror: (p) => fs.mirror(norm(p)),
+      later: quietTimeout,
+    });
     capi = sqlite3.capi;
     x = sqlite3.wasm.exports;
     w = sqlite3.wasm;
@@ -99,20 +126,40 @@ export class Conn {
   ptr: number;
   private stmts = new Set<Stmt>();
 
-  /** An in-memory database, holding `image` (a database file's bytes) when given. */
-  constructor(image?: Uint8Array, readonly = false) {
-    const rc = x.sqlite3_open_v2(cstrOnce(":memory:"), scratch, 0x06 /* READWRITE | CREATE */, 0);
+  /**
+   * Opens `filename` (a path of the program's VFS, or `:memory:`) with sqlite3_open_v2's `flags` (SQLITE_OPEN_*).
+   */
+  constructor(filename = ":memory:", flags = 0x06 /* READWRITE | CREATE */) {
+    const [name] = cstr(filename);
+    let rc: number;
+    try {
+      rc = x.sqlite3_open_v2(name, scratch, flags, cstrOnce(files!.name));
+    } finally {
+      w.dealloc(name);
+    }
     this.ptr = w.peekPtr(scratch);
     if (rc) {
-      const e = this.error();
+      const e = this.ptr ? this.error() : new RawError(errstr(rc), rc);
       x.sqlite3_close_v2(this.ptr);
       throw e;
     }
+    open.add(this);
     x.sqlite3_extended_result_codes(this.ptr, 1);
     // The wasm build's defaults where they differ from the SQLite native Bun uses (8 KiB pages, recursive triggers
     // on); a page size only applies to a database that is still empty.
     this.exec("pragma page_size = 4096; pragma recursive_triggers = 0");
-    if (image) this.load(image, readonly);
+  }
+
+  /** An in-memory database holding `image` (a database file's bytes). */
+  static memory(image: Uint8Array, readonly = false): Conn {
+    const c = new Conn();
+    try {
+      c.load(image, readonly);
+    } catch (e) {
+      c.close();
+      throw e;
+    }
+    return c;
   }
 
   /** Runs every statement of `sql` to completion. */
@@ -220,6 +267,8 @@ export class Conn {
   }
 
   close() {
+    if (!this.ptr) return;
+    open.delete(this);
     for (const s of this.stmts) s.finalize();
     x.sqlite3_close_v2(this.ptr);
     for (const f of this.functions) w.uninstallFunction(f);

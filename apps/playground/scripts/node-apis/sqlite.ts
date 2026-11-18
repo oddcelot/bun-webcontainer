@@ -397,6 +397,21 @@ export async function sqlite(t: Case, log: (line: string) => void) {
       return [l, existsSync(file), v.a, err].join(" | ");
     });
     t("sqlite readOnly missing", () => errOf(() => new DatabaseSync("node-apis-missing.db", { readOnly: true })));
+    t("sqlite file wal", () => {
+      const a = new DatabaseSync(file);
+      const mode = show(a.prepare("pragma journal_mode = wal").get());
+      const b = new DatabaseSync(file);
+      a.exec("insert into x values (43)");
+      const seen = show(b.prepare("select count(*) n from x").get());
+      const files = [existsSync(`${file}-wal`), existsSync(`${file}-shm`)];
+      a.exec("begin immediate; insert into x values (44)");
+      const busy = errOf(() => b.exec("insert into x values (45)"));
+      a.exec("commit");
+      b.close();
+      a.prepare("pragma journal_mode = delete").get();
+      a.close();
+      return [mode, seen, ...files, busy, existsSync(`${file}-wal`)].join(" | ");
+    });
     {
       const d = new DatabaseSync(file);
       const pages = await backup(d, copy);
