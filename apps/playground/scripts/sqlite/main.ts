@@ -170,4 +170,24 @@ await p("agg-nostart", () => { db.aggregate("nost", { step: (a: unknown, v: numb
   await p("file-deleted", () => { const d = new Database("vfsdb/f.db"); d.run("create table t(x)"); fs.rmSync("vfsdb/f.db"); try { d.run("insert into t values (1)"); return "wrote"; } catch (e: any) { return [e.name, closed(false)]; } finally { d.close(); } }); // the message is the platform's (macOS: SQLITE_IOERR_VNODE)
   fs.rmSync("vfsdb", { recursive: true, force: true });
 }
+{
+  // update hooks: onInsert, onUpdate, onDelete
+  const hdb = new Database(":memory:");
+  hdb.run("create table t(id integer primary key, v)");
+  const ev: any[] = [];
+  await p("hook-default", () => [hdb.onInsert, hdb.onUpdate, hdb.onDelete]);
+  await p("hook-set", () => { hdb.onInsert = function (this: any, ...a: any[]) { ev.push(["ins", this === hdb, a.length, a[0] === hdb, ...a.slice(1)]); }; hdb.onUpdate = (...a: any[]) => ev.push(["upd", ...a.slice(1)]); hdb.onDelete = (...a: any[]) => ev.push(["del", ...a.slice(1)]); return typeof hdb.onInsert; });
+  await p("hook-fire", () => { hdb.run("insert into t(v) values (1),(2)"); hdb.run("update t set v = v + 1"); hdb.run("delete from t where id = 1"); hdb.query("insert into t(v) values (?) returning id").get(5); return ev.splice(0); });
+  await p("hook-tx", () => { hdb.run("begin"); hdb.run("insert into t(v) values (9)"); hdb.run("rollback"); return ev.splice(0); });
+  await p("hook-without-rowid", () => { hdb.run("create table w(k primary key, v) without rowid"); hdb.run("insert into w values (1, 2)"); return ev.splice(0); });
+  await p("hook-attached", () => { hdb.run("attach ':memory:' as aux; create table aux.a(x)"); hdb.run("insert into aux.a values (1)"); return ev.splice(0); });
+  await p("hook-null", () => { hdb.onInsert = null; hdb.run("insert into t(v) values (1)"); return [hdb.onInsert, ev.splice(0)]; });
+  await p("hook-undef", () => { hdb.onUpdate = undefined as any; return hdb.onUpdate; });
+  await p("hook-bad", () => { hdb.onDelete = 5 as any; });
+  await p("hook-safe", () => { const s = new Database(":memory:", { safeIntegers: true }); s.run("create table t(x)"); const r: any[] = []; s.onInsert = (_d: any, _t: string, id: any) => r.push(typeof id, String(id)); s.run("insert into t values (1)"); return r; });
+  await p("hook-closed", () => { const d = new Database(":memory:"); d.onInsert = () => {}; d.close(); return d.onInsert; });
+  await p("hook-closed-set", () => { const d = new Database(":memory:"); d.close(); d.onInsert = () => {}; });
+  await p("hook-same-fn", () => { const d = new Database(":memory:"); const f = () => {}; d.onInsert = f; return [d.onInsert === f, d.onUpdate]; });
+  await p("busy-in-callback", () => { const d = new Database(":memory:"); d.run("create table t(x)"); const r: any[] = []; const st = d.prepare("select 1"); const tryIt = (f: () => unknown) => { try { f(); r.push("ok"); } catch (e: any) { r.push(e.name + ": " + e.message); } }; d.function("f", () => { tryIt(() => d.query("select 1").get()); return 1; }); d.query("select f()").get(); d.onInsert = () => { for (const f of [() => d.run("select 1"), () => d.prepare("select 1"), () => d.serialize(), () => d.inTransaction, () => (d.onInsert = null), () => d.function("g", () => 1), () => st.get(), () => d.close()]) tryIt(f); }; d.run("insert into t values (1)"); d.aggregate("ag", { start: 0, step: (a: number, _x: unknown) => (tryIt(() => st.all()), a) }); d.query("select ag(x) from t").get(); return r; });
+}
 console.log("__end__");

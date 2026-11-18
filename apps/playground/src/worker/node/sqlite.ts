@@ -311,6 +311,10 @@ export class Database {
   private cache = new Map<string, Statement>();
   private closed = false;
   private depth = 0;
+  /** Inside a user function or an update hook: Bun refuses every use of the connection there. */
+  private busy = 0;
+  /** onInsert, onUpdate, onDelete */
+  private hooks: (Fn | null)[] = [null, null, null];
 
   constructor(filename: string | Uint8Array = ":memory:", options: number | Options = {}) {
     if (!loaded()) throw new Error("bun:sqlite is not loaded yet");
@@ -357,7 +361,76 @@ export class Database {
   }
 
   _open(message = "Cannot use a closed database", E: new (m: string) => Error = RangeError) {
+    this._idle();
     if (this.closed) throw new E(message);
+  }
+
+  _idle() {
+    if (this.busy) throw new TypeError("This database connection is busy executing a query");
+  }
+
+  /** Runs a user callback (a function, an aggregate's step, an update hook): the connection is busy meanwhile. */
+  _callback<T>(fn: () => T): T {
+    this.busy++;
+    try {
+      return fn();
+    } finally {
+      this.busy--;
+    }
+  }
+
+  get onInsert(): Fn | null {
+    return this.hook(0);
+  }
+  set onInsert(hook: Fn | null) {
+    this.setHook(0, hook);
+  }
+  get onUpdate(): Fn | null {
+    return this.hook(1);
+  }
+  set onUpdate(hook: Fn | null) {
+    this.setHook(1, hook);
+  }
+  get onDelete(): Fn | null {
+    return this.hook(2);
+  }
+  set onDelete(hook: Fn | null) {
+    this.setHook(2, hook);
+  }
+
+  private hook(i: number): Fn | null {
+    this._idle();
+    return this.hooks[i];
+  }
+
+  /**
+   * The update hook of SQLite (sqlite3_update_hook), one per kind of change: called with the database, the table,
+   * the rowid (a BigInt with safeIntegers) and the schema after each row a statement inserts, updates or deletes. What
+   * it throws is reported as an uncaught error; the statement goes on.
+   */
+  private setHook(i: number, hook: Fn | null | undefined) {
+    this._idle();
+    if (hook != null && typeof hook !== "function") throw new TypeError("Expected a function or null");
+    if (this.closed) throw new Error("Database has closed");
+    this.hooks[i] = hook ?? null;
+    const safe = this._safe;
+    // SQLITE_INSERT 18, SQLITE_UPDATE 23, SQLITE_DELETE 9
+    const kinds: Record<number, number> = { 18: 0, 23: 1, 9: 2 };
+    this._conn.setUpdateHook(
+      this.hooks.some(Boolean)
+        ? (op, schema, table, rowid) => {
+            const f = this.hooks[kinds[op]];
+            if (!f) return;
+            try {
+              this._callback(() => f.call(this, this, table, safe ? rowid : Number(rowid), schema));
+            } catch (e) {
+              queueMicrotask(() => {
+                throw e;
+              });
+            }
+          }
+        : null,
+    );
   }
 
   get inTransaction(): boolean {
@@ -483,7 +556,7 @@ export class Database {
       this._conn.createFunction(name, nArg, flags, {
         func: (ctx, argv) => {
           try {
-            this.setResult(ctx, name, f(...argv.map((a) => valueOf(a, safe))), safe);
+            this.setResult(ctx, name, this._callback(() => f(...argv.map((a) => valueOf(a, safe)))), safe);
           } catch (e) {
             this.fail(ctx, e);
           }
@@ -509,10 +582,10 @@ export class Database {
     this._open("Database has closed", Error);
     this.raw(() =>
       createAggregate(this._conn, name, nArg, flags, {
-        start: options.start ?? null,
-        step,
-        inverse,
-        result: done,
+        start: typeof options.start === "function" ? (...a: unknown[]) => this._callback(() => (options.start as Fn)(...a)) : (options.start ?? null),
+        step: (...a: unknown[]) => this._callback(() => step(...a)),
+        inverse: inverse && ((...a: unknown[]) => this._callback(() => inverse(...a))),
+        result: done && ((...a: unknown[]) => this._callback(() => done(...a))),
         self: undefined,
         keepOnUndefined: true,
         args: (argv) => argv.map((a) => valueOf(a, safe)),
@@ -534,8 +607,10 @@ export class Database {
   }
 
   close(): void {
+    this._idle();
     if (this.closed) return;
     this.closed = true;
+    this.hooks = [null, null, null];
     this.cache.clear();
     this._conn.close();
   }

@@ -273,6 +273,7 @@ export class Conn {
     x.sqlite3_close_v2(this.ptr);
     for (const f of this.functions) w.uninstallFunction(f);
     if (this.authorizer) w.uninstallFunction(this.authorizer);
+    if (this.updateHook) w.uninstallFunction(this.updateHook);
     this.ptr = 0;
   }
 
@@ -305,6 +306,17 @@ export class Conn {
     } finally {
       w.dealloc(p);
     }
+  }
+
+  /** The function-table slot of the update hook. */
+  private updateHook = 0;
+
+  /** sqlite3_update_hook: `cb(op, db, table, rowid)` after each row a statement inserts, updates or deletes; null clears it. */
+  setUpdateHook(cb: ((op: number, db: string, table: string, rowid: bigint) => void) | null) {
+    const p = cb ? w.installFunction("v(pippj)", (_u: number, op: number, db: number, table: number, rowid: bigint) => cb(op, str(db) ?? "", str(table) ?? "", BigInt(rowid))) : 0;
+    x.sqlite3_update_hook(this.ptr, p, 0);
+    if (this.updateHook) w.uninstallFunction(this.updateHook);
+    this.updateHook = p;
   }
 
   /** The function-table slot of the authorizer, replaced with it. */
