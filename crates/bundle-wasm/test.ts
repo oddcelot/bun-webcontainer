@@ -9,6 +9,8 @@ import assert from "node:assert/strict";
 import { VFS } from "../../packages/vfs/vfs.ts";
 import { createSysImports } from "../../packages/vfs/sysHost.ts";
 
+// No plugins here: `Bun.build`'s plugins are tested in the playground (apps/playground/scripts/build-plugins.ts).
+const noPlugins = { any_matches: () => 0, resolve: () => 0n, load: () => 0n, take: () => {} };
 const here = (p: string) => new URL(p, import.meta.url);
 const mod = new WebAssembly.Module(readFileSync(here("../../target/wasm64-unknown-unknown/release/bun_bundle_wasm.wasm")));
 
@@ -68,7 +70,7 @@ type Wasm = { memory: WebAssembly.Memory; [fn: string]: any };
 let w: Wasm;
 function fresh() {
   let memory: WebAssembly.Memory;
-  w = new WebAssembly.Instance(mod, createSysImports(vfs, () => memory)).exports as Wasm;
+  w = new WebAssembly.Instance(mod, { ...createSysImports(vfs, () => memory), bun_plugin: noPlugins }).exports as Wasm;
   memory = w.memory;
 }
 const enc = new TextEncoder();

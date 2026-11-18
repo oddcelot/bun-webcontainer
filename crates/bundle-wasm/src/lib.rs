@@ -11,7 +11,8 @@
 //!   sourcemap: "none"|"inline"|"external"|"linked", naming{entry,chunk,asset}, publicPath, banner, footer,
 //!   loader{".ext": "js"|"jsx"|"ts"|"tsx"|"css"|"file"|"json"|"toml"|"wasm"|"napi"|"base64"|"dataurl"|"text"|"html"|..},
 //!   packages: "bundle"|"external", drop[], rootDir, env: "inline"|"disable"|"PREFIX*" (`Bun.build`'s; "load-only" is the
-//!   CLI's `--env=disable`), envVars{} (the process env: the wasm has none of its own)}`
+//!   CLI's `--env=disable`), envVars{} (the process env: the wasm has none of its own),
+//!   plugins: bool (the host's `bun_plugin.*` imports answer the plugin hooks, see plugins.rs)}`
 //! Result JSON: `{success, outputs: [{path, kind, loader, hash, contents, encoding?}], logs: [{level,
 //!   message, file, line, column}]}`. `contents` is text, or base64 with `encoding: "base64"` when the
 //!   output isn't valid UTF-8 (images, wasm and other binary assets).
@@ -20,6 +21,7 @@
 use bun_wasm_stubs as _;
 // The bun_sys_host_* symbols bun_sys declares, as `bun_sys.*` wasm imports served by the VFS.
 use bun_sys_host as _;
+mod plugins;
 mod stand_ins;
 mod stubs;
 
@@ -116,7 +118,9 @@ pub fn bundle(config: &str) -> String {
     }
 
     let arena: &'static bun_alloc::Arena = Box::leak(Box::new(bun_alloc::Arena::new()));
+    plugins::enable(flag(&cfg, "plugins"));
     let result = run(arena, log_ptr, args, &cfg);
+    plugins::enable(false);
     let (success, outputs) = match result {
         Ok(o) => (true, o),
         Err(_) => (false, Vec::new()),

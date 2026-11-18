@@ -1,6 +1,7 @@
 import { BASE } from "../base";
 import type { VFS } from "@runbun/vfs";
 import { createSysImports } from "@runbun/vfs/sysHost";
+import { jspi, type BuildPlugins } from "./buildPlugins";
 
 /** What `bundle_c` takes (see crates/bundle-wasm/src/lib.rs); `write` is left out: outputs always come back in memory. */
 export interface BundleConfig {
@@ -28,6 +29,8 @@ export interface BundleConfig {
   env?: string;
   /** The variables `env` may inline (the wasm has no process environment of its own). */
   envVars?: Record<string, string>;
+  /** Set by `bundle` when it is given plugins: the bundler then asks the `bun_plugin` imports. */
+  plugins?: boolean;
 }
 
 export interface BundleLog {
@@ -81,24 +84,32 @@ function loadModule() {
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
+/** The `bun_plugin` imports of a bundle without plugins: the bundler never calls them. */
+const noPlugins = { any_matches: () => 0, resolve: () => 0n, load: () => 0n, take: () => {} };
 const failure = (message: string): BundleResult => ({ success: false, outputs: [], logs: [{ level: "error", message }] });
 
 /**
  * Bundles `config.entryPoints` from `vfs` with Bun's bundler. A panic aborts the wasm instance, so every call gets
- * a fresh one; a trap comes back as a failed result carrying the panic message.
+ * a fresh one; a trap comes back as a failed result carrying the panic message. With `plugins`, the bundler calls
+ * their hooks (buildPlugins.ts); with JSPI `bundle_c` runs through `WebAssembly.promising` so async hooks can suspend it.
  */
-export async function bundle(vfs: VFS, config: BundleConfig): Promise<BundleResult> {
+export async function bundle(vfs: VFS, config: BundleConfig, plugins?: BuildPlugins): Promise<BundleResult> {
   const mod = await loadModule();
   let memory!: WebAssembly.Memory;
-  const w = new WebAssembly.Instance(mod, createSysImports(vfs, () => memory) as WebAssembly.Imports).exports as unknown as Exports;
+  const imports = { ...createSysImports(vfs, () => memory), bun_plugin: plugins?.imports(() => memory) ?? noPlugins } as WebAssembly.Imports;
+  const w = new WebAssembly.Instance(mod, imports).exports as unknown as Exports;
   memory = w.memory;
-  const input = enc.encode(JSON.stringify({ cwd: "/", ...config, write: false }));
+  const run =
+    plugins && jspi
+      ? ((WebAssembly as unknown as { promising: (f: unknown) => (p: bigint, l: bigint) => Promise<bigint> }).promising(w.bundle_c))
+      : w.bundle_c;
+  const input = enc.encode(JSON.stringify({ cwd: "/", ...config, plugins: !!plugins, write: false }));
   const len = BigInt(input.length);
   const p = w.alloc(len);
   new Uint8Array(memory.buffer, Number(p), input.length).set(input);
   let out: bigint;
   try {
-    out = w.bundle_c(p, len);
+    out = await run(p, len);
   } catch (e) {
     let msg = (e as Error).message;
     try {

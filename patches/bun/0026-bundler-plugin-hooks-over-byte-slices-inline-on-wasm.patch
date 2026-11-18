@@ -1,0 +1,261 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Stefan Kopco <hey@oddcelot.dev>
+Date: Wed, 18 Nov 2026 07:09:17 +0100
+Subject: [PATCH] bundler: plugin hooks over byte slices, inline on wasm
+
+Bun.build plugins for the wasm bundler. There is no JSC (or BunString)
+and no JS loop to hop to on wasm, so on wasm only:
+
+- Plugin's has_any_matches / match_on_load / match_on_resolve call
+  JSBundlerPlugin__wasm* with UTF-8 slices, answered by the embedder
+  (crates/bundle-wasm), which also delivers the answer through
+  on_resolve_async / on_load_async before returning;
+- Resolve::dispatch / Load::dispatch run the request right away instead
+  of posting it to the plugins' JS loop;
+- BundleV2::init takes the plugins from WASM_PLUGINS, which the embedder
+  sets around generate_from_cli.
+
+Native builds are unchanged. // wasm-experiment
+---
+ src/bundler/bundle_v2.rs | 158 ++++++++++++++++++++++++++++++++++++---
+ 1 file changed, 149 insertions(+), 9 deletions(-)
+
+diff --git a/src/bundler/bundle_v2.rs b/src/bundler/bundle_v2.rs
+index 460af1e5..fe6809bc 100644
+--- a/src/bundler/bundle_v2.rs
++++ b/src/bundler/bundle_v2.rs
+@@ -152,6 +152,12 @@ bun_core::declare_scope!(scan_counter, visible);
+ /// dedups by path during a single `on_parse_task_complete` pass.
+ pub(crate) type ResolveQueue<'a> = StringHashMap<*mut ParseTask<'a>>;
+ 
++/// wasm-experiment: the plugins of the next `BundleV2::init` without bake options. The embedder
++/// (crates/bundle-wasm) sets it around `generate_from_cli`, which takes no plugins of its own.
++#[cfg(target_family = "wasm")]
++pub static WASM_PLUGINS: core::sync::atomic::AtomicPtr<JSBundlerPlugin> =
++    core::sync::atomic::AtomicPtr::new(core::ptr::null_mut());
++
+ pub struct BakeOptions<'a> {
+     pub framework: bake::Framework,
+     pub client_transpiler: NonNull<Transpiler<'a>>,
+@@ -748,6 +754,7 @@ pub mod bv2_impl {
+                 // scalars: every pointer the C++ side reads is guaranteed valid by
+                 // the type system, so there is no caller-side precondition left to
+                 // discharge.
++                #[cfg(not(target_family = "wasm"))] // wasm-experiment
+                 #[link_name = "JSBundlerPlugin__anyMatches"]
+                 safe fn JSBundlerPlugin__anyMatches(
+                     this: &Plugin,
+@@ -758,6 +765,7 @@ pub mod bv2_impl {
+                 // `context` is an opaque cookie C++ round-trips back to a Rust
+                 // callback without dereferencing, so the only pointer validity
+                 // obligations are on `this`/`BunString` — discharged by `&`.
++                #[cfg(not(target_family = "wasm"))] // wasm-experiment
+                 #[link_name = "JSBundlerPlugin__matchOnLoad"]
+                 safe fn JSBundlerPlugin__matchOnLoad(
+                     this: &mut Plugin,
+@@ -767,6 +775,7 @@ pub mod bv2_impl {
+                     default_loader: u8,
+                     is_server_side: bool,
+                 );
++                #[cfg(not(target_family = "wasm"))] // wasm-experiment
+                 #[link_name = "JSBundlerPlugin__matchOnResolve"]
+                 safe fn JSBundlerPlugin__matchOnResolve(
+                     this: &mut Plugin,
+@@ -800,6 +809,115 @@ pub mod bv2_impl {
+                     should_continue_running: *mut i32,
+                 ) -> i32;
+             }
++            // wasm-experiment: no JSC (and no `BunString`) on wasm: the embedder (crates/bundle-wasm)
++            // matches the filters and runs the hooks, taking the strings as UTF-8 bytes. The match
++            // calls answer the request (`on_resolve_async` / `on_load_async`) before they return.
++            #[cfg(target_family = "wasm")]
++            unsafe extern "C" {
++                fn JSBundlerPlugin__wasmAnyMatches(
++                    this: &Plugin,
++                    namespace: *const u8,
++                    namespace_len: usize,
++                    path: *const u8,
++                    path_len: usize,
++                    is_on_load: bool,
++                ) -> bool;
++                fn JSBundlerPlugin__wasmMatchOnLoad(
++                    this: &mut Plugin,
++                    namespace: *const u8,
++                    namespace_len: usize,
++                    path: *const u8,
++                    path_len: usize,
++                    context: *mut core::ffi::c_void,
++                    default_loader: u8,
++                    is_server_side: bool,
++                );
++                fn JSBundlerPlugin__wasmMatchOnResolve(
++                    this: &mut Plugin,
++                    namespace: *const u8,
++                    namespace_len: usize,
++                    path: *const u8,
++                    path_len: usize,
++                    importer: *const u8,
++                    importer_len: usize,
++                    context: *mut core::ffi::c_void,
++                    kind: *const u8,
++                    kind_len: usize,
++                );
++            }
++            // wasm-experiment
++            #[cfg(target_family = "wasm")]
++            impl Plugin {
++                pub(crate) fn has_any_matches(
++                    &self,
++                    path: &crate::bun_fs::Path,
++                    is_on_load: bool,
++                ) -> bool {
++                    let namespace: &[u8] = if path.is_file() { b"" } else { path.namespace };
++                    // SAFETY: both slices are live for the call; the embedder only reads them.
++                    unsafe {
++                        JSBundlerPlugin__wasmAnyMatches(
++                            self,
++                            namespace.as_ptr(),
++                            namespace.len(),
++                            path.text.as_ptr(),
++                            path.text.len(),
++                            is_on_load,
++                        )
++                    }
++                }
++
++                pub(crate) fn match_on_load(
++                    &mut self,
++                    path: &[u8],
++                    namespace: &[u8],
++                    context: *mut core::ffi::c_void,
++                    default_loader: Loader,
++                    is_server_side: bool,
++                ) {
++                    let namespace: &[u8] = if namespace.is_empty() { b"file" } else { namespace };
++                    // SAFETY: as `has_any_matches`; `context` is the live `*mut Load`.
++                    unsafe {
++                        JSBundlerPlugin__wasmMatchOnLoad(
++                            self,
++                            namespace.as_ptr(),
++                            namespace.len(),
++                            path.as_ptr(),
++                            path.len(),
++                            context,
++                            default_loader as u8,
++                            is_server_side,
++                        )
++                    }
++                }
++
++                pub(crate) fn match_on_resolve(
++                    &mut self,
++                    path: &[u8],
++                    namespace: &[u8],
++                    importer: &[u8],
++                    context: *mut core::ffi::c_void,
++                    import_record_kind: ImportKind,
++                ) {
++                    let namespace: &[u8] = if namespace.is_empty() { b"file" } else { namespace };
++                    let kind = import_record_kind.label();
++                    // SAFETY: as `has_any_matches`; `context` is the live `*mut Resolve`.
++                    unsafe {
++                        JSBundlerPlugin__wasmMatchOnResolve(
++                            self,
++                            namespace.as_ptr(),
++                            namespace.len(),
++                            path.as_ptr(),
++                            path.len(),
++                            importer.as_ptr(),
++                            importer.len(),
++                            context,
++                            kind.as_ptr(),
++                            kind.len(),
++                        )
++                    }
++                }
++            }
+             impl Plugin {
+                 /// `Plugin.drainDeferred` — resolve every onLoad
+                 /// `.defer()` promise. The
+@@ -844,6 +962,7 @@ pub mod bv2_impl {
+                     )
+                 }
+ 
++                #[cfg(not(target_family = "wasm"))] // wasm-experiment
+                 pub(crate) fn has_any_matches(
+                     &self,
+                     path: &crate::bun_fs::Path,
+@@ -863,6 +982,7 @@ pub mod bv2_impl {
+                     )
+                 }
+ 
++                #[cfg(not(target_family = "wasm"))] // wasm-experiment
+                 pub(crate) fn match_on_load(
+                     &mut self,
+                     path: &[u8],
+@@ -888,6 +1008,7 @@ pub mod bv2_impl {
+                     );
+                 }
+ 
++                #[cfg(not(target_family = "wasm"))] // wasm-experiment
+                 pub(crate) fn match_on_resolve(
+                     &mut self,
+                     path: &[u8],
+@@ -1199,10 +1320,17 @@ pub mod bv2_impl {
+                             self.answer_cancelled();
+                             return;
+                         }
+-                        let task = bun_event_loop::ConcurrentTask::ConcurrentTask::create(
+-                            bun_event_loop::Task::init(std::ptr::from_mut::<Self>(self)),
+-                        );
+-                        bv2.enqueue_on_js_loop_for_plugins(task);
++                        // wasm-experiment: one thread and no JS loop to hop to: the embedder runs
++                        // the hooks now, and the answer is queued on the bundle's own loop.
++                        #[cfg(target_family = "wasm")]
++                        self.run_on_js_thread();
++                        #[cfg(not(target_family = "wasm"))]
++                        {
++                            let task = bun_event_loop::ConcurrentTask::ConcurrentTask::create(
++                                bun_event_loop::Task::init(std::ptr::from_mut::<Self>(self)),
++                            );
++                            bv2.enqueue_on_js_loop_for_plugins(task);
++                        }
+                     }
+                 }
+                 /// The plugins can no longer answer this request (their VM is shutting down, or the pass
+@@ -1342,11 +1470,17 @@ pub mod bv2_impl {
+                             self.answer_cancelled();
+                             return;
+                         }
+-                        let concurrent_task =
+-                            bun_event_loop::ConcurrentTask::ConcurrentTask::create(
+-                                bun_event_loop::Task::init(std::ptr::from_mut::<Self>(self)),
+-                            );
+-                        bv2.enqueue_on_js_loop_for_plugins(concurrent_task);
++                        // wasm-experiment: as `Resolve::dispatch`.
++                        #[cfg(target_family = "wasm")]
++                        self.run_on_js_thread();
++                        #[cfg(not(target_family = "wasm"))]
++                        {
++                            let concurrent_task =
++                                bun_event_loop::ConcurrentTask::ConcurrentTask::create(
++                                    bun_event_loop::Task::init(std::ptr::from_mut::<Self>(self)),
++                                );
++                            bv2.enqueue_on_js_loop_for_plugins(concurrent_task);
++                        }
+                     }
+                 }
+                 /// As `Resolve::answer_cancelled`.
+@@ -3286,6 +3420,12 @@ pub mod bv2_impl {
+                     }
+                 }
+             }
++            // wasm-experiment: `Bun.build`'s plugins, handed over by the embedder (see `WASM_PLUGINS`).
++            #[cfg(target_family = "wasm")]
++            if this.plugins.is_none() {
++                this.plugins =
++                    NonNull::new(crate::bundle_v2::WASM_PLUGINS.load(core::sync::atomic::Ordering::Relaxed));
++            }
+             // `Transpiler<'a>`/`Resolver<'a>` store `&'a Arena` and `Log.msgs`
+             // is a `Vec` (global alloc), so only `linker.graph.bump` needs the
+             // backref into the now-stable `this.graph.heap` slot.

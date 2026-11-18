@@ -205,6 +205,9 @@ console.log(pc.red("invalid:"), User.safeParse({ name: "Ada", age: "old" }).succ
 - Single-threaded; each build starts fresh
 - HTML imports in `Bun.serve` are built for the browser, without minification or source maps
 - If a build fails, errors go to the console and the page is served unbundled
+- ✅ `Bun.build` plugins: `onResolve` (virtual modules, aliases, `external`, namespaces) and `onLoad` (`contents` as a string or `Uint8Array`, any loader, `loader: "object"`) with `filter` and `namespace`, `onStart`, `onEnd` (it sees the result, failed builds too), `build.config` and `initialOptions`, sync and async `setup`, with Bun's errors and messages
+- 🟡 Async plugin hooks need WebAssembly JSPI (Chrome and Edge 137+): the bundler waits for each hook in place. Without it, only hooks that answer synchronously work; an async one fails its file with an error
+- ❌ `onLoad`'s `.defer()` throws: hooks run one at a time, so there are no other files to wait for. No `onBeforeParse` (native plugins)
 
 The first run downloads the bundler:
 

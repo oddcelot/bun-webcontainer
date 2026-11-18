@@ -4,6 +4,7 @@ import { loadSemver } from "../semver";
 import { dirname, norm, VFS, type FileData } from "@runbun/vfs";
 import { readConfig } from "../projectConfig";
 import { BUN_NAMES, builtinName, builtins, compressionStreams, installAsyncContext, installTimers, setExit, setFs, setRawStdio, setRequire, setStdio } from "./node";
+import { BuildPlugins } from "./buildPlugins";
 import { bundle, type BundleConfig, type BundleLog } from "./bundler";
 import { setHostVfs } from "./hostPackages";
 import { hash } from "./hash";
@@ -1232,8 +1233,8 @@ function buildEnv(e: BuildOptions["env"]): Pick<BundleConfig, "env" | "envVars">
  * AggregateError of the logs, as in Bun, unless `throw: false`.
  */
 async function build(opts: BuildOptions) {
-  // Plugins run JS inside the bundler; the wasm build has none of that (its stand-ins panic), so fail up front.
-  if (opts.plugins?.length) throw new TypeError("Bun.build: plugins are not supported in the browser");
+  // As Bun's `Config::from_js`: the plugins' `setup` runs first and may change the options it reads after.
+  const plugins = await BuildPlugins.setup(opts.plugins, opts as Record<string, unknown>);
   for (const ext of Object.keys(opts.loader ?? {}))
     if (ext.length < 2 || !ext.startsWith(".")) throw new TypeError("loader property names must be file extensions, such as '.txt'");
   const entryPoints = (opts.entrypoints ?? []).map((e) => "/" + norm(nodePath.resolve(e.startsWith("file:") ? new URL(e).pathname : e)));
@@ -1261,10 +1262,12 @@ async function build(opts: BuildOptions) {
   };
   const outdir = opts.outdir ? "/" + norm(nodePath.resolve(opts.outdir)) : undefined;
   if (outdir) config.outdir = outdir;
-  const res = await bundle(vfs, config);
+  const res = await bundle(vfs, config, plugins);
   const logs = res.logs.map(buildLog);
   if (!res.success) {
-    if (opts.throw === false) return { success: false, outputs: [] as BuildArtifact[], logs };
+    const result = { success: false, outputs: [] as BuildArtifact[], logs };
+    await plugins?.end(result);
+    if (opts.throw === false) return result;
     throw Object.assign(new AggregateError(logs, "Bundle failed"), { name: "AggregateError" });
   }
   const outputs: BuildArtifact[] = [];
@@ -1277,7 +1280,9 @@ async function build(opts: BuildOptions) {
   }
   for (const o of outputs) o.sourcemap = outputs.find((m) => m.kind === "sourcemap" && m.path === `${o.path}.map`) ?? null;
   if (outdir) for (const o of outputs) await writeFile(o.path, o);
-  return { success: true, outputs, logs };
+  const result = { success: true, outputs, logs };
+  await plugins?.end(result);
+  return result;
 }
 
 /**
