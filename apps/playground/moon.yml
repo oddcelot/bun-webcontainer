@@ -167,6 +167,13 @@ tasks:
     toolchains: ['bun']
     options:
       cache: false
+  test-build-plugins:
+    # Bun.build plugins end to end (scripts/build-plugins.ts): scripts/build-plugins/main.ts runs in the embed in
+    # headless Chrome and must print what native Bun prints, but for `.defer()`. Needs Chrome, so it isn't part of `test`.
+    command: 'bun scripts/build-plugins.ts'
+    toolchains: ['bun']
+    options:
+      cache: false
   test-node-apis:
     # Node modules emulated in JavaScript (diagnostics_channel, sqlite, v8, constants, domain, ...) end to end
     # (scripts/node-apis.ts): scripts/node-apis/main.ts runs in the embed in headless Chrome and must print what native
