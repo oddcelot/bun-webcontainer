@@ -25,8 +25,23 @@ let defaultTimeout = 5000;
 
 // ---- formatting ----
 
-/** Bun's value format: JSON-like, one entry per line, trailing commas. */
-function pretty(v: unknown, ind = "", seen: unknown[] = []): string {
+/** Code point order, as Bun sorts property names (`"10"` before `"2"`, unlike `Object.keys`). */
+function byCodePoint(a: string, b: string): number {
+  for (let i = 0, j = 0; i < a.length && j < b.length; ) {
+    const x = a.codePointAt(i)!;
+    const y = b.codePointAt(j)!;
+    if (x !== y) return x - y;
+    i += x > 0xffff ? 2 : 1;
+    j += y > 0xffff ? 2 : 1;
+  }
+  return a.length - b.length;
+}
+
+/**
+ * Bun's value format: JSON-like, one entry per line, trailing commas. `forDiff`: as Bun's diffs (JestPrettyFormat)
+ * print it, the keys in code point order.
+ */
+function pretty(v: unknown, ind = "", seen: unknown[] = [], forDiff = false): string {
   if (typeof v === "string") return JSON.stringify(v);
   if (typeof v === "bigint") return `${v}n`;
   if (typeof v !== "object" || v === null) return typeof v === "function" ? `[Function: ${v.name || "(anonymous)"}]` : String(v);
@@ -35,7 +50,10 @@ function pretty(v: unknown, ind = "", seen: unknown[] = []): string {
   const proto = Object.getPrototypeOf(v);
   const isArr = Array.isArray(v);
   if (!isArr && proto !== Object.prototype && proto !== null) return inspect(v, { depth: 2 });
-  const entries = isArr ? (v as unknown[]).map((x) => pretty(x, ind + "  ", [...seen, v])) : Object.keys(v).map((k) => `${JSON.stringify(k)}: ${pretty((v as Record<string, unknown>)[k], ind + "  ", [...seen, v])}`);
+  const inner = (x: unknown) => pretty(x, ind + "  ", [...seen, v], forDiff);
+  const keys = Object.keys(v);
+  if (forDiff) keys.sort(byCodePoint);
+  const entries = isArr ? (v as unknown[]).map(inner) : keys.map((k) => `${JSON.stringify(k)}: ${inner((v as Record<string, unknown>)[k])}`);
   const [open, close] = isArr ? ["[", "]"] : ["{", "}"];
   return entries.length ? `${open}\n${entries.map((e) => `${ind}  ${e},\n`).join("")}${ind}${close}` : open + close;
 }
@@ -174,7 +192,7 @@ function diffText(expectedText: string, receivedText: string): string {
   }
   return `${rows.join("\n")}\n\n- Expected  - ${minus}\n+ Received  + ${plus}`;
 }
-const diff = (expected: unknown, received: unknown) => diffText(pretty(expected), pretty(received));
+const diff = (expected: unknown, received: unknown) => diffText(pretty(expected, "", [], true), pretty(received, "", [], true));
 
 // ---- equality ----
 
