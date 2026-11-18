@@ -2003,6 +2003,25 @@ main [data-kb-resizable-root] { height: 100%; }
       margin: 0;
       color: var(--muted);
     }
+    /* A rebase's Skip: a quiet link, the main ways on being Continue and Abort. */
+    .git-skip {
+      align-self: flex-start;
+      padding: 0;
+      border: 0;
+      background: none;
+      color: var(--muted);
+      font: inherit;
+      text-decoration: underline;
+      cursor: pointer;
+
+      &:hover:not(:disabled) {
+        color: var(--fg);
+      }
+      &:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+    }
   }
   .git-commit {
     display: flex;
