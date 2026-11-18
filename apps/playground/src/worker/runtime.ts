@@ -1231,6 +1231,16 @@ function buildEnv(e: BuildOptions["env"]): Pick<BundleConfig, "env" | "envVars">
 }
 
 /**
+ * `Bun.build`'s naming as `JSBundler.Config` reads it: chunks are `chunk-[hash]` (the CLI's, the bundler's default
+ * here, are `[name]-[hash]`) and given templates get a leading `./` (it goes into the outputs' hashes).
+ */
+function buildNaming(naming: BuildOptions["naming"]): BundleConfig["naming"] {
+  const dot = (t: string | undefined) => (t === undefined || t.startsWith("./") ? t : `./${t}`);
+  const n = typeof naming === "string" ? { entry: naming } : (naming ?? {});
+  return { entry: dot(n.entry), chunk: dot(n.chunk) ?? "./chunk-[hash].[ext]", asset: dot(n.asset) };
+}
+
+/**
  * `Bun.build` through Bun's own bundler (compiled to wasm, see bundler.ts). Outputs are Blobs in memory; with
  * `outdir` they are also written to the VFS through `write`, so the page sees them. Failures throw an
  * AggregateError of the logs, as in Bun, unless `throw: false`.
@@ -1253,7 +1263,7 @@ async function build(opts: BuildOptions) {
     define: opts.define,
     conditions: typeof opts.conditions === "string" ? [opts.conditions] : opts.conditions,
     sourcemap: sm === true ? "linked" : sm === false ? "none" : sm,
-    naming: typeof opts.naming === "string" ? { entry: opts.naming } : opts.naming,
+    naming: buildNaming(opts.naming),
     publicPath: opts.publicPath,
     banner: opts.banner,
     footer: opts.footer,
