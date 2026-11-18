@@ -520,6 +520,9 @@ pub fn switch(ctx: &Ctx, args: &[String]) -> Res {
     if crate::status::merging() {
         return fatal("cannot switch branch while merging\nConsider \"git merge --quit\" or \"git worktree add\".");
     }
+    if crate::rebase::in_progress() {
+        return fatal("cannot switch branch while rebasing\nConsider \"git rebase --quit\" or \"git worktree add\".");
+    }
     switch_branch(ctx, &o)
 }
 

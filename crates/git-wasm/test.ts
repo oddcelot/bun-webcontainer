@@ -522,7 +522,8 @@ try {
       await twin("leaving lost commits, advice off", lost, ["checkout", "main"], { out: true, err: true, setup: (d) => nat(d, "config", "advice.detachedHead", "false") });
       await twin("leaving lost commits for a rev", lost, ["checkout", "main^0"], { out: true, err: true });
     }
-  }  // from feat back to main
+  }
+  // from feat back to main
   await twin("feat -> main", p3f, ["switch", "main"]);
   await twin("feat -> main, deleted file edited", p3f, ["switch", "main"], { setup: (d) => write(d, "new.txt", "edited\n") });
   await twin("feat -> main, untracked b.txt", p3f, ["switch", "main"], { setup: (d) => write(d, "b.txt", "mine\n") });
@@ -942,6 +943,133 @@ try {
   await twin("stash branch with local changes in the way", p7s, ["stash", "branch", "nb"], { ...ss, setup: (d) => write(d, "b.txt", "mine\n") });
   // (stderr: git apply's `error: patch failed: b.txt:1` lines come first)
   await twin("stash apply --index conflict", p7s, ["stash", "apply", "--index"], { ...ss, err: false, setup: (d) => { write(d, "b.txt", "conflicting\n"); nat(d, "commit", "-qam", "conflicting"); }, head: "tree" });
+
+  // ---- rebase -------------------------------------------------------------------------------------------------------
+  // Sequences of steps on two copies: ours (A) and native git (B), compared after each step. New commits' ids differ
+  // (their committer time), so ids the source project doesn't have are masked in the output.
+  const pr = join(tmp, "pr");
+  mkdirSync(pr);
+  const fixed = { ...natEnv, GIT_AUTHOR_DATE: "1700000000 +0100", GIT_COMMITTER_DATE: "1700000000 +0100" };
+  const prn = (...args: string[]) => {
+    const x = spawnSync("git", ["-C", pr, ...args], { encoding: "utf8", env: fixed });
+    if (x.status !== 0) throw new Error(`native ${args.join(" ")}: ${x.stderr}`);
+    return x.stdout;
+  };
+  prn("init", "-q", "-b", "main");
+  prn("config", "core.fileMode", "false");
+  write(pr, "f.txt", "a\nb\nc\nd\ne\nf\ng\n");
+  write(pr, "k.txt", "keep\n");
+  prn("add", ".");
+  prn("commit", "-qm", "base");
+  prn("branch", "behind");
+  prn("switch", "-qc", "feat");
+  write(pr, "f.txt", "a\nb\nc\nd\ne\nf\nG\n");
+  prn("commit", "-qam", "f1: last line");
+  write(pr, "n.txt", "new\n");
+  prn("add", "n.txt");
+  prn("commit", "-qm", "f2: add n", "-m", "with a body");
+  prn("commit", "-q", "--allow-empty", "-m", "f3: empty");
+  write(pr, "f.txt", "a\nb\nc\nD\ne\nf\nG\n");
+  prn("commit", "-qam", "f4: line d");
+  prn("switch", "-q", "main");
+  write(pr, "f.txt", "A\nb\nc\nd\ne\nf\ng\n");
+  prn("commit", "-qam", "m1: first line");
+  prn("branch", "m1");
+  write(pr, "x.txt", "x\n");
+  prn("add", "x.txt");
+  prn("commit", "-qm", "m2: add x");
+  prn("switch", "-q", "feat");
+  // conflicting upstreams: line d changed differently (f4 conflicts), and line g as f1 has it (f1 already applied)
+  prn("branch", "dconf", "main");
+  prn("branch", "same", "main");
+  prn("switch", "-q", "dconf");
+  write(pr, "f.txt", "A\nb\nc\nDD\ne\nf\ng\n");
+  prn("commit", "-qam", "dc: line d");
+  prn("switch", "-q", "same");
+  write(pr, "f.txt", "A\nb\nc\nd\ne\nf\nG\n");
+  prn("commit", "-qam", "s: last line too");
+  prn("switch", "-q", "--detach", "main");
+  prn("switch", "-q", "feat");
+  const known = new Set(prn("rev-list", "--all").split("\n").filter(Boolean));
+  const mask = (t: string) => t.replace(/\b[0-9a-f]{7,40}\b/g, (m) => ([...known].some((k) => k.startsWith(m)) ? m : "<new>"));
+  const rebaseFiles = (d: string) =>
+    ["head-name", "onto", "orig-head", "msgnum", "end", "git-rebase-todo", "done", "stopped-sha", "../REBASE_HEAD", "../MERGE_MSG", "../ORIG_HEAD"]
+      .map((f) => `${f}: ${existsSync(join(d, ".git/rebase-merge", f)) ? mask(readFileSync(join(d, ".git/rebase-merge", f), "utf8")) : "-"}`)
+      .join("\n") + `\nrebasing: ${existsSync(join(d, ".git/rebase-merge"))}`;
+  const chain = (d: string) => mask(spawnSync("git", ["-C", d, "log", "--format=%T|%an|%ae|%at|%B|%H", "HEAD", "--"], { encoding: "utf8", env: natEnv }).stdout);
+  const branchAt = (d: string) => mask(spawnSync("git", ["-C", d, "log", "-1", "--format=%T %H", "feat"], { encoding: "utf8", env: natEnv }).stdout);
+  type Step = string[] | ((d: string) => void);
+  async function rebaseSeq(name: string, steps: Step[], setup?: (d: string) => void) {
+    for (const d of [A, B]) {
+      rmSync(d, { recursive: true, force: true });
+      cpSync(pr, d, { recursive: true });
+      spawnSync("git", ["-C", d, "update-index", "-q", "--refresh"], { env: natEnv });
+      setup?.(d);
+    }
+    for (const [i, step] of steps.entries()) {
+      if (typeof step === "function") {
+        step(A);
+        step(B);
+        continue;
+      }
+      const at = `${name} #${i} git ${step.join(" ")}`;
+      const ours = await git(A, step, ident);
+      const nat = spawnSync("git", ["-C", B, ...step], { encoding: "utf8", env: natEnv });
+      check(`${at}: exit`, ours.code === nat.status, `ours ${ours.code} native ${nat.status}\n${ours.err}\n${nat.stderr}`);
+      same(`${at}: stdout`, mask(ours.out), mask(nat.stdout));
+      same(`${at}: stderr`, mask(ours.err), mask(nat.stderr));
+      same(`${at}: state`, [native(A, ["status", "--porcelain", "-b", "-uall"]), native(A, ["ls-files", "-s"]), files(A).join("\n"), chain(A), branchAt(A), rebaseFiles(A)].join("\n--\n"),
+        [native(B, ["status", "--porcelain", "-b", "-uall"]), native(B, ["ls-files", "-s"]), files(B).join("\n"), chain(B), branchAt(B), rebaseFiles(B)].join("\n--\n"));
+      // the long status, ours and native's on our state
+      same(`${at}: status`, mask((await git(A, ["status"], ident)).out), mask(native(B, ["status"])));
+      same(`${at}: native status of ours`, mask(native(A, ["status"])), mask(native(B, ["status"])));
+      if (spawnSync("git", ["-C", A, "fsck", "--full", "--strict"], { env: natEnv }).status !== 0) check(`${at}: fsck`, false, spawnSync("git", ["-C", A, "fsck", "--full", "--strict"], { encoding: "utf8", env: natEnv }).stderr);
+    }
+  }
+  const resolve = (text: string) => (d: string) => { write(d, "f.txt", text); spawnSync("git", ["-C", d, "add", "f.txt"], { env: natEnv }); };
+  await rebaseSeq("rebase clean", [["rebase", "main"], ["rebase", "main"]]);
+  await rebaseSeq("rebase -q", [["rebase", "-q", "main"]]);
+  await rebaseSeq("rebase up to date", [["rebase", "feat~2"], ["rebase", "-q", "base"]], (d) => nat(d, "tag", "base", "main~2"));
+  await rebaseSeq("rebase fast-forward", [["rebase", "main"]], (d) => nat(d, "switch", "-q", "behind"));
+  await rebaseSeq("rebase --onto", [["rebase", "--onto", "main", "feat~2"]]);
+  await rebaseSeq("rebase --onto=", [["rebase", "--onto=m1", "feat~3"]]);
+  await rebaseSeq("rebase detached", [["rebase", "main"]], (d) => nat(d, "switch", "-q", "--detach", "feat"));
+  await rebaseSeq("rebase without upstream", [["rebase"]]);
+  await rebaseSeq("rebase bad upstream", [["rebase", "nope"]]);
+  await rebaseSeq("rebase dirty", [["rebase", "main"]], (d) => write(d, "f.txt", "dirty\n"));
+  await rebaseSeq("rebase staged", [["rebase", "main"]], (d) => { write(d, "n.txt", "staged\n"); nat(d, "add", "n.txt"); });
+  await rebaseSeq("rebase staged and dirty", [["rebase", "main"]], (d) => { write(d, "n.txt", "staged\n"); nat(d, "add", "n.txt"); write(d, "k.txt", "dirty\n"); });
+  await rebaseSeq("rebase untracked beside", [["rebase", "main"]], (d) => write(d, "u.txt", "mine\n"));
+  await rebaseSeq("rebase untracked in the way", [["rebase", "main"]], (d) => write(d, "x.txt", "mine\n"));
+  await rebaseSeq("rebase drops what upstream has", [["rebase", "same"]]);
+  await rebaseSeq("rebase advice.skippedCherryPicks off", [["rebase", "same"]], (d) => nat(d, "config", "advice.skippedCherryPicks", "false"));
+  await rebaseSeq("rebase conflict, continue", [["rebase", "dconf"], ["status", "-s"], ["rebase", "--continue"], resolve("A\nb\nc\nresolved\ne\nf\nG\n"), ["status", "-s"], ["rebase", "--continue"]]);
+  await rebaseSeq("rebase conflict, continue -q", [["rebase", "-q", "dconf"], resolve("A\nb\nc\nresolved\ne\nf\nG\n"), ["rebase", "--continue"]]);
+  await rebaseSeq("rebase conflict, resolved as HEAD", [["rebase", "dconf"], resolve("A\nb\nc\nDD\ne\nf\nG\n"), ["rebase", "--continue"]]);
+  await rebaseSeq("rebase conflict, skip", [["rebase", "dconf"], ["rebase", "--skip"]]);
+  await rebaseSeq("rebase conflict, abort", [["rebase", "dconf"], ["rebase", "--abort"], ["rebase", "--abort"]]);
+  await rebaseSeq("rebase conflict, quit", [["rebase", "dconf"], ["rebase", "--quit"]]);
+  await rebaseSeq("rebase conflict, again", [["rebase", "dconf"], ["rebase", "main"], ["switch", "main"], ["merge", "main"]]);
+  await rebaseSeq("rebase conflict, unstaged at continue", [["rebase", "dconf"], resolve("A\nb\nc\nresolved\ne\nf\nG\n"), (d) => write(d, "k.txt", "dirty\n"), ["rebase", "--continue"]]);
+  await rebaseSeq("rebase conflict, commit then continue", [["rebase", "dconf"], resolve("A\nb\nc\nresolved\ne\nf\nG\n"), ["commit", "-q", "-m", "by hand"], ["status"], ["rebase", "--continue"]]);
+  await rebaseSeq("rebase conflict -X theirs", [["rebase", "-X", "theirs", "dconf"]]);
+  await rebaseSeq("rebase conflict -Xours", [["rebase", "-Xours", "dconf"]]);
+  await rebaseSeq("rebase conflict, advice off", [["rebase", "dconf"]], (d) => nat(d, "config", "advice.mergeConflict", "false"));
+  for (const d of [A, B]) {
+    rmSync(d, { recursive: true, force: true });
+    cpSync(pr, d, { recursive: true });
+    spawnSync("git", ["-C", d, "rebase", "dconf"], { env: natEnv });
+    write(d, "f.txt", "A\nb\nc\nresolved\ne\nf\nG\n");
+    nat(d, "add", "f.txt");
+  }
+  {
+    const ours = await git(A, ["rebase", "--continue"], ident);
+    const nat2 = spawnSync("git", ["-C", B, "rebase", "--continue"], { encoding: "utf8", env: natEnv });
+    check("rebase: our --continue of native's stop: exit", ours.code === nat2.status, ours.err + nat2.stderr);
+    same("rebase: our --continue of native's stop: state", [files(A).join("\n"), chain(A), branchAt(A), native(A, ["status", "--porcelain", "-b"])].join("\n--\n"), [files(B).join("\n"), chain(B), branchAt(B), native(B, ["status", "--porcelain", "-b"])].join("\n--\n"));
+  }
+  r = await git(A, ["rebase", "-i", "main"], ident);
+  check("rebase -i refused", r.code === 128 && r.err.includes("not supported in the playground"), JSON.stringify(r));
 
   // ---- config ---------------------------------------------------------------------------------------------------------
   const p4 = join(tmp, "p4");

@@ -18,8 +18,7 @@ Opens with `core.fileMode=false` (no exec bits on the host FS). `init` writes th
 
 Supported: `init`, `status`, `add`, `rm [--cached]`, `restore`, `reset`, `commit`, `log`, `diff [--cached]`, `show`,
 `branch`, `switch`, `checkout`, `merge`, `stash`, `tag`, `clean`, `config`, `rev-parse`, `clone`, `fetch`, `pull`, `push`,
-`remote`. `git help` lists the flags. Pathspecs are plain paths or directory prefixes (no globs). Not supported: rebase (it
-prints `git: 'rebase' is not supported in the playground yet`).
+`remote`, `rebase`. `git help` lists the flags. Pathspecs are plain paths or directory prefixes (no globs).
 
 Output the panel parses (byte-identical to native git, checked by `test.ts`):
 
@@ -108,7 +107,11 @@ them as git's script does): `ours`/`theirs` (gix's file favor: a conflicting hun
 symlinks too; modify/delete still conflicts), `no-renames`, `find-renames[=<n>]`/`rename-threshold=<n>` (git's
 rename scores: `50%`, `5`), `histogram`, `diff-algorithm=myers|minimal|histogram`, `no-renormalize`. `patience`,
 `ignore-*-space*`, `renormalize` and `subtree` are not supported (exit 128); others are git's `unknown strategy
-option` (exit 128).
+option` (exit 128). What gix can't do, so stays a clear error: `-s resolve` (git-merge-resolve, a script over
+`read-tree -m` and `merge-one-file`) and `-s subtree`/`-X subtree` (shifting one tree to match the other), `-X patience`
+and `diff-algorithm=patience` (gix-diff has Myers and histogram only), `-X ignore-space-change`/`ignore-all-space`/
+`ignore-space-at-eol`/`ignore-cr-at-eol` (gix-merge's blob merge compares lines exactly) and `-X renormalize` (needs the
+attributes' filters on all three sides). `-s octopus` with one head is refused (git tries a trivial in-index merge).
 
 Stashing (`stash.rs`): `stash [push] [-m <msg>] [-u|-a] [-k] [-q] [[--] <pathspec>...]`, `save [<msg>]`, `list`, `show [-p] [--stat] [<stash>]`,
 `apply [--index] [-q] [<stash>]`, `pop`, `drop [-q] [<stash>]`, `clear`; `<stash>` is `stash@{n}` or `n`. The commits
@@ -136,6 +139,27 @@ stash commit's id (tracked changes only; every argument is the message) and chan
 [-q] <commit>` puts it on the list (`Created via "git stash store".`; a commit with fewer than two parents is `not a
 stash-like commit`; storing the newest entry again adds none). `--patch` is interactive: a clear error (exit 128)
 pointing to pathspecs and `--staged`.
+
+Rebasing (`rebase.rs`): `rebase [--onto <newbase>] [<upstream>]` (no upstream: the branch's), `-q`, `-X <option>`
+(merge's), `--continue`, `--skip`, `--abort`, `--quit`; the merge backend's linear case. The commits of
+`upstream..HEAD` without merges, oldest first, less those whose patch upstream already has (a patch-id over the
+diff without index lines, hunk headers and whitespace; `warning: skipped previously applied commit`), become the todo
+list. HEAD detaches at onto (a two-way merge, so untracked files in the way stop it: `could not detach HEAD`), then
+each commit is picked: on top of its own parent it is reused as is (the sequencer's fast-forward), else a tree merge
+with its parent as the base (`merge_trees`, labels `HEAD` and `abc1234 (subject)`), committed with its author and
+message; one whose changes HEAD already has is dropped (`dropping … -- patch contents already upstream`), one empty
+from the start is kept. A conflict stops it as git's sequencer does: the conflict stages and markers, merge-ort's
+messages (only for a pick that stops), `error: could not apply`, the advice, and `.git/rebase-merge/` (`head-name`,
+`onto`, `orig-head`, `git-rebase-todo` with ` # empty` marks, `done`, `msgnum`, `end`, `message`, `author-script`,
+`stopped-sha`, `interactive`), `REBASE_HEAD` and `MERGE_MSG`, so native git continues ours and we continue native
+git's. `--continue` commits what is staged as the stopped commit (`[detached HEAD abc1234] subject`; nothing staged:
+the commit is dropped); `--skip` resets to HEAD; `--abort` goes back to `orig-head` and the branch; the end moves the
+branch and reattaches HEAD (`Successfully rebased and updated refs/heads/feat.`). Progress is `Rebasing (n/m)\r` on
+stderr. `status` shows the rebase as git's long format does (`interactive rebase in progress; onto abc1234`, the last
+two commands done and the next two, the hints); `switch` refuses during one. Not supported (clear errors, exit 128):
+`-i` and the todo editing it needs, `--exec`, `--rebase-merges`, `--root`, `--autosquash`, `--autostash`,
+`--update-refs`, `--apply`, `-f`, `--reapply-cherry-picks`, `rebase <upstream> <branch>`; `--fork-point` isn't used
+(the merge base is), so commits an upstream rewrote are only left out when their patch matches.
 
 `test.ts` runs a scripted session under node's WASI and compares status, diff, log, show and every mutation with native
 git: "twin" runs execute the same command on two copies of a project (ours vs native) and compare `status`, `ls-files -s`,
@@ -169,8 +193,10 @@ response (gix writes a POST body after `post` returns). Status
 - `fetch [<remote>] [--depth <n>]`, `pull [<remote> [<branch>]]` (fetch, then `merge`'s fast-forward or merge, as
   `pull.rebase=false` does: native git refuses divergent branches until one is configured, we merge; `Merge branch
   'main' of <url>`, the conflict markers labelled with the commit's id). `merge`'s flags (`--ff-only`, `--no-ff`,
-  `--squash`, `--no-commit`, `-q`, `-n`), `pull.ff` (`only`, `false`); `--rebase`, `pull.rebase` and
-  `branch.<name>.rebase` (but `false`) exit 128 before fetching, as rebase isn't implemented. `remote [-v]`, `remote
+  `--squash`, `--no-commit`, `-q`, `-n`), `pull.ff` (`only`, `false`). `--rebase` (`-r`, `--rebase=true`,
+  `pull.rebase`, `branch.<name>.rebase`) refuses changes to tracked files before fetching (`cannot pull with rebase`,
+  exit 128), then fast-forwards as `--ff-only` when HEAD has nothing to replay, else rebases onto the fetched branch
+  (rebase.rs); `--rebase=merges|interactive` are clear errors. `remote [-v]`, `remote
   add|remove|get-url|set-url`.
 - `push [<remote> [[+]<src>[:<dst>]...]] [-f] [-u] [-d] [-n]` (`push.rs`, by hand: gix has no receive-pack client).
   Protocol v0: the `git-receive-pack` advertisement, then one POST with the commands and a pack; `report-status` and
@@ -181,7 +207,7 @@ response (gix writes a POST body after `post` returns). Status
   updates the tracking refs; `-u` sets the upstream. Output as git's (`To <url>`, ` * [new branch]  main -> main`).
 
 `net.test.ts` runs these against native `git http-backend` (a CGI server in a child process), with curl serving the
-imports synchronously, and checks the results with native git (125 checks, `pull` as twin runs on two copies against `git -c pull.rebase=false pull`; the push checks set `http.receivepack` on the server's repositories).
+imports synchronously, and checks the results with native git (168 checks, `pull` as twin runs on two copies against `git -c pull.rebase=false pull`, and `pull --rebase` against native's; the push checks set `http.receivepack` on the server's repositories).
 
 ## Results
 
@@ -190,7 +216,8 @@ imports synchronously, and checks the results with native git (125 checks, `pull
   match native output.
 - Packed clones read fine. This repo (933 commits, 3.4 MiB pack, 578 files): full log walk, HEAD tree and status in
   ~65 ms under node's WASI (native `git status`: 33 ms).
-- Size (the CLI): 4.08 MB stripped, 1.14 MB brotli (4.01 MB and 1.11 MB before merge strategies, stash --staged/create/store and tag --format/--merged/--points-at; 3.96 MB and 1.10 MB before octopus, squash, pull merges, stash
+- Size (the CLI): 4.15 MB stripped, 1.16 MB brotli (4.08 MB and 1.14 MB before rebase, `pull --rebase`, tag's
+  `%(align)`/`%(if)` and checkout's advice; 4.01 MB and 1.11 MB before merge strategies, stash --staged/create/store and tag --format/--merged/--points-at; 3.96 MB and 1.10 MB before octopus, squash, pull merges, stash
   pathspecs and tag sorting; 3.6 MB and 1.0 MB before merge, stash and tag; 2.97 MB and
   0.86 MB before the network commands).
 - WASI surface: 25 `wasi_snapshot_preview1` imports (`path_open`, `fd_read`/`fd_write`/`fd_seek`, `fd_readdir`,

@@ -247,9 +247,13 @@ fn detached_line(ctx: &Ctx) -> String {
 pub fn long(ctx: &Ctx, st: &Status) -> Result<String, crate::Exit> {
     let mut s = String::new();
     let branch = ctx.repo.head_name()?;
-    match &branch {
-        Some(n) => s += &format!("On branch {}\n", n.shorten().to_str_lossy()),
-        None => s += &detached_line(ctx),
+    match (&branch, crate::rebase::status_header()) {
+        (None, Some(header)) => {
+            s += &header;
+            s += &crate::rebase::status_lines(!st.unmerged.is_empty());
+        }
+        (Some(n), _) => s += &format!("On branch {}\n", n.shorten().to_str_lossy()),
+        (None, None) => s += &detached_line(ctx),
     }
     let unborn = ctx.repo.head_id().is_err();
     if unborn {
