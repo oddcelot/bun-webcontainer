@@ -161,7 +161,8 @@ fn run(
     let outdir = string(cfg, "outdir").unwrap_or_default();
     // `write: true` makes the bundler write the files into `outdir` itself (through the VFS) and the
     // outputs come back without contents; otherwise (the default) everything is returned in memory.
-    t.options.supports_multiple_outputs = !outdir.is_empty() || flag(cfg, "splitting") || t.options.entry_points.len() > 1;
+    // As `Bun.build` (native leaves `from_api`'s `true`): an in-memory build returns every output, CSS and assets too.
+    t.options.supports_multiple_outputs = true;
     // (`from_api` defaults `output_dir` to "out", which would make the bundler write.)
     t.options.output_dir = if flag(cfg, "write") { outdir } else { Box::default() };
     if let Some(p) = string(cfg, "publicPath") {

@@ -1,6 +1,7 @@
 // Bun.build plugins, as one project both native Bun and the playground run (scripts/build-plugins.ts compares what
 // they print): onResolve / onLoad (virtual modules, aliasing, externals, namespaces, custom loaders, async hooks),
-// onStart, onEnd, build.config, setup validation and the errors hooks throw.
+// onStart, onEnd, build.config, setup validation and the errors hooks throw; and the outputs of builds with CSS and
+// assets, in memory and into an outdir (BuildArtifact's path, kind, loader, hash, type).
 import type { BunPlugin } from "bun";
 
 const root = import.meta.dir;
@@ -303,5 +304,35 @@ await invalid("setup-rejects", [
 ]);
 await invalid("build-resolve", [{ name: "x", setup: (b: Bun.PluginBuilder & { resolve: () => void }) => b.resolve() }]);
 await invalid("build-module", [{ name: "x", setup: (b: Bun.PluginBuilder) => b.module("x", () => ({ exports: {}, loader: "object" })) }]);
+
+// Outputs beyond one JS file: CSS imported from JS (bundled into a CSS asset), assets, chunks, sourcemaps, without
+// and with outdir. BuildArtifact.loader is the entry point's loader on every output but assets and sourcemaps.
+async function artifacts(label: string, entry: string, extra: Partial<Bun.BuildConfig> = {}, sorted = false) {
+  try {
+    const r = await Bun.build({ entrypoints: [`${src}/css/${entry}`], ...extra });
+    log(`${label}.success`, r.success, r.outputs.length);
+    for (const o of sorted ? r.outputs.toSorted((a, b) => a.path.localeCompare(b.path)) : r.outputs) {
+      log(`${label}.output`, { path: o.path, kind: o.kind, loader: o.loader, hash: o.hash, type: o.type, size: o.size, sourcemap: !!o.sourcemap });
+      // The JS outputs' text is the bundler's (compared by crates/bundle-wasm/test.ts); CSS and assets are short.
+      // (Printed as is: `rel` would take the playground's root, "/", in `/* … */` for a path.)
+      if (!/\.(js|map)$/.test(o.path)) for (const line of (await o.text()).split("\n")) if (line.trim()) console.log(`${label}.text: ${line}`);
+    }
+    if (extra.outdir) for (const o of r.outputs) log(`${label}.written`, rel(o.path), (await Bun.file(o.path).text()) === (await o.text()));
+  } catch (e) {
+    log(`${label}.threw`, errorInfo(e));
+  }
+}
+await artifacts("css-mem", "styled.ts");
+await artifacts("css-outdir", "styled.ts", { outdir: `${root === "/" ? "" : root}/out` });
+// Sorted: where native puts the CSS chunks among the outputs changes with the folder the project is in.
+await artifacts("css-split", "styled.ts", { splitting: true }, true);
+await artifacts("css-sourcemap", "styled.ts", { sourcemap: "linked" });
+await artifacts("css-sourcemap-external", "styled.ts", { sourcemap: "external" });
+await artifacts("css-js-entry", "plain.js");
+await artifacts("css-entry", "styled.css");
+// (Not `[hash]` in an entry's name: native's then depends on the folder the project is in.)
+await artifacts("css-naming", "styled.ts", { naming: { entry: "[dir]/[name]-out.[ext]", asset: "assets/[name].[ext]" } });
+await artifacts("css-two-entries", "plain.js", { entrypoints: [`${src}/css/plain.js`, `${src}/css/lazy.ts`] });
+await artifacts("css-minify", "styled.ts", { minify: true });
 
 console.log("__end__");

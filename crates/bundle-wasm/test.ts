@@ -240,6 +240,21 @@ test("inline sourcemap", () => {
   assert.match(r.outputs[0].contents, /sourceMappingURL=data:application\/json;base64,/);
 });
 
+// `Bun.build` without `outdir`: every output comes back in memory, as with one (native's BuildArtifact.loader is
+// `inputLoader`: the entry's loader, on its CSS too).
+test("in-memory build returns the CSS and asset outputs too", () => {
+  const out = (r: { outputs: { path: string; kind: string; loader: string; inputLoader: string; hash: string; contents: string }[] }) =>
+    r.outputs.map(({ path, kind, loader, inputLoader, hash, contents }) => ({ path, kind, loader, inputLoader, hash, contents }));
+  const mem = wasmBundle({ entryPoints: ["src/assets.ts"] });
+  assert.ok(mem.success, JSON.stringify(mem.logs));
+  const dir = wasmBundle({ entryPoints: ["src/assets.ts"], outdir: "out" });
+  assert.deepEqual(out(mem), out(dir));
+  assert.deepEqual(out(mem).map((o) => [o.path, o.kind, o.loader, o.inputLoader]), [
+    ["./assets.js", "entry-point", "js", "ts"],
+    ["./assets.css", "asset", "css", "ts"],
+  ]);
+});
+
 test("binary assets come back as base64 bytes", () => {
   const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff, 0xfe, 0x80, 0xc3, 0x28]);
   vfs.write("src/logo.png", png);
