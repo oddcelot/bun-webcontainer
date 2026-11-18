@@ -29,14 +29,38 @@ const SERVER_USE = /\bBun\.|\bBun\b\s*\.|["']node:|["']bun:|\brequire\(|\bproces
 
 type Pkg = { dependencies?: Record<string, string>; devDependencies?: Record<string, string>; peerDependencies?: Record<string, string>; scripts?: Record<string, string> };
 
-/** Why `vfs` isn't a browser-only project, or undefined if it is: it needs a root index.html, and no project file may use Bun.*, node:*, bun:* or require(). */
+const SCRIPT_TAG = /<script\b([^>]*?)\bsrc=["']([^"']+)["']([^>]*)>\s*<\/script>/gi;
+const LOCAL_SPEC = /^(?:\.{0,2}\/|\.\.?$)/;
+/** Specifiers of static and dynamic imports and re-exports, found by pattern (the pre-pass in {@link disqualified} doesn't transpile). */
+const IMPORT_SPEC = /\b(?:import|export)\b[^"'`;()]*?\bfrom\s*["']([^"']+)["']|\bimport\s*\(?\s*["']([^"']+)["']/g;
+
+/**
+ * Why `vfs` isn't a browser-only project, or undefined if it is: it needs a root index.html, and no file the page loads
+ * (its module scripts and everything they import locally) may use Bun.*, node:*, bun:* or require(). Other project
+ * files (servers, build scripts, tests, config) are never read.
+ */
 export function disqualified(vfs: VFS): string | undefined {
-  if (!vfs.files.has("index.html")) return "no index.html at the root";
-  for (const [path] of vfs.files) {
-    if (path.startsWith("node_modules/") || path.includes("/node_modules/") || !JS.test(path)) continue;
+  const html = vfs.readText("index.html");
+  if (html === undefined || !vfs.files.has("index.html")) return "no index.html at the root";
+  const seen = new Set<string>();
+  const queue: string[] = [];
+  for (const [, attrs, src, after] of html.matchAll(SCRIPT_TAG)) {
+    if (!/type=["']module["']/i.test(attrs + after) || /^(?:https?:)?\/\//.test(src)) continue;
+    const path = resolveLocal(vfs, src, "index.html");
+    if (path) queue.push(path);
+  }
+  for (let path: string | undefined; (path = queue.pop()); ) {
+    if (seen.has(path)) continue;
+    seen.add(path);
+    if (!JS.test(path)) continue;
     const src = vfs.readText(path) ?? "";
     const hit = SERVER_USE.exec(src);
     if (hit) return `${path} uses ${hit[0].trim()}`;
+    for (const m of src.matchAll(IMPORT_SPEC)) {
+      const spec = m[1] ?? m[2];
+      const target = LOCAL_SPEC.test(spec) ? resolveLocal(vfs, spec, path) : undefined;
+      if (target) queue.push(target);
+    }
   }
 }
 export const qualifies = (vfs: VFS) => disqualified(vfs) === undefined;
@@ -233,7 +257,7 @@ export async function buildFast(vfs: VFS): Promise<Fast> {
 
   // The page's own entries: module scripts, and stylesheets as data: URLs.
   const entries: string[] = [];
-  let doc = html.replace(/<script\b([^>]*?)\bsrc=["']([^"']+)["']([^>]*)>\s*<\/script>/gi, (all, a: string, src: string, b: string) => {
+  let doc = html.replace(SCRIPT_TAG, (all, a: string, src: string, b: string) => {
     if (!/type=["']module["']/i.test(a + b) || /^(?:https?:)?\/\//.test(src)) return all;
     const path = resolveLocal(vfs, src, "index.html");
     if (!path) return all;
