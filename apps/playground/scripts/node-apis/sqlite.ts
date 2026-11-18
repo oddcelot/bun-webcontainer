@@ -85,6 +85,11 @@ export async function sqlite(t: Case, log: (line: string) => void) {
     return st.all();
   });
   t("sqlite columns names", () => db.prepare("select id, name as nm, 1 + 1 from t").columns().map((c) => c.name).join());
+  s("sqlite columns", () => db.prepare("select id, name as nm, 1 + 1, t.n, big from t").columns());
+  s("sqlite columns view temp", () => {
+    db.exec("create view tv as select id, name, id * 2 as d from t; create temp table tt (q text, r)");
+    return [db.prepare("select id, d from tv").columns(), db.prepare("select q, r from tt").columns(), db.prepare("insert into tt values (1, 2)").columns()];
+  });
   t("sqlite syntax error", () => errOf(() => db.prepare("selec 1")));
   t("sqlite unique", () => errOf(() => db.exec("insert into t (id) values (1)")));
   t("sqlite not null", () => errOf(() => db.exec("create table nn (a not null); insert into nn values (null)")));

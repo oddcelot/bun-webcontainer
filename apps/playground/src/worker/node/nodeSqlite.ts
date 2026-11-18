@@ -496,12 +496,12 @@ export class StatementSync {
     return it;
   }
 
-  /** The result columns: names only, the rest null. */
-  columns(): { column: null; database: null; name: string; table: null; type: null }[] {
+  /** The result columns: name, and the database, table, column and declared type it comes from (null for an expression). */
+  columns(): { column: string | null; database: string | null; name: string; table: string | null; type: string | null }[] {
     if (this.#done) throw invalidState("statement has been finalized");
     const s = this.#raw;
     if (!s) return [];
-    return Array.from({ length: s.columnCount }, (_, i) => Object.assign(Object.create(null), { column: null, database: null, name: s.columnName(i), table: null, type: null }));
+    return Array.from({ length: s.columnCount }, (_, i) => Object.assign(Object.create(null), { column: s.originName(i), database: s.databaseName(i), name: s.columnName(i), table: s.tableName(i), type: s.declType(i) }));
   }
 
   setReadBigInts(enabled: boolean) {
