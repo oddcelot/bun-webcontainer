@@ -112,7 +112,34 @@ try {
     eq("and nothing is sent", sent.length, 0);
   }
 
-  // 5. A `files` message the page must not apply, from a runner that answers as the test says (no real run).
+  // 5. Coverage: the flags go over, the table prints, the lcov.info lands in the VFS; a threshold below fails the run.
+  {
+    sent = [];
+    const lines: string[] = [];
+    const { vfs, r } = make(["snapshots", "coverage"], lines);
+    vfs.write("m.ts", "export const used = () => 1;\nexport function unused() {\n  return 2;\n}\n");
+    vfs.write("m.test.ts", `import { expect, test } from "bun:test";\nimport { used } from "./m";\ntest("c", () => expect(used()).toBe(1));\n`);
+    const res = await r.runTests(["m.test.ts"], ["--coverage", "--coverage-reporter=text", "--coverage-reporter=lcov", "--coverage-dir=out/cov"]);
+    const run = sent.find((m) => m.t === "run") as Extract<ClientMessage, { t: "run" }>;
+    eq("the run passes the coverage flags", run.coverage, ["--coverage", "--coverage-reporter=text", "--coverage-reporter=lcov", "--coverage-dir=out/cov"]);
+    eq("and asks for the lcov.info back", run.lcov, "out/cov/lcov.info");
+    eq("it passes", [res.failed, res.coverageFailed], [0, undefined]);
+    eq("the table is in the console", lines.some((l) => /m\.ts +\| +50\.00/.test(l)), true);
+    eq("the lcov.info is in the VFS", /^SF:m\.ts$/m.test(vfs.readText("out/cov/lcov.info") ?? ""), true);
+    vfs.write("bunfig.toml", "[test]\ncoverageThreshold = 0.9\n");
+    const low = await r.runTests(["m.test.ts"], ["--coverage"]);
+    eq("below the threshold the run fails on coverage", [low.failed, low.coverageFailed], [0, true]);
+  }
+  {
+    sent = [];
+    const lines: string[] = [];
+    const { r } = make(["snapshots"], lines);
+    eq("an older runner is refused coverage", (await r.runTests(["a.test.ts"], ["--coverage"])).failed, 1);
+    eq("with a message that says to update it", lines.some((l) => /can't count coverage \(update @runbun\/connect/.test(l)), true);
+    eq("nothing was sent for it", sent.length, 0);
+  }
+
+  // 6. A `files` message the page must not apply, from a runner that answers as the test says (no real run).
   const hostile = (id: string): ServerMessage =>
     ({
       t: "files",

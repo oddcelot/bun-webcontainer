@@ -64,6 +64,8 @@ class Instrumenter {
   constructor(
     private code: string,
     private v: string,
+    /** Whether the code being walked is strict mode code. */
+    private strict: boolean,
   ) {}
 
   counter(s: number, e: number): number {
@@ -147,29 +149,45 @@ class Instrumenter {
     this.fns.push([c, outer, start]);
     this.parent = c;
     const block = f.body.type === "BlockStatement";
-    // A generator's body runs when it is first resumed, not when it is called: the call counts in a default parameter
-    // (they are evaluated by the call), the body on its own.
+    // A generator's body runs when it is first resumed, not when it is called: the call counts where the call evaluates
+    // the parameters, the body on its own. In an added default parameter; with a rest parameter, in a computed key of
+    // a pattern its values go through (`...{ [(count, "length")]: n, ...xs }`, made the array again in the body). A
+    // "use strict" body can have neither, so in code that is strict anyway its directive becomes a plain string.
     let bodyCounter = c;
-    if (f.generator && block) {
-      const directives = f.body.body.some((s: N) => s.directive === "use strict");
-      if (!directives && !f.params.some((p: N) => p.type === "RestElement")) {
-        const last = f.params.at(-1);
+    let restore = "";
+    let beforeDirectives = false;
+    const strictBody = block && f.body.body.some((s: N) => s.directive === "use strict");
+    if (f.generator && block && (!strictBody || this.strict)) {
+      const last: N | undefined = f.params.at(-1);
+      if (last?.type === "RestElement") {
+        if (last.argument.type === "Identifier") {
+          const name = last.argument.name;
+          this.put(last.argument.start, `{ [(${this.inc(c)}, "length")]: $__covLength, ...`);
+          this.put(last.argument.end, " }");
+          restore = `${name} = Array.from({ ...${name}, length: $__covLength });`;
+          bodyCounter = this.counter(f.body.start, f.body.end);
+        }
+      } else {
         const at = last ? last.end : this.code.lastIndexOf(")", f.body.start);
         this.put(at, `${last ? ", " : ""}$__covCall = ${this.inc(c)}`);
         bodyCounter = this.counter(f.body.start, f.body.end);
-        this.parent = bodyCounter;
+        beforeDirectives = strictBody;
       }
+      if (bodyCounter !== c) this.parent = bodyCounter;
     }
+    const outerStrict = this.strict;
+    this.strict ||= strictBody;
     for (const p of f.params) this.node(p);
     if (block) {
       let at = f.body.start + 1;
       for (const s of f.body.body) {
-        if (s.type !== "ExpressionStatement" || s.directive === undefined) break;
+        if (beforeDirectives || s.type !== "ExpressionStatement" || s.directive === undefined) break;
         at = s.end;
       }
-      this.put(at, `${this.inc(bodyCounter)};`);
+      this.put(at, `${this.inc(bodyCounter)};${restore}`);
       this.list(f.body.body, f.body.end - 1);
     } else this.wrap(f.body, c);
+    this.strict = outerStrict;
     this.parent = outer;
     this.caseTest = caseTest;
   }
@@ -221,6 +239,14 @@ class Instrumenter {
       }
       case "BlockStatement":
         return this.list(n.body, n.end - 1);
+      case "ClassDeclaration":
+      case "ClassExpression": {
+        const strict = this.strict;
+        this.strict = true;
+        for (const child of children(n)) this.node(child);
+        this.strict = strict;
+        return;
+      }
       case "IfStatement":
         this.node(n.test);
         this.body(n.consequent, this.counter(n.consequent.start, n.consequent.end));
@@ -304,8 +330,16 @@ class Instrumenter {
   private chain(n: N, end: number): void {
     if (n.type === "ChainExpression") return this.chain(n.expression, end);
     if (n.type === "MemberExpression") {
+      if (n.optional && !this.caseTest && n.property.type === "PrivateIdentifier") {
+        // `a?.#b` has no computed form: `a` goes through a function that counts it unless it is null or undefined.
+        const c = this.counter(n.object.end, end);
+        this.put(n.object.start, `(($__covValue) => ($__covValue != null && ${this.inc(c)}, $__covValue))(`);
+        this.chain(n.object, end);
+        this.put(n.object.end, ")");
+        return;
+      }
       this.chain(n.object, end);
-      if (n.optional && !this.caseTest && n.property.type !== "PrivateIdentifier") {
+      if (n.optional && !this.caseTest) {
         const c = this.counter(n.object.end, end);
         if (n.computed) this.wrap(n.property, c);
         else {
@@ -458,5 +492,6 @@ export function instrument(code: string, mappings: string, id: number, script = 
   }
   const directive = script && source !== undefined ? /^(?:#![^\n]*\n)?(?:\s|\/\/[^\n]*|\/\*[\s\S]*?\*\/)*(?=(["'])use strict\1)/.exec(source) : null;
   const directiveLine = directive && !/^\s*(["'])use strict\1/.test(code) ? lineStarts(directive[0]).length - 1 : undefined;
-  return new Instrumenter(code, counterName(id)).run(program).result(mappings, directiveLine);
+  const strict = !script || program.body.some((s: N) => s.directive === "use strict");
+  return new Instrumenter(code, counterName(id), strict).run(program).result(mappings, directiveLine);
 }

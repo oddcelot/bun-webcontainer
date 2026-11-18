@@ -1,0 +1,6 @@
+{
+  "name": "node-test-run",
+  "scripts": {
+    "test": "bun test b.test.ts"
+  }
+}
