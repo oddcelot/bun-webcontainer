@@ -3,7 +3,7 @@ import { loadResolver, parseData, parseDataFile, resolve } from "../resolver";
 import { loadSemver } from "../semver";
 import { dirname, norm, VFS, type FileData } from "@runbun/vfs";
 import { readConfig } from "../projectConfig";
-import { BUN_NAMES, builtinName, builtins, compressionStreams, installAsyncContext, installTimers, setExit, setFs, setRawStdio, setRequire, setStdio } from "./node";
+import { BUN_NAMES, builtinName, builtins, compressionStreams, installAsyncContext, installTimers, setBunFetch, setExit, setFs, setRawStdio, setRequire, setStdio } from "./node";
 import { bundle, type BundleConfig, type BundleLog } from "./bundler";
 import { setHostVfs } from "./hostPackages";
 import { hash } from "./hash";
@@ -1419,6 +1419,8 @@ async function loopbackFetch(inst: Instance, req: Request): Promise<Response> {
 globalThis.fetch = trackedFn(function fetch(input: RequestInfo | URL, init?: RequestInit) {
   return fileFetch(input, init);
 }) as typeof fetch;
+// undici, node-fetch & co. (node/bunPackages.ts) keep this one even after a program replaces the global.
+setBunFetch(globalThis.fetch);
 
 /** The browser's WebSocket client, holding the program while it is connecting or open (loop.ts), as Bun's does. */
 if (typeof globalThis.WebSocket === "function") {

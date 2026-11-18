@@ -16,6 +16,7 @@ import nodeSqlite from "./nodeSqlite";
 import test from "./test";
 import nodeTest from "./nodeTest";
 import ws from "./ws";
+import { BUN_PACKAGE_ALIASES, bunPackages } from "./bunPackages";
 import { createModule } from "./module";
 import { codeError } from "./errors";
 import os from "./os";
@@ -114,30 +115,38 @@ export const builtins: Record<string, object> = {
   "bun:sqlite": sqlite,
   test: nodeTest,
   "bun:test": test,
-  "bun:ws": ws,
+  ws,
+  ...bunPackages,
   worker_threads,
   zlib,
 };
 /** Built-ins with only a `node:` name, as in Bun: bare, `sqlite` and `test` are npm packages. */
 export const NODE_PREFIXED = ["sqlite", "test"];
 
-/** The key in `builtins` of specifier `spec` (`fs`, `node:fs`, `bun:sqlite`, `node:sqlite`), or undefined if it isn't one. */
+/** npm packages Bun serves from its own modules, installed or not (bunPackages.ts): their keys in `builtins`. */
+const BUN_PACKAGES = new Set(["ws", ...Object.keys(bunPackages)]);
+
+/**
+ * The key in `builtins` of specifier `spec` (`fs`, `node:fs`, `bun:sqlite`, `node:sqlite`, and the packages Bun has
+ * its own of: `ws`, `undici`, `next/dist/compiled/ws`), or undefined if it isn't one.
+ */
 export function builtinName(spec: string): string | undefined {
+  if (Object.hasOwn(BUN_PACKAGE_ALIASES, spec)) return BUN_PACKAGE_ALIASES[spec];
   const name = spec.startsWith("node:") ? spec.slice(5) : spec;
-  if (!Object.hasOwn(builtins, name) || (name === spec && NODE_PREFIXED.includes(name))) return undefined;
+  if (!Object.hasOwn(builtins, name) || (name === spec && NODE_PREFIXED.includes(name)) || (name !== spec && BUN_PACKAGES.has(name))) return undefined;
   return name;
 }
 
-/**
- * Packages Bun serves from its own modules when they aren't installed (an installed one wins): the key in `builtins`
- * of `spec`, or undefined. Bun also has `undici`, `node-fetch` and others; the playground has only `ws`.
- */
-export const bunFallback = (spec: string): string | undefined => (spec === "ws" ? "bun:ws" : undefined);
+/** Whether `spec` names one of the npm packages Bun has its own of (`undici`, `ws/lib/websocket`). */
+export const isBunPackage = (spec: string): boolean => Object.hasOwn(BUN_PACKAGE_ALIASES, spec) || BUN_PACKAGES.has(spec);
 
-/** `require("module").builtinModules`: the `node:`-only ones with their prefix; Bun leaves out `node:test`. */
-export const builtinModuleNames = () => Object.keys(builtins).filter((k) => k !== "test").map((k) => (NODE_PREFIXED.includes(k) ? `node:${k}` : k));
+/** `require("module").builtinModules`: the `node:`-only ones with their prefix; Bun leaves out `node:test`, and lists of its packages only `undici` and `ws`. */
+export const builtinModuleNames = () =>
+  Object.keys(builtins)
+    .filter((k) => k !== "test" && (!BUN_PACKAGES.has(k) || k === "undici" || k === "ws"))
+    .map((k) => (NODE_PREFIXED.includes(k) ? `node:${k}` : k));
 
-builtins.module = createModule(builtins, builtinName, builtinModuleNames, bunFallback);
+builtins.module = createModule(builtins, builtinName, builtinModuleNames, isBunPackage);
 /** `process.getBuiltinModule(id)`: what `require(id)` gives for a built-in (`node:` or not, `bun:*`), else undefined. */
 process.getBuiltinModule = function getBuiltinModule(id: unknown) {
   if (typeof id !== "string") {
@@ -149,6 +158,7 @@ process.getBuiltinModule = function getBuiltinModule(id: unknown) {
 };
 
 export { setFs } from "./fs";
+export { BUN_PACKAGE_ALIASES, setBunFetch } from "./bunPackages";
 export { setRequire } from "./module";
 export { setExit, setRawStdio, setStdio } from "./process";
 export { installTimers } from "./timers";

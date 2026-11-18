@@ -135,8 +135,8 @@ export function createModule(
   registry: Record<string, object>,
   builtinName: (spec: string) => string | undefined,
   builtinModules: () => string[],
-  /** A package Bun serves from its own modules when it isn't installed (`ws`): its key in `registry`. */
-  fallback: (spec: string) => string | undefined = () => undefined,
+  /** Whether a specifier names one of the npm packages Bun has its own of (`undici`), which `builtinName` maps too. */
+  bunPackage: (spec: string) => boolean = () => false,
 ) {
   const name = (id: string) => builtinName(id) ?? id;
   const isBuiltin = (id: string) => builtinName(String(id)) !== undefined;
@@ -167,8 +167,6 @@ export function createModule(
     const plugged = pluginHook?.(id, from, "require");
     if (plugged) return plugged.value;
     const path = resolveFile?.(id, requireDir(from));
-    const builtin = path ? undefined : fallback(id);
-    if (builtin) return registry[builtin];
     if (!path || !vfs) throw notFound(id, from);
     const file = "/" + path;
     if (mocks.has(path)) return mocks.get(path);
@@ -201,8 +199,6 @@ export function createModule(
     const plugged = pluginHook?.(spec, from, "import");
     if (plugged) return plugged.value as object;
     const path = resolveImport?.(spec, requireDir(from));
-    const builtin = path ? undefined : fallback(spec);
-    if (builtin) return builtinNamespace(builtin, registry[builtin]);
     if (!path || !vfs) throw Object.assign(new Error(`Cannot find module '${spec}' from '${from}'`), { name: "ResolveMessage", code: "ERR_MODULE_NOT_FOUND" });
     const file = "/" + path;
     if (mocks.has(path)) return Object.assign(Object.create(null) as object, mocks.get(path));
@@ -334,10 +330,10 @@ export function createModule(
   function decorate(req: Require, from: string) {
     if (req.cache) return req;
     const resolve = (id: string) => {
-      if (isBuiltin(id)) return id;
+      // Bun's own packages by their names (`ws/lib/websocket` is `ws`).
+      if (isBuiltin(id)) return bunPackage(id) ? name(id) : id;
       const path = resolveFile?.(id, requireDir(from));
       if (path) return "/" + path;
-      if (fallback(id)) return id;
       throw notFound(id, from);
     };
     resolve.paths = (id: string) => (isBuiltin(id) ? null : nodeModulePaths(requireDir(from)));
@@ -359,7 +355,8 @@ export function createModule(
   const Module = Object.assign(function Module() {}, {
     createRequire,
     builtinModules: builtinModules(),
-    isBuiltin,
+    // Of Bun's own packages, only those it lists in builtinModules (`undici`, `ws`).
+    isBuiltin: (id: string) => isBuiltin(id) && (!bunPackage(String(id)) || builtinModules().includes(String(id))),
     register() {},
     registerHooks: () => ({ deregister() {} }),
     syncBuiltinESMExports() {},

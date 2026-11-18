@@ -105,7 +105,7 @@ Bun's own resolver, compiled to WebAssembly (~900 KB, loaded with the first modu
 - ✅ Markdown imports (`.md`, `.markdown`) with Bun's renderer, as Bun has them: the HTML is the default export; `require` returns the module's namespace
 - ✅ CSS imported from code that goes through an HTML import (bundled), or through Vite
 - ✅ CSS imported from server code (`import "./x.css"`, also `.module.css`) is `{}`, as in Bun's runtime. In a page served without bundling, it is linked as a stylesheet and CSS module class names map to themselves.
-- ✅ `ws` that isn't installed is Bun's own, as in Bun: `import`, `require`, `import.meta.resolve` and `Bun.resolveSync` give it (an installed `ws` wins). Bun's other stand-ins for packages it has built in (`undici`, `node-fetch` and the like) aren't there
+- ✅ The packages Bun has its own of are Bun's, installed or not, as in Bun: `ws` (`ws/lib/websocket`), `undici`, `node-fetch`, `isomorphic-fetch` and `@vercel/fetch` over `fetch`, `abort-controller` (`abort-controller/polyfill`) as the global `AbortController`, `utf-8-validate`, and Next.js's copies (`next/dist/compiled/ws`, `node-fetch`, `undici`). `import`, `require`, `import.meta.resolve` and `Bun.resolveSync` give them, by their names. Like Bun's, `undici` has `request` (its body a stream with `json()`/`text()`) and `fetch`; its `Agent`, `Pool` and `MockAgent` are empty stand-ins. `node-fetch` responses have node stream bodies and `buffer()`, `headers.raw()`. Unlike Bun's, a request with a string body gets `content-type: text/plain;charset=UTF-8`, as `fetch` in a browser does
 - ✅ `http:`/`https:` imports are left to the browser
 - `rolldown` is replaced by the playground's own `@rolldown/browser`, since the native binding can't load
 

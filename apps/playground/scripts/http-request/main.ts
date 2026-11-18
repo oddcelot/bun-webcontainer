@@ -298,6 +298,48 @@ if (Bun.env.NET) {
   log("node listen after close:", await fetch("http://localhost:3013/f").then((r) => r.text()));
   again.close();
 }
+// Packages Bun has its own of (none is installed here): undici, node-fetch, isomorphic-fetch, @vercel/fetch over fetch.
+{
+  const nodeFetch: any = (await import("node-fetch" as string)).default;
+  const r = await nodeFetch("http://localhost:3011/echo?nf=1", { method: "POST", body: "x", headers: { "x-test": "nf" } });
+  log("node-fetch:", r.status, r.ok, r.type, r.headers.raw()["set-cookie"], typeof r.body.pipe, await r.json().then((j: any) => [j.method, j.path, j.x, j.body]));
+  let s = "";
+  for await (const c of (await nodeFetch("http://localhost:3011/stream")).body) s += c;
+  log("node-fetch stream:", s);
+  const empty = await nodeFetch("http://localhost:3011/empty");
+  log("node-fetch 204:", empty.status, empty.body !== null, await empty.json().catch((e: Error) => e.name));
+  const nf = await nodeFetch("http://localhost:3011/nope");
+  log("node-fetch 404:", nf.status, nf.ok, nf.type, (await nf.buffer()).toString());
+  log("node-fetch exports:", nodeFetch.isRedirect(301), nodeFetch.isRedirect(200), new nodeFetch.Request("/x").url, new nodeFetch.FetchError("m", "t", { code: "E" }).code, new nodeFetch.AbortError("a").name, nodeFetch.default === nodeFetch);
+  log("node-fetch require:", require("node-fetch") === nodeFetch, require("next/dist/compiled/node-fetch") === nodeFetch, require.resolve("node-fetch"), import.meta.resolve("node-fetch"));
+}
+{
+  const undici: any = await import("undici" as string);
+  const { statusCode, headers, body } = await undici.request("http://localhost:3011/echo?u=1", { method: "PUT", body: "u", headers: { "x-test": "u" } });
+  log("undici request:", statusCode, headers["x-custom"], headers["set-cookie"], body.bodyUsed, await body.json().then((j: any) => [j.method, j.path, j.x, j.body]), body.bodyUsed);
+  let s = "";
+  for await (const c of (await undici.request("http://localhost:3011/stream")).body) s += c;
+  log("undici stream:", s);
+  const q = await undici.request(new URL("http://localhost:3011/echo"), { query: { a: "1" } });
+  log("undici query:", JSON.parse(await q.body.text()).path);
+  const f = await undici.fetch("http://localhost:3011/body/json");
+  log("undici fetch:", f.status, await f.text(), undici.Headers === Headers, undici.Response === Response, undici.FormData === FormData);
+  log("undici errors:", new undici.errors.SocketError("x") instanceof undici.errors.UndiciError, new undici.errors.RequestAbortedError() instanceof undici.errors.AbortError);
+  log("undici names:", Object.keys(undici.default).length, typeof undici.Agent, typeof undici.WebSocket, undici.default === undici.default.default);
+  const m = require("module");
+  log("undici resolve:", m.isBuiltin("undici"), m.isBuiltin("ws"), m.isBuiltin("node-fetch"), m.builtinModules.includes("undici"), Bun.resolveSync("undici", "."), import.meta.resolve("next/dist/compiled/undici"), require.resolve("ws/lib/websocket"));
+}
+{
+  const iso: any = (await import("isomorphic-fetch" as string)).default;
+  log("isomorphic-fetch:", await (await iso("http://localhost:3011/body/string")).text(), iso.fetch === iso, iso.name);
+  const vf = (await import("@vercel/fetch" as string)).default();
+  log("@vercel/fetch:", JSON.parse(await (await vf("http://localhost:3011/echo", { method: "POST", body: { a: 1 } })).text()).ct);
+  const AC = require("abort-controller");
+  log("abort-controller:", AC === AbortController, AC.AbortSignal === AbortSignal, AC.default === AC, (await import("abort-controller/polyfill" as string)).AbortController === AbortController);
+  const valid = require("utf-8-validate");
+  log("utf-8-validate:", valid(Buffer.from("h" + String.fromCharCode(233) + "llo")), valid(Buffer.from([0xff])), valid.name, valid.length);
+  log("ws/lib/websocket:", require("ws/lib/websocket") === require("ws"), process.getBuiltinModule("isomorphic-fetch") === iso);
+}
 // A WebSocket to this program's own server, as Bun's client connects to it.
 const sockets = Bun.serve({
   port: 3012,
