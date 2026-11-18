@@ -118,4 +118,10 @@ await p("intx-savepoint", () => { const d = new Database(":memory:"); const r: a
 await p("dqs", () => [db.query('select "abc" x').get(), (db.run('create table dq(x default "v")'), db.run("insert into dq default values"), db.query("select x from dq").get())]);
 await p("pragmas", () => { const d = new Database(":memory:"); return d.query("select * from pragma_page_size, pragma_recursive_triggers, pragma_foreign_keys").get(); });
 await p("defensive", () => { const d = new Database(":memory:"); d.run("create table q(x)"); d.run("pragma writable_schema = on"); return [d.query("pragma writable_schema").get(), (() => { try { d.run("update sqlite_master set name = 'zz'"); return "ok"; } catch (e: any) { return e.message; } })()]; });
+await p("coltypes", () => { db.run("create table ct(id integer primary key, a text, n int, r real, b blob, x)"); const s = db.query("select id, a, n, r, b, x, n+1, 1.5, 'q', null from ct"); const r: any[] = [s.columnTypes, s.declaredTypes]; db.run("insert into ct values (1, 'a', 2, 3.5, x'01', 7)"); r.push(s.columnTypes, s.declaredTypes, s.get(), s.columnTypes); return r; });
+await p("coltypes-bound", () => { const s = db.query("select ? a, ? b"); s.get(1, "x"); return [s.columnTypes, s.declaredTypes]; });
+await p("coltypes-write", () => db.query("insert into ct(a) values ('z')").columnTypes);
+await p("coltypes-write-decl", () => db.query("insert into ct(a) values ('z') returning id, a").declaredTypes);
+await p("coltypes-fin", () => { const s = db.prepare("select 1"); s.finalize(); return s.columnTypes; });
+await p("coltypes-view", () => { db.run("create view ctv as select id, a, n * 2 d from ct"); return db.query("select * from ctv").declaredTypes; });
 console.log("__end__");

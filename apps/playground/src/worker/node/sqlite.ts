@@ -181,6 +181,27 @@ export class Statement<R = unknown, P extends unknown[] = any[]> {
     return Array.from({ length: s.columnCount }, (_, i) => s.columnName(i));
   }
 
+  /** The type of each column in the first row (all "NULL" without one): the statement runs, so only one that writes nothing may. */
+  get columnTypes(): string[] {
+    const s = this.live();
+    if (!s.readonly) throw new Error("columnTypes is not available for non-read-only statements (INSERT, UPDATE, DELETE, etc.)");
+    s.reset();
+    try {
+      const row = s.step();
+      return Array.from({ length: s.columnCount }, (_, i) => (row ? TYPES[s.type(i)] : "NULL"));
+    } catch (e) {
+      throw sqliteError(e, this.db);
+    } finally {
+      s.reset();
+    }
+  }
+
+  /** The declared type of each column (null for an expression or a column declared without one). */
+  get declaredTypes(): (string | null)[] {
+    const s = this.live();
+    return Array.from({ length: s.columnCount }, (_, i) => s.declType(i));
+  }
+
   get paramsCount(): number {
     return this.live().paramCount;
   }
