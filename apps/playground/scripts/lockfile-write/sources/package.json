@@ -7,6 +7,9 @@
     "linked-pkg": "link:linked-pkg",
     "is-odd": "github:jonschlinkert/is-odd#3.0.1",
     "is-even": "jonschlinkert/is-even",
-    "kind-of": "git+https://github.com/jonschlinkert/kind-of.git#6.0.3"
+    "kind-of": "git+https://github.com/jonschlinkert/kind-of.git#6.0.3",
+    "left-pad": "git+https://gitlab.com/Red54/left-pad.git",
+    "lp-short": "gitlab:Red54/left-pad#76979f0",
+    "lp-tag": "https://gitlab.com/shnekel/leftpad.git#v0.0.1"
   }
 }

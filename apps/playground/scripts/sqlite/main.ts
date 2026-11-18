@@ -1,4 +1,4 @@
-import { Database, SQLiteError } from "bun:sqlite";
+import { constants, Database, SQLiteError, Statement } from "bun:sqlite";
 // Each probe prints its label and the value, or the error's fields; scripts/sqlite.ts compares with native Bun.
 const p = async (l: string, f: () => any) => { try { const r = await f(); console.log(l, typeof r === "bigint" ? r + "n" : JSON.stringify(r, (k, v) => typeof v === "bigint" ? v + "n" : v)); } catch (e: any) { console.log(l, "THROW", e instanceof SQLiteError ? "-" : e?.constructor?.name, e.name, e.code, e.errno, e.byteOffset, e instanceof SQLiteError, e.message); } };
 const db = new Database(":memory:");
@@ -81,7 +81,10 @@ await p("create-false", () => new Database("zzz.db", { create: false }));
 await p("ro+create", () => new Database("zzz.db", { readonly: true, create: true }));
 await p("ro-missing", () => new Database("zzz.db", { readonly: true }));
 await p("bind-types", () => db.query("select typeof(?) a, typeof(?) b, typeof(?) c, typeof(?) d, typeof(?) e").values(true, undefined, new Uint8Array([1]), 5n, new Date(0)));
-await p("bind-obj", () => db.query("select ? a").get({} as any));
+await p("bind-bigint", () => db.query("select typeof(?) a, typeof(?) b, typeof(?) c, ? + 1 d, typeof(?) e").get(5n, -(2n ** 31n), 1, 41n, 1.5));
+await p("bind-bigint-named", () => db.query("select typeof($a) a, $a + 1 b").get({ $a: 7n }));
+await p("bind-bigint-run", () => { db.run("create table bb(x)"); db.run("insert into bb values (?)", [9n]); return db.query("select typeof(x) t, x from bb").get(); });
+await p("bind-obj", () =>db.query("select ? a").get({} as any));
 await p("blob", () => db.query("select x'0102' b").get());
 await p("exec-multi", () => db.exec("create table m(x); insert into m values (1); insert into m values (2)"));
 await p("run-multi", () => db.run("insert into m values (3); insert into m values (4)"));
@@ -96,4 +99,149 @@ await p("err-props", () => { try { db.run("insert into t(a) values ('x')"); } ca
 await p("syn-props", () => { try { db.run("frobnicate 1"); } catch (e:any) { return [Object.keys(e)]; } });
 await p("persist", () => { const d = new Database("persist.db"); d.run("create table if not exists k(v)"); d.run("insert into k values (?)", ["kept"]); d.close(); const e = new Database("persist.db", { readonly: true }); const r = e.query("select v from k").all(); e.close(); return r; });
 await p("exact-int64", () => { const d = new Database(":memory:", { safeIntegers: true }); d.run("create table k(v integer)"); d.run("insert into k values (?)", [2n ** 62n + 1n]); return d.query("select v, v + 1 w from k").get(); });
+await p("err-offset-col", () => db.prepare("select nope from t"));
+await p("err-offset-exists", () => db.run("create table t(x)"));
+await p("err-offset-fn", () => db.prepare("select 1, nofn()"));
+await p("err-offset-multi", () => db.run("select 1; select * frm t"));
+await p("err-pk-composite", () => { db.run("create table pc(a, b, primary key(a, b))"); db.run("insert into pc values (1, 2)"); db.run("insert into pc values (1, 2)"); });
+await p("err-pk-text", () => { db.run("create table pt(k text primary key)"); db.run("insert into pt values ('a')"); db.run("insert into pt values ('a')"); });
+await p("err-unique-index", () => { db.run("create table ui(a); create unique index ui_a on ui(a)"); db.run("insert into ui values (1)"); db.run("insert into ui values (1)"); });
+await p("err-raise", () => { db.run("create table tr(x); create trigger tr_t before insert on tr begin select raise(abort, 'no way'); end"); db.run("insert into tr values (1)"); });
+await p("err-strict", () => { db.run("create table st1(x integer) strict"); db.run("insert into st1 values ('a')"); });
+await p("err-view", () => { db.run("create view vw as select 1 x"); db.prepare("insert into vw values (2)"); });
+await p("bind-int64", () => db.query("select typeof(?) t, ? = 4611686018427387905 eq, cast(? as text) s").get(2n ** 62n + 1n, 2n ** 62n + 1n, 2n ** 62n + 1n));
+await p("bind-int64-min", () => db.query("select cast(? as text) s").get(-(2n ** 63n)));
+await p("bind-int64-wrap", () => db.query("select cast(? as text) s").get(2n ** 64n + 5n));
+await p("bind-num-kinds", () => db.query("select typeof(?) a, typeof(?) b, typeof(?) c, typeof(?) d, typeof(?) e").values(1, 2 ** 53, 2 ** 53 - 1, -0, 1e300));
+await p("tostr-int64", () => { const s = db.query("select ? a, ? b, ? c"); s.get(2n ** 62n + 1n, 1e20, 1e-7); return s.toString(); });
+await p("intx-savepoint", () => { const d = new Database(":memory:"); const r: any[] = []; d.run("savepoint a"); r.push(d.inTransaction); d.run("release a"); r.push(d.inTransaction); d.run("begin; savepoint b; rollback to b"); r.push(d.inTransaction); d.run("rollback"); r.push(d.inTransaction); return r; });
+await p("dqs", () => [db.query('select "abc" x').get(), (db.run('create table dq(x default "v")'), db.run("insert into dq default values"), db.query("select x from dq").get())]);
+await p("pragmas", () => { const d = new Database(":memory:"); return d.query("select * from pragma_page_size, pragma_recursive_triggers, pragma_foreign_keys").get(); });
+await p("defensive", () => { const d = new Database(":memory:"); d.run("create table q(x)"); d.run("pragma writable_schema = on"); return [d.query("pragma writable_schema").get(), (() => { try { d.run("update sqlite_master set name = 'zz'"); return "ok"; } catch (e: any) { return e.message; } })()]; });
+await p("coltypes", () => { db.run("create table ct(id integer primary key, a text, n int, r real, b blob, x)"); const s = db.query("select id, a, n, r, b, x, n+1, 1.5, 'q', null from ct"); const r: any[] = [s.columnTypes, s.declaredTypes]; db.run("insert into ct values (1, 'a', 2, 3.5, x'01', 7)"); r.push(s.columnTypes, s.declaredTypes, s.get(), s.columnTypes); return r; });
+await p("coltypes-bound", () => { const s = db.query("select ? a, ? b"); s.get(1, "x"); return [s.columnTypes, s.declaredTypes]; });
+await p("coltypes-write", () => db.query("insert into ct(a) values ('z')").columnTypes);
+await p("coltypes-write-decl", () => db.query("insert into ct(a) values ('z') returning id, a").declaredTypes);
+await p("coltypes-fin", () => { const s = db.prepare("select 1"); s.finalize(); return s.columnTypes; });
+await p("coltypes-view", () => { db.run("create view ctv as select id, a, n * 2 d from ct"); return db.query("select * from ctv").declaredTypes; });
+await p("fn-basic", () => { const r = db.function("twice", (x: number) => x * 2); return [r === db, db.query("select twice(21) v, typeof(twice(21)) t, twice(1.25) w, typeof(twice(1.25)) u").get()]; });
+await p("fn-results", () => { const vals: any[] = [5, 2 ** 53, -0, 5n, 2n ** 62n + 1n, 2n ** 64n + 3n, "s", null, undefined, true, new Uint8Array([1, 2]), new Uint8Array(0), new ArrayBuffer(2), NaN]; vals.forEach((v, i) => db.function(`r${i}`, () => v)); return db.query(`select ${vals.map((_, i) => `typeof(r${i}()) t${i}, cast(r${i}() as text) v${i}`).join(", ")}`).get(); });
+await p("fn-bad-result", () => { db.function("badr", () => ({})); return db.query("select badr() v").get(); });
+await p("fn-bad-result2", () => { db.function("badr2", () => new Date(0)); return db.query("select badr2() v").get(); });
+await p("fn-safe-result", () => { db.function("bigr", { safeIntegers: true }, () => 2n ** 64n); return db.query("select bigr() v").get(); });
+await p("fn-throws", () => { db.function("throwing", () => { throw new SyntaxError("inner"); }); return db.run("select throwing()"); });
+await p("fn-args", () => { db.function("kinds", { varargs: true }, (...a: unknown[]) => a.map((x) => x instanceof Uint8Array ? "bytes:" + x.length : typeof x + ":" + String(x)).join()); return db.query("select kinds(1, 2.5, 's', null, x'0102', 9007199254740993) k").get(); });
+await p("fn-args-safe", () => { db.function("kinds2", { varargs: true, safeIntegers: true }, (...a: unknown[]) => a.map((x) => typeof x + ":" + String(x)).join()); return db.query("select kinds2(1, 2.5, 9007199254740993) k").get(); });
+await p("fn-args-dbsafe", () => { sdb.function("kinds3", (a: unknown) => typeof a); return sdb.query("select kinds3(1) k").get(); });
+await p("fn-arity", () => { db.function("two", (a: unknown, b: unknown) => 1); return db.query("select two(1) v").get(); });
+await p("fn-options", () => [(() => { try { return db.function("o1", { deterministic: 1 } as any, () => 1); } catch (e: any) { return e.message; } })(), (() => { try { return db.function("", () => 1); } catch (e: any) { return e.message; } })(), (() => { try { return db.function(5 as any, () => 1); } catch (e: any) { return e.message; } })(), (() => { try { return db.function("x", {} as any); } catch (e: any) { return e.message; } })(), (() => { try { return db.function("x", 5 as any, () => 1); } catch (e: any) { return e.message; } })()].map(String));
+await p("fn-deterministic", () => { let n = 0; db.function("detx", { deterministic: true }, () => ++n); db.function("ndetx", () => ++n); db.run("create table fd(x); insert into fd values (1), (2), (3)"); db.query("select detx() from fd").all(); const a = n; db.query("select ndetx() from fd").all(); return [a, n - a, (() => { try { db.run("create index fdi on fd(ndetx())"); return "ok"; } catch (e: any) { return e.message; } })()]; });
+await p("fn-closed", () => { const d = new Database(":memory:"); d.close(); return d.function("x", () => 1); });
+await p("agg-basic", () => { const r = db.aggregate("sumx", { start: 0, step: (acc: number, v: number) => acc + v }); return [r === db, db.query("select sumx(x) s, typeof(sumx(x)) t from fd").get(), db.query("select sumx(x) s from fd where x > 9").get()]; });
+await p("agg-result", () => { db.aggregate("avgx", { start: () => ({ s: 0, n: 0 }), step: (a: any, v: number) => { a.s += v; a.n++; }, result: (a: any) => a.s / a.n }); return db.query("select avgx(x) a from fd").get(); });
+await p("agg-group", () => db.query("select x % 2 g, sumx(x) s from fd group by g order by g").all());
+await p("agg-window", () => { db.aggregate("sumw", { start: 0, step: (a: number, v: number) => a + v, inverse: (a: number, v: number) => a - v, result: (a: number) => a * 10 }); return [db.query("select sumw(x) over (order by x rows between 1 preceding and current row) w from fd").all(), db.query("select sumw(x) s from fd").get()]; });
+await p("agg-not-window", () => db.query("select sumx(x) over (order by x) w from fd").all());
+await p("agg-throws", () => { db.aggregate("aggthr", { start: 0, step: (_a: number, _v: number) => { throw new RangeError("step!"); } }); return db.query("select aggthr(x) from fd").get(); });
+await p("agg-start-throws", () => { db.aggregate("aggst", { start: () => { throw new RangeError("start!"); }, step: (a: number, _v: number) => a }); return db.query("select aggst(x) from fd").get(); });
+await p("agg-options", () => [(() => { try { return db.aggregate("a1", { start: 0 } as any); } catch (e: any) { return e.message; } })(), (() => { try { return db.aggregate("a2", { step: 5 } as any); } catch (e: any) { return e.message; } })(), (() => { try { return db.aggregate("a3", null as any); } catch (e: any) { return e.message; } })(), (() => { try { return db.aggregate("a4", { step: (a: number) => a, result: 3 } as any); } catch (e: any) { return e.message; } })()].map(String));
+await p("agg-nostart", () => { db.aggregate("nost", { step: (a: unknown, v: number) => (a ?? 0) as number + v }); return db.query("select nost(x) s, nost(x) is null n from fd where x > 9").get(); });
+// File databases are files: their journal and WAL next to them as native SQLite makes them, two connections share one.
+{
+  const fs = await import("node:fs");
+  fs.rmSync("vfsdb", { recursive: true, force: true });
+  fs.mkdirSync("vfsdb");
+  const ls = (sizes = true) => fs.readdirSync("vfsdb").sort().map((f) => (sizes ? `${f}:${fs.statSync(`vfsdb/${f}`).size}` : f)).join(" ");
+  // With every connection closed: macOS's SQLite (native Bun's there) keeps the -wal and -shm files, Linux's deletes them.
+  const closed = (sizes = true) => ls(sizes).split(" ").filter((f) => !/-(wal|shm)(:|$)/.test(f)).join(" ");
+  await p("file-open", () => { const d = new Database("vfsdb/a.db"); const r = [ls()]; d.run("create table t(x)"); r.push(ls()); d.run("begin"); d.run("insert into t values (1)"); r.push(ls(false)); d.run("commit"); r.push(ls()); d.close(); r.push(ls()); return r; });
+  await p("file-bytes", async () => { const b = fs.readFileSync("vfsdb/a.db"); return [b.subarray(0, 15).toString(), b.length, await Bun.file("vfsdb/a.db").size, (await Bun.file("vfsdb/a.db").bytes()).length]; });
+  await p("file-wal", () => { const d = new Database("vfsdb/b.db"); const r: any[] = [d.query("pragma journal_mode=WAL").get(), ls()]; d.run("create table t(x)"); d.run("insert into t values (1)"); r.push(ls()); const e = new Database("vfsdb/b.db"); r.push(e.query("select * from t").all(), e.query("pragma journal_mode").get()); d.run("insert into t values (2)"); r.push(e.query("select * from t").all()); e.close(); d.close(); r.push(closed()); const f = new Database("vfsdb/b.db"); r.push(f.query("pragma journal_mode").get(), f.query("select count(*) n from t").get(), ls()); f.close(); r.push(closed()); return r; });
+  await p("file-wal-checkpoint", () => { const d = new Database("vfsdb/b.db"); d.run("insert into t values (3)"); const r: any[] = [ls(), d.query("pragma wal_checkpoint(TRUNCATE)").get(), ls()]; d.close(); return r; });
+  await p("file-two", () => { const x = new Database("vfsdb/c.db"); x.run("create table t(x)"); const y = new Database("vfsdb/c.db"); x.run("insert into t values (1)"); return [y.query("select * from t").all(), (x.close(), y.close(), closed())]; });
+  await p("file-busy", () => { const x = new Database("vfsdb/c.db"); const y = new Database("vfsdb/c.db"); x.run("begin immediate"); x.run("insert into t values (2)"); const r: any[] = []; try { y.run("insert into t values (3)"); r.push("no busy"); } catch (e: any) { r.push(e.code, e.errno, e.message); } r.push(y.query("select count(*) n from t").get()); x.run("commit"); r.push(y.query("select count(*) n from t").get()); y.run("begin"); y.query("select * from t").all(); try { x.run("insert into t values (4)"); r.push("x wrote"); } catch (e: any) { r.push(e.code); } try { y.run("insert into t values (5)"); r.push("y wrote"); } catch (e: any) { r.push(e.code); } y.run("rollback"); r.push(x.query("select count(*) n from t").get(), x.inTransaction); x.close(); y.close(); return r; });
+  await p("file-busy-wal", () => { const x = new Database("vfsdb/d.db"); x.run("pragma journal_mode=wal; create table t(x)"); const y = new Database("vfsdb/d.db"); x.run("begin immediate"); x.run("insert into t values (1)"); const r: any[] = [y.query("select count(*) n from t").get()]; try { y.run("insert into t values (2)"); } catch (e: any) { r.push(e.code); } x.run("commit"); r.push(y.query("select count(*) n from t").get()); y.close(); x.close(); return [r, closed()]; });
+  await p("file-serialize", () => { const d = new Database("vfsdb/a.db"); const b = d.serialize(); d.close(); return [b.length, Database.deserialize(b).query("select * from t").all(), closed()]; });
+  await p("file-attach", () => { const d = new Database(":memory:"); d.run("attach 'vfsdb/e.db' as e; create table e.t(x); insert into e.t values (7)"); d.close(); const e = new Database("vfsdb/e.db", { readonly: true }); const r = e.query("select * from t").all(); e.close(); return [r, closed(false)]; }); // a new attached database has the wasm build's 8 KiB pages
+  await p("file-readonly", () => { const d = new Database("vfsdb/a.db", { readonly: true }); const r: any[] = [d.query("select * from t").all()]; try { d.run("insert into t values (9)"); } catch (e: any) { r.push(e.code, e.message); } d.close(); return r; });
+  await p("file-notdb", () => { fs.writeFileSync("vfsdb/x.txt", "hello, this is not a database at all, really not"); const d = new Database("vfsdb/x.txt"); return d.query("select * from sqlite_master").all(); });
+  await p("file-dir", () => new Database("vfsdb"));
+  await p("file-nodir", () => new Database("vfsdb/no/such.db"));
+  await p("file-deleted", () => { const d = new Database("vfsdb/f.db"); d.run("create table t(x)"); fs.rmSync("vfsdb/f.db"); try { d.run("insert into t values (1)"); return "wrote"; } catch (e: any) { return [e.name, closed(false)]; } finally { d.close(); } }); // the message is the platform's (macOS: SQLITE_IOERR_VNODE)
+  await p("file-unlinked-reopen", () => { const d = new Database("vfsdb/u.db"); d.run("create table t(x)"); const st = d.prepare("insert into t values (1)"); d.close(); fs.rmSync("vfsdb/u.db"); const e = new Database("vfsdb/u.db"); const r = [e.query("select count(*) n from sqlite_master").get(), (st.finalize(), e.query("select count(*) n from sqlite_master").get())]; e.close(); fs.rmSync("vfsdb/u.db"); return r; });
+  // fileControl: the opcodes the VFS answers as Linux's does (34, LOCK_TIMEOUT, is macOS's only), and PERSIST_WAL, whose default is the platform's
+  await p("fc-ops", () => { const d = new Database("vfsdb/g.db"); d.run("create table t(x)"); const m = new Database(":memory:"); const ops = [1, 4, 5, 6, 7, 8, 10, 11, 12, 13, 16, 18, 20, 21, 22, 24, 25, 27, 28, 31, 32, 33, 35, 36, 37, 38, 39, 40, 41, 42, 99]; const run = (x: Database) => ops.map((op) => { const b = new BigInt64Array(1); b[0] = -1n; return `${op}:${x.fileControl(op, b)}`; }).join(" "); const r = [run(d), run(m)]; d.close(); return r; });
+  await p("fc-values", () => { const d = new Database("vfsdb/g.db"); const i = (op: number, v = -1) => { const b = new Int32Array(2); b[0] = v; return [d.fileControl(op, b), b[0]]; }; const r: any[] = [d.fileControl(constants.SQLITE_FCNTL_PERSIST_WAL, 1), i(constants.SQLITE_FCNTL_PERSIST_WAL), d.fileControl(constants.SQLITE_FCNTL_PERSIST_WAL, 0), i(constants.SQLITE_FCNTL_PERSIST_WAL), i(constants.SQLITE_FCNTL_POWERSAFE_OVERWRITE)]; const v0 = i(constants.SQLITE_FCNTL_DATA_VERSION)[1]; d.run("insert into t values (1)"); r.push(i(constants.SQLITE_FCNTL_DATA_VERSION)[1] - v0, i(constants.SQLITE_FCNTL_RESERVE_BYTES), i(constants.SQLITE_FCNTL_LOCKSTATE), i(constants.SQLITE_FCNTL_HAS_MOVED)); const m = new BigInt64Array(1); m[0] = -1n; r.push(d.fileControl(constants.SQLITE_FCNTL_MMAP_SIZE, m), String(m[0]), d.fileControl("main", constants.SQLITE_FCNTL_PERSIST_WAL, 0), d.fileControl(constants.SQLITE_FCNTL_SIZE_LIMIT, null)); d.close(); return r; });
+  await p("fc-args", () => { const r: string[] = []; for (const f of [() => db.fileControl("x" as any), () => db.fileControl(10, "x" as any), () => db.fileControl(10, new Uint8Array(4)), () => db.fileControl(10, {} as any)]) { try { r.push(String(f())); } catch (e: any) { r.push(e.name + ": " + e.message); } } const d = new Database(":memory:"); d.close(); r.push(String(d.fileControl(1, 0))); return r; });
+  await p("fc-persist-wal", () => { const r: string[] = []; for (const keep of [1, 0]) { const d = new Database(`vfsdb/h${keep}.db`); d.run("pragma journal_mode = wal; create table t(x); insert into t values (1)"); d.fileControl(constants.SQLITE_FCNTL_PERSIST_WAL, keep); d.close(); r.push(ls(false).split(" ").filter((f) => f.startsWith("h")).join(" ")); } return r; }); // a kept WAL: Linux leaves its frames, macOS truncates it
+  fs.rmSync("vfsdb", { recursive: true, force: true });
+}
+{
+  // update hooks: onInsert, onUpdate, onDelete
+  const hdb = new Database(":memory:");
+  hdb.run("create table t(id integer primary key, v)");
+  const ev: any[] = [];
+  await p("hook-default", () => [hdb.onInsert, hdb.onUpdate, hdb.onDelete]);
+  await p("hook-set", () => { hdb.onInsert = function (this: any, ...a: any[]) { ev.push(["ins", this === hdb, a.length, a[0] === hdb, ...a.slice(1)]); }; hdb.onUpdate = (...a: any[]) => ev.push(["upd", ...a.slice(1)]); hdb.onDelete = (...a: any[]) => ev.push(["del", ...a.slice(1)]); return typeof hdb.onInsert; });
+  await p("hook-fire", () => { hdb.run("insert into t(v) values (1),(2)"); hdb.run("update t set v = v + 1"); hdb.run("delete from t where id = 1"); hdb.query("insert into t(v) values (?) returning id").get(5); return ev.splice(0); });
+  await p("hook-tx", () => { hdb.run("begin"); hdb.run("insert into t(v) values (9)"); hdb.run("rollback"); return ev.splice(0); });
+  await p("hook-without-rowid", () => { hdb.run("create table w(k primary key, v) without rowid"); hdb.run("insert into w values (1, 2)"); return ev.splice(0); });
+  await p("hook-attached", () => { hdb.run("attach ':memory:' as aux; create table aux.a(x)"); hdb.run("insert into aux.a values (1)"); return ev.splice(0); });
+  await p("hook-null", () => { hdb.onInsert = null; hdb.run("insert into t(v) values (1)"); return [hdb.onInsert, ev.splice(0)]; });
+  await p("hook-undef", () => { hdb.onUpdate = undefined as any; return hdb.onUpdate; });
+  await p("hook-bad", () => { hdb.onDelete = 5 as any; });
+  await p("hook-safe", () => { const s = new Database(":memory:", { safeIntegers: true }); s.run("create table t(x)"); const r: any[] = []; s.onInsert = (_d: any, _t: string, id: any) => r.push(typeof id, String(id)); s.run("insert into t values (1)"); return r; });
+  await p("hook-closed", () => { const d = new Database(":memory:"); d.onInsert = () => {}; d.close(); return d.onInsert; });
+  await p("hook-closed-set", () => { const d = new Database(":memory:"); d.close(); d.onInsert = () => {}; });
+  await p("hook-same-fn", () => { const d = new Database(":memory:"); const f = () => {}; d.onInsert = f; return [d.onInsert === f, d.onUpdate]; });
+  await p("busy-in-callback", () => { const d = new Database(":memory:"); d.run("create table t(x)"); const r: any[] = []; const st = d.prepare("select 1"); const tryIt = (f: () => unknown) => { try { f(); r.push("ok"); } catch (e: any) { r.push(e.name + ": " + e.message); } }; d.function("f", () => { tryIt(() => d.query("select 1").get()); return 1; }); d.query("select f()").get(); d.onInsert = () => { for (const f of [() => d.run("select 1"), () => d.prepare("select 1"), () => d.serialize(), () => d.inTransaction, () => (d.onInsert = null), () => d.function("g", () => 1), () => st.get(), () => d.close()]) tryIt(f); }; d.run("insert into t values (1)"); d.aggregate("ag", { start: 0, step: (a: number, _x: unknown) => (tryIt(() => st.all()), a) }); d.query("select ag(x) from t").get(); return r; });
+}
+// The rest of Bun's surface: names, handle, open, setCustomSQLite, close(throwOnError), the query cache, prepare's
+// params and flags, transactions' properties, statements' native/reader/readonly/raw, toJSON, a lazy iterate().
+{
+  const own = (o: any) => Object.getOwnPropertyNames(o).sort().join(",");
+  const tryIt = (f: () => unknown) => { try { return f(); } catch (e: any) { return `${e.name}: ${e.message}`; } };
+  const d = new Database(":memory:");
+  d.run("create table t(id integer primary key, v)");
+  d.run("insert into t(v) values (3), (5), (1)");
+  const s = d.query("select id, v from t order by id");
+  // (__cjs: every built-in module of the playground has it)
+  await p("module", async () => { const ns: any = await import("bun:sqlite"); const cjs = require("bun:sqlite"); return [ns.default === Database, Object.keys(ns).filter((k) => k !== "__cjs").sort(), Object.keys(cjs).sort(), cjs.default === Database, cjs.Database === Database]; });
+  await p("names", () => [own(Database.prototype), own(Database), own(Statement.prototype), Object.keys(s), own(Object.getPrototypeOf(s.native)), Object.keys(d), Object.keys(constants).length]);
+  await p("handle", () => { const a = new Database(":memory:"); const b = Database.deserialize(a.serialize()); const c = Database.open(":memory:"); return [typeof a.handle, b.handle - a.handle, c.handle - a.handle, (a.close(), a.handle - c.handle + 2)]; });
+  await p("open", () => [Database.open(":memory:") instanceof Database, tryIt(() => Database.open("nofile.db", { readonly: true }))]);
+  await p("custom-sqlite", () => [tryIt(() => Database.setCustomSQLite(5 as any)), tryIt(() => Database.setCustomSQLite("a\0b"))]);
+  await p("sqlite-type", () => [(d as any)[Symbol.for("sqlite-type")], Object.getOwnPropertyDescriptor(Database.prototype, Symbol.for("sqlite-type"))]);
+  await p("ctor", () => [tryIt(() => new Database(":memory:", { readOnly: true } as any)), tryIt(() => new Database(":memory:", { readonly: true })), tryIt(() => new Database("", { readonly: true })), tryIt(() => new Database(5 as any)), new Database(undefined).filename, new Database("  :memory:  ").filename, new Database(d.serialize()).filename, tryIt(() => new Database(":memory:", 1)), tryIt(() => new Database(":memory:", 0)), new Database(":memory:", null as any).filename, Database.deserialize(d.serialize(), 1 as any).filename, Database.deserialize(new Uint16Array(d.serialize().buffer) as any).query("select count(*) n from t").get()]);
+  await p("exec-proto", () => [Database.prototype.exec === Database.prototype.run, Object.hasOwn(d, "exec"), JSON.stringify(d)]);
+  await p("sql-errors", () => [tryIt(() => d.query(5 as any)), tryIt(() => d.prepare(5 as any)), tryIt(() => d.prepare("")), tryIt(() => d.prepare("  ")), tryIt(() => d.query("  ")), tryIt(() => d.run("  ")), tryIt(() => d.run(5 as any)), tryIt(() => d.prepare("select 1", undefined, 99)), tryIt(() => d.prepare("select 1", undefined, -1))]);
+  await p("dispose", () => { const x = new Database(":memory:"); const st = x.prepare("select 1"); st[Symbol.dispose](); const r: any[] = [st.isFinalized]; x[Symbol.dispose](); r.push(tryIt(() => x.query("select 1"))); return r; });
+  await p("maxcache", () => { const x = new Database(":memory:"); const a = x.query("select 0"); for (let i = 1; i <= 20; i++) x.query(`select ${i}`); return [Database.MAX_QUERY_CACHE_SIZE, (x as any)[Symbol.for("Bun.Database.cache.count")], x.query("select 0") === a, a.isFinalized, a.get()]; });
+  await p("maxcache-lru", () => { const x = new Database(":memory:"); const a = x.query("select 0"); for (let i = 1; i < 20; i++) x.query(`select ${i}`); x.query("select 0"); x.query("select 99"); return [x.query("select 0") === a, (x as any)[Symbol.for("Bun.Database.cache.count")]]; });
+  await p("prepare-params", () => { const st = d.prepare("select ? a, ? b", [1, 2] as any); return [st.get(), st.toString(), st.get(3, 4), d.prepare("select $a a", { $a: 5 } as any).get(), d.prepare("select 1 x", undefined, constants.SQLITE_PREPARE_PERSISTENT | constants.SQLITE_PREPARE_NO_VTAB).get(), tryIt(() => d.prepare("select ? a", ["x", "y"] as any))]; });
+  await p("close-prepared", () => { const x = new Database(":memory:"); const a = x.prepare("select 1 x"); const q = x.query("select 2 y"); x.close(); const r: any[] = [a.isFinalized, q.isFinalized, tryIt(() => a.get()), tryIt(() => q.get()), tryIt(() => x.query("select 1")), tryIt(() => x.run("select 1")), tryIt(() => x.inTransaction), tryIt(() => x.serialize()), x.handle >= 0]; a.finalize(); return r; });
+  await p("close-true", () => { const x = new Database(":memory:"); const a = x.prepare("select 1 x"); x.close(true); return [a.isFinalized, tryIt(() => a.get())]; });
+  await p("close-misc", () => { const x = new Database(":memory:"); x.close(); x.close(); x.close(true); const y = new Database(":memory:"); y.run("begin"); return [new Database(":memory:").close(), y.close(true)]; });
+  await p("close-file", () => { const x = new Database("closefile.db"); x.run("create table if not exists t(v)"); const a = x.prepare("insert into t values (1)"); x.close(); a.run(); a.finalize(); const y = new Database("closefile.db"); const r = y.query("select count(*) n from t").get(); y.close(); require("node:fs").rmSync("closefile.db"); return r; });
+  await p("tx-props", () => { const f = d.transaction(() => 1); return [Object.keys(f), f.database === d, typeof f.deferred, f.deferred.database === d, (f.immediate as any).immediate === f.immediate, Object.getOwnPropertyNames(f).sort(), tryIt(() => d.transaction(5 as any))]; });
+  await p("tx-this", () => { const o = { k: 1, f: d.transaction(function (this: any) { return this?.k; }) }; return o.f(); });
+  await p("tx-async-later", () => { const x = new Database(":memory:"); x.run("create table q(x)"); const f = x.transaction(async () => { x.run("insert into q values (1)"); await 0; }); f(); return [x.inTransaction, x.query("select count(*) n from q").get()]; });
+  await p("tx-nested-names", () => { const x = new Database(":memory:"); const r: any[] = []; x.transaction(() => x.transaction(() => r.push(x.inTransaction))())(); return r; });
+  await p("stmt-reader", () => [s.reader, s.readonly, d.query("insert into t(v) values (1)").reader, d.query("insert into t(v) values (1)").readonly, d.query("insert into t(v) values (1) returning id").reader, d.query("pragma user_version").reader, d.query("begin").readonly, tryIt(() => { const x = d.prepare("select 1"); x.finalize(); return x.reader; })]);
+  await p("stmt-raw", () => [d.query("select 1 a, 'b' b, x'0102' c, null d, 1.5 e, -2 f").raw().map((r) => r.map((v) => (v instanceof Uint8Array ? `${v.constructor.name}:${[...v]}` : v))), d.query("select ? a").raw(5).map((r) => r.map((v) => [...v!]))]);
+  await p("stmt-tojson", () => [s.toJSON(), JSON.stringify(s), Object.prototype.toString.call(s), String(s)]);
+  await p("stmt-native", () => { const n: any = s.native; return [typeof n, n.toString(), n.columns, n.columnsCount, n.paramsCount, n.readonly, n.isFinalized, n.safeIntegers, typeof n.runCount, n.all([]), Object.prototype.toString.call(n), n.constructor === Object, n.get(), n.values()]; });
+  await p("iter-lazy", () => { let n = 0; const x = new Database(":memory:"); x.function("tick", () => ++n); x.run("create table q(x); insert into q values (1),(2),(3)"); const it = x.query("select tick() t from q").iterate(); const first = it.next(); return [first.value, n, it.return!(undefined), n]; });
+  await p("iter-invalid", () => { const it = s.iterate(); it.next(); s.all(); return tryIt(() => it.next()); });
+  await p("iter-invalid2", () => { const it = s.iterate(); s.all(); return [...it]; });
+  await p("iter-symbol", () => [...(s as any)].length);
+  await p("iter-break-reset", () => { for (const _ of s.iterate()) break; return s.all().length; });
+  await p("iter-throws", () => { const x = new Database(":memory:"); x.function("boom", () => { throw new RangeError("b"); }); x.run("create table q(x); insert into q values (1),(2)"); const it = x.query("select boom() from q").iterate(); return tryIt(() => it.next()); });
+  await p("iter-proto", () => [Object.prototype.toString.call(s.iterate()), typeof s.iterate().next]);
+  await p("iter-args", () => [...d.query("select ? a union all select ?").iterate(1, 2)]);
+  await p("iter-safe", () => [...d.query("select 5 a").safeIntegers(true).iterate()]);
+  await p("iter-insert-returning", () => { const x = new Database(":memory:"); x.run("create table q(x)"); const it = x.query("insert into q values (1),(2) returning x").iterate(); it.next(); it.return!(undefined); return x.query("select count(*) n from q").get(); });
+  await p("iter-closed", () => { const x = new Database(":memory:"); x.run("create table q(x); insert into q values (1),(2)"); const it = x.prepare("select x from q").iterate(); it.next(); x.close(); return it.next(); });
+  await p("run-changes", () => { const x = new Database(":memory:"); x.run("create table q(x); create table log(y); create trigger tr after insert on q begin insert into log values (new.x); insert into log values (new.x); end"); return [x.run("insert into q values (1), (2)"), x.query("insert into q values (3)").run(), x.run("select 1"), x.run("insert into q values (4); select 1"), x.query("select 1").run()]; });
+}
 console.log("__end__");

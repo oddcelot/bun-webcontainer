@@ -75,6 +75,11 @@ pub fn commit(ctx: &Ctx, args: &[String]) -> Res {
     };
     // a merge in progress: its other parents and its prepared message (as `--no-edit` takes it)
     let (merge_heads, merge_msg) = if merging { crate::merge::merge_heads()? } else { (Vec::new(), None) };
+    // after `merge --squash`: SQUASH_MSG, then MERGE_MSG's conflicts when it stopped on them
+    let merge_msg = match (merge_msg, std::fs::read_to_string("/.git/SQUASH_MSG").ok()) {
+        (Some(m), squash) => Some(squash.unwrap_or_default() + &m),
+        (None, squash) => squash.map(|s| s + &std::fs::read_to_string("/.git/MERGE_MSG").unwrap_or_default()),
+    };
     if msgs.is_empty() && prev.is_none() && merge_msg.is_none() {
         return fatal("no commit message given: use -m <msg>");
     }
@@ -117,7 +122,7 @@ pub fn commit(ctx: &Ctx, args: &[String]) -> Res {
     let (mut b1, mut b2) = (gix::date::parse::TimeBuf::default(), gix::date::parse::TimeBuf::default());
     let mut message = match (&prev, &merge_msg) {
         (Some(p), _) if msgs.is_empty() => p.message_raw_sloppy().to_str_lossy().into_owned(),
-        (_, Some(m)) if msgs.is_empty() => m.trim_end().to_string(),
+        (_, Some(m)) if msgs.is_empty() => cleanup_space(m),
         _ => msgs.join("\n\n"),
     };
     if !message.ends_with('\n') {
@@ -143,6 +148,7 @@ pub fn commit(ctx: &Ctx, args: &[String]) -> Res {
         None => ctx.repo.commit_as(sig.to_ref(&mut b1), sig.to_ref(&mut b2), "HEAD", message.as_str(), tree, parents.clone())?.detach(),
     };
 
+    crate::merge::clear_state();
     let (mut diff_out, mut st) = (String::new(), Stats::default());
     diff_flats(ctx, &base, &flat, &mut diff_out, &mut st)?;
     let root = if parents.is_empty() { " (root-commit)" } else { "" };
@@ -178,6 +184,21 @@ pub fn commit(ctx: &Ctx, args: &[String]) -> Res {
         out(&l);
     }
     Ok(0)
+}
+
+/// git's `--cleanup=whitespace` (what `commit --no-edit` does to a prepared message): no trailing whitespace, no
+/// leading, trailing or repeated blank lines.
+fn cleanup_space(m: &str) -> String {
+    let mut lines: Vec<&str> = Vec::new();
+    for l in m.lines().map(str::trim_end) {
+        if !(l.is_empty() && lines.last().is_none_or(|p| p.is_empty())) {
+            lines.push(l);
+        }
+    }
+    while lines.last().is_some_and(|l| l.is_empty()) {
+        lines.pop();
+    }
+    lines.join("\n")
 }
 
 /// Write a flat path map as a tree.

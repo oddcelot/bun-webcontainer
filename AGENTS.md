@@ -74,7 +74,7 @@ moon run connect:test                                  # the local runner end to
 moon run playground:fmt-examples                       # the gallery's projects (examples/ submodule, demo included) are `bun fmt`-clean
 moon run playground:check-examples                     # each of them installs and runs in the playground (headless Chrome)
 moon run playground:test-lockfile                      # the bun.lock an install writes = native bun install's (needs npm)
-moon run playground:test-sqlite                         # bun:sqlite (sql.js) vs native Bun: errors, safeIntegers, as(), deserialize (headless Chrome)
+moon run playground:test-sqlite                         # bun:sqlite (SQLite's wasm build) vs native Bun: errors, safeIntegers, as(), deserialize (headless Chrome)
 moon run playground:test-processes                     # child processes (Bun.spawn, child_process, Bun.$) vs native Bun (headless Chrome)
 moon run playground:test-vm                        # node:vm (contexts over a `with` scope) vs native Bun (headless Chrome)
 moon run playground:test-bun-apis                  # Bun.FileSystemRouter, Bun.plugin, Bun.stdout.writer() vs native Bun (headless Chrome)

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // node:http and node:https clients (src/worker/node/http.ts) end to end: scripts/http-request/main.ts runs in the embed
-// in headless Chrome against its own Bun.serve, and its lines must be those native Bun prints for it. With --net it
-// also makes a request to a real CORS-enabled host (api.github.com).
+// in headless Chrome against its own Bun.serve (with Bun's own undici, node-fetch & co. too), and its lines must be those
+// native Bun prints for it. With --net it also makes a request to a real CORS-enabled host (api.github.com).
 // --axios runs http-request/axios.ts instead: axios's node adapter over the same shim (installs axios from npm).
 //   bun scripts/http-request.ts [--net] [--axios]
 // Chrome: CHROME=<path to the binary>, else the usual install on macOS or Linux.

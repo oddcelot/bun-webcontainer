@@ -168,7 +168,8 @@ export function reexports(source: string): string[] {
  * The module that holds a CommonJS file's body, served at `/__vfs/__cjs/<path>`: the body runs when first required,
  * as in Node, so in a require cycle the importer gets the exports filled in so far. Nothing runs when the module is
  * evaluated: that order (dependencies first) isn't Node's. `depUrl(spec)` is the URL a literal require loads, null
- * if it can't load (an optional dependency), which then throws when called.
+ * if it can't load (an optional dependency), which then throws when called. A `#!` line (a bin's) becomes a comment:
+ * inside the function it would be a syntax error.
  */
 const CJS_FUNCTION = "  (function (exports, require, module, __filename, __dirname) {\n";
 
@@ -201,7 +202,7 @@ function require(id) {
   return "__cjsModule" in ns ? ns.__cjsModule().exports : "__cjs" in ns ? ns.__cjs : ns;
 }
 function __run(module) {
-${CJS_FUNCTION}${source}
+${CJS_FUNCTION}${source.replace(/^#!/, "//")}
   }).call(module.exports, module.exports, require, module, ${file}, ${JSON.stringify("/" + dir)});
 }
 var module;

@@ -6,12 +6,13 @@ import { loadTranspiler, type Resolver } from "./transpiler";
 import { restoreContextMapped } from "./asyncAwait";
 import { transpileCached } from "./transpileCache";
 import { instrumenting } from "./debugSession";
+import { fileId, isCovered, isTestName, type CoverageOptions } from "./coverage/options";
 import { tsconfigFor } from "./tsconfig";
 import { inRanges, isMethod, literalRanges } from "./literals";
 import { DATA_FILE, dataFormat, loadResolver, parseDataFile, resolve, type DataFormat, type ResolveKind } from "./resolver";
 import { dirname, isLazy, LazyMiss, norm, withLoaded, type VFS } from "@runbun/vfs";
 import hostNames, { version as hostVersion } from "virtual:host-package-names";
-import { builtinName, bunFallback, exportNames, NODE_PREFIXED } from "./worker/node";
+import { builtinName, BUN_PACKAGE_ALIASES, exportNames, NODE_PREFIXED } from "./worker/node";
 import { pluginUrl, routesThroughPlugins, splitNamespace, type PluginAnswer, type PluginFilters } from "./pluginRoutes";
 
 export type ModuleResponse = { status: number; body: string };
@@ -101,7 +102,7 @@ function esmDirname(code: string, path: string): string {
 
 /**
  * Bun has a synchronous `import.meta.require` (Vite uses it for `ws`), which is also `require` in an ES module.
- * Literal specifiers that resolve become static imports; Node built-ins and `bun:<spec>` fallbacks come from the
+ * Literal specifiers that resolve become static imports; Node built-ins and the packages Bun has its own of come from the
  * registry; in the worker, anything else loads when called (see worker/node/module.ts).
  *
  * A free `require`'s literal specifiers load when required, as in Bun (ES modules too: the worker runs them
@@ -135,7 +136,7 @@ function hoistMetaRequire(vfs: VFS, code: string, path: string, dir: string, url
   const n = String(id).replace(/^node:/, "");
   if (n in b && (n !== id || !${JSON.stringify(NODE_PREFIXED)}.includes(n))) return b[n];
   if (id in t) return "__cjs" in t[id] ? t[id].__cjs : t[id];
-  if ("bun:" + id in b) return b["bun:" + id];
+  if (Object.hasOwn(${JSON.stringify(BUN_PACKAGE_ALIASES)}, id)) return b[${JSON.stringify(BUN_PACKAGE_ALIASES)}[id]];
   if (globalThis.__cjsRequire) return globalThis.__cjsRequire(id, ${JSON.stringify("/" + path)});
   throw new Error("Can't require " + JSON.stringify(id) + ". Only installed packages and built-ins work, with a literal name.");
 }))({ ${table} }, globalThis.__nodeBuiltins);`.replace(/\n\s*/g, " ") + code.replace(/\bimport\.meta\.require\b/g, "__metaRequire");
@@ -181,6 +182,34 @@ export function setVfsOwner(clientId: string) {
   VFS_ROOT = `${BASE}__vfs/@${encodeURIComponent(clientId)}/`;
 }
 
+/** A `bun test --coverage` run's options while it runs (runner.ts): its project files are served counting what runs. */
+let coverage: Pick<CoverageOptions, "skipTestFiles"> | undefined;
+export function setCoverage(opts: Pick<CoverageOptions, "skipTestFiles"> | undefined) {
+  coverage = opts;
+}
+/**
+ * Whether the worker gets the file at `path` with counters (not in a debug run, which has probes of its own). A runtime
+ * plugin's module counts by the name it has (its file's path, or a virtual module's `ns:name`), as in Bun.
+ */
+function covering(path: string, target: ModuleTarget, debug: boolean, plugin?: PluginSource): boolean {
+  if (target !== "bun" || debug || !coverage) return false;
+  if (plugin && !plugin.importer.startsWith("/")) return !(coverage.skipTestFiles && isTestName(plugin.importer));
+  return isCovered(plugin ? plugin.importer.slice(1) : path, coverage);
+}
+
+/**
+ * The counters in transpiled `code` (coverage/instrument.ts, loaded now), its mappings moved for them, and the
+ * statement that registers the file in the worker (worker/coverage.ts) by `url` (`/<path>`, or a virtual module's
+ * name); undefined for code the instrumenter can't parse.
+ */
+async function coverModule(code: string, mappings: string, url: string, script: boolean, source?: string) {
+  const { instrument } = await import("./coverage/instrument");
+  const id = fileId(url);
+  const done = instrument(code, mappings, id, script, source);
+  if (!done) return undefined;
+  return { code: done.code, mappings: insertColumns(mappings, done.inserts), register: `globalThis.__bwcCovFile?.(${id},${JSON.stringify(url)},${JSON.stringify(done.meta)});` };
+}
+
 /** Where `spec` imported from `dir` is served, relative to `/__vfs/`; null if it doesn't resolve. CSS imported from code is `__css/<path>` (see cssModule). */
 function resolveTarget(vfs: VFS, spec: string, dir: string, kind: ResolveKind = "import"): string | null {
   const t = resolveSpecifier(vfs, spec, dir, kind);
@@ -197,10 +226,7 @@ function resolveSpecifier(vfs: VFS, spec: string, dir: string, kind: ResolveKind
   if (spec.startsWith("node:") || builtin !== undefined) return builtin !== undefined ? `__node/${builtin}` : null;
   // A `file:` URL names a path, as in the config Vite bundles and imports (`import … from "file:///node_modules/vite/…"`).
   if (spec.startsWith("file:")) spec = decodeURIComponent(new URL(spec).pathname);
-  const t = resolveWith(vfs, spec, dir, kind);
-  // `ws` that isn't installed is Bun's own, as in Bun.
-  const fallback = t === null ? bunFallback(spec) : undefined;
-  return fallback ? `__node/${fallback}` : t;
+  return resolveWith(vfs, spec, dir, kind);
 }
 
 /** The transpiler's resolver: where each specifier in a module of `dir` is served. */
@@ -318,8 +344,9 @@ function builtinModule(name: string): string {
   const names = exportNames(name);
   // bun:sqlite's wasm (node:sqlite's too) loads asynchronously, before anything is exported
   const pre = name === "bun:sqlite" || name === "sqlite" ? "await globalThis.__loadBunSqlite();\n" : "";
+  // A built-in with `__esModule` (bun:sqlite) has its default export as `default`, as an ES module would.
   return `${pre}const m = globalThis.__nodeBuiltins[${JSON.stringify(name)}];
-export default m;
+export default m.__esModule ? m.default : m;
 export const __cjs = m;
 ${names.length ? `export const { ${names.join(", ")} } = m;` : ""}`;
 }
@@ -378,9 +405,14 @@ async function serveCommonJS(vfs: VFS, path: string, onError: (msg: string) => v
   // In a debug run the project's own files get the step debugger's probes here, in the file's own lines (plain
   // JavaScript too, which is otherwise served as written).
   const debug = bun && instrumenting() && !/(^|\/)node_modules\//.test(path);
-  if (debug || /\.(?:[cm]?tsx?|jsx)$/.test(path)) {
+  // In a coverage run, its counters (plain JavaScript is transpiled for them too).
+  const cover = covering(path, target, debug);
+  let register = "";
+  if (debug || cover || /\.(?:[cm]?tsx?|jsx)$/.test(path)) {
     try {
-      const [js, mappings, table] = (await transpileCached(src, path, tsconfigFor(vfs, path), () => null, false, bun, debug)).split("\0");
+      let [js, mappings, table] = (await transpileCached(src, path, tsconfigFor(vfs, path), () => null, false, bun, debug, cover)).split("\0");
+      const counted = cover && mappings !== undefined ? await coverModule(js, mappings, `/${path}`, true, src) : undefined;
+      if (counted) ({ code: js, mappings, register } = counted);
       probes = table;
       body = stripDirname(js);
       if (body !== js) stripped = 1;
@@ -416,7 +448,8 @@ async function serveCommonJS(vfs: VFS, path: string, onError: (msg: string) => v
     // `inner` maps back) after a header (worker/sourceMaps.ts).
     if (mappings === undefined) return { status: 200, body: js };
     // Its probe table, on the wrapper's first line (before the file's), registered when the module loads.
-    const head = probes ? `__dbg.file(${JSON.parse(probes).file},${JSON.stringify(path)},${probes});` : "";
+    // Its counters' registration likewise, in a coverage run.
+    const head = (probes ? `__dbg.file(${JSON.parse(probes).file},${JSON.stringify(path)},${probes});` : "") + register;
     return { status: 200, body: head + js + inlineSourceMap(path, restored ? insertColumns(mappings, restored.inserts) : mappings, { x_bwcLineOffset: wrappedBodyLine(code) - stripped, x_bwcInner: inner }) };
   } catch (e) {
     if (e instanceof LazyMiss) throw e; // loaded and served again (withLoaded)
@@ -613,7 +646,11 @@ async function serveModuleOnce(vfs: VFS, rawPath: string, onError: (msg: string)
     // In the worker, with a source map: its error printer maps stack frames back to the file's lines (worker/sourceMaps.ts).
     // In a debug run, the project's own files call the step debugger before each statement (worker/debugger.ts).
     const debug = target === "bun" && !plugin && instrumenting() && !/(^|\/)node_modules\//.test(path);
-    const [plain, mappings, table] = (await transpileCached(src, path, tsconfigFor(vfs, path), resolver(vfs, plugin?.dir ?? dirname(path), target === "bun" ? (plugin?.importer ?? "/" + path) : undefined), target === "bun", target === "bun", debug)).split("\0");
+    // In a coverage run, the project's files count what runs (coverage/instrument.ts).
+    const cover = covering(path, target, debug, plugin);
+    let [plain, mappings, table] = (await transpileCached(src, path, tsconfigFor(vfs, path), resolver(vfs, plugin?.dir ?? dirname(path), target === "bun" ? (plugin?.importer ?? "/" + path) : undefined), target === "bun", target === "bun", debug, cover)).split("\0");
+    const counted = cover && mappings !== undefined ? await coverModule(plain, mappings, plugin?.importer ?? `/${path}`, false) : undefined;
+    if (counted) ({ code: plain, mappings } = counted);
     // In the worker, each `await` keeps the AsyncLocalStorage context (asyncAwait.ts).
     const restored = target === "bun" ? restoreContextMapped(plain) : { code: plain, inserts: new Map<number, [number, number][]>() };
     const transpiled = restored.code;
@@ -639,6 +676,8 @@ async function serveModuleOnce(vfs: VFS, rawPath: string, onError: (msg: string)
     if (plugin) {
       // A runtime plugin's module: its namespace by its key, for later imports of it from elsewhere (servePlugin).
       body += `\nimport * as __bwcSelf from ${JSON.stringify(plugin.url)};\nglobalThis.__pluginLoaded?.(${JSON.stringify(plugin.key)}, __bwcSelf);`;
+      // In a coverage run, its counters' registration first (see below).
+      if (counted) body = `import ${JSON.stringify(`data:text/javascript,${encodeURIComponent(counted.register)}`)};${body}`;
       if (mappings !== undefined) body += inlineSourceMap(path, shiftFirstColumn(insertColumns(mappings, restored.inserts), firstLineLength(body) - firstLineLength(transpiled)));
     } else if (target === "bun") {
       body += `\nimport * as __bwcSelf from ${JSON.stringify(`${VFS_ROOT}${entry ? ENTRY_PREFIX : ""}${path}`)};\nglobalThis.__esmLoaded?.(${JSON.stringify("/" + path)}, __bwcSelf);`;
@@ -646,6 +685,8 @@ async function serveModuleOnce(vfs: VFS, rawPath: string, onError: (msg: string)
       if (table) body = `__dbg.file(${JSON.parse(table).file},${JSON.stringify(path)},${table});${body}`;
       // Its first import marks it as being imported (before its dependencies run), on the first line.
       body = `import ${JSON.stringify(`data:text/javascript,${encodeURIComponent(`globalThis.__esmImporting?.(${JSON.stringify("/" + path)})`)}`)};${body}`;
+      // In a coverage run, an import before that registers its counters, so they are there before anything of it runs.
+      if (counted) body = `import ${JSON.stringify(`data:text/javascript,${encodeURIComponent(counted.register)}`)};${body}`;
       // What was put before or changed at the start of the transpiler's first line moves that line's columns.
       if (mappings !== undefined) body += inlineSourceMap(path, shiftFirstColumn(insertColumns(mappings, restored.inserts), firstLineLength(body) - firstLineLength(transpiled)));
     }

@@ -6,7 +6,9 @@
 // installed and what the scripts wrote. What the install printed of the scripts, the program's output, the bun.lock it
 // wrote, `bun pm untrusted` and the patch `bun patch --commit` makes must all be native Bun's for the same project (run
 // with `bun` in a temp folder). Then a trusted script that needs a native build fails, said so, without holding the
-// install. Needs the network (registry.npmjs.org, codeload.github.com).
+// install. The trusted dependency's script calls bins of its own dependencies: a nested one (semver 6 under it, the
+// root has 7) and a hoisted one the root doesn't depend on (mkdirp), as each node_modules/.bin has them. Needs the
+// network (registry.npmjs.org, codeload.github.com, gitlab.com: a git dependency git.wasm clones).
 //   bun scripts/install-sources.ts
 // Chrome: CHROME=<path to the binary>, else the usual install on macOS or Linux.
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -15,8 +17,8 @@ import { dirname, join } from "node:path";
 import puppeteer from "puppeteer-core";
 
 const app = join(import.meta.dir, "..");
-const PORT = 5810;
-const HOST_PORT = 5811;
+const PORT = Number(process.env.EDITOR_PORT ?? 5810);
+const HOST_PORT = Number(process.env.HOST_PORT ?? 5811);
 const EDITOR = `http://localhost:${PORT}`;
 
 /** A package tarball (gzipped), made natively: the browser writes the same bytes from their base64. */
@@ -64,8 +66,10 @@ const pkg = {
     "tar-pkg": "file:vendor/tar-pkg-0.3.0.tgz",
     "linked-pkg": "link:linked-pkg",
     "is-odd": "github:jonschlinkert/is-odd#3.0.1",
+    "left-pad": "gitlab:Red54/left-pad#76979f0",
     "is-number": "7.0.0",
     "ms": "2.1.3",
+    "semver": "7.6.3",
     "trusted-dep": "file:./trusted",
     "untrusted-dep": "file:./untrusted",
   },
@@ -82,7 +86,7 @@ const files: Record<string, string> = {
   "local/index.js": 'module.exports = "from local-pkg";\n',
   "linked/package.json": JSON.stringify({ name: "linked-pkg", version: "2.0.0", main: "index.js" }),
   "linked/index.js": 'module.exports = "from linked-pkg";\n',
-  "trusted/package.json": JSON.stringify({ name: "trusted-dep", version: "1.0.0", scripts: { preinstall: "echo trusted-pre", postinstall: "node build.js" } }),
+  "trusted/package.json": JSON.stringify({ name: "trusted-dep", version: "1.0.0", scripts: { preinstall: "echo trusted-pre", postinstall: "node build.js && semver -h > sv.txt && mkdirp made/dir" }, dependencies: { semver: "6.3.1", mkdirp: "1.0.4" } }),
   "trusted/build.js": `const path = require("node:path");\nrequire("node:fs").writeFileSync("built.txt", [process.env.npm_lifecycle_event, process.env.npm_package_name, path.relative(process.env.INIT_CWD, process.cwd())].join(" "));\n`,
   "untrusted/package.json": JSON.stringify({ name: "untrusted-dep", version: "1.0.0", scripts: { postinstall: "node build.js" } }),
   "untrusted/build.js": `require("node:fs").writeFileSync("built.txt", "ran");\n`,
@@ -94,7 +98,9 @@ console.log("tar:", require("tar-pkg"));
 console.log("linked:", require("linked-pkg"));
 console.log("is-odd:", require("is-odd")(3), require("is-odd/package.json").version);
 console.log("patched:", isNumber.patched === true, isNumber(5));
+console.log("left-pad:", JSON.stringify(require("left-pad")("7", 3, "0")), readFileSync("node_modules/left-pad/.bun-tag", "utf8"), existsSync("node_modules/left-pad/.git"));
 console.log("trusted:", readFileSync("node_modules/trusted-dep/built.txt", "utf8"));
+console.log("trusted bins:", readFileSync("node_modules/trusted-dep/sv.txt", "utf8").split("\\n")[0], existsSync("node_modules/trusted-dep/made/dir"));
 console.log("untrusted ran:", existsSync("node_modules/untrusted-dep/built.txt"));
 console.log("root:", readFileSync("post.txt", "utf8"));
 console.log("__end__");

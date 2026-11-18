@@ -1,6 +1,6 @@
-// The network commands: clone, fetch, pull (fast-forward only), remote. gix's clone and fetch over the host's HTTP
+// The network commands: clone, fetch, pull (a fetch and a merge), remote. gix's clone and fetch over the host's HTTP
 // (http.rs); checkout writes the files from blobs as switch does (worktree.rs).
-use crate::worktree::{commit_flat, hard_reset, move_head, move_to};
+use crate::worktree::{commit_flat, hard_reset};
 use crate::{Ctx, Exit, Res, error, fatal, out, positional, use_color};
 use gix::bstr::{BStr, ByteSlice};
 use gix::refs::transaction::{Change, PreviousValue};
@@ -206,47 +206,67 @@ pub fn fetch(ctx: &Ctx, args: &[String]) -> Res {
     Ok(0)
 }
 
-/// `pull`: fetch, then fast-forward the current branch to its upstream (no merge or rebase yet).
+/// `pull`: fetch, then merge the upstream into the current branch as `merge` does (git's `pull.rebase=false`; a
+/// fast-forward when it can). `--ff-only`/`--no-ff`/`pull.ff`; rebasing isn't supported.
 pub fn pull(ctx: &Ctx, args: &[String]) -> Res {
-    let ops = operands(args, &["--depth"]);
-    let Some(branch) = ctx.repo.head_name().ok().flatten().map(|n| n.shorten().to_string()) else {
+    let snapshot = ctx.repo.config_snapshot();
+    let mut o = crate::merge::Opts::default();
+    let (mut rebase, mut ff_given, mut rest) = (None, false, Vec::new());
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "-r" | "--rebase" => rebase = Some(true),
+            "--no-rebase" => rebase = Some(false),
+            a if a.starts_with("--rebase=") => rebase = Some(a != "--rebase=false"),
+            "--depth" => rest.extend([a.clone(), it.next().cloned().unwrap_or_default()]),
+            a if a.starts_with("--depth=") => rest.push(a.to_string()),
+            a if o.take(a, &mut it)? => ff_given |= matches!(a, "--ff" | "--no-ff" | "--ff-only"),
+            a if a.starts_with('-') && a.len() > 1 => return Err(Exit { code: 129, msg: format!("error: unknown option `{}'", a.trim_start_matches('-')) }),
+            a => rest.push(a.to_string()),
+        }
+    }
+    let branch = ctx.repo.head_name().ok().flatten().map(|n| n.shorten().to_string());
+    let configured = |key: &str| snapshot.string(key).map(|v| v.to_string());
+    let rebase = rebase.or_else(|| {
+        let v = branch.as_ref().and_then(|b| configured(&format!("branch.{b}.rebase"))).or_else(|| configured("pull.rebase"))?;
+        Some(!matches!(v.as_str(), "false" | "no" | "off" | "0"))
+    });
+    if rebase == Some(true) {
+        return fatal("rebase is not supported in the playground yet: `git pull --no-rebase` merges the upstream instead");
+    }
+    if !ff_given {
+        match configured("pull.ff").as_deref() {
+            Some("only") => o.ff_only = true,
+            Some("false" | "no" | "off" | "0") => o.no_ff = true,
+            _ => {}
+        }
+    }
+    let ops = operands(&rest, &["--depth"]);
+    let Some(branch) = branch else {
         return fatal("You are not currently on a branch.");
     };
     let name = remote_name(ctx, ops.first());
-    fetch_from(ctx, &name, args)?;
-    let snapshot = ctx.repo.config_snapshot();
+    fetch_from(ctx, &name, &rest)?;
     let merge = ops
         .get(1)
         .cloned()
-        .or_else(|| snapshot.string(format!("branch.{branch}.merge").as_str()).map(|s| s.to_string()))
+        .or_else(|| configured(&format!("branch.{branch}.merge")))
         .unwrap_or_else(|| format!("refs/heads/{branch}"));
-    let tracking = format!("refs/remotes/{name}/{}", merge.trim_start_matches("refs/heads/"));
+    let short = merge.trim_start_matches("refs/heads/").to_string();
+    let tracking = format!("refs/remotes/{name}/{short}");
     let Ok(target) = ctx.repo.rev_parse_single(tracking.as_str()).and_then(|id| Ok(id.object()?.peel_to_commit()?)).map_err(|_| ())
     else {
         return fatal(format!("couldn't find remote ref {merge}"));
     };
-    let head = ctx.repo.head_id().ok().map(|i| i.detach());
-    if head == Some(target.id) {
-        out("Already up to date.\n");
-        return Ok(0);
-    }
-    if let Some(head) = head {
-        // The upstream is already in our history (we're only ahead): nothing to bring in.
-        if ctx.repo.rev_walk([head]).all()?.filter_map(Result::ok).any(|i| i.id == target.id) {
-            out("Already up to date.\n");
-            return Ok(0);
-        }
-        // Fast-forward only: our commit must be in the upstream's history.
-        let ancestor = ctx.repo.rev_walk([target.id]).all()?.filter_map(Result::ok).any(|i| i.id == head);
-        if !ancestor {
-            return error(format!("Not possible to fast-forward, aborting. (`git merge {name}/{}` merges them; rebase isn't supported in the playground yet)", merge.trim_start_matches("refs/heads/")));
-        }
-    }
+    // fmt-merge-msg names it `branch 'main' of <url>` (the URL without `.git` or a trailing slash)
+    let url = ctx.repo.find_remote(name.as_str()).ok().and_then(|r| r.url(gix::remote::Direction::Fetch).map(|u| u.to_bstring().to_string())).unwrap_or(name.clone());
+    let url = url.trim_end_matches('/');
+    let source = url.strip_suffix(".git").unwrap_or(url).to_string();
+    o.reflog = std::iter::once("pull").chain(args.iter().map(String::as_str)).collect::<Vec<_>>().join(" ");
+    let label = target.id.to_string();
+    let head = crate::merge::Head { commit: target, label, kind: "branch", name: short, tag_message: None, source: Some(source) };
     crate::http::report("Updating files");
-    move_to(ctx, &target, false)?;
-    move_head(ctx, target.id, &format!("pull: Fast-forward"))?;
-    out(&format!("Updating {}..{}\nFast-forward\n", head.map(|h| h.to_hex_with_len(7).to_string()).unwrap_or_default(), target.id.to_hex_with_len(7)));
-    Ok(0)
+    crate::merge::run(ctx, &o, vec![head])
 }
 
 pub fn remote(ctx: &Ctx, args: &[String]) -> Res {

@@ -23,7 +23,7 @@ import { Buffer } from "./node/buffer";
 import fs from "./node/fs";
 import path from "./node/path";
 import process, { env as processEnv } from "./node/process";
-import { Database as SqliteDatabase, SQLiteError } from "./node/sqlite";
+import { Database as SqliteDatabase, SQLiteError, handleOf } from "./node/sqlite";
 import { zstdCompress, zstdDecompress } from "./compress";
 
 // --- errors ---------------------------------------------------------------------------------------------------------
@@ -627,15 +627,14 @@ function liteDriver(filename: string, bigint: boolean): Driver & { close(): void
       const returning = /\breturning\b/i.test(b.text);
       const reads = returning || ["SELECT", "PRAGMA", "WITH", "VALUES", "EXPLAIN"].includes(word);
       const command = word === "WITH" ? "SELECT" : commandTag(word, b.text);
-      const before = d._changes();
       if (!reads) {
         const r = d.query(b.text).run(...b.params);
         return result([], r.changes, command, r.changes, r.lastInsertRowid);
       }
       const stmt = d.query(b.text);
       const rows = (mode === OBJECTS ? stmt.all(...b.params) : stmt.values(...b.params)) as unknown[];
-      const meta = returning ? d._meta(before) : undefined;
-      return result(rows, rows.length, command, returning ? rows.length : 0, meta?.lastInsertRowid ?? null);
+      const id = returning ? handleOf(d).conn.lastInsertRowid() : undefined;
+      return result(rows, rows.length, command, returning ? rows.length : 0, id === undefined ? null : bigint ? id : Number(id));
     },
     close() {
       db?.close();

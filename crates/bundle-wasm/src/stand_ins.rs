@@ -69,12 +69,7 @@ pub fn __bun_dispatch__DevServerHandle__Bake__track_resolution_failure(
     unreachable!("no dev server in the browser bundler")
 }
 
-// ── bundler plugins / hot reloading / macros (JSC) ──
-
-#[unsafe(no_mangle)]
-pub extern "C" fn JSBundlerPlugin__freezeFilters(_plugin: *const ()) {
-    unreachable!("no plugins in the browser bundler")
-}
+// ── hot reloading / macros (JSC); plugins: plugins.rs ──
 
 #[unsafe(no_mangle)]
 pub fn __bun_jsc_enable_hot_module_reloading_for_bundler(_bv2: NonNull<BundleV2<'static>>) {
@@ -326,7 +321,7 @@ unreachable_c!(
     X509V3_EXT_d2i, X509V3_EXT_get, X509V3_EXT_get_nid, X509_NAME_ENTRY_get_data, X509_NAME_get_entry,
     X509_NAME_get_index_by_NID, X509_get_ext, X509_get_ext_by_NID, X509_get_subject_name, i2d_SSL_SESSION,
     sk_num, sk_pop_free_ex, sk_value,
-    JSBundlerPlugin__anyMatches, JSBundlerPlugin__callOnBeforeParsePlugins, JSBundlerPlugin__hasOnBeforeParsePlugins,
+    JSBundlerPlugin__callOnBeforeParsePlugins,
     __bun_dispatch__DevServerHandle__Bake__barrel_needed_exports,
     __bun_dispatch__DevServerHandle__Bake__put_or_overwrite_asset,
     __bun_dispatch__DevServerHandle__Bake__register_barrel_export,

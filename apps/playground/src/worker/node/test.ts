@@ -1,9 +1,10 @@
 import { fakeTimers, real, resetFakeTimers } from "./fakeTimers";
 import { dedent, serialize, SnapshotFile, withMatchers, type SnapshotCounts, type SnapshotIO } from "./snapshot";
+import { formatLog } from "../inspect";
 import { inspect, isDeepStrictEqual } from "./util";
 
 // `bun:test`: a compact Jest-style runner. Files register suites while they load; `runTestFiles` loads each file in
-// turn, runs what it registered and reports in the style of `bun test`. Not supported: coverage, --watch.
+// turn, runs what it registered and reports in the style of `bun test`. Coverage is worker/coverage.ts; not supported: --watch.
 
 type Fn = (done?: (err?: unknown) => void) => unknown;
 type Case = { kind: "case"; name: string; fn: Fn; mode: Mode; timeout: number; failing: boolean };
@@ -621,9 +622,10 @@ function call(fn: Fn, timeout: number): Promise<void> {
 type Totals = { pass: number; fail: number; skip: number; todo: number };
 const totals: Totals = { pass: 0, fail: 0, skip: 0, todo: 0 };
 
+/** How Bun reports what failed a test: an error as its printer has it (source, own properties, frames, cause). */
 function failure(e: unknown): string {
   if (e instanceof ExpectError) return `error: ${e.message}`;
-  if (e instanceof Error) return e.name === "Error" ? `error: ${e.message}` : `${e.name}: ${e.message}`;
+  if (e instanceof Error) return formatLog([e], "error").replace(/\n+$/, "");
   return `error: ${pretty(e)}`;
 }
 
@@ -716,13 +718,13 @@ async function fsIO(): Promise<SnapshotIO> {
 }
 
 /** Failed tests in all, and per file in the order they ran. */
-export type TestOutcome = { failed: number; results: { file: string; failed: number }[] };
+export type TestOutcome = { failed: number; results: { file: string; failed: number }[]; coverageFailed?: boolean };
 
 /**
  * Loads each file (its top level registers suites in `bun:test`), runs it and prints Bun's report.
  * Resolves to the number of failed tests, in all and per file (import errors count as failures).
  */
-export async function runTestFiles(files: string[], load: (file: string) => Promise<unknown>, version: string, opts: { update?: boolean; io?: SnapshotIO; preload?: () => string[] } = {}): Promise<TestOutcome> {
+export async function runTestFiles(files: string[], load: (file: string) => Promise<unknown>, version: string, opts: { update?: boolean; io?: SnapshotIO; preload?: () => string[]; coverage?: () => boolean } = {}): Promise<TestOutcome> {
   update = !!opts.update;
   snapCounts.passed = snapCounts.added = snapCounts.failed = 0;
   const io = opts.io ?? (await fsIO());
@@ -771,7 +773,9 @@ export async function runTestFiles(files: string[], load: (file: string) => Prom
     results.push({ file, failed: totals.fail - before });
   }
   if (globalStarted) await globalHook("afterAll");
-  const n = totals.pass + totals.fail + totals.skip + totals.todo;
+  // `--coverage`: its table goes before the summary.
+  const coverageFailed = opts.coverage?.() ?? false;
+  const n =totals.pass + totals.fail + totals.skip + totals.todo;
   const row = (count: number, word: string) => (count ? ` ${count} ${word}` : "");
   console.log("");
   console.log(paint(32, ` ${totals.pass} pass`));
@@ -786,7 +790,7 @@ export async function runTestFiles(files: string[], load: (file: string) => Prom
   console.log(` ${expectCalls} expect() calls`);
   console.log(`Ran ${n} test${n === 1 ? "" : "s"} across ${files.length} file${files.length === 1 ? "" : "s"}. ${dim(`[${ms(performance.now() - t0)}]`)}`);
   resetFakeTimers();
-  return { failed: totals.fail, results };
+  return { failed: totals.fail, results, ...(coverageFailed && { coverageFailed }) };
 }
 
 export default {

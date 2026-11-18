@@ -317,7 +317,7 @@ export function createGit(vfs: VFS, opts: { enabled: () => boolean; log: (level:
     /** `force`: `-D`, for a branch whose commits are on no other branch (they're lost). */
     deleteBranch: (name: string, force = false) => act(["branch", force ? "-D" : "-d", name]).then(ok),
     fetch: () => sync("fetch", ["fetch"]),
-    /** Fast-forward only (all the playground's git does). */
+    /** Fetch, then fast-forward or merge (a conflict leaves the merge for the terminal to finish). */
     pull: () => sync("pull", ["pull"]),
     /** To the upstream; a branch without one (or whose upstream is gone) is published to `pushRemote` and tracks it. */
     push() {

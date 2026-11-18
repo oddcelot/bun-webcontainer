@@ -1,11 +1,12 @@
 // node:test as Bun has it (bun/src/js/node/test.ts): top-level tests and suites register with bun:test (test.ts), so
-// `bun test` runs and reports them; subtests (`t.test`) run inside their parent and fail it ("1 subtest failed")
-// without counting on their own. `beforeEach`/`afterEach` of the file or a suite run around each test and subtest,
-// with its TestContext. `mock` is Node's MockTracker; `mock.timers` drives bun:test's fake timers. Not here, as
-// in Bun: `run()`, `mock.module()`, snapshots.
+// `bun test` runs and reports them; subtests (`t.test`) run inside their parent and fail it ("1 subtest failed",
+// with the first failure as its `cause`) without counting on their own. `beforeEach`/`afterEach` of the file or a
+// suite run around each test and subtest, with its TestContext. `mock` is Node's MockTracker; `mock.timers` drives
+// bun:test's fake timers. Not here, as in Bun: `mock.module()`, snapshots. Not here, unlike Bun: `run()`, which runs
+// each file in a `bun test` child process (a spawned process can't be `bun test` here, worker/processes.ts).
 import assert from "./assert";
 import { codeError } from "./errors";
-import { fakeTimers } from "./fakeTimers";
+import { fakeTimers, real } from "./fakeTimers";
 import bunTest, { markRunning, testFile } from "./test";
 
 type Fn = (...args: any[]) => any;
@@ -89,10 +90,14 @@ class TestContext {
   #mock: MockTracker | undefined;
   #assert: Record<string, Fn> | undefined;
   #plan: number | undefined;
+  /** `plan(n, { wait })`: wait for the missing assertions (`true`), or that many ms; and who waits. */
+  #planWait: boolean | number = false;
+  #planWaiting: (() => void) | undefined;
   #count = 0;
   #queue: Promise<unknown> = Promise.resolve();
   #pending = new Set<Promise<unknown>>();
   #failed = 0;
+  #firstFailure: unknown;
   #error: unknown;
   #passed = false;
   constructor(name: string, s: Scope, parent?: TestContext) {
@@ -138,7 +143,7 @@ class TestContext {
     for (const [k, f] of Object.entries(all)) {
       if (typeof f !== "function" || k === "AssertionError" || k === "CallTracker" || k === "Assert") continue;
       out[k] = (...args: unknown[]) => {
-        this.#count++;
+        this.#counted();
         return customAsserts.has(k) ? f.call(out, ...args) : f(...args);
       };
     }
@@ -148,10 +153,34 @@ class TestContext {
     return (this.#assert = out);
   }
   diagnostic(_message: string) {}
-  plan(count: number, _options?: { wait?: boolean | number }) {
+  plan(count: number, options: { wait?: boolean | number } = {}) {
     if (!Number.isInteger(count) || count < 1) throw codeError(RangeError, "ERR_OUT_OF_RANGE", `The value of "count" is out of range. It must be >= 1 && <= 4294967295. Received ${count}`);
     if (this.#plan !== undefined) throw codeError(Error, "ERR_TEST_FAILURE", "cannot set plan more than once");
+    const { wait = false } = options ?? {};
+    if (typeof wait === "number" && !(wait >= 0 && wait <= 2147483647)) throw codeError(RangeError, "ERR_OUT_OF_RANGE", `The value of "options.wait" is out of range. It must be >= 0 && <= 2147483647. Received ${wait}`);
+    if (typeof wait !== "number" && typeof wait !== "boolean") throw codeError(TypeError, "ERR_INVALID_ARG_TYPE", `The "options.wait" property must be of type boolean or number. Received ${typeof wait}`);
     this.#plan = count;
+    this.#planWait = wait;
+  }
+  /** An assertion or subtest towards the plan; the last one a waiting plan needs lets the test end. */
+  #counted() {
+    this.#count++;
+    if (this.#planWaiting && this.#plan !== undefined && this.#count >= this.#plan) this.#planWaiting();
+  }
+  /** Bun's plan check once the test's function and subtests are done: waits for the rest if the plan says so. */
+  async #checkPlan() {
+    const plan = this.#plan;
+    if (plan === undefined || this.#count === plan) return;
+    const wait = this.#planWait;
+    if (wait === false || this.#count > plan) throw testFailure(`plan expected ${plan} assertions but received ${this.#count}`);
+    await new Promise<void>((resolve, reject) => {
+      const timer = typeof wait === "number" ? real.setTimeout(() => ((this.#planWaiting = undefined), reject(testFailure(`plan timed out after ${wait}ms with ${this.#count} assertions when expecting ${plan}`))), wait) : undefined;
+      this.#planWaiting = () => {
+        this.#planWaiting = undefined;
+        if (timer !== undefined) real.clearTimeout(timer);
+        resolve();
+      };
+    });
   }
   skip(_message?: string) {
     if (!this.#parent) markRunning("skip");
@@ -197,7 +226,7 @@ class TestContext {
     const prev = this.#queue;
     const p = (async () => {
       await prev.catch(noop);
-      this.#count++;
+      this.#counted();
       if (options.skip || options.todo) return undefined;
       if (!this.#beforeRan) {
         this.#beforeRan = true;
@@ -206,8 +235,8 @@ class TestContext {
       try {
         await child.run(fn ?? noop, options);
       } catch (e) {
-        this.#failed++;
-        console.error(e instanceof Error ? `${e.name === "Error" ? "error" : e.name}: ${e.message}` : `error: ${String(e)}`);
+        // Bun prints nothing here: the parent's failure carries the first one as its cause.
+        if (!this.#failed++) this.#firstFailure = e;
       }
       return undefined;
     })();
@@ -240,8 +269,8 @@ class TestContext {
           this.#pending.clear();
           await Promise.all(all);
         }
-        if (this.#failed) throw testFailure(`${this.#failed} subtest${this.#failed === 1 ? "" : "s"} failed`, "subtestsFailed");
-        if (this.#plan !== undefined && this.#count !== this.#plan) throw testFailure(`plan expected ${this.#plan} assertions but received ${this.#count}`);
+        if (this.#failed) throw Object.assign(testFailure(`${this.#failed} subtest${this.#failed === 1 ? "" : "s"} failed`, "subtestsFailed"), { cause: this.#firstFailure });
+        await this.#checkPlan();
         this.#passed = true;
       } catch (e) {
         this.#error = e;

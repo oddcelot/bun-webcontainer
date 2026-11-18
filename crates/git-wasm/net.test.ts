@@ -3,7 +3,7 @@
 // served by curl, synchronously, as the playground's worker serves them with a synchronous XMLHttpRequest.
 // Native git checks every result. Build first: `moon run git-wasm:build`.
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, cpSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { WASI } from "node:wasi";
@@ -225,10 +225,54 @@ try {
   write(work, "c.txt", "v4\n");
   native(work, "commit", "-am", "c4");
   native(work, "push", "-q", join(root, "repo.git"), "main");
-  r = await git(a, "pull");
-  check("pull diverged: refused", r.code === 1 && r.err.includes("Not possible to fast-forward"), JSON.stringify(r));
-  check("pull diverged: main kept", native(a, "log", "-1", "--format=%s").trim() === "local");
   await header(a, "status -b: ahead 1, behind 1");
+  // pull merges (as pull.rebase=false): ours on one copy of `a`, native git on another
+  const [pa, pb] = [join(tmp, "pull-a"), join(tmp, "pull-b")];
+  const pullState = (d: string) => [native(d, "status", "--porcelain", "-b", "-uall"), native(d, "ls-files", "-s"), native(d, "log", "-1", "--format=%T|%P|%B"), native(d, "rev-parse", "origin/main"), files(d).join("\n")].join("\n--\n")
+    .replaceAll(native(a, "rev-parse", "HEAD").trim(), "<HEAD>"); // the merge's parents: ids differ only by the merge commit
+  const fetchLines = (err: string) => err.split("\n").filter((l) => !/^(From |\s+[0-9a-f]{7}\.\.| \* )/.test(l)).join("\n");
+  async function pullTwin(name: string, args: string[], opts: { setup?: (d: string) => void; ours?: (r: Run) => boolean } = {}) {
+    for (const d of [pa, pb]) {
+      rmSync(d, { recursive: true, force: true });
+      cpSync(a, d, { recursive: true });
+      opts.setup?.(d);
+    }
+    const ours = await git(pa, ...args);
+    if (opts.ours) {
+      check(name, opts.ours(ours), JSON.stringify(ours));
+      return;
+    }
+    const nat = spawnSync("git", ["-C", pb, "-c", "pull.rebase=false", ...args], { encoding: "utf8", env });
+    check(`${name}: exit`, ours.code === nat.status, `ours ${ours.code} native ${nat.status}\n${ours.err}\n${nat.stderr}`);
+    check(`${name}: stdout`, ours.out === nat.stdout, `ours:\n${ours.out}\nnative:\n${nat.stdout}`);
+    check(`${name}: stderr`, fetchLines(ours.err) === fetchLines(nat.stderr), `ours:\n${ours.err}\nnative:\n${nat.stderr}`);
+    const [sa, sb] = [pullState(pa), pullState(pb)];
+    check(`${name}: state`, sa === sb, `ours:\n${sa}\nnative:\n${sb}`);
+    if (spawnSync("git", ["-C", pa, "fsck", "--full", "--strict"], { env }).status !== 0) check(`${name}: fsck`, false);
+  }
+  const behind = (d: string) => native(d, "reset", "-q", "--hard", "HEAD~1");
+  await pullTwin("pull merges diverged", ["pull"]);
+  await pullTwin("pull -q", ["pull", "-q"]);
+  await pullTwin("pull --no-rebase -n", ["pull", "--no-rebase", "-n"]);
+  await pullTwin("pull --ff-only diverged", ["pull", "--ff-only"]);
+  await pullTwin("pull pull.ff=only", ["pull"], { setup: (d) => native(d, "config", "pull.ff", "only") });
+  await pullTwin("pull --ff overrides pull.ff=only", ["pull", "--ff"], { setup: (d) => native(d, "config", "pull.ff", "only") });
+  await pullTwin("pull fast-forward", ["pull"], { setup: behind });
+  await pullTwin("pull --no-ff", ["pull", "--no-ff"], { setup: behind });
+  await pullTwin("pull pull.ff=false", ["pull"], { setup: (d) => { behind(d); native(d, "config", "pull.ff", "false"); } });
+  await pullTwin("pull --ff-only fast-forward", ["pull", "--ff-only"], { setup: behind });
+  await pullTwin("pull conflict", ["pull"], { setup: (d) => { write(d, "c.txt", "mine\n"); native(d, "commit", "-qam", "mine"); } });
+  await pullTwin("pull refuses a dirty file", ["pull"], { setup: (d) => write(d, "c.txt", "dirty\n") });
+  await pullTwin("pull keeps other changes", ["pull"], { setup: (d) => write(d, "local.txt", "dirty\n") });
+  await pullTwin("pull into another branch", ["pull", "origin", "main"], { setup: (d) => native(d, "switch", "-q", "-c", "feat") });
+  await pullTwin("pull --squash", ["pull", "--squash"]);
+  await pullTwin("pull --no-commit", ["pull", "--no-commit"]);
+  const noRebase = (r: Run) => r.code === 128 && r.err.includes("rebase is not supported in the playground yet") && !requests.length;
+  requests = [];
+  await pullTwin("pull --rebase: refused before fetching", ["pull", "--rebase"], { ours: noRebase });
+  await pullTwin("pull pull.rebase=true: refused", ["pull"], { setup: (d) => native(d, "config", "pull.rebase", "true"), ours: noRebase });
+  await pullTwin("pull --no-rebase overrides pull.rebase", ["pull", "--no-rebase"], { setup: (d) => native(d, "config", "pull.rebase", "true") });
+  check("pull: `a` still diverged", native(a, "log", "-1", "--format=%s").trim() === "local");
 
   // remote add / remove
   r = await git(a, "remote", "add", "up", url);

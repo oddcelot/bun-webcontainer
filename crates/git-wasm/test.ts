@@ -331,8 +331,15 @@ try {
   const B = join(tmp, "twin-b");
   // HEAD: its id; for new commits (whose time and zone differ) their tree, parents, author and message
   const heads = { id: ["rev-parse", "HEAD"], log: ["log", "--format=%an|%at|%P|%B"], tree: ["log", "-1", "--format=%T|%P|%an|%ae|%B"] };
-  const state = (d: string, head: keyof typeof heads = "id") => [native(d, ["status", "--porcelain", "-b", "-uall"]), native(d, ["ls-files", "-s"]), native(d, heads[head]), files(d).join("\n")].join("\n--\n");
-  type TwinOpts = { setup?: (d: string) => void; nativeArgs?: string[]; out?: boolean; err?: boolean; code?: number; head?: keyof typeof heads; extra?: (d: string) => string };
+  const state = (d: string, head: keyof typeof heads = "id") => [native(d, ["status", "--porcelain", "-b", "-uall"]), native(d, ["ls-files", "-s"]), spawnSync("git", ["-C", d, ...heads[head]], { encoding: "utf8", env: natEnv }).stdout, files(d).join("\n")].join("\n--\n");
+  type TwinOpts = { setup?: (d: string) => void; nativeArgs?: string[]; out?: boolean; err?: boolean; code?: number; head?: keyof typeof heads; extra?: (d: string) => string; markers?: boolean };
+  // conflict markers' labels that can't match: an octopus's are git-merge-one-file's temp file names
+  const unlabel = (d: string) => {
+    for (const f of files(d)) {
+      const p = join(d, f.slice(0, f.indexOf("=")));
+      writeFileSync(p, readFileSync(p, "utf8").replace(/^(<{7}|>{7}) .*$/gm, "$1"));
+    }
+  };
   async function twin(name: string, src: string, args: string[], opts: TwinOpts = {}) {
     for (const d of [A, B]) {
       rmSync(d, { recursive: true, force: true });
@@ -344,13 +351,14 @@ try {
     const ours = await git(A, args, ident);
     const nat = spawnSync("git", ["-C", B, ...(opts.nativeArgs ?? args)], { encoding: "utf8", env: natEnv });
     check(`${name}: exit`, ours.code === (opts.code ?? nat.status), `ours ${ours.code} native ${nat.status}\n${ours.err}\n${nat.stderr}`);
+    if (opts.markers) for (const d of [A, B]) unlabel(d);
     const head = opts.head ?? (args.includes("--amend") ? "log" : "id");
     same(`${name}: state`, state(A, head), state(B, head));
     if (opts.extra) same(`${name}: extra`, opts.extra(A), opts.extra(B));
     if (opts.out) same(`${name}: stdout`, ours.out, nat.stdout);
     if (opts.err) same(`${name}: stderr`, ours.err, nat.stderr);
     try {
-      native(A, ["fsck", "--full", "--strict"]);
+      if (spawnSync("git", ["-C", A, "rev-parse", "-q", "--verify", "HEAD"]).status === 0) native(A, ["fsck", "--full", "--strict"]);
     } catch (e) {
       check(`${name}: fsck`, false, String(e));
     }
@@ -503,7 +511,7 @@ try {
 
   // ---- merge ----------------------------------------------------------------------------------------------------------
   const natIn = (d: string, ...args: string[]) => spawnSync("git", ["-C", d, ...args], { encoding: "utf8", env: natEnv });
-  const mergeState = (d: string) => ["MERGE_HEAD", "MERGE_MSG", "MERGE_MODE"].map((f) => `${f}: ${existsSync(join(d, ".git", f)) ? readFileSync(join(d, ".git", f), "utf8") : "-"}`).join("\n");
+  const mergeState = (d: string) => ["MERGE_HEAD", "MERGE_MSG", "MERGE_MODE", "SQUASH_MSG"].map((f) => `${f}: ${existsSync(join(d, ".git", f)) ? readFileSync(join(d, ".git", f), "utf8") : "-"}`).join("\n");
   const longStatus = (d: string) => native(d, ["status"]);
   const p5 = join(tmp, "p5");
   mkdirSync(p5);
@@ -591,6 +599,79 @@ try {
   check("merge commit parents", native(A, ["log", "-1", "--format=%P"]).trim().split(" ").length === 2);
   check("merge state gone", !existsSync(join(A, ".git/MERGE_HEAD")) && !existsSync(join(A, ".git/MERGE_MSG")));
 
+  // octopus merges, --squash, --no-commit, merging into an unborn branch
+  const p8 = join(tmp, "p8");
+  mkdirSync(p8);
+  nat(p8, "init", "-q", "-b", "main");
+  nat(p8, "config", "core.fileMode", "false");
+  write(p8, "a.txt", "a\nb\nc\n");
+  write(p8, "k.txt", "k\n");
+  nat(p8, "add", ".");
+  nat(p8, "commit", "-qm", "m1");
+  nat(p8, "switch", "-qc", "b1");
+  write(p8, "one.txt", "one\n");
+  nat(p8, "add", ".");
+  nat(p8, "commit", "-qm", "b1");
+  nat(p8, "tag", "-a", "t1", "-m", "tag one", "b1");
+  nat(p8, "switch", "-qc", "b2", "main");
+  write(p8, "two.txt", "two\n");
+  write(p8, "a.txt", "a\nb\nC\n");
+  nat(p8, "add", ".");
+  nat(p8, "commit", "-qm", "b2");
+  nat(p8, "switch", "-qc", "b3", "main");
+  write(p8, "a.txt", "A\nb\nc\n");
+  nat(p8, "commit", "-qam", "b3");
+  nat(p8, "switch", "-qc", "b4", "main");
+  write(p8, "a.txt", "a\nb\nZ\n");
+  nat(p8, "commit", "-qam", "b4\n\nwith a body");
+  nat(p8, "switch", "-q", "main");
+  write(p8, "k.txt", "k2\n");
+  nat(p8, "commit", "-qam", "m2");
+  const behind = (d: string) => nat(d, "switch", "-qc", "base", "main~1");
+  await twin("merge octopus", p8, ["merge", "b1", "b2"], ms);
+  await twin("merge octopus content merge", p8, ["merge", "b1", "b2", "b3"], ms);
+  await twin("merge octopus -m", p8, ["merge", "-m", "many", "b1", "b2"], ms);
+  await twin("merge octopus branch and tag", p8, ["merge", "t1", "b2", "b3"], ms);
+  await twin("merge octopus -q", p8, ["merge", "-q", "b1", "b2"], ms);
+  await twin("merge octopus fast-forwards first", p8, ["merge", "b1", "b2"], { ...ms, setup: behind });
+  await twin("merge octopus --no-ff keeps HEAD", p8, ["merge", "--no-ff", "b1", "b2"], { ...ms, setup: behind });
+  await twin("merge octopus drops merged heads", p8, ["merge", "main~1", "b1", "b2"], ms);
+  await twin("merge octopus all merged", p8, ["merge", "main~1", "main"], ms);
+  await twin("merge octopus conflict", p8, ["merge", "b1", "b2", "b4"], { ...ms, markers: true });
+  await twin("merge octopus conflict before the last", p8, ["merge", "b2", "b4", "b1"], ms);
+  await twin("merge octopus refuses staged", p8, ["merge", "b1", "b2"], { ...ms, setup: (d) => { write(d, "a.txt", "x\n"); nat(d, "add", "a.txt"); } });
+  await twin("merge octopus refuses dirty", p8, ["merge", "b1", "b2"], { ...ms, setup: (d) => write(d, "a.txt", "x\n") });
+  await twin("merge octopus refuses untracked", p8, ["merge", "b1", "b2"], { ...ms, setup: (d) => write(d, "one.txt", "mine\n") });
+  await twin("merge octopus dirty elsewhere", p8, ["merge", "b1", "b2"], { ...ms, setup: (d) => write(d, "k.txt", "x\n") });
+  await twin("merge octopus --ff-only", p8, ["merge", "--ff-only", "b1", "b2"], ms);
+  await twin("merge octopus --no-commit", p8, ["merge", "--no-commit", "b1", "b2"], ms);
+  await twin("merge octopus detached", p8, ["merge", "b1", "b2"], { ...ms, setup: (d) => nat(d, "switch", "-q", "--detach") });
+  await twin("merge octopus nope", p8, ["merge", "b1", "nope"], ms);
+  await twin("commit after octopus --no-commit", p8, ["commit"], { ...ms, setup: (d) => nat(d, "merge", "-q", "--no-commit", "b1", "b2"), nativeArgs: ["commit", "--no-edit"], out: false });
+  await twin("merge --no-commit", p8, ["merge", "--no-commit", "b1"], ms);
+  await twin("merge --no-commit fast-forward", p8, ["merge", "--no-commit", "b1"], { ...ms, setup: behind });
+  await twin("merge --no-commit --no-ff", p8, ["merge", "--no-commit", "--no-ff", "b1"], { ...ms, setup: behind });
+  await twin("merge --no-commit conflict", p8, ["merge", "--no-commit", "b4"], { ...ms, setup: (d) => nat(d, "switch", "-q", "b2") });
+  await twin("commit after --no-commit", p8, ["commit"], { ...ms, setup: (d) => nat(d, "merge", "-q", "--no-commit", "b1"), nativeArgs: ["commit", "--no-edit"], out: false });
+  await twin("merge --squash", p8, ["merge", "--squash", "b1"], ms);
+  await twin("merge --squash fast-forward", p8, ["merge", "--squash", "b1"], { ...ms, setup: behind });
+  await twin("merge --squash of a history", p8, ["merge", "--squash", "main"], { ...ms, setup: (d) => { nat(d, "switch", "-qc", "base", "b1"); } });
+  await twin("merge --squash conflict", p8, ["merge", "--squash", "b4"], { ...ms, setup: (d) => nat(d, "switch", "-q", "b2") });
+  await twin("merge --squash --no-ff", p8, ["merge", "--squash", "--no-ff", "b1"], ms);
+  await twin("merge --squash up to date", p8, ["merge", "--squash", "main~1"], ms);
+  await twin("merge --squash octopus", p8, ["merge", "--squash", "b1", "b2"], ms);
+  await twin("commit after --squash", p8, ["commit"], { ...ms, setup: (d) => nat(d, "merge", "-q", "--squash", "b4"), nativeArgs: ["commit", "--no-edit"], out: false });
+  await twin("commit -m after --squash", p8, ["commit", "-m", "squashed"], { ...ms, setup: (d) => nat(d, "merge", "-q", "--squash", "b1"), out: false });
+  const squashConflict = (d: string) => { nat(d, "switch", "-q", "b2"); natIn(d, "merge", "--squash", "b4"); write(d, "a.txt", "a\nb\nCZ\n"); nat(d, "add", "a.txt"); };
+  await twin("commit after --squash conflict", p8, ["commit"], { ...ms, setup: squashConflict, nativeArgs: ["commit", "--no-edit"], out: false });
+  const orphan = (d: string) => nat(d, "switch", "-q", "--orphan", "empty");
+  await twin("merge into unborn", p8, ["merge", "b1"], { ...ms, setup: orphan });
+  await twin("merge into unborn -q --no-commit", p8, ["merge", "-q", "--no-commit", "b1"], { ...ms, setup: orphan });
+  await twin("merge into unborn keeps staged", p8, ["merge", "b1"], { ...ms, setup: (d) => { orphan(d); write(d, "s.txt", "s\n"); nat(d, "add", "s.txt"); } });
+  await twin("merge into unborn refuses untracked", p8, ["merge", "b1"], { ...ms, setup: (d) => { orphan(d); write(d, "one.txt", "mine\n"); } });
+  for (const a of [["b1", "b2"], ["--squash", "b1"], ["--no-ff", "b1"]]) await twin(`merge into unborn ${a.join(" ")}`, p8, ["merge", ...a], { ...ms, setup: orphan });
+  await twin("merge detached", p8, ["merge", "--no-ff", "b1"], { ...ms, setup: (d) => nat(d, "switch", "-q", "--detach") });
+
   // ---- tag ------------------------------------------------------------------------------------------------------------
   // the tags as refs and objects (an annotated tag's id differs: its tagger's time)
   const tagState = (d: string) =>
@@ -617,6 +698,20 @@ try {
   await twin("tag bad name", p6, ["tag", "bad..name"], ts);
   await twin("tag bad rev", p6, ["tag", "x", "nope"], ts);
   await twin("tag nested", p6, ["tag", "-a", "nested", "-m", "n", "ann"], ts);
+  // --sort and --contains
+  const p6v = join(tmp, "p6v");
+  cpSync(p6, p6v, { recursive: true });
+  for (const t of ["v1.10", "v1.9", "v1.9-rc1", "v2.0", "v10", "v1.09", "v1.009"]) nat(p6v, "tag", t, "HEAD~1");
+  const dated = (name: string, date: string, ...rest: string[]) => spawnSync("git", ["-C", p6v, "tag", "-a", name, "-m", name, ...rest], { env: { ...natEnv, GIT_COMMITTER_DATE: date } });
+  dated("old", "2001-01-01T00:00:00Z", "HEAD~1");
+  dated("future", "2101-01-01T00:00:00Z", "HEAD~1");
+  nat(p6v, "tag", "tree", "HEAD^{tree}");
+  const sorts = [["--sort=refname"], ["--sort=-refname"], ["--sort=version:refname"], ["--sort=-v:refname"], ["--sort", "creatordate"], ["--sort=-creatordate"], ["--sort=objectname"], ["--sort=refname", "--sort=-creatordate"], ["--sort=-v:refname", "-l", "v1*"], ["-n", "--sort=-version:refname"], ["--sort=nope"], ["--sort"], ["--sort=-creatordate", "--no-sort"]];
+  const containing = [["--contains"], ["--contains", "HEAD~1"], ["--contains=HEAD"], ["--contains", "feat"], ["--contains", "ann"], ["--no-contains", "HEAD"], ["--contains", "HEAD~1", "--no-contains", "HEAD"], ["--contains", "HEAD~1", "--sort=-v:refname"], ["-l", "--contains"], ["--contains", "HEAD~1", "v*"], ["--contains", "nope"], ["--contains", "tree"], ["--contains", "HEAD~1", "--contains", "HEAD"]];
+  for (const a of [...sorts, ...containing]) await twin(`tag ${a.join(" ")}`, p6v, ["tag", ...a], ts);
+  await twin("tag --sort creates", p6v, ["tag", "--sort=refname", "newtag"], ts);
+  await twin("tag.sort", p6v, ["tag"], { ...ts, setup: (d) => nat(d, "config", "tag.sort", "-version:refname") });
+  await twin("tag.sort, --sort wins", p6v, ["tag", "--sort=refname"], { ...ts, setup: (d) => nat(d, "config", "tag.sort", "-version:refname") });
   r = await git(empty, ["tag", "v0"], ident);
   check("tag unborn", r.code === 128 && r.err === "fatal: Failed to resolve 'HEAD' as a valid ref.\n", JSON.stringify(r));
   await twin("show annotated tag", p6, ["show", "ann"], { out: true });
@@ -699,6 +794,42 @@ try {
   await twin("stash drop bad", p7s, ["stash", "drop", "nope"], ss);
   await twin("stash clear", p7s, ["stash", "clear"], ss);
   await twin("stash on a list", p7s, ["stash"], { ...ss, setup: (d) => write(d, "a.txt", "fourth\n") });
+  // in the middle of a merge: refused while paths are unmerged, applied once they are resolved
+  const midMerge = (d: string) => {
+    nat(d, "switch", "-qc", "side");
+    write(d, "a.txt", "side\n");
+    nat(d, "commit", "-qam", "side");
+    nat(d, "switch", "-q", "-");
+    write(d, "a.txt", "here\n");
+    nat(d, "commit", "-qam", "here");
+    natIn(d, "merge", "side");
+  };
+  for (const a of [["apply"], ["pop"], ["apply", "--index", "1"]]) await twin(`stash ${a.join(" ")} mid-merge`, p7s, ["stash", ...a], { ...ss, setup: midMerge, head: "tree" });
+  await twin("stash apply in a resolved merge", p7s, ["stash", "apply", "1"], { ...ss, setup: (d) => { midMerge(d); write(d, "a.txt", "both\n"); nat(d, "add", "a.txt"); }, head: "tree" });
+  // --keep-index, --all, pathspecs
+  const ignored = (d: string) => {
+    dirty(d);
+    writeFileSync(join(d, ".git/info/exclude"), "*.log\nbuild/\n");
+    write(d, "debug.log", "log\n");
+    write(d, "build/out.js", "out\n");
+    write(d, "build/deep/more.js", "more\n");
+  };
+  for (const a of [["-k"], ["--keep-index", "-u"], ["push", "-k", "-m", "kept"]]) await twin(`stash ${a.join(" ")}`, p7, ["stash", ...a], { ...ss, setup: dirty });
+  same("native pops our -k stash", (natIn(A, "stash", "pop", "--index"), state(A)), (natIn(B, "stash", "pop", "--index"), state(B)));
+  for (const a of [["-a"], ["--all", "-k"], ["-a", "--", "build"], ["-u"]]) await twin(`stash ${a.join(" ")} (ignored files)`, p7, ["stash", ...a], { ...ss, setup: ignored });
+  same("native pops our -a stash", (natIn(A, "stash", "pop"), state(A)), (natIn(B, "stash", "pop"), state(B)));
+  await twin("stash -a -u", p7, ["stash", "-a", "-u"], { ...ss, setup: ignored, out: false, err: false });
+  for (const a of [["push", "--", "a.txt"], ["push", "a.txt", "b.txt"], ["--", "k.txt"], ["--", "n2.txt"], ["push", "-m", "some", "--", "a.txt"], ["-u", "--", "u.txt"], ["-u", "ud"], ["push", "-u", "ud"], ["-u", "--", "a.txt", "ud/deep.txt"], ["-k", "--", "b.txt"], ["-k", "--", "a.txt", "n2.txt"], ["-q", "--", "a.txt"], ["--", "."], ["--", "dir"], ["--", "nope"], ["--", "a.txt", "nope"], ["--", "u.txt"]]) {
+    await twin(`stash ${a.join(" ")}`, p7, ["stash", ...a], { ...ss, setup: dirty });
+  }
+  same("native pops our pathspec stash", (natIn(A, "stash", "pop", "--index"), state(A)), (natIn(B, "stash", "pop", "--index"), state(B)));
+  await twin("stash -- path without changes", p7, ["stash", "--", "dir"], ss);
+  // stash branch: a branch at the stash's base, the stash applied with --index and dropped
+  for (const a of [["nb"], ["nb", "1"], ["nb", "stash@{2}"], [], ["main"], ["nb", "7"]]) await twin(`stash branch ${a.join(" ")}`, p7s, ["stash", "branch", ...a], ss);
+  // (stdout: our checkout doesn't list the changes it carries over, `M\tb.txt`)
+  await twin("stash branch with local changes in the way", p7s, ["stash", "branch", "nb"], { ...ss, out: false, setup: (d) => write(d, "b.txt", "mine\n") });
+  // (stderr: git apply's `error: patch failed: b.txt:1` lines come first)
+  await twin("stash apply --index conflict", p7s, ["stash", "apply", "--index"], { ...ss, err: false, setup: (d) => { write(d, "b.txt", "conflicting\n"); nat(d, "commit", "-qam", "conflicting"); }, head: "tree" });
 
   // ---- config ---------------------------------------------------------------------------------------------------------
   const p4 = join(tmp, "p4");

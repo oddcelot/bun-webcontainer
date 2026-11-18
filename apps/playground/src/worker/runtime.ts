@@ -3,7 +3,8 @@ import { loadResolver, parseData, parseDataFile, resolve } from "../resolver";
 import { loadSemver } from "../semver";
 import { dirname, norm, VFS, type FileData } from "@runbun/vfs";
 import { readConfig } from "../projectConfig";
-import { BUN_NAMES, builtinName, builtins, compressionStreams, installAsyncContext, installTimers, setExit, setFs, setRawStdio, setRequire, setStdio } from "./node";
+import { BUN_NAMES, builtinName, builtins, compressionStreams, installAsyncContext, installTimers, setBunFetch, setExit, setFs, setRawStdio, setRequire, setStdio } from "./node";
+import { BuildPlugins } from "./buildPlugins";
 import { bundle, type BundleConfig, type BundleLog } from "./bundler";
 import { setHostVfs } from "./hostPackages";
 import { hash } from "./hash";
@@ -45,6 +46,8 @@ import process, { env } from "./node/process";
 import { enableTTY, resizeTTY } from "./node/tty";
 import { isDeepStrictEqual } from "./node/util";
 import { failRunning, runTestFiles } from "./node/test";
+import { finishCoverage, startCoverage } from "./coverage";
+import { coverageOptions } from "../coverage/options";
 import { BUN_REVISION, BUN_VERSION } from "./bunVersion";
 import * as fflate from "fflate";
 import { bunZstdCompress, bunZstdCompressSync, bunZstdDecompress, bunZstdDecompressSync } from "./compress";
@@ -61,7 +64,7 @@ import { childByPid, launchOf, onProcMessage, setKernel, setSyncVfs, signalName,
 import { spawn as bunSpawn, spawnSync as bunSpawnSync } from "./spawn";
 import { setThread, threadEnd, threadError, type ThreadInfo } from "./node/worker_threads";
 import { WebWorker } from "./webWorker";
-import { isShellCommand } from "../scripts";
+import { cliPreloads, isShellCommand } from "../scripts";
 import { hideXhr, XHR } from "./xhr";
 import { randomUUIDv7 } from "./uuid";
 import { loopbackWebSocket } from "./loopbackSocket";
@@ -124,7 +127,8 @@ installDialogs(g, (text) => void process.stdout.write(text));
 setStdio((level, text, partial) => post({ type: "console", level, text, partial }));
 const has = (path: string) => vfs.files.has(path);
 const read = (path: string) => vfs.readText(path);
-setKernel(post, 1, has, read);
+const listDirs = (dir: string) => vfs.readdir(dir).flatMap((e) => (e.dir ? [e.name] : []));
+setKernel(post, 1, has, read, listDirs);
 g.__nodeBuiltins = builtins;
 // node:crypto's ciphers and keys (crypto-wasm): fetched and compiled synchronously on the first call that needs them, as
 // transpiler/index.ts does for Bun.Transpiler#transformSync. The worker's sync XHR is the only way to the bytes in a
@@ -1232,8 +1236,8 @@ function buildEnv(e: BuildOptions["env"]): Pick<BundleConfig, "env" | "envVars">
  * AggregateError of the logs, as in Bun, unless `throw: false`.
  */
 async function build(opts: BuildOptions) {
-  // Plugins run JS inside the bundler; the wasm build has none of that (its stand-ins panic), so fail up front.
-  if (opts.plugins?.length) throw new TypeError("Bun.build: plugins are not supported in the browser");
+  // As Bun's `Config::from_js`: the plugins' `setup` runs first and may change the options it reads after.
+  const plugins = await BuildPlugins.setup(opts.plugins, opts as Record<string, unknown>);
   for (const ext of Object.keys(opts.loader ?? {}))
     if (ext.length < 2 || !ext.startsWith(".")) throw new TypeError("loader property names must be file extensions, such as '.txt'");
   const entryPoints = (opts.entrypoints ?? []).map((e) => "/" + norm(nodePath.resolve(e.startsWith("file:") ? new URL(e).pathname : e)));
@@ -1261,10 +1265,12 @@ async function build(opts: BuildOptions) {
   };
   const outdir = opts.outdir ? "/" + norm(nodePath.resolve(opts.outdir)) : undefined;
   if (outdir) config.outdir = outdir;
-  const res = await bundle(vfs, config);
+  const res = await bundle(vfs, config, plugins);
   const logs = res.logs.map(buildLog);
   if (!res.success) {
-    if (opts.throw === false) return { success: false, outputs: [] as BuildArtifact[], logs };
+    const result = { success: false, outputs: [] as BuildArtifact[], logs };
+    await plugins?.end(result);
+    if (opts.throw === false) return result;
     throw Object.assign(new AggregateError(logs, "Bundle failed"), { name: "AggregateError" });
   }
   const outputs: BuildArtifact[] = [];
@@ -1277,7 +1283,9 @@ async function build(opts: BuildOptions) {
   }
   for (const o of outputs) o.sourcemap = outputs.find((m) => m.kind === "sourcemap" && m.path === `${o.path}.map`) ?? null;
   if (outdir) for (const o of outputs) await writeFile(o.path, o);
-  return { success: true, outputs, logs };
+  const result = { success: true, outputs, logs };
+  await plugins?.end(result);
+  return result;
 }
 
 /**
@@ -1419,6 +1427,8 @@ async function loopbackFetch(inst: Instance, req: Request): Promise<Response> {
 globalThis.fetch = trackedFn(function fetch(input: RequestInfo | URL, init?: RequestInit) {
   return fileFetch(input, init);
 }) as typeof fetch;
+// undici, node-fetch & co. (node/bunPackages.ts) keep this one even after a program replaces the global.
+setBunFetch(globalThis.fetch);
 
 /** The browser's WebSocket client, holding the program while it is connecting or open (loop.ts), as Bun's does. */
 if (typeof globalThis.WebSocket === "function") {
@@ -1497,8 +1507,8 @@ const shellHost = (wasm: Awaited<ReturnType<typeof loadShellWasm>>) => ({
  * A command that isn't a builtin, as a child process (processes.ts) with the command's stdin, stdout and stderr
  * joined to it; undefined for one that isn't there (`command not found`).
  */
-function externalCommand(name: string, cwd: string): ShellCommand | undefined {
-  const launch = launchOf([name], cwd, has, read);
+function externalCommand(name: string, cwd: string, PATH?: string): ShellCommand | undefined {
+  const launch = launchOf([name], cwd, has, read, PATH, listDirs);
   if ("error" in launch && launch.enoent) return;
   return async (ctx) => {
     let child: Child;
@@ -1773,17 +1783,51 @@ async function runScript(script: string, args: string[], child: boolean) {
  * throws Bun's error for one that doesn't resolve.
  */
 function bunfigPreloads(test: boolean): string[] {
+  return bunfigPreloadSpecs(test).map(resolvePreload);
+}
+
+/** What bunfig.toml (in the working directory) lists to preload, as written. */
+function bunfigPreloadSpecs(test: boolean): string[] {
   const dir = norm(process.cwd());
   const text = vfs.readText(dir ? `${dir}/bunfig.toml` : "bunfig.toml");
   if (text === undefined) return [];
   const config = parseData(text, "toml") as { preload?: unknown; test?: { preload?: unknown } } | null;
   const list = test ? config?.test?.preload : config?.preload;
-  const specs = typeof list === "string" ? [list] : Array.isArray(list) ? list.filter((s): s is string => typeof s === "string") : [];
-  return specs.map((spec) => {
-    const path = resolve(spec, dir, "import", "bun");
-    if (path === null) throw new Error(`preload not found "${spec}"`);
-    return path;
-  });
+  return typeof list === "string" ? [list] : Array.isArray(list) ? list.filter((s): s is string => typeof s === "string") : [];
+}
+
+/**
+ * `bun test --coverage` (the flags, bunfig.toml's `[test]`): the files that load from now on count, and what reports
+ * them once the tests are done (whether that fails the run). Undefined without coverage; throws Bun's error for an
+ * option it rejects.
+ */
+async function testCoverage(flags: string[]): Promise<(() => boolean) | undefined> {
+  const dir = norm(process.cwd());
+  const text = vfs.readText(dir ? `${dir}/bunfig.toml` : "bunfig.toml");
+  const config = text === undefined ? undefined : (parseData(text, "toml") as { test?: Record<string, unknown> } | null);
+  const opts = coverageOptions(flags, config?.test);
+  if (!opts.enabled) return undefined;
+  await startCoverage(opts);
+  const { default: fs } = await import("./node/fs");
+  const ignore = opts.ignorePatterns.map((p) => new Glob(p));
+  return () =>
+    finishCoverage(
+      opts,
+      dir,
+      (path) => ignore.some((p) => p.match(path)),
+      (table) => console.error(table),
+      (path, lcov) => {
+        fs.mkdirSync(`/${path}`.replace(/\/[^/]*$/, "") || "/", { recursive: true });
+        fs.writeFileSync(`/${path}`, lcov);
+      },
+    );
+}
+
+/** A preload's VFS path, resolved from the working directory (a bare name is a package); throws Bun's error if none. */
+function resolvePreload(spec: string): string {
+  const path = resolve(spec, norm(process.cwd()), "import", "bun");
+  if (path === null) throw new Error(`preload not found "${spec}"`);
+  return path;
 }
 
 self.addEventListener("message", async (e: MessageEvent) => {
@@ -1813,7 +1857,7 @@ self.addEventListener("message", async (e: MessageEvent) => {
     for (const k of Object.keys(env)) delete env[k];
     Object.assign(env, proc.env);
     process.chdir(proc.cwd);
-    setKernel(post, proc.pid, has, read);
+    setKernel(post, proc.pid, has, read, listDirs);
     setRawStdio((fd, data) => post({ type: "stdio", fd, data }, [data.buffer]));
     setStdinPost(post, false);
     const thread = e.data.thread as ThreadInfo | undefined;
@@ -1837,8 +1881,17 @@ self.addEventListener("message", async (e: MessageEvent) => {
   if (e.data.tests) {
     testing = true;
     // `bun test`: load and run each file instead of an entry.
-    const { failed, results } = await runTestFiles(e.data.tests, (f) => importUrl(`${VFS_ROOT}${f}`), (g.Bun as { version: string }).version, { update: ((e.data.args as string[] | undefined) ?? []).some((a) => a === "-u" || a === "--update-snapshots"), preload: () => bunfigPreloads(true) }).catch((err) => (post({ type: "console", level: "error", text: fmt(err) }), { failed: 1, results: undefined }));
-    post({ type: "ready", failed, results });
+    const args = (e.data.args as string[] | undefined) ?? [];
+    let finish: (() => boolean) | undefined;
+    try {
+      finish = await testCoverage(args);
+    } catch (err) {
+      post({ type: "console", level: "error", text: `error: ${err instanceof Error ? err.message : String(err)}` });
+      post({ type: "ready", failed: 1 });
+      return;
+    }
+    const { failed, results, coverageFailed } = await runTestFiles(e.data.tests, (f) => importUrl(`${VFS_ROOT}${f}`), (g.Bun as { version: string }).version, { update: args.some((a) => a === "-u" || a === "--update-snapshots"), preload: () => bunfigPreloads(true), coverage: finish }).catch((err) => (post({ type: "console", level: "error", text: fmt(err) }), { failed: 1, results: undefined, coverageFailed: undefined }));
+    post({ type: "ready", failed, results, coverageFailed });
     return;
   }
   // A package.json script's line (scripts.ts shellCommand), unless the project has a file named `sh`.
@@ -1851,17 +1904,31 @@ self.addEventListener("message", async (e: MessageEvent) => {
   process.argv.splice(2, Infinity, ...((e.data.args as string[] | undefined) ?? []));
   try {
     const code = (e.data.thread as ThreadInfo | undefined)?.eval;
-    // bunfig.toml's `preload`, in order, before the entry (its runtime plugins apply to the entry's imports). Not in
-    // a worker_threads thread, which is no new `bun` process.
+    // bunfig.toml's `preload`, then the command line's (`bun -r ./p.ts main.ts`; with `bun run`, bunfig.toml's
+    // replace them, as in Bun 1.4), each resolved as it comes, before the entry (their runtime plugins apply to the
+    // entry's imports). Not in a worker_threads thread, which is no new `bun` process.
     if (!e.data.thread) {
-      let preloads: string[] = [];
+      const execArgv = (e.data.execArgv as string[] | undefined) ?? [];
+      process.execArgv = execArgv;
+      let specs: string[] = [];
       try {
-        preloads = bunfigPreloads(false);
+        const bunfig = bunfigPreloadSpecs(false);
+        specs = e.data.run && bunfig.length ? bunfig : [...bunfig, ...cliPreloads(execArgv)];
       } catch (err) {
+        // A bunfig.toml that doesn't parse.
         post({ type: "console", level: "error", text: `error: ${err instanceof Error ? err.message : String(err)}` });
         halt(1);
       }
-      for (const p of preloads) await importUrl(`${VFS_ROOT}${p}`);
+      for (const spec of specs) {
+        let path: string;
+        try {
+          path = resolvePreload(spec);
+        } catch (err) {
+          post({ type: "console", level: "error", text: `error: ${err instanceof Error ? err.message : String(err)}` });
+          return halt(1);
+        }
+        await importUrl(`${VFS_ROOT}${path}`);
+      }
     }
     // A .cjs/.mjs program by moduleServer.ts's ENTRY_PREFIX: served as its extension makes it, as Bun runs one.
     const entryUrl = `${VFS_ROOT}${/\.[cm][jt]s$/.test(e.data.entry) ? "__entry/" : ""}${e.data.entry}`;

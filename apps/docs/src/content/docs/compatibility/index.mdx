@@ -23,10 +23,10 @@ The playground is built from Bun {BUN_VERSION}; `Bun.version` reports <code>{BUN
 |---|---|---|
 | [`Bun.serve`](/compatibility/bun/#bunserve) | 🟡 Partial | `fetch`, `routes`, HTML imports, WebSockets with pub/sub, streaming, cookies, the `error` handler, `maxRequestBodySize` and `requestIP` work. No TLS or timeouts. |
 | [`Bun.file`, `Bun.write`](/compatibility/bun/) | 🟡 Partial | Read and write files in the project; no file descriptors. |
-| [`Bun.build`](/compatibility/bun/) | 🟡 Partial | Bun's real bundler, as WebAssembly; no plugins. |
+| [`Bun.build`](/compatibility/bun/) | 🟡 Partial | Bun's real bundler, as WebAssembly, with plugins (`onResolve`, `onLoad`, `onStart`, `onEnd`). |
 | [`Bun.password`, `Bun.CryptoHasher`, `Bun.Glob`, `Bun.semver`](/compatibility/bun/) | ✅ Works | Also `Bun.FileSystemRouter`, `Bun.YAML`, `Bun.TOML`, `Bun.JSONC`, `Bun.JSON5`, `Bun.JSONL`, `Bun.XML`, `Bun.markdown` and `Bun.CookieMap`. |
 | [`HTMLRewriter`](/compatibility/bun/) | 🟡 Partial | Bun's `lol-html` as wasm: selectors, element, text, comment, doctype and document-end handlers. Async handlers need a `Response` input. |
-| [`bun:sqlite`](/compatibility/bun/) | 🟡 Partial | Built on sql.js; databases, prepared statements and transactions work. |
+| [`bun:sqlite`](/compatibility/bun/) | 🟡 Partial | SQLite's official WebAssembly build; databases, prepared statements and transactions work. |
 | [`bun:test`](/compatibility/bun/#buntest) | 🟡 Partial | `bun test` in the console. |
 | [`Bun.$`, `Bun.spawn`](/compatibility/bun/) | 🟡 Partial | Bun's shell and its builtins (`ls`, `cat`, `mkdir`, `rm`…) over the project's files. Child processes run `bun`, `node`, `package.json` scripts and installed bins, each in a worker of its own; `spawnSync` only on cross-origin isolated pages. |
 | [`Bun.S3Client`, `Bun.s3`](/compatibility/bun/) | 🟡 Partial | S3, R2 and MinIO over `fetch` with Bun's SigV4 signing, presigned URLs and multipart uploads; the bucket needs CORS rules for the page's origin. |

@@ -1,4 +1,4 @@
-// The smaller modules: constants, domain, inspector, trace_events, cluster, dgram, repl, wasi.
+// The smaller modules: constants, domain, inspector, trace_events, cluster, dgram, repl.
 import constants from "node:constants";
 import os from "node:os";
 import fs from "node:fs";
@@ -11,7 +11,6 @@ import trace from "node:trace_events";
 import cluster from "node:cluster";
 import dgram from "node:dgram";
 import repl from "node:repl";
-import wasi from "node:wasi";
 import type { Case } from "./cases.ts";
 
 export async function misc(t: Case, log: (line: string) => void) {
@@ -108,5 +107,4 @@ export async function misc(t: Case, log: (line: string) => void) {
     return r;
   });
   t("repl", () => [typeof repl.start, typeof repl.REPL_MODE_STRICT, String(repl.REPL_MODE_STRICT), typeof repl.REPLServer].join());
-  t("wasi", () => typeof wasi.WASI);
 }
