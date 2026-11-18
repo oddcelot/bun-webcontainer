@@ -156,9 +156,9 @@ Experimental, and off unless you ask: turn on **Fast path** (the lightning icon 
 - **The page** runs in a sandboxed frame (scripts, forms, dialogs, popups and downloads; no access to the playground's storage). Uncaught errors and unhandled rejections show in the console.
 - **Not supported:** assets loaded with `import.meta.url`, `fetch` to a server of the project (there is none), Solid's JSX (it needs its own compiler), and source-mapped stack traces.
 
-For example, a React counter qualifies: it has an `index.html` at the root and nothing that needs Bun or Node.
+For example, a React counter qualifies: it has an `index.html` at the root and nothing that needs Bun or Node. This one runs here with the fast path on (an embed's `fast` attribute):
 
-```html title="index.html"
+```html playground mode=preview group=fast-counter fast title="index.html"
 <!doctype html>
 <html>
   <body>
@@ -168,7 +168,7 @@ For example, a React counter qualifies: it has an `index.html` at the root and n
 </html>
 ```
 
-```tsx title="main.tsx"
+```tsx playground mode=preview group=fast-counter fast title="main.tsx"
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -180,7 +180,7 @@ function Counter() {
 createRoot(document.getElementById("root")!).render(<Counter />);
 ```
 
-```json title="package.json"
+```json playground mode=preview group=fast-counter fast title="package.json"
 {
   "name": "fast-counter",
   "private": true,
