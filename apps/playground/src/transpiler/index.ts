@@ -5,7 +5,7 @@ import { FLAGS, LOADER_NUMBERS, type RuntimeOptions } from "./options";
 // Bun's own transpiler (bun_js_parser + bun_js_printer) compiled to wasm64; see crates/transpile-wasm.
 // Output matches `bun build --no-bundle --target=browser`.
 
-const { RUNTIME_TRANSPILER, IMPORT_META_REQUIRE, PACKAGE_TYPE_COMMONJS, PACKAGE_TYPE_MODULE, SYNC_ESM, SOURCE_MAP, DEBUG } = FLAGS;
+const { RUNTIME_TRANSPILER, IMPORT_META_REQUIRE, PACKAGE_TYPE_COMMONJS, PACKAGE_TYPE_MODULE, SYNC_ESM, SOURCE_MAP, DEBUG, NO_DEAD_CODE_ELIMINATION } = FLAGS;
 
 type Exports = {
   memory: WebAssembly.Memory;
@@ -146,10 +146,11 @@ const dec = new TextDecoder();
  * With `metaRequire`, a file that uses a free `require` starts with `var {require}=import.meta;`, as Bun prints ES
  * modules for its runtime. With `sourceMap`, the JS is followed by a NUL and its source map's `mappings` (see
  * src/sourceMap.ts). With `debug`, instrumented for the step debugger, then a NUL and the probe table (debugProtocol.ts).
+ * With `keepDeadCode`, unused expressions stay, as Bun keeps them in a `bun test --coverage` run (coverage/instrument.ts).
  */
-export async function transpile(source: string, path: string, tsconfig: TsconfigFlags = {}, resolve?: Resolver, metaRequire = false, sourceMap = false, debug = false): Promise<string> {
+export async function transpile(source: string, path: string, tsconfig: TsconfigFlags = {}, resolve?: Resolver, metaRequire = false, sourceMap = false, debug = false, keepDeadCode = false): Promise<string> {
   const w = await (ready ??= load());
-  const flags = tsFlags(tsconfig) | (metaRequire ? IMPORT_META_REQUIRE : 0) | (sourceMap ? SOURCE_MAP : 0) | (debug ? DEBUG : 0);
+  const flags = tsFlags(tsconfig) | (metaRequire ? IMPORT_META_REQUIRE : 0) | (sourceMap ? SOURCE_MAP : 0) | (debug ? DEBUG : 0) | (keepDeadCode ? NO_DEAD_CODE_ELIMINATION : 0);
   const loader = loaderOf(path);
   current = resolve;
   resolveError = undefined;
@@ -260,10 +261,10 @@ export function runtimeTranspile(op: RuntimeOp, source: string | null, loader: s
 /**
  * `transpile` without a resolver, synchronous (in the worker, loading the module on first use): for CommonJS the
  * worker loads at run time, which Bun's runtime transpiles as `bun build --no-bundle` does (the JSX runtime imported).
- * `sourceMap` and `debug` as for `transpile`.
+ * `sourceMap`, `debug` and `keepDeadCode` as for `transpile`.
  */
-export function transpileSync(source: string, path: string, tsconfig: TsconfigFlags = {}, sourceMap = false, debug = false): string {
-  return call(loadSync(), "transpile_flags_c", path, source, loaderOf(path), tsFlags(tsconfig) | (sourceMap ? SOURCE_MAP : 0) | (debug ? DEBUG : 0), jsxKey(tsconfig), NO_OPTIONS);
+export function transpileSync(source: string, path: string, tsconfig: TsconfigFlags = {}, sourceMap = false, debug = false, keepDeadCode = false): string {
+  return call(loadSync(), "transpile_flags_c", path, source, loaderOf(path), tsFlags(tsconfig) | (sourceMap ? SOURCE_MAP : 0) | (debug ? DEBUG : 0) | (keepDeadCode ? NO_DEAD_CODE_ELIMINATION : 0), jsxKey(tsconfig), NO_OPTIONS);
 }
 
 /** Loads the transpiler, so that `moduleKind` can run synchronously on the page too. */
@@ -286,10 +287,10 @@ export function moduleKind(source: string, path: string, tsconfig: TsconfigFlags
 /**
  * An ES module as the body of a function of `hmr` (transpile-wasm's SYNC_ESM): for `require()` of one the worker
  * hasn't imported, which it runs synchronously (worker/node/module.ts). Throws Bun's error for top-level await.
- * `sourceMap` and `debug` as for `transpile`.
+ * `sourceMap`, `debug` and `keepDeadCode` as for `transpile`.
  */
-export function transpileSyncEsm(source: string, path: string, tsconfig: TsconfigFlags = {}, sourceMap = false, debug = false): string {
-  return call(loadSync(), "transpile_flags_c", path, source, loaderOf(path), tsFlags(tsconfig) | SYNC_ESM | (sourceMap ? SOURCE_MAP : 0) | (debug ? DEBUG : 0), jsxKey(tsconfig), NO_OPTIONS);
+export function transpileSyncEsm(source: string, path: string, tsconfig: TsconfigFlags = {}, sourceMap = false, debug = false, keepDeadCode = false): string {
+  return call(loadSync(), "transpile_flags_c", path, source, loaderOf(path), tsFlags(tsconfig) | SYNC_ESM | (sourceMap ? SOURCE_MAP : 0) | (debug ? DEBUG : 0) | (keepDeadCode ? NO_DEAD_CODE_ELIMINATION : 0), jsxKey(tsconfig), NO_OPTIONS);
 }
 
 type DataEntry = "markdown_html_c" | "markdown_ansi_c" | "markdown_events_c" | "xml_parse_c";
