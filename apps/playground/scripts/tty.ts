@@ -13,6 +13,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import puppeteer from "puppeteer-core";
+import { nativeEnv } from "./native-env";
 
 const app = join(import.meta.dir, "..");
 const PORT = Number(process.env.PORT ?? 5310);
@@ -212,7 +213,7 @@ const expected = new Map<string, string>();
 if (!noNative) {
   const dir = mkdtempSync(join(tmpdir(), "tty-native-"));
   try {
-    const sh = (cmd: string[], cwd: string) => Bun.spawnSync(cmd, { cwd, stdout: "pipe", stderr: "pipe" });
+    const sh = (cmd: string[], cwd: string) => Bun.spawnSync(cmd, { cwd, env: nativeEnv(), stdout: "pipe", stderr: "pipe" });
     for (const c of cases) {
       const cdir = join(dir, c.file.replace(/\W/g, "_"));
       mkdirSync(cdir, { recursive: true });
@@ -222,7 +223,7 @@ if (!noNative) {
         if (sh(["bun", "install", "--no-progress"], cdir).exitCode !== 0) throw new Error("bun install failed");
       }
       let out = "";
-      const proc = Bun.spawn(["bun", c.file], { cwd: cdir, env: { ...process.env, TERM: "xterm-256color" }, terminal: { cols: 100, rows: 30, data: (_t: unknown, d: Uint8Array) => void (out += new TextDecoder().decode(d)) } });
+      const proc = Bun.spawn(["bun", c.file], { cwd: cdir, env: nativeEnv({ TERM: "xterm-256color" }), terminal: { cols: 100, rows: 30, data: (_t: unknown, d: Uint8Array) => void (out += new TextDecoder().decode(d)) } });
       const count = (text: string, w: string) => text.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "").split(w).length - 1;
       const wait = async (w: string, n = 1) => {
         for (let i = 0; i < 100 && count(out, w) < n; i++) await Bun.sleep(100);

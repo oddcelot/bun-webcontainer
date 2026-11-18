@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import puppeteer from "puppeteer-core";
 import { ACCESS_KEY, SECRET_KEY, startMock, type Recorded } from "./s3/mock";
+import { nativeEnv } from "./native-env";
 
 const app = join(import.meta.dir, "..");
 const PORT = 5350;
@@ -154,7 +155,7 @@ if (!process.argv.includes("--no-native")) {
     }
     clean();
     // Not spawnSync: the mock S3 runs in this process.
-    const p = Bun.spawn(["bun", "main.ts"], { cwd: dir, env: { ...process.env, ...env }, stdout: "pipe", stderr: "pipe" });
+    const p = Bun.spawn(["bun", "main.ts"], { cwd: dir, env: nativeEnv(env), stdout: "pipe", stderr: "pipe" });
     const [out, err] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text(), p.exited]);
     wantLines = out.trim().split("\n");
     wantRequests = requests(mock.log);

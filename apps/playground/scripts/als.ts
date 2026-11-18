@@ -8,6 +8,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import puppeteer from "puppeteer-core";
+import { nativeEnv } from "./native-env";
 
 const app = join(import.meta.dir, "..");
 const PORT = 5320;
@@ -33,10 +34,10 @@ const dir = mkdtempSync(join(tmpdir(), "als-"));
 const expected: Record<string, string[]> = {};
 try {
   for (const [p, text] of Object.entries(files)) writeFileSync(join(dir, p), text);
-  const install = Bun.spawnSync(["bun", "install"], { cwd: dir });
+  const install = Bun.spawnSync(["bun", "install"], { cwd: dir, env: nativeEnv() });
   if (install.exitCode) throw new Error(`bun install failed:\n${install.stderr.toString()}`);
   for (const entry of ["main.ts", "serve.ts", "hono.ts"]) {
-    const r = Bun.spawnSync(["bun", entry], { cwd: dir });
+    const r = Bun.spawnSync(["bun", entry], { cwd: dir, env: nativeEnv() });
     expected[entry] = r.stdout.toString().trim().split("\n");
     if (!expected[entry].includes("__end__")) throw new Error(`native bun failed:\n${r.stderr.toString()}`);
   }

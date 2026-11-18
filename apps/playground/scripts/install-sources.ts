@@ -15,6 +15,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import puppeteer from "puppeteer-core";
+import { nativeEnv } from "./native-env";
 
 const app = join(import.meta.dir, "..");
 const PORT = Number(process.env.EDITOR_PORT ?? 5810);
@@ -132,7 +133,7 @@ const report = (lines: string[]) => lines.map((l) => l.trimEnd()).filter((l) => 
 
 // Native Bun on the same project, with a global folder of its own for `bun link`.
 const nativeDir = mkdtempSync(join(tmpdir(), "install-sources-"));
-const env = { ...process.env, BUN_INSTALL: join(nativeDir, ".bun-global"), NO_COLOR: "1" };
+const env = nativeEnv({ BUN_INSTALL: join(nativeDir, ".bun-global"), NO_COLOR: "1" });
 const native: { install: ReturnType<typeof scriptLines>; run: string[]; lock: string; untrusted: string[]; trusted: [boolean, string]; patch: string; patchedLock: string } = {} as never;
 try {
   const write = (p: string, text: string) => (mkdirSync(dirname(join(nativeDir, p)), { recursive: true }), writeFileSync(join(nativeDir, p), text));

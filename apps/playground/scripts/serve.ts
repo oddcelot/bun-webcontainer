@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import puppeteer, { type Frame } from "puppeteer-core";
 import { client, nodeClient } from "./serve/client.ts";
+import { nativeEnv } from "./native-env";
 
 const app = join(import.meta.dir, "..");
 const PORT = Number(process.env.EDITOR_PORT ?? 5460);
@@ -35,7 +36,7 @@ const compare = (label: string, got: string[], want: string[]) => {
 async function native(entry: string, run: () => Promise<string[]>): Promise<[string[], string[]]> {
   const dir = mkdtempSync(join(tmpdir(), "serve-"));
   writeFileSync(join(dir, entry), files[entry]);
-  const p = Bun.spawn(["bun", entry], { cwd: dir, env: { ...process.env, SERVE_PORT: String(NATIVE_PORT) }, stdout: "pipe", stderr: "pipe" });
+  const p = Bun.spawn(["bun", entry], { cwd: dir, env: nativeEnv({ SERVE_PORT: String(NATIVE_PORT) }), stdout: "pipe", stderr: "pipe" });
   try {
     let out = "";
     const dec = new TextDecoder();

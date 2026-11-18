@@ -19,6 +19,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import puppeteer from "puppeteer-core";
+import { nativeEnv } from "./native-env";
 
 const app = join(import.meta.dir, "..");
 const PORT = 5360;
@@ -61,7 +62,7 @@ if (!process.argv.includes("--no-native")) {
     if (install.exitCode)
       throw new Error(`native bun install:\n${install.stderr.toString()}`);
     files["bun.lock"] = readFileSync(join(dir, "bun.lock"), "utf8");
-    const r = Bun.spawnSync(["bun", "main.ts"], { cwd: dir, timeout: 120_000 });
+    const r = Bun.spawnSync(["bun", "main.ts"], { cwd: dir, timeout: 120_000, env: nativeEnv() });
     want = r.stdout.toString().trimEnd().split("\n");
     if (want.at(-1) !== END)
       throw new Error(

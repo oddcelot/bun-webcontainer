@@ -14,6 +14,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import puppeteer from "puppeteer-core";
+import { nativeEnv } from "./native-env";
 
 const app = join(import.meta.dir, "..");
 const PORT = Number(process.env.EDITOR_PORT ?? 5410);
@@ -57,14 +58,14 @@ async function native(): Promise<{ main: string[]; persist: string[] }> {
   const dir = mkdtempSync(join(tmpdir(), "sql-"));
   try {
     for (let i = 0; ; i++) {
-      const ready = Bun.spawnSync(["bun", "-e", `const { SQL } = require("bun"); const db = new SQL(process.env.CASE_DB); try { await db\`select 1\`; } catch { process.exit(1); } await db.close();`], { env: { ...process.env, CASE_DB: url } });
+      const ready = Bun.spawnSync(["bun", "-e", `const { SQL } = require("bun"); const db = new SQL(process.env.CASE_DB); try { await db\`select 1\`; } catch { process.exit(1); } await db.close();`], { env: nativeEnv({ CASE_DB: url }) });
       if (!ready.exitCode) break;
       if (i > 60) throw new Error("Postgres didn't come up");
       await Bun.sleep(500);
     }
     writeFileSync(join(dir, "main.ts"), main);
     writeFileSync(join(dir, "persist.ts"), persist);
-    const env = { ...process.env, CASE_DB: url, DATABASE_URL: url };
+    const env = nativeEnv({ CASE_DB: url, DATABASE_URL: url });
     const r = Bun.spawnSync(["bun", "main.ts"], { cwd: dir, env });
     const lines = r.stdout.toString().trim().split("\n");
     if (lines.at(-1) !== "__end__") throw new Error(`native Bun failed:\n${r.stdout}\n${r.stderr}`);
