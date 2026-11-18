@@ -676,6 +676,10 @@ const paint = (n: number, s: string) => `\x1b[${n}m${s}\x1b[0m`;
 const dim = (s: string) => paint(90, s);
 const ms = (t: number) => (t >= 1000 ? `${(t / 1000).toFixed(2)}s` : `${t.toFixed(2)}ms`);
 
+/** The status lines of the tests that were skipped, todo or failed: past 20 passing tests, Bun lists them again at the end. */
+const listedLines = { skip: [] as string[], todo: [] as string[], fail: [] as string[] };
+const listed = (kind: keyof typeof listedLines, line: string) => (listedLines[kind].push(line), line);
+
 const hasOnly = (s: Suite): boolean => s.mode === "only" || s.items.some((i) => i.mode === "only" || (i.kind === "suite" && hasOnly(i)));
 
 /** Ends the callback running now (a test or a hook) with an error; see `failRunning`. */
@@ -767,14 +771,14 @@ async function runSuite(s: Suite, only: boolean, skipAll: boolean) {
     }
     if (skipAll || s.mode === "skip" || item.mode === "skip") {
       totals.skip++;
-      report.log(dim(`» ${label(item)}`));
+      report.log(listed("skip", dim(`» ${label(item)}`)));
       continue;
     }
     // `--todo`: a todo test with a body runs, and fails if it passes.
     const todoRun = (item.mode === "todo" || todo) && runOpts.todo && item.body;
     if ((item.mode === "todo" || todo) && !todoRun) {
       totals.todo++;
-      report.log(`\x1b[35m✎\x1b[0m ${label(item)} ${dim("[todo]")}`);
+      report.log(listed("todo", `\x1b[35m✎\x1b[0m ${label(item)} ${dim("[todo]")}`));
       continue;
     }
     testName = [...names(s), item.name].join(" ");
@@ -811,31 +815,31 @@ async function runSuite(s: Suite, only: boolean, skipAll: boolean) {
     runningMark = undefined;
     if (mark === "skip") {
       totals.skip++;
-      report.log(dim(`» ${label(item)}`));
+      report.log(listed("skip", dim(`» ${label(item)}`)));
     } else if (mark === "todo") {
       totals.todo++;
-      report.log(`\x1b[35m✎\x1b[0m ${label(item)} ${dim("[todo]")}`);
+      report.log(listed("todo", `\x1b[35m✎\x1b[0m ${label(item)} ${dim("[todo]")}`));
     } else if (todoRun && failed) {
       totals.todo++;
-      report.error(`${failure(err)}\n\x1b[35m✎\x1b[0m ${label(item)} ${time}`);
+      report.error(`${failure(err)}\n${listed("todo", `\x1b[35m✎\x1b[0m ${label(item)} ${time}`)}`);
     } else if (todoRun) {
-      report.error(`\x1b[31m✗\x1b[0m\x1b[31m ${label(item)}\x1b[0m ${time}\n  ^ this test is marked as todo but passes. Remove \`.todo\` if tested behavior now works`);
+      report.error(listed("fail", `\x1b[31m✗\x1b[0m\x1b[31m ${label(item)}\x1b[0m ${time}\n  ^ this test is marked as todo but passes. Remove \`.todo\` if tested behavior now works`));
       countFailure();
     } else if (item.failing && !threw && !failed) {
-      report.error(`\x1b[31m✗\x1b[0m\x1b[31m ${label(item)}\x1b[0m\n  ^ this test is marked as failing but it passed. Remove \`.failing\` if tested behavior now works`);
+      report.error(listed("fail", `\x1b[31m✗\x1b[0m\x1b[31m ${label(item)}\x1b[0m\n  ^ this test is marked as failing but it passed. Remove \`.failing\` if tested behavior now works`));
       countFailure();
     } else if (failed && err instanceof Timeout && err.ms === item.timeout) {
-      report.error(`\x1b[31m✗\x1b[0m\x1b[31m ${label(item)}\x1b[0m ${time}\n  ^ this test timed out after ${err.ms}ms.`);
+      report.error(listed("fail", `\x1b[31m✗\x1b[0m\x1b[31m ${label(item)}\x1b[0m ${time}\n  ^ this test timed out after ${err.ms}ms.`));
       countFailure();
     } else if (failed) {
-      report.error(`${failure(err)}\n\x1b[31m✗\x1b[0m\x1b[31m ${label(item)}\x1b[0m ${time}`);
+      report.error(`${failure(err)}\n${listed("fail", `\x1b[31m✗\x1b[0m\x1b[31m ${label(item)}\x1b[0m ${time}`)}`);
       countFailure();
     } else {
       totals.pass++;
       report.log(`\x1b[32m✓\x1b[0m ${label(item)} ${time}`);
     }
   }
-  if (started) for (const h of s.hooks.afterAll) await call(h, defaultTimeout).catch((e) => (report.error(`${failure(e)}\n\x1b[31m✗\x1b[0m\x1b[31m ${names(s).join(" > ")} (afterAll)\x1b[0m`), countFailure()));
+  if (started) for (const h of s.hooks.afterAll) await call(h, defaultTimeout).catch((e) => (report.error(`${failure(e)}\n${listed("fail", `\x1b[31m✗\x1b[0m\x1b[31m ${names(s).join(" > ")} (afterAll)\x1b[0m`)}`), countFailure()));
 }
 
 /** Snapshot files in the project, through the worker's `fs`. */
@@ -872,6 +876,7 @@ export async function runTestFiles(
   resetFakeTimers();
   totals.pass = totals.fail = totals.skip = totals.todo = totals.filtered = 0;
   expectCalls = 0;
+  for (const lines of Object.values(listedLines)) lines.length = 0;
   const results: TestOutcome["results"] = [];
   report.log(`bun test v${version.replace(/-.*/, "")}`);
   // bunfig.toml's `[test] preload`: resolved up front, run with the first file. Its hooks are global: `beforeEach` and
@@ -888,7 +893,7 @@ export async function runTestFiles(
   const globalHook = (hook: "beforeAll" | "afterAll") =>
     (async () => {
       for (const h of global.hooks[hook]) await call(h, defaultTimeout);
-    })().catch((e) => (totals.fail++, report.error(`${failure(e)}\n\x1b[31m✗\x1b[0m\x1b[31m (${hook})\x1b[0m`)));
+    })().catch((e) => (totals.fail++, report.error(`${failure(e)}\n${listed("fail", `\x1b[31m✗\x1b[0m\x1b[31m (${hook})\x1b[0m`)}`)));
   const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
   const ran = () => totals.pass + totals.fail + totals.skip + totals.todo;
   const runs = Math.max(1, opts.rerunEach ?? 1);
@@ -940,6 +945,15 @@ export async function runTestFiles(
     report.error(`error: regex ${JSON.stringify(runOpts.namePattern.source)} matched 0 tests. Searched ${plural(files.length, "file")} (skipping ${plural(totals.filtered, "test")}) ${dim(`[${ms(performance.now() - t0)}]`)}`);
     resetFakeTimers();
     return { failed: 1, results };
+  }
+  // Past 20 passing tests (for a person, not an agent), what didn't pass, again.
+  if (totals.pass > 20) {
+    let first = true;
+    for (const [kind, word] of [["skip", "skipped"], ["todo", "todo"], ["fail", "failed"]] as const) {
+      if (!totals[kind]) continue;
+      report[kind === "fail" ? "error" : "log"](`${first ? "" : "\n"}\n${dim(`${totals[kind]} tests ${word}:`)}${listedLines[kind].map((l) => `\n${l}`).join("")}`);
+      first = false;
+    }
   }
   // `--coverage`: its table goes before the summary.
   const coverageFailed = opts.coverage?.() ?? false;
