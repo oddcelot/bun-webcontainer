@@ -215,7 +215,7 @@ try {
       const mark = (await page.evaluate(() => (window as unknown as W).lines)).length;
       await embed.focus(".xterm-helper-textarea");
       await page.keyboard.type(`bun test ${step.args.join(" ")}\n`);
-      await page.waitForFunction((n: number) => (window as unknown as W).lines.slice(n).some((l) => /^Ran \d+ tests? across/.test(l) || /^error:/.test(l)), { timeout: 60_000 }, mark).catch(() => {});
+      await page.waitForFunction((n: number) => (window as unknown as W).lines.slice(n).some((l) => /^Ran \d+ tests? across/.test(l) || /^\[exited with code/.test(l)), { timeout: 60_000 }, mark).catch(() => {});
       await Bun.sleep(300);
       const lines = (await page.evaluate(() => (window as unknown as W).lines)).slice(mark);
       const label = `bun test ${step.args.join(" ")}`.trim();

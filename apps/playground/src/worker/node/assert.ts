@@ -1,20 +1,24 @@
 import { inspect, isDeepStrictEqual } from "./util";
 
+/** Node's: own properties in its order (`Object.keys`, and how Bun prints one), `name` from the prototype. */
 class AssertionError extends Error {
-  code = "ERR_ASSERTION";
-  generatedMessage: boolean;
-  actual: unknown;
-  expected: unknown;
-  operator: string;
-  constructor(o: { message?: string | Error; actual?: unknown; expected?: unknown; operator?: string; generated?: string }) {
+  declare code: string;
+  declare generatedMessage: boolean;
+  declare actual: unknown;
+  declare expected: unknown;
+  declare operator: string;
+  declare diff: string;
+  constructor(o: { message?: string | Error; actual?: unknown; expected?: unknown; operator?: string; generated?: string; diff?: string }) {
     super(typeof o.message === "string" ? o.message : (o.generated ?? "Failed"));
-    this.name = "AssertionError";
     this.generatedMessage = typeof o.message !== "string";
     this.actual = o.actual;
     this.expected = o.expected;
     this.operator = o.operator ?? "fail";
+    this.code = "ERR_ASSERTION";
+    this.diff = o.diff === "full" ? "full" : "simple";
   }
 }
+Object.defineProperty(AssertionError.prototype, "name", { value: "AssertionError", writable: true, configurable: true });
 
 type Msg = string | Error | undefined;
 
