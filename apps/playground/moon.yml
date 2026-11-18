@@ -167,6 +167,14 @@ tasks:
     toolchains: ['bun']
     options:
       cache: false
+  test-node-test-run:
+    # `bun test` as a child process and node:test's run() end to end (scripts/node-test-run.ts): the project in
+    # scripts/node-test-run/ runs in the embed in headless Chrome and must print what native Bun prints for it (the
+    # tests' results and run()'s events). Needs Chrome, so it isn't part of `test`.
+    command: 'bun scripts/node-test-run.ts'
+    toolchains: ['bun']
+    options:
+      cache: false
   test-build-plugins:
     # Bun.build plugins end to end (scripts/build-plugins.ts): scripts/build-plugins/main.ts runs in the embed in
     # headless Chrome and must print what native Bun prints, but for `.defer()`. Needs Chrome, so it isn't part of `test`.

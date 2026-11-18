@@ -2,11 +2,12 @@
 // `bun test` runs and reports them; subtests (`t.test`) run inside their parent and fail it ("1 subtest failed",
 // with the first failure as its `cause`) without counting on their own. `beforeEach`/`afterEach` of the file or a
 // suite run around each test and subtest, with its TestContext. `mock` is Node's MockTracker; `mock.timers` drives
-// bun:test's fake timers. Not here, as in Bun: `mock.module()`, snapshots. Not here, unlike Bun: `run()`, which runs
-// each file in a `bun test` child process (a spawned process can't be `bun test` here, worker/processes.ts).
+// bun:test's fake timers. `run()` runs each file in a `bun test` child process (worker/processes.ts) and rebuilds
+// node's events from the ones the child writes. Not here, as in Bun: `mock.module()`, snapshots.
 import assert from "./assert";
 import { codeError } from "./errors";
 import { fakeTimers, real } from "./fakeTimers";
+import { Readable } from "./stream";
 import bunTest, { markRunning, testFile } from "./test";
 
 type Fn = (...args: any[]) => any;
@@ -79,6 +80,37 @@ function parseArgs(a0: unknown, a1: unknown, a2: unknown): { name: string; optio
 
 const customAsserts = new Map<string, Fn>();
 
+// ---- run(): the child's side ----
+//
+// A `bun test` that run() started (NODE_TEST_CONTEXT=child-v8) writes one JSON event per finished test on stdout after
+// Bun's marker; the parent rebuilds node's events from them (runFiles below). As Bun 1.4.4 does.
+
+const RUN_CHILD_ENV = "NODE_TEST_CONTEXT";
+const RUN_EVENT_PREFIX = "\0bun:test:run\0";
+const childReporter = () => (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env[RUN_CHILD_ENV] !== undefined;
+
+function emitChildEvent(type: string, data: object) {
+  try {
+    process.stdout.write(`${RUN_EVENT_PREFIX}${JSON.stringify({ type, data })}\n`);
+  } catch {}
+}
+
+type SerializedError = { message: string; stack?: string; code?: string; failureType?: string; name: string; cause?: SerializedError };
+function serializeError(error: unknown, depth = 0): SerializedError {
+  if (error instanceof Error) {
+    const e = error as Error & { code?: string; failureType?: string; cause?: unknown };
+    return { message: e.message, stack: e.stack, code: e.code, failureType: e.failureType, name: e.name, cause: e.cause !== undefined && depth < 8 ? serializeError(e.cause, depth + 1) : undefined };
+  }
+  return { message: String(error), stack: undefined, code: undefined, name: "Error" };
+}
+
+/** A test or suite that never runs (skip, or a todo subtest): a pass carrying its directive, in a run() child. */
+function reportDirective(name: string, nesting: number, directive: { skip: string | true } | { todo: string | true }, type: "test" | "suite" = "test") {
+  if (!childReporter()) return;
+  const skip = "skip" in directive ? directive.skip : undefined;
+  emitChildEvent("test:pass", { name, nesting, testNumber: 0, duration_ms: 0, skip, todo: "todo" in directive ? directive.todo : undefined, type, tags: [], error: undefined });
+}
+
 /** What a test or subtest function gets: Node's TestContext. */
 class TestContext {
   #name: string;
@@ -100,10 +132,18 @@ class TestContext {
   #firstFailure: unknown;
   #error: unknown;
   #passed = false;
-  constructor(name: string, s: Scope, parent?: TestContext) {
+  /** The directive a run() child reports it with: `t.skip()`/`t.todo()` (their message, or true), or the todo option. */
+  #skip: string | true | undefined;
+  #todo: string | true | undefined;
+  constructor(name: string, s: Scope, parent?: TestContext, todo?: string | true) {
     this.#name = name;
     this.#scope = s;
     this.#parent = parent;
+    this.#todo = todo;
+  }
+  /** Node's nesting: 0 for a top-level test, one more per suite or test around it. */
+  get #nesting(): number {
+    return this.#parent ? this.#parent.#nesting + 1 : scopeNames(this.#scope).length;
   }
   get name() {
     return this.#name;
@@ -182,11 +222,13 @@ class TestContext {
       };
     });
   }
-  skip(_message?: string) {
-    if (!this.#parent) markRunning("skip");
+  skip(message?: string) {
+    this.#skip = message ?? true;
+    if (!this.#parent && !childReporter()) markRunning("skip");
   }
-  todo(_message?: string) {
-    if (!this.#parent) markRunning("todo");
+  todo(message?: string) {
+    this.#todo = message ?? true;
+    if (!this.#parent && !childReporter()) markRunning("todo");
   }
   runOnly(_on: boolean) {
     throw new Error("t.runOnly() is not supported");
@@ -227,7 +269,10 @@ class TestContext {
     const p = (async () => {
       await prev.catch(noop);
       this.#counted();
-      if (options.skip || options.todo) return undefined;
+      if (options.skip || options.todo) {
+        reportDirective(name, this.#nesting + 1, options.skip ? { skip: options.skip } : { todo: options.todo || true });
+        return undefined;
+      }
       if (!this.#beforeRan) {
         this.#beforeRan = true;
         for (const h of this.#hooks.before) await invoke(h, this);
@@ -259,6 +304,7 @@ class TestContext {
     const chain = this.#chain();
     const prev = running;
     running = this;
+    const started = performance.now();
     try {
       for (const h of chain) for (const f of h.beforeEach) await invoke(f, this);
       try {
@@ -283,6 +329,20 @@ class TestContext {
       }
     } finally {
       running = prev;
+      if (childReporter()) {
+        const skip = this.#skip;
+        emitChildEvent(this.#passed ? "test:pass" : "test:fail", {
+          name: this.#name,
+          nesting: this.#nesting,
+          testNumber: 0,
+          duration_ms: performance.now() - started,
+          skip,
+          todo: skip === undefined ? this.#todo : undefined,
+          expectFailure: undefined,
+          tags: [],
+          error: this.#passed ? undefined : serializeError(this.#error),
+        });
+      }
     }
   }
 }
@@ -328,7 +388,13 @@ function defineTest(forced: Mode | undefined, a0: unknown, a1: unknown, a2: unkn
   const mode = modeOf(options, forced);
   const timeout = options.timeout === undefined ? [] : [{ timeout: Math.min(options.timeout, 2 ** 31 - 1) }];
   if (mode === "run") bunTest.test(name, () => new TestContext(name, s).run(fn ?? noop, options), ...timeout);
-  else bunTest.test[mode](name, fn ?? noop);
+  else if (childReporter()) {
+    // In a run() child, as in Bun: a skip reports its directive when its turn comes; a todo runs its body (a failure
+    // doesn't fail the file) and reports with the directive.
+    const todo = mode === "todo" ? ((typeof options.todo === "string" ? options.todo : undefined) ?? true) : undefined;
+    if (mode === "skip") bunTest.test(name, () => reportDirective(name, scopeNames(s).length, { skip: options.skip || true }));
+    else bunTest.test(name, () => new TestContext(name, s, undefined, todo).run(fn ?? noop, options).catch(noop), ...timeout);
+  } else bunTest.test[mode](name, fn ?? noop);
   return Promise.resolve(undefined);
 }
 
@@ -336,9 +402,11 @@ function defineSuite(forced: Mode | undefined, a0: unknown, a1: unknown, a2: unk
   const { name, options, fn } = parseArgs(a0, a1, a2);
   const s: Scope = { name, parent: currentScope(), hooks: newHooks() };
   const mode = modeOf(options, forced);
+  // A run() child reports a skipped or todo suite as it is defined.
+  if (mode !== "run") reportDirective(name, scopeNames(s.parent).length, mode === "skip" ? { skip: options.skip || true } : { todo: options.todo || true }, "suite");
   // As in Bun, a skipped suite's callback never runs: its tests count nowhere.
   if (mode === "skip") return Promise.resolve(undefined);
-  (mode === "run" ? bunTest.describe : bunTest.describe[mode])(name, () => {
+  (mode === "run" || childReporter() ? bunTest.describe : bunTest.describe[mode])(name, () => {
     const prev = scope;
     scope = s;
     try {
@@ -571,6 +639,239 @@ class MockTracker {
 
 const mock = new MockTracker();
 
+// ---- run(): the parent's side ----
+
+/** node's TestsStream: an object-mode Readable of `{ type, data }`, each also emitted as an event of its type. */
+class TestsStream extends Readable {
+  #buffer: unknown[] = [];
+  #canPush = true;
+  constructor() {
+    super({ objectMode: true, highWaterMark: Number.MAX_SAFE_INTEGER });
+  }
+  override _read() {
+    this.#canPush = true;
+    while (this.#buffer.length > 0) if (!this.#tryPush(this.#buffer.shift())) return;
+  }
+  #tryPush(message: unknown) {
+    if (this.#canPush) this.#canPush = this.push(message);
+    else this.#buffer.push(message);
+    return this.#canPush;
+  }
+  publish(type: string, data: unknown) {
+    this.emit(type, data);
+    this.#tryPush({ __proto__: null, type, data });
+  }
+  endStream() {
+    this.#tryPush(null);
+  }
+}
+
+type Counts = Record<"tests" | "failed" | "passed" | "cancelled" | "skipped" | "todo" | "topLevel" | "suites", number>;
+const newCounts = (): Counts => ({ __proto__: null, tests: 0, failed: 0, passed: 0, cancelled: 0, skipped: 0, todo: 0, topLevel: 0, suites: 0 }) as Counts;
+type RunOptions = { files: string[]; cwd: string; env?: Record<string, string>; argv: string[]; execArgv: string[]; setup?: (s: TestsStream) => unknown; signal?: AbortSignal };
+
+const notImplemented = (feature: string, extra?: string) => {
+  const issue = " Track the status & thumbs up the issue: https://github.com/oven-sh/bun/issues/5090";
+  throw Object.assign(new Error(`${feature} is not yet implemented in Bun.${issue}${extra ? `. ${extra}` : ""}`), { name: "NotImplementedError", code: "ERR_NOT_IMPLEMENTED" });
+};
+
+/** `run({ files })`: each file in a `bun test` child process of its own, its events republished on one stream (Bun 1.4.4). */
+function run(options: Record<string, any> = {}): TestsStream {
+  if (options === null || typeof options !== "object") throw codeError(TypeError, "ERR_INVALID_ARG_TYPE", `The "options" argument must be of type object.`);
+  const { files, cwd = process.cwd(), env, argv = [], execArgv = [], setup, signal, isolation = "process" } = options;
+  if (files != null && !Array.isArray(files)) throw codeError(TypeError, "ERR_INVALID_ARG_TYPE", `The "options.files" property must be an instance of Array.`);
+  if (typeof cwd !== "string") throw codeError(TypeError, "ERR_INVALID_ARG_TYPE", `The "options.cwd" property must be of type string.`);
+  if (setup != null && typeof setup !== "function") throw codeError(TypeError, "ERR_INVALID_ARG_TYPE", `The "options.setup" property must be of type function.`);
+  for (const [k, v] of [["argv", argv], ["execArgv", execArgv]] as const)
+    if (!Array.isArray(v) || v.some((x) => typeof x !== "string")) throw codeError(TypeError, "ERR_INVALID_ARG_TYPE", `The "options.${k}" property must be an instance of Array.`);
+  if (isolation !== "process" && isolation !== "none") throw codeError(TypeError, "ERR_INVALID_ARG_VALUE", `The property 'options.isolation' must be one of: 'process', 'none'. Received '${String(isolation)}'`);
+  const stream = new TestsStream();
+  // A test file that calls run() on itself would start itself again and again.
+  if (childReporter()) {
+    process.emitWarning("node:test run() is being called recursively within a test file. skipping running files.");
+    stream.endStream();
+    return stream;
+  }
+  if (options.watch) notImplemented("run({ watch: true })", "Use `bun:test --watch` in the interim.");
+  if (options.coverage) notImplemented("run({ coverage: true })", "Use `bun:test --coverage` in the interim.");
+  if (options.shard) notImplemented("run({ shard })");
+  if (isolation === "none") notImplemented("run({ isolation: 'none' })");
+  if (options.globPatterns?.length > 0) notImplemented("run({ globPatterns })");
+  if (options.globalSetupPath != null) notImplemented("run({ globalSetupPath })");
+  if (options.only) notImplemented("run({ only: true })");
+  if (options.testNamePatterns != null) notImplemented("run({ testNamePatterns })");
+  if (options.testSkipPatterns != null) notImplemented("run({ testSkipPatterns })");
+  if (options.forceExit) notImplemented("run({ forceExit: true })");
+  if (options.concurrency != null) notImplemented("run({ concurrency })");
+  if (files == null) notImplemented("run() default file discovery", "Pass { files: [...] } explicitly.");
+  void runFiles({ files, cwd, env, argv, execArgv, setup, signal }, stream);
+  return stream;
+}
+
+function diagnostics(stream: TestsStream, counts: Counts, durationMs: number) {
+  const rows: [string, number][] = [["tests", counts.tests], ["suites", counts.suites], ["pass", counts.passed], ["fail", counts.failed], ["cancelled", counts.cancelled], ["skipped", counts.skipped], ["todo", counts.todo], ["duration_ms", durationMs]];
+  for (const [k, v] of rows) stream.publish("test:diagnostic", { __proto__: null, nesting: 0, message: `${k} ${v}` });
+}
+
+async function runFiles(opts: RunOptions, stream: TestsStream) {
+  const started = Date.now();
+  const counts = newCounts();
+  // Listeners attach after run() returns.
+  await Promise.resolve();
+  try {
+    if (opts.setup) await opts.setup(stream);
+    let i = 0;
+    for (; i < opts.files.length; i++) {
+      if (opts.signal?.aborted) break;
+      await runOneFile(opts.files[i]!, opts, stream, counts);
+    }
+    for (; i < opts.files.length; i++) cancelledFile(opts.files[i]!, opts, stream, counts);
+    stream.publish("test:plan", { __proto__: null, nesting: 0, count: counts.topLevel });
+    const durationMs = Date.now() - started;
+    diagnostics(stream, counts, durationMs);
+    stream.publish("test:summary", { __proto__: null, success: counts.failed === 0 && counts.cancelled === 0, counts, duration_ms: durationMs, file: undefined });
+  } catch (err) {
+    stream.destroy(err as Error);
+    return;
+  }
+  stream.endStream();
+}
+
+const fileNodeOf = (file: string, absolute: string) => ({ nesting: 0, name: file, type: "test", testId: 1, parentId: 0, tags: [], line: 1, column: 1, file: absolute });
+
+function cancelledFile(file: string, opts: RunOptions, stream: TestsStream, counts: Counts) {
+  const fileNode = fileNodeOf(file, resolvePath(opts.cwd, file));
+  const error = testFailure("test did not finish before its parent and was cancelled", "cancelledByParent");
+  const details = { __proto__: null, duration_ms: 0, type: "test", error };
+  stream.publish("test:enqueue", { __proto__: null, ...fileNode });
+  stream.publish("test:dequeue", { __proto__: null, ...fileNode });
+  stream.publish("test:complete", { __proto__: null, ...fileNode, type: undefined, testNumber: 1, details: { ...details, passed: false } });
+  stream.publish("test:fail", { __proto__: null, ...fileNode, type: undefined, testNumber: 1, details });
+  counts.tests++;
+  counts.cancelled++;
+  counts.topLevel++;
+}
+
+const resolvePath = (cwd: string, p: string) =>
+  "/" + (p.startsWith("/") ? p : `${cwd}/${p}`).split("/").reduce<string[]>((out, s) => (s === ".." ? out.slice(0, -1) : s && s !== "." ? [...out, s] : out), []).join("/");
+
+/** Lines of a child's stream as they come, the last one without its newline too. */
+async function eachLine(source: ReadableStream<Uint8Array>, onLine: (line: string, last: boolean) => void) {
+  const decoder = new TextDecoder();
+  let carry = "";
+  for await (const chunk of source as unknown as AsyncIterable<Uint8Array>) {
+    carry += decoder.decode(chunk, { stream: true });
+    let nl;
+    while ((nl = carry.indexOf("\n")) !== -1) {
+      const line = carry.slice(0, nl);
+      carry = carry.slice(nl + 1);
+      onLine(line, false);
+    }
+  }
+  if (carry.length > 0) onLine(carry, true);
+}
+
+async function runOneFile(file: string, opts: RunOptions, stream: TestsStream, counts: Counts) {
+  const absolute = resolvePath(opts.cwd, file);
+  const fileStarted = Date.now();
+  const fileCounts = newCounts();
+  const fileNode = fileNodeOf(file, absolute);
+  stream.publish("test:enqueue", { __proto__: null, ...fileNode });
+  stream.publish("test:dequeue", { __proto__: null, ...fileNode });
+  const proc = (globalThis as unknown as { Bun: { spawn: Fn } }).Bun.spawn({
+    cmd: ["bun", ...opts.execArgv, "test", absolute, ...opts.argv],
+    cwd: opts.cwd,
+    env: { ...(opts.env ?? process.env), BUN_TEST_DRAIN_EVENT_LOOP: "1", [RUN_CHILD_ENV]: "child-v8" },
+    stdout: "pipe",
+    stderr: "pipe",
+    signal: opts.signal,
+  }) as { stdout: ReadableStream<Uint8Array>; stderr: ReadableStream<Uint8Array>; exited: Promise<number>; kill(): void };
+  let drainStderr: Promise<void> | undefined;
+  try {
+    let stderrText = "";
+    drainStderr = eachLine(proc.stderr, (line, last) => {
+      stderrText += last ? line : `${line}\n`;
+      if (line.length > 0) stream.publish("test:stderr", { __proto__: null, file: absolute, message: `${line}\n` });
+    });
+    drainStderr.catch(noop);
+    await eachLine(proc.stdout, (line) => {
+      if (line.length === 0) return;
+      const marker = line.indexOf(RUN_EVENT_PREFIX);
+      if (marker === -1) return stream.publish("test:stdout", { __proto__: null, file: absolute, message: `${line}\n` });
+      const before = line.slice(0, marker).trimEnd();
+      if (before.length > 0) stream.publish("test:stdout", { __proto__: null, file: absolute, message: `${before}\n` });
+      let event;
+      try {
+        event = JSON.parse(line.slice(marker + RUN_EVENT_PREFIX.length));
+      } catch {
+        return;
+      }
+      if (event == null || typeof event.data !== "object" || event.data === null) return;
+      republish(event, absolute, stream, fileCounts);
+    });
+    await drainStderr;
+    const exitCode = await proc.exited;
+    // A nonzero exit with no failure reported: the file itself failed (it threw as it loaded).
+    const fileFailed = exitCode !== 0 && fileCounts.failed === 0;
+    const fileDuration = Date.now() - fileStarted;
+    const reportFileNode = fileCounts.tests + fileCounts.suites === 0 || fileFailed;
+    fileCounts.topLevel++;
+    if (reportFileNode) {
+      fileCounts.tests++;
+      if (fileFailed) fileCounts.failed++;
+      else fileCounts.passed++;
+    }
+    let error: Error | undefined;
+    if (fileFailed) error = testFailure(stderrText.trim() || `Test file failed with exit code ${exitCode}`, "testCodeFailure");
+    else stream.publish("test:summary", { __proto__: null, success: fileCounts.failed === 0, counts: { __proto__: null, ...fileCounts }, duration_ms: fileDuration, file: absolute });
+    if (reportFileNode) {
+      stream.publish("test:complete", { __proto__: null, ...fileNode, type: undefined, testNumber: 1, details: { __proto__: null, duration_ms: fileDuration, type: "test", passed: !fileFailed, error } });
+      const details = { __proto__: null, duration_ms: fileDuration, type: "test", error };
+      stream.publish(fileFailed ? "test:fail" : "test:pass", { __proto__: null, ...fileNode, type: undefined, testNumber: 1, details });
+    }
+    for (const k of Object.keys(fileCounts) as (keyof Counts)[]) counts[k] += fileCounts[k];
+  } finally {
+    proc.kill();
+    if (drainStderr !== undefined) await drainStderr.catch(noop);
+  }
+}
+
+function rebuildError(serialized: SerializedError, depth = 0): Error {
+  const { message, stack, name, code, failureType, cause } = serialized;
+  const error = new Error(message) as Error & { code?: string; failureType?: string; cause?: unknown };
+  error.stack = stack;
+  if (name !== undefined && name !== "Error") error.name = name;
+  if (code !== undefined) error.code = code;
+  if (failureType !== undefined) error.failureType = failureType;
+  if (cause !== undefined && depth < 8) error.cause = rebuildError(cause, depth + 1);
+  return error;
+}
+
+function republish(event: { type: string; data: Record<string, any> }, file: string, stream: TestsStream, counts: Counts) {
+  const { type, data } = event;
+  Object.setPrototypeOf(data, null);
+  data.file = file;
+  data.nesting = (data.nesting ?? 0) + 1;
+  if (type === "test:pass" || type === "test:fail") {
+    const isSuite = data.type === "suite";
+    // A suite counts in `suites` only, skipped or not.
+    if (isSuite) counts.suites++;
+    else {
+      counts.tests++;
+      if (data.skip) counts.skipped++;
+      else if (data.todo) counts.todo++;
+      else if (type === "test:pass") counts.passed++;
+      else counts.failed++;
+    }
+    const detailType = isSuite ? "suite" : "test";
+    data.details = data.error !== undefined ? { __proto__: null, duration_ms: data.duration_ms, type: detailType, error: rebuildError(data.error) } : { __proto__: null, duration_ms: data.duration_ms, type: detailType };
+    delete data.error;
+    delete data.duration_ms;
+    delete data.type;
+  }
+  stream.publish(type, data);
+}
+
 const notSupported = (what: string) => () => {
   throw new Error(`${what} is not supported in the playground`);
 };
@@ -588,7 +889,7 @@ const nodeTest = Object.assign(test, {
   skip: test.skip,
   todo: test.todo,
   only: test.only,
-  run: notSupported("node:test run()"),
+  run,
   getTestContext: () => running,
   assert: {
     register(name: string, fn: Fn) {
