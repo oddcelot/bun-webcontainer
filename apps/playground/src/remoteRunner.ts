@@ -1,11 +1,11 @@
-import { FEATURE_SNAPSHOTS, PACKED_REQUEST, PACKED_RESPONSE, SYNC_LIMITS, syncPath, type FileData, type ServerMessage } from "@runbun/connect/protocol";
+import { FEATURE_COVERAGE, FEATURE_SNAPSHOTS, lcovPath, PACKED_REQUEST, PACKED_RESPONSE, SYNC_LIMITS, syncPath, type FileData, type ServerMessage } from "@runbun/connect/protocol";
 import type { VFS } from "@runbun/vfs";
 import type { LocalBun } from "./localBun";
 import { SKIP } from "./persist";
 import { readConfig } from "./projectConfig";
 import { isShellCommand } from "./scripts";
 import { Runner, type LogFn, type TestResults } from "./runner";
-import { isCoverageFlag } from "./coverage/options";
+import { coverageOptions, isCoverageFlag } from "./coverage/options";
 
 /** A program that neither serves nor exits by then is running: Run is done starting. */
 const SETTLE_MS = 1500;
@@ -46,6 +46,8 @@ export class RemoteRunner extends Runner {
   private current?: Current;
   /** One project per tab: the runner keeps its directory (and node_modules) between runs. */
   private project = `pg-${crypto.randomUUID().slice(0, 8)}`;
+  /** Whether the last test run counted coverage. */
+  private coverageOn = false;
 
   constructor(
     private files: VFS,
@@ -90,12 +92,25 @@ export class RemoteRunner extends Runner {
       this.exitCode = 1;
       return;
     }
+    // A coverage run (its flags, or bunfig.toml's `[test]`) gets its lcov.info back where Bun writes it.
+    // Without the wasm TOML parser (no Memory64), from the flags alone.
+    const flagsOnly = () => {
+      try {
+        return args.some(isCoverageFlag) ? coverageOptions(args, undefined) : undefined;
+      } catch {
+        return undefined;
+      }
+    };
+    const coverage = tests && this.local.features.includes(FEATURE_COVERAGE) ? ((await this.coverage(args)) ?? flagsOnly()) : undefined;
+    const dir = coverage?.dir.replace(/^(\.\/+)+/, "").replace(/\/+$/, "");
+    const lcov = coverage?.reporters.lcov ? lcovPath(dir && dir !== "." ? `${dir}/lcov.info` : "lcov.info") : undefined;
+    this.coverageOn = !!coverage;
     const c = this.begin(!!tests);
     const files = this.snapshot();
     // Test runs ask for the files they changed (snapshots, inline snapshots) if the runner can send them; `-u` also
     // rewrites the ones that differ. `files` is only taken from a run that asked, and only for the paths it may change.
     const snapshots = !!tests && this.local.features.includes(FEATURE_SNAPSHOTS);
-    if (snapshots) c.snapshots = new Set(tests.filter((t) => typeof files[t] === "string"));
+    if (snapshots || lcov) c.snapshots = new Set([...(snapshots ? tests!.filter((t) => typeof files[t] === "string") : []), ...(lcov ? [lcov] : [])]);
     // runbun.json's `env`, as in the browser (worker/runtime.ts); the runner leaves out names it keeps for itself.
     const env = readConfig((path) => this.files.readText(path)).env;
     this.local.send({
@@ -108,28 +123,33 @@ export class RemoteRunner extends Runner {
       test: tests,
       env,
       ...(snapshots && { updateSnapshots: args.some((a) => UPDATE_FLAGS.includes(a)) }),
+      ...(tests && args.some(isCoverageFlag) && { coverage: args.filter(isCoverageFlag) }),
+      ...(lcov && { lcov }),
     });
     await this.ready;
   }
 
   /** Native Bun reports failed tests in all, not per file (no `results`). */
   override async runTests(files: string[], args: string[] = []): Promise<TestResults> {
-    // The runner tests a copy of the project in a temp folder it then removes; it sends the changed snapshots back
+    // The runner tests the project in its own folder; it sends the changed snapshots and the coverage lcov.info back
     // (an older runner doesn't, and they would be lost).
     // The runner takes no other flags of `bun test`.
     const coverage = args.filter(isCoverageFlag);
-    if (coverage.length) {
-      this.out("error", `[local] bun test ${coverage.join(" ")}: coverage runs only in the browser; switch Local Bun off for it.`);
+    if (coverage.length && !this.local.features.includes(FEATURE_COVERAGE)) {
+      this.out("error", `[local] bun test ${coverage.join(" ")}: this runner can't count coverage (update @runbun/connect, or switch Local Bun off for it).`);
       return { failed: 1 };
     }
-    if (args.length && !(args.every((a) => UPDATE_FLAGS.includes(a)) && this.local.features.includes(FEATURE_SNAPSHOTS))) {
-      const old = UPDATE_FLAGS.includes(args[0]!) ? " with this runner (update @runbun/connect to update them here)" : "";
-      this.out("error", `[local] bun test ${args.join(" ")}: snapshots update only in the browser${old}; switch Local Bun off to update them.`);
+    const update = args.filter((a) => !isCoverageFlag(a));
+    if (update.length && !(update.every((a) => UPDATE_FLAGS.includes(a)) && this.local.features.includes(FEATURE_SNAPSHOTS))) {
+      const old = UPDATE_FLAGS.includes(update[0]!) ? " with this runner (update @runbun/connect to update them here)" : "";
+      this.out("error", `[local] bun test ${update.join(" ")}: snapshots update only in the browser${old}; switch Local Bun off to update them.`);
       return { failed: 1 };
     }
     await this.start("", files, args);
     await this.current?.exited;
-    return { failed: this.failed };
+    // Native Bun exits with 1 when a file is below bunfig.toml's coverageThreshold, with no test failed.
+    const coverageFailed = this.coverageOn && !this.failed && !!this.exitCode;
+    return { failed: this.failed, ...(coverageFailed && { coverageFailed: true }) };
   }
 
   /** `bun install` on the runner, without running anything. */

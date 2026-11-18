@@ -444,7 +444,7 @@ export class Runner {
   }
 
   /** Whether a test run with these flags has coverage (bunfig.toml's `[test]` too), and which files it counts in. */
-  private async coverage(args: string[]): Promise<Pick<CoverageOptions, "skipTestFiles"> | undefined> {
+  protected async coverage(args: string[]): Promise<CoverageOptions | undefined> {
     const text = this.vfs.readText("bunfig.toml");
     if (!args.some(isCoverageFlag) && !text?.includes("coverage")) return undefined;
     try {
