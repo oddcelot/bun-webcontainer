@@ -25,7 +25,10 @@ Output the panel parses (byte-identical to native git, checked by `test.ts`):
 - `status --porcelain|-s [-b] [-z] [-uall|-uno]`: `XY path` lines, `## main` / `## main...origin/main [ahead 1, behind 2]`
   (`[gone]` without the tracking ref; `net.test.ts`) / `## No commits yet on main` / `## HEAD (no branch)` header; `-z` is NUL-terminated and raw; without `-z` paths are quoted like git (`"sp ace"`,
   octal for non-ASCII). Untracked directories collapse unless `-uall`. Staged renames are detected as git detects them (`R  old -> new`; `-z`: `R  new\0old\0`), with git's similarity score (src/rename.rs); unstaged ones stay `D` + `??`, as in git. No colors in
-  porcelain/`-z`.
+  porcelain/`-z`. The upstream's name is git's shortest unambiguous one (`heads/up` while a tag `up` exists); a branch
+  whose remote has no fetch refspec has none. The long format (and `commit`'s, with nothing to commit) says how the
+  branch stands against its upstream as remote.c's format_tracking_info does: up to date, ahead, behind, diverged or
+  gone, with the hints (`advice.statusHints`; `commit` leaves out the diverged one).
 - `log --format=|--pretty=format:|tformat:`: `%H %h %T %t %P %p %an %ae %at %ad %ar %cn %ce %ct %cd %cr %s %b %B %n %% %xNN`
   (`--format` ends every entry with a newline, `--pretty=format:` separates them); `-n N|-N|--max-count`, `--skip`,
   `--all`, `<rev>...`, `-- <path>...` (commits that change a path, TREESAME parents skipped). `%h` is always 7 digits.

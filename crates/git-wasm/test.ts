@@ -944,6 +944,56 @@ try {
   // (stderr: git apply's `error: patch failed: b.txt:1` lines come first)
   await twin("stash apply --index conflict", p7s, ["stash", "apply", "--index"], { ...ss, err: false, setup: (d) => { write(d, "b.txt", "conflicting\n"); nat(d, "commit", "-qam", "conflicting"); }, head: "tree" });
 
+  // ---- status: the branch against its upstream ---------------------------------------------------------------------
+  {
+    const ps = join(tmp, "ps");
+    mkdirSync(ps);
+    const psn = (...args: string[]) => nat(ps, ...args);
+    psn("init", "-q", "-b", "main");
+    psn("config", "core.fileMode", "false");
+    let n = 0;
+    const commit = () => { write(ps, "f.txt", `${++n}\n`); psn("add", "f.txt"); psn("commit", "-qm", `c${n}`); };
+    commit();
+    commit();
+    psn("branch", "up");
+    psn("switch", "-qc", "t");
+    psn("branch", "-q", "--set-upstream-to=up");
+    const compare = async (at: string) => {
+      for (const args of [["status"], ["status", "-sb"]]) same(`status tracking, ${at}: ${args.join(" ")}`, (await git(ps, args, ident)).out, native(ps, args));
+      // commit's (nothing to commit) leaves out the hint on a diverged branch
+      const nc = spawnSync("git", ["-C", ps, "commit", "-m", "x"], { encoding: "utf8", env: natEnv });
+      same(`status tracking, ${at}: commit`, (await git(ps, ["commit", "-m", "x"], ident)).out, nc.stdout);
+    };
+    await compare("up to date");
+    commit();
+    await compare("ahead 1");
+    commit();
+    await compare("ahead 2");
+    psn("switch", "-q", "up");
+    commit();
+    psn("switch", "-q", "t");
+    await compare("diverged");
+    psn("reset", "-q", "--hard", "up~1");
+    await compare("behind 1");
+    psn("reset", "-q", "--hard", "up~2");
+    await compare("behind 2");
+    psn("tag", "up", "main");
+    await compare("ambiguous");
+    psn("branch", "-q", "-D", "up");
+    await compare("gone");
+    psn("tag", "-d", "up");
+    await compare("gone, unambiguous");
+    psn("update-ref", "refs/remotes/origin/main", "main");
+    psn("config", "branch.t.remote", "origin");
+    psn("config", "branch.t.merge", "refs/heads/main");
+    await compare("a remote that isn't configured");
+    psn("config", "remote.origin.url", "https://example.com/r.git");
+    psn("config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*");
+    await compare("a remote's");
+    psn("config", "advice.statusHints", "false");
+    await compare("statusHints off");
+  }
+
   // ---- rebase -------------------------------------------------------------------------------------------------------
   // Sequences of steps on two copies: ours (A) and native git (B), compared after each step. New commits' ids differ
   // (their committer time), so ids the source project doesn't have are masked in the output.
