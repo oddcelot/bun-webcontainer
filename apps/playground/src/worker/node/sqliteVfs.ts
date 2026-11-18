@@ -381,6 +381,12 @@ export function installVfs(sqlite3: any, host: Host, name = "runbun"): SqliteVfs
       if (path === null) n = new Node(null);
       else {
         n = nodes.get(path);
+        // removed behind SQLite's back while open (node:fs): those handles keep the old file, this one gets a new one
+        if (n && !host.exists(path)) {
+          n.deleted = true;
+          nodes.delete(path);
+          n = undefined;
+        }
         const exists = !!n || host.exists(path);
         if (host.isDir(path)) return CANTOPEN;
         if (exists && flags & OPEN_EXCLUSIVE && flags & OPEN_CREATE) return CANTOPEN;
