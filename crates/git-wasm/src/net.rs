@@ -91,7 +91,8 @@ fn report(url: &BStr, outcome: &gix::remote::fetch::Outcome) {
             Mode::Forced => format!(" + {}...{} ", old.unwrap_or_default(), new.unwrap_or_default()),
             _ => continue,
         };
-        lines.push(format!("{what}{remote:<10} -> {local}\n"));
+        let forced = if matches!(u.mode, Mode::Forced) { "  (forced update)" } else { "" };
+        lines.push(format!("{what}{remote:<10} -> {local}{forced}\n"));
     }
     if !lines.is_empty() {
         eprintln!("From {url}");

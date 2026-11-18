@@ -278,6 +278,21 @@ try {
   await pullTwin("pull --rebase conflict", ["pull", "--rebase"], { setup: (d) => { write(d, "c.txt", "mine\n"); native(d, "commit", "-qam", "mine"); } });
   // one local commit (the new commits' ids differ, so their children's parents would)
   await pullTwin("pull --rebase -X theirs", ["pull", "--rebase", "-X", "theirs"], { setup: (d) => { write(d, "c.txt", "mine\n"); native(d, "commit", "-q", "-a", "--amend", "-m", "mine"); } });
+  // origin/main moved to y locally (as a fetch from a remote that had it would), and the remote dropped it since
+  const fixed = { ...env, GIT_AUTHOR_DATE: "1700000000 +0100", GIT_COMMITTER_DATE: "1700000000 +0100" };
+  const forked = (d: string) => {
+    const at = (...args: string[]) => { const x = spawnSync("git", ["-C", d, ...args], { encoding: "utf8", env: fixed }); if (x.status !== 0) throw new Error(x.stderr); };
+    at("switch", "-q", "--detach", "origin/main");
+    write(d, "y.txt", "y\n");
+    at("add", "y.txt");
+    at("commit", "-qm", "y: dropped upstream");
+    at("update-ref", "-m", "fetch: forced", "refs/remotes/origin/main", "HEAD");
+    at("switch", "-q", "-C", "main");
+    write(d, "z.txt", "z\n");
+    at("add", "z.txt");
+    at("commit", "-qm", "z: mine");
+  };
+  await pullTwin("fetch forced update", ["fetch"], { setup: forked });
   await pullTwin("pull --rebase refuses a dirty file", ["pull", "--rebase"], { setup: (d) => write(d, "c.txt", "dirty\n") });
   await pullTwin("pull --rebase refuses staged changes", ["pull", "--rebase"], { setup: (d) => { write(d, "new.txt", "staged\n"); native(d, "add", "new.txt"); } });
   await pullTwin("pull --rebase keeps untracked files", ["pull", "--rebase"], { setup: (d) => write(d, "local.txt", "untracked\n") });
