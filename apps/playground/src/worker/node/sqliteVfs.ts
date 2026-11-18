@@ -50,11 +50,17 @@ const SHM_UNLOCK = 1;
 const SHM_SHARED = 4;
 const SHM_EXCLUSIVE = 8;
 const ACCESS_EXISTS = 0;
+const FCNTL_LOCKSTATE = 1;
+const FCNTL_LAST_ERRNO = 4;
 const FCNTL_SIZE_HINT = 5;
 const FCNTL_CHUNK_SIZE = 6;
 const FCNTL_PERSIST_WAL = 10;
+const FCNTL_VFSNAME = 12;
 const FCNTL_POWERSAFE_OVERWRITE = 13;
+const FCNTL_TEMPFILENAME = 16;
+const FCNTL_MMAP_SIZE = 18;
 const FCNTL_HAS_MOVED = 20;
+const FCNTL_EXTERNAL_READER = 40;
 const IOCAP_POWERSAFE_OVERWRITE = 0x1000;
 /** unix's default (SQLITE_DEFAULT_SECTOR_SIZE); with POWERSAFE_OVERWRITE the pager uses 512 for journal headers. */
 const SECTOR_SIZE = 4096;
@@ -242,7 +248,32 @@ export function installVfs(sqlite3: any, host: Host, name = "runbun"): SqliteVfs
         else h[k] = v !== 0;
         return OK;
       };
+      /** A string SQLite's caller frees (sqlite3_free). */
+      const string = (text: string) => {
+        const bytes = new TextEncoder().encode(text);
+        const z = capi.sqlite3_malloc(bytes.length + 1);
+        wasm.heap8u().set(bytes, z);
+        wasm.poke8(z + bytes.length, 0);
+        wasm.pokePtr(pArg, z);
+        return OK;
+      };
+      // What unix (native SQLite on Linux) answers, where it isn't SQLite's own business.
       switch (op) {
+        case FCNTL_LOCKSTATE:
+          wasm.poke32(pArg, h.lock);
+          return OK;
+        case FCNTL_LAST_ERRNO:
+        case FCNTL_EXTERNAL_READER:
+          wasm.poke32(pArg, 0);
+          return OK;
+        case FCNTL_VFSNAME:
+          return string(name);
+        case FCNTL_TEMPFILENAME:
+          return string(`/tmp/etilqs_${Math.random().toString(16).slice(2, 18)}`);
+        case FCNTL_MMAP_SIZE:
+          // no memory-mapped I/O: the limit stays 0
+          wasm.poke64(pArg, 0n);
+          return OK;
         case FCNTL_PERSIST_WAL:
           return flag("persistWal");
         case FCNTL_POWERSAFE_OVERWRITE:

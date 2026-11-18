@@ -596,6 +596,42 @@ export class Database {
     return this;
   }
 
+  /**
+   * sqlite3_file_control: `fileControl(op, arg)` on the main database, or `fileControl(schema, op, arg)`. `arg` is a
+   * number (an int64 SQLite may read), a TypedArray of at least 8 bytes (SQLite may write to it) or null. Returns
+   * SQLite's result code (SQLITE_NOTFOUND, 12, for an opcode nothing answers).
+   */
+  fileControl(zDbName: unknown, op?: unknown, arg?: unknown): number | undefined {
+    if (typeof zDbName === "string" || arguments.length > 2) return this.fcntl(zDbName, op, arg);
+    return this.fcntl(null, zDbName, op);
+  }
+
+  private fcntl(schema: unknown, opNumber: unknown, value: unknown): number | undefined {
+    this._idle();
+    if (typeof opNumber !== "number") throw new Error("Expected number");
+    const op = opNumber | 0;
+    if (this.closed) return undefined;
+    let arg: Uint8Array | null = new Uint8Array(new BigInt64Array([-1n]).buffer);
+    let view: Uint8Array | undefined;
+    if (typeof value === "number") arg = new Uint8Array(new BigInt64Array([BigInt(value | 0)]).buffer);
+    else if (ArrayBuffer.isView(value)) {
+      if (value.byteLength < 8) throw new Error("TypedArray must be at least 8 bytes");
+      arg = view = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+    } else if (value == null) {
+      if (op === constants.SQLITE_FCNTL_SET_LOCKPROXYFILE) arg = null;
+    } else throw new Error("Expected result to be a number, null or a TypedArray");
+    // SQLite allocates the string of these two, and the caller frees it
+    const owns = !view && (op === constants.SQLITE_FCNTL_VFSNAME || op === constants.SQLITE_FCNTL_TEMPFILENAME);
+    if (owns) arg = new Uint8Array(8);
+    const rc = this._conn.fileControl(typeof schema === "string" ? schema : null, op, arg, owns);
+    if (rc === 1) {
+      const e = this._conn.error();
+      // (SQLite can leave no error on the connection: no code then, as in Bun)
+      throw new SQLiteError(e.message, { ...(e.errno ? { code: rcName(e.errno) } : {}), errno: e.errno, byteOffset: -1 } as never, INTERNAL);
+    }
+    return rc;
+  }
+
   serialize(name = "main"): Uint8Array {
     this._open();
     return toBuffer(this.raw(() => this._conn.serialize(name)));
@@ -616,11 +652,77 @@ export class Database {
   }
 }
 
-// bun:sqlite's constants (the SQLITE_OPEN_* flags `new Database(path, flags)` takes)
+// bun:sqlite's constants: open, prepare and deserialize flags, and the file control opcodes.
 export const constants = {
-  SQLITE_OPEN_READONLY: 1,
-  SQLITE_OPEN_READWRITE: 2,
-  SQLITE_OPEN_CREATE: 4,
+  SQLITE_OPEN_READONLY: 0x00000001,
+  SQLITE_OPEN_READWRITE: 0x00000002,
+  SQLITE_OPEN_CREATE: 0x00000004,
+  SQLITE_OPEN_DELETEONCLOSE: 0x00000008,
+  SQLITE_OPEN_EXCLUSIVE: 0x00000010,
+  SQLITE_OPEN_AUTOPROXY: 0x00000020,
+  SQLITE_OPEN_URI: 0x00000040,
+  SQLITE_OPEN_MEMORY: 0x00000080,
+  SQLITE_OPEN_MAIN_DB: 0x00000100,
+  SQLITE_OPEN_TEMP_DB: 0x00000200,
+  SQLITE_OPEN_TRANSIENT_DB: 0x00000400,
+  SQLITE_OPEN_MAIN_JOURNAL: 0x00000800,
+  SQLITE_OPEN_TEMP_JOURNAL: 0x00001000,
+  SQLITE_OPEN_SUBJOURNAL: 0x00002000,
+  SQLITE_OPEN_SUPER_JOURNAL: 0x00004000,
+  SQLITE_OPEN_NOMUTEX: 0x00008000,
+  SQLITE_OPEN_FULLMUTEX: 0x00010000,
+  SQLITE_OPEN_SHAREDCACHE: 0x00020000,
+  SQLITE_OPEN_PRIVATECACHE: 0x00040000,
+  SQLITE_OPEN_WAL: 0x00080000,
+  SQLITE_OPEN_NOFOLLOW: 0x01000000,
+  SQLITE_OPEN_EXRESCODE: 0x02000000,
+  SQLITE_PREPARE_PERSISTENT: 0x01,
+  SQLITE_PREPARE_NORMALIZE: 0x02,
+  SQLITE_PREPARE_NO_VTAB: 0x04,
+
+  SQLITE_DESERIALIZE_READONLY: 0x00000004,
+
+  SQLITE_FCNTL_LOCKSTATE: 1,
+  SQLITE_FCNTL_GET_LOCKPROXYFILE: 2,
+  SQLITE_FCNTL_SET_LOCKPROXYFILE: 3,
+  SQLITE_FCNTL_LAST_ERRNO: 4,
+  SQLITE_FCNTL_SIZE_HINT: 5,
+  SQLITE_FCNTL_CHUNK_SIZE: 6,
+  SQLITE_FCNTL_FILE_POINTER: 7,
+  SQLITE_FCNTL_SYNC_OMITTED: 8,
+  SQLITE_FCNTL_WIN32_AV_RETRY: 9,
+  SQLITE_FCNTL_PERSIST_WAL: 10,
+  SQLITE_FCNTL_OVERWRITE: 11,
+  SQLITE_FCNTL_VFSNAME: 12,
+  SQLITE_FCNTL_POWERSAFE_OVERWRITE: 13,
+  SQLITE_FCNTL_PRAGMA: 14,
+  SQLITE_FCNTL_BUSYHANDLER: 15,
+  SQLITE_FCNTL_TEMPFILENAME: 16,
+  SQLITE_FCNTL_MMAP_SIZE: 18,
+  SQLITE_FCNTL_TRACE: 19,
+  SQLITE_FCNTL_HAS_MOVED: 20,
+  SQLITE_FCNTL_SYNC: 21,
+  SQLITE_FCNTL_COMMIT_PHASETWO: 22,
+  SQLITE_FCNTL_WIN32_SET_HANDLE: 23,
+  SQLITE_FCNTL_WAL_BLOCK: 24,
+  SQLITE_FCNTL_ZIPVFS: 25,
+  SQLITE_FCNTL_RBU: 26,
+  SQLITE_FCNTL_VFS_POINTER: 27,
+  SQLITE_FCNTL_JOURNAL_POINTER: 28,
+  SQLITE_FCNTL_WIN32_GET_HANDLE: 29,
+  SQLITE_FCNTL_PDB: 30,
+  SQLITE_FCNTL_BEGIN_ATOMIC_WRITE: 31,
+  SQLITE_FCNTL_COMMIT_ATOMIC_WRITE: 32,
+  SQLITE_FCNTL_ROLLBACK_ATOMIC_WRITE: 33,
+  SQLITE_FCNTL_LOCK_TIMEOUT: 34,
+  SQLITE_FCNTL_DATA_VERSION: 35,
+  SQLITE_FCNTL_SIZE_LIMIT: 36,
+  SQLITE_FCNTL_CKPT_DONE: 37,
+  SQLITE_FCNTL_RESERVE_BYTES: 38,
+  SQLITE_FCNTL_CKPT_START: 39,
+  SQLITE_FCNTL_EXTERNAL_READER: 40,
+  SQLITE_FCNTL_CKSM_FILE: 41,
+  SQLITE_FCNTL_RESET_CACHE: 42,
 };
 
 export default { Database, Statement, SQLiteError, constants };

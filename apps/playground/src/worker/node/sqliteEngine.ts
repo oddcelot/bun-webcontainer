@@ -308,6 +308,25 @@ export class Conn {
     }
   }
 
+  /**
+   * sqlite3_file_control on schema `db` (null: main) with `arg` as what pArg points to (written back; null: a NULL
+   * pArg). `freeString`: SQLite leaves a string pointer there, which is freed.
+   */
+  fileControl(db: string | null, op: number, arg: Uint8Array | null, freeString = false): number {
+    const [name] = db === null ? [0] : cstr(db);
+    const p = arg ? w.alloc(Math.max(arg.byteLength, 8)) : 0;
+    try {
+      if (arg) w.heap8u().set(arg, p);
+      const rc = x.sqlite3_file_control(this.ptr, name, op, p);
+      if (arg) arg.set(w.heap8u().subarray(p, p + arg.byteLength));
+      if (freeString && w.peekPtr(p)) x.sqlite3_free(w.peekPtr(p));
+      return rc;
+    } finally {
+      if (p) w.dealloc(p);
+      if (name) w.dealloc(name);
+    }
+  }
+
   /** The function-table slot of the update hook. */
   private updateHook = 0;
 
