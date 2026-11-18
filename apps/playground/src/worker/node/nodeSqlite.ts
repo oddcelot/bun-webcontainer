@@ -4,7 +4,7 @@
 // refused, every number as a REAL, integers read as numbers unless `readBigInts` (and an error past 2^53), rows as
 // null-prototype objects.
 import { Database, paramsOf, type Param } from "./sqlite";
-import { DBCONFIG_DEFENSIVE, DBCONFIG_DQS_DDL, DBCONFIG_DQS_DML, DBCONFIG_ENABLE_FKEY, Conn, RawError, aggregateKey, deleteSession, errstr, result, resultError, sessionChanges, valueOf, type Stmt, type Value } from "./sqliteEngine";
+import { DBCONFIG_DEFENSIVE, DBCONFIG_DQS_DDL, DBCONFIG_DQS_DML, DBCONFIG_ENABLE_FKEY, Conn, RawError, createAggregate, deleteSession, errstr, result, resultError, sessionChanges, valueOf, type Stmt, type Value } from "./sqliteEngine";
 import fs from "./fs";
 import path from "./path";
 import { fileURLToPath } from "./url";
@@ -245,36 +245,19 @@ export class DatabaseSync {
     if (start === undefined) throw argType('The "options.start" argument must be a function or a primitive value.');
     const big = !!options.useBigIntArguments;
     const flags = (options.deterministic ? 0x800 : 0) | (options.directOnly ? 0x80000 : 0);
-    // The accumulator of each group, by its sqlite3_aggregate_context.
-    const accs = new Map<number, unknown>();
-    const acc = (ctx: number) => {
-      const key = aggregateKey(ctx, true);
-      if (!accs.has(key)) accs.set(key, typeof start === "function" ? start.call(null) : start);
-      return key;
-    };
-    const update = (f: Fn) => (ctx: number, args: number[]) => {
-      try {
-        const key = acc(ctx);
-        accs.set(key, f(accs.get(key), ...argsOf(args, big)));
-      } catch (e) {
-        this.#fail(ctx, e);
-      }
-    };
-    const value = (final: boolean) => (ctx: number) => {
-      let r;
-      try {
-        const key = acc(ctx);
-        const v = accs.get(key);
-        if (final) accs.delete(key);
-        r = done ? done.call(null, v) : v;
-      } catch (e) {
-        return this.#fail(ctx, e);
-      }
-      this.#result(ctx, r);
-    };
     const nArg = options.varargs ? -1 : Math.max(step.length, inverse?.length ?? 0, 1) - 1;
     try {
-      this.#conn.createFunction(name, nArg, flags, { step: update(step), final: value(true), ...(inverse ? { value: value(false), inverse: update(inverse) } : {}) });
+      createAggregate(this.#conn, name, nArg, flags, {
+        start,
+        step,
+        inverse,
+        result: done,
+        self: null,
+        keepOnUndefined: false,
+        args: (argv) => argsOf(argv, big),
+        set: (ctx, v) => this.#result(ctx, v),
+        fail: (ctx, e) => this.#fail(ctx, e),
+      });
     } catch (e) {
       throw fromRaw(e, this);
     }

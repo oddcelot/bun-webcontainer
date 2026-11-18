@@ -8,7 +8,9 @@ import { norm } from "@runbun/vfs";
 import fs from "./fs";
 import path from "./path";
 import { quietTimeout } from "../loop";
-import { Conn, DBCONFIG_DEFENSIVE, DBCONFIG_DQS_DDL, DBCONFIG_DQS_DML, RawError, loaded, rcName, type Stmt, type Value } from "./sqliteEngine";
+import { Conn, DBCONFIG_DEFENSIVE, DBCONFIG_DQS_DDL, DBCONFIG_DQS_DML, RawError, createAggregate, loaded, rcName, result, resultError, valueOf, type Stmt, type Value } from "./sqliteEngine";
+
+type Fn = (...args: any[]) => any;
 
 type Params = unknown[] | Record<string, unknown>;
 interface Options {
@@ -125,6 +127,31 @@ function bindArgs(s: Stmt, args: unknown[], strict: boolean, checkCount: boolean
   s.clearBindings();
   list.forEach((v, i) => s.bind(i + 1, bindable(v, safe)));
 }
+
+// --- user functions ----------------------------------------------------------------------------------------------
+
+function booleanOption(options: Record<string, unknown>, key: string, fallback = false): boolean {
+  const value = options[key];
+  if (value === undefined) return fallback;
+  if (typeof value !== "boolean") throw new TypeError(`Expected the "${key}" option to be a boolean`);
+  return value;
+}
+
+function functionOption(options: Record<string, unknown>, key: string): Fn | undefined {
+  const value = options[key];
+  if (value == null) return undefined;
+  if (typeof value !== "function") throw new TypeError(`Expected the "${key}" option to be a function`);
+  return value as Fn;
+}
+
+function parameterCount(fn: Fn): number {
+  const length = fn.length;
+  if (!Number.isInteger(length) || length < 0) throw new TypeError("Expected function.length to be a positive integer");
+  return length;
+}
+
+/** SQLITE_DETERMINISTIC | SQLITE_DIRECTONLY */
+const functionFlags = (options: Record<string, unknown>) => (booleanOption(options, "deterministic") ? 0x800 : 0) | (booleanOption(options, "directOnly") ? 0x80000 : 0);
 
 // --- statements --------------------------------------------------------------------------------------------------
 
@@ -470,6 +497,84 @@ export class Database {
         }
       };
     return Object.assign(make(""), { deferred: make("deferred"), immediate: make("immediate"), exclusive: make("exclusive") });
+  }
+
+  /** A user function's result (a value Bun binds), or the TypeError it throws for one it can't. */
+  private setResult(ctx: number, name: string, v: unknown, safe: boolean) {
+    let value: Value;
+    try {
+      value = bindable(v, safe);
+    } catch (e) {
+      if (e instanceof TypeError) throw new TypeError(`User-defined function ${name}() returned an invalid value`);
+      throw e;
+    }
+    result(ctx, value);
+  }
+
+  /** The callback threw `e`: the statement fails, and rethrows `e`. */
+  private fail = (ctx: number, e: unknown) => {
+    this._pending = e;
+    resultError(ctx, "");
+  };
+
+  /** `fn` as SQL function `name`: `deterministic`, `directOnly`, `varargs` and `safeIntegers` (INTEGER arguments as BigInts). */
+  function(name: string, options: Record<string, unknown> | Fn | undefined, fn?: Fn): this {
+    if (typeof options === "function") {
+      fn = options;
+      options = undefined;
+    }
+    options ??= {};
+    if (typeof name !== "string") throw new TypeError("Expected first argument to be a string");
+    if (typeof fn !== "function") throw new TypeError("Expected last argument to be a function");
+    if (typeof options !== "object") throw new TypeError("Expected second argument to be an options object");
+    if (!name) throw new TypeError("User-defined function name cannot be an empty string");
+    const safe = booleanOption(options, "safeIntegers", this._safe);
+    const flags = functionFlags(options);
+    const nArg = booleanOption(options, "varargs") ? -1 : parameterCount(fn);
+    this._open("Database has closed", Error);
+    const f = fn;
+    this.raw(() =>
+      this._conn.createFunction(name, nArg, flags, {
+        func: (ctx, argv) => {
+          try {
+            this.setResult(ctx, name, f(...argv.map((a) => valueOf(a, safe))), safe);
+          } catch (e) {
+            this.fail(ctx, e);
+          }
+        },
+      }),
+    );
+    return this;
+  }
+
+  /** An aggregate: `start` (or a function making it), `step(acc, ...args)`, and `inverse` (a window function) and `result`. */
+  aggregate(name: string, options: Record<string, unknown>): this {
+    if (typeof name !== "string") throw new TypeError("Expected first argument to be a string");
+    if (typeof options !== "object" || !options) throw new TypeError("Expected second argument to be an options object");
+    if (!name) throw new TypeError("User-defined function name cannot be an empty string");
+    const step = functionOption(options, "step");
+    if (!step) throw new TypeError('Missing required option "step"');
+    const inverse = functionOption(options, "inverse");
+    const done = functionOption(options, "result");
+    const safe = booleanOption(options, "safeIntegers", this._safe);
+    const flags = functionFlags(options);
+    // The first parameter of `step` and `inverse` is the accumulator.
+    const nArg = booleanOption(options, "varargs") ? -1 : Math.max(parameterCount(step), inverse ? parameterCount(inverse) : 0, 1) - 1;
+    this._open("Database has closed", Error);
+    this.raw(() =>
+      createAggregate(this._conn, name, nArg, flags, {
+        start: options.start ?? null,
+        step,
+        inverse,
+        result: done,
+        self: undefined,
+        keepOnUndefined: true,
+        args: (argv) => argv.map((a) => valueOf(a, safe)),
+        set: (ctx, v) => this.setResult(ctx, name, v, safe),
+        fail: this.fail,
+      }),
+    );
+    return this;
   }
 
   serialize(name = "main"): Uint8Array {

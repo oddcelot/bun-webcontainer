@@ -514,3 +514,62 @@ export const DBCONFIG_ENABLE_FKEY = 1002;
 
 /** The name of result code `rc` (`SQLITE_CONSTRAINT_UNIQUE`), undefined for one SQLite doesn't define. */
 export const rcName = (rc: number): string | undefined => capi.sqlite3_js_rc_str(rc) || undefined;
+
+/** What bun:sqlite's and node:sqlite's `db.aggregate()` differ in. */
+export interface AggregateSpec {
+  /** The first accumulator of a group; a function is called (with `self` as `this`) to make it. */
+  start: unknown;
+  step: Fn;
+  /** Removes a row from the window: the aggregate can be a window function. */
+  inverse?: Fn;
+  /** Turns the accumulator into the result (else it is the result). */
+  result?: Fn;
+  self: unknown;
+  /** A step that returns undefined keeps the accumulator (Bun) or makes it undefined (Node). */
+  keepOnUndefined: boolean;
+  /** The JS values of a call's arguments (sqlite3_value pointers). */
+  args(argv: number[]): unknown[];
+  /** Sets the result of `ctx` to `v`. */
+  set(ctx: number, v: unknown): void;
+  /** The callback threw `e`: fail the statement with it. */
+  fail(ctx: number, e: unknown): void;
+}
+
+/** A user aggregate (a window function with `inverse`), its accumulators keyed by sqlite3_aggregate_context. */
+export function createAggregate(conn: Conn, name: string, nArg: number, flags: number, spec: AggregateSpec) {
+  const accs = new Map<number, { value: unknown; window: boolean }>();
+  const acc = (ctx: number) => {
+    const key = aggregateKey(ctx, true);
+    let a = accs.get(key);
+    if (!a) {
+      a = { value: undefined, window: false };
+      accs.set(key, a);
+      a.value = typeof spec.start === "function" ? spec.start.call(spec.self) : spec.start;
+    }
+    return a;
+  };
+  const update = (f: Fn) => (ctx: number, argv: number[]) => {
+    try {
+      const a = acc(ctx);
+      const next = f(a.value, ...spec.args(argv));
+      if (!(spec.keepOnUndefined && next === undefined)) a.value = next;
+    } catch (e) {
+      spec.fail(ctx, e);
+    }
+  };
+  // A window function gives its results through xValue; xFinal only ends it.
+  const value = (final: boolean) => (ctx: number) => {
+    const key = aggregateKey(ctx, true);
+    try {
+      const a = acc(ctx);
+      if (final && a.window) return;
+      a.window = !final;
+      spec.set(ctx, spec.result ? spec.result.call(spec.self, a.value) : a.value);
+    } catch (e) {
+      spec.fail(ctx, e);
+    } finally {
+      if (final) accs.delete(key);
+    }
+  };
+  conn.createFunction(name, nArg, flags, { step: update(spec.step), final: value(true), ...(spec.inverse ? { value: value(false), inverse: update(spec.inverse) } : {}) });
+}
