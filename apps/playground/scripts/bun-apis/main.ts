@@ -5,6 +5,7 @@ import greeting from "preloaded:greeting";
 import { plugins } from "./plugins.ts";
 import { router } from "./router.ts";
 import { stdout } from "./stdout.ts";
+import { using } from "./using.ts";
 
 const log = (line: string) => console.log(line);
 console.log("__start__");
@@ -12,4 +13,5 @@ log(`preload: ${(globalThis as { preloaded?: string }).preloaded} ${greeting}`);
 await router(log);
 await stdout(log);
 await plugins(log);
+await using(log);
 console.log("__end__");

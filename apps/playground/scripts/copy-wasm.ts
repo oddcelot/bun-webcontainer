@@ -40,9 +40,15 @@ function stripCustomSections(bytes: Uint8Array): Buffer {
 }
 
 // Bun's runtime helpers, which transpiled code imports as "bun:wrap" (legacy decorators and the like). Tracked in
-// src/ so the playground builds without bun/; refreshed from the pinned checkout when there is one.
+// src/ so the playground builds without bun/; refreshed from the pinned checkout when there is one. Bun adds the
+// `using` helpers (__using, __callDispose) per target from src/bundler/ParseTask.rs; the browser gets the non-Bun
+// variant, which falls back to Symbol.for() and its own SuppressedError where the engine has none.
 try {
-  copyFileSync(new URL("../../../bun/src/runtime.js", import.meta.url), new URL("../src/bunWrap.js", import.meta.url));
+  const runtime = readFileSync(new URL("../../../bun/src/runtime.js", import.meta.url), "utf8");
+  const parseTask = readFileSync(new URL("../../../bun/src/bundler/ParseTask.rs", import.meta.url), "utf8");
+  const tail = /const RUNTIME_USING_OTHER: &str = "\\\n([\s\S]*?)\n";\n/.exec(parseTask)?.[1];
+  if (!tail) throw new Error("RUNTIME_USING_OTHER not found in bun/src/bundler/ParseTask.rs");
+  writeFileSync(new URL("../src/bunWrap.js", import.meta.url), `${runtime.trimEnd()}\n\n${tail.replaceAll('\\"', '"')}\n`);
 } catch (e) {
   console.warn("copy-wasm: using existing src/bunWrap.js:", (e as Error).message);
 }
