@@ -13,9 +13,10 @@ import { decodeVfs, Part, SyncReader, type VfsOp } from "./syncChannel";
 
 /**
  * What a child runs: a file (as `bun <file> ...args`, with the flags before it as `execArgv`; `run` for `bun run`,
- * whose preloads bunfig.toml's replace), or a line in Bun's shell.
+ * whose preloads bunfig.toml's replace), a line in Bun's shell, or `bun test` (`test`: its filters and paths, `args`
+ * its flags; the child finds the files).
  */
-export type Launch = { entry: string; args: string[]; execArgv?: string[]; run?: boolean } | { script: string; args: string[] };
+export type Launch = { entry: string; args: string[]; execArgv?: string[]; run?: boolean } | { script: string; args: string[] } | { test: string[]; args: string[]; execArgv?: string[] };
 
 /** How a child ended: its code, or the signal that ended it (and the code a shell sees, 128 + its number). */
 export type ExitStatus = { code: number; signal: string | null };
@@ -40,6 +41,9 @@ const SCRIPT = /\.[cm]?[jt]sx?$/;
 const SHELLS = new Set(["sh", "bash", "zsh", "dash"]);
 /** Bun's subcommands, which a spawned `bun` can't run here (a file or script of that name still runs). */
 const SUBCOMMANDS = new Set(["install", "i", "add", "a", "remove", "rm", "update", "link", "unlink", "pm", "test", "build", "init", "create", "upgrade", "x", "repl", "exec", "publish", "outdated", "audit", "info", "why", "patch", "fmt", "check"]);
+
+/** `bun test` flags with a value, passed on as `--name=value`. */
+const TEST_VALUE_FLAGS = ["--coverage-reporter", "--coverage-dir", "--timeout", "-t", "--test-name-pattern"];
 
 /** Where the files live, relative to the project root as the VFS names them (`src/a.ts`). */
 const projectPath = (cwd: string, p: string) => normalize(p.startsWith("/") ? p : `${cwd}/${p}`).slice(1);
@@ -80,6 +84,19 @@ export function launchOf(argv: string[], cwd: string, has: Has, read: Read, PATH
       flags = { execArgv: parsed.execArgv, ...(parsed.run && { run: true }) };
     }
     if (!target) return { error: `${base}: a spawned ${base} needs a file to run` };
+    // `bun test` is the test runner even with a file or script named `test`, as in Bun.
+    if (base === "bun" && target === "test" && !flags.run) {
+      const words = args;
+      const test: string[] = [];
+      const testArgs: string[] = [];
+      for (let j = 0; j < words.length; j++) {
+        const w = words[j]!;
+        if (!w.startsWith("-")) test.push(w);
+        else if (TEST_VALUE_FLAGS.includes(w) && j + 1 < args.length) testArgs.push(`${w}=${args[++j]}`);
+        else testArgs.push(w);
+      }
+      return { test, args: testArgs, ...(flags.execArgv?.length && { execArgv: flags.execArgv }) };
+    }
     const entry = file(target);
     if (entry) return { entry, args, ...flags };
     if (base === "bun") {

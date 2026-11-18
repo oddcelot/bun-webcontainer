@@ -574,6 +574,15 @@ const hook = (h: Hook) => (fn: Fn) => void current.hooks[h].push(fn);
 
 // ---- running ----
 
+/**
+ * Where the report goes: the console (the run's own), or, in a spawned `bun test` (runtime.ts), its stdout (the version
+ * line) and stderr (the rest) as Bun writes them to a pipe.
+ */
+let report = { log: (text: string) => console.log(text), error: (text: string) => console.error(text) };
+export function setReport(r: typeof report) {
+  report = r;
+}
+
 const paint = (n: number, s: string) => `\x1b[${n}m${s}\x1b[0m`;
 const dim = (s: string) => paint(90, s);
 const ms = (t: number) => (t >= 1000 ? `${(t / 1000).toFixed(2)}s` : `${t.toFixed(2)}ms`);
@@ -645,12 +654,12 @@ async function runSuite(s: Suite, only: boolean, skipAll: boolean) {
     const skipped = skipAll || s.mode === "skip" || item.mode === "skip" || (only && item.mode !== "only" && !ancestors.some((a) => a.mode === "only"));
     if (skipped) {
       totals.skip++;
-      console.log(dim(`» ${label(item)}`));
+      report.log(dim(`» ${label(item)}`));
       continue;
     }
     if (item.mode === "todo" || todo) {
       totals.todo++;
-      console.log(`\x1b[35m✎\x1b[0m ${label(item)} ${dim("[todo]")}`);
+      report.log(`\x1b[35m✎\x1b[0m ${label(item)} ${dim("[todo]")}`);
       continue;
     }
     testName = [...names(s), item.name].join(" ");
@@ -687,22 +696,22 @@ async function runSuite(s: Suite, only: boolean, skipAll: boolean) {
     runningMark = undefined;
     if (mark === "skip") {
       totals.skip++;
-      console.log(dim(`» ${label(item)}`));
+      report.log(dim(`» ${label(item)}`));
     } else if (mark === "todo") {
       totals.todo++;
-      console.log(`\x1b[35m✎\x1b[0m ${label(item)} ${dim("[todo]")}`);
+      report.log(`\x1b[35m✎\x1b[0m ${label(item)} ${dim("[todo]")}`);
     } else if (item.failing && !threw && !failed) {
       totals.fail++;
-      console.error(`\x1b[31m✗\x1b[0m\x1b[31m ${label(item)}\x1b[0m\n  ^ this test is marked as failing but it passed. Remove \`.failing\` if tested behavior now works`);
+      report.error(`\x1b[31m✗\x1b[0m\x1b[31m ${label(item)}\x1b[0m\n  ^ this test is marked as failing but it passed. Remove \`.failing\` if tested behavior now works`);
     } else if (failed) {
       totals.fail++;
-      console.error(`${failure(err)}\n\x1b[31m✗\x1b[0m\x1b[31m ${label(item)}\x1b[0m ${time}`);
+      report.error(`${failure(err)}\n\x1b[31m✗\x1b[0m\x1b[31m ${label(item)}\x1b[0m ${time}`);
     } else {
       totals.pass++;
-      console.log(`\x1b[32m✓\x1b[0m ${label(item)} ${time}`);
+      report.log(`\x1b[32m✓\x1b[0m ${label(item)} ${time}`);
     }
   }
-  if (started) for (const h of s.hooks.afterAll) await call(h, defaultTimeout).catch((e) => ((totals.fail++), console.error(`${failure(e)}\n\x1b[31m✗\x1b[0m\x1b[31m ${names(s).join(" > ")} (afterAll)\x1b[0m`)));
+  if (started) for (const h of s.hooks.afterAll) await call(h, defaultTimeout).catch((e) => ((totals.fail++), report.error(`${failure(e)}\n\x1b[31m✗\x1b[0m\x1b[31m ${names(s).join(" > ")} (afterAll)\x1b[0m`)));
 }
 
 /** Snapshot files in the project, through the worker's `fs`. */
@@ -733,14 +742,14 @@ export async function runTestFiles(files: string[], load: (file: string) => Prom
   totals.pass = totals.fail = totals.skip = totals.todo = 0;
   expectCalls = 0;
   const results: TestOutcome["results"] = [];
-  console.log(`bun test v${version.replace(/-.*/, "")}`);
+  report.log(`bun test v${version.replace(/-.*/, "")}`);
   // bunfig.toml's `[test] preload`: resolved up front, run with the first file. Its hooks are global: `beforeEach` and
   // `afterEach` around every test, `beforeAll` before the first file's tests, `afterAll` after the last file's.
   let preloads: string[] = [];
   try {
     preloads = opts.preload?.() ?? [];
   } catch (e) {
-    console.error(`error: ${e instanceof Error ? e.message : String(e)}`);
+    report.error(`error: ${e instanceof Error ? e.message : String(e)}`);
     return { failed: 1, results };
   }
   const global = newSuite("");
@@ -748,9 +757,9 @@ export async function runTestFiles(files: string[], load: (file: string) => Prom
   const globalHook = (hook: "beforeAll" | "afterAll") =>
     (async () => {
       for (const h of global.hooks[hook]) await call(h, defaultTimeout);
-    })().catch((e) => (totals.fail++, console.error(`${failure(e)}\n\x1b[31m✗\x1b[0m\x1b[31m (${hook})\x1b[0m`)));
+    })().catch((e) => (totals.fail++, report.error(`${failure(e)}\n\x1b[31m✗\x1b[0m\x1b[31m (${hook})\x1b[0m`)));
   for (const file of files) {
-    console.log(`\n${file}:`);
+    report.log(`\n${file}:`);
     currentFile = file;
     snapshots = new SnapshotFile(io, file, update, snapCounts);
     const before = totals.fail;
@@ -763,7 +772,7 @@ export async function runTestFiles(files: string[], load: (file: string) => Prom
       await load(file);
     } catch (e) {
       totals.fail++;
-      console.error(`${failure(e)}\n\x1b[31m✗\x1b[0m\x1b[31m ${file}\x1b[0m`);
+      report.error(`${failure(e)}\n\x1b[31m✗\x1b[0m\x1b[31m ${file}\x1b[0m`);
       results.push({ file, failed: 1 });
       continue;
     }
@@ -777,18 +786,18 @@ export async function runTestFiles(files: string[], load: (file: string) => Prom
   const coverageFailed = opts.coverage?.() ?? false;
   const n =totals.pass + totals.fail + totals.skip + totals.todo;
   const row = (count: number, word: string) => (count ? ` ${count} ${word}` : "");
-  console.log("");
-  console.log(paint(32, ` ${totals.pass} pass`));
-  for (const [c, w] of [[totals.skip, "skip"], [totals.todo, "todo"]] as const) if (c) console.log(row(c, w));
-  if (totals.fail) console.error(` ${totals.fail} fail`);
-  else console.log(" 0 fail");
+  report.log("");
+  report.log(paint(32, ` ${totals.pass} pass`));
+  for (const [c, w] of [[totals.skip, "skip"], [totals.todo, "todo"]] as const) if (c) report.log(row(c, w));
+  if (totals.fail) report.error(` ${totals.fail} fail`);
+  else report.log(" 0 fail");
   const { passed, added, failed } = snapCounts;
   if (passed + added + failed) {
     const parts = [passed && `${passed} passed`, added && (passed || failed ? `${added} added` : `+${added} added`), failed && `${failed} failed`].filter(Boolean);
-    console.log(`snapshots: ${parts.join(", ")}`);
+    report.log(`snapshots: ${parts.join(", ")}`);
   }
-  console.log(` ${expectCalls} expect() calls`);
-  console.log(`Ran ${n} test${n === 1 ? "" : "s"} across ${files.length} file${files.length === 1 ? "" : "s"}. ${dim(`[${ms(performance.now() - t0)}]`)}`);
+  report.log(` ${expectCalls} expect() calls`);
+  report.log(`Ran ${n} test${n === 1 ? "" : "s"} across ${files.length} file${files.length === 1 ? "" : "s"}. ${dim(`[${ms(performance.now() - t0)}]`)}`);
   resetFakeTimers();
   return { failed: totals.fail, results, ...(coverageFailed && { coverageFailed }) };
 }

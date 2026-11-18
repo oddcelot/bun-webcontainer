@@ -45,7 +45,7 @@ import nodePath from "./node/path";
 import process, { env } from "./node/process";
 import { enableTTY, resizeTTY } from "./node/tty";
 import { isDeepStrictEqual } from "./node/util";
-import { failRunning, runTestFiles } from "./node/test";
+import { failRunning, runTestFiles, setReport } from "./node/test";
 import { finishCoverage, startCoverage } from "./coverage";
 import { coverageOptions } from "../coverage/options";
 import { BUN_REVISION, BUN_VERSION } from "./bunVersion";
@@ -64,7 +64,7 @@ import { childByPid, launchOf, onProcMessage, setKernel, setSyncVfs, signalName,
 import { spawn as bunSpawn, spawnSync as bunSpawnSync } from "./spawn";
 import { setThread, threadEnd, threadError, type ThreadInfo } from "./node/worker_threads";
 import { WebWorker } from "./webWorker";
-import { cliPreloads, isShellCommand } from "../scripts";
+import { cliPreloads, isShellCommand, isTestFile } from "../scripts";
 import { hideXhr, XHR } from "./xhr";
 import { randomUUIDv7 } from "./uuid";
 import { loopbackWebSocket } from "./loopbackSocket";
@@ -950,6 +950,52 @@ function halt(code: number, signal?: string): never {
   selfClose();
   throw EXIT;
 }
+/**
+ * `bun test` as a child process (processes.ts launchOf): the test files under `cwd` (or the ones `filters` name: a path,
+ * or part of one), run as the console's `bun test` runs them, with the report as Bun writes it to a pipe: the version
+ * line on stdout, the rest on stderr, without colors. It exits with 1 when a test failed.
+ */
+async function runChildTests(filters: string[], flags: string[], cwd: string) {
+  const enc = new TextEncoder();
+  const write = (fd: 1 | 2, text: string) => {
+    const data = enc.encode(text);
+    post({ type: "stdio", fd, data }, [data.buffer]);
+  };
+  const unsupported = flags.find((f) => f !== "-u" && f !== "--update-snapshots");
+  if (unsupported) {
+    write(2, `error: bun test ${unsupported} isn't supported in a spawned process here\n`);
+    return exit(1);
+  }
+  const GLYPHS: Record<string, string> = { "✓": "(pass)", "✗": "(fail)", "»": "(skip)", "✎": "(todo)" };
+  // eslint-disable-next-line no-control-regex
+  const plain = (text: string) => text.replace(/\x1b\[[0-9;]*m/g, "").replace(/^([✓✗»✎]) (.*?)( \[todo\])?$/gm, (_, g: string, rest: string) => `${GLYPHS[g]} ${rest}`);
+  setReport({
+    log: (text) => write(/^bun test v/.test(text) ? 1 : 2, `${plain(text)}\n`),
+    error: (text) => write(2, `${plain(text)}\n`),
+  });
+  const root = cwd.replace(/^\/+|\/+$/g, "");
+  const project = (p: string) => (p.startsWith("/") ? p : `${cwd}/${p}`).split("/").reduce<string[]>((out, s) => (s === ".." ? out.slice(0, -1) : s && s !== "." ? [...out, s] : out), []).join("/");
+  const all = [...vfs.files.keys()].filter((f) => (!root || f.startsWith(`${root}/`)) && isTestFile(f));
+  const files = new Set<string>();
+  for (const f of filters) {
+    const exact = project(f);
+    if (/^\.{0,2}\//.test(f) && vfs.files.has(exact)) files.add(exact);
+    else for (const t of all) if (t.includes(f)) files.add(t);
+  }
+  if (!filters.length) for (const t of all) files.add(t);
+  if (!files.size) {
+    write(2, `error: No tests found${filters.length ? ` matching ${filters.join(", ")}` : ""}!\n`);
+    return exit(1);
+  }
+  testing = true;
+  const { failed } = await runTestFiles([...files].sort(), (f) => importUrl(`${VFS_ROOT}${f}`), (g.Bun as { version: string }).version, {
+    update: flags.length > 0,
+    preload: () => bunfigPreloads(true),
+  }).catch((err) => (write(2, `${fmt(err)}\n`), { failed: 1 }));
+  testing = false;
+  exit(failed ? 1 : 0);
+}
+
 /** What `halt` throws where it can't block; the error handlers ignore it. */
 const EXIT = Symbol("exit");
 
@@ -1870,6 +1916,10 @@ self.addEventListener("message", async (e: MessageEvent) => {
     if (e.data.script !== undefined) {
       post({ type: "ready" });
       return runScript(e.data.script, e.data.args ?? [], true);
+    }
+    if (e.data.childTest) {
+      post({ type: "ready" });
+      return runChildTests(e.data.childTest, e.data.args ?? [], proc.cwd);
     }
   }
   // runbun.json's `env`, over the defaults: runs, restarts on save and tests (the page logs what's wrong with the file).
