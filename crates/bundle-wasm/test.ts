@@ -213,6 +213,13 @@ compareOptions("root: default (common dir)", ["src/a/x.ts", "src/b/y.ts"], {}, [
 compareOptions("root: src", ["src/a/x.ts", "src/b/y.ts"], { rootDir: "/src" }, ["--root=src"]);
 compareOptions("root: project root", ["src/a/x.ts", "src/b/y.ts"], { rootDir: "/" }, ["--root=."]);
 
+// The playground's entry points are absolute; their common folder is the root, as native's (`bun build src/a src/b`).
+test("root: default for absolute entries in one folder", () => {
+  const r = wasmBundle({ entryPoints: ["/src/greet.ts", "/src/other.ts"], outdir: "out" });
+  assert.ok(r.success, JSON.stringify(r.logs));
+  assert.deepEqual(r.outputs.map((o: { path: string }) => o.path), ["./greet.js", "./other.js"]);
+});
+
 test("write: true writes into the VFS and returns no contents", () => {
   const r = wasmBundle({ entryPoints: ["src/greet.ts"], outdir: "/wrote", write: true });
   assert.ok(r.success, JSON.stringify(r.logs));

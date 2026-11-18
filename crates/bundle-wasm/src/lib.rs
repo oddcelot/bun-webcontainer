@@ -269,18 +269,16 @@ fn run(
 }
 
 fn bun_paths_longest(entries: &[&[u8]]) -> Box<[u8]> {
-    // longest common directory prefix
+    // The longest common directory, by whole path components (`/src/css` for `/src/css/a.ts` and `/src/css/b.ts`).
     let mut it = entries.iter().map(|e| bun_core::dirname(e).unwrap_or(b"/"));
     let Some(first) = it.next() else { return Box::from(&b"/"[..]) };
-    let mut len = first.len();
+    let mut common: Vec<&[u8]> = first.split(|c| *c == b'/').collect();
     for d in it {
-        len = len.min(first.iter().zip(d).take_while(|(a, b)| a == b).count());
+        let n = common.iter().zip(d.split(|c| *c == b'/')).take_while(|(a, b)| *a == b).count();
+        common.truncate(n);
     }
-    let mut p = &first[..len];
-    if let Some(i) = p.iter().rposition(|c| *c == b'/') {
-        if len != first.len() || i != len { p = &p[..i.max(1)]; }
-    }
-    p.into()
+    let p = common.join(&b'/');
+    if p.is_empty() { Box::from(&b"/"[..]) } else { p.into() }
 }
 
 #[repr(C)]
