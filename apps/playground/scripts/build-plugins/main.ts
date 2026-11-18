@@ -34,8 +34,7 @@ async function run(label: string, entry: string, plugins: BunPlugin[], extra: Pa
     const r = await Bun.build({ entrypoints: [`${src}/${entry}`], plugins, ...extra });
     log(`${label}.success`, r.success);
     for (const o of await outputs(r)) {
-      // (Not `loader`: native Bun reports the entry's for every output, the playground each output's own.)
-      log(`${label}.output`, { path: o.path, kind: o.kind });
+      log(`${label}.output`, { path: o.path, kind: o.kind, loader: o.loader });
       for (const line of o.text.split("\n")) if (line.trim()) log(`${label}.text`, line);
     }
     for (const l of r.logs) log(`${label}.log`, { level: l.level, message: l.message });

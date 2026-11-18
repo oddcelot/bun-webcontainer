@@ -712,7 +712,7 @@ function bundleHtml(imp: HtmlImport): Promise<HtmlBundle> {
   p = (async (): Promise<HtmlBundle> => {
     const res = await bundle(vfs, { cwd: "/", entryPoints: ["/" + norm(imp.__htmlImport)], target: "browser", format: "esm", outdir: "/__bundle", publicPath: ASSET_PREFIX, sourcemap: "inline", minify: false });
     for (const l of res.logs) if (l.level === "error" || l.level === "warning") console[l.level === "error" ? "error" : "warn"](`[bundler] ${formatLog(l)}`);
-    const page = res.outputs.find((o) => o.loader.toLowerCase() === "html");
+    const page = res.outputs.find((o) => o.loader === "html");
     if (!res.success || !page) return null;
     const assets = new Map<string, Asset>();
     for (const o of res.outputs) {
@@ -1286,10 +1286,9 @@ async function build(opts: BuildOptions) {
   const outputs: BuildArtifact[] = [];
   for (const o of res.outputs) {
     const rel = o.path.replace(/^\.\//, "");
-    const loader = o.loader.toLowerCase();
     const blob = new ArtifactBlob([o.contents], { type: mimeOf(rel) });
     const path = outdir ? nodePath.join(outdir, rel) : `./${rel}`;
-    outputs.push(Object.assign(blob, { path, kind: o.kind as BuildArtifact["kind"], loader, hash: o.hash && o.hash !== "0" ? o.hash : null, sourcemap: null as BuildArtifact | null }));
+    outputs.push(Object.assign(blob, { path, kind: o.kind as BuildArtifact["kind"], loader: o.inputLoader, hash: o.hash && o.hash !== "0" ? o.hash : null, sourcemap: null as BuildArtifact | null }));
   }
   for (const o of outputs) o.sourcemap = outputs.find((m) => m.kind === "sourcemap" && m.path === `${o.path}.map`) ?? null;
   if (outdir) for (const o of outputs) await writeFile(o.path, o);

@@ -13,7 +13,7 @@
 //!   packages: "bundle"|"external", drop[], rootDir, env: "inline"|"disable"|"PREFIX*" (`Bun.build`'s; "load-only" is the
 //!   CLI's `--env=disable`), envVars{} (the process env: the wasm has none of its own),
 //!   plugins: bool (the host's `bun_plugin.*` imports answer the plugin hooks, see plugins.rs)}`
-//! Result JSON: `{success, outputs: [{path, kind, loader, hash, contents, encoding?}], logs: [{level,
+//! Result JSON: `{success, outputs: [{path, kind, loader, inputLoader, hash, contents, encoding?}], logs: [{level,
 //!   message, file, line, column}]}`. `contents` is text, or base64 with `encoding: "base64"` when the
 //!   output isn't valid UTF-8 (images, wasm and other binary assets).
 
@@ -251,7 +251,9 @@ fn run(
             let mut o = json!({
                 "path": String::from_utf8_lossy(&f.dest_path),
                 "kind": kind,
-                "loader": format!("{:?}", f.loader),
+                "loader": <&'static str>::from(f.loader),
+                // What `BuildArtifact.loader` reports (output_file_jsc.rs): the entry point's loader for its chunks.
+                "inputLoader": <&'static str>::from(f.input_loader),
                 "hash": format!("{}", f.hash),
                 "value": value,
             });

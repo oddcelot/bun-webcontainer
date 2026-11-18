@@ -44,7 +44,10 @@ export interface BundleLog {
 export interface BundleOutput {
   path: string;
   kind: string;
+  /** The output's own loader (`"js"`, `"css"`, `"file"`, `"html"`, …). */
   loader: string;
+  /** What `BuildArtifact.loader` reports: the loader of the entry point a chunk comes from (`"file"` for assets). */
+  inputLoader: string;
   hash: string;
   /** Text, or the raw bytes for outputs that aren't UTF-8 (images, wasm). */
   contents: string | Uint8Array<ArrayBuffer>;
