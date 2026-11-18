@@ -61,7 +61,7 @@ import { childByPid, launchOf, onProcMessage, setKernel, setSyncVfs, signalName,
 import { spawn as bunSpawn, spawnSync as bunSpawnSync } from "./spawn";
 import { setThread, threadEnd, threadError, type ThreadInfo } from "./node/worker_threads";
 import { WebWorker } from "./webWorker";
-import { isShellCommand } from "../scripts";
+import { cliPreloads, isShellCommand } from "../scripts";
 import { hideXhr, XHR } from "./xhr";
 import { randomUUIDv7 } from "./uuid";
 import { loopbackWebSocket } from "./loopbackSocket";
@@ -1775,17 +1775,24 @@ async function runScript(script: string, args: string[], child: boolean) {
  * throws Bun's error for one that doesn't resolve.
  */
 function bunfigPreloads(test: boolean): string[] {
+  return bunfigPreloadSpecs(test).map(resolvePreload);
+}
+
+/** What bunfig.toml (in the working directory) lists to preload, as written. */
+function bunfigPreloadSpecs(test: boolean): string[] {
   const dir = norm(process.cwd());
   const text = vfs.readText(dir ? `${dir}/bunfig.toml` : "bunfig.toml");
   if (text === undefined) return [];
   const config = parseData(text, "toml") as { preload?: unknown; test?: { preload?: unknown } } | null;
   const list = test ? config?.test?.preload : config?.preload;
-  const specs = typeof list === "string" ? [list] : Array.isArray(list) ? list.filter((s): s is string => typeof s === "string") : [];
-  return specs.map((spec) => {
-    const path = resolve(spec, dir, "import", "bun");
-    if (path === null) throw new Error(`preload not found "${spec}"`);
-    return path;
-  });
+  return typeof list === "string" ? [list] : Array.isArray(list) ? list.filter((s): s is string => typeof s === "string") : [];
+}
+
+/** A preload's VFS path, resolved from the working directory (a bare name is a package); throws Bun's error if none. */
+function resolvePreload(spec: string): string {
+  const path = resolve(spec, norm(process.cwd()), "import", "bun");
+  if (path === null) throw new Error(`preload not found "${spec}"`);
+  return path;
 }
 
 self.addEventListener("message", async (e: MessageEvent) => {
@@ -1853,17 +1860,31 @@ self.addEventListener("message", async (e: MessageEvent) => {
   process.argv.splice(2, Infinity, ...((e.data.args as string[] | undefined) ?? []));
   try {
     const code = (e.data.thread as ThreadInfo | undefined)?.eval;
-    // bunfig.toml's `preload`, in order, before the entry (its runtime plugins apply to the entry's imports). Not in
-    // a worker_threads thread, which is no new `bun` process.
+    // bunfig.toml's `preload`, then the command line's (`bun -r ./p.ts main.ts`; with `bun run`, bunfig.toml's
+    // replace them, as in Bun 1.4), each resolved as it comes, before the entry (their runtime plugins apply to the
+    // entry's imports). Not in a worker_threads thread, which is no new `bun` process.
     if (!e.data.thread) {
-      let preloads: string[] = [];
+      const execArgv = (e.data.execArgv as string[] | undefined) ?? [];
+      process.execArgv = execArgv;
+      let specs: string[] = [];
       try {
-        preloads = bunfigPreloads(false);
+        const bunfig = bunfigPreloadSpecs(false);
+        specs = e.data.run && bunfig.length ? bunfig : [...bunfig, ...cliPreloads(execArgv)];
       } catch (err) {
+        // A bunfig.toml that doesn't parse.
         post({ type: "console", level: "error", text: `error: ${err instanceof Error ? err.message : String(err)}` });
         halt(1);
       }
-      for (const p of preloads) await importUrl(`${VFS_ROOT}${p}`);
+      for (const spec of specs) {
+        let path: string;
+        try {
+          path = resolvePreload(spec);
+        } catch (err) {
+          post({ type: "console", level: "error", text: `error: ${err instanceof Error ? err.message : String(err)}` });
+          return halt(1);
+        }
+        await importUrl(`${VFS_ROOT}${path}`);
+      }
     }
     // A .cjs/.mjs program by moduleServer.ts's ENTRY_PREFIX: served as its extension makes it, as Bun runs one.
     const entryUrl = `${VFS_ROOT}${/\.[cm][jt]s$/.test(e.data.entry) ? "__entry/" : ""}${e.data.entry}`;

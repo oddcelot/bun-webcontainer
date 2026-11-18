@@ -13,7 +13,8 @@ import { untrustedNames, untrustedReport } from "./lifecycle";
 import { links, setLink } from "./links";
 import { makePatch, patchPath } from "./patches";
 import { pristineFiles } from "./lockfile";
-import { binCommand, isTestFile, scriptChecks, scriptEntry, shellCommand, type Pkg } from "./scripts";
+import { binCommand, cliPreloads, isTestFile, parseBunArgs, scriptChecks, scriptEntry, scriptPreloads, shellCommand, type Pkg } from "./scripts";
+import { escape } from "./shell/dollar";
 
 type Log = (level: string, text: string) => void;
 
@@ -138,7 +139,8 @@ export function createShell(host: ShellHost) {
     const has = (path: string) => vfs.files.has(path);
     const bin = entry && has(entry) ? undefined : binCommand(script, has, (path) => vfs.readText(path));
     log("sys", `$ ${script}`);
-    if (!(entry && has(entry)) && !bin) {
+    // `bun --preload ./p.ts main.ts`: a child `bun` of the shell's gets its flags (worker/processes.ts launchOf).
+    if (!(entry && has(entry)) && !bin || scriptPreloads(script)) {
       const sh = shellCommand(script);
       return host.run(sh.entry, sh.args);
     }
@@ -428,6 +430,12 @@ export function createShell(host: ShellHost) {
       const [sub, ...rest] = args.filter((a, i) => !(a === "--check" && i <= 1));
       if (withCheck && sub !== "run" && (!sub || !vfs.files.has(projectPath(ctx, sub)))) return fail(`error: bun --check needs a file to run${sub ? `: "${sub}" not found` : ""}`);
       if (!sub || sub === "help" || sub === "--help") return log("log", HELP);
+      // `bun -r ./p.ts main.ts`: run by the shell as a child process, which preloads them as Bun does.
+      if (cliPreloads(parseBunArgs(args).execArgv).length) {
+        const dir = ctx.path(".");
+        const sh = shellCommand(`${dir === "/" ? "" : `cd ${escape(dir)} && `}${["bun", ...args].map(escape).join(" ")}`);
+        return await host.run(sh.entry, sh.args);
+      }
       if (sub === "test") return await test(rest);
       if (sub === "run") return await runTarget(rest[0] && vfs.files.has(projectPath(ctx, rest[0])) ? projectPath(ctx, rest[0]) : rest[0], withCheck);
       if (sub === "install" || sub === "i") return await host.install({ ignoreScripts: rest.includes("--ignore-scripts") });

@@ -7,12 +7,15 @@
 import { escape } from "../shell/dollar";
 import { builtins as shellBuiltins } from "../shell/builtins";
 import { normalize } from "../shell/interp";
-import { binFile, type Has, type Pkg, type Read } from "../scripts";
+import { binFile, parseBunArgs, type Has, type Pkg, type Read } from "../scripts";
 import { hold, release } from "./loop";
 import { decodeVfs, Part, SyncReader, type VfsOp } from "./syncChannel";
 
-/** What a child runs: a file (as `bun <file> ...args`), or a line in Bun's shell. */
-export type Launch = { entry: string; args: string[] } | { script: string; args: string[] };
+/**
+ * What a child runs: a file (as `bun <file> ...args`, with the flags before it as `execArgv`; `run` for `bun run`,
+ * whose preloads bunfig.toml's replace), or a line in Bun's shell.
+ */
+export type Launch = { entry: string; args: string[]; execArgv?: string[]; run?: boolean } | { script: string; args: string[] };
 
 /** How a child ended: its code, or the signal that ended it (and the code a shell sees, 128 + its number). */
 export type ExitStatus = { code: number; signal: string | null };
@@ -54,27 +57,30 @@ export function launchOf(argv: string[], cwd: string, has: Has, read: Read): Lau
   };
   const script = (s: string, args: string[]): Launch => ({ script: [s, ...args.map(escape)].join(" "), args: [] });
   if (base === "bun" || base === "node" || base === "bunx") {
-    // Flags before the file (`bun --watch a.ts`, `node --enable-source-maps a.js`) don't change what runs here.
+    // Flags before the file (`bun --watch a.ts`, `node --enable-source-maps a.js`) don't change what runs here, but
+    // `bun`'s preloads (`-r`), which the child gets as its `process.execArgv`.
     let i = 0;
     while (i < rest.length && rest[i]!.startsWith("-")) {
       if (/^(-e|--eval|-p|--print)$/.test(rest[i]!)) return { error: `${base} ${rest[i]}: evaluating code from the command line isn't supported here` };
       i++;
     }
-    let target = rest[i];
+    let target: string | undefined = rest[i];
     let args = rest.slice(i + 1);
     if (base === "bunx" || (base === "bun" && target === "x")) {
       const [pkg, ...more] = base === "bunx" ? rest.slice(i) : args;
       const bin = pkg && binFile(pkg.replace(/@[^/]*$/, ""), has, read);
       return bin ? { entry: bin, args: more } : { error: `${base}: ${pkg ?? "a package"} isn't installed (installing from a spawned process isn't supported here)` };
     }
-    if (base === "bun" && target === "run") {
-      while (i + 1 < rest.length && rest[i + 1]!.startsWith("-")) i++;
-      target = rest[i + 1];
-      args = rest.slice(i + 2);
+    let flags: { execArgv?: string[]; run?: boolean } = {};
+    if (base === "bun") {
+      // Bun's flags, some with a value (`--preload ./p.ts`), before the file.
+      const parsed = parseBunArgs(rest);
+      ({ target, args } = parsed);
+      flags = { execArgv: parsed.execArgv, ...(parsed.run && { run: true }) };
     }
     if (!target) return { error: `${base}: a spawned ${base} needs a file to run` };
     const entry = file(target);
-    if (entry) return { entry, args };
+    if (entry) return { entry, args, ...flags };
     if (base === "bun") {
       const s = parse<Pkg>(read(projectPath(cwd, "package.json")))?.scripts?.[target];
       if (s !== undefined) return script(s, args);
