@@ -1992,13 +1992,12 @@ main [data-kb-resizable-root] { height: 100%; }
       color: var(--warn);
       font-size: 14px;
     }
+    /* Wraps (GitPanel breaks after each slash too): the branch's name is the point of "Merge branch 'feature' into main". */
     strong {
       flex: 1;
       min-width: 0;
-      overflow: hidden;
       font-weight: 600;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+      overflow-wrap: anywhere;
     }
     p {
       margin: 0;
