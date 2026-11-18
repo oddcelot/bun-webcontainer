@@ -1,6 +1,7 @@
 // A WASI preview1 host (`wasi_snapshot_preview1`) over the project's VFS, so a wasm32-wasip1 command module (the
-// gitoxide-based `git`) runs against the project's files. Synchronous like the module: the VFS lives in this thread.
-// fd 0-2 are stdin/stdout/stderr, fd 3 is the preopen `/` (the VFS root). There are no symlinks.
+// gitoxide-based `git`, or a program node:wasi starts) runs against the project's files. Synchronous like the module:
+// the VFS lives in this thread. fd 0-2 are stdin/stdout/stderr, fd 3 on are the preopens (by default one, `/` for the
+// VFS root); a path can't leave the preopen it starts from. There are no symlinks.
 //
 // The VFS rewrites a whole file per `write` (and fires one change event each), but git writes packs and indexes in
 // many small calls. So an open file's bytes are buffered in a per-path node shared by its fds and flushed with a single
@@ -31,7 +32,7 @@ class Errno extends Error {
   }
 }
 /** `proc_exit`: unwinds out of `_start`. */
-class Exit extends Error {
+export class Exit extends Error {
   code: number;
   constructor(code: number) {
     super(`exit ${code}`);
@@ -63,8 +64,12 @@ type Node = {
 
 type Fd =
   | { kind: "std"; n: 0 | 1 | 2 }
-  | { kind: "dir"; key: string; preopen: boolean }
+  // root: the key of the preopen it is under (`..` stops there); name: a preopen's guest path
+  | { kind: "dir"; key: string; root: string; name?: string }
   | { kind: "file"; node: Node; pos: number; write: boolean; append: boolean };
+
+/** What the host uses of a VFS: node:wasi passes one that also mirrors changes to the page. */
+export type WasiVfs = Pick<VFS, "files" | "mtimes" | "isDir" | "exists" | "data" | "size" | "write" | "mkdir" | "remove" | "rename" | "readdir">;
 
 type Opts = {
   args: string[];
@@ -72,6 +77,10 @@ type Opts = {
   stdout: (bytes: Uint8Array) => void;
   stderr: (bytes: Uint8Array) => void;
   stdin?: Uint8Array;
+  /** Reads stdin into `into` and returns the byte count (0: the end); instead of `stdin`. */
+  readStdin?: (into: Uint8Array) => number;
+  /** Guest path → VFS key, as fds 3, 4, ... in order (default `/` → the root). */
+  preopens?: [guest: string, key: string][];
   /** More import modules beside WASI's (git.wasm's `runbun` HTTP calls), given the instance's memory. */
   modules?: (memory: () => WebAssembly.Memory) => Record<string, Record<string, (...args: number[]) => number | void>>;
 };
@@ -99,7 +108,7 @@ export async function runWasi(module: WebAssembly.Module, vfs: VFS, opts: Opts):
 }
 
 /** The import object over `vfs`; `getMemory` is the instance's memory (read on every call: growth replaces its buffer). Exported for tests. */
-export function createWasi(vfs: VFS, opts: Opts, getMemory: () => WebAssembly.Memory) {
+export function createWasi(vfs: WasiVfs, opts: Opts, getMemory: () => WebAssembly.Memory) {
   const dv = () => new DataView(getMemory().buffer);
   // The buffer is replaced by memory.grow, so views are never kept across calls.
   const u8 = (ptr: number, len: number) => new Uint8Array(getMemory().buffer, ptr, len);
@@ -109,8 +118,8 @@ export function createWasi(vfs: VFS, opts: Opts, getMemory: () => WebAssembly.Me
     [0, { kind: "std", n: 0 }],
     [1, { kind: "std", n: 1 }],
     [2, { kind: "std", n: 2 }],
-    [3, { kind: "dir", key: "", preopen: true }],
   ]);
+  for (const [name, key] of opts.preopens ?? [["/", ""]]) fds.set(fds.size, { kind: "dir", key, root: key, name });
   let nextFd = 4;
   const allocFd = (f: Fd) => {
     while (fds.has(nextFd)) nextFd++;
@@ -121,6 +130,14 @@ export function createWasi(vfs: VFS, opts: Opts, getMemory: () => WebAssembly.Me
   const loaded = new WeakSet<Node>();
   const stdin = opts.stdin ?? new Uint8Array(0);
   let stdinPos = 0;
+  const readStdin =
+    opts.readStdin ??
+    ((into: Uint8Array) => {
+      const n = Math.min(into.length, stdin.length - stdinPos);
+      into.set(stdin.subarray(stdinPos, stdinPos + n));
+      stdinPos += n;
+      return n;
+    });
 
   const getFd = (fd: number) => {
     const f = fds.get(fd);
@@ -141,14 +158,16 @@ export function createWasi(vfs: VFS, opts: Opts, getMemory: () => WebAssembly.Me
 
   // --- paths ---
 
-  /** A path under a directory fd as a VFS key; `..` above the root escapes the sandbox. */
+  /** A path under a directory fd as a VFS key; `..` above its preopen escapes the sandbox. */
   function resolve(dirfd: number, path: string): string {
-    const base = path.startsWith("/") ? "" : getDir(dirfd).key;
+    const d = getDir(dirfd);
+    const base = path.startsWith("/") ? d.root : d.key;
     const out = base ? base.split("/") : [];
+    const floor = d.root ? d.root.split("/").length : 0;
     for (const s of path.split("/")) {
       if (!s || s === ".") continue;
       if (s === "..") {
-        if (!out.length) throw new Errno(E.NOTCAPABLE);
+        if (out.length <= floor) throw new Errno(E.NOTCAPABLE);
         out.pop();
       } else out.push(s);
     }
@@ -267,9 +286,7 @@ export function createWasi(vfs: VFS, opts: Opts, getMemory: () => WebAssembly.Me
     if (f.kind === "std") {
       if (f.n !== 0) throw new Errno(E.BADF);
       for (const [p, l] of list) {
-        const n = Math.min(l, stdin.length - stdinPos);
-        u8(p, n).set(stdin.subarray(stdinPos, stdinPos + n));
-        stdinPos += n;
+        const n = readStdin(u8(p, l));
         total += n;
         if (n < l) break;
       }
@@ -420,16 +437,17 @@ export function createWasi(vfs: VFS, opts: Opts, getMemory: () => WebAssembly.Me
     },
     fd_prestat_get(fd: number, out: number) {
       const f = getFd(fd);
-      if (f.kind !== "dir" || !f.preopen) throw new Errno(E.BADF);
+      if (f.kind !== "dir" || f.name === undefined) throw new Errno(E.BADF);
       const v = dv();
       v.setUint8(out, 0);
-      v.setUint32(out + 4, 1, true);
+      v.setUint32(out + 4, enc.encode(f.name).length, true);
       return 0;
     },
     fd_prestat_dir_name(fd: number, path: number, len: number) {
       const f = getFd(fd);
-      if (f.kind !== "dir" || !f.preopen) throw new Errno(E.BADF);
-      if (len >= 1) u8(path, 1)[0] = 0x2f;
+      if (f.kind !== "dir" || f.name === undefined) throw new Errno(E.BADF);
+      const name = enc.encode(f.name);
+      u8(path, Math.min(len, name.length)).set(name.subarray(0, len));
       return 0;
     },
     fd_fdstat_get(fd: number, out: number) {
@@ -573,7 +591,7 @@ export function createWasi(vfs: VFS, opts: Opts, getMemory: () => WebAssembly.Me
       if (t === "dir") {
         if (oflags & O_CREAT && oflags & O_EXCL) throw new Errno(E.EXIST);
         if (write || oflags & O_TRUNC) throw new Errno(E.ISDIR);
-        fd = allocFd({ kind: "dir", key: k, preopen: false });
+        fd = allocFd({ kind: "dir", key: k, root: getDir(dirfd).root });
       } else {
         if (t === "file") {
           if (oflags & O_CREAT && oflags & O_EXCL) throw new Errno(E.EXIST);

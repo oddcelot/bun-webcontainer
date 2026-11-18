@@ -19,11 +19,11 @@ const RO = 2n; // fd_read only
 const mem = new WebAssembly.Memory({ initial: 4 });
 const enc = new TextEncoder();
 const dec = new TextDecoder();
-function setup(files: Record<string, string> = {}) {
+function setup(files: Record<string, string> = {}, preopens?: [string, string][]) {
   const vfs = new VFS();
   for (const [k, v] of Object.entries(files)) vfs.write(k, v);
   const out: Uint8Array[] = [];
-  const w = createWasi(vfs, { args: ["t"], stdout: (b) => out.push(b), stderr: () => {} }, () => mem).wasi as Record<string, (...a: unknown[]) => number>;
+  const w = createWasi(vfs, { args: ["t"], stdout: (b) => out.push(b), stderr: () => {}, preopens }, () => mem).wasi as Record<string, (...a: unknown[]) => number>;
   const dv = () => new DataView(mem.buffer);
   const PATH = 1024, RES = 2048, IO = 3072, BUF = 8192;
   const path = (p: string) => (new Uint8Array(mem.buffer, PATH, 512).set(enc.encode(p)), [PATH, enc.encode(p).length] as const);
@@ -62,6 +62,25 @@ test("prestat: fd 3 is `/`, fd 4 is not a preopen", () => {
   t.w.fd_prestat_dir_name(3, t.BUF, 1);
   assert.equal(new Uint8Array(mem.buffer, t.BUF, 1)[0], 0x2f);
   assert.equal(t.w.fd_prestat_get(4, t.RES), E.BADF);
+});
+
+test("preopens (node:wasi's): named fds 3, 4; a path can't leave its preopen", () => {
+  const t = setup({ "box/a.txt": "a", "box/sub/b.txt": "b", "secret.txt": "s" }, [["/data", "box"], ["/sub", "box/sub"]]);
+  assert.equal(t.w.fd_prestat_get(3, t.RES), 0);
+  assert.equal(t.dv().getUint32(t.RES + 4, true), 5);
+  t.w.fd_prestat_dir_name(3, t.BUF, 5);
+  assert.equal(dec.decode(new Uint8Array(mem.buffer, t.BUF, 5)), "/data");
+  assert.equal(t.w.fd_prestat_get(4, t.RES), 0);
+  assert.equal(t.w.fd_prestat_get(5, t.RES), E.BADF);
+  assert.equal(t.read(t.open("a.txt")), "a");
+  assert.equal(t.read(t.open("b.txt", 0, RW, 0, 4)), "b");
+  assert.equal(t.read(t.open("sub/../a.txt")), "a");
+  assert.equal(t.read(t.open("/a.txt")), "a"); // absolute: from the preopen
+  assert.equal(t.open("../secret.txt"), -E.NOTCAPABLE);
+  assert.equal(t.open("../a.txt", 0, RW, 0, 4), -E.NOTCAPABLE);
+  const sub = t.open("sub", O.DIRECTORY, RO);
+  assert.equal(t.read(t.open("../a.txt", 0, RW, 0, sub)), "a");
+  assert.equal(t.open("../../secret.txt", 0, RW, 0, sub), -E.NOTCAPABLE);
 });
 
 test("O_EXCL on an existing file is EEXIST; creating makes an empty file at once", () => {
