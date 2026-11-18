@@ -1,3 +1,6 @@
+# Its own workspace (own nightly pin), also when checked out below another one, e.g. a worktree in .claude/worktrees/.
+[workspace]
+
 [package]
 name = "git-wasm"
 version = "0.0.0"
