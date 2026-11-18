@@ -408,6 +408,8 @@ export default defineConfig(({ mode }) => ({
     "import.meta.env.DOCS_URL": JSON.stringify(docsUrl(mode)),
     // CANARY=1 (playground:deploy-canary) shows the canary badge (src/canary.ts).
     "import.meta.env.CANARY": JSON.stringify(process.env.CANARY === "1"),
+    // @babel/types (under @solidjs/babel-plugin, the fast path's Solid 2 JSX) reads this as it loads; a page has no `process`.
+    "process.env.BABEL_TYPES_8_BREAKING": "false",
   },
   plugins: [examplesSubmodule(), configSchema(), UnoCSS(), solid(), hostPackageNames(), emnapiNotNode(), pgliteNotNode(), docsLink(docsUrl(mode)), embedRoutes(), originHeaders(), serviceWorker(), workerRoutesDev(), thirdPartyLicenses()],
   build: {
@@ -439,6 +441,8 @@ export default defineConfig(({ mode }) => ({
     alias: [
       { find: /^@rolldown\/browser\/utils$/, replacement: browserDist + "utils-index.browser.mjs" },
       { find: /^(\.\.?\/)rolldown-binding\.wasi\.cjs$/, replacement: browserDist + "rolldown-binding.wasi-browser.js" },
+      // No client code imports Node's assert; @babel/helper-module-imports (the fast path's Solid 2 JSX) does.
+      { find: /^assert$/, replacement: fileURLToPath(new URL("src/vendor-shims/assert.cjs", import.meta.url)) },
     ],
   },
 }));

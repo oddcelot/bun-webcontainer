@@ -166,7 +166,7 @@ console.log(greet("Bun"));
 export const greet = (name: string) => "Hello, " + name;
 ```
 
-The meta also takes `mode`, `features`, `load`, `height`, `autorun`, `readonly`, `persist`, `theme`, `file`, `path`, `requests`, `layout` (`layout=stack` puts the preview under the editor, e.g. `playground mode=preview layout=stack height=auto`), `expand` (`expand=false` leaves the modal button out) and `label`, the embed's accessible name (`label="Elysia playground"`; `title` is taken by the file name). Fences without `playground` stay as they were.
+The meta also takes `mode`, `features`, `load`, `height`, `autorun`, `readonly`, `persist`, `theme`, `file`, `path`, `requests`, `fast` (the [fast path](/guides/features/#fast-path-for-browser-only-projects), e.g. `playground mode=preview fast`), `layout` (`layout=stack` puts the preview under the editor, e.g. `playground mode=preview layout=stack height=auto`), `expand` (`expand=false` leaves the modal button out) and `label`, the embed's accessible name (`label="Elysia playground"`; `title` is taken by the file name). Fences without `playground` stay as they were.
 
 `requests` lists requests a reader can try, each in its own preview tab, the first one open: `;`-separated `METHOD /path`, each with an optional body after it. Put it in single quotes, so a JSON body keeps its double quotes. The first request goes when the server starts; each other one the first time its tab opens, and opening it again doesn't resend it. It takes the place of a list of an app's routes and their responses, and wins over `path` (the full rules are in the [embed reference](/reference/embed-api/#attributes-and-url-parameters)):
 

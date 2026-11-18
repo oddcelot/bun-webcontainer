@@ -21,6 +21,8 @@ import { Keys, Tip } from "@runbun/ui/solid/Tip";
 const SAVE_DELAY = 300;
 /** tsconfig.json, jsconfig.json and configs named like them (tsconfig.base.json, which another may `extends`). */
 const CONFIG = /(?:^|\/)[jt]sconfig(?:\.[^/]*)?\.json$/;
+/** An installed package's manifest: written once per package an install adds. */
+const INSTALLED = /(?:^|\/)node_modules\/(?:@[^/]+\/)?[^/]+\/package\.json$/;
 
 /**
  * The open-file tabs over the editor, which shows the active tab and writes edits back to the VFS: shortly after
@@ -238,6 +240,9 @@ export function EditorPane(props: { start?: JSX.Element; end?: JSX.Element }) {
       if (removed && pending.delete(path)) ws.setDirty(path, false);
       // A tsconfig.json/jsconfig.json (or a config one extends) changes how the open file transpiles and type-checks.
       if (current && editor && path !== current && CONFIG.test(path)) return check?.(current, editor.getText());
+      // So does a package an install adds or removes (the fast path's runs install after the preview): what its imports
+      // resolve to. check() is debounced, so an install's many writes come to one check.
+      if (current && editor && INSTALLED.test(path) && (created || removed)) return check?.(current, editor.getText());
       if (created || removed || path !== current || pending.has(path)) return;
       if (isLazy(vfs.read(path))) return showWhenLoaded(path);
       const d = vfs.textOf(path);

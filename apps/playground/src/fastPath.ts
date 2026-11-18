@@ -16,7 +16,10 @@ let fastPref = () => false;
 /** The settings toggle's getter (workspace.ts), so this module stays free of UI state. */
 export const bindFastPref = (get: () => boolean) => void (fastPref = get);
 /** Whether the fast path is on: the "Fast path" toggle, or `?fast` in the page's URL (for links). */
-export const fastPathOn = (): boolean => fastPref() || new URLSearchParams(location.search).has("fast");
+export const fastPathOn = (): boolean => {
+  const url = new URLSearchParams(location.search).get("fast");
+  return fastPref() || (url !== null && url !== "false");
+};
 
 const CDN = "https://esm.sh";
 const JS = /\.[cm]?[jt]sx?$/;
@@ -63,12 +66,42 @@ function resolveLocal(vfs: VFS, spec: string, from: string): string | undefined 
 
 const dataUrl = (code: string, type = "text/javascript") => `data:${type};charset=utf-8,${encodeURIComponent(code)}`;
 
+/**
+ * Whether `vfs` is a Solid 2 project, whose JSX only Solid's own compiler turns into DOM code (Bun's transpiler, like
+ * every other, would make `jsx()` calls Solid 2 has no runtime for): it depends on `@solidjs/web`, or on solid-js 2.
+ */
+function solid2(vfs: VFS): boolean {
+  return versionOf(vfs, "@solidjs/web") !== "" || /^\D*2\./.test(versionOf(vfs, "solid-js"));
+}
+
+type SolidJsx = (src: string, filename: string) => string;
+let solidJsx: Promise<SolidJsx> | undefined;
+/**
+ * Solid 2's JSX compiler: Solid's Babel plugin in @babel/standalone, loaded the first time a Solid 2 project runs. Not
+ * Solid's Oxc build (`@solidjs/compiler`): its wasm needs shared memory, which an embed on a page that isn't
+ * cross-origin isolated doesn't have. The JSX becomes DOM code; the types stay for the transpiler to strip.
+ */
+function loadSolidJsx(): Promise<SolidJsx> {
+  return (solidJsx ??= Promise.all([import("@babel/standalone"), import("@solidjs/babel-plugin")]).then(([babel, solid]) => {
+    const plugin = (solid as Partial<typeof solid>).default ?? (solid as unknown as typeof solid.default);
+    return (src, filename) =>
+      babel.transform(src, {
+        filename,
+        babelrc: false,
+        configFile: false,
+        parserOpts: { plugins: ["jsx", "typescript"] },
+        plugins: [[plugin, { generate: "dom", moduleName: "@solidjs/web", dev: true }]],
+      })?.code ?? "";
+  }));
+}
+
 /** What {@link buildFast} made. */
-export type Fast = { html: string; modules: number; packages: string[]; ms: { transpile: number } };
+export type Fast = { html: string; modules: number; packages: string[]; solid: boolean; ms: { transpile: number } };
 
 /** The preview document for a qualifying project: index.html with an import map, over data: URLs of the transpiled files. */
 export async function buildFast(vfs: VFS): Promise<Fast> {
   const t0 = performance.now();
+  const solid = solid2(vfs) ? await loadSolidJsx() : undefined;
   await loadTranspiler();
   const html = vfs.readText("index.html")!;
   const imports: Record<string, string> = {};
@@ -86,7 +119,8 @@ export async function buildFast(vfs: VFS): Promise<Fast> {
       code = `export default ${src};`;
     } else {
       const next: string[] = [];
-      code = await transpile(src, path, tsconfigFor(vfs, path), (spec) => {
+      const input = solid && /\.[jt]sx$/.test(path) ? solid(src, path) : src;
+      code = await transpile(input, path, tsconfigFor(vfs, path), (spec) => {
         if (/^(?:\.{0,2}\/|\.\.?$)/.test(spec)) {
           const target = resolveLocal(vfs, spec, path);
           if (!target) return null;
@@ -143,7 +177,7 @@ export async function buildFast(vfs: VFS): Promise<Fast> {
   // The map and the error reporter come before any script of the page.
   const head = REPORT + map;
   const out = /<head[^>]*>/i.test(doc) ? doc.replace(/<head[^>]*>/i, (m) => m + head) : head + doc;
-  return { html: out, modules: seen.size, packages: [...packages], ms: { transpile: Math.round(t1 - t0) } };
+  return { html: out, modules: seen.size, packages: [...packages], solid: !!solid, ms: { transpile: Math.round(t1 - t0) } };
 }
 
 /** Marks the messages the frame posts, so the editor takes only ours. */
@@ -176,7 +210,7 @@ export async function runFast(vfs: VFS, frame: HTMLIFrameElement | undefined, lo
   shown = { frame, log };
   frame.setAttribute("sandbox", SANDBOX);
   frame.srcdoc = fast.html;
-  log("sys", `[fast] ${fast.modules} modules transpiled, preview set after ${Math.round(performance.now() - t)} ms`);
+  log("sys", `[fast] ${fast.modules} modules transpiled${fast.solid ? " (JSX by Solid 2's compiler)" : ""}, preview set after ${Math.round(performance.now() - t)} ms`);
   return "Previewed through an import map";
 }
 

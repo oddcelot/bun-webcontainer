@@ -1,7 +1,7 @@
 // Turns ```ts playground … fences into runnable <bun-playground> embeds whose poster is the code, highlighted as a
 // <Code> block is. Click-to-load: nothing downloads until a reader presses Run.
 //
-// Meta words: `playground` (required), `mode=…`, `features=…`, `group=<name>`, `load=…`, `height=…`, `path=…`,
+// Meta words: `playground` (required), `mode=…`, `features=…`, `group=<name>`, `load=…`, `height=…`, `path=…`, `fast`,
 // `requests='GET /; POST /form {"a":1}'` (a preview tab per request; single quotes keep a body's double quotes;
 // `GET / => Hi` writes a response the poster shows before Run),
 // `layout=stack` (the preview under the editor), `deps="elysia@rc,zod@^4"` (pinned in a package.json the poster doesn't
@@ -35,8 +35,8 @@ import {
   withTabs,
 } from "./markup.js";
 
-const OWN_KEYS = new Set(["playground", "mode", "features", "group", "load", "height", "autorun", "readonly", "persist", "theme", "file", "path", "requests", "expand", "deps", "label", "layout"]);
-const ATTRS = ["mode", "features", "height", "autorun", "readonly", "persist", "theme", "file", "path", "requests", "layout"];
+const OWN_KEYS = new Set(["playground", "mode", "features", "group", "load", "height", "autorun", "readonly", "persist", "theme", "file", "path", "requests", "expand", "deps", "label", "layout", "fast"]);
+const ATTRS = ["mode", "features", "height", "autorun", "readonly", "persist", "theme", "file", "path", "requests", "layout", "fast"];
 
 /** Splits `a b=c title="d e"` into [key, value|null] tokens; `raw` is the token as written (`{1,4-6}`, `ins={2}`). */
 interface Token {
