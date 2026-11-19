@@ -154,8 +154,8 @@ export function Header() {
           aria-pressed={ws.fast() ? "true" : "false"}
           tip={
             ws.fast()
-              ? "Fast path (experimental): browser-only projects run without an install, packages from esm.sh. Applies on the next Run. Click to turn off."
-              : "Fast path (experimental): run browser-only projects without an install, loading packages from esm.sh. Applies on the next Run. Click to turn on."
+              ? "Fast path (experimental): browser-only projects run without an install, packages from esm.sh. Their dev server (Vite) doesn't start, so no hot module replacement. Applies on the next Run. Click to turn off."
+              : "Fast path (experimental): run browser-only projects without an install, loading packages from esm.sh. Their dev server (Vite) doesn't start, so no hot module replacement. Applies on the next Run. Click to turn on."
           }
           onClick={() => ws.setFast(!ws.fast())}
         >
