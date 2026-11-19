@@ -1,7 +1,7 @@
 import { CookieJar, parseSetCookie, pathMatches, type Cookie } from "./cookieJar";
 import { PreviewCookies, dirOf, pagePath } from "./previewCookies";
 import { PANEL_COOKIE, joinCookies } from "./request";
-import { resetSyncEsm, serveModule, setCoverage, vfsRoot } from "./moduleServer";
+import { pluginAnswered, pluginWorker, resetSyncEsm, serveModule, setCoverage, vfsRoot } from "./moduleServer";
 import { watchedBy, type Watched } from "./watched";
 import { coverageOptions, isCoverageFlag, type CoverageOptions } from "./coverage/options";
 import { loadResolver, parseData } from "./resolver";
@@ -668,6 +668,9 @@ export class Runner {
   /** What any program's worker may ask, a child process's too: file changes, lazy reads, and its own children. */
   private common(worker: Worker, m: { type: string; [k: string]: any }) {
     if (m.type === "lazy-read") void serveLazyRead(this.vfs, m as never);
+    // Its runtime plugins (worker/plugins.ts): asked for the modules they make, on this channel.
+    else if (m.type === "plugins-token") pluginWorker(m.token, (msg) => worker.postMessage(msg));
+    else if (m.type === "plugin-answer") pluginAnswered(m.reply, m.answer);
     else if (m.type.startsWith("dbg-")) onDebugMessage(worker, m);
     else if (m.type === "vfs") {
       const [a, b] = m.args;

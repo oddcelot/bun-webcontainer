@@ -2,8 +2,9 @@
 //
 // The page serves the worker's modules, so it is told the plugins' filters (synchronously, before the program goes on)
 // and routes the imports they match to `__plugin/<importer>/<specifier>` (pluginRoutes.ts); for each it asks the
-// worker here over a BroadcastChannel, which runs the hooks (async ones too) and answers with source to transpile or
-// exports it keeps. `require()` runs the hooks synchronously, as Bun's does, and keeps its own instances.
+// worker here ("plugin-ask" on the worker's own channel, which reaches the content origin's workers too, where a
+// BroadcastChannel from the editor's origin wouldn't), which runs the hooks (async ones too) and answers with source to
+// transpile or exports it keeps. `require()` runs the hooks synchronously, as Bun's does, and keeps its own instances.
 import { dirname, norm } from "@runbun/vfs";
 import { pluginUrl, routesThroughPlugins, splitNamespace, type PluginAnswer, type PluginFilters } from "../pluginRoutes";
 import { ResolveMessage } from "./resolve";
@@ -30,6 +31,8 @@ export type PluginHost = {
   evalEsm(file: string, src: string): object;
   /** `require()` of a resolved file, as without plugins. */
   requireFile(path: string): unknown;
+  /** A message to the page, on the worker's own channel. */
+  post(msg: unknown): void;
 };
 
 let host: PluginHost | undefined;
@@ -67,14 +70,15 @@ function publish() {
   } catch {}
 }
 
+/** Answers the page's "plugin-ask" for this worker's plugins; tells it their token first, before it can ask. */
 function listen(): string {
   const id = crypto.randomUUID();
-  const ch = new BroadcastChannel(`runbun-plugins-${id}`);
-  ch.onmessage = async (e: MessageEvent<{ id: number; importer: string; spec: string }>) => {
+  host!.post({ type: "plugins-token", token: id });
+  self.addEventListener("message", async (e: MessageEvent<{ type?: string; token?: string; id: number; importer: string; spec: string }>) => {
     const m = e.data;
-    if (typeof m?.id !== "number" || !("spec" in m)) return;
-    ch.postMessage({ reply: m.id, answer: await serve(m.importer, m.spec) });
-  };
+    if (m?.type !== "plugin-ask" || m.token !== id) return;
+    host!.post({ type: "plugin-answer", token: id, reply: m.id, answer: await serve(m.importer, m.spec) });
+  });
   return id;
 }
 
