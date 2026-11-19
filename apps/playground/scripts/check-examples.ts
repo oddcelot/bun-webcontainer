@@ -7,6 +7,8 @@
 //   bun scripts/check-examples.ts starter-react   only these
 //   bun scripts/check-examples.ts --preview ...   against a production build (dist-check/, vite preview): what
 //                                                 runbun.dev serves, with Vite's worker chunks and inlined assets
+//   bun scripts/check-examples.ts --split ...     project code on its own origin (run.runbun.localhost), as on
+//                                                 run.runbun.dev: what crosses from the editor's origin to it
 // Chrome: CHROME=<path to the binary>, else the usual install on macOS or Linux.
 import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -21,7 +23,12 @@ const SETTLE_WITHIN = 90_000;
 const STEADY_FOR = 2_000;
 
 const preview = process.argv.includes("--preview");
-const only = process.argv.slice(2).filter((a) => a !== "--preview");
+const split = process.argv.includes("--split");
+if (preview && split) {
+  console.error("--split runs on the dev server: not with --preview");
+  process.exit(1);
+}
+const only = process.argv.slice(2).filter((a) => a !== "--preview" && a !== "--split");
 const names = readdirSync(join(app, "examples"))
   .filter((d) => existsSync(join(app, "examples", d, "package.json")))
   .filter((d) => !only.length || only.includes(d))
@@ -55,7 +62,12 @@ const vite = Bun.spawn(["bunx", "vite", ...viteArgs, "--port", String(PORT), "--
   stdout: "pipe",
   stderr: "pipe",
   // Its own optimized-deps cache, so a dev server you have running isn't disturbed (vite.config.ts cacheDir).
-  env: { ...process.env, VITE_CACHE_DIR: join(app, "node_modules/.vite-check") },
+  env: {
+    ...process.env,
+    VITE_CACHE_DIR: join(app, "node_modules/.vite-check"),
+    // The same server under two hosts: a different origin, the same site, as runbun.dev and run.runbun.dev are.
+    ...(split && { VITE_CONTENT_ORIGIN: `http://run.runbun.localhost:${PORT}`, VITE_EDITOR_ORIGINS: `http://runbun.localhost:${PORT}` }),
+  },
 });
 const profile = mkdtempSync(join(tmpdir(), "check-examples-"));
 let failed = 0;
@@ -72,10 +84,12 @@ try {
       const crashes: string[] = [];
       page.on("pageerror", (e) => crashes.push(e instanceof Error ? e.message : String(e)));
       const started = Date.now();
-      await page.goto(`http://localhost:${PORT}/?example=${name === "demo" ? "" : name}`, { waitUntil: "domcontentloaded" });
+      await page.goto(`http://${split ? "runbun.localhost" : "localhost"}:${PORT}/?example=${name === "demo" ? "" : name}`, { waitUntil: "domcontentloaded" });
       const status = await settled(page);
       const ms = Date.now() - started;
-      const bad = !status || status.state === "error" || crashes.length;
+      // A start that timed out leaves the program running (it may still come up), so the status doesn't show it.
+      const timedOut = await page.evaluate(() => document.querySelector(".xterm-rows")?.textContent?.includes("worker start timed out") ?? false);
+      const bad = !status || status.state === "error" || crashes.length || timedOut;
       if (bad) failed++;
       console.log(`${bad ? "✗" : "✓"} ${name}: ${status ? status.text : "didn't settle"} (${(ms / 1000).toFixed(1)} s)`);
       if (bad) {
