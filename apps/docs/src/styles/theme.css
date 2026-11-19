@@ -84,6 +84,11 @@ html:root[data-theme] {
   --sl-color-hairline-shade: var(--border);
 }
 
+/* The scrollbar keeps its room when the page can't scroll (the open menu or search stops it; a short page): nothing shifts. */
+:root {
+  scrollbar-gutter: stable;
+}
+
 /* Link text uses the darker accent-high in the light scheme: the mid accent is under 4.5:1 on the cream. */
 :root[data-theme="light"] {
   --sl-color-gray-7: color-mix(in srgb, var(--panel) 50%, var(--bg));
