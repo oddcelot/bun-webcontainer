@@ -159,12 +159,38 @@ site-search button[data-open-modal],
     color: var(--on-brand);
   }
 }
-/* The search key's shortcut hint, flat on its face. */
-site-search button[data-open-modal] kbd {
+/*
+ * Keys (<kbd>: the search shortcut, the shortcuts in the guides) as small keycaps: the pixel face in a notched frame
+ * on a short shadow, at 2px a pixel so they fit a line of text. Keys nested in one (Starlight's search shortcut) are
+ * its label. The search key's sits at the end of its face, in the panel color.
+ */
+kbd {
+  --_k: 2px;
+
+  margin-inline: calc(2 * var(--_k));
+  padding: 0 0.35em;
+  border: 0;
   border-radius: 0;
+  background: var(--code-bg);
+  box-shadow:
+    0 calc(-1 * var(--_k)) 0 0 var(--ink),
+    calc(-1 * var(--_k)) 0 0 0 var(--ink),
+    var(--_k) 0 0 0 var(--ink),
+    0 calc(2 * var(--_k)) 0 0 var(--ink);
+  color: var(--fg);
+  font: 600 0.8125em/1.4 var(--font-pixel);
+  white-space: nowrap;
+}
+kbd kbd {
+  margin: 0;
+  padding: 0;
+  background: none;
+  box-shadow: none;
+  font: inherit;
+}
+site-search button[data-open-modal] > kbd {
+  margin-inline: auto 0;
   background: var(--panel);
-  font-family: var(--font-mono);
-  font-weight: 400;
 }
 
 /* The scheme switch (components/ThemeSelect.astro): the moon by day, the sun by night, as on the landing page. */
