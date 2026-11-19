@@ -5,6 +5,8 @@
 // the submodule to a new commit, and after a Bun upgrade.
 //   bun scripts/check-examples.ts                 all of them
 //   bun scripts/check-examples.ts starter-react   only these
+//   bun scripts/check-examples.ts --preview ...   against a production build (dist-check/, vite preview): what
+//                                                 runbun.dev serves, with Vite's worker chunks and inlined assets
 // Chrome: CHROME=<path to the binary>, else the usual install on macOS or Linux.
 import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -18,7 +20,8 @@ const SETTLE_WITHIN = 90_000;
 /** How long the status must hold still to count as settled (installs and runs follow each other). */
 const STEADY_FOR = 2_000;
 
-const only = process.argv.slice(2);
+const preview = process.argv.includes("--preview");
+const only = process.argv.slice(2).filter((a) => a !== "--preview");
 const names = readdirSync(join(app, "examples"))
   .filter((d) => existsSync(join(app, "examples", d, "package.json")))
   .filter((d) => !only.length || only.includes(d))
@@ -36,8 +39,18 @@ if (!chrome) {
   process.exit(1);
 }
 
+// A production build, without runbun.dev's content origin (project code runs on this one, as in dev).
+if (preview) {
+  const env = { ...process.env, VITE_CONTENT_ORIGIN: "", VITE_EDITOR_ORIGINS: "" };
+  for (const cmd of [["bun", "scripts/copy-wasm.ts", "--strip"], ["bunx", "tsrs", "-p", "tsconfig.sw.json"], ["bunx", "vite", "build", "--outDir", "dist-check"]]) {
+    const r = Bun.spawnSync(cmd, { cwd: app, env, stdout: "inherit", stderr: "inherit" });
+    if (r.exitCode) process.exit(r.exitCode);
+  }
+}
+
 // Its output only matters if it doesn't start (it forwards the page's console warnings otherwise).
-const vite = Bun.spawn(["bunx", "vite", "--port", String(PORT), "--strictPort"], {
+const viteArgs = preview ? ["preview", "--outDir", "dist-check"] : [];
+const vite = Bun.spawn(["bunx", "vite", ...viteArgs, "--port", String(PORT), "--strictPort"], {
   cwd: app,
   stdout: "pipe",
   stderr: "pipe",
