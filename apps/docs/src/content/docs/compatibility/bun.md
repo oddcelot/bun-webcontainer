@@ -409,6 +409,7 @@ The rest of the table rows above, in the same order.
 - The head goes out with the stream's first chunk (or its end), as from Bun: until then the client waits.
 - A stream that fails before then drops the connection, so a `fetch` from the program rejects (`ECONNRESET`) and the preview page gets a network error.
 - A later failure ends the body with that error.
+- An HTML page streams into the preview as well: a server-rendered page sent in parts (streamed SSR) shows in parts.
 
 ### Response headers
 What Bun adds:
