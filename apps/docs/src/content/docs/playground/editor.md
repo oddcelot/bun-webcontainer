@@ -12,6 +12,8 @@ The editor is where you write the project's files, with a file tree, tabs and a 
 
   CSS in a `css` tagged template and HTML in an `html` one (Lit, styled-components) are highlighted as CSS and HTML, and the CSS gets hovers, completions and warnings (an unknown property, an empty rule) as in a stylesheet.
 
+  [ReactiveScript](https://github.com/solidjs/reactivescript) files (`.rx`) are highlighted with the grammar of its VS Code extension; they get no completions or type errors.
+
   Each file keeps its undo history while the page is open: switching tabs and back, or renaming the file, doesn't lose it. A file changed outside the editor (by your program, or in an opened folder by another editor) starts a fresh history.
 
   </details>

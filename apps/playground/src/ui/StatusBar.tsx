@@ -25,6 +25,7 @@ const LANGUAGES: Record<string, string> = {
   mjs: "JavaScript",
   cjs: "JavaScript",
   jsx: "JavaScript JSX",
+  rx: "ReactiveScript",
   json: "JSON",
   jsonc: "JSON with Comments",
   toml: "TOML",

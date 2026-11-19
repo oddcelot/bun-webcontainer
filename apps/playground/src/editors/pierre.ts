@@ -21,6 +21,17 @@ registerCustomLanguage("tsx", withTags(() => import("@shikijs/langs/tsx")));
 registerCustomLanguage("javascript", withTags(() => import("@shikijs/langs/javascript")));
 registerCustomLanguage("jsx", withTags(() => import("@shikijs/langs/jsx")));
 
+// ReactiveScript (.rx): upstream's TextMate grammar (rx.tmLanguage.json, from solidjs/reactivescript tooling/vscode-rx at
+// eab7356, MIT) layers `source`, `component`, … over source.tsx and embeds source.css in <style>. Loaded with TSX (and its tags) and CSS.
+registerCustomLanguage(
+  "rx",
+  async () => {
+    const [{ default: tsx }, { default: css }, { default: rx }] = await Promise.all([withTags(() => import("@shikijs/langs/tsx"))(), import("@shikijs/langs/css"), import("./rx.tmLanguage.json")]);
+    return { default: [...tsx, ...css, { ...rx, name: "rx" } as (typeof tsx)[number]] };
+  },
+  ["rx"],
+);
+
 // Lucide's circle-x and triangle-alert, drawn in the severity's color (the popover is in a shadow root, where the page's icon classes don't apply).
 const ICONS = {
   error: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6M9 9l6 6"/></svg>',
