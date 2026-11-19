@@ -34,7 +34,7 @@ Built-ins import with or without the `node:` prefix. Labels are explained on the
 | `https` | 🟡 Partial | Like `http`, including `https.request`/`https.get` (the browser does the TLS); a server has no TLS. |
 | `http2` | ⚪ Stub | |
 | `inspector` | ⚪ Stub | `Session` answers `Runtime.enable` and `Profiler.enable` as Bun does; no profiler or debugger. [Details](#inspector) |
-| `module` | 🟡 Partial | `builtinModules`, `isBuiltin` and `createRequire` work; `require()` of an ES module has limits. [Details](#module) |
+| `module` | 🟡 Partial | `builtinModules`, `isBuiltin`, `createRequire` and `SourceMap` work; `require()` of an ES module has limits. [Details](#module) |
 | `net` | ⚪ Stub | `isIP*` works; no sockets. |
 | `os` | 🟡 Partial | Fixed values: Linux, x64, `/home/user`, `/tmp`, and Linux's `constants`. `cpus()` and `networkInterfaces()` are empty. |
 | `path`, `path/posix` | ✅ Works | POSIX only. `path.win32` behaves like POSIX; `path/win32` is missing. |
@@ -215,6 +215,7 @@ Works:
 - `builtinModules`, `isBuiltin`.
 - `createRequire` loads built-ins, project files and installed packages with Bun's resolver, computed specifiers too, and has `require.resolve`, `require.cache` and `require.main`.
 - `require()` of an ES module loads it synchronously, with limits (see [Toolchain](/compatibility/toolchain/#commonjs-and-require)).
+- `SourceMap`: `findEntry` as in Bun (the segment at or before a position on its line), `findOrigin`, `payload`, `lineLengths`. Index maps (`sections`) are not read.
 
 ### `process`
 
