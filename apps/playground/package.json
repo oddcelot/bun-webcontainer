@@ -29,7 +29,6 @@
     "@rolldown/browser": "1.2.19",
     "@runbun/embed": "workspace:*",
     "@runbun/vfs": "workspace:*",
-    "@shikijs/langs": "4.6.0",
     "@solid-primitives/storage": "5.0.0",
     "@solidjs/babel-plugin": "2.0.1",
     "@solidjs/web": "catalog:",
