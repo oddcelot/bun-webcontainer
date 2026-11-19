@@ -66,6 +66,17 @@ test("random_get fills a shared memory too (a threaded program's)", () => {
   }
 });
 
+test("a path is read from a shared memory too (browsers' TextDecoder refuses a shared view)", () => {
+  const memory = new WebAssembly.Memory({ initial: 3, maximum: 3, shared: true });
+  const vfs = new VFS();
+  vfs.write("/a.txt", "hello");
+  const w = createWasi(vfs, { args: ["t"], stdout: () => {}, stderr: () => {} }, () => memory).wasi as Record<string, (...a: number[]) => number>;
+  const name = enc.encode("a.txt");
+  new Uint8Array(memory.buffer, 1024, name.length).set(name);
+  assert.equal(w.path_filestat_get(3, 0, 1024, name.length, 2048), 0);
+  assert.equal(new DataView(memory.buffer).getBigUint64(2048 + 32, true), 5n);
+});
+
 test("prestat: fd 3 is `/`, fd 4 is not a preopen", () => {
   const t = setup();
   assert.equal(t.w.fd_prestat_get(3, t.RES), 0);
