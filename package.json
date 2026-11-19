@@ -45,7 +45,8 @@
     "@solid-primitives/utils": "7.0.0"
   },
   "patchedDependencies": {
-    "@kobalte/core@2.0.0-alpha.4": "patches/npm/@kobalte%2Fcore@2.0.0-alpha.4.patch"
+    "@kobalte/core@2.0.0-alpha.4": "patches/npm/@kobalte%2Fcore@2.0.0-alpha.4.patch",
+    "@pierre/diffs@1.6.4": "patches/npm/@pierre%2Fdiffs@1.6.4.patch"
   },
   "devDependencies": {
     "@types/bun": "1.4.4",
