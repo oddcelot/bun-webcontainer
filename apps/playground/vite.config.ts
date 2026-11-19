@@ -411,7 +411,7 @@ export default defineConfig(({ mode }) => ({
     // @babel/types (under @solidjs/babel-plugin, the fast path's Solid 2 JSX) reads this as it loads; a page has no `process`.
     "process.env.BABEL_TYPES_8_BREAKING": "false",
   },
-  plugins: [examplesSubmodule(), configSchema(), UnoCSS(), solid(), hostPackageNames(), emnapiNotNode(), pgliteNotNode(), docsLink(docsUrl(mode)), embedRoutes(), originHeaders(), serviceWorker(), workerRoutesDev(), thirdPartyLicenses()],
+  plugins: [examplesSubmodule(), configSchema(), UnoCSS(), solid({ exclude: ["examples/**", "fixtures/**"] }), hostPackageNames(), emnapiNotNode(), pgliteNotNode(), docsLink(docsUrl(mode)), embedRoutes(), originHeaders(), serviceWorker(), workerRoutesDev(), thirdPartyLicenses()],
   build: {
     target: "esnext",
     rollupOptions: {
