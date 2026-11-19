@@ -537,3 +537,55 @@ h1,
     translate: none;
   }
 }
+
+/* Detail on demand: a <details> whose summary is the line to read when skimming. Starlight draws the chevron and the
+   rule down the side; the summary reads as body text (its own <strong> carries the name), the rule in the theme's ink. */
+.sl-markdown-content details {
+  --sl-details-border-color: var(--shade);
+  --sl-details-border-color--hover: var(--brand);
+
+  border-inline-start-width: calc(2 * var(--px));
+
+  > summary {
+    color: inherit;
+    font-weight: inherit;
+
+    &:hover::before,
+    &:focus-visible::before {
+      color: var(--brand);
+    }
+  }
+
+  &[open] > summary {
+    margin-bottom: 0.5rem;
+  }
+}
+
+/* A list item that folds its detail: the chevron stands where the bullet would, so folding and plain items line up
+   and the text of a wrapped summary hangs clear of it. */
+.sl-markdown-content li:has(> details:only-child) {
+  list-style: none;
+
+  > details {
+    padding-inline-start: 0;
+    border-inline-start: 0;
+
+    > summary {
+      position: relative;
+      margin-inline-start: -1.5rem;
+      padding-inline-start: 1.5rem;
+
+      &::before {
+        position: absolute;
+        inset-block-start: 0.2em;
+        inset-inline-start: 0;
+        margin: 0;
+      }
+    }
+
+    /* Open, the detail is set off by the rule instead: it starts under the summary's text. */
+    &[open] > :not(summary) {
+      margin-inline-start: 0.25rem;
+    }
+  }
+}
