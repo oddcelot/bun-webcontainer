@@ -58,7 +58,7 @@ const current = sidebar.find(hasCurrent) ?? sidebar[0];
 <style>
   /*
    * The sections as keys, like the landing page's buttons (styles/theme.css): a card's face in the pixel frame, on a
-   * shadow; the current section is pink and pressed into its shadow.
+   * shadow it sinks into while pressed; the current section is pink, in line with the others.
    */
   .sections {
     --_frame:
@@ -86,8 +86,7 @@ const current = sidebar.find(hasCurrent) ?? sidebar[0];
         outline-offset: calc(2 * var(--px));
       }
 
-      &:active .button,
-      &[aria-current="true"] .button {
+      &:active .button {
         translate: 0 calc(2 * var(--px));
         box-shadow: var(--_frame);
       }
