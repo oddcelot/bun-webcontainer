@@ -45,7 +45,7 @@ The playground uses these when the browser has them and works without them.
 | Storage Buckets | Keeps saved projects in their own bucket, which the browser evicts and persists apart from other site data. | Projects share the site's default storage, and the playground trims its caches to keep them small. | ✅ | ❌ | ❌ |
 | `navigator.storage.persist()` | Asks the browser not to evict saved projects. | Saved projects can be cleared when disk space runs low. | ✅ | ✅ | ✅ |
 | Web Locks | Only one tab saves a project at a time. | Two tabs with the same project overwrite each other's saves. | ✅ | ✅ | ✅ |
-| Cross-origin isolation (`COEP: credentialless`) | The site sends `COOP: same-origin` and `COEP: credentialless`. A program can then wait in place: the [debugger](/guides/features/#debugger) pauses it this way. | Safari ignores `credentialless` and isn't isolated; the playground still runs, without the Debug button. | ✅ | ✅ | ❌ |
+| Cross-origin isolation (`COEP: credentialless`) | The site sends `COOP: same-origin` and `COEP: credentialless`. A program can then wait in place: the [debugger](/playground/running-code/#debugger) pauses it this way. | Safari ignores `credentialless` and isn't isolated; the playground still runs, without the Debug button. | ✅ | ✅ | ❌ |
 
 ## Embeds
 

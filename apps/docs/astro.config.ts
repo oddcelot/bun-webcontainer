@@ -52,7 +52,7 @@ export default defineConfig({
           details: `- The playground is at ${PLAYGROUND_URL}. A project can be shared as a link that carries its files in the URL's hash; the guide "Reproduce a bug with an agent" shows how to build one.
 - The compatibility pages say what works: each API or feature is marked Works, Partial, Stub, Missing or Untested.
 - Code runs in the browser engine, not in Bun's JavaScriptCore, so some APIs behave differently or are missing; check the compatibility pages before assuming a Bun API works.`,
-          promote: ["index*", "guides/**"],
+          promote: ["index*", "guides/**", "playground/**"],
         }),
       ],
       favicon: "/favicon.svg",
@@ -110,6 +110,8 @@ export default defineConfig({
       sidebar: [
         // The home page is the overview, first among the guides.
         { label: "Guides", items: [{ label: "Overview", link: "/" }, { autogenerate: { directory: "guides" } }] },
+        // What the playground does, area by area; guides/features.md is the tour that links into these.
+        { label: "Playground", items: [{ autogenerate: { directory: "playground" } }] },
         { label: "Examples", items: [{ autogenerate: { directory: "examples" } }] },
         { label: "Reference", items: [{ autogenerate: { directory: "reference" } }] },
         { label: "Compatibility", items: [{ autogenerate: { directory: "compatibility" } }] },
