@@ -5,6 +5,7 @@
 target/
 dist/
 dist-canary/
+dist-check/
 node_modules/
 
 # Copied in by apps/playground/scripts/copy-wasm.ts
