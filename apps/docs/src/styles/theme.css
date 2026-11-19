@@ -121,6 +121,8 @@ html:root[data-theme] {
  */
 .open-playground,
 site-search button[data-open-modal],
+.sl-menu-button,
+mobile-starlight-toc .toggle,
 .sl-link-button {
   --_frame:
     0 calc(-1 * var(--px)) 0 0 var(--ink),
@@ -191,6 +193,59 @@ kbd kbd {
 site-search button[data-open-modal] > kbd {
   margin-inline: auto 0;
   background: var(--panel);
+}
+
+/*
+ * The narrow layout's controls are keys too (Starlight draws a round menu button and rounded boxes): the menu button
+ * and the search key, shrunk to its icon, are squares of one size; both stay down while what they open is open, as
+ * the "On this page" toggle does. Its list drops out of the bar on the offset shadow.
+ */
+:root {
+  --sl-menu-button-size: 2.25rem;
+}
+.sl-menu-button {
+  /* Starlight centers a round button; the key's shadow hangs under it. */
+  top: calc((var(--sl-nav-height) - var(--sl-menu-button-size)) / 2 - var(--px) - 0.5px);
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 1.125rem;
+
+  &:has(~ :popover-open) {
+    translate: 0 calc(2 * var(--px));
+    background: var(--key-hover);
+    box-shadow: var(--_frame);
+    color: var(--fg);
+  }
+}
+@media (max-width: 49.99rem) {
+  site-search button[data-open-modal] {
+    justify-content: center;
+    width: var(--sl-menu-button-size);
+    height: var(--sl-menu-button-size);
+    margin-bottom: calc(2 * var(--px));
+    padding: 0;
+    font-size: 1.125rem;
+  }
+}
+mobile-starlight-toc {
+  .toggle {
+    /* The shadow hangs under the key: the two are centered in the bar together. */
+    margin-bottom: calc(2 * var(--px));
+    padding-block: 0.4rem;
+    font-size: 0.875rem;
+  }
+  details[open] .toggle {
+    translate: 0 calc(2 * var(--px));
+    background: var(--key-hover);
+    box-shadow: var(--_frame);
+  }
+  .dropdown {
+    border-inline: 0;
+    border-bottom: var(--px) solid var(--ink);
+    background: var(--panel);
+    box-shadow: 0 calc(2 * var(--px)) 0 0 var(--shade);
+  }
 }
 
 /* The scheme switch (components/ThemeSelect.astro): the moon by day, the sun by night, as on the landing page. */
