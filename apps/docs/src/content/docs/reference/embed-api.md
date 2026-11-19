@@ -240,6 +240,7 @@ The poster (shown until the embed is ready) is styled by CSS custom properties s
 | `--play-bg`, `--play-fg` | The Run button's background and text; `--play-bg` also colors the spinner shown while the embed starts | `ButtonFace`, `ButtonText` |
 | `--play-bg-hover` | The Run button's background on hover | `--play-bg` mixed 15% toward `--play-fg` |
 | `--play-border`, `--play-radius`, `--play-font` | The Run button's border color, corner radius and font | `GrayText`, `6px`, inherited |
+| `--play-idle-opacity` | The Run button's opacity until the pointer is over the element or the keyboard reaches the button; `0` shows it only then. Pointers that can't hover (touch) always get the button | `1` |
 
 If the embed isn't ready after 60 seconds, the spinner turns back into the button, as "Try again".
 
