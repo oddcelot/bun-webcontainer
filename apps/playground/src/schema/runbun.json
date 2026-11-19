@@ -32,6 +32,10 @@
       "type": "boolean",
       "description": "Run once opened (default true). Code from a shared link or a GitHub repo always waits for the reader's Run."
     },
+    "fastPath": {
+      "type": "boolean",
+      "description": "false: never run on the fast path, even with the reader's Fast path toggle on. For a project whose program must run, such as a dev server with hot module replacement."
+    },
     "env": {
       "type": "object",
       "additionalProperties": { "type": ["string", "number", "boolean"] },

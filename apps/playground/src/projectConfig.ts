@@ -26,6 +26,8 @@ export type ProjectConfig = {
   run?: { entry: string; args: string[] };
   /** Run once opened (default: yes). Ignored for code from a link, which waits for the reader's Run. */
   autorun?: boolean;
+  /** `false`: never the fast path (fastPath.ts), even with the reader's toggle on; for a project whose dev server must run. */
+  fastPath?: boolean;
   /** `process.env` for the program, over the defaults. Not for secrets: the file is shared with the project. */
   env?: Record<string, string>;
   /** The files opened as tabs, in order; the first is shown. */
@@ -79,7 +81,7 @@ export function readConfig(read: (path: string) => string | undefined, problems:
   const c: ProjectConfig = {};
   const bad = (field: string, want: string) => problems.push(`${CONFIG_FILE}: "${field}" must be ${want}, ignored`);
   for (const key of Object.keys(r))
-    if (!["$schema", "name", "description", "kind", "tags", "run", "autorun", "env", "open", "hidden", "readonly", "panels", "layout", "sizes", "preview", "requires"].includes(key)) problems.push(`${CONFIG_FILE}: unknown field "${key}"`);
+    if (!["$schema", "name", "description", "kind", "tags", "run", "autorun", "fastPath", "env", "open", "hidden", "readonly", "panels", "layout", "sizes", "preview", "requires"].includes(key)) problems.push(`${CONFIG_FILE}: unknown field "${key}"`);
 
   if (r.name !== undefined) typeof r.name === "string" && r.name ? (c.name = r.name) : bad("name", "a string");
   if (r.description !== undefined) typeof r.description === "string" ? (c.description = r.description) : bad("description", "a string");
@@ -92,6 +94,7 @@ export function readConfig(read: (path: string) => string | undefined, problems:
     else c.run = { entry: bare(run.entry), args: run.args ?? [] };
   }
   if (r.autorun !== undefined) typeof r.autorun === "boolean" ? (c.autorun = r.autorun) : bad("autorun", "true or false");
+  if (r.fastPath !== undefined) typeof r.fastPath === "boolean" ? (c.fastPath = r.fastPath) : bad("fastPath", "true or false");
   if (r.env !== undefined) {
     const env = r.env as Record<string, unknown>;
     if (typeof env !== "object" || env === null || Array.isArray(env)) bad("env", "an object of strings");

@@ -17,6 +17,8 @@ const cases: [string, string | undefined, ProjectConfig, number?][] = [
   ["card of the wrong shape", '{ "name": "", "description": 1, "kind": "demo", "tags": "Elysia" }', {}, 4],
   ["run",'{ "run": { "entry": "./src/a.ts", "args": ["-v"] } }', { run: { entry: "src/a.ts", args: ["-v"] } }],
   ["run without entry", '{ "run": { "args": [] } }', {}, 1],
+  ["fastPath", '{ "fastPath": false }', { fastPath: false }],
+  ["fastPath not a boolean", '{ "fastPath": "off" }', {}, 1],
   ["env coerces scalars, drops the rest", '{ "env": { "A": "x", "N": 1, "B": true, "O": {} } }', { env: { A: "x", N: "1", B: "true" } }],
   ["readonly: files and folders", '{ "readonly": ["./bun.lock", "vendor/", "/"] }', { readonly: ["bun.lock", "vendor"] }],
   ["readonly not a list", '{ "readonly": "bun.lock" }', {}, 1],
