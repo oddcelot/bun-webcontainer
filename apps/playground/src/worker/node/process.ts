@@ -107,6 +107,11 @@ const process: Record<string, any> = Object.assign(new EventEmitter(), {
   version: "v24.3.0",
   versions: { node: "24.3.0", bun: `${BUN_VERSION}-browser`, v8: "13.6.233.10-node.18", uv: "1.51.0", modules: "137" },
   release: { name: "node", lts: "Krypton" },
+  // As on glibc Linux. A native package's loader (napi-rs) reads the libc here, and runs `ldd --version` when it can't.
+  report: {
+    excludeNetwork: false,
+    getReport: () => ({ header: { platform: "linux", arch: "x64", nodejsVersion: "v24.3.0", glibcVersionRuntime: "2.39", glibcVersionCompiler: "2.39" }, sharedObjects: [] as string[] }),
+  },
   features: {},
   config: { variables: {} },
   exitCode: undefined as number | undefined,
