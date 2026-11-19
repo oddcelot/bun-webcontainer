@@ -1,6 +1,6 @@
 {
   "name": "@runbun/embed",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "<bun-playground>: a custom element that embeds a runnable Bun playground (runbun.dev) in any page.",
   "type": "module",
   "license": "MIT",

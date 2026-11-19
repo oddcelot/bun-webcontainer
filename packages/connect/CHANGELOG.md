@@ -4,6 +4,14 @@ Notable changes per release of `@runbun/connect`, the local runner for runbun.de
 `connect-v<version>` and has a GitHub Release with its section. The runner talks to the playground over its own
 protocol (`src/protocol.ts`); the deployed runbun.dev and the runner from npm can differ in version.
 
+## 0.5.0 — 2026-11-19
+
+The runner passes more of `bun test`'s flags to Bun: `-t`, `--timeout`, `--bail`, `--rerun-each`, `--todo` and
+`--only`. Nothing needs action to upgrade; older runners ignore the flags.
+
+- **Added** — **`bun test -t`, `--timeout`, `--bail`, `--rerun-each`, `--todo` and `--only` run natively.** The runner
+  passes them to the Bun it runs; before, a page could not send them.
+
 ## 0.4.0 — 2026-11-18
 
 `bun test --coverage` works with Local Bun: the runner passes the coverage flags to Bun and sends the `lcov.info` back

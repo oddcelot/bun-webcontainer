@@ -3,6 +3,14 @@
 Notable changes per release of `@runbun/astro`. Each release is tagged `astro-v<version>` and has a GitHub Release
 with its section.
 
+## 0.6.0 — 2026-11-19
+
+A `fast` meta word puts a runnable block on the embed's fast path, so a browser-only example previews without an
+install. Nothing needs action to upgrade.
+
+- **Added** — **A `fast` meta word turns on the embed's fast path.** A fence such as `tsx playground mode=preview fast`
+  runs a browser-only example without an install.
+
 ## 0.5.0 — 2026-11-16
 
 Static blocks look more like the live embed: tabbed groups and a poster's request tabs take the page's `--tab-*`

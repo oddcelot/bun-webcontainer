@@ -4,6 +4,18 @@ Notable changes per release of `@runbun/embed`. Each release is tagged `embed-v<
 with its section. The element talks to the playground deployed at runbun.dev over the embed protocol (version 1),
 which only grows, so any release works with the live playground.
 
+## 0.9.0 — 2026-11-19
+
+`<bun-playground fast>` runs browser-only projects without an install, and the Run button can stay out of the way
+until the reader points at the embed. runbun.dev's `embed.js` gets both with the next deploy. Nothing needs action.
+
+- **Added** — **`<bun-playground fast>` runs browser-only projects without an install.** The embed loads their packages
+  from esm.sh through an import map, so the preview shows up sooner.
+- **Added** — **`--play-idle-opacity` shows the Run button only on hover or focus.** Set it to `0` to keep the button
+  off the poster's code until the pointer is over the embed; touch screens always show it.
+- **Fixed** — **The Run button no longer covers a scrollbar.** Over code too wide for the block, the button sat on the
+  horizontal scrollbar under it.
+
 ## 0.8.0 — 2026-11-16
 
 A host can tell an install's changes from the reader's, and an embed that can't start says so at once. runbun.dev's
