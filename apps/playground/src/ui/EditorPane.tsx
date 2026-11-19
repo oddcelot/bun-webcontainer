@@ -10,6 +10,7 @@ import { chordKeys, keysFor, matches } from "../keymap";
 import type { CodeEditor, EditorLocation } from "../editors/types";
 import { asConsoleEntry, errorLocation, fmt } from "../fmt";
 import { complete, definition, hover, readTypes, resolveCompletion, signatureHelp, TYPED } from "../typecheck";
+import { RX } from "../typecheck/rx";
 import { debugSession } from "../debugSession";
 import { AppContext } from "./context";
 import { guarded } from "./guarded";
@@ -44,6 +45,8 @@ export function EditorPane(props: { start?: JSX.Element; end?: JSX.Element }) {
   let timer: ReturnType<typeof setTimeout> | undefined;
   /** A project file the type checker answers for (a read-only declaration tab isn't one: it's not in the project). */
   const typed = (file: string) => TYPED.test(file) && has("types") && ws.readOnlyText(file) === undefined;
+  // A ReactiveScript module: hovers and definitions through its TSX projection (typecheck/rx.ts), no completions.
+  const rx = (file: string) => RX.test(file) && has("types") && ws.readOnlyText(file) === undefined;
   // Schema hints for .json files (runbun.json, or one naming its $schema), with type hints.
   const json = (file: string) => JSON_FILE.test(file) && has("types") && ws.readOnlyText(file) === undefined;
   // CSS hints in a JS/TS file's css`…` templates (cssTemplates.ts), with type hints: the template at a position, if any.
@@ -79,7 +82,7 @@ export function EditorPane(props: { start?: JSX.Element; end?: JSX.Element }) {
 
   /** Moves to where the name at `line`/`column` of `file` is declared, opening that file's tab if it's another. */
   async function goToDefinition(file: string, line: number, column: number) {
-    if (!typed(file) || !editor) return;
+    if (!(typed(file) || rx(file)) || !editor) return;
     const [to] = await definition(vfs, file, editor.getText(), line, column);
     if (!to || file !== current) return;
     if (to.path === current) return editor.reveal(to.line, to.column);
@@ -154,7 +157,7 @@ export function EditorPane(props: { start?: JSX.Element; end?: JSX.Element }) {
           if (!editor) return null;
           const text = editor.getText();
           const css = cssAt(file, text, line, column);
-          return css ? cssHover(text, css, line, column) : typed(file) ? hover(vfs, file, text, line, column) : json(file) ? jsonHover(file, text, line, column) : null;
+          return css ? cssHover(text, css, line, column) : typed(file) || rx(file) ? hover(vfs, file, text, line, column) : json(file) ? jsonHover(file, text, line, column) : null;
         },
         complete: async (file, line, column, trigger) => {
           if (!editor) return null;
