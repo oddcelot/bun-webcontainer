@@ -404,8 +404,9 @@ export function createWasi(vfs: WasiVfs, opts: Opts, getMemory: () => WebAssembl
       return 0;
     },
     random_get(ptr: number, len: number) {
-      // getRandomValues takes at most 64 KiB per call
-      for (let i = 0; i < len; i += 65536) crypto.getRandomValues(u8(ptr + i, Math.min(65536, len - i)));
+      // getRandomValues takes at most 64 KiB per call, and refuses a view of a shared memory (a threaded program's:
+      // wasm32-wasip1-threads, as napi-rs builds its bindings), so the bytes are made in a buffer of their own.
+      for (let i = 0; i < len; i += 65536) u8(ptr + i, Math.min(65536, len - i)).set(crypto.getRandomValues(new Uint8Array(Math.min(65536, len - i))));
       return 0;
     },
     proc_exit(code: number): never {

@@ -55,6 +55,17 @@ function setup(files: Record<string, string> = {}, preopens?: [string, string][]
 const tests: [string, () => void | Promise<void>][] = [];
 const test = (name: string, fn: () => void | Promise<void>) => tests.push([name, fn]);
 
+test("random_get fills a shared memory too (a threaded program's)", () => {
+  for (const shared of [false, true]) {
+    const memory = new WebAssembly.Memory({ initial: 3, maximum: 3, shared });
+    const w = createWasi(new VFS(), { args: ["t"], stdout: () => {}, stderr: () => {} }, () => memory).wasi as Record<string, (...a: number[]) => number>;
+    // More than one 64 KiB chunk.
+    assert.equal(w.random_get(16, 100_000), 0);
+    const bytes = new Uint8Array(memory.buffer, 16, 100_000);
+    assert.ok(bytes.subarray(0, 64).some((b) => b !== 0) && bytes.subarray(-64).some((b) => b !== 0));
+  }
+});
+
 test("prestat: fd 3 is `/`, fd 4 is not a preopen", () => {
   const t = setup();
   assert.equal(t.w.fd_prestat_get(3, t.RES), 0);

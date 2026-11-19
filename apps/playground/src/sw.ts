@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 // Built to <base>sw.js as one classic script (vite.config.ts serviceWorker). Page-side code lives in swPage.ts.
 import { previewBridge, previewColorScheme, previewWebSocket } from "#sw-page";
+import { injectScripts, injectScriptsInStream } from "./previewInject";
 import { HEADERS_HEADER, PANEL_COOKIE, mergeHeaders, unpackHeaders } from "./request";
 
 declare const self: ServiceWorkerGlobalScope;
@@ -347,18 +348,18 @@ async function servePreview(req: Request, url: URL, path?: string, ownerId = pre
     out = null;
     stream.cancel().catch(() => {});
   } else if (headers.get("content-type")?.startsWith("text/html")) {
-    // The preview scripts go into <head>, so an HTML page is read whole first.
-    out = withPreviewScripts(await new Response(stream).text(), base, editor);
+    // The preview scripts go into <head> as the page streams by (previewInject.ts): a page the server sends in
+    // parts (streamed SSR) shows in parts.
+    out = injectScriptsInStream(stream, previewScripts(base, editor));
     headers.delete("content-length");
   } else if (editor && req.mode === "navigate" && req.destination === "iframe" && /[/+]json\b|^text\/plain\b/.test(headers.get("content-type") ?? "")) {
     // A frame that follows a link to JSON or text: the editor can't read its document (another origin), so the page is
     // a wrapper that tells it what came (previewBridge reads the metas and the <pre>).
     const type = headers.get("content-type")!;
     const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
-    out = withPreviewScripts(
+    out = injectScripts(
       `<!doctype html><meta charset="utf-8"><meta name="runbun-type" content="${esc(type)}"><meta name="runbun-status" content="${head.status}"><meta name="color-scheme" content="light dark"><pre style="white-space: pre-wrap">${esc(await new Response(stream).text())}</pre>`,
-      base,
-      editor,
+      previewScripts(base, editor),
     );
     headers.set("content-type", "text/html; charset=utf-8");
     headers.delete("content-length");
@@ -370,16 +371,13 @@ async function servePreview(req: Request, url: URL, path?: string, ownerId = pre
  * Runs first in every preview page: same-host WebSockets go to the worker's `Bun.serve` instead of the
  * network, and the page follows the playground's color scheme toggle.
  */
-function withPreviewScripts(html: string, base: string, editor?: string): string {
-  const script =
+function previewScripts(base: string, editor?: string): string {
+  return (
     `<script>(${previewWebSocket})(${JSON.stringify(base)})</script>` +
     `<script>(${previewColorScheme})()</script>` +
     // `editor` is the host frame's, checked against the configured origins: never a value from the page.
-    (editor ? `<script>(${previewBridge})(${JSON.stringify(base)}, ${JSON.stringify(editor)}, ${__PROTOCOL_VERSION__})</script>` : "");
-  const head = html.match(/<head\b[^>]*>/i);
-  if (head) return html.slice(0, head.index! + head[0].length) + script + html.slice(head.index! + head[0].length);
-  const doctype = html.match(/^\s*<!doctype[^>]*>/i);
-  return doctype ? doctype[0] + script + html.slice(doctype[0].length) : script + html;
+    (editor ? `<script>(${previewBridge})(${JSON.stringify(base)}, ${JSON.stringify(editor)}, ${__PROTOCOL_VERSION__})</script>` : "")
+  );
 }
 
 // A page that has finished starting (boot.ts): keep what it loaded.

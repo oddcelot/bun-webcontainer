@@ -302,7 +302,7 @@ Supported:
 - the `js`, `jsx`, `ts`, `tsx`, `object`, `json`, `toml` and `yaml` loaders
 - `Bun.plugin.clearAll()`, with Bun's errors (an async hook under `require()` throws as in Bun)
 
-As in Bun, a plugin applies to what is imported after it is registered. So either:
+As in Bun, a plugin applies to what is imported after it is registered, and a preloaded one to the program's entry file too. So either:
 
 - register it in a file `bunfig.toml`'s `preload` names, or `bun --preload <file>` (`-r`) on the command line (in the working directory, as in Bun: `preload` runs before a program's entry, then the command line's; with `bun run`, `bunfig.toml`'s replace those, as in Bun 1.4); `[test] preload` runs before `bun test`'s files; Web Workers and `worker_threads` get neither, or
 - import the plugin's users with `import()` or from a module loaded after it.
@@ -409,6 +409,7 @@ The rest of the table rows above, in the same order.
 - The head goes out with the stream's first chunk (or its end), as from Bun: until then the client waits.
 - A stream that fails before then drops the connection, so a `fetch` from the program rejects (`ECONNRESET`) and the preview page gets a network error.
 - A later failure ends the body with that error.
+- An HTML page streams into the preview as well: a server-rendered page sent in parts (streamed SSR) shows in parts.
 
 ### Response headers
 What Bun adds:

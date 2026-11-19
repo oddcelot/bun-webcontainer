@@ -10,6 +10,7 @@ import { using } from "./using.ts";
 const log = (line: string) => console.log(line);
 console.log("__start__");
 log(`preload: ${(globalThis as { preloaded?: string }).preloaded} ${greeting}`);
+log(`entry: ${(globalThis as { entryVia?: string }).entryVia} main=${import.meta.main} ${import.meta.path.slice(import.meta.path.lastIndexOf("/") + 1)} ${Bun.main === import.meta.path}`);
 await router(log);
 await stdout(log);
 await plugins(log);

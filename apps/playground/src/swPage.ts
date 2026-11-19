@@ -1,4 +1,4 @@
-// Page-side code of the service worker: sw.ts serializes these into every preview page (withPreviewScripts), so each
+// Page-side code of the service worker: sw.ts serializes these into every preview page (previewScripts), so each
 // may only use what it declares (no imports, no outer helpers, no compiler-injected helpers). Checked with the DOM lib
 // by tsconfig.json; sw.ts sees it through swPage.sw.d.ts (tsconfig.sw.json), since it is checked against the worker lib.
 // The playground's mode (theme.ts): system leaves the page to the OS preference; light or dark narrows a page
