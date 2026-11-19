@@ -113,7 +113,7 @@ export class RxView {
   private readonly ranges: [number, number, number, number][];
 
   constructor(
-    src: string,
+    private readonly src: string,
     /** What the type checker reads: PRAGMA, then the projection. */
     readonly tsx: string,
     private readonly analysis: Analysis,
@@ -140,7 +140,10 @@ export class RxView {
 
   /** The projection's position (0-based) for a 1-based line and column of the module; null where the module's text isn't in it as written. */
   toProjection(line: number, column: number): Position | null {
-    const at = (this.srcLines[line - 1] ?? 0) + column - 1;
+    let at = (this.srcLines[line - 1] ?? 0) + column - 1;
+    // The editor asks at the start of the token under the pointer, and the grammar's token can open with punctuation
+    // (`<button`, ` = count`): the name is what was meant.
+    while (at < this.src.length && !/[\w$\n]/.test(this.src[at])) at++;
     // The end of a name counts when no other span starts there.
     const m = this.mappings.find(([, s, n]) => s <= at && at < s + n) ?? this.mappings.find(([, s, n]) => s <= at && at <= s + n);
     return m ? positionAt(this.tsxLines, PRAGMA.length + m[0] + at - m[1]) : null;

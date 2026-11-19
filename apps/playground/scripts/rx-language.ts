@@ -103,6 +103,13 @@ try {
   }
   report("(a) hover shows the type", hoverOk, hovers.join("; "));
 
+  // (f) markup: an element's tag and an attribute.
+  const tokens = (await page.evaluate(`[...${EDITOR}.querySelectorAll('[data-content] [data-line="4"] [data-char]')].map((s) => s.dataset.char + ":" + JSON.stringify(s.textContent)).join(" ")`)) as string;
+  const tag = await hoverOn(page, 4, "<button");
+  const closing = await hoverOn(page, 4, "button");
+  const attr = await hoverOn(page, 4, "onClick");
+  report("(f) hover on an element and an attribute", !!tag && /button/i.test(tag) && !!attr && /onClick/.test(attr), `<button: ${JSON.stringify(tag)}; </button: ${JSON.stringify(closing)}; onClick: ${JSON.stringify(attr)}; line 4 tokens: ${tokens}`);
+
   // (b) a rule error: `doubled = …` is an equation, `doubled := …` writes to it.
   await focus(page);
   await k.press("a", [MOD]);
