@@ -62,10 +62,11 @@ iframe.wait{visibility:hidden}
 :host(:state(live)) .poster{pointer-events:none}
 .def{display:block;position:relative;min-height:100%;box-sizing:border-box}
 pre{margin:0;padding:12px 16px;font:13px/1.5 var(--font-mono,ui-monospace,Menlo,Consolas,monospace);white-space:pre-wrap}
-.play{position:absolute;right:12px;bottom:calc(12px + var(--_lift,0px));z-index:1;font:var(--play-font,inherit);padding:6px 14px;border:1px solid var(--play-border,GrayText);border-radius:var(--play-radius,6px);background:var(--play-bg,ButtonFace);color:var(--play-fg,ButtonText);cursor:pointer}
+.play{position:absolute;right:12px;bottom:calc(12px + var(--_lift,0px));z-index:1;transition:opacity .15s;font:var(--play-font,inherit);padding:6px 14px;border:1px solid var(--play-border,GrayText);border-radius:var(--play-radius,6px);background:var(--play-bg,ButtonFace);color:var(--play-fg,ButtonText);cursor:pointer}
 .play:hover{background:var(--play-bg-hover,color-mix(in srgb,var(--play-bg,ButtonFace) 85%,var(--play-fg,ButtonText)))}
 .play:focus-visible{outline:2px solid var(--play-bg,Highlight);outline-offset:2px}
 .spin{position:absolute;right:16px;bottom:calc(16px + var(--_lift,0px));z-index:1;display:none;box-sizing:border-box;width:22px;height:22px;border:2px solid color-mix(in srgb,var(--play-bg,ButtonText) 25%,transparent);border-top-color:var(--play-bg,ButtonText);border-radius:50%;animation:spin .8s linear infinite}
+@media (hover:hover){.play{opacity:var(--play-idle-opacity,1)}:host(:hover) .play,.play:focus-visible,.poster[data-failed] .play{opacity:1}}
 .poster[data-starting] .play{display:none}
 .poster[data-starting] .spin{display:block}
 @keyframes spin{to{transform:rotate(1turn)}}
