@@ -1,6 +1,7 @@
 import { CodeView, parseDiffFromFile, type CodeViewItem } from "@pierre/diffs";
 import { Show, createEffect, createSignal, onSettled, useContext } from "solid-js";
 import { trackChanges, type Change } from "../changes";
+import { HIGHLIGHTER, langFor } from "../editors/highlighter";
 import { onTheme, themeName } from "../theme";
 import { AppContext } from "./context";
 
@@ -8,8 +9,9 @@ import { AppContext } from "./context";
 function toItem(c: Change, version: number): CodeViewItem<undefined> {
   if (c.before === null || c.after === null)
     return { id: c.path, type: "file", version, file: { name: c.path, contents: `Binary file ${c.kind}. No preview.` } };
-  const before = c.kind === "added" ? null : { name: c.path, contents: c.before };
-  const after = c.kind === "deleted" ? null : { name: c.path, contents: c.after };
+  const lang = langFor(c.path);
+  const before = c.kind === "added" ? null : { name: c.path, contents: c.before, lang };
+  const after = c.kind === "deleted" ? null : { name: c.path, contents: c.after, lang };
   return { id: c.path, type: "diff", version, fileDiff: parseDiffFromFile(before, after) };
 }
 
@@ -30,6 +32,7 @@ export function ChangesView(props: { shown: boolean }) {
     let theme = themeName();
     const options = () => ({
       theme,
+      preferredHighlighter: HIGHLIGHTER,
       stickyHeaders: true,
       diffStyle: "unified" as const,
       unsafeCSS: "* { scrollbar-width: thin; }",

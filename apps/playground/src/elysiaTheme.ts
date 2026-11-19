@@ -1,11 +1,14 @@
 import type { ThemeLike } from "@pierre/theming";
 import { createThemeCollection } from "@pierre/theming";
 import { createTheme } from "@pierre/theming/themes";
+import type { Theme as ZedTheme } from "@pierre/highlights";
 
 // The Elysia docs' code themes (src/spica/code-themes.mjs there), so an embed in those docs colors code the same way
 // the page's own code blocks do. The colors are sRGB anchors from the docs' tokens, not runbun's palette.
+// Each comes twice: a TextMate theme (the theme controller, the chrome) and a Zed one (@pierre/highlights, the code).
 type ElysiaTheme = ThemeLike & {
   tokenColors: { scope: string[]; settings: { foreground: string } }[];
+  zed: ZedTheme;
 };
 
 const theme = (
@@ -32,6 +35,26 @@ const theme = (
     { scope: ["entity.name.type", "support.type", "support.class"], settings: { foreground: method } },
     { scope: ["comment"], settings: { foreground: comment } },
   ],
+  zed: {
+    name,
+    appearance: type,
+    style: {
+      "editor.foreground": foreground,
+      "editor.background": background,
+      players: [{ selection }],
+      syntax: {
+        keyword: { color: keyword },
+        function: { color: method },
+        string: { color: string },
+        number: { color: number },
+        boolean: { color: number },
+        constant: { color: number },
+        type: { color: method },
+        constructor: { color: method },
+        comment: { color: comment },
+      },
+    },
+  },
 });
 
 export const elysiaLight = theme(

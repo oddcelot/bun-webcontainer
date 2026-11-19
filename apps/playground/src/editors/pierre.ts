@@ -1,36 +1,9 @@
-import { File, VirtualizedFile, Virtualizer, getHighlighterIfLoaded, getSharedHighlighter, registerCustomLanguage, registerCustomTheme } from "@pierre/diffs";
+import { File, VirtualizedFile, Virtualizer, getHighlighterIfLoaded, getSharedHighlighter } from "@pierre/diffs";
 import { EditStateManager, Editor, type Marker } from "@pierre/diffs/edit";
-import { elysiaDark, elysiaLight } from "../elysiaTheme";
 import { isMac } from "../keymap";
 import { onTheme, themeName } from "../theme";
+import { HIGHLIGHTER, langFor } from "./highlighter";
 import type { CodeEditor, CompletionKind, EditorCompletion, EditorCompletionDetails, EditorDiagnostic, EditorEvents, EditorHover, EditorSignatureHelp } from "./types";
-
-// @pierre/diffs resolves theme names from its own bundles; the Elysia pair (elysiaTheme.ts) has to be registered.
-registerCustomTheme("elysia-light", async () => elysiaLight);
-registerCustomTheme("elysia-dark", async () => elysiaDark);
-
-// CSS and HTML inside css`…` / html`…` (lit, styled-components): Shiki's JS/TS grammars see a plain string there.
-// Its es-tag-* grammars inject into source.ts and source.js only, so they are widened to TSX and JSX here.
-const TAG_TARGETS = ["source.ts", "source.tsx", "source.js", "source.js.jsx"];
-const withTags = (base: () => Promise<typeof import("@shikijs/langs/typescript")>) => async () => {
-  const [{ default: grammars }, { default: css }, { default: html }] = await Promise.all([base(), import("@shikijs/langs/es-tag-css"), import("@shikijs/langs/es-tag-html")]);
-  return { default: [...grammars, ...[...css, ...html].map((g) => (g.injectTo ? { ...g, injectTo: TAG_TARGETS } : g))] };
-};
-registerCustomLanguage("typescript", withTags(() => import("@shikijs/langs/typescript")));
-registerCustomLanguage("tsx", withTags(() => import("@shikijs/langs/tsx")));
-registerCustomLanguage("javascript", withTags(() => import("@shikijs/langs/javascript")));
-registerCustomLanguage("jsx", withTags(() => import("@shikijs/langs/jsx")));
-
-// ReactiveScript (.rx): upstream's TextMate grammar (rx.tmLanguage.json, from solidjs/reactivescript tooling/vscode-rx at
-// eab7356, MIT) layers `source`, `component`, … over source.tsx and embeds source.css in <style>. Loaded with TSX (and its tags) and CSS.
-registerCustomLanguage(
-  "rx",
-  async () => {
-    const [{ default: tsx }, { default: css }, { default: rx }] = await Promise.all([withTags(() => import("@shikijs/langs/tsx"))(), import("@shikijs/langs/css"), import("./rx.tmLanguage.json")]);
-    return { default: [...tsx, ...css, { ...rx, name: "rx" } as (typeof tsx)[number]] };
-  },
-  ["rx"],
-);
 
 // Lucide's circle-x and triangle-alert, drawn in the severity's color (the popover is in a shadow root, where the page's icon classes don't apply).
 const ICONS = {
@@ -70,7 +43,7 @@ const HOVER_CSS = `
 const HOVER_DELAY = 300;
 const HIDE_DELAY = 200;
 
-/** Shiki's FontStyle bits. */
+/** Token fontStyle bits (Shiki's, which highlights keeps). */
 const ITALIC = 1;
 const BOLD = 2;
 const UNDERLINE = 4;
@@ -91,7 +64,7 @@ function codeHtml(code: string, strong?: [number, number]): string {
     return span(s.slice(0, a)) + `<strong>${span(s.slice(a, b))}</strong>` + span(s.slice(b));
   };
   if (!highlighter) {
-    void getSharedHighlighter({ themes: [theme], langs: ["typescript"] }).catch(() => {});
+    void getSharedHighlighter({ themes: [theme], langs: ["typescript"], preferredHighlighter: HIGHLIGHTER }).catch(() => {});
     return mark(code, 0);
   }
   const { tokens } = highlighter.codeToTokens(code, { lang: "typescript", theme });
@@ -226,12 +199,13 @@ export function createViewer(parent: HTMLElement) {
       view?.cleanUp();
       view = new File({
         theme,
+        preferredHighlighter: HIGHLIGHTER,
         disableFileHeader: true,
         disableLineNumbers: true,
         overflow: "wrap",
         unsafeCSS: "* { scrollbar-width: thin; }",
       });
-      view.render({ containerWrapper: host, file: { name, contents: text } });
+      view.render({ containerWrapper: host, file: { name, contents: text, lang: langFor(name) } });
     },
     destroy() {
       unsubscribe();
@@ -776,6 +750,7 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
     text = nextText ?? "";
     view = new VirtualizedFile({
       theme,
+      preferredHighlighter: HIGHLIGHTER,
       // The tab above already names the file.
       disableFileHeader: true,
       // style.css's thin scrollbars: scrollbar-width doesn't inherit into the shadow root (the color does).
@@ -799,7 +774,7 @@ export function createPierre(parent: HTMLElement, events: EditorEvents = {}): Co
       // The VFS already holds every change from onEditChange; keep the surface showing it.
       onEditComplete: () => "accept",
     }, virtualizer);
-    view.render({ containerWrapper: host, file: { name: path, contents: nextText ?? "(binary file)" } });
+    view.render({ containerWrapper: host, file: { name: path, contents: nextText ?? "(binary file)", lang: langFor(path) } });
     applyDebugLines();
     if (nextText === null || events.readOnly?.()) return;
     const key = keyOf(path);
