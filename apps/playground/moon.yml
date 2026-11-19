@@ -44,13 +44,16 @@ tasks:
     # Bun.hash against native bun (scripts/hash-compat.ts), the workspace layout (scripts/workspaces-unit.ts), the source
     # pass that keeps AsyncLocalStorage across await (scripts/async-await.ts) and S3 signing and operations against
     # native bun on a local S3 (scripts/s3-signing.ts; scripts/s3.ts is the browser run), and where the preview's scripts go
-    # in a page that is still streaming (src/previewInject.test.ts).
-    script: 'bun scripts/inspect-corpus/diff.ts && bun scripts/data-apis/jsonl.ts && bun scripts/data-apis/xml-stringify.ts && bun scripts/requests.ts && bun scripts/request-fields.ts && bun scripts/vfs-mirror.ts && bun scripts/test-results.ts && bun scripts/persist-skip.ts && bun scripts/runner-stop.ts && bun scripts/remote-snapshots.ts && bun scripts/change-origin.ts && bun scripts/request-headers.ts && bun scripts/install-prune.ts && bun scripts/patches-unit.ts && bun scripts/packument-cache.ts && bun scripts/project-config.ts && bun scripts/hash-compat.ts && bun scripts/workspaces-unit.ts && bun scripts/async-await.ts && bun scripts/s3-signing.ts && bun src/previewInject.test.ts'
+    # in a page that is still streaming (src/previewInject.test.ts), and which saves Watch leaves to a program that watches
+    # the files itself (src/watched.test.ts).
+    script: 'bun scripts/inspect-corpus/diff.ts && bun scripts/data-apis/jsonl.ts && bun scripts/data-apis/xml-stringify.ts && bun scripts/requests.ts && bun scripts/request-fields.ts && bun scripts/vfs-mirror.ts && bun scripts/test-results.ts && bun scripts/persist-skip.ts && bun scripts/runner-stop.ts && bun scripts/remote-snapshots.ts && bun scripts/change-origin.ts && bun scripts/request-headers.ts && bun scripts/install-prune.ts && bun scripts/patches-unit.ts && bun scripts/packument-cache.ts && bun scripts/project-config.ts && bun scripts/hash-compat.ts && bun scripts/workspaces-unit.ts && bun scripts/async-await.ts && bun scripts/s3-signing.ts && bun src/previewInject.test.ts && bun src/watched.test.ts'
     toolchains: ['bun']
     inputs:
       - 'scripts/inspect-corpus/**/*'
       - 'src/previewInject.ts'
       - 'src/previewInject.test.ts'
+      - 'src/watched.ts'
+      - 'src/watched.test.ts'
       - 'scripts/hash-compat.ts'
       - 'src/worker/hash.ts'
       - 'scripts/data-apis/**/*'

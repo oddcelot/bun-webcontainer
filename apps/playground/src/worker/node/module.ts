@@ -7,6 +7,7 @@ import { transpileSync, transpileSyncEsm } from "../../transpiler";
 import { FUNCTION_HEADER_LINES, registerSource } from "../sourceMaps";
 import { tsconfigFor } from "../../tsconfig";
 import { XHR } from "../xhr";
+import { SourceMap } from "./sourceMap";
 
 /** The step debugger's global in a debug run (worker/debugger.ts; read here, not imported: the page loads this file too). */
 const debug = () => (globalThis as { __dbg?: { active?: boolean; file(id: number, path: string, table: unknown): void } }).__dbg;
@@ -382,7 +383,7 @@ export function createModule(
     _extensions: Object.create(null) as Record<string, unknown>,
     wrap: (s: string) => `(function (exports, require, module, __filename, __dirname) { ${s}\n});`,
   });
-  Object.assign(Module, { Module, SourceMap: class SourceMap {}, runMain() {}, flushCompileCache() {}, _initPaths() {}, _nodeModulePaths: nodeModulePaths, ...Object.fromEntries(["_load", "_resolveFilename", "findPackageJSON", "stripTypeScriptTypes"].map((k) => [k, () => { throw new Error(`node:module.${k} is not supported in the playground`); }])) });
+  Object.assign(Module, { Module, SourceMap, runMain() {}, flushCompileCache() {}, _initPaths() {}, _nodeModulePaths: nodeModulePaths, ...Object.fromEntries(["_load", "_resolveFilename", "findPackageJSON", "stripTypeScriptTypes"].map((k) => [k, () => { throw new Error(`node:module.${k} is not supported in the playground`); }])) });
   // For wrapped CommonJS (cjs.ts wrapCommonJS) and served JSON: one cache, and computed requires.
   hooks.load = load;
   hooks.require = requireFrom;

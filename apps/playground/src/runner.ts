@@ -2,6 +2,7 @@ import { CookieJar, parseSetCookie, pathMatches, type Cookie } from "./cookieJar
 import { PreviewCookies, dirOf, pagePath } from "./previewCookies";
 import { PANEL_COOKIE, joinCookies } from "./request";
 import { resetSyncEsm, serveModule, setCoverage, vfsRoot } from "./moduleServer";
+import { watchedBy, type Watched } from "./watched";
 import { coverageOptions, isCoverageFlag, type CoverageOptions } from "./coverage/options";
 import { loadResolver, parseData } from "./resolver";
 import type { VFS } from "@runbun/vfs";
@@ -414,6 +415,13 @@ export class Runner {
     this.worker?.postMessage({ type: "tty", cols, rows });
   }
 
+  /** What each program watches with `fs.watch` (worker/node/fs.ts), as it last reported. */
+  private watching = new WeakMap<Worker, Watched[]>();
+  /** Whether the program answering previews watches every one of these files itself (watched.ts). */
+  watches(paths: Iterable<string>): boolean {
+    return !!this.worker && watchedBy(this.watching.get(this.worker) ?? [], paths);
+  }
+
   /** Whether a program is running (answering previews or not). */
   get running(): boolean {
     return !!this.worker;
@@ -621,6 +629,7 @@ export class Runner {
         this.shareTaken(worker);
         if (this.worker === worker) this.reportPorts();
       }
+      else if (m.type === "watching") this.watching.set(worker, m.watched);
       else if (m.type === "ready") {
         // From a worker Stop already let go of (still flushing): its report doesn't count.
         if (this.worker !== worker && this.next?.worker !== worker) return;

@@ -9,6 +9,7 @@
  */
 import { dirname, norm, type VFS } from "@runbun/vfs";
 import { parseBunLock } from "./lockfile";
+import { CONFIG_FILE, readConfig } from "./projectConfig";
 import { tsconfigFor } from "./tsconfig";
 import { loadTranspiler, transpile } from "./transpiler";
 
@@ -42,6 +43,8 @@ const IMPORT_SPEC = /\b(?:import|export)\b[^"'`;()]*?\bfrom\s*["']([^"']+)["']|\
 export function disqualified(vfs: VFS): string | undefined {
   const html = vfs.readText("index.html");
   if (html === undefined || !vfs.files.has("index.html")) return "no index.html at the root";
+  // The project's own say: its program must run (a dev server with hot module replacement, say).
+  if (readConfig((path) => vfs.readText(path)).fastPath === false) return `${CONFIG_FILE} sets "fastPath" to false`;
   const seen = new Set<string>();
   const queue: string[] = [];
   for (const [, attrs, src, after] of html.matchAll(SCRIPT_TAG)) {

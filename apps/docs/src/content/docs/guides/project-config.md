@@ -27,6 +27,7 @@ A `runbun.json` beside `package.json` tells the playground how to open and run t
   // How it runs
   "run": { "entry": "src/server.ts", "args": ["--verbose"] },
   "autorun": true,
+  "fastPath": false,
   "env": { "LOG_LEVEL": "debug" },
 
   // What the reader sees first
@@ -53,6 +54,7 @@ The playground's editor completes the fields, shows what each does when you hove
 | `name`, `description`, `kind`, `tags` | The project's card in a gallery: [runbun-examples](https://github.com/oddcelot/runbun-examples)' folders, and a library built with [`@runbun/embed pack`](/guides/embedding/). `kind` is `starter` (listed first) or `example`; `tags` name what it's built on, and the first with a logo is the card's icon. They win over an `example.json` beside it, which is still read. |
 | `run` | What Run starts: `entry` and its `args`. Without it, Run takes `package.json`'s `module` or `main`, the file its `dev` or `start` script runs, else `index.ts`. |
 | `autorun` | `false` opens the project without running it (missing packages still install, for the editor's types). |
+| `fastPath` | `false` keeps the project off the [fast path](/playground/fast-path/), even when the reader has turned Fast path on: its program always runs. For a project whose dev server must run, such as one with hot module replacement. |
 | `env` | `process.env` values for the program, in runs, restarts on save and `bun test`. The file is shared with the project, so it's no place for secrets. With [Local Bun](/guides/local-bun/) too (with `@runbun/connect` 0.2.0 or newer), apart from the runner's own variables (`PATH`, `HOME`, `PORT` and the like) and the dynamic loader's (`LD_*`, `DYLD_*`). |
 | `open` | The files opened as tabs, in order; the first is shown. Without it, the entry file. |
 | `hidden` | Files kept out of the tabs. They stay in the project and the file tree. |

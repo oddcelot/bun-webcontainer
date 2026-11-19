@@ -67,6 +67,14 @@ Turn on **Fast path** (the lightning icon next to Auto-save and Restart on save 
 
   </details>
 - <details>
+  <summary><strong>No dev server, no hot module replacement:</strong> the project's program doesn't start, so a save builds the page again.</summary>
+
+  A project with a root `index.html` qualifies even when its program starts a dev server, such as the [Vite](https://runbun.dev/?example=vite-demo) example. On the fast path that server never runs: there is no hot module replacement, and the page's state is lost on each save.
+
+  Turn Fast path off to run those projects with their dev server. A project can also rule the fast path out for itself with `"fastPath": false` in its [`runbun.json`](/guides/project-config/), as the Solid 2 + Vite example does: it then runs the normal way whatever the toggle says, and the console says so.
+
+  </details>
+- <details>
   <summary><strong>Not supported:</strong> <code>import.meta.url</code> assets, <code>fetch</code> of project files, IndexedDB, cookies and source-mapped stack traces.</summary>
 
   The full list: assets loaded with `import.meta.url` (workers too), `fetch` of the project's files (there is no server), IndexedDB and cookies, and source-mapped stack traces.

@@ -158,7 +158,7 @@ process.getBuiltinModule = function getBuiltinModule(id: unknown) {
   return name === undefined ? undefined : builtins[name];
 };
 
-export { setFs } from "./fs";
+export { setFs, setWatchReport } from "./fs";
 export { BUN_PACKAGE_ALIASES, setBunFetch } from "./bunPackages";
 export { setRequire } from "./module";
 export { setExit, setRawStdio, setStdio } from "./process";

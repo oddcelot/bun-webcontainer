@@ -20,6 +20,7 @@ It runs the first of:
   **What restarts and what reloads**
 
   - In the browser, a save that only changes files the page loads (its scripts, stylesheets and what they import) and the program doesn't import reloads the preview and keeps the program running.
+  - If the program watches those files itself (`fs.watch`, as Vite's dev server does), the preview is not reloaded either: the program updates the page, so hot module replacement keeps the page's state.
   - `package.json`, installed packages, the program's own imports and files it reads at run time still restart it.
 
   **Crashes, syntax errors and exits**
