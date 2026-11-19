@@ -5,6 +5,309 @@ browser, its editor, and the docs at docs.runbun.dev. They release together at o
 `package.json`, tagged `v<version>`), organised by part. `@runbun/astro` keeps its own changelog in
 [packages/astro/CHANGELOG.md](./packages/astro/CHANGELOG.md).
 
+## 0.6.0 — 2026-11-19
+
+Git grows up in the playground: merge, rebase, stash and tag work in the terminal and in the Git view, with
+conflicts to resolve. SQLite moves to its official WebAssembly build with real files and WAL, `node:sqlite`,
+`node:test`, `node:wasi` and `Bun.plugin` run, and `bun install` takes git dependencies, lifecycle scripts and
+patches. A fast path previews browser-only projects (React, Preact, Solid 2) without an install. Nothing needs action;
+`bun test`'s `-t`, `--timeout` and the like with Local Bun need `@runbun/connect` 0.5.0.
+
+### Playground
+
+- **Added** — **`git merge` in the playground.** Fast-forwards and merge commits (`--no-ff`, `--ff-only`, `-m`), several
+  branches at once, `--squash` and `--no-commit`; where both branches changed the same lines it stops with conflict
+  markers, as git does: edit the files, `git add` them and `git commit`, or `git merge --abort`.
+- **Added** — **`git tag` in the playground.** List tags (`-l <pattern>`, `-n`), create lightweight or annotated ones
+  (`-a -m`) and delete them (`-d`); `git show` on an annotated tag shows its message. `--sort` (`git tag
+  --sort=-v:refname` shows the newest version first, `tag.sort` too) and `--contains`/`--no-contains` order and filter
+  the list as git does.
+- **Added** — **`git stash` in the playground.** Set changes aside and bring them back (`stash`, `-m`, `-u`, `list`,
+  `show`, `apply`, `pop`, `drop`, `clear`), keep the index (`-k`), include ignored files (`-a`), stash only some paths
+  (`push -- <path>`) or branch from a stash (`stash branch`); the stashes are git's own, so a cloned or downloaded
+  repository's stashes work too.
+- **Added** — **`git pull` merges when your branch and its upstream have diverged.** It stopped with "Not possible to
+  fast-forward" before; now it merges as git does (`--ff-only` still refuses), also from the Git view's Pull button, and
+  a conflict stops with markers to resolve.
+- **Added** — **`bun test --coverage` works with Local Bun.** Native Bun counts the coverage, its table prints in the
+  console and `lcov.info` lands in the project; the console used to send you back to the browser for it.
+- **Added** — **Merge branches, resolve conflicts and use stashes in the Git view.** Merge from the branch menu; a merge
+  or pull that conflicts lists the files under Merge Changes with Mark as resolved, Abort and Commit merge, and Stash
+  all changes and a Stashes list (apply, pop, drop) save a trip to the console.
+- **Added** — **The Git view walks you through a stopped rebase.** It names the branch and how far the rebase got, and
+  offers **Continue rebase**, **Skip this commit** and **Abort** once you have resolved the files.
+- **Added** — **`bun test -t`, `--timeout`, `--bail`, `--rerun-each`, `--todo` and `--only` work with Local Bun.** They
+  were refused with "Local Bun takes only -u and the coverage flags".
+- **Added** — **A Fast path toggle runs browser-only projects without an install.** Packages load from esm.sh through an
+  import map, so a React or Preact page shows up seconds sooner. Experimental; `?fast` in a link turns it on too.
+- **Added** — **The fast path runs Solid 2 projects.** Their JSX is compiled by Solid's own compiler, loaded the first
+  time one runs, so a Solid 2 page previews without an install, in the playground and in embeds.
+- **Added** — **A Solid 2 SSR example in the gallery.** A dashboard that `Bun.serve` streams panel by panel and the page
+  hydrates, with optimistic actions over `bun:sqlite`: no framework, no Vite.
+- **Added** — **A Solid 2 + Vite example in the gallery.** Edit a component and it is swapped in the running preview,
+  with the count and the notes left as they were.
+- **Added** — **`"fastPath": false` in `runbun.json`.** A project whose dev server must run stays off the fast path even
+  when the reader has turned it on, and the console says why.
+- **Added** — **`.rx` files are highlighted.** ReactiveScript sources showed as plain text.
+- **Added** — **A ReactiveScript example in the gallery.** A small `.rx` app, compiled to Solid 2 on the Vite dev
+  server, with the compiler's errors, types and Format in the editor.
+- **Added** — **A second ReactiveScript example: cascading selects.** Country, state and city selects, each loading its
+  options from the one above, in `.rx`.
+- **Changed** — **The Elysia 2 example runs the latest release candidate.** It was pinned to 2.0.0-rc.1.
+- **Changed** — **Saving a page's script no longer restarts your server.** Under Watch, an edit only the browser page
+  loads reloads the preview and keeps the program (and its state) running, about a third faster.
+- **Changed** — **Code is highlighted by @pierre/highlights.** The editor, the response viewer and the Changes tab color
+  code with Pierre's own highlighter; switching to Pierre Vibrant no longer blanks the editor. ReactiveScript files are
+  now colored as TSX.
+- **Fixed** — **A response stream that fails at once fails in the preview too.** A page's request got a 200 with an
+  empty body from a stream that threw before its first chunk; as from Bun, it now gets a network error, and a stream's
+  response arrives with its first chunk.
+- **Fixed** — **The Git view's merge box shows the whole branch name, and Commit merge looks unavailable until the
+  conflicts are resolved.** The title was cut to "Merge bra…", and the disabled button looked like an enabled one.
+- **Fixed** — **Streamed pages show as they arrive.** An HTML page a server sends in parts (streamed SSR from Solid, Lit
+  or React) appeared in the preview all at once, after its last part.
+- **Fixed** — **Hot module replacement keeps the page's state with Watch on.** A save under Vite's dev server swapped
+  the module and then reloaded the preview anyway. A program that watches the saved files itself now decides what the
+  page does.
+- **Fixed** — **Clicking the preview closes the theme picker.** A click in the preview left the picker open, still
+  showing the theme under the pointer.
+
+### Runtime
+
+- **Added** — **`Bun.randomUUIDv7` works.** Time-ordered UUIDs as Bun makes them, in hex, base64, base64url or a Buffer,
+  for now or a given timestamp; Elysia 2 apps no longer answer every request with a 500.
+- **Added** — **`process.getBuiltinModule` works.** It returns a `node:` or `bun:` module (with or without the `node:`
+  prefix), `undefined` for anything else, so packages that look for it, such as @elysia/static, no longer switch off.
+- **Added** — **A program's WebSocket reaches its own server.** `new WebSocket("ws://localhost:3000")` to a `Bun.serve`
+  of the same program connects, as in Bun, so WebSocket tests, Eden's `subscribe` and other in-process clients work;
+  before, it failed to connect.
+- **Added** — **`Bun.FileSystemRouter` works.** Next.js-style routes over the project's files match paths, URLs and
+  Requests as in Bun, with params, query, src and reload().
+- **Added** — **`Bun.stdout.writer()` and `Bun.stderr.writer()` print to the console.** Their FileSink buffers writes
+  and flushes them when Bun would, so output keeps Bun's order.
+- **Added** — **`Bun.plugin` works for imports and requires.** onResolve and onLoad hooks with filters and namespaces,
+  build.module virtual modules, the js/ts/tsx/jsx/object/json/toml/yaml loaders and clearAll() behave as in Bun for what
+  the program imports after registering them.
+- **Added** — **`Bun.serve`'s `error` handler answers for a failing handler.** A handler that throws or rejects gets the
+  `error` handler's Response, or Bun's 500 page (plain "Something went wrong!" with `development: false`); a `fetch` to
+  the program's own server no longer rejects.
+- **Added** — **`Bun.serve` takes `maxRequestBodySize`, `unix` and `server.requestIP`.** Too large a request body gets
+  Bun's 413, `requestIP` says where a request came from, and `fetch(url, { unix })` reaches a server on a unix socket;
+  `idleTimeout` and `reusePort` no longer go unchecked.
+- **Added** — **`node:diagnostics_channel` works.** Subscribers receive what is published, `tracingChannel` traces sync,
+  promise and callback calls, `bindStore` runs code in an `AsyncLocalStorage` store, and the `http` client publishes the
+  channels Bun's does; before, nothing was delivered.
+- **Added** — **`node:sqlite` works.** `DatabaseSync` and `StatementSync` run queries with named and positional
+  parameters, user functions, aggregates and tagged-template statements, on files kept in the project; importing it used
+  to fail.
+- **Added** — **Tests written with `node:test` run under `bun test`.** `test`, `describe`, hooks, subtests,
+  `skip`/`todo` and `mock` work as in Bun; before, importing `node:test` failed.
+- **Added** — **`v8.serialize` and `v8.deserialize` work, with Bun's bytes.** Data serialized in the playground
+  deserializes in Bun and back; heap statistics have the shape Bun gives. Before, they threw.
+- **Added** — **More `node:*` modules import.** `domain` works, `constants` and `os.constants` have Linux's values,
+  `trace_events` and an `inspector` session respond as in Bun, and `dgram`, `repl` and `wasi` load (their sockets and
+  servers still can't run); before, importing them failed or gave empty objects.
+- **Added** — **bunfig.toml's `preload` runs before your program.** A Bun.plugin registered there serves the entry's
+  imports, and `[test] preload` sets up `bun test` (global hooks, plugins) as in Bun.
+- **Added** — **`node:wasi` runs WebAssembly programs built for WASI.** A wasm32-wasi program gets its `args`, `env` and
+  preopened project directories, prints to the console and exits with its code; before, `new WASI()` threw.
+- **Added** — **`bun --preload <file>` works.** `bun -r ./setup.ts main.ts` in the console, in a package.json script or
+  from a spawned process runs setup.ts first, after bunfig.toml's preload, as in Bun.
+- **Added** — **`bun test --coverage` reports coverage.** The console prints Bun's table of the functions and lines that
+  ran, `--coverage-reporter lcov` writes `coverage/lcov.info`, and bunfig.toml's coverage options (thresholds, ignore
+  patterns, test files) apply.
+- **Added** — **`node:sqlite`'s `db.setAuthorizer()` works.** The callback sees each action a statement takes as it is
+  prepared and can allow, deny or ignore it, as in Bun; it used to throw.
+- **Added** — **`node:sqlite` sessions work.** `db.createSession()` records changes as a changeset or patchset, and
+  `db.applyChangeset()` applies one with `filter` and `onConflict`, as in Bun; both used to throw.
+- **Added** — **`bun:sqlite` statements have `columnTypes` and `declaredTypes`.** They give each column's type in the
+  first row and its declared type, as in Bun; both were undefined.
+- **Added** — **`bun:sqlite` has `db.function()` and `db.aggregate()`.** User-defined SQL functions and aggregates
+  (window functions too, with `inverse`) work as in Bun, with `deterministic`, `directOnly`, `varargs` and
+  `safeIntegers`; they used to be missing.
+- **Added** — **`bun:sqlite` has update hooks.** `db.onInsert`, `db.onUpdate` and `db.onDelete` call a function for
+  every row a statement inserts, updates or deletes, with the table and the rowid, as in Bun.
+- **Added** — **`db.fileControl()` in `bun:sqlite`.** Settings such as `SQLITE_FCNTL_PERSIST_WAL` reach the database
+  file as in Bun, and `constants` has all of Bun's `SQLITE_*` values.
+- **Added** — **More of Bun's `bun:sqlite`.** `iterate()` now reads rows as the loop asks for them instead of all at
+  once, and statements have `raw()`, `reader`, `readonly` and `native`. `Database.open`, `db.handle`, `close(true)` and
+  Bun's 20-statement query cache are there, and a `prepare()`d statement still works after `close()`.
+- **Added** — **`node:sqlite`'s `db.limits` and the `timeout` option.** Limits such as `column` or `attach` can be read
+  and lowered, and a connection opened with `timeout` waits that long for a lock before failing with "database is
+  locked".
+- **Added** — **Programs can run `bun test`.** `Bun.spawn(["bun", "test"])`, `child_process` and a package.json `"test":
+  "bun test"` started with `bun run test` run the project's tests and exit with 1 when one fails; they used to refuse to
+  start.
+- **Added** — **node:test's `run()` works.** `run({ files })` runs each file and streams Node's test events (pass, fail,
+  skip, todo, subtests, output, summaries) as Bun does; it used to throw "not supported".
+- **Added** — **`bun test` takes `-t`, `--timeout`, `--bail`, `--rerun-each`, `--todo` and `--only`, in the console and
+  spawned.** A spawned `bun test` (Bun.spawn, a "test" script) also takes `--coverage`; it took only `-u` before.
+- **Added** — **Browser-only projects run with `bun ./index.html`.** A project whose script is `bun ./index.html` (or
+  that is just an `index.html`) used to fail with "module not found: index.ts"; Run now serves the page with its scripts
+  bundled, and `[serve.static] plugins` in bunfig.toml apply.
+- **Added** — **`SourceMap` from `node:module`.** `findEntry`, `findOrigin`, `payload` and `lineLengths` work, so
+  `@solidjs/vite-plugin` compiles Solid 2 components under Vite.
+- **Changed** — **`bun:sqlite` and `node:sqlite` run on SQLite's official WebAssembly build.** Errors carry SQLite's own
+  extended result code and byte offset (`SQLITE_CONSTRAINT_TRIGGER`, `SQLITE_CONSTRAINT_DATATYPE`, ...), and a BigInt
+  binds as an exact 64-bit integer where it used to turn into text.
+- **Changed** — **`bun:sqlite` and `node:sqlite` file databases are real files, WAL mode included.** `pragma
+  journal_mode = wal` now returns `wal`, the `-journal`, `-wal` and `-shm` files appear next to the database as
+  natively, and two connections to one file see each other's commits and get `SQLITE_BUSY` where Bun would.
+- **Changed** — **`bun test` diffs are coloured in the console.** Failed `toEqual`, `toStrictEqual` and snapshot diffs
+  show Bun's colours and highlight the characters that changed, as on a terminal; they were plain.
+- **Fixed** — **`fetch` to your own server follows redirects.** A request to a `Bun.serve` route that redirects ended at
+  the 302; it now arrives where it points, as in Bun, and `Response.redirect("/path")` keeps its relative Location.
+- **Fixed** — **`Bun.serve` responses carry Bun's default headers.** `content-length` for strings, bytes and files,
+  `application/octet-stream` for binary bodies, and HEAD answers without a made-up content type; a HEAD to a route with
+  only a GET handler no longer falls through to `fetch`.
+- **Fixed** — **Uploaded files and `Bun.file` in forms look as in Bun.** A file part parsed with `formData()` is typed
+  by its extension (`text/plain;charset=utf-8` for `.txt`), and a `Bun.file` added to a `FormData` keeps its file name
+  instead of `blob`.
+- **Fixed** — **A response stream that fails at once fails the `fetch`.** A program fetching its own server got a 200
+  and the first chunk from a stream that threw right away; as in Bun, the `fetch` now rejects with `ECONNRESET`.
+- **Fixed** — **`ws.send(1)` works.** A server WebSocket's `send` and `publish` take a number or an object and send it
+  as text, as in Bun, instead of throwing.
+- **Fixed** — **node:http servers listen on their own port.** A server on 8080 showed as 3000, a fetch or http.get to it
+  from the program failed, and listen(0) reported a made-up port.
+- **Fixed** — **SQLite parameters bind with the types Bun gives them.** In `node:sqlite` a whole number bound as an
+  INTEGER where Bun binds a REAL, and in both `bun:sqlite` and `node:sqlite` a BigInt was bound as text, which
+  `typeof()` and untyped columns showed.
+- **Fixed** — **`node:sqlite` rejects double-quoted string literals.** `"abc"` naming no column ran as the string 'abc'
+  instead of failing with `no such column: "abc"` as in Bun, unless the database was opened with
+  `enableDoubleQuotedStringLiterals`.
+- **Fixed** — **CommonJS bins with a `#!` line run.** Running one, as a script or a child process, failed with a syntax
+  error.
+- **Fixed** — **`bun test` shows a failing error's properties and cause.** A thrown error was reported with its message
+  only, without `code`, `actual`, `expected` or its `cause`.
+- **Fixed** — **node:test reports failing subtests and waits for planned assertions as Bun does.** A failing subtest's
+  error is shown as its parent's cause, and `t.plan(n, { wait })` no longer fails a test whose assertions come later.
+- **Fixed** — **`node:sqlite`'s `columns()` says where each column comes from.** Its `column`, `table`, `database` and
+  `type` were always null; they now give the source column, table, database and declared type, as in Bun.
+- **Fixed** — **`node:sqlite` user functions return values typed as in Bun.** A whole number a `db.function()` returned
+  was stored as an INTEGER where Bun stores a REAL, and a BigInt past 64 bits or a Promise gave the wrong error.
+- **Fixed** — **`import Database from "bun:sqlite"` works.** The default export was the module object instead of the
+  `Database` class.
+- **Fixed** — **`using` and `await using` declarations work.** A program with one failed to start with "does not provide
+  an export named '__callDispose'".
+- **Fixed** — **Coverage counts generators when they are called.** With a rest parameter (destructured too) or a "use
+  strict" body, `bun test --coverage` showed a generator called but never resumed as uncalled, code after `?.#private`
+  as run when it was skipped, and a comment mentioning "use strict" atop a CommonJS file as a covered line.
+- **Fixed** — **CommonJS TypeScript files with "use strict" run in strict mode.** Assigning to an undeclared variable or
+  writing a frozen object's property no longer passes silently, as in Bun.
+- **Fixed** — **`bun test` failure diffs show the whole value, as Bun prints them.** A failed `toEqual` or snapshot
+  showed only the changed lines and one line around each, under `@@` headers.
+- **Fixed** — **`bun test` lists the skipped, todo and failed tests again at the end.** Past 20 passing tests, Bun
+  repeats them above the totals, so the failures of a long run are in one place; the playground didn't.
+- **Fixed** — **A `bun test` child process counts coverage from its own folder's bunfig.toml.** A test run spawned in a
+  subfolder whose bunfig.toml enables coverage printed no coverage table.
+- **Fixed** — **`toEqual` diffs list object keys in Bun's order.** A diff of objects whose keys aren't alphabetical
+  printed them in insertion order; Bun sorts them.
+- **Fixed** — **A `bun:test` hook that throws is reported as Bun reports it.** A failing `afterAll` or `beforeAll` shows
+  as `describe > (unnamed)`, a failing `beforeAll` skips its describe's tests, and the hooks of a describe without
+  running tests run as in Bun.
+- **Fixed** — **Packages with threaded WebAssembly bindings load.** A native package's wasm fallback built with threads,
+  such as `@solidjs/compiler`, crashed with "failed to generate random data".
+- **Fixed** — **A preloaded plugin compiles the entry file too.** A `Bun.plugin` `onLoad` registered in a `bunfig.toml`
+  preload only applied to what the program imported, not to the program itself.
+- **Fixed** — **Threaded WebAssembly bindings can read files.** A native package's wasm fallback built with threads,
+  such as `@reactivescript/compiler`, got "no such file" for every path it opened.
+- **Fixed** — **Native packages no longer print "command not found: ldd".** Their loaders now find the libc in
+  `process.report.getReport()`.
+
+### Toolchain
+
+- **Added** — **`bun install` takes `file:` tarballs, `link:` and GitHub dependencies.** `github:user/repo#ref`,
+  `user/repo` and `git+https://github.com/…` install from GitHub, `file:vendor/pkg.tgz` from the project, and `bun link`
+  makes a folder a `link:` dependency; bun.lock is the one native Bun writes. Git dependencies on other hosts are
+  reported.
+- **Added** — **`bun install` runs lifecycle scripts.** The project's own `preinstall`, `postinstall` and `prepare` run,
+  and so do those of the dependencies in `trustedDependencies` (or Bun's default list); the others are blocked as in
+  Bun, `bun pm untrusted` lists them and `bun pm trust` runs them. `--ignore-scripts` skips them all.
+- **Added** — **`patchedDependencies` and `bun patch` work.** Patches in `patchedDependencies` are applied as packages
+  install, and `bun patch <pkg>` then `bun patch --commit node_modules/<pkg>` saves your edits as the patch native Bun
+  writes.
+- **Added** — **`Bun.build` takes plugins.** `onResolve` and `onLoad` (virtual modules, aliases, externals, namespaces,
+  custom loaders), `onStart` and `onEnd` run as in Bun, async hooks too; before, passing `plugins` threw.
+- **Added** — **`undici`, `node-fetch` and other packages Bun ships work without installing them.** As in Bun,
+  `node-fetch`, `undici` (`request`, `fetch`), `isomorphic-fetch`, `@vercel/fetch`, `abort-controller` and
+  `utf-8-validate` are Bun's own instead of `cannot resolve`, and so is `ws` even when it is installed.
+- **Added** — **Git dependencies from GitLab, Codeberg and Bitbucket install.** `git+https://…`, `https://….git`,
+  `git+ssh://git@<host>/…` and the `gitlab:`/`bitbucket:` shorthands are cloned in the browser, and bun.lock is the one
+  native Bun writes.
+- **Added** — **`git merge -s ours` and `-X ours`/`-X theirs`.** Merges can keep your side wholesale or settle
+  conflicting hunks for one side, and `-X no-renames`/`find-renames=<n>` and `diff-algorithm=` work too.
+- **Added** — **`git stash --staged`, `git stash create` and `git stash store`.** Set aside only what you staged, or
+  make a stash commit without touching your files and add it to the list later.
+- **Added** — **More of `git tag`: `--format`, `--merged`, `--points-at`, `-F`, `-i`.** List tags with your own format
+  (`%(refname:short) %(subject)`), by what they point at or what is merged, and take an annotated tag's message from a
+  file.
+- **Added** — **`git tag --sort=v:refname` honors `versionsort.suffix`, and `--format` takes `%(align)` and `%(if)`.**
+  `v1.0-rc1` sorts before `v1.0` once the suffix is configured, and formats can pad columns or print one thing for
+  annotated tags and another for lightweight ones.
+- **Added** — **`git rebase` and `git pull --rebase`.** Replay your branch's commits onto another one (`--onto`, `-X
+  theirs`), resolve a conflict and `git rebase --continue`, `--skip` or `--abort`, or have `pull` rebase your local
+  commits onto the fetched ones instead of merging.
+- **Added** — **`git rebase main feat` rebases another branch.** Name the branch to rebase after the upstream, as in
+  git, instead of switching to it first.
+- **Added** — **`git status` says whether your branch is ahead of or behind its upstream.** As git does: up to date,
+  ahead, behind, diverged or gone, with the hint on what to do.
+- **Added** — **`git rebase --autostash`.** Rebase with uncommitted changes: they're set aside first and brought back
+  once the rebase is done, as in git; `git config rebase.autoStash true` makes it the default.
+- **Fixed** — **`import "ws"` works without installing ws.** As in Bun, a program gets Bun's built-in ws instead of
+  `cannot resolve "ws"`.
+- **Fixed** — **Dependencies' install scripts find their own dependencies' bins.** A `postinstall` calling a bin of a
+  nested or hoisted dependency failed with `command not found`.
+- **Fixed** — **`Bun.build` names chunks and hashes outputs as Bun does.** Split chunks were named after their module
+  (`lazy-<hash>.js`) instead of `chunk-<hash>.js`, and a custom `naming` gave different hashes.
+- **Fixed** — **`Bun.build` with several entry points in one folder puts their outputs at the top of `outdir`.** They
+  landed in a subfolder named after that folder.
+- **Fixed** — **`Bun.build`'s outputs report the same `loader` as in Bun.** An entry point's outputs showed their own
+  loader (`"js"`, `"css"`) instead of the entry's (`"ts"`).
+- **Fixed** — **`Bun.build` without `outdir` works for code that imports CSS.** It failed with "cannot write multiple
+  output files without an output directory"; now it returns the JS, the CSS and the assets in memory, as Bun does.
+- **Fixed** — **`git switch` and `git checkout` list the changes they carry over.** The `M	file` lines git prints were
+  missing, and `git checkout --detach` without a commit did nothing.
+- **Fixed** — **`git checkout` warns before you leave commits behind.** Detaching prints git's advice, and leaving a
+  detached HEAD lists the commits no branch keeps, as git does; `git status` says where HEAD was detached from.
+- **Fixed** — **`git commit -q` is quiet, and a commit on a detached HEAD says so.** The summary was printed anyway, and
+  named the branch `HEAD` instead of git's `detached HEAD`.
+- **Fixed** — **`git commit` without `-m` during a stopped rebase.** It takes the stopped commit's message, as `git
+  commit --no-edit` does, instead of asking for `-m`.
+- **Fixed** — **`git fetch` says when a branch was force-pushed.** The line for a remote branch that was rewritten ends
+  in `(forced update)`, as in git.
+- **Fixed** — **`git rebase` and `git pull --rebase` leave out commits a force-push removed upstream.** Like git, they
+  replay only what you added since your branch forked from its upstream (`--fork-point`), instead of bringing the
+  dropped commits back.
+
+### Editor
+
+- **Added** — **ReactiveScript files get errors, hovers and go to definition.** A `.rx` file shows its compiler's rule
+  errors and TypeScript's type errors as you type, and the type of the name under the pointer.
+- **Added** — **Format works on ReactiveScript files.** The Format button reflows a `.rx` module and leaves it as it is
+  when the result can't be shown to be the same program.
+- **Fixed** — **Errors about missing packages clear once they're installed.** A file that was open during `bun install`
+  kept showing "Cannot find module" until you edited it.
+
+### Docs
+
+- **Added** — **Use cases, with a recommendation for each.** A new guide says what to start from for a server, a
+  frontend, a database prototype, a bug reproduction, examples in your docs or a workshop.
+- **Changed** — **Keyboard shortcuts look like keys.** The search shortcut and the keys named in the guides are small
+  pixel keycaps, like the site's buttons.
+- **Changed** — **The playground's features have a page each.** Editor, console, Git, running code, preview and fast
+  path are separate pages you can skim: each item shows one line and opens for the detail.
+- **Changed** — **The compatibility tables are scannable.** Each row's note is one line, with the full detail in a
+  section below it.
+- **Fixed** — **The compatibility overview matches the detail pages.** It said `bun install` doesn't write `bun.lock`
+  and that `Bun.sql` is missing; both work.
+- **Fixed** — **Runnable examples with several files have one frame.** Their code drew a second border and shadow inside
+  the block, with a scrollbar beside it.
+- **Fixed** — **The sidebar's sections stay in line.** The current section's button sat lower than the others.
+- **Fixed** — **The phone layout's menu, search and "On this page" buttons match the site.** The menu button was round,
+  the search button a narrow sliver and the page outline a rounded box.
+- **Fixed** — **The page no longer jumps sideways.** Opening the menu or the search, or going from a short page to a
+  long one, moved everything by a scrollbar's width.
+
 ## 0.5.0 — 2026-11-17
 
 A large step in Bun and Node compatibility: node:crypto ciphers and signatures, HTTP clients, `HTMLRewriter`, zstd and
