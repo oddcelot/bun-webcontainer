@@ -34,8 +34,10 @@ console.log(`Listening on ${server.url}`);
 - **Runnable examples in docs and posts.** The [`<bun-playground>` element](/guides/embedding/), or [`@runbun/astro`](/guides/astro/) in an Astro site, turns a code block into one that runs in the reader's browser. The [examples](/examples/) on this site are built that way.
 - **Checking a package or a framework.** `bun install` fetches packages from npm, and [frameworks](/compatibility/frameworks/) like Elysia, Hono, Vite and Astro run with their dev servers.
 
+[Use cases](/guides/use-cases/) has a recommendation for each of these, and more: what to start from and what to use.
+
 ## What it isn't
 
 runbun.dev is not Bun itself. Your code runs in the browser's JavaScript engine, not in Bun's JavaScriptCore, and the runtime APIs are reimplemented on top of it. A browser has no processes and no raw sockets, so `Bun.spawn`, `Bun.connect` and native `.node` addons are missing (`Bun.$` runs Bun's builtins, not other programs), and everything else is marked API by API in [Compatibility](/compatibility/). Running code needs WebAssembly Memory64, which Chrome, Edge, Firefox and Safari Technology Preview have and Safari doesn't yet ([Browsers](/compatibility/browsers/)). [Bun APIs](/compatibility/bun/) names the Bun release the playground is built from.
 
-runbun is an independent project, not affiliated with or endorsed by Oven or Bun. For what the playground can do, take the [Features](/guides/features/) tour.
+runbun is an independent project, not affiliated with or endorsed by Oven or Bun. For what to start from, see [Use cases](/guides/use-cases/); for what the playground can do, take the [Features](/guides/features/) tour.
