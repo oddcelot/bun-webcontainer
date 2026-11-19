@@ -297,7 +297,7 @@ bun-playground {
  */
 .expressive-code .frame,
 .runbun-code:not(.runbun-tabs > *, bun-playground *),
-.runbun-tabs,
+.runbun-tabs:not(bun-playground *),
 bun-playground,
 .starlight-aside,
 .sl-link-card,
@@ -318,7 +318,7 @@ bun-playground,
 /* Room for the shadow, which would otherwise overflow the column. */
 .expressive-code,
 .runbun-code:not(.runbun-tabs > *, bun-playground *),
-.runbun-tabs,
+.runbun-tabs:not(bun-playground *),
 bun-playground {
   margin-block-end: calc(4 * var(--px));
   margin-inline: var(--px) calc(4 * var(--px));
