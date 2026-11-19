@@ -1,4 +1,4 @@
-import { For, createSignal, type ParentProps } from "solid-js";
+import { For, createSignal, onSettled, type ParentProps } from "solid-js";
 import { Popover } from "@kobalte/core/popover";
 import { ToggleGroup } from "@kobalte/core/toggle-group";
 import { FAMILIES, FamilyListbox } from "./FamilyListbox";
@@ -55,6 +55,14 @@ export function AppearancePicker(props: AppearanceProps) {
     onOpenChange(false);
     trigger?.focus();
   };
+
+  // A click in an iframe (the playground's preview) never reaches this document, so Kobalte doesn't see it as a click
+  // outside; it moves focus into the frame, which blurs this window. Close then, leaving focus where the click put it.
+  onSettled(() => {
+    const onBlur = () => open() && document.activeElement instanceof HTMLIFrameElement && onOpenChange(false);
+    addEventListener("blur", onBlur);
+    return () => removeEventListener("blur", onBlur);
+  });
 
   return (
     <span ref={root} class="appearance-root">
