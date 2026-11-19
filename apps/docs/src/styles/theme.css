@@ -197,8 +197,8 @@ site-search button[data-open-modal] > kbd {
 
 /*
  * The narrow layout's controls are keys too (Starlight draws a round menu button and rounded boxes): the menu button
- * and the search key, shrunk to its icon, are squares of one size; both stay down while what they open is open, as
- * the "On this page" toggle does. Its list drops out of the bar on the offset shadow.
+ * and the search key, shrunk to its icon, are squares of one size. While its menu or list is open, a key is lit
+ * (--key-hover) and stays where it is. Its list drops out of the bar on the offset shadow.
  */
 :root {
   --sl-menu-button-size: 2.25rem;
@@ -212,9 +212,7 @@ site-search button[data-open-modal] > kbd {
   font-size: 1.125rem;
 
   &:has(~ :popover-open) {
-    translate: 0 calc(2 * var(--px));
     background: var(--key-hover);
-    box-shadow: var(--_frame);
     color: var(--fg);
   }
 }
@@ -236,9 +234,7 @@ mobile-starlight-toc {
     font-size: 0.875rem;
   }
   details[open] .toggle {
-    translate: 0 calc(2 * var(--px));
     background: var(--key-hover);
-    box-shadow: var(--_frame);
   }
   .dropdown {
     border-inline: 0;
