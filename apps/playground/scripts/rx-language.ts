@@ -5,6 +5,7 @@
 //   (b) the compiler's own rule errors are markers with source rx(<rule>),
 //   (c) TypeScript errors are markers on the .rx text with source ts(<code>),
 //   (d) the unchanged file has no diagnostics once its dependencies are installed (no false positives from the projection),
+//   (f) an element's tag and an attribute have hovers, (g) Format reflows the module,
 //   (e) rxc.wasm and the type checker load (no console error starting with `rxc:` or `tsrs:`).
 // It prints one ok/FAIL line per check with what it saw and exits 1 if any failed.
 //   bun scripts/rx-language.ts                    against http://localhost:5174 (a running `bun run dev`)
@@ -109,6 +110,24 @@ try {
   const closing = await hoverOn(page, 4, "button");
   const attr = await hoverOn(page, 4, "onClick");
   report("(f) hover on an element and an attribute", !!tag && /button/i.test(tag) && !!attr && /onClick/.test(attr), `<button: ${JSON.stringify(tag)}; </button: ${JSON.stringify(closing)}; onClick: ${JSON.stringify(attr)}; line 4 tokens: ${tokens}`);
+
+  // (g) Format: the equation's indent is put right and the one-line handler opens up (rxFormat.ts).
+  await focus(page);
+  await k.press("a", [MOD]);
+  await k.press("ArrowLeft");
+  await k.press("ArrowDown", [], 2);
+  await page.keyboard.type("    ");
+  await page.click(".format");
+  const formatted = await waitFor(async () => {
+    const t = await editorText(page);
+    return t && /\n  doubled = count \* 2\n/.test(t) ? t : null;
+  }, WAIT_FOR);
+  report(
+    "(g) Format reflows the module",
+    !!formatted && /\n {6}count := count \+ 1\n/.test(formatted) && !formatted.includes(";") && !formatted.includes("__rx"),
+    formatted ? JSON.stringify(formatted) : `not formatted: ${JSON.stringify(await editorText(page))}`,
+  );
+  await restore(page, original);
 
   // (b) a rule error: `doubled = …` is an equation, `doubled := …` writes to it.
   await focus(page);

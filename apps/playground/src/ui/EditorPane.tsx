@@ -8,7 +8,7 @@ import { cssComplete, cssHover, cssTemplateAt } from "../cssTemplates";
 import { createPierre } from "../editors/pierre";
 import { chordKeys, keysFor, matches } from "../keymap";
 import type { CodeEditor, EditorLocation } from "../editors/types";
-import { asConsoleEntry, errorLocation, fmt } from "../fmt";
+import { asConsoleEntry, errorLocation, fmt, fmtRx } from "../fmt";
 import { complete, definition, hover, readTypes, resolveCompletion, signatureHelp, TYPED } from "../typecheck";
 import { RX } from "../typecheck/rx";
 import { debugSession } from "../debugSession";
@@ -105,6 +105,16 @@ export function EditorPane(props: { start?: JSX.Element; end?: JSX.Element }) {
     const path = current;
     if (!path || !editor || !has("format") || ws.readOnlyText(path) !== undefined || ws.isReadonly(path)) return;
     try {
+      if (RX.test(path)) {
+        // A ReactiveScript module is reflowed a lot (its one-line handlers and blocks open up): only when asked for.
+        if (quiet) return;
+        const r = await fmtRx(vfs, path, editor.getText());
+        if (path !== current) return;
+        if (r.status === "ok") return editor.replace(r.out);
+        if (r.status === "skip") log("error", `[fmt] ${path} doesn't parse: ${r.detail}`);
+        if (r.status === "rejected") log("error", `[fmt] ${path} is left as it is: the formatted module couldn't be shown to be the same program (${r.reason}: ${r.detail})`);
+        return;
+      }
       const r = await fmt(vfs, path, editor.getText());
       if (path !== current) return;
       if (r.exitCode === 0) return editor.replace(r.stdout);

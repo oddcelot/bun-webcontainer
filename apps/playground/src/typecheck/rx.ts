@@ -220,3 +220,18 @@ export async function projectRx(vfs: VFS, files: Map<string, FileContents>, path
     files.set(`/${p}.tsx`, hit.view.tsx);
   }
 }
+
+/**
+ * The compiler's analysis of the module at VFS `path` with `text` as its contents: its projection, and the errors it
+ * has. For the formatter (rxFormat.ts), which compares a module's analysis before and after.
+ */
+export async function analyzeRx(vfs: VFS, path: string, text: string): Promise<Analysis> {
+  const compiler = await load();
+  try {
+    return compiler.call<Analysis>("analyze", { file: `/${path}`, overlays: { [`/${path}`]: text }, prelude: PRELUDE }, (abs) => (abs === `/${path}` ? text : vfs.data(abs.slice(1))));
+  } catch (e) {
+    // A trap leaves the instance as it stopped: the next call gets a new one.
+    rxc = undefined;
+    throw e;
+  }
+}
