@@ -3,7 +3,7 @@ import { loadResolver, parseData, parseDataFile, resolve } from "../resolver";
 import { loadSemver } from "../semver";
 import { dirname, norm, VFS, type FileData } from "@runbun/vfs";
 import { readConfig } from "../projectConfig";
-import { BUN_NAMES, builtinName, builtins, compressionStreams, installAsyncContext, installTimers, setBunFetch, setExit, setFs, setRawStdio, setRequire, setStdio } from "./node";
+import { BUN_NAMES, builtinName, builtins, compressionStreams, installAsyncContext, installTimers, setBunFetch, setExit, setFs, setWatchReport, setRawStdio, setRequire, setStdio } from "./node";
 import { BuildPlugins } from "./buildPlugins";
 import { bundle, type BundleConfig, type BundleLog } from "./bundler";
 import { setHostVfs } from "./hostPackages";
@@ -124,6 +124,7 @@ setHostVfs(vfs);
 setFs(vfs, (op, ...args) => post({ type: "vfs", op, args }));
 process.stdin = stdinStream;
 setStdinPost(post, true);
+setWatchReport((watched) => post({ type: "watching", watched }));
 installDialogs(g, (text) => void process.stdout.write(text));
 setStdio((level, text, partial) => post({ type: "console", level, text, partial }));
 const has = (path: string) => vfs.files.has(path);
@@ -1961,6 +1962,8 @@ self.addEventListener("message", async (e: MessageEvent) => {
     setKernel(post, proc.pid, has, read, listDirs);
     setRawStdio((fd, data) => post({ type: "stdio", fd, data }, [data.buffer]));
     setStdinPost(post, false);
+    // Only the program itself tells the page what it watches: Watch asks about the one answering previews.
+    setWatchReport(() => {});
     const thread = e.data.thread as ThreadInfo | undefined;
     if (thread) {
       // A worker_threads thread: the process's ids, not a child's of its own.

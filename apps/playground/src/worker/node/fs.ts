@@ -554,6 +554,21 @@ const constants = {
 type Watch = { key: string; recursive: boolean; emit: (type: "rename" | "change", rel: string) => void };
 const watches = new Set<Watch>();
 let subscribed: VFS | undefined;
+let reportWatches: ((watched: { key: string; recursive: boolean }[]) => void) | undefined;
+let reporting = false;
+/** The page hears what the program watches (runtime.ts), so Watch leaves a save of such a file to it (watched.ts). */
+export function setWatchReport(fn: (watched: { key: string; recursive: boolean }[]) => void) {
+  reportWatches = fn;
+}
+/** After `watches` changed: one report per turn (chokidar opens a watcher per folder and file). */
+function watchesChanged() {
+  if (!reportWatches || reporting) return;
+  reporting = true;
+  queueMicrotask(() => {
+    reporting = false;
+    reportWatches?.([...watches].map(({ key, recursive }) => ({ key, recursive })));
+  });
+}
 
 /** Routes VFS changes to the registered watchers; cheap when nothing is watched (installs write thousands of files). */
 function fanOut(k: string, type: "rename" | "change") {
@@ -580,11 +595,13 @@ class FSWatcher extends EventEmitter {
     subscribe();
     this.w = { key, recursive, emit: (type, rel) => setTimeout(() => this.emit("change", type, rel), 0) };
     watches.add(this.w);
+    watchesChanged();
     hold(this);
   }
   close() {
     if (this.w) watches.delete(this.w);
     this.w = undefined;
+    watchesChanged();
     release(this);
     this.emit("close");
   }
@@ -630,6 +647,7 @@ const watchFile = (p: unknown, a?: unknown, b?: unknown) => {
       }, 0),
   };
   watches.add(w);
+  watchesChanged();
   hold(w);
   if (!statWatchers.has(key)) statWatchers.set(key, new Map());
   statWatchers.get(key)!.set(listener, w);
@@ -639,7 +657,7 @@ const unwatchFile = (p: unknown, listener?: StatListener) => {
   const key = keyOf(toPath(p));
   const m = statWatchers.get(key);
   if (!m) return;
-  for (const [l, w] of [...m]) if (!listener || l === listener) (watches.delete(w), release(w), m.delete(l));
+  for (const [l, w] of [...m]) if (!listener || l === listener) (watches.delete(w), watchesChanged(), release(w), m.delete(l));
 };
 
 class ReadStream extends (Readable as Any) {

@@ -448,7 +448,10 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
     }
     waitingFor = undefined;
     if (lastEntry !== undefined && runner && !(runner instanceof RemoteRunner) && runner.running && clientOnly(vfs, lastEntry, changed)) {
+      // A dev server that watches these files (Vite's hot replacement, a live reload of its own) updates the page itself.
+      const own = runner.watches(changed);
       changed.clear();
+      if (own) return;
       log("sys", "[watch] only the page changed: reloading the preview");
       previews.reload();
       return;
