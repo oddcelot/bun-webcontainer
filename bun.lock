@@ -169,7 +169,7 @@
     },
     "packages/embed": {
       "name": "@runbun/embed",
-      "version": "0.8.0",
+      "version": "0.9.0",
       "bin": {
         "runbun-embed": "bin/pack.mjs",
       },
