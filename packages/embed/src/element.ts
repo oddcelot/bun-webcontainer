@@ -62,10 +62,10 @@ iframe.wait{visibility:hidden}
 :host(:state(live)) .poster{pointer-events:none}
 .def{display:block;position:relative;min-height:100%;box-sizing:border-box}
 pre{margin:0;padding:12px 16px;font:13px/1.5 var(--font-mono,ui-monospace,Menlo,Consolas,monospace);white-space:pre-wrap}
-.play{position:absolute;right:12px;bottom:12px;z-index:1;font:var(--play-font,inherit);padding:6px 14px;border:1px solid var(--play-border,GrayText);border-radius:var(--play-radius,6px);background:var(--play-bg,ButtonFace);color:var(--play-fg,ButtonText);cursor:pointer}
+.play{position:absolute;right:12px;bottom:calc(12px + var(--_lift,0px));z-index:1;font:var(--play-font,inherit);padding:6px 14px;border:1px solid var(--play-border,GrayText);border-radius:var(--play-radius,6px);background:var(--play-bg,ButtonFace);color:var(--play-fg,ButtonText);cursor:pointer}
 .play:hover{background:var(--play-bg-hover,color-mix(in srgb,var(--play-bg,ButtonFace) 85%,var(--play-fg,ButtonText)))}
 .play:focus-visible{outline:2px solid var(--play-bg,Highlight);outline-offset:2px}
-.spin{position:absolute;right:16px;bottom:16px;z-index:1;display:none;box-sizing:border-box;width:22px;height:22px;border:2px solid color-mix(in srgb,var(--play-bg,ButtonText) 25%,transparent);border-top-color:var(--play-bg,ButtonText);border-radius:50%;animation:spin .8s linear infinite}
+.spin{position:absolute;right:16px;bottom:calc(16px + var(--_lift,0px));z-index:1;display:none;box-sizing:border-box;width:22px;height:22px;border:2px solid color-mix(in srgb,var(--play-bg,ButtonText) 25%,transparent);border-top-color:var(--play-bg,ButtonText);border-radius:50%;animation:spin .8s linear infinite}
 .poster[data-starting] .play{display:none}
 .poster[data-starting] .spin{display:block}
 @keyframes spin{to{transform:rotate(1turn)}}
@@ -130,7 +130,11 @@ export class BunPlayground extends HTMLElement {
   #id = 0;
   #io: IntersectionObserver | null = null;
   /** While the poster shows, its content's size (fonts, page CSS, a request tab's panel), for `height="auto"`. */
-  #posterSizes = new ResizeObserver(() => !this.#isReady && !this.#poster.hidden && this.#sizeBox(this.#posterHeight()));
+  #posterSizes = new ResizeObserver(() => {
+    if (this.#isReady || this.#poster.hidden) return;
+    this.#liftPlay();
+    this.#sizeBox(this.#posterHeight());
+  });
   /** The handle under the box (`resize`): the reader's height, in place of the content's (`height="auto"`). */
   #handle = document.createElement("div");
   /** The height the reader set with the handle; null to follow the content. */
@@ -156,6 +160,8 @@ export class BunPlayground extends HTMLElement {
     this.#poster.className = "poster";
     this.#poster.part.add("poster");
     this.#poster.innerHTML = `<slot name="poster"></slot>`;
+    // Another tab of a slotted poster: its code may scroll where the last one didn't.
+    this.#poster.addEventListener("change", () => this.#liftPlay());
     this.#overlay.className = "overlay";
     this.#overlay.part.add("overlay");
     const style = document.createElement("style");
@@ -499,6 +505,30 @@ export class BunPlayground extends HTMLElement {
     const parts = [...this.#poster.querySelectorAll("slot")].flatMap((s) => s.assignedElements());
     parts.push(...this.#poster.querySelectorAll(".def"));
     return Math.max(this.#poster.scrollHeight, ...parts.map((e) => Math.ceil(e.getBoundingClientRect().bottom - top)));
+  }
+
+  /**
+   * Lifts the Run button (and the spinner in its place) over a horizontal scrollbar it would sit on: a slotted code
+   * block's, where scrollbars take room. Overlay scrollbars take none, and the button stays where it is.
+   */
+  #liftPlay() {
+    const btn = this.#poster.querySelector<HTMLElement>(".play");
+    if (!btn) return;
+    const bottom = this.#poster.getBoundingClientRect().bottom;
+    let lift = 0;
+    for (const s of this.#poster.querySelectorAll("slot")) {
+      for (const part of s.assignedElements()) {
+        for (const el of [part, ...part.querySelectorAll("pre")]) {
+          if (!(el instanceof HTMLElement) || !el.checkVisibility({ visibilityProperty: true })) continue;
+          const bar = el.offsetHeight - el.clientHeight - el.clientTop - parseFloat(getComputedStyle(el).borderBottomWidth);
+          if (bar < 1) continue;
+          // The scrollbar's band, from the poster's bottom edge up; the button rests 12px above that edge.
+          const from = bottom - el.getBoundingClientRect().bottom;
+          if (from + bar > 12 && from < 12 + btn.offsetHeight) lift = Math.max(lift, from + bar - 6);
+        }
+      }
+    }
+    this.#poster.style.setProperty("--_lift", lift + "px");
   }
 
   /** Sizes the box to the poster again whenever the poster's content changes size (see #posterSizes). */
