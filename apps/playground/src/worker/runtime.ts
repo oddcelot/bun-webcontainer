@@ -1661,7 +1661,7 @@ async function main() {
   // The shell's parser too: `$` parses as it's called, as Bun's does (a syntax error throws there).
   const [semver, shellWasm] = await Promise.all([loadSemver(), loadShellWasm(), loadResolver(vfs)]);
   setRequire(vfs, (spec, dir) => resolve(spec, dir, "require", "bun"), (spec, dir) => resolve(spec, dir, "import", "bun"), () => VFS_ROOT);
-  setPluginHost({ vfsRoot: () => VFS_ROOT, resolve: (spec, dir, kind) => resolve(spec, dir, kind, "bun"), cwd: () => process.cwd(), parseData, ...pluginModuleHost() });
+  setPluginHost({ vfsRoot: () => VFS_ROOT, resolve: (spec, dir, kind) => resolve(spec, dir, kind, "bun"), cwd: () => process.cwd(), parseData, post: (msg) => post(msg), ...pluginModuleHost() });
   setPluginHook(pluginRequire);
   const bun: Record<(typeof BUN_NAMES)[number], unknown> = {
     version: `${BUN_VERSION}-browser`,

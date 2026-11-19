@@ -516,6 +516,7 @@ export function resetSyncEsm() {
   servedEsm.clear();
   mocks.clear();
   plugins = pluginToken = undefined;
+  pluginWorkers.clear();
 }
 
 /** The worker's synchronous requests about the ES modules it runs itself: `claim/<path>`, `done/<names>/<path>`, `fail/<path>`. */
@@ -572,25 +573,44 @@ ${names.includes("default") ? "export default __ns.default;\n" : ""}${named.leng
 export { ${named.map((n, i) => `__s${i} as ${q(n)}`).join(", ")} };` : ""}`;
 }
 
-/** The worker whose plugins the page asks (its BroadcastChannel's name), as it last told the page. */
+/** The worker whose plugins the page asks (its token, see pluginWorkers), as it last told the page. */
 let pluginToken: string | undefined;
 /** Source a runtime plugin loaded, served as an ES module at `url` (see serveModuleOnce). */
 type PluginSource = { key: string; url: string; contents: string; dir: string; importer: string };
 
+/**
+ * The workers with runtime plugins, by their token: how to post to each (the runner registers them from their
+ * "plugins-token" message). A worker on the content origin is only reachable that way, through the host frame.
+ */
+const pluginWorkers = new Map<string, (msg: unknown) => void>();
+/** Asks waiting for an answer ("plugin-answer"), by id. */
+const pluginAsks = new Map<number, (answer: PluginAnswer) => void>();
+let pluginAskId = 0;
+
+/** A worker told the page its plugins' token; `post` reaches it. */
+export function pluginWorker(token: string, post: (msg: unknown) => void) {
+  pluginWorkers.set(token, post);
+}
+
+/** A worker's answer to `askPlugins`. */
+export function pluginAnswered(reply: number, answer: PluginAnswer) {
+  pluginAsks.get(reply)?.(answer);
+}
+
 /** Asks the worker's plugins for the module of `spec` imported from `importer` (worker/plugins.ts serve). */
 function askPlugins(importer: string, spec: string): Promise<PluginAnswer> {
-  if (!pluginToken) return Promise.resolve({ kind: "error", name: "ResolveMessage", message: `Cannot find package '${spec}' imported from ${importer}` });
-  const ch = new BroadcastChannel(`runbun-plugins-${pluginToken}`);
-  const id = Math.random();
+  const token = pluginToken;
+  const post = token && pluginWorkers.get(token);
+  if (!post) return Promise.resolve({ kind: "error", name: "ResolveMessage", message: `Cannot find package '${spec}' imported from ${importer}` });
+  const id = ++pluginAskId;
   return new Promise<PluginAnswer>((resolve) => {
     const timer = setTimeout(() => resolve({ kind: "error", name: "Error", message: `The program's plugins didn't answer for "${spec}"` }), 30_000);
-    ch.onmessage = (e: MessageEvent<{ reply?: number; answer: PluginAnswer }>) => {
-      if (e.data?.reply !== id) return;
+    pluginAsks.set(id, (answer) => {
       clearTimeout(timer);
-      resolve(e.data.answer);
-    };
-    ch.postMessage({ id, importer, spec });
-  }).finally(() => ch.close());
+      resolve(answer);
+    });
+    post({ type: "plugin-ask", token, id, importer, spec });
+  }).finally(() => pluginAsks.delete(id));
 }
 
 /**

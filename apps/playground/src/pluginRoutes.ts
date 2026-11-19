@@ -4,7 +4,7 @@
 
 /** A plugin's hooks as data: its filters' sources and flags, and the namespaces they apply in. */
 export type PluginFilters = {
-  /** The worker's BroadcastChannel (`runbun-plugins-<token>`), where the page asks it for a module. */
+  /** The worker's plugins, as it named them to the page (a "plugins-token" message): where the page asks for a module. */
   token: string;
   resolve: { source: string; flags: string; ns: string }[];
   load: { source: string; flags: string; ns: string }[];
