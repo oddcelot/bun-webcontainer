@@ -27,6 +27,6 @@
   "devDependencies": {
     "@solidjs/web": "catalog:",
     "solid-js": "catalog:",
-    "tsrs": "0.25.0-ts7.1.0-beta"
+    "tsrs": "7.1.0-beta.tsrs3"
   }
 }

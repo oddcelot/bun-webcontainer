@@ -31,6 +31,6 @@
     "@solidjs/web": "catalog:",
     "astro": "^7.4.13",
     "solid-js": "catalog:",
-    "tsrs": "0.25.0-ts7.1.0-beta"
+    "tsrs": "7.1.0-beta.tsrs3"
   }
 }

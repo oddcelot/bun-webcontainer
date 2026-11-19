@@ -5,7 +5,7 @@ import { BASE } from "../base";
 // only does stdout/stderr, clocks and randomness.
 
 /** The tsrs release crates/tsrs-ls-wasm/Cargo.toml builds from, and the TypeScript version it ports. */
-export const TSRS_VERSION = "0.25.0";
+export const TSRS_VERSION = "7.1.0-beta.tsrs3";
 export const TS_VERSION = "7.1.0-beta";
 
 const EBADF = 8;

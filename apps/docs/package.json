@@ -31,7 +31,7 @@
     "@emnapi/runtime": "1.11.3",
     "@iconify-json/lucide": "catalog:",
     "@unocss/astro": "66.13.0",
-    "tsrs": "0.25.0-ts7.1.0-beta",
+    "tsrs": "7.1.0-beta.tsrs3",
     "unocss": "catalog:",
     "wrangler": "^4.165.0"
   }
