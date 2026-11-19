@@ -24,9 +24,13 @@ type Handler = ((this: WebWorker, e: Event) => unknown) | null;
 const NativeWorker = globalThis.Worker;
 /** Paths (on this origin) of the workers that host packages start (hostPackages.ts): the browser's own runs them. */
 const hostWorkers = new Set<string>();
-export function allowHostWorker(url: URL) {
-  hostWorkers.add(url.pathname);
+const hostWorkerPatterns: RegExp[] = [];
+/** A worker's URL, or a pattern its path matches (a built worker chunk's hashed name). */
+export function allowHostWorker(url: URL | RegExp) {
+  if (url instanceof RegExp) hostWorkerPatterns.push(url);
+  else hostWorkers.add(url.pathname);
 }
+const isHostWorker = (path: string) => hostWorkers.has(path) || hostWorkerPatterns.some((p) => p.test(path));
 
 /** `new CloseEvent` where there is one, an Event with its fields otherwise. */
 const closeEvent = (code: number) => {
@@ -53,7 +57,7 @@ export class WebWorker extends EventTarget {
     // listed paths of this origin: a project can't run any other URL this way.
     if (NativeWorker && /^https?:/i.test(href)) {
       const u = new URL(href);
-      if (u.origin === location.origin && hostWorkers.has(u.pathname)) return new NativeWorker(u, options) as unknown as WebWorker;
+      if (u.origin === location.origin && isHostWorker(u.pathname)) return new NativeWorker(u, options) as unknown as WebWorker;
     }
     if (/^[a-z][a-z\d+.-]+:/i.test(href) && !/^file:/i.test(href)) throw new TypeError(`Worker: only the project's files can run in a Worker here, not ${href.slice(0, 60)}`);
     this.#thread = new Thread(href, { argv: options.argv, env: options.env, workerData: options.workerData, name: options.name }, {

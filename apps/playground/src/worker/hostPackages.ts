@@ -6,9 +6,11 @@ import { builtins } from "./node";
 import { allowHostWorker } from "./webWorker";
 
 // rolldown's wasm binding starts `new Worker(new URL("./wasi-worker-browser.mjs", import.meta.url))` for its threads.
-// The worker's `Worker` is Bun's (webWorker.ts), which only runs project files: let it hand this one URL to the
-// browser's. The same asset as the binding's (Vite emits one file for it), so the same path.
+// The worker's `Worker` is Bun's (webWorker.ts), which only runs project files: let it hand this one to the
+// browser's. In dev that is the file itself; a build bundles it as a worker chunk, /assets/wasi-worker-browser-<hash>.js
+// (a bare `new URL` of it here would be a different, inlined asset, so match the chunk's name instead).
 allowHostWorker(new URL("../../node_modules/@rolldown/browser/dist/wasi-worker-browser.mjs", import.meta.url));
+allowHostWorker(/^\/assets\/wasi-worker-browser-[\w-]+\.js$/);
 
 const loaders: Record<string, () => Promise<object>> = {
   rolldown: () => import("@rolldown/browser"),
