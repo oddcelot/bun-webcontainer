@@ -112,7 +112,8 @@ export function createWasi(vfs: WasiVfs, opts: Opts, getMemory: () => WebAssembl
   const dv = () => new DataView(getMemory().buffer);
   // The buffer is replaced by memory.grow, so views are never kept across calls.
   const u8 = (ptr: number, len: number) => new Uint8Array(getMemory().buffer, ptr, len);
-  const str = (ptr: number, len: number) => dec.decode(u8(ptr, len));
+  // TextDecoder refuses a view of a shared memory (a threaded program's), so its bytes are copied out first.
+  const str = (ptr: number, len: number) => dec.decode(getMemory().buffer instanceof ArrayBuffer ? u8(ptr, len) : u8(ptr, len).slice());
 
   const fds = new Map<number, Fd>([
     [0, { kind: "std", n: 0 }],

@@ -1,6 +1,7 @@
 import type { CompletionKind, EditorCompletion, EditorCompletionDetails, EditorCompletions, EditorDiagnostic, EditorHover, EditorLocation, EditorSignatureHelp } from "../editors/types";
 import type { FileContents, VFS } from "@runbun/vfs";
 import { nearestTsconfig } from "../tsconfig";
+import { projectRx, RX, RxView, rxView } from "./rx";
 import type { LspCompletionItem } from "./tsrsLs";
 import type { LsOp, LsRead, LsReply, LsRequest } from "./worker";
 
@@ -51,8 +52,22 @@ function lsWorker(): Worker {
   return worker;
 }
 
-/** Sends `op` for `path` (contents `text`, unsaved edits included) with what changed in the project since the last request. */
-async function request(vfs: VFS, path: string, text: string, op: LsOp): Promise<LsReply> {
+/** An answer, and for a ReactiveScript module the projection it was asked of (./rx.ts). */
+type Reply = LsReply & { view?: RxView };
+/** A request at a position: null where a ReactiveScript module has nothing the type checker knows. */
+type OpAt = (at: { line: number; character: number }) => LsOp;
+
+/** `op` at a 1-based line and UTF-16 column of the file the request is for; in a ReactiveScript module, at the same text in its projection. */
+const at = (line: number, column: number, op: OpAt) => (view: RxView | undefined, rx: boolean) => {
+  const position = rx ? view?.toProjection(line, column) : { line: line - 1, character: column - 1 };
+  return position ? op(position) : null;
+};
+
+/**
+ * Sends `op` for `path` (contents `text`, unsaved edits included) with what changed in the project since the last
+ * request. A ReactiveScript module is asked about through its projection, `<path>.tsx`.
+ */
+async function request(vfs: VFS, path: string, text: string, op: LsOp | ((view: RxView | undefined, rx: boolean) => LsOp | null)): Promise<Reply> {
   lsWorker();
   const wanted = [...vfs.files.keys()].filter((p) => (p.startsWith("node_modules/") || p.includes("/node_modules/") ? DECLARATIONS.test(p) : PROJECT.test(p)));
   // Installs keep declarations in memory; this only matters if one was left in the package store.
@@ -62,7 +77,13 @@ async function request(vfs: VFS, path: string, text: string, op: LsOp): Promise<
     const data = vfs.data(p);
     if (data !== undefined) files.set("/" + p, data);
   }
-  files.set("/" + path, text);
+  const rx = RX.test(path);
+  if (!rx) files.set("/" + path, text);
+  // The project's .rx modules, as the TSX the type checker reads; without the compiler they go unchecked.
+  await projectRx(vfs, files, path, text).catch((e) => console.warn(`rxc: ${e}`));
+  const view = rx ? rxView(path) : undefined;
+  const asked = typeof op === "function" ? op(view, rx) : op;
+  if (!asked || (rx && !view)) return { id: 0 };
   // The config the transpiler reads too (moduleServer.ts); tsrs parses it itself, `extends` and jsconfig.json's
   // defaults included, so the project's compilerOptions (JSX among them) apply as they would in `tsc`.
   const tsconfig = nearestTsconfig(vfs, path);
@@ -84,8 +105,8 @@ async function request(vfs: VFS, path: string, text: string, op: LsOp): Promise<
   for (const p of removed) sent.delete(p);
   const id = ++nextId;
   return new Promise((resolve) => {
-    waiting.set(id, resolve);
-    worker!.postMessage({ id, changed, removed, config, path: "/" + path, ...op } satisfies LsRequest);
+    waiting.set(id, (r) => resolve({ ...r, view }));
+    worker!.postMessage({ id, changed, removed, config, path: "/" + path + (rx ? ".tsx" : ""), ...asked } satisfies LsRequest);
   });
 }
 
@@ -103,25 +124,24 @@ export async function typecheck(vfs: VFS, path: string, text: string): Promise<E
   inFlight = running;
   const r = await running;
   if (r.error) console.warn(`tsrs: ${r.error}`);
-  const out: EditorDiagnostic[] = [];
+  // A ReactiveScript module: the compiler's own errors first, then the type errors where they are in the module.
+  const out: EditorDiagnostic[] = r.view?.diagnostics() ?? [];
   for (const d of r.diagnostics ?? []) {
     if (d.severity !== 1 && d.severity !== 2) continue;
+    if (r.view && RxView.ignores(d.code)) continue;
     const { start, end } = d.range;
-    out.push({
-      severity: d.severity === 1 ? "error" : "warning",
-      message: d.message,
-      source: `ts(${d.code})`,
-      line: start.line + 1,
-      column: start.character + 1,
-      length: end.line === start.line ? end.character - start.character : 0,
-    });
+    const where = r.view
+      ? r.view.toModule(d.range)
+      : { line: start.line + 1, column: start.character + 1, length: end.line === start.line ? end.character - start.character : 0 };
+    if (!where) continue;
+    out.push({ severity: d.severity === 1 ? "error" : "warning", message: d.message, source: `ts(${d.code})`, ...where });
   }
   return out;
 }
 
 /** Type information at `line`/`column` (1-based, UTF-16) of `path`, or null. */
 export async function hover(vfs: VFS, path: string, text: string, line: number, column: number): Promise<EditorHover | null> {
-  const r = await request(vfs, path, text, { kind: "hover", line: line - 1, character: column - 1 });
+  const r = await request(vfs, path, text, at(line, column, (p) => ({ kind: "hover", ...p })));
   if (r.error) console.warn(`tsrs: ${r.error}`);
   const value = r.hover?.contents.value;
   if (!value) return null;
@@ -137,17 +157,24 @@ export async function hover(vfs: VFS, path: string, text: string, line: number, 
  * text `readTypes` gives.
  */
 export async function definition(vfs: VFS, path: string, text: string, line: number, column: number): Promise<EditorLocation[]> {
-  const r = await request(vfs, path, text, { kind: "definition", line: line - 1, character: column - 1 });
+  const r = await request(vfs, path, text, at(line, column, (p) => ({ kind: "definition", ...p })));
   if (r.error) console.warn(`tsrs: ${r.error}`);
   const d = r.definition;
   const all = !d ? [] : Array.isArray(d) ? d : [d];
   const out: EditorLocation[] = [];
   for (const l of all) {
-    const [uri, { start }] = "targetUri" in l ? [l.targetUri, l.targetSelectionRange] : [l.uri, l.range];
-    const at = { line: start.line + 1, column: start.character + 1 };
+    const [uri, range] = "targetUri" in l ? [l.targetUri, l.targetSelectionRange] : [l.uri, l.range];
+    const at = { line: range.start.line + 1, column: range.start.character + 1 };
     if (uri.startsWith("bundled:///")) out.push({ path: uri, ...at, readOnly: true });
     if (!uri.startsWith("file:///")) continue;
     const file = decodeURIComponent(uri.slice("file:///".length));
+    // A declaration in a ReactiveScript module's projection is at the same name in the module.
+    const module = file.endsWith(".rx.tsx") ? file.slice(0, -".tsx".length) : undefined;
+    const declared = module === undefined ? undefined : rxView(module)?.toModule(range);
+    if (module !== undefined) {
+      if (declared) out.push({ path: module, line: declared.line, column: declared.column });
+      continue;
+    }
     if (vfs.files.has(file)) out.push({ path: file, ...at });
     else if (file.startsWith("node_modules/")) out.push({ path: "/" + file, ...at, readOnly: true });
   }

@@ -10,7 +10,7 @@ import { rolldown, type OutputBundle } from "rolldown";
 import { defaultClientConditions, defineConfig, runnerImport, type Plugin } from "vite";
 import { BUN_VERSION } from "./src/worker/bunVersion";
 import type { AuthEnv } from "./worker/auth";
-import { npmNotice, npmPackageDir, postgresNotice, render, rustNotices, sqliteNotice } from "./scripts/licenses";
+import { npmNotice, npmPackageDir, postgresNotice, render, rustNotices, rxGrammarNotice, sqliteNotice } from "./scripts/licenses";
 
 const isolation = {
   "Cross-Origin-Opener-Policy": "same-origin",
@@ -375,7 +375,7 @@ function thirdPartyLicenses(): Plugin {
       const postgres = [...bundledPackages].some((dir) => dir.endsWith(join("@electric-sql", "pglite"))) ? [postgresNotice()] : [];
       // So is SQLite, inside @sqlite.org/sqlite-wasm's.
       const sqlite = [...bundledPackages].some((dir) => dir.endsWith(join("@sqlite.org", "sqlite-wasm"))) ? [sqliteNotice()] : [];
-      this.emitFile({ type: "asset", fileName: "third-party-licenses.txt", source: render([...npm, ...postgres, ...sqlite, ...rustNotices(BUN_VERSION)]) });
+      this.emitFile({ type: "asset", fileName: "third-party-licenses.txt", source: render([...npm, ...postgres, ...sqlite, rxGrammarNotice(), ...rustNotices(BUN_VERSION)]) });
     },
   };
 }
@@ -411,7 +411,7 @@ export default defineConfig(({ mode }) => ({
     // @babel/types (under @solidjs/babel-plugin, the fast path's Solid 2 JSX) reads this as it loads; a page has no `process`.
     "process.env.BABEL_TYPES_8_BREAKING": "false",
   },
-  plugins: [examplesSubmodule(), configSchema(), UnoCSS(), solid(), hostPackageNames(), emnapiNotNode(), pgliteNotNode(), docsLink(docsUrl(mode)), embedRoutes(), originHeaders(), serviceWorker(), workerRoutesDev(), thirdPartyLicenses()],
+  plugins: [examplesSubmodule(), configSchema(), UnoCSS(), solid({ exclude: ["examples/**", "fixtures/**"] }), hostPackageNames(), emnapiNotNode(), pgliteNotNode(), docsLink(docsUrl(mode)), embedRoutes(), originHeaders(), serviceWorker(), workerRoutesDev(), thirdPartyLicenses()],
   build: {
     target: "esnext",
     rollupOptions: {
