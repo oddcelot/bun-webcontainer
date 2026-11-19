@@ -83,7 +83,7 @@ Dependencies install automatically when one of your own projects or an example o
 
   </details>
 - <details>
-  <summary><strong>Project gallery:</strong> the project button in the header opens starters (Blank, HTTP API, React, SQLite, WebSocket chat) and examples (Elysia, Hono, Lit SSR, Solid 2 SSR, Astro + Solid, Vite and more).</summary>
+  <summary><strong>Project gallery:</strong> the project button in the header opens starters (Blank, HTTP API, React, SQLite, WebSocket chat) and examples (Elysia, Hono, Lit SSR, Solid 2 SSR, Solid 2 + Vite, Astro + Solid, Vite and more).</summary>
 
   The starters and examples are in sections down the side. Search by name or technology, or narrow it with the technology tags. Open a folder, a zip or a repository from the same gallery.
 
