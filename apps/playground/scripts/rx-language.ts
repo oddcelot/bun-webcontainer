@@ -81,6 +81,11 @@ try {
   await openFile(page);
   const original = await editorText(page);
   const k = keys(page);
+  // Where the example has what the checks point at (1-based lines).
+  const lineIn = (text: string, needle: string) => text.split("\n").findIndex((l) => l.includes(needle)) + 1;
+    const doubledLine = lineIn(original ?? "", "doubled = count * 2");
+  const buttonLine = lineIn(original ?? "", "<button onClick=");
+  if (!original || !doubledLine || !buttonLine) throw new Error(`src/app.rx isn't the example these checks know: ${JSON.stringify(original)}`);
 
   // (d) no diagnostics on the unchanged file, after the type checker has answered for it.
   const first = await waitFor(() => lsReply(page, mark), WAIT_FOR);
@@ -97,25 +102,27 @@ try {
   // (a) hovers.
   const hovers: string[] = [];
   let hoverOk = true;
-  for (const [line, name] of [[2, "count"], [3, "doubled"]] as const) {
+  for (const [line, name, type] of [[doubledLine, "doubled", /: number/], [lineIn(original, "parity = "), "parity", /: "even" \| "odd"|: string/]] as const) {
     const text = await hoverOn(page, line, name);
     hovers.push(`${name} (line ${line}): ${JSON.stringify(text)}`);
-    if (!text || !/number/.test(text)) hoverOk = false;
+    if (!text || !type.test(text)) hoverOk = false;
   }
   report("(a) hover shows the type", hoverOk, hovers.join("; "));
 
   // (f) markup: an element's tag and an attribute.
-  const tokens = (await page.evaluate(`[...${EDITOR}.querySelectorAll('[data-content] [data-line="4"] [data-char]')].map((s) => s.dataset.char + ":" + JSON.stringify(s.textContent)).join(" ")`)) as string;
-  const tag = await hoverOn(page, 4, "<button");
-  const closing = await hoverOn(page, 4, "button");
-  const attr = await hoverOn(page, 4, "onClick");
-  report("(f) hover on an element and an attribute", !!tag && /button/i.test(tag) && !!attr && /onClick/.test(attr), `<button: ${JSON.stringify(tag)}; </button: ${JSON.stringify(closing)}; onClick: ${JSON.stringify(attr)}; line 4 tokens: ${tokens}`);
+  const tokens = (await page.evaluate(`[...${EDITOR}.querySelectorAll('[data-content] [data-line="${buttonLine}"] [data-char]')].map((s) => s.dataset.char + ":" + JSON.stringify(s.textContent)).join(" ")`)) as string;
+  // The opening tag's token is `<button` or `button`, as the grammar splits the line.
+  const opening = await hoverOn(page, buttonLine, "<button");
+  const closing = await hoverOn(page, buttonLine, "button");
+  const tag = opening?.startsWith("no `") ? closing : opening;
+  const attr = await hoverOn(page, buttonLine, "onClick");
+  report("(f) hover on an element and an attribute", !!tag && /HTMLElementTags\.button/.test(tag) && !!attr && /onClick/.test(attr), `<button: ${JSON.stringify(opening)}; button: ${JSON.stringify(closing)}; onClick: ${JSON.stringify(attr)}; its line's tokens: ${tokens}`);
 
-  // (g) Format: the equation's indent is put right and the one-line handler opens up (rxFormat.ts).
+  // (g) Format: the equation's indent is put right, which gives the example as it is written (rxFormat.ts).
   await focus(page);
   await k.press("a", [MOD]);
   await k.press("ArrowLeft");
-  await k.press("ArrowDown", [], 2);
+  await k.press("ArrowDown", [], doubledLine - 1);
   await page.keyboard.type("    ");
   await page.click(".format");
   const formatted = await waitFor(async () => {
@@ -124,7 +131,7 @@ try {
   }, WAIT_FOR);
   report(
     "(g) Format reflows the module",
-    !!formatted && /\n {6}count := count \+ 1\n/.test(formatted) && !formatted.includes(";") && !formatted.includes("__rx"),
+    formatted === original,
     formatted ? JSON.stringify(formatted) : `not formatted: ${JSON.stringify(await editorText(page))}`,
   );
   await restore(page, original);
@@ -133,7 +140,7 @@ try {
   await focus(page);
   await k.press("a", [MOD]);
   await k.press("ArrowLeft");
-  await k.press("ArrowDown", [], 2);
+  await k.press("ArrowDown", [], doubledLine - 1);
   await k.press("ArrowRight", [], "  doubled ".length);
   await page.keyboard.type(":");
   const afterB = await editorText(page);
@@ -145,7 +152,7 @@ try {
   const rxMarkers = markers.filter((m) => m.source.startsWith("rx("));
   report(
     "(b) rx(<rule>) error markers",
-    afterB === wantB && rxMarkers.length > 0 && rxMarkers.every((m) => m.severity === "error" && m.line === 3),
+    afterB === wantB && rxMarkers.length > 0 && rxMarkers.every((m) => m.severity === "error" && m.line === doubledLine),
     `${afterB === wantB ? "" : `EDIT DIDN'T APPLY (editor text ${JSON.stringify(afterB)}); `}status bar: ${await problemCounts(page)}; markers: ${fmtMarkers(markers)}`,
   );
   await restore(page, original);
@@ -154,14 +161,14 @@ try {
   await focus(page);
   await k.press("a", [MOD]);
   await k.press("ArrowLeft");
-  await k.press("ArrowDown", [], 2);
+  await k.press("ArrowDown", [], doubledLine - 1);
   await k.press("End");
   await k.press("Enter");
   await page.keyboard.type("wrong = count.toUpperCase()");
   await k.press("Enter");
   await page.keyboard.type("label: string = count");
   const afterC = await editorText(page);
-  const typed = afterC.split("\n").slice(3, 5).map((l) => l.trim());
+  const typed = afterC.split("\n").slice(doubledLine, doubledLine + 2).map((l) => l.trim());
   markers = await waitMarkers(page, (m) => m.length >= 2);
   // A marker whose popover can't be shown has no source to read; the type checker's own answer says which codes it reported.
   const reply = await lsLastReply(page);
@@ -171,7 +178,7 @@ try {
   // `wrong = count.toUpperCase()`: the property name; `label: string = count`: the declared name.
   const lineOf = (needle: string) => afterC.split("\n").findIndex((l) => l.includes(needle)) + 1;
   const wl = lineOf("wrong =");
-  const ll = lineOf("label:");
+  const ll = lineOf("label: string = count");
   const wc = (afterC.split("\n")[wl - 1] ?? "").indexOf("toUpperCase") + 1;
   const lc = (afterC.split("\n")[ll - 1] ?? "").indexOf("label") + 1;
   report(
