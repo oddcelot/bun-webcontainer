@@ -2041,7 +2041,9 @@ self.addEventListener("message", async (e: MessageEvent) => {
     const entryUrl = `${VFS_ROOT}${/\.[cm][jt]s$/.test(e.data.entry) ? "__entry/" : ""}${e.data.entry}`;
     // `bun ./index.html`: Bun's dev server, which bundles the page like an HTML import and serves it.
     const htmlEntry = code === undefined && /\.html?$/.test(e.data.entry);
-    const mod = (htmlEntry ? serveHtmlEntry(e.data.entry, process.argv.slice(2)) : code !== undefined ? evalThread(code) : await importUrl(entryUrl)) as { default?: ServeOptions };
+    // A program that a preloaded plugin's onLoad takes is loaded through it, as Bun loads its entry (plugins.ts).
+    const plugged = htmlEntry || code !== undefined ? undefined : await pluginImportUrl(`/${e.data.entry}`, `/${e.data.entry}`);
+    const mod = (htmlEntry ? serveHtmlEntry(e.data.entry, process.argv.slice(2)) : code !== undefined ? evalThread(code) : await importUrl(plugged ?? entryUrl)) as { default?: ServeOptions };
     // Bun serves an entry whose default export has a fetch handler (Hono's `export default app`), unless that
     // port is already served (Elysia's `export default app.listen(3000)`).
     const def = mod.default;
