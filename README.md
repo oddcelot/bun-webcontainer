@@ -51,7 +51,7 @@ W="-Zbuild-std=std,panic_abort --target wasm64-unknown-unknown --release"
 (cd crates/sys-wasm && cargo build $W && node test.ts)
 (cd crates/resolve-wasm && cargo build $W && node test.ts)
 (cd crates/fmt-wasm && cargo build $W && node test.ts)
-(cd crates/tsrs-ls-wasm && cargo build --release --target wasm32-wasip1 && node test.ts)   # tsrs's Rust 1.99.1, not the nightly
+(cd crates/tsrs-ls-wasm && cargo build --release --target wasm32-wasip1 && node test.ts)   # tsrs's Rust 1.100.0, not the nightly
 bun install                     # one bun workspace: apps/*, packages/*
 (cd apps/playground && bun run dev)  # http://localhost:5173, Chrome
 ```

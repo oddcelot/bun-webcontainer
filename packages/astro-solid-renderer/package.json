@@ -17,8 +17,8 @@
     "typecheck": "tsrs --noEmit"
   },
   "dependencies": {
-    "@astrojs/runtime": "^0.1.1",
-    "vitefu": "^1.1.3"
+    "@astrojs/runtime": "^0.1.2",
+    "vitefu": "^1.1.4"
   },
   "peerDependencies": {
     "@solidjs/web": "catalog:",
@@ -27,6 +27,6 @@
   "devDependencies": {
     "@solidjs/web": "catalog:",
     "solid-js": "catalog:",
-    "tsrs": "0.25.0-ts7.1.0-beta"
+    "tsrs": "7.1.0-beta.tsrs3"
   }
 }

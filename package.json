@@ -10,11 +10,11 @@
       "packages/*"
     ],
     "catalog": {
-      "@iconify-json/lucide": "^1.2.155",
+      "@iconify-json/lucide": "^1.2.157",
       "@iconify-json/logos": "^1.2.20",
       "unocss": "66.13.0",
-      "solid-js": "2.0.0",
-      "@solidjs/web": "2.0.0",
+      "solid-js": "2.0.3",
+      "@solidjs/web": "2.0.3",
       "@solidjs/vite-plugin": "3.0.1",
       "@kobalte/core": "2.0.0-alpha.4"
     }
@@ -49,6 +49,6 @@
   },
   "devDependencies": {
     "@types/bun": "1.4.4",
-    "tsrs": "0.25.0-ts7.1.0-beta"
+    "tsrs": "7.1.0-beta.tsrs3"
   }
 }
