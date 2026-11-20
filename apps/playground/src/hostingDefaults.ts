@@ -13,6 +13,7 @@ export default {
   gallery: null,
   defaultProject: null,
   landing: true,
+  languages: null,
   worker: true,
   localRunner: true,
   debugger: false,

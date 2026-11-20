@@ -1,6 +1,7 @@
 import { registerCustomTheme } from "@pierre/diffs";
 import { elysiaDark, elysiaLight } from "../elysiaTheme";
 import { solidDark, solidLight } from "../solidTheme";
+import { languageByExt } from "../languages";
 
 /**
  * Every @pierre/diffs surface (the editor, the viewer, the Changes tab) highlights with @pierre/highlights (bundled
@@ -17,7 +18,7 @@ registerCustomTheme("solid-light", async () => solidLight.zed, "zed");
 registerCustomTheme("solid-dark", async () => solidDark.zed, "zed");
 
 /**
- * The language for a file, where its extension alone picks the wrong one. Highlights has no ReactiveScript lexer:
- * .rx is TSX plus `component`/`source` blocks, so TSX is the closest.
+ * The language for a file, where its extension alone picks the wrong one: a language pack's files (src/languages).
+ * Highlights has no ReactiveScript lexer: .rx is TSX plus `component`/`source` blocks, so TSX is the closest.
  */
-export const langFor = (name: string) => (name.endsWith(".rx") ? ("tsx" as const) : undefined);
+export const langFor = (name: string) => languageByExt(/\.([^./]+)$/.exec(name)?.[1].toLowerCase() ?? "")?.highlightAs;

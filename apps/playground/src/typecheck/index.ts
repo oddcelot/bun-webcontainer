@@ -1,7 +1,8 @@
 import type { CompletionKind, EditorCompletion, EditorCompletionDetails, EditorCompletions, EditorDiagnostic, EditorHover, EditorLocation, EditorSignatureHelp } from "../editors/types";
 import type { FileContents, VFS } from "@runbun/vfs";
 import { nearestTsconfig } from "../tsconfig";
-import { projectRx, RX, RxView, rxView } from "./rx";
+import { languageFor, languageView, moduleOfProjection, projectLanguages } from "../languages";
+import type { LanguageView } from "../languages/types";
 import type { LspCompletionItem } from "./tsrsLs";
 import type { LsOp, LsRead, LsReply, LsRequest } from "./worker";
 
@@ -52,22 +53,22 @@ function lsWorker(): Worker {
   return worker;
 }
 
-/** An answer, and for a ReactiveScript module the projection it was asked of (./rx.ts). */
-type Reply = LsReply & { view?: RxView };
-/** A request at a position: null where a ReactiveScript module has nothing the type checker knows. */
+/** An answer, and for a module of a language pack (src/languages) the projection it was asked of. */
+type Reply = LsReply & { view?: LanguageView };
+/** A request at a position: null where a module of a language pack has nothing the type checker knows. */
 type OpAt = (at: { line: number; character: number }) => LsOp;
 
-/** `op` at a 1-based line and UTF-16 column of the file the request is for; in a ReactiveScript module, at the same text in its projection. */
-const at = (line: number, column: number, op: OpAt) => (view: RxView | undefined, rx: boolean) => {
+/** `op` at a 1-based line and UTF-16 column of the file the request is for; in a module of a language pack, at the same text in its projection. */
+const at = (line: number, column: number, op: OpAt) => (view: LanguageView | undefined, rx: boolean) => {
   const position = rx ? view?.toProjection(line, column) : { line: line - 1, character: column - 1 };
   return position ? op(position) : null;
 };
 
 /**
  * Sends `op` for `path` (contents `text`, unsaved edits included) with what changed in the project since the last
- * request. A ReactiveScript module is asked about through its projection, `<path>.tsx`.
+ * request. A module of a language pack is asked about through its projection, `<path>.tsx`.
  */
-async function request(vfs: VFS, path: string, text: string, op: LsOp | ((view: RxView | undefined, rx: boolean) => LsOp | null)): Promise<Reply> {
+async function request(vfs: VFS, path: string, text: string, op: LsOp | ((view: LanguageView | undefined, rx: boolean) => LsOp | null)): Promise<Reply> {
   lsWorker();
   const wanted = [...vfs.files.keys()].filter((p) => (p.startsWith("node_modules/") || p.includes("/node_modules/") ? DECLARATIONS.test(p) : PROJECT.test(p)));
   // Installs keep declarations in memory; this only matters if one was left in the package store.
@@ -77,11 +78,11 @@ async function request(vfs: VFS, path: string, text: string, op: LsOp | ((view: 
     const data = vfs.data(p);
     if (data !== undefined) files.set("/" + p, data);
   }
-  const rx = RX.test(path);
+  const rx = !!languageFor(path);
   if (!rx) files.set("/" + path, text);
-  // The project's .rx modules, as the TSX the type checker reads; without the compiler they go unchecked.
-  await projectRx(vfs, files, path, text).catch((e) => console.warn(`rxc: ${e}`));
-  const view = rx ? rxView(path) : undefined;
+  // The project's modules of the enabled language packs, as the TSX the type checker reads; without the pack they go unchecked.
+  await projectLanguages(vfs, files, path, text);
+  const view = rx ? languageView(path) : undefined;
   const asked = typeof op === "function" ? op(view, rx) : op;
   if (!asked || (rx && !view)) return { id: 0 };
   // The config the transpiler reads too (moduleServer.ts); tsrs parses it itself, `extends` and jsconfig.json's
@@ -124,11 +125,11 @@ export async function typecheck(vfs: VFS, path: string, text: string): Promise<E
   inFlight = running;
   const r = await running;
   if (r.error) console.warn(`tsrs: ${r.error}`);
-  // A ReactiveScript module: the compiler's own errors first, then the type errors where they are in the module.
+  // A module of a language pack: the compiler's own errors first, then the type errors where they are in the module.
   const out: EditorDiagnostic[] = r.view?.diagnostics() ?? [];
   for (const d of r.diagnostics ?? []) {
     if (d.severity !== 1 && d.severity !== 2) continue;
-    if (r.view && RxView.ignores(d.code)) continue;
+    if (r.view && r.view.ignores(d.code)) continue;
     const { start, end } = d.range;
     const where = r.view
       ? r.view.toModule(d.range)
@@ -168,9 +169,9 @@ export async function definition(vfs: VFS, path: string, text: string, line: num
     if (uri.startsWith("bundled:///")) out.push({ path: uri, ...at, readOnly: true });
     if (!uri.startsWith("file:///")) continue;
     const file = decodeURIComponent(uri.slice("file:///".length));
-    // A declaration in a ReactiveScript module's projection is at the same name in the module.
-    const module = file.endsWith(".rx.tsx") ? file.slice(0, -".tsx".length) : undefined;
-    const declared = module === undefined ? undefined : rxView(module)?.toModule(range);
+    // A declaration in a module's projection is at the same name in the module.
+    const module = moduleOfProjection(file);
+    const declared = module === undefined ? undefined : languageView(module)?.toModule(range);
     if (module !== undefined) {
       if (declared) out.push({ path: module, line: declared.line, column: declared.column });
       continue;

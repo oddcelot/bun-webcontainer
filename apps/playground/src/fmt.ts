@@ -1,7 +1,6 @@
 import { BASE } from "./base";
 import type { VFS } from "@runbun/vfs";
 import { createSysImports } from "@runbun/vfs/sysHost";
-import type { RxFormatResult } from "./rxFormat";
 
 // `bun fmt` (Bun's own Prettier-compatible formatter) compiled to wasm64; see crates/fmt-wasm. Each call runs
 // `bun fmt [flags] --stdin-filepath <path>` itself over the VFS, so the project's configs apply as in Bun: bunfig.toml's
@@ -83,20 +82,4 @@ export function errorLocation(stderr: string): { message: string; line: number; 
   const at = /\n\s*at .+:(\d+):(\d+)\s*$/m.exec(stderr);
   const message = /^error: (.*)$/m.exec(stderr)?.[1];
   return at && message ? { message, line: Number(at[1]), column: Number(at[2]) } : null;
-}
-
-/**
- * A ReactiveScript module formatted (rxFormat.ts): `bun fmt` has no parser for .rx, so the module goes to it disguised
- * as TSX, with the project's configs for a .tsx file beside it, and the result counts only once the compiler's
- * analysis shows the same program. Otherwise the module is left as it is, and the answer says why.
- */
-export async function fmtRx(vfs: VFS, path: string, text: string): Promise<RxFormatResult> {
-  const [{ formatRx, RX_FMT_FLAGS }, { analyzeRx }] = await Promise.all([import("./rxFormat"), import("./typecheck/rx")]);
-  return formatRx(text, {
-    fmt: async (tsx) => {
-      const r = await fmt(vfs, `${path}.tsx`, tsx, RX_FMT_FLAGS);
-      return r.exitCode === 0 ? { ok: true, out: r.stdout } : { ok: false, err: r.stderr };
-    },
-    analyze: (t) => analyzeRx(vfs, path, t),
-  });
 }
