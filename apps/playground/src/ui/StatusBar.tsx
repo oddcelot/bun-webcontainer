@@ -7,11 +7,9 @@ import { chordKeys, keysFor, type Command } from "../keymap";
 import { TYPED } from "../typecheck";
 import { TS_VERSION, TSRS_VERSION } from "../typecheck/tsrsLs";
 import { BUN_VERSION } from "../worker/bunVersion";
-import { pref } from "../prefs";
 import { AppContext } from "./context";
 import { debugSession } from "../debugSession";
 import { Feedback } from "./Feedback";
-import { StatusPill } from "./Status";
 import { Tip } from "@runbun/ui/solid/Tip";
 import { Menu, MenuGroup, MenuItem, MenuTrigger } from "@runbun/ui/solid/Menu";
 import { HOSTING } from "../hosting";
@@ -47,9 +45,6 @@ const language = (path: string) => {
 const TS_SHORT = TS_VERSION.split(".").slice(0, 2).join(".");
 
 const keys = (command: Command) => keysFor(command).map(chordKeys);
-
-/** Where the run status shows: a pill in this bar, or a toast over the panes (App.tsx); picked under Appearance. */
-export const [statusDisplay, setStatusDisplay] = pref<"bar" | "toast">("runbun:status", "bar", { serialize: (v) => v, deserialize: (s) => (s === "toast" ? "toast" : "bar") });
 
 /**
  * The bar along the bottom, as in VS Code or Zed: panel toggles and the program's status on the left, the open
@@ -93,9 +88,6 @@ export function StatusBar(props: { treeShown: boolean; toggleFiles(): void; togg
           <i class="i-lucide-bug" aria-hidden="true" />
           <span class="sr-only">Debugger</span>
         </Tip>
-      </Show>
-      <Show when={statusDisplay() === "bar"}>
-        <StatusPill role="status" status={s.status()} title={s.status().text} />
       </Show>
       <Ports previewShown={props.previewShown} showPreview={() => props.toggle(0)} />
       <span class="spacer" />
@@ -188,6 +180,12 @@ export function StatusBar(props: { treeShown: boolean; toggleFiles(): void; togg
       {/* The landing page, which a host can leave out (the hosting file's `landing`). */}
       <Show when={HOSTING.landing}>
         <Tip as="a" href={`${import.meta.env.BASE_URL}about`} target="_blank" rel="noopener" placement="top-end" tip="What runbun.dev is and how it runs Bun">
+          About
+        </Tip>
+      </Show>
+      {/* A branded host (the hosting file's `brand`) without the landing page: runbun.dev's, which says what it runs on. */}
+      <Show when={HOSTING.brand && !HOSTING.landing}>
+        <Tip as="a" href="https://runbun.dev/about" target="_blank" rel="noopener" placement="top-end" tip="Powered by runbun: Bun's toolchain in the browser">
           About
         </Tip>
       </Show>

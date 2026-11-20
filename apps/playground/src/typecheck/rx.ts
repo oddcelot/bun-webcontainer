@@ -17,6 +17,8 @@ const IN_MODULES = /(?:^|\/)node_modules\//;
 const PRELUDE = "/node_modules/.reactivescript/prelude";
 /** A projection's first line: Solid's JSX types, whatever the project's `jsx` setting says. Offsets into it shift by its length. */
 const PRAGMA = "/** @jsxImportSource @solidjs/web */\n";
+/** The default export of a module with `export default component`, as JavaScript sees it: `main(app)` is `app.mount`'s view. */
+const ENTRY = "\ndeclare const __entry: (app: any) => () => unknown;\nexport default __entry;\n";
 /** A parameter without a type is `any` in ReactiveScript (spec/13), which `strict` reports in the projection. */
 const IMPLICIT_ANY = new Set([7005, 7006, 7019, 7026, 7031, 7034]);
 
@@ -211,9 +213,11 @@ export async function projectRx(vfs: VFS, files: Map<string, FileContents>, path
       const analysis = compiler.call<Analysis>("analyze", { file: `/${p}`, overlays: { [`/${p}`]: src }, prelude: PRELUDE }, read);
       // A module that doesn't parse has no projection: the modules importing it keep the last one that did.
       const parsed = !!analysis.mappings?.length || !analysis.diagnostics?.length;
-      // `export default component App` is projected as the function `App`; what imports the module wants the default.
-      const component = /^export\s+default\s+component\s+([A-Za-z_$][\w$]*)/m.exec(src)?.[1];
-      const tsx = parsed || !hit ? PRAGMA + (analysis.code ?? "") + (parsed && component ? `\nexport { ${component} as default };\n` : "") : hit.view.tsx;
+      // `export default component App` is projected as the function `App`. The compiled module's default export is what
+      // JavaScript imports to mount it (`app.mount(main(app))`): a function of the app that gives the view. Other .rx
+      // modules import by name.
+      const entry = /^export\s+default\s+component\s+[A-Za-z_$][\w$]*/m.test(src);
+      const tsx = parsed || !hit ? PRAGMA + (analysis.code ?? "") + (parsed && entry ? ENTRY : "") : hit.view.tsx;
       hit = { stamp, view: new RxView(src, tsx, analysis) };
       projected.set(p, hit);
     }

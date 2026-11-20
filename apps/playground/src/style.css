@@ -1142,6 +1142,9 @@ header button:disabled { opacity: 0.5; cursor: default; transition: opacity 0.12
 /* Theme switches reveal the new colors in the shape of the Bun logo (theme.ts animates it), instead of a crossfade. */
 ::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
 html.theme-switch::view-transition-new(root) { mask: url("./bun-mask.svg") no-repeat 0 0 / 0 0; }
+/* The hosting file's `theme.transition`: "circle", and a branded host's "logo": its own, with a circle behind it. */
+html.theme-switch-plain::view-transition-new(root) { mask-image: radial-gradient(closest-side, #000 99.5%, transparent); }
+html.theme-switch-own::view-transition-new(root) { mask-image: var(--theme-switch-mask), radial-gradient(closest-side, #000 99.5%, transparent); }
 /*
  * While the app boots, index.html's static header stays invisible: with nothing to paint, the browser keeps showing
  * the previous page (e.g. before a project switch) until the real header renders (mountUI drops data-booting).
@@ -1168,7 +1171,6 @@ html[data-booting] #app > header > * { visibility: hidden; animation: boot-fallb
 #share-menu button[hidden] { display: none; }
 #share-menu button:disabled { opacity: 0.5; cursor: default; }
 #share-menu button:disabled:hover { background: none; }
-#status-display { margin-top: var(--pad); }
 .title { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: inherit; white-space: nowrap; }
 /* The logo: a dumpling from dumplings.png (8 × 8 faces of 32px), rolling through all 64 while the title is hovered and
  * keeping the face it stopped on. x steps through a row, y moves down a row each time x wraps. */
@@ -1184,6 +1186,42 @@ html[data-booting] #app > header > * { visibility: hidden; animation: boot-fallb
 
   .title:hover & {
     animation-play-state: running;
+  }
+}
+/* A branded host's logo and name (Header.tsx Brand, the hosting file's `brand`) in place of the dumpling's. */
+.title.brand {
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: -0.02em;
+
+  > a {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border-radius: 6px;
+    color: inherit;
+    text-decoration: none;
+
+    &:hover #title {
+      color: var(--accent);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 3px;
+    }
+  }
+
+  .brand-logo {
+    flex: none;
+    height: 24px;
+    width: auto;
+    max-width: 120px;
+    object-fit: contain;
+  }
+
+  #title {
+    transition: color 0.12s;
   }
 }
 @keyframes logo-x { to { background-position-x: 100%; } }
@@ -1668,13 +1706,12 @@ html[data-booting] #app > header > * { visibility: hidden; animation: boot-fallb
 /* The status bar, as in VS Code or Zed: one quiet line of small items straight on the canvas, under the panes. */
 #statusbar { display: flex; align-items: center; gap: 2px; height: 24px; margin: -2px 6px 4px; color: var(--muted); font-size: 12px; white-space: nowrap; }
 #statusbar .spacer { flex: 1; }
-#statusbar > button, #statusbar > a, #statusbar > span:not(.spacer, #status) { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 6px; border: 0; border-radius: var(--inner-radius); background: none; color: inherit; font: inherit; text-decoration: none; }
+#statusbar > button, #statusbar > a, #statusbar > span:not(.spacer) { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 6px; border: 0; border-radius: var(--inner-radius); background: none; color: inherit; font: inherit; text-decoration: none; }
 #statusbar > button, #statusbar > a { cursor: pointer; }
 #statusbar > button:not([aria-disabled]):hover, #statusbar > a:hover { background: var(--control-hover); color: var(--fg); }
 #statusbar > button[aria-pressed="true"] { color: var(--fg); }
 #statusbar > button[aria-disabled] { cursor: default; }
 #statusbar .problems:not([aria-disabled]) { color: var(--fg); }
-#statusbar #status { height: 18px; margin-left: 4px; min-width: 0; font-size: 11px; }
 @media (max-width: 640px) { #statusbar .language, #statusbar .cursor { display: none; } }
 #statusbar {
   .spin {

@@ -15,7 +15,7 @@ export function StatusPill(props: JSX.HTMLAttributes<HTMLSpanElement> & { status
 const LINGER: Partial<Record<Status["state"], number>> = { running: 3000, idle: 3000 };
 
 /**
- * The status as a toast over the panes' bottom-right corner instead of the bar's pill: each change shows it, and a
+ * The status as a toast over the panes' bottom-right corner: each change shows it, and a
  * settled one fades after a moment. It stays mounted (hidden by CSS) so screen readers still hear each change.
  */
 export function StatusToast(props: { status: Status }) {

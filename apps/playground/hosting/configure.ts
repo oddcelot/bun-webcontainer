@@ -11,11 +11,11 @@
  * - sw.js's first lines: `__HOSTING__` (the editor origins, src/sw.ts) and `__SHELL__`, the service worker's manifest
  *   of every file and its hash, which it caches by: the files changed here get new hashes, so browsers refetch them;
  * - the HTML pages' static parts: the docs links, the canonical and share-card URLs, the site's name in the titles,
- *   whether the landing page shows; robots.txt's and sitemap.xml's URLs;
+ *   whether the landing page shows; a `brand`'s titles, description and icon; robots.txt's and sitemap.xml's URLs;
  * - _headers (Cloudflare, Netlify): the content origin's rules, which have to name its host.
  */
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { loadHosting, type Hosting } from "./load.ts";
 
@@ -23,7 +23,39 @@ import { loadHosting, type Hosting } from "./load.ts";
  * What a build has before any configure: the docs links, site URL and name its HTML is written with (index.html,
  * vite.config.ts docsLink()), and which the first configure replaces.
  */
-const BUILT = { docsUrl: "https://docs.runbun.dev/", siteUrl: "https://runbun.dev/", name: "runbun.dev" };
+const BUILT = { docsUrl: "https://docs.runbun.dev/", siteUrl: "https://runbun.dev/", name: "runbun.dev", brand: null as RuntimeBrand | null };
+/** The pages' description as index.html has it (the same text in its meta, og: and twitter: tags). */
+const DESCRIPTION = "Run Bun.serve apps, install packages and edit TypeScript in a tab, built from Bun&#39;s own Rust crates compiled to wasm64.";
+/** What index.html's share card shows (the same text in its og: and twitter: tags). */
+const CARD_ALT = "A pixel-art kitchen counter with a dumpling in a bamboo steamer, under the words: Bun in your browser";
+/** A brand as hosting.js has it: `card` is its share card's file name in the folder. */
+type RuntimeBrand = { logo: string; logoDark: string | null; home: string | null; description: string | null; card?: string | null; cardAlt?: string | null };
+/** A share card's tag, and the build's own picture when a brand's stands in for it. */
+const CARD_TAG = /(property="og:image"|name="twitter:image") content="([^"]*)"(?: data-built="([^"]*)")?/g;
+
+/**
+ * The texts a `brand` changes in the HTML, for a host's name and brand: the pages' titles (index.html's, its share
+ * cards', embed.html's) and their description. A branded host's titles are its name alone. configure() swaps the
+ * ones the folder has for the next host's, in this order: embed.html's title comes first, since a branded one starts
+ * with index.html's (the comment after it tells them apart on the way back).
+ */
+function pageTexts(name: string, brand: RuntimeBrand | null): string[] {
+  const description = `content="${brand?.description ?? DESCRIPTION}"`;
+  // A brand's card says what it shows; without one the picture is still the build's.
+  const alt = `:alt" content="${brand?.card ? (brand.cardAlt ?? name) : CARD_ALT}"`;
+  if (brand) return [`<title>${name}</title><!-- embed -->`, `<title>${name}</title>`, `:title" content="${name}"`, description, alt];
+  return [
+    `<title>Bun playground · ${name}</title>`,
+    `<title>Bun Playground: Run Bun Online in Your Browser | ${name}</title>`,
+    `:title" content="Bun Playground: run Bun in your browser · ${name}"`,
+    description,
+    alt,
+  ];
+}
+
+/** The icon links a build has (`rel="icon"` …), and what a brand's logo parks them as: the page then has one icon, the logo. */
+const ICON_RELS = ["icon", "apple-touch-icon", "manifest"];
+const BRAND_ICON = / *<link rel="icon" data-brand [^>]*>\n/g;
 const SHELL_LINE = /^var __SHELL__ = .*;\n/m;
 const HOSTING_LINE = /^var __HOSTING__ = .*;\n/m;
 const HEADERS_BEGIN = "# hosting/configure.ts: begin";
@@ -47,6 +79,10 @@ export function runtimeHosting(h: Hosting, base = "/") {
     defaultProject: h.defaultProject ?? null,
     landing: h.landing,
     worker: h.worker,
+    localRunner: h.localRunner,
+    // The card's picture is a file configure() writes; hosting.js names it.
+    brand: h.brand ? { ...h.brand, card: h.brand.card?.file ?? null } : null,
+    theme: h.theme ?? null,
   };
 }
 
@@ -90,14 +126,36 @@ export function configure(dist: string, hosting: Hosting, base = "/"): void {
     [`· ${before.name}`, `· ${next.name}`],
     [`| ${before.name}`, `| ${next.name}`],
     [`property="og:site_name" content="${before.name}"`, `property="og:site_name" content="${next.name}"`],
-  ].filter(([a, b]) => a !== b) as [string, string][];
+  ];
+  // A brand's texts first: they hold the name, which the swaps above would otherwise change under them.
+  const texts = pageTexts(before.name, before.brand).map((a, i) => [a, pageTexts(next.name, next.brand)[i]] as [string, string]);
+  swaps.unshift(...texts);
+  const changed = swaps.filter(([a, b]) => a !== b);
   for (const page of readdirSync(dist).filter((f) => f.endsWith(".html"))) {
     const file = join(dist, page);
     let html = readFileSync(file, "utf8");
-    for (const [a, b] of swaps) html = html.replaceAll(a, b);
-    html = html.replace(/<html([^>]*?)( data-landing="off")?>/, (_, attrs) => `<html${attrs}${next.landing ? "" : ' data-landing="off"'}>`);
+    for (const [a, b] of changed) html = html.replaceAll(a, b);
+    // index.html's head script reads both before the first paint: no landing page, and the brand's name as the title.
+    html = html.replace(
+      /<html([^>]*?)( data-landing="off")?( data-brand="[^"]*")?>/,
+      (_, attrs) => `<html${attrs}${next.landing ? "" : ' data-landing="off"'}${next.brand ? ` data-brand="${next.name}"` : ""}>`,
+    );
+    // The share card: a brand's picture in place of the build's, whose URL stays in the tag for another configure.
+    html = html.replace(CARD_TAG, (_, tag: string, url: string, kept?: string) => {
+      const built = kept ?? url.slice(url.lastIndexOf("/") + 1);
+      return next.brand?.card ? `${tag} content="${next.siteUrl}${next.brand.card}" data-built="${built}"` : `${tag} content="${next.siteUrl}${built}"`;
+    });
+    // The page's icon: a brand's logo in place of the build's icons and web manifest (runbun's), which stay in the
+    // HTML under a rel no browser reads, so another configure can bring them back.
+    html = html.replace(BRAND_ICON, "");
+    for (const rel of ICON_RELS) html = next.brand ? html.replaceAll(`<link rel="${rel}" `, `<link rel="built-${rel}" `) : html.replaceAll(`<link rel="built-${rel}" `, `<link rel="${rel}" `);
+    if (next.brand) html = html.replace("</head>", `  <link rel="icon" data-brand href="${next.brand.logo}" />\n  </head>`);
     writeFileSync(file, html);
   }
+  // The brand's card, under a name from its contents; the one before it goes.
+  const card = hosting.brand?.card;
+  if (before.brand?.card && before.brand.card !== card?.file && /^brand-card-[0-9a-f]+\.png$/.test(before.brand.card)) rmSync(join(dist, before.brand.card), { force: true });
+  if (card) writeFileSync(join(dist, card.file), card.data);
   // Search engines find the site under its own URL.
   for (const name of ["robots.txt", "sitemap.xml"]) {
     const file = join(dist, name);

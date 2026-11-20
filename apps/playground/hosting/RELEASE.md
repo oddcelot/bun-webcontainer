@@ -27,6 +27,22 @@ All fields are optional:
   The others still open by `?example=<folder>`. Default: all of them.
 - `defaultProject`: the example (a folder name) your playground opens at `/`. Default: a small demo.
 - `landing`: `false` opens the playground right away instead of runbun.dev's landing page. Default: true.
+- `brand`: your logo and `name` in the header in place of runbun's, your logo as the page's icon, and `name` alone
+  as the page title: `{ "logo": "logo.svg", "logoDark": "logo-dark.svg", "home": "https://example.org/",
+  "description": "…" }`. Only `logo` is required: an SVG, PNG or WebP file next to the hosting file, at most 64 kB.
+  `"card": "card.png"` is the picture a shared link gets, in place of runbun's: a 1200x630 PNG next to the hosting
+  file, at most 1 MB (`"cardAlt"` says what it shows). Configure copies it into `dist/`.
+  The status bar's About link then opens runbun.dev's about page (its tip: "Powered by runbun"), unless `landing` is on.
+- `theme`: `{ "family": "solid-light" }` is the theme family a first visit gets, by its light variant (the theme
+  picker lists them: `pierre-light`, `github-light`, `solid-light`, …). `vars` sets CSS custom properties on top of
+  every theme: `{ "vars": { "base": { "--radius": "8px" }, "dark": { "--accent": "#65c5ff" } } }`.
+  `"families": ["solid-light"]` narrows the theme picker to the families it lists (one: only light, dark and system
+  are left to pick), and the first is what a first visit gets unless `"family"` names another.
+  `"transition"` is how a theme switch reveals the new colors: `"logo"` (the default) in the shape of your logo,
+  `"circle"` in a plain circle, `"none"` at once.
+- `localRunner`: `false` leaves out the header's Local Bun switch. Default: true.
+
+`hosting.example.json` is a whole one: a Solid playground with the logos in `brand/`.
 
 The canonical URL, the share cards' URLs, `robots.txt` and `sitemap.xml` point at the first editor origin.
 

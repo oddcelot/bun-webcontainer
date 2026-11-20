@@ -3,7 +3,7 @@
 // its own config, so the two can drift; this catches it. Then hosting/configure.ts on a stand-in build. Part of
 // `moon run playground:test`.
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { configure } from "../hosting/configure";
@@ -108,6 +108,51 @@ if (dev.contentOrigin !== "http://run.runbun.localhost:5199" || dev.editorOrigin
     configure(dist, loadHosting("production", {}));
     want("no content origin: no _headers rules", !read("_headers").includes("configure.ts: begin"));
     want("back to the defaults: the landing page again", read("index.html").startsWith('<html lang="en">\n'));
+    // A brand (hosting/example.json), on the real pages: its name as their titles, its description, its logo as the
+    // icon in place of runbun's; the defaults bring runbun's back, byte for byte.
+    const app = fileURLToPath(new URL("..", import.meta.url));
+    const pages = ["index.html", "embed.html", "configure.html"];
+    for (const p of pages) writeFileSync(join(dist, p), readFileSync(join(app, p), "utf8"));
+    // As built: the pages name runbun.dev, and no hosting.js says otherwise.
+    rmSync(join(dist, "hosting.js"));
+    writeFileSync(join(dist, "examples.json"), '["astro-solid-demo","demo","reactivescript","reactivescript-selects","solid-ssr-dashboard","solid-vite-hmr","starter-http"]\n');
+    configure(dist, loadHosting("production", {}));
+    const built = pages.map(read);
+    configure(dist, loadHosting("production", { HOSTING: "hosting/example.json" }));
+    const branded = read("index.html");
+    want("a brand: index.html's titles are the site's name", branded.includes("<title>Solid Playground</title>") && branded.includes('property="og:title" content="Solid Playground"') && !branded.includes("<title>Bun Playground:") && !branded.includes("in your browser · "));
+    want("a brand: index.html's head script gets the name", branded.startsWith('<!doctype html>\n<html lang="en" data-landing="off" data-brand="Solid Playground">'));
+    want("a brand: its description", branded.split('content="Run SolidJS projects in your browser').length === 4);
+    want("a brand: its logo is the only icon", branded.split('<link rel="icon" ').length === 2 && branded.includes('<link rel="icon" data-brand href="data:image/svg+xml;base64,') && !branded.includes('rel="manifest"'));
+    want("a brand: embed.html's title", read("embed.html").includes("<title>Solid Playground</title>"));
+    // Its share card: the picture copied in under a name from its contents, in the og: and twitter: tags with what it shows.
+    const cardFile = /property="og:image" content="https:\/\/play\.example\.org\/(brand-card-[0-9a-f]{12}\.png)" data-built="og\.png\?v=\d+"/.exec(branded)?.[1];
+    want("a brand: its card is the pages' picture", !!cardFile && existsSync(join(dist, cardFile)) && branded.includes(`name="twitter:image" content="https://play.example.org/${cardFile}"`) && !/content="[^"]*og\.png/.test(branded) && read("configure.html").includes(cardFile!));
+    want("a brand: the card's alt text", branded.split('content="Solid Playground: run SolidJS projects in your browser, beside the Solid logo"').length === 3 && !branded.includes("pixel-art kitchen"));
+    const brand = JSON.parse(/export default (.*);/.exec(read("hosting.js"))![1]);
+    want("a brand: hosting.js has the logos, the theme and no Local Bun", brand.brand.logo.startsWith("data:image/svg+xml;base64,") && brand.brand.logoDark !== brand.brand.logo && brand.brand.home === "https://www.solidjs.com/" && brand.theme.families.join() === "solid-light" && brand.localRunner === false);
+    configure(dist, loadHosting("production", { HOSTING: "hosting/example.json" }));
+    want("a brand: configured twice, the same HTML", read("index.html") === branded);
+    configure(dist, loadHosting("production", {}));
+    want("a brand: the defaults bring the built pages back", pages.every((p, i) => read(p) === built[i]));
+    want("a brand: the defaults take its card out", !!cardFile && !existsSync(join(dist, cardFile)));
+    for (const [what, file] of [
+      ["an unknown brand field", { brand: { logo: "x.svg", title: "x" } }],
+      ["a logo that isn't an image", { brand: { logo: "example.json" } }],
+      ["a logo that doesn't exist", { brand: { logo: "nope.svg" } }],
+      ["a card that isn't a PNG", { brand: { logo: join(app, "hosting/brand/solid.svg"), card: join(app, "hosting/brand/solid.svg") } }],
+      ["a card's alt text without a card", { brand: { logo: join(app, "hosting/brand/solid.svg"), cardAlt: "x" } }],
+      ["a theme variable that isn't a custom property", { theme: { vars: { base: { color: "red" } } } }],
+      ["a theme transition that isn't one", { theme: { transition: "fade" } }],
+      ["an empty list of theme families", { theme: { families: [] } }],
+      ["a first-visit theme family the host doesn't offer", { theme: { family: "github-light", families: ["solid-light"] } }],
+    ] as const) {
+      writeFileSync(solid, JSON.stringify(file));
+      try {
+        loadHosting("production", { HOSTING: solid });
+        problems.push(`configure: ${what} was accepted`);
+      } catch {}
+    }
     writeFileSync(solid, JSON.stringify({ gallery: ["solid-vite-hrm"] }));
     try {
       configure(dist, loadHosting("production", { HOSTING: solid }));

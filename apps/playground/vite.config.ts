@@ -205,6 +205,23 @@ function configureDist(): Plugin {
  */
 const docsUrl = (mode: string): string => (mode === "development" ? loadHosting(mode).docsUrl : "https://docs.runbun.dev/");
 
+/**
+ * Dev's share of what hosting/configure.ts writes into a build's HTML, for index.html's head script: no landing page
+ * (`landing`), and a brand's name and icon (`brand`).
+ */
+function hostingHtmlDev(): Plugin {
+  return {
+    name: "hosting-html-dev",
+    apply: "serve",
+    transformIndexHtml(html) {
+      const attrs = (hosting.landing ? "" : ' data-landing="off"') + (hosting.brand ? ` data-brand="${hosting.name}"` : "");
+      html = html.replace(/<html([^>]*)>/, (_, a) => `<html${a}${attrs}>`);
+      if (hosting.brand) html = html.replaceAll('<link rel="icon" ', '<link rel="built-icon" ').replace("</head>", `  <link rel="icon" href="${hosting.brand.logo}" />\n  </head>`);
+      return html;
+    },
+  };
+}
+
 /** index.html's static parts (for crawlers and no-JS visitors) link the same docs as the app, and name the Bun release. */
 function docsLink(url: string): Plugin {
   return {
@@ -475,7 +492,7 @@ export default defineConfig(({ mode }) => ({
     // @babel/types (under @solidjs/babel-plugin, the fast path's Solid 2 JSX) reads this as it loads; a page has no `process`.
     "process.env.BABEL_TYPES_8_BREAKING": "false",
   },
-  plugins: [examplesSubmodule(), configSchema(), UnoCSS(), solid({ exclude: ["examples/**", "fixtures/**"] }), hostPackageNames(), emnapiNotNode(), pgliteNotNode(), hostingModule(), docsLink(docsUrl(mode)), embedRoutes(), originHeaders(), serviceWorker(), configureDist(), workerRoutesDev(), thirdPartyLicenses()],
+  plugins: [examplesSubmodule(), configSchema(), UnoCSS(), solid({ exclude: ["examples/**", "fixtures/**"] }), hostPackageNames(), emnapiNotNode(), pgliteNotNode(), hostingModule(), docsLink(docsUrl(mode)), hostingHtmlDev(), embedRoutes(), originHeaders(), serviceWorker(), configureDist(), workerRoutesDev(), thirdPartyLicenses()],
   build: {
     target: "esnext",
     rollupOptions: {

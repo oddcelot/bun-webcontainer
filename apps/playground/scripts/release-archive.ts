@@ -31,8 +31,10 @@ for (const [from, to] of [
   ["hosting/load.ts", "load.ts"],
   ["hosting/RELEASE.md", "README.md"],
   ["hosting/example.json", "hosting.example.json"],
+  // The example's logos (its `brand`), at the paths it names.
+  ["hosting/brand", "brand"],
 ])
-  cpSync(join(app, from), join(dir, to));
+  cpSync(join(app, from), join(dir, to), { recursive: true });
 await Bun.write(join(dir, "VERSION"), `${version}\n`);
 
 const archive = join(out, `${name}.tar.gz`);

@@ -17,6 +17,9 @@ configures it for two origins under node and runs the gallery from it. Attach it
 | `runbun.dev.json` | https://runbun.dev, code on run.runbun.dev | `playground:build`, `deploy` |
 | `canary.json`     | https://canary.runbun.dev                  | `playground:deploy-canary`   |
 
+`example.json` is the one the release archive ships (`hosting.example.json`, with `brand/`'s logos): a Solid
+playground with its own logo, theme and gallery. `scripts/hosting-check.ts` configures a build with it.
+
 Fields, all optional:
 
 - `docsUrl`: the docs the playground links to. Default: http://localhost:4321/ in dev, https://docs.runbun.dev/ in
@@ -37,6 +40,25 @@ Fields, all optional:
   `?example=demo`).
 - `landing`: `false` opens the playground at `/` right away, also for first-time visitors and at `/about`, and drops
   the status bar's About link. Default: `true`.
+- `brand`: makes the playground the host's own. Its `logo` (an SVG, PNG or WebP next to the hosting file, at most
+  64 kB; `logoDark` for dark themes) and `name` stand in the header where runbun has its dumpling and the visit's
+  random name, linking to `home` if it names one; the logo is the page's icon; `name` alone is the page title, and
+  `description` the pages' description. The status bar's About link then opens runbun.dev's about page (its tip: "Powered by runbun"), unless `landing` is on. Configure reads the logos into
+  `hosting.js` as data: URLs, so there is no file to serve. `card` is the picture a shared link gets (og:image) in
+  place of runbun's kitchen: a 1200x630 PNG next to the hosting file, at most 1 MB, which configure copies into the
+  folder as `brand-card-<hash>.png`; `cardAlt` says what it shows (default: `name`).
+  `bun scripts/brand-card.ts <hosting.json> <card.png>` draws one from the file's logo, name, description and theme
+  (the example's `brand/solid-card.png`). Default: none, runbun's own.
+- `theme`: how the playground looks before a visitor picks a theme. `family` is the theme family a first visit gets,
+  by its light variant (`"solid-light"`, `"github-light"`; `src/themeColors.ts` lists them). `families` are the ones
+  the picker offers (default: all, and `family` then defaults to the first); with one, the picker is the color scheme
+  alone, and a visitor's earlier pick outside the list gives way to `family`. `vars` are CSS custom
+  properties on top of every theme's, in the embed's `vars` shape: `base` for both schemes, `light` and `dark` for
+  one (`{ "base": { "--radius": "8px" } }`). `transition` is how a theme switch reveals the new colors: `"logo"` in the
+  shape of the logo, growing from the middle of the window (`brand.logo` with a circle behind it, or runbun's
+  dumpling), `"circle"` in a plain circle, `"none"` at once, without a view transition (`src/theme.ts`). Default:
+  Pierre, no variables, `"logo"`.
+- `localRunner`: `false` leaves out the header's Local Bun switch (`packages/connect`). Default: `true`.
 
 - `worker`: the host runs `worker/index.ts` next to the files (`wrangler.jsonc`): short links, Feedback, signing in
   with GitHub and the git proxy (git clone, GitHub dependencies). Without it the playground leaves them out: no short

@@ -7,6 +7,12 @@
       "dark": "elysia-dark"
     },
     {
+      "group": "Solid",
+      "name": "Solid",
+      "light": "solid-light",
+      "dark": "solid-dark"
+    },
+    {
       "group": "Pierre",
       "name": "Pierre",
       "light": "pierre-light",
@@ -183,6 +189,32 @@
       "--warn": "#ffca00",
       "--info": "#009fff",
       "--ok": "#0dbe4e"
+    },
+    "solid-light": {
+      "color-scheme": "light",
+      "--bg": "#ffffff",
+      "--fg": "#1c2735",
+      "--panel": "#f5f7fa",
+      "--border": "#dfe4ec",
+      "--muted": "#606872",
+      "--accent": "#0265b2",
+      "--error": "#b42318",
+      "--warn": "#9a5b00",
+      "--info": "#0265b2",
+      "--ok": "#1d7a4a"
+    },
+    "solid-dark": {
+      "color-scheme": "dark",
+      "--bg": "#03152c",
+      "--fg": "#dbe4f2",
+      "--panel": "#122339",
+      "--border": "color-mix(in srgb, var(--fg) 14%, var(--bg))",
+      "--muted": "#8591a3",
+      "--accent": "#65c5ff",
+      "--error": "#ff8a80",
+      "--warn": "#f2b84b",
+      "--info": "#0aa0ef",
+      "--ok": "#5fd394"
     },
     "pierre-light": {
       "color-scheme": "light",

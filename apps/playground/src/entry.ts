@@ -21,7 +21,7 @@ function showPlayground() {
   try {
     // Later visits skip the landing page (index.html's head script reads this).
     localStorage.setItem("playground.opened", "1");
-    document.title = `Bun Playground · ${sessionStorage.getItem("title") || "Bun playground"} · ${HOSTING.name}`;
+    document.title = HOSTING.brand ? HOSTING.name : `Bun Playground · ${sessionStorage.getItem("title") || "Bun playground"} · ${HOSTING.name}`;
   } catch {}
 }
 

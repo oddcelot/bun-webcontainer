@@ -61,7 +61,9 @@
           sessionStorage.setItem("title", title);
         }
         // The playground's tab title (the landing page keeps the static one); src/entry.ts sets it when started from there.
-        if (document.documentElement.dataset.view === "app") document.title = `Bun Playground · ${title} · runbun.dev`;
+        // A branded host (data-brand, hosting/configure.ts): its name, no random one.
+        const brand = document.documentElement.dataset.brand;
+        if (document.documentElement.dataset.view === "app") document.title = brand || `Bun Playground · ${title} · runbun.dev`;
       } catch {}
       // Hides the static header until the app renders its own (see style.css); without JavaScript it stays visible.
       document.documentElement.dataset.booting = "";
@@ -183,7 +185,7 @@
         <div class="title"><span class="logo" aria-hidden="true"></span><span id="title">Bun playground</span></div>
         <script>
           try {
-            document.getElementById("title").textContent = sessionStorage.getItem("title") || "Bun playground";
+            document.getElementById("title").textContent = document.documentElement.dataset.brand || sessionStorage.getItem("title") || "Bun playground";
           } catch {}
         </script>
         <a id="docs" href="https://docs.runbun.dev/">Docs</a>

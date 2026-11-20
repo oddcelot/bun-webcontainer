@@ -6,6 +6,7 @@
  * plain Bun), package.json's `imports` map `#hosting` to src/hostingDefaults.ts.
  */
 import hosting from "#hosting";
+import type { Vars } from "@runbun/embed/protocol";
 
 export interface RuntimeHosting {
   /** The docs site, ending in "/". */
@@ -31,6 +32,18 @@ export interface RuntimeHosting {
    * GitHub, the git proxy. Without it the playground leaves them out.
    */
   worker: boolean;
+  /** Whether the header has the Local Bun switch (packages/connect). */
+  localRunner: boolean;
+  /**
+   * The host's own brand, or null for runbun's: its logo (data: URLs) and `name` in the header, `name` as the page
+   * title, its share card (`card`: the picture's file name in the folder), and About opening runbun.dev's about page.
+   */
+  brand: { logo: string; logoDark: string | null; home: string | null; description: string | null; card: string | null; cardAlt: string | null } | null;
+  /**
+   * The theme family first-time visitors get (its light variant), the families the picker offers, chrome variables on top of every theme's, and how a
+   * theme switch reveals the new colors (src/theme.ts; default "logo").
+   */
+  theme: { family?: string; families?: string[]; vars?: Vars; transition?: "logo" | "circle" | "none" } | null;
 }
 
 export const HOSTING: RuntimeHosting = hosting;

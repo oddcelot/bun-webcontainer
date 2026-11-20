@@ -8,17 +8,19 @@ export type Family = { group: string; name: string; light: string; dark: string 
 type Group = { label: string; options: Family[] };
 
 export const FAMILIES: Family[] = themes.families;
-const GROUPS: Group[] = [...new Set(FAMILIES.map((f) => f.group))].map((label) => ({
-  label,
-  options: FAMILIES.filter((f) => f.group === label),
-}));
+/** The families (all, or those in `only`, by their light themes) under their groups; a group left empty is dropped. */
+const groups = (only?: string[]): Group[] => {
+  const list = only ? FAMILIES.filter((f) => only.includes(f.light)) : FAMILIES;
+  return [...new Set(list.map((f) => f.group))].map((label) => ({ label, options: list.filter((f) => f.group === label) }));
+};
 
 /**
  * The theme families as a grouped list, each with its swatch. `value` is the selected family (by its light theme);
- * `onFocusFamily` runs when the pointer or keyboard focus reaches one (to preview it), `onPick` when one is chosen.
+ * `families` narrows the list. `onFocusFamily` runs when the pointer or keyboard focus reaches one (to preview it), `onPick` when one is chosen.
  */
 export function FamilyListbox(props: {
   value: string;
+  families?: string[];
   onPick: (light: string) => void;
   onFocusFamily?: (light: string) => void;
   onPointerLeave?: () => void;
@@ -28,7 +30,7 @@ export function FamilyListbox(props: {
     <Listbox<Family, Group>
       class="select-list"
       aria-label="Theme"
-      options={GROUPS}
+      options={groups(props.families)}
       optionValue="light"
       optionTextValue="name"
       optionGroupChildren="options"

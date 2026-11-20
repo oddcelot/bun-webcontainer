@@ -6,6 +6,7 @@
 //   (c) TypeScript errors are markers on the .rx text with source ts(<code>),
 //   (d) the unchanged file has no diagnostics once its dependencies are installed (no false positives from the projection),
 //   (f) an element's tag and an attribute have hovers, (g) Format reflows the module,
+//   (h) src/main.ts, which mounts the module's default export, has no type errors,
 //   (e) rxc.wasm and the type checker load (no console error starting with `rxc:` or `tsrs:`).
 // It prints one ok/FAIL line per check with what it saw and exits 1 if any failed.
 //   bun scripts/rx-language.ts                    against http://localhost:5174 (a running `bun run dev`)
@@ -187,6 +188,17 @@ try {
     `expected ts(2339) at ${wl}:${wc}+11 and ts(2322) at ${ll}:${lc}+5; ${typed[0] === "wrong = count.toUpperCase()" && typed[1] === "label: string = count" ? "" : `EDIT DIDN'T APPLY (lines ${JSON.stringify(typed)}); `}${fmtMarkers(markers)}`,
   );
   await restore(page, original);
+
+  // (h) the module that imports it: `main(app)` is the view `app.mount` takes, not the component's markup.
+  const before = await lsMark(page);
+  await page.evaluate(() => ((document.querySelector("file-tree-container") as any)?.shadowRoot?.querySelector('[data-item-path="src/main.ts"]') as HTMLElement | null)?.click());
+  const entry = await waitFor(async () => {
+    const log = await lsLog(page);
+    const req = log.findIndex((m, i) => i >= before && m.dir === "out" && String(m.d.path).endsWith("src/main.ts") && m.d.kind === "diagnostics");
+    return req < 0 ? null : log.slice(req).find((m) => m.dir === "in" && m.d.id === log[req].d.id)?.d;
+  }, WAIT_FOR);
+  const entryErrors = ((entry?.diagnostics ?? []) as { severity: number }[]).filter((d) => d.severity === 1);
+  report("(h) no type errors in src/main.ts, which mounts the module", !!entry && !entry.error && entryErrors.length === 0, entry ? rawDiagnostics(entry) : "no answer from the type checker");
 
   // (e) the wasm modules loaded.
   const bad = consoleLog.filter((l) => /^(rxc|tsrs):/.test(l) || l.startsWith("pageerror:"));

@@ -4,6 +4,8 @@ import type { Vars } from "@runbun/embed/protocol";
 import { CONTENT_ORIGIN } from "./contentOrigin";
 import { envelope } from "./contentProtocol";
 import { THEME_VARS, elysiaThemes } from "./elysiaTheme";
+import { HOSTING } from "./hosting";
+import { SOLID_THEME_VARS, solidThemes } from "./solidTheme";
 import { FAMILIES, chromeVars, withRealColors } from "./themeColors";
 
 export { FAMILIES };
@@ -17,11 +19,28 @@ const VARS_KEY = "theme-vars";
  */
 export const EMBEDDED = "embed" in document.documentElement.dataset;
 
+const families = Object.values(FAMILIES).flat();
+/**
+ * The families the theme picker offers, by their light variants: the host's (the hosting file's `theme.families`, in
+ * its order), else all of them. An embed's host may still set any (`isFamily`).
+ */
+export const OFFERED: string[] = (() => {
+  const named = HOSTING.theme?.families;
+  if (!named) return families.map((f) => f[1]);
+  for (const name of named) if (!families.some((f) => f[1] === name)) console.warn(`hosting: no theme family "${name}"`);
+  const known = named.filter((name) => families.some((f) => f[1] === name));
+  return known.length ? known : families.map((f) => f[1]);
+})();
+
+/** The family a first visit gets: the host's (the hosting file's `theme.family`, else the first it offers), else Pierre. */
+const DEFAULT_FAMILY = families.find((f) => f[1] === (HOSTING.theme?.family ?? (HOSTING.theme?.families ? OFFERED[0] : undefined))) ?? ["Pierre", "pierre-light", "pierre-dark"];
+if (HOSTING.theme?.family && DEFAULT_FAMILY[1] !== HOSTING.theme.family) console.warn(`hosting: no theme family "${HOSTING.theme.family}"`);
+
 const controller = createThemeController({
   catalog: createThemeCatalog({
-    themes: [themes, elysiaThemes],
-    defaultLightThemeName: "pierre-light",
-    defaultDarkThemeName: "pierre-dark",
+    themes: [themes, elysiaThemes, solidThemes],
+    defaultLightThemeName: DEFAULT_FAMILY[1],
+    defaultDarkThemeName: DEFAULT_FAMILY[2],
   }),
   defaultMode: "system",
   storageKey: EMBEDDED ? undefined : "theme-selection",
@@ -52,8 +71,20 @@ export function setThemeVars(vars: Vars | undefined) {
   applyChrome();
 }
 
-/** The theme's own variables: its chrome colors, plus what its family declares (e.g. Elysia's overlay). */
-const themeVarsFor = (theme: ThemeLike) => ({ ...chromeVars(theme), ...THEME_VARS[themeName()] });
+/** The host's own variables (the hosting file's `theme.vars`), on every theme. */
+const hostVars = { base: cleanVars(HOSTING.theme?.vars?.base), light: cleanVars(HOSTING.theme?.vars?.light), dark: cleanVars(HOSTING.theme?.vars?.dark) };
+
+/**
+ * The theme's own variables: its chrome colors, plus what its family declares (e.g. Elysia's overlay, Solid's font),
+ * then the host's.
+ */
+const themeVarsFor = (theme: ThemeLike) => ({
+  ...chromeVars(theme),
+  ...THEME_VARS[themeName()],
+  ...SOLID_THEME_VARS[themeName()],
+  ...hostVars.base,
+  ...hostVars[controller.getState().resolvedColorScheme],
+});
 
 /**
  * `?vars=`: the embed's `vars` shape, limited to the overlay. Other chrome variables feed `background` too, and a
@@ -180,18 +211,16 @@ export function onTheme(fn: (name: string, theme: ThemeLike) => void) {
   return () => void listeners.delete(fn);
 }
 
-const families = Object.values(FAMILIES).flat();
-
 let preloaded = false;
 /**
- * Loads every family's themes into the controller's cache (50 modules), once: a cached theme applies in the same call,
+ * Loads the offered families' themes into the controller's cache (50 modules for all of them), once: a cached theme applies in the same call,
  * so previewing one in the theme picker shows at once instead of waiting for its module. The picker calls it when the
  * pointer or focus reaches its button, not at startup.
  */
 export function preloadThemes() {
   if (preloaded) return;
   preloaded = true;
-  controller.resolver.resolveThemes(families.flatMap(([, light, dark]) => [light, dark])).catch(() => {});
+  controller.resolver.resolveThemes(families.filter((f) => OFFERED.includes(f[1])).flatMap(([, light, dark]) => [light, dark])).catch(() => {});
 }
 
 /** True for a theme family's light variant (what `pickFamily` takes). */
@@ -208,8 +237,12 @@ export function pickFamily(light: string) {
 export const familyOf = (s: { lightThemeName: string; darkThemeName: string }) =>
   families.find((f) => f[1] === s.lightThemeName && f[2] === s.darkThemeName)?.[1];
 
-// A saved pair that isn't a family (e.g. from an older version): fall back to the light side's family, or Pierre.
-if (!familyOf(controller.getState())) pickFamily(families.find((f) => f[1] === controller.getState().lightThemeName)?.[1] ?? "pierre-light");
+// A saved pair that isn't a family (e.g. from an older version): fall back to the light side's family, or the default.
+// The same for one the host doesn't offer (picked before the host narrowed its list); an embed takes what its host sets.
+{
+  const offered = (light: string | undefined) => (light !== undefined && (EMBEDDED || OFFERED.includes(light)) ? light : undefined);
+  if (!offered(familyOf(controller.getState()))) pickFamily(offered(families.find((f) => f[1] === controller.getState().lightThemeName)?.[1]) ?? DEFAULT_FAMILY[1]);
+}
 
 export type ThemeState = ReturnType<typeof controller.getState>;
 export const themeState = () => controller.getState();
@@ -220,15 +253,32 @@ export const watchTheme = (next: (s: ThemeState) => void) => {
 };
 export const setColorMode = (mode: ColorMode) => controller.setColorMode(mode);
 
-/** The mask's shape (bun-mask.svg, the logo's outline): its aspect, and where the body's middle sits in it. */
-const MASK = { aspect: 66.25 / 76, cx: 38 / 76, cy: 35.7 / 66.25 };
 /**
- * How wide the mask must be for the bun to cover the window from (x, y). The body is close to an ellipse with
- * half-axes of 0.49 × width across and 0.45 × height below the middle (above, it reaches further), with a margin.
+ * The mask's shape (bun-mask.svg, the logo's outline): its aspect, where the body's middle sits in it, and the body
+ * as an ellipse: half-axes of 0.49 × width across and 0.45 × height below the middle (above, it reaches further).
+ * The hosting file's `theme.transition` picks another: "circle" a plain circle (style.css), "logo" on a branded host
+ * its own logo (`OWN`), "none" no transition.
  */
+const HOW = HOSTING.theme?.transition ?? "logo";
+const MASK = HOW === "circle" ? { aspect: 1, cx: 0.5, cy: 0.5, a: 0.5, b: 0.5 } : { aspect: 66.25 / 76, cx: 38 / 76, cy: 35.7 / 66.25, a: 0.49, b: 0.45 };
+/**
+ * A branded host's logo as the mask: its shape isn't known (it may have holes, or nothing in its middle), so it can't
+ * cover the window on its own. A circle grows behind it, starting later, and covers what the logo leaves out.
+ */
+const OWN = HOW === "logo" && HOSTING.brand ? { aspect: 1 } : null;
+if (OWN && HOSTING.brand) {
+  // The mask reads the logo's alpha, so the light theme's does for both.
+  document.documentElement.style.setProperty("--theme-switch-mask", `url("${HOSTING.brand.logo}")`);
+  const img = new Image();
+  img.src = HOSTING.brand.logo;
+  void img.decode().then(() => { if (img.naturalWidth && img.naturalHeight) OWN.aspect = img.naturalHeight / img.naturalWidth; }, () => {});
+}
+/** When the circle behind a host's logo starts growing, as a share of the transition. */
+const CIRCLE_FROM = 0.3;
+/** How wide the mask must be for its shape to cover the window from (x, y), with a margin. */
 function coverWidth(x: number, y: number) {
-  const a = 0.49;
-  const b = 0.45 * MASK.aspect;
+  const a = MASK.a;
+  const b = MASK.b * MASK.aspect;
   const corners = [
     [x, y],
     [innerWidth - x, y],
@@ -240,11 +290,12 @@ function coverWidth(x: number, y: number) {
 
 /**
  * Runs a theme change (a color mode or family pick) as a view transition: the new colors reveal in the shape of the
- * Bun logo, growing at a steady pace from the middle of the window until it covers it. Without View Transitions, or
- * with reduced motion, the change applies at once.
+ * Bun logo (or the host's, see `OWN`), growing at a steady pace from the middle of the window until it covers it.
+ * Without View Transitions, with reduced motion, or with the hosting file's `theme.transition: "none"`, the change
+ * applies at once.
  */
 export function switchTheme(change: () => void) {
-  if (!("startViewTransition" in document) || matchMedia("(prefers-reduced-motion: reduce)").matches) return change();
+  if (HOW === "none" || !("startViewTransition" in document) || matchMedia("(prefers-reduced-motion: reduce)").matches) return change();
   const transition = document.startViewTransition(async () => {
     change();
     await themeApplied();
@@ -258,20 +309,33 @@ export function switchTheme(change: () => void) {
   const w = coverWidth(mx, my);
   const h = w * MASK.aspect;
   // style.css gives the new layer the mask while this class is on.
-  document.documentElement.classList.add("theme-switch");
-  transition.finished.finally(() => document.documentElement.classList.remove("theme-switch"));
+  const classes = OWN ? ["theme-switch", "theme-switch-own"] : HOW === "circle" ? ["theme-switch", "theme-switch-plain"] : ["theme-switch"];
+  // The host's logo ends well past the window on both axes; its circle ends just past the corners.
+  const lw = 1.4 * Math.max(innerWidth, innerHeight / (OWN?.aspect ?? 1));
+  const lh = lw * (OWN?.aspect ?? 1);
+  const c = 1.1 * Math.hypot(innerWidth, innerHeight);
+  const at = (width: number, height: number) => `${mx - width / 2}px ${my - height / 2}px`;
+  const frames: Keyframe[] | PropertyIndexedKeyframes = OWN
+    ? [
+        { maskSize: "0px 0px, 0px 0px", maskPosition: `${at(0, 0)}, ${at(0, 0)}` },
+        { offset: CIRCLE_FROM, maskSize: `${lw * CIRCLE_FROM}px ${lh * CIRCLE_FROM}px, 0px 0px`, maskPosition: `${at(lw * CIRCLE_FROM, lh * CIRCLE_FROM)}, ${at(0, 0)}` },
+        { maskSize: `${lw}px ${lh}px, ${c}px ${c}px`, maskPosition: `${at(lw, lh)}, ${at(c, c)}` },
+      ]
+    : {
+        maskSize: ["0px 0px", `${w}px ${h}px`],
+        // The body's middle stays on the window's middle as it grows.
+        maskPosition: [`${mx}px ${my}px`, `${mx - MASK.cx * w}px ${my - MASK.cy * h}px`],
+      };
+  document.documentElement.classList.add(...classes);
+  transition.finished.finally(() => document.documentElement.classList.remove(...classes));
   transition.ready
     .then(() => {
       const reveal = document.documentElement.animate(
-        {
-          maskSize: ["0px 0px", `${w}px ${h}px`],
-          // The body's middle stays on the window's middle as it grows.
-          maskPosition: [`${mx}px ${my}px`, `${mx - MASK.cx * w}px ${my - MASK.cy * h}px`],
-        },
+        frames,
         // `forwards`: the transition is torn down a frame after the animation ends, and without it the mask falls
         // back to style.css's 0 size for that frame, flashing the old theme. Cancelled once the transition is
         // done, or the filled animation would outlive it and override the next switch's mask.
-        { duration: 250, easing: "linear", fill: "forwards", pseudoElement: "::view-transition-new(root)" },
+        { duration: OWN ? 400 : 250, easing: "linear", fill: "forwards", pseudoElement: "::view-transition-new(root)" },
       );
       transition.finished.finally(() => reveal.cancel());
     })

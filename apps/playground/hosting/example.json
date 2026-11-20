@@ -1,6 +1,16 @@
 {
   "name": "Solid Playground",
-  "gallery": ["solid-vite-hmr", "solid-ssr-dashboard", "astro-solid-demo"],
+  "brand": {
+    "logo": "brand/solid.svg",
+    "logoDark": "brand/solid-dark.svg",
+    "home": "https://www.solidjs.com/",
+    "description": "Run SolidJS projects in your browser: edit, install and preview, with nothing to set up.",
+    "card": "brand/solid-card.png",
+    "cardAlt": "Solid Playground: run SolidJS projects in your browser, beside the Solid logo"
+  },
+  "theme": { "families": ["solid-light"] },
+  "localRunner": false,
+  "gallery": ["solid-vite-hmr", "solid-ssr-dashboard", "astro-solid-demo", "reactivescript", "reactivescript-selects"],
   "defaultProject": "solid-vite-hmr",
   "landing": false,
   "contentOrigin": "https://run.play.example.org",
