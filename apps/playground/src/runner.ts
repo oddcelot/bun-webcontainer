@@ -724,10 +724,11 @@ export class Runner {
       this.endChild(proc, 1, null);
     };
     const { entry, script, test, args, execArgv, run } = m.launch;
-    // A worker_threads thread also gets its channel to the Worker (worker/node/worker_threads.ts).
+    // A worker_threads thread also gets its channel to the Worker (worker/node/worker_threads.ts). On the content origin
+    // the host frame keeps both and sends references (host/main.ts keepThread): they pass through as they are.
     const thread = m.port ? { thread: m.thread, port: m.port } : {};
     const start = () =>
-      worker.postMessage({ type: "start", entry, script, childTest: test, args, execArgv, run, files: this.vfs.files, dirs: this.vfs.dirs, vfsRoot: vfsRoot(), proc: { pid: m.id, ppid, cwd: m.cwd, env: m.env }, ...thread }, m.port ? [m.port] : []);
+      worker.postMessage({ type: "start", entry, script, childTest: test, args, execArgv, run, files: this.vfs.files, dirs: this.vfs.dirs, vfsRoot: vfsRoot(), proc: { pid: m.id, ppid, cwd: m.cwd, env: m.env }, ...thread }, m.port instanceof MessagePort ? [m.port] : []);
     // A `bun test --coverage` (or one bunfig.toml's `[test]` turns coverage on for) counts what it loads, served so
     // until it ends; it starts once that is set up.
     if (test && (args.some(isCoverageFlag) || this.bunfig(m.cwd)?.includes("coverage")))

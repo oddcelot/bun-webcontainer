@@ -86,6 +86,37 @@ function relayDebug(w: Worker, d: { type?: string; debug?: DebugStart; cmd?: Deb
 
 const reply = (port: MessagePort, m: ToEditor, transfer: Transferable[] = []) => port.postMessage(envelope(m), transfer);
 
+/**
+ * A worker_threads thread's start, kept here while its spawn goes round through the editor (Runner.spawn): its
+ * `thread` (`workerData`, often shared memory, such as a threaded wasm binding's) and its channel to the Worker, with
+ * what it transfers. Shared memory can't reach the editor's origin, and a port that went through it no longer carries
+ * any (it delivers `null`), so the editor gets `{ [KEPT]: id }` for both and a Worker's start gets them back.
+ */
+const KEPT = "__runbunKept";
+const keptThreads = new Map<number, { owner: Worker; thread: unknown; port: MessagePort; transfer: MessagePort[] }>();
+let keptIds = 0;
+
+/** A Worker's spawn of a thread, for the editor: the thread's start kept here. */
+function keepThread(owner: Worker, d: { type?: string; thread?: unknown; port?: unknown }, ports: readonly MessagePort[]): { d: unknown; ports: MessagePort[] } {
+  if (d?.type !== "spawn" || !d.thread || !(d.port instanceof MessagePort)) return { d, ports: [...ports] };
+  keptThreads.set(++keptIds, { owner, thread: d.thread, port: d.port, transfer: ports.filter((p) => p !== d.port) });
+  return { d: { ...d, thread: { [KEPT]: keptIds }, port: { [KEPT]: keptIds } }, ports: [] };
+}
+
+/** The editor's start of a thread with what was kept for it put back, and the ports it transfers. */
+function startThread(d: { type?: string; thread?: unknown; port?: unknown }): { d: unknown; ports: MessagePort[] } {
+  const id = d?.type === "start" ? (d.thread as Record<string, unknown> | undefined)?.[KEPT] : undefined;
+  const kept = typeof id === "number" ? keptThreads.get(id) : undefined;
+  if (!kept) return { d, ports: [] };
+  keptThreads.delete(id as number);
+  return { d: { ...d, thread: kept.thread, port: kept.port }, ports: [kept.port, ...kept.transfer] };
+}
+
+/** A Worker ended: the threads it started that never did go too. */
+function dropThreads(owner: Worker) {
+  for (const [id, k] of keptThreads) if (k.owner === owner) keptThreads.delete(id), k.port.close();
+}
+
 function connect(port: MessagePort) {
   // The service worker's asks (a page-owned module, a preview request, a preview WebSocket): the editor answers on the
   // reply port it is handed.
@@ -107,16 +138,18 @@ function connect(port: MessagePort) {
         if (we.data?.type === "lazy-read") return void answerLazyRead(we.data);
         // Or on a synchronous child: what the editor sends it meanwhile goes through the relay's buffer, for the same reason.
         if (relays.get(worker)?.fromWorker(we.data)) return;
-        reply(port, { kind: "w", g, d: we.data }, [...we.ports]);
+        const out = keepThread(worker, we.data, we.ports);
+        reply(port, { kind: "w", g, d: out.d }, out.ports);
       };
       worker.onerror = (we) => reply(port, { kind: "werr", g, message: we.message });
     } else if (m.kind === "w") {
       // Ports ride in the transfer list (a request's reply port, a WebSocket); the message itself is cloned.
       const w = workers.get(m.g);
-      if (w && !relayDebug(w, m.d as Parameters<typeof relayDebug>[1]) && !relays.get(w)?.toWorker(m.d)) w.postMessage(m.d, [...e.ports]);
+      const start = keptThreads.size ? startThread(m.d as Parameters<typeof startThread>[0]) : { d: m.d, ports: [] };
+      if (w && !relayDebug(w, start.d as Parameters<typeof relayDebug>[1]) && !relays.get(w)?.toWorker(start.d)) w.postMessage(start.d, [...e.ports, ...start.ports]);
     } else if (m.kind === "kill") {
       const killed = workers.get(m.g);
-      if (killed) debugQueues.delete(killed);
+      if (killed) debugQueues.delete(killed), dropThreads(killed);
       killed?.terminate();
       workers.delete(m.g);
     } else if (m.kind.startsWith("store-")) {
