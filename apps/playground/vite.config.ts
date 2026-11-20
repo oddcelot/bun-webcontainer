@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,6 +10,7 @@ import { rolldown, type OutputBundle } from "rolldown";
 import { defaultClientConditions, defineConfig, runnerImport, type Plugin } from "vite";
 import { BUN_VERSION } from "./src/worker/bunVersion";
 import type { AuthEnv } from "./worker/auth";
+import { loadHosting, type Hosting } from "./hosting/load";
 import { npmNotice, npmPackageDir, postgresNotice, render, rustNotices, sqliteNotice } from "./scripts/licenses";
 
 const isolation = {
@@ -18,10 +19,16 @@ const isolation = {
 };
 
 /**
- * With VITE_CONTENT_ORIGIN set (src/contentOrigin.ts), this server also answers as the content origin, whose documents
+ * Where this build is hosted (hosting/load.ts: the `HOSTING` file, e.g. hosting/runbun.dev.json). Only docsUrl's
+ * default depends on the mode (dev or build), so docsUrl() below reads it again with the mode; the rest is read here.
+ */
+const hosting: Hosting = loadHosting("development");
+
+/**
+ * With a content origin (src/contentOrigin.ts), this server also answers as the content origin, whose documents
  * (host.html, previews) the editor frames under its COEP: they need CORP cross-origin to be embeddable.
  */
-const contentOrigin = !!process.env.VITE_CONTENT_ORIGIN;
+const contentOrigin = !!hosting.contentOrigin;
 const served = contentOrigin ? { ...isolation, "Cross-Origin-Resource-Policy": "cross-origin" } : isolation;
 
 /**
@@ -30,7 +37,7 @@ const served = contentOrigin ? { ...isolation, "Cross-Origin-Resource-Policy": "
  * Production sets the same in public/_headers.
  */
 function originHeaders(): Plugin {
-  const host = contentOrigin ? new URL(process.env.VITE_CONTENT_ORIGIN!).host : "";
+  const host = contentOrigin ? new URL(hosting.contentOrigin!).host : "";
   const set = (req: { url?: string; headers: { host?: string } }, res: { setHeader(k: string, v: string): void }, next: () => void) => {
     res.setHeader("Origin-Agent-Cluster", "?1");
     if (req.headers.host === host) res.setHeader("X-Robots-Tag", "noindex");
@@ -49,7 +56,7 @@ function originHeaders(): Plugin {
         const path = (req.url ?? "").split("?")[0];
         if (req.headers.host !== host || !/^\/__(preview|vfs)\//.test(path)) return next();
         const { stranded } = (await server.ssrLoadModule("/worker/stranded.ts")) as typeof import("./worker/stranded");
-        const editor = (process.env.VITE_EDITOR_ORIGINS ?? "http://localhost:5173").split(",")[0].trim();
+        const editor = hosting.editorOrigins[0];
         const r = stranded(path, editor)!;
         res.statusCode = r.status;
         r.headers.forEach((v, k) => res.setHeader(k, v));
@@ -129,13 +136,46 @@ function pgliteNotNode(): Plugin {
 }
 
 /**
- * The docs site the playground links to: `DOCS_URL` when set (a canary or preview deploy), else the local docs dev
- * server (`astro dev`) while developing and docs.runbun.dev in builds. The app reads it as `import.meta.env.DOCS_URL`.
+ * The content origin's rules in the build's `_headers` (Cloudflare, Netlify), for the hosting file's contentOrigin: it
+ * runs project code and is framed by the editor under COEP, so CORP cross-origin; it never appears in search results;
+ * host.html may be framed by any page (an embedder frames /embed, which frames this): who may drive it is its own check
+ * of its parent against the build's editor origins (/host is the same page, as the assets serve it without ".html").
+ * Absolute URLs match by host, so these rules only apply there. Same as originHeaders() in dev. public/_headers holds
+ * the rest; Vite has copied it into the output by the time writeBundle runs.
  */
-function docsUrl(mode: string): string {
-  const url = process.env.DOCS_URL || (mode === "development" ? "http://localhost:4321/" : "https://docs.runbun.dev/");
-  return url.endsWith("/") ? url : url + "/";
+function contentOriginHeaders(): Plugin {
+  let file = "";
+  let base = "/";
+  return {
+    name: "content-origin-headers",
+    apply: (_, env) => env.command === "build" && contentOrigin,
+    configResolved(config) {
+      file = join(config.root, config.build.outDir, "_headers");
+      base = config.base;
+    },
+    writeBundle() {
+      if (!existsSync(file)) throw new Error(`content-origin-headers: no ${file} (public/_headers not copied?)`);
+      const at = hosting.contentOrigin + base;
+      const rules = [
+        `# The content origin (${hosting.file ?? "env"}): vite.config.ts contentOriginHeaders().`,
+        `${at}*`,
+        "  Cross-Origin-Resource-Policy: cross-origin",
+        "  X-Robots-Tag: noindex",
+        `${at}host`,
+        "  Content-Security-Policy: frame-ancestors *",
+        `${at}host.html`,
+        "  Content-Security-Policy: frame-ancestors *",
+      ];
+      appendFileSync(file, "\n" + rules.join("\n") + "\n");
+    },
+  };
 }
+
+/**
+ * The docs site the playground links to: the hosting file's docsUrl (or `DOCS_URL`), else the local docs dev server
+ * (`astro dev`) while developing and docs.runbun.dev in builds. The app reads it as `import.meta.env.DOCS_URL`.
+ */
+const docsUrl = (mode: string): string => loadHosting(mode).docsUrl;
 
 /** index.html's static parts (for crawlers and no-JS visitors) link the same docs as the app, and name the Bun release. */
 function docsLink(url: string): Plugin {
@@ -173,11 +213,7 @@ function embedRoutes(): Plugin {
 
 /** What sw.ts reads at build time: the editor origins (as src/contentOrigin.ts) and the bridge protocol's version. */
 function swDefines(): Record<string, string> {
-  const origins = (process.env.VITE_EDITOR_ORIGINS ?? "http://localhost:5173")
-    .split(",")
-    .map((o) => o.trim())
-    .filter(Boolean)
-    .map((o) => new URL(o).origin);
+  const origins = hosting.editorOrigins;
   const version = /PROTOCOL_VERSION = (\d+)/.exec(readFileSync(fileURLToPath(new URL("src/contentProtocol.ts", import.meta.url)), "utf8"))![1];
   return { __EDITOR_ORIGINS__: JSON.stringify(origins), __PROTOCOL_VERSION__: version };
 }
@@ -406,12 +442,14 @@ function configSchema(): Plugin {
 export default defineConfig(({ mode }) => ({
   define: {
     "import.meta.env.DOCS_URL": JSON.stringify(docsUrl(mode)),
-    // CANARY=1 (playground:deploy-canary) shows the canary badge (src/canary.ts).
-    "import.meta.env.CANARY": JSON.stringify(process.env.CANARY === "1"),
+    // hosting/load.ts: where project code runs (src/contentOrigin.ts), and a canary build's badge (src/canary.ts).
+    "import.meta.env.CONTENT_ORIGIN": JSON.stringify(hosting.contentOrigin ?? ""),
+    "import.meta.env.EDITOR_ORIGINS": JSON.stringify(hosting.editorOrigins),
+    "import.meta.env.CANARY": JSON.stringify(hosting.canary),
     // @babel/types (under @solidjs/babel-plugin, the fast path's Solid 2 JSX) reads this as it loads; a page has no `process`.
     "process.env.BABEL_TYPES_8_BREAKING": "false",
   },
-  plugins: [examplesSubmodule(), configSchema(), UnoCSS(), solid({ exclude: ["examples/**", "fixtures/**"] }), hostPackageNames(), emnapiNotNode(), pgliteNotNode(), docsLink(docsUrl(mode)), embedRoutes(), originHeaders(), serviceWorker(), workerRoutesDev(), thirdPartyLicenses()],
+  plugins: [examplesSubmodule(), configSchema(), UnoCSS(), solid({ exclude: ["examples/**", "fixtures/**"] }), hostPackageNames(), emnapiNotNode(), pgliteNotNode(), docsLink(docsUrl(mode)), embedRoutes(), originHeaders(), contentOriginHeaders(), serviceWorker(), workerRoutesDev(), thirdPartyLicenses()],
   build: {
     target: "esnext",
     rollupOptions: {

@@ -1,0 +1,6 @@
+{
+  "docsUrl": "https://docs-canary.runbun.dev/",
+  "contentOrigin": "https://run-canary.runbun.dev",
+  "editorOrigins": ["https://canary.runbun.dev", "http://127.0.0.1:7357"],
+  "canary": true
+}

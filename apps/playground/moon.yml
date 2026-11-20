@@ -14,6 +14,8 @@ fileGroups:
     # Copied in from the wasm crates by scripts/copy-wasm.ts; their builds are deps instead.
     - '!public/*.wasm'
     - 'scripts/**/*'
+    # Where the build is hosted (hosting/load.ts): its origins are compiled in.
+    - 'hosting/**/*'
     - '/patches/npm/**/*'
     - '*.html'
     - '*.ts'
@@ -45,8 +47,9 @@ tasks:
     # pass that keeps AsyncLocalStorage across await (scripts/async-await.ts) and S3 signing and operations against
     # native bun on a local S3 (scripts/s3-signing.ts; scripts/s3.ts is the browser run), and where the preview's scripts go
     # in a page that is still streaming (src/previewInject.test.ts), and which saves Watch leaves to a program that watches
-    # the files itself (src/watched.test.ts).
-    script: 'bun scripts/inspect-corpus/diff.ts && bun scripts/data-apis/jsonl.ts && bun scripts/data-apis/xml-stringify.ts && bun scripts/requests.ts && bun scripts/request-fields.ts && bun scripts/vfs-mirror.ts && bun scripts/test-results.ts && bun scripts/persist-skip.ts && bun scripts/runner-stop.ts && bun scripts/remote-snapshots.ts && bun scripts/change-origin.ts && bun scripts/request-headers.ts && bun scripts/install-prune.ts && bun scripts/patches-unit.ts && bun scripts/packument-cache.ts && bun scripts/project-config.ts && bun scripts/hash-compat.ts && bun scripts/workspaces-unit.ts && bun scripts/async-await.ts && bun scripts/s3-signing.ts && bun src/previewInject.test.ts && bun src/watched.test.ts'
+    # the files itself (src/watched.test.ts), and that the hosting files name wrangler.jsonc's hosts
+    # (scripts/hosting-check.ts).
+    script: 'bun scripts/inspect-corpus/diff.ts && bun scripts/data-apis/jsonl.ts && bun scripts/data-apis/xml-stringify.ts && bun scripts/requests.ts && bun scripts/request-fields.ts && bun scripts/vfs-mirror.ts && bun scripts/test-results.ts && bun scripts/persist-skip.ts && bun scripts/runner-stop.ts && bun scripts/remote-snapshots.ts && bun scripts/change-origin.ts && bun scripts/request-headers.ts && bun scripts/install-prune.ts && bun scripts/patches-unit.ts && bun scripts/packument-cache.ts && bun scripts/project-config.ts && bun scripts/hash-compat.ts && bun scripts/workspaces-unit.ts && bun scripts/async-await.ts && bun scripts/s3-signing.ts && bun src/previewInject.test.ts && bun src/watched.test.ts && bun scripts/hosting-check.ts'
     toolchains: ['bun']
     inputs:
       - 'scripts/inspect-corpus/**/*'
@@ -54,6 +57,9 @@ tasks:
       - 'src/previewInject.test.ts'
       - 'src/watched.ts'
       - 'src/watched.test.ts'
+      - 'scripts/hosting-check.ts'
+      - 'hosting/**/*'
+      - 'wrangler.jsonc'
       - 'scripts/hash-compat.ts'
       - 'src/worker/hash.ts'
       - 'scripts/data-apis/**/*'
@@ -358,11 +364,11 @@ tasks:
   build:
     # prebuild (scripts/copy-wasm.ts) copies the crates' .wasm into public/.
     command: 'bun run build'
-    # The runbun.dev build: project code runs on run.runbun.dev (src/contentOrigin.ts), and host.html there answers the
-    # editor (and the local runner's page, packages/connect). Bake them here so the cached dist/ always has them.
+    # The runbun.dev build (hosting/runbun.dev.json): project code runs on run.runbun.dev (src/contentOrigin.ts), and
+    # host.html there answers the editor (and the local runner's page, packages/connect). Set here so the cached dist/
+    # always has them.
     env:
-      VITE_CONTENT_ORIGIN: 'https://run.runbun.dev'
-      VITE_EDITOR_ORIGINS: 'https://runbun.dev,http://127.0.0.1:7357'
+      HOSTING: 'hosting/runbun.dev.json'
     deps:
       - 'semver-wasm:build'
       - 'compress-wasm:build'
@@ -424,14 +430,10 @@ tasks:
     script: >-
       bun scripts/copy-wasm.ts --strip && bunx tsrs --noEmit && bunx tsrs -p tsconfig.sw.json && bunx vite build --outDir dist-canary &&
       ../../scripts/canary-dist.ts dist-canary && bunx wrangler deploy --env canary
+    # hosting/canary.json: the docs-canary links, its own content origin (wrangler.jsonc env.canary, so the canary never
+    # depends on the runbun.dev one), and the canary badge (src/canary.ts).
     env:
-      DOCS_URL: 'https://docs-canary.runbun.dev/'
-      PLAYGROUND_URL: 'https://canary.runbun.dev/'
-      # Its own content origin (wrangler.jsonc env.canary), so the canary never depends on the runbun.dev one.
-      VITE_CONTENT_ORIGIN: 'https://run-canary.runbun.dev'
-      VITE_EDITOR_ORIGINS: 'https://canary.runbun.dev,http://127.0.0.1:7357'
-      # Shows the canary badge/banner (apps/playground/src/canary.ts, apps/docs/src/components/Banner.astro).
-      CANARY: '1'
+      HOSTING: 'hosting/canary.json'
     deps:
       - 'semver-wasm:build'
       - 'compress-wasm:build'

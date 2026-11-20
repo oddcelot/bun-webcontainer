@@ -46,9 +46,10 @@ if (!chrome) {
   process.exit(1);
 }
 
-// A production build, without runbun.dev's content origin (project code runs on this one, as in dev).
+// A production build with the default hosting (hosting/load.ts), without runbun.dev's content origin (project code runs
+// on this one, as in dev).
 if (preview) {
-  const env = { ...process.env, VITE_CONTENT_ORIGIN: "", VITE_EDITOR_ORIGINS: "" };
+  const env = { ...process.env, HOSTING: "", VITE_CONTENT_ORIGIN: "", VITE_EDITOR_ORIGINS: "" };
   for (const cmd of [["bun", "scripts/copy-wasm.ts", "--strip"], ["bunx", "tsrs", "-p", "tsconfig.sw.json"], ["bunx", "vite", "build", "--outDir", "dist-check"]]) {
     const r = Bun.spawnSync(cmd, { cwd: app, env, stdout: "inherit", stderr: "inherit" });
     if (r.exitCode) process.exit(r.exitCode);
