@@ -1142,6 +1142,8 @@ header button:disabled { opacity: 0.5; cursor: default; transition: opacity 0.12
 /* Theme switches reveal the new colors in the shape of the Bun logo (theme.ts animates it), instead of a crossfade. */
 ::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
 html.theme-switch::view-transition-new(root) { mask: url("./bun-mask.svg") no-repeat 0 0 / 0 0; }
+/* A branded host's (the hosting file's `brand`): a circle. */
+html.theme-switch-plain::view-transition-new(root) { mask-image: radial-gradient(closest-side, #000 99.5%, transparent); }
 /*
  * While the app boots, index.html's static header stays invisible: with nothing to paint, the browser keeps showing
  * the previous page (e.g. before a project switch) until the real header renders (mountUI drops data-booting).
@@ -1184,6 +1186,42 @@ html[data-booting] #app > header > * { visibility: hidden; animation: boot-fallb
 
   .title:hover & {
     animation-play-state: running;
+  }
+}
+/* A branded host's logo and name (Header.tsx Brand, the hosting file's `brand`) in place of the dumpling's. */
+.title.brand {
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: -0.02em;
+
+  > a {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border-radius: 6px;
+    color: inherit;
+    text-decoration: none;
+
+    &:hover #title {
+      color: var(--accent);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 3px;
+    }
+  }
+
+  .brand-logo {
+    flex: none;
+    height: 24px;
+    width: auto;
+    max-width: 120px;
+    object-fit: contain;
+  }
+
+  #title {
+    transition: color 0.12s;
   }
 }
 @keyframes logo-x { to { background-position-x: 100%; } }

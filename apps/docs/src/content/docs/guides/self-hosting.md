@@ -39,6 +39,9 @@ The hosting file says where the copy lives and how it differs from runbun.dev. T
 ```json
 {
   "name": "Solid Playground",
+  "brand": { "logo": "brand/solid.svg", "logoDark": "brand/solid-dark.svg", "home": "https://www.solidjs.com/" },
+  "theme": { "family": "solid-light" },
+  "localRunner": false,
   "gallery": ["solid-vite-hmr", "solid-ssr-dashboard", "astro-solid-demo"],
   "defaultProject": "solid-vite-hmr",
   "landing": false,
@@ -52,12 +55,43 @@ Every field is optional:
 | --- | --- | --- |
 | `editorOrigins` | `["http://localhost:5173"]` | Where people open your playground. The first is its canonical URL: the page's `<link rel="canonical">`, its share cards, `robots.txt` and `sitemap.xml` point there. |
 | `name` | `"runbun.dev"` | Your site's name in the page titles, share cards and "Open in …". |
+| `brand` | none | Your logo and name in place of runbun's, see [Your own brand and theme](#your-own-brand-and-theme). |
+| `theme` | Pierre | The theme a first visit gets, and CSS variables on top of every theme. |
+| `localRunner` | `true` | `false` leaves out the header's Local Bun switch. |
 | `gallery` | all of them | Which bundled examples the gallery lists, by folder name, in this order. `dist/examples.json` lists the folders a release has; the others still open with `?example=<folder>`. |
 | `defaultProject` | a small demo | The example (a folder name) that opens at `/`. |
 | `landing` | `true` | `false` opens the playground right away instead of runbun.dev's landing page. |
 | `contentOrigin` | none | A second origin that runs project code, see [below](#a-separate-origin-for-project-code). |
 | `docsUrl` | `https://docs.runbun.dev/` | Where the playground's Docs links go. |
 | `worker` | `false` | Your host runs runbun.dev's Cloudflare Worker next to the files, see [What stays with runbun.dev](#what-stays-with-runbundev). |
+
+### Your own brand and theme
+
+`brand`, `theme` and `localRunner` need a release after 0.7.0.
+
+With a `brand`, the playground reads as yours: your logo and `name` stand in the header where runbun.dev has its dumpling and a random bun pun, the logo is the page's icon, and the page title is `name` alone. The status bar gets a "Powered by runbun" link.
+
+| `brand` field | What it sets |
+| --- | --- |
+| `logo` | Required. An SVG, PNG or WebP file, as a path relative to the hosting file, at most 64 kB. Shown 24px high. |
+| `logoDark` | The logo on dark themes. Default: `logo`. |
+| `home` | Where the logo links to. Default: no link. |
+| `description` | The pages' description for search results and share cards. Default: runbun's. |
+
+Configure reads the logo files into `hosting.js`, so there is nothing else to deploy.
+
+`theme.family` is the theme family a first visit opens in, by the name of its light variant: `"solid-light"` (the SolidJS sites' colors and Geist), `"github-light"`, `"rose-pine-dawn"` and the others in the theme picker. Visitors can still pick another, and one they picked earlier stays. `theme.vars` sets CSS custom properties on top of whichever theme is on, for both schemes (`base`) or one (`light`, `dark`):
+
+```json
+{
+  "theme": {
+    "family": "github-light",
+    "vars": { "base": { "--radius": "8px" }, "dark": { "--accent": "#65c5ff" } }
+  }
+}
+```
+
+The variables are the [embed's](/reference/embed-api/#theming): `--bg`, `--panel`, `--canvas`, `--fg`, `--muted`, `--border`, `--accent`, `--radius`, `--font-ui`, `--font-mono`.
 
 The gallery's examples come from [runbun-examples](https://github.com/oddcelot/runbun-examples): a release bundles the ones it had when it was built. To add one, open a pull request there; it ships in the next release.
 

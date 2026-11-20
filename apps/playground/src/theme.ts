@@ -4,6 +4,7 @@ import type { Vars } from "@runbun/embed/protocol";
 import { CONTENT_ORIGIN } from "./contentOrigin";
 import { envelope } from "./contentProtocol";
 import { THEME_VARS, elysiaThemes } from "./elysiaTheme";
+import { HOSTING } from "./hosting";
 import { SOLID_THEME_VARS, solidThemes } from "./solidTheme";
 import { FAMILIES, chromeVars, withRealColors } from "./themeColors";
 
@@ -18,11 +19,17 @@ const VARS_KEY = "theme-vars";
  */
 export const EMBEDDED = "embed" in document.documentElement.dataset;
 
+/** The family a first visit gets: the host's (the hosting file's `theme.family`), else Pierre. */
+const DEFAULT_FAMILY = Object.values(FAMILIES)
+  .flat()
+  .find((f) => f[1] === HOSTING.theme?.family) ?? ["Pierre", "pierre-light", "pierre-dark"];
+if (HOSTING.theme?.family && DEFAULT_FAMILY[1] !== HOSTING.theme.family) console.warn(`hosting: no theme family "${HOSTING.theme.family}"`);
+
 const controller = createThemeController({
   catalog: createThemeCatalog({
     themes: [themes, elysiaThemes, solidThemes],
-    defaultLightThemeName: "pierre-light",
-    defaultDarkThemeName: "pierre-dark",
+    defaultLightThemeName: DEFAULT_FAMILY[1],
+    defaultDarkThemeName: DEFAULT_FAMILY[2],
   }),
   defaultMode: "system",
   storageKey: EMBEDDED ? undefined : "theme-selection",
@@ -53,8 +60,20 @@ export function setThemeVars(vars: Vars | undefined) {
   applyChrome();
 }
 
-/** The theme's own variables: its chrome colors, plus what its family declares (e.g. Elysia's overlay, Solid's font). */
-const themeVarsFor = (theme: ThemeLike) => ({ ...chromeVars(theme), ...THEME_VARS[themeName()], ...SOLID_THEME_VARS[themeName()] });
+/** The host's own variables (the hosting file's `theme.vars`), on every theme. */
+const hostVars = { base: cleanVars(HOSTING.theme?.vars?.base), light: cleanVars(HOSTING.theme?.vars?.light), dark: cleanVars(HOSTING.theme?.vars?.dark) };
+
+/**
+ * The theme's own variables: its chrome colors, plus what its family declares (e.g. Elysia's overlay, Solid's font),
+ * then the host's.
+ */
+const themeVarsFor = (theme: ThemeLike) => ({
+  ...chromeVars(theme),
+  ...THEME_VARS[themeName()],
+  ...SOLID_THEME_VARS[themeName()],
+  ...hostVars.base,
+  ...hostVars[controller.getState().resolvedColorScheme],
+});
 
 /**
  * `?vars=`: the embed's `vars` shape, limited to the overlay. Other chrome variables feed `background` too, and a
@@ -210,7 +229,7 @@ export const familyOf = (s: { lightThemeName: string; darkThemeName: string }) =
   families.find((f) => f[1] === s.lightThemeName && f[2] === s.darkThemeName)?.[1];
 
 // A saved pair that isn't a family (e.g. from an older version): fall back to the light side's family, or Pierre.
-if (!familyOf(controller.getState())) pickFamily(families.find((f) => f[1] === controller.getState().lightThemeName)?.[1] ?? "pierre-light");
+if (!familyOf(controller.getState())) pickFamily(families.find((f) => f[1] === controller.getState().lightThemeName)?.[1] ?? DEFAULT_FAMILY[1]);
 
 export type ThemeState = ReturnType<typeof controller.getState>;
 export const themeState = () => controller.getState();
@@ -221,15 +240,16 @@ export const watchTheme = (next: (s: ThemeState) => void) => {
 };
 export const setColorMode = (mode: ColorMode) => controller.setColorMode(mode);
 
-/** The mask's shape (bun-mask.svg, the logo's outline): its aspect, and where the body's middle sits in it. */
-const MASK = { aspect: 66.25 / 76, cx: 38 / 76, cy: 35.7 / 66.25 };
 /**
- * How wide the mask must be for the bun to cover the window from (x, y). The body is close to an ellipse with
- * half-axes of 0.49 × width across and 0.45 × height below the middle (above, it reaches further), with a margin.
+ * The mask's shape (bun-mask.svg, the logo's outline): its aspect, where the body's middle sits in it, and the body
+ * as an ellipse: half-axes of 0.49 × width across and 0.45 × height below the middle (above, it reaches further).
+ * A branded host (the hosting file's `brand`) gets a plain circle (style.css).
  */
+const MASK = HOSTING.brand ? { aspect: 1, cx: 0.5, cy: 0.5, a: 0.5, b: 0.5 } : { aspect: 66.25 / 76, cx: 38 / 76, cy: 35.7 / 66.25, a: 0.49, b: 0.45 };
+/** How wide the mask must be for its shape to cover the window from (x, y), with a margin. */
 function coverWidth(x: number, y: number) {
-  const a = 0.49;
-  const b = 0.45 * MASK.aspect;
+  const a = MASK.a;
+  const b = MASK.b * MASK.aspect;
   const corners = [
     [x, y],
     [innerWidth - x, y],
@@ -259,8 +279,9 @@ export function switchTheme(change: () => void) {
   const w = coverWidth(mx, my);
   const h = w * MASK.aspect;
   // style.css gives the new layer the mask while this class is on.
-  document.documentElement.classList.add("theme-switch");
-  transition.finished.finally(() => document.documentElement.classList.remove("theme-switch"));
+  const classes = HOSTING.brand ? ["theme-switch", "theme-switch-plain"] : ["theme-switch"];
+  document.documentElement.classList.add(...classes);
+  transition.finished.finally(() => document.documentElement.classList.remove(...classes));
   transition.ready
     .then(() => {
       const reveal = document.documentElement.animate(

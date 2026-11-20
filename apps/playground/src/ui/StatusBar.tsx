@@ -191,6 +191,12 @@ export function StatusBar(props: { treeShown: boolean; toggleFiles(): void; togg
           About
         </Tip>
       </Show>
+      {/* A branded host (the hosting file's `brand`) says whose playground it runs. */}
+      <Show when={HOSTING.brand}>
+        <Tip as="a" href="https://runbun.dev/" target="_blank" rel="noopener" placement="top-end" tip="This playground is runbun: Bun's toolchain in the browser">
+          Powered by runbun
+        </Tip>
+      </Show>
       <Tip as="a" href={`${DOCS}privacy/`} target="_blank" rel="noopener" placement="top-end" tip="Privacy: no tracking, and what is stored">
         Privacy
       </Tip>

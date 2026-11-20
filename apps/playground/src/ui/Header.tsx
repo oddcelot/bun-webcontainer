@@ -1,8 +1,9 @@
-import { Show, createSignal, untrack, useContext } from "solid-js";
+import { Show, createSignal, onSettled, untrack, useContext } from "solid-js";
 import { DOCS } from "../base";
 import { debugSession } from "../debugSession";
 import { chordKeys, keysFor } from "../keymap";
-import logo from "../bun-logo.svg";
+import { HOSTING } from "../hosting";
+import { themeState, watchTheme } from "../theme";
 import { AppContext, type App } from "./context";
 import { AutosaveTip } from "./EditorPane";
 import { LocalBunSetup } from "./LocalBunSetup";
@@ -78,6 +79,36 @@ function LocalBunToggle(props: { rt: NonNullable<App["runtime"]> }) {
   );
 }
 
+/**
+ * A branded host's logo and name (the hosting file's `brand`) where runbun has its dumpling and the visit's random
+ * name: the logo for the scheme in effect, linking to the brand's home if it names one.
+ */
+function Brand(props: { brand: NonNullable<typeof HOSTING.brand> }) {
+  const brand = untrack(() => props.brand);
+  const [dark, setDark] = createSignal(themeState().resolvedColorScheme === "dark");
+  onSettled(() => watchTheme((s) => setDark(s.resolvedColorScheme === "dark")));
+  const mark = (
+    <>
+      <img class="brand-logo" src={(dark() && brand.logoDark) || brand.logo} alt="" />
+      <span id="title" aria-hidden="true">
+        <Title />
+      </span>
+    </>
+  );
+  return (
+    <div class="title brand">
+      {brand.home ? (
+        <a href={brand.home} target="_blank" rel="noopener" aria-label={`${HOSTING.name}: home page (opens in a new tab)`}>
+          {mark}
+        </a>
+      ) : (
+        mark
+      )}
+      <h1 class="sr-only">{HOSTING.name}</h1>
+    </div>
+  );
+}
+
 export function Header() {
   const app = useContext(AppContext);
   const s = app.session;
@@ -86,13 +117,20 @@ export function Header() {
   return (
     <>
       {/* The h1 holds only the page's stable name, so crawlers don't read it run into this visit's random one. */}
-      <div class="title">
-        <span class="logo" aria-hidden="true" />
-        <h1 class="sr-only">Bun Playground: run Bun in your browser</h1>
-        <span id="title" aria-hidden="true">
-          <Title />
-        </span>
-      </div>
+      <Show
+        when={HOSTING.brand}
+        fallback={
+          <div class="title">
+            <span class="logo" aria-hidden="true" />
+            <h1 class="sr-only">Bun Playground: run Bun in your browser</h1>
+            <span id="title" aria-hidden="true">
+              <Title />
+            </span>
+          </div>
+        }
+      >
+        {(brand) => <Brand brand={brand()} />}
+      </Show>
       <ProjectPicker />
       {/* Startup installs and runs the project itself, so Run and Install ignore clicks until it's done (no greying out meanwhile). */}
       <span id="run-group">
@@ -127,7 +165,7 @@ export function Header() {
           <i class="i-lucide-bug" aria-hidden="true" /> Debug
         </Tip>
       </Show>
-      <Show when={app.runtime}>{(rt) => <LocalBunToggle rt={rt()} />}</Show>
+      <Show when={HOSTING.localRunner && app.runtime}>{(rt) => <LocalBunToggle rt={rt()} />}</Show>
       {/* What a save does: when edits save, and whether a save restarts the program. Icons only; the tooltips say which. */}
       <span id="save-group">
         <Tip

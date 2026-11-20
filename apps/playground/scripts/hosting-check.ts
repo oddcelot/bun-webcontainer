@@ -108,6 +108,39 @@ if (dev.contentOrigin !== "http://run.runbun.localhost:5199" || dev.editorOrigin
     configure(dist, loadHosting("production", {}));
     want("no content origin: no _headers rules", !read("_headers").includes("configure.ts: begin"));
     want("back to the defaults: the landing page again", read("index.html").startsWith('<html lang="en">\n'));
+    // A brand (hosting/example.json), on the real pages: its name as their titles, its description, its logo as the
+    // icon in place of runbun's; the defaults bring runbun's back, byte for byte.
+    const app = fileURLToPath(new URL("..", import.meta.url));
+    const pages = ["index.html", "embed.html", "configure.html"];
+    for (const p of pages) writeFileSync(join(dist, p), readFileSync(join(app, p), "utf8"));
+    writeFileSync(join(dist, "examples.json"), '["astro-solid-demo","demo","solid-ssr-dashboard","solid-vite-hmr","starter-http"]\n');
+    configure(dist, loadHosting("production", {}));
+    const built = pages.map(read);
+    configure(dist, loadHosting("production", { HOSTING: "hosting/example.json" }));
+    const branded = read("index.html");
+    want("a brand: index.html's titles are the site's name", branded.includes("<title>Solid Playground</title>") && branded.includes('property="og:title" content="Solid Playground"') && !branded.includes("<title>Bun Playground:") && !branded.includes("in your browser · "));
+    want("a brand: index.html's head script gets the name", branded.startsWith('<!doctype html>\n<html lang="en" data-landing="off" data-brand="Solid Playground">'));
+    want("a brand: its description", branded.split('content="Run SolidJS projects in your browser').length === 4);
+    want("a brand: its logo is the only icon", branded.split('<link rel="icon" ').length === 2 && branded.includes('<link rel="icon" data-brand href="data:image/svg+xml;base64,') && !branded.includes('rel="manifest"'));
+    want("a brand: embed.html's title", read("embed.html").includes("<title>Solid Playground</title>"));
+    const brand = JSON.parse(/export default (.*);/.exec(read("hosting.js"))![1]);
+    want("a brand: hosting.js has the logos, the theme and no Local Bun", brand.brand.logo.startsWith("data:image/svg+xml;base64,") && brand.brand.logoDark !== brand.brand.logo && brand.brand.home === "https://www.solidjs.com/" && brand.theme.family === "solid-light" && brand.localRunner === false);
+    configure(dist, loadHosting("production", { HOSTING: "hosting/example.json" }));
+    want("a brand: configured twice, the same HTML", read("index.html") === branded);
+    configure(dist, loadHosting("production", {}));
+    want("a brand: the defaults bring the built pages back", pages.every((p, i) => read(p) === built[i]));
+    for (const [what, file] of [
+      ["an unknown brand field", { brand: { logo: "x.svg", title: "x" } }],
+      ["a logo that isn't an image", { brand: { logo: "example.json" } }],
+      ["a logo that doesn't exist", { brand: { logo: "nope.svg" } }],
+      ["a theme variable that isn't a custom property", { theme: { vars: { base: { color: "red" } } } }],
+    ] as const) {
+      writeFileSync(solid, JSON.stringify(file));
+      try {
+        loadHosting("production", { HOSTING: solid });
+        problems.push(`configure: ${what} was accepted`);
+      } catch {}
+    }
     writeFileSync(solid, JSON.stringify({ gallery: ["solid-vite-hrm"] }));
     try {
       configure(dist, loadHosting("production", { HOSTING: solid }));

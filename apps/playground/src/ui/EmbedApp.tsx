@@ -430,7 +430,7 @@ function EmbedMenu() {
         {/* After the menu has closed and handed focus back, or that would take it from the dialog. */}
         <MenuItem icon="i-lucide-rotate-ccw" label="Reset" onSelect={() => (e.edited() ? setTimeout(() => setAsking(true), 50) : void e.reset())} />
         <Show when={e.has("open")}>
-          <MenuItem icon={<img src={logo} alt="" width="14" height="12" />} label={`Open in ${HOSTING.name}`} onSelect={() => void e.openInPlayground()}>
+          <MenuItem icon={<img src={HOSTING.brand?.logo ?? logo} alt="" width="14" height="12" style={{ "object-fit": "contain" }} />} label={`Open in ${HOSTING.name}`} onSelect={() => void e.openInPlayground()}>
             <i class="i-lucide-arrow-up-right" aria-hidden="true" />
           </MenuItem>
         </Show>

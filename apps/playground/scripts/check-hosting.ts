@@ -28,7 +28,8 @@ if (!chrome) {
 }
 
 const gallery = ["solid-vite-hmr", "solid-ssr-dashboard", "astro-solid-demo"];
-const hosting = { name: "Solid Playground", gallery, defaultProject: gallery[0], landing: false, editorOrigins: [`http://localhost:${PORT}`] };
+// Its own brand too: a logo next to the hosting file, the Solid theme for a first visit, no Local Bun switch.
+const hosting = { name: "Solid Playground", brand: { logo: "solid.svg", home: "https://www.solidjs.com/" }, theme: { family: "solid-light" }, localRunner: false, gallery, defaultProject: gallery[0], landing: false, editorOrigins: [`http://localhost:${PORT}`] };
 /** An example's card name, as src/examples.ts reads it: runbun.json's over example.json's. */
 const nameOf = (folder: string) => {
   const read = (f: string) => (existsSync(join(app, "examples", folder, f)) ? (Bun.JSONC.parse(readFileSync(join(app, "examples", folder, f), "utf8")) as { name?: string }).name : undefined);
@@ -44,6 +45,7 @@ try {
   if (Bun.spawnSync(["tar", "-xzf", archive, "-C", dir]).exitCode) throw new Error(`can't unpack ${archive}`);
   const root = join(dir, readdirSync(dir).find((d) => d.startsWith("runbun-playground-"))!);
   await Bun.write(join(dir, "hosting.json"), JSON.stringify(hosting));
+  await Bun.write(join(dir, "solid.svg"), Bun.file(join(app, "hosting/brand/solid.svg")));
   const configured = Bun.spawnSync(["node", "configure.ts", "dist", join(dir, "hosting.json")], { cwd: root, stdout: "inherit", stderr: "inherit" });
   if (configured.exitCode) throw new Error("configure.ts failed");
 
@@ -75,7 +77,23 @@ try {
     const picked = await page.evaluate(() => document.querySelector("#example .name")?.textContent?.trim() ?? "");
     if (picked !== want[0]) problems.push(`the project picker shows "${picked}", not the default project "${want[0]}"`);
     const title = await page.title();
-    if (!title.endsWith("· Solid Playground") || title.includes("runbun.dev")) problems.push(`the tab title is "${title}"`);
+    if (title !== "Solid Playground") problems.push(`the tab title is "${title}"`);
+    // The brand: its logo and name in the header (a link to its home), its logo as the page's icon, its theme, and
+    // none of runbun's own: the dumpling, the Local Bun switch.
+    const brand = await page.evaluate(() => ({
+      name: document.querySelector("header #title")?.textContent?.trim(),
+      logo: document.querySelector<HTMLImageElement>("header .title a[href='https://www.solidjs.com/'] img.brand-logo")?.naturalWidth ?? 0,
+      dumpling: !!document.querySelector("header .logo"),
+      localBun: !!document.querySelector("#local-bun"),
+      icons: [...document.querySelectorAll<HTMLLinkElement>("link[rel~=icon]")].map((l) => l.href.slice(0, 19)),
+      canvas: getComputedStyle(document.documentElement).getPropertyValue("--canvas").trim(),
+      poweredBy: [...document.querySelectorAll("footer a")].some((a) => a.textContent?.trim() === "Powered by runbun"),
+    }));
+    if (brand.name !== "Solid Playground" || !brand.logo || brand.dumpling) problems.push(`the header's brand: ${JSON.stringify(brand)}`);
+    if (brand.localBun) problems.push("the header has the Local Bun switch");
+    if (brand.icons.join() !== "data:image/svg+xml;") problems.push(`the page's icons: ${brand.icons.join(", ")}`);
+    if (!["#eef2f7", "#020e1e"].includes(brand.canvas)) problems.push(`a first visit isn't in the Solid theme (--canvas: ${brand.canvas})`);
+    if (!brand.poweredBy) problems.push("the status bar doesn't say Powered by runbun");
 
     // The gallery: every card in every section.
     await page.click("#example");
@@ -131,4 +149,4 @@ if (problems.length) {
   for (const p of problems) console.error(`✗ ${p}`);
   process.exit(1);
 }
-console.log(`✓ "${hosting.name}": no landing page, ${want[0]} running, ${want.length} projects in the gallery, no Worker features`);
+console.log(`✓ "${hosting.name}": its brand, no landing page, ${want[0]} running, ${want.length} projects in the gallery, no Worker features`);

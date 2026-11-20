@@ -17,6 +17,9 @@ configures it for two origins under node and runs the gallery from it. Attach it
 | `runbun.dev.json` | https://runbun.dev, code on run.runbun.dev | `playground:build`, `deploy` |
 | `canary.json`     | https://canary.runbun.dev                  | `playground:deploy-canary`   |
 
+`example.json` is the one the release archive ships (`hosting.example.json`, with `brand/`'s logos): a Solid
+playground with its own logo, theme and gallery. `scripts/hosting-check.ts` configures a build with it.
+
 Fields, all optional:
 
 - `docsUrl`: the docs the playground links to. Default: http://localhost:4321/ in dev, https://docs.runbun.dev/ in
@@ -37,6 +40,16 @@ Fields, all optional:
   `?example=demo`).
 - `landing`: `false` opens the playground at `/` right away, also for first-time visitors and at `/about`, and drops
   the status bar's About link. Default: `true`.
+- `brand`: makes the playground the host's own. Its `logo` (an SVG, PNG or WebP next to the hosting file, at most
+  64 kB; `logoDark` for dark themes) and `name` stand in the header where runbun has its dumpling and the visit's
+  random name, linking to `home` if it names one; the logo is the page's icon; `name` alone is the page title, and
+  `description` the pages' description. The status bar then says "Powered by runbun". Configure reads the logos into
+  `hosting.js` as data: URLs, so there is no file to serve. Default: none, runbun's own.
+- `theme`: how the playground looks before a visitor picks a theme. `family` is the theme family a first visit gets,
+  by its light variant (`"solid-light"`, `"github-light"`; `src/themeColors.ts` lists them). `vars` are CSS custom
+  properties on top of every theme's, in the embed's `vars` shape: `base` for both schemes, `light` and `dark` for
+  one (`{ "base": { "--radius": "8px" } }`). Default: Pierre, no variables.
+- `localRunner`: `false` leaves out the header's Local Bun switch (`packages/connect`). Default: `true`.
 
 - `worker`: the host runs `worker/index.ts` next to the files (`wrangler.jsonc`): short links, Feedback, signing in
   with GitHub and the git proxy (git clone, GitHub dependencies). Without it the playground leaves them out: no short

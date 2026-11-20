@@ -27,6 +27,16 @@ All fields are optional:
   The others still open by `?example=<folder>`. Default: all of them.
 - `defaultProject`: the example (a folder name) your playground opens at `/`. Default: a small demo.
 - `landing`: `false` opens the playground right away instead of runbun.dev's landing page. Default: true.
+- `brand`: your logo and `name` in the header in place of runbun's, your logo as the page's icon, and `name` alone
+  as the page title: `{ "logo": "logo.svg", "logoDark": "logo-dark.svg", "home": "https://example.org/",
+  "description": "…" }`. Only `logo` is required: an SVG, PNG or WebP file next to the hosting file, at most 64 kB.
+  The status bar then says "Powered by runbun".
+- `theme`: `{ "family": "solid-light" }` is the theme family a first visit gets, by its light variant (the theme
+  picker lists them: `pierre-light`, `github-light`, `solid-light`, …). `vars` sets CSS custom properties on top of
+  every theme: `{ "vars": { "base": { "--radius": "8px" }, "dark": { "--accent": "#65c5ff" } } }`.
+- `localRunner`: `false` leaves out the header's Local Bun switch. Default: true.
+
+`hosting.example.json` is a whole one: a Solid playground with the logos in `brand/`.
 
 The canonical URL, the share cards' URLs, `robots.txt` and `sitemap.xml` point at the first editor origin.
 
