@@ -199,6 +199,8 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
           }
         } else await runner!.start(entry!, undefined, args);
         if (runner!.exitCode !== undefined) return exited(runner!.exitCode);
+        // Still running, but it never said it was up: not shown as running until it does (onLateStart).
+        if (runner!.startTimedOut) return { state: "error", text: `${entry} didn't start` };
         previews.reload();
         return { state: "running", text: `Running ${entry}` };
       } catch (e) {
@@ -307,7 +309,8 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
   }
 
   function stop() {
-    if (session.settled().state !== "running" && !testing) return;
+    // A program whose start timed out shows an error but runs on (startTimedOut): Stop ends it too.
+    if (session.settled().state !== "running" && !testing && !runner?.startTimedOut) return;
     stoppedTest = testing;
     void runner?.stop();
     log("sys", "[stopped]");
@@ -509,6 +512,10 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
     runner = next;
     runner.attach();
     runner.onExit = (code) => session.setStatus(exited(code));
+    runner.onLateStart = () => {
+      previews.reload();
+      session.setStatus({ state: "running", text: `Running ${lastEntry}` });
+    };
     runner.onStdinWait = (on) => terminal.reading(on);
     if (runner instanceof Runner) runner.onStdinRaw = (on) => terminal.rawMode(on);
     runner.onPorts = (ports, shown) => {

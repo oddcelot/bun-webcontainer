@@ -51,9 +51,9 @@ Object.assign(globalThis, {
     postMessage() {}
   },
 });
-// The watchdog's 30 s, made short; the flush timeout and the rest keep theirs.
+// The watchdog's 30 s and the start's 15 s, made short; the flush timeout and the rest keep theirs.
 const realTimeout = globalThis.setTimeout;
-globalThis.setTimeout = ((fn: () => void, ms?: number) => realTimeout(fn, ms && ms >= 30_000 ? 50 : ms)) as typeof setTimeout;
+globalThis.setTimeout = ((fn: () => void, ms?: number) => realTimeout(fn, ms && ms >= 15_000 ? 50 : ms)) as typeof setTimeout;
 
 const { Runner } = await import("../src/runner.ts");
 const logs: string[] = [];
@@ -129,6 +129,25 @@ await new Promise((r) => realTimeout(r, 20));
 eq("the restarted server gets it", workers.at(-1)!.got.includes("request"), true);
 eq("and no 503 went back", answered, []);
 await runner.stop();
+
+// A start without a ready report: flagged as timed out, the program kept (it may be slow); up after all, said once.
+let lateStarts = 0;
+runner.onLateStart = () => lateStarts++;
+let slow: FakeWorker | undefined;
+answer = (w) => void (slow = w);
+await within(runner.start("slow.ts"));
+eq("a start that never reports times out", [runner.startTimedOut, runner.running], [true, true]);
+eq("and says so", logs.at(-1), "worker start timed out");
+slow!.send({ type: "ready" });
+slow!.send({ type: "ready" });
+eq("its late ready report clears it, once", [runner.startTimedOut, lateStarts], [false, 1]);
+// Stop ends a stuck one and clears the flag; a late report from it then counts for nothing.
+answer = (w) => void (slow = w);
+await within(runner.start("stuck.ts"));
+await runner.stop();
+slow!.terminated = false;
+slow!.send({ type: "ready" });
+eq("Stop clears it", [runner.startTimedOut, lateStarts], [false, 1]);
 
 if (bad) process.exit(1);
 console.log("runner stop: ok");

@@ -85,6 +85,13 @@ export class Runner {
   /** Called when a program that had started ends itself (one that ends while starting sets `exitCode` instead). */
   onExit?: (code: number) => void;
   /**
+   * Whether the last started program didn't say it was up within START_TIMEOUT. It keeps running: it may only be slow
+   * (`onLateStart` once it is up), or stuck.
+   */
+  startTimedOut = false;
+  /** Called when a program whose start timed out (`startTimedOut`) is up after all. */
+  onLateStart?: () => void;
+  /**
    * Called with the ports the program answering previews serves, its child processes' after its own, whenever they
    * change (none once it stops), and the one the preview shows (see `choosePort`).
    */
@@ -397,6 +404,7 @@ export class Runner {
    */
   async stop(flush = true) {
     this.epoch++;
+    this.startTimedOut = false;
     this.next?.cancel();
     for (const w of this.draining) this.end(w);
     this.draining.clear();
@@ -501,6 +509,7 @@ export class Runner {
     while (this.worker);
     resetSyncEsm();
     this.exitCode = undefined;
+    this.startTimedOut = false;
     this.results = undefined;
     this.coverageFailed = false;
     const { worker, outcome, cancel } = this.boot(entry, tests, args, content);
@@ -525,7 +534,10 @@ export class Runner {
       if (o.kind === "exit") {
         this.exitCode = o.code;
         if (this.worker === worker) void this.retire(false);
-      } else if (o.kind === "timeout") this.log("error", "worker start timed out");
+      } else if (o.kind === "timeout") {
+        this.startTimedOut = true;
+        this.log("error", "worker start timed out");
+      }
     });
     void this.ready.then(handOver);
     return this.ready;
@@ -602,7 +614,14 @@ export class Runner {
     // A debug run may stop at a breakpoint before it's ready, for as long as someone looks.
     const timer = tests || debug ? undefined : setTimeout(() => done({ kind: "timeout" }), START_TIMEOUT);
     const done = (o: Outcome) => {
-      if (settled) return;
+      // Up after its start timed out: still the program (a restart or Stop since resets the flag).
+      if (settled) {
+        if (o.kind === "ready" && this.startTimedOut && this.worker === worker) {
+          this.startTimedOut = false;
+          this.onLateStart?.();
+        }
+        return;
+      }
       settled = true;
       clearTimeout(timer);
       settle(o);
