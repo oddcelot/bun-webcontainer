@@ -8,7 +8,7 @@
     "card": "brand/solid-card.png",
     "cardAlt": "Solid Playground: run SolidJS projects in your browser, beside the Solid logo"
   },
-  "theme": { "family": "solid-light" },
+  "theme": { "families": ["solid-light"] },
   "localRunner": false,
   "gallery": ["solid-vite-hmr", "solid-ssr-dashboard", "astro-solid-demo", "reactivescript", "reactivescript-selects"],
   "defaultProject": "solid-vite-hmr",

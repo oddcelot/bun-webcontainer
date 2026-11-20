@@ -19,10 +19,21 @@ const VARS_KEY = "theme-vars";
  */
 export const EMBEDDED = "embed" in document.documentElement.dataset;
 
-/** The family a first visit gets: the host's (the hosting file's `theme.family`), else Pierre. */
-const DEFAULT_FAMILY = Object.values(FAMILIES)
-  .flat()
-  .find((f) => f[1] === HOSTING.theme?.family) ?? ["Pierre", "pierre-light", "pierre-dark"];
+const families = Object.values(FAMILIES).flat();
+/**
+ * The families the theme picker offers, by their light variants: the host's (the hosting file's `theme.families`, in
+ * its order), else all of them. An embed's host may still set any (`isFamily`).
+ */
+export const OFFERED: string[] = (() => {
+  const named = HOSTING.theme?.families;
+  if (!named) return families.map((f) => f[1]);
+  for (const name of named) if (!families.some((f) => f[1] === name)) console.warn(`hosting: no theme family "${name}"`);
+  const known = named.filter((name) => families.some((f) => f[1] === name));
+  return known.length ? known : families.map((f) => f[1]);
+})();
+
+/** The family a first visit gets: the host's (the hosting file's `theme.family`, else the first it offers), else Pierre. */
+const DEFAULT_FAMILY = families.find((f) => f[1] === (HOSTING.theme?.family ?? (HOSTING.theme?.families ? OFFERED[0] : undefined))) ?? ["Pierre", "pierre-light", "pierre-dark"];
 if (HOSTING.theme?.family && DEFAULT_FAMILY[1] !== HOSTING.theme.family) console.warn(`hosting: no theme family "${HOSTING.theme.family}"`);
 
 const controller = createThemeController({
@@ -200,18 +211,16 @@ export function onTheme(fn: (name: string, theme: ThemeLike) => void) {
   return () => void listeners.delete(fn);
 }
 
-const families = Object.values(FAMILIES).flat();
-
 let preloaded = false;
 /**
- * Loads every family's themes into the controller's cache (50 modules), once: a cached theme applies in the same call,
+ * Loads the offered families' themes into the controller's cache (50 modules for all of them), once: a cached theme applies in the same call,
  * so previewing one in the theme picker shows at once instead of waiting for its module. The picker calls it when the
  * pointer or focus reaches its button, not at startup.
  */
 export function preloadThemes() {
   if (preloaded) return;
   preloaded = true;
-  controller.resolver.resolveThemes(families.flatMap(([, light, dark]) => [light, dark])).catch(() => {});
+  controller.resolver.resolveThemes(families.filter((f) => OFFERED.includes(f[1])).flatMap(([, light, dark]) => [light, dark])).catch(() => {});
 }
 
 /** True for a theme family's light variant (what `pickFamily` takes). */
@@ -228,8 +237,12 @@ export function pickFamily(light: string) {
 export const familyOf = (s: { lightThemeName: string; darkThemeName: string }) =>
   families.find((f) => f[1] === s.lightThemeName && f[2] === s.darkThemeName)?.[1];
 
-// A saved pair that isn't a family (e.g. from an older version): fall back to the light side's family, or Pierre.
-if (!familyOf(controller.getState())) pickFamily(families.find((f) => f[1] === controller.getState().lightThemeName)?.[1] ?? DEFAULT_FAMILY[1]);
+// A saved pair that isn't a family (e.g. from an older version): fall back to the light side's family, or the default.
+// The same for one the host doesn't offer (picked before the host narrowed its list); an embed takes what its host sets.
+{
+  const offered = (light: string | undefined) => (light !== undefined && (EMBEDDED || OFFERED.includes(light)) ? light : undefined);
+  if (!offered(familyOf(controller.getState()))) pickFamily(offered(families.find((f) => f[1] === controller.getState().lightThemeName)?.[1]) ?? DEFAULT_FAMILY[1]);
+}
 
 export type ThemeState = ReturnType<typeof controller.getState>;
 export const themeState = () => controller.getState();

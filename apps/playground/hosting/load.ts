@@ -84,6 +84,11 @@ export interface HostingFile {
     /** The theme family first-time visitors get, by its light variant ("solid-light", "github-light"). Default: "pierre-light". */
     family?: string;
     /**
+     * The theme families the picker offers, by their light variants. With one, the picker is the color scheme
+     * (system, light, dark) alone. Default: all of them; `family`, when both are set, must be one of these.
+     */
+    families?: string[];
+    /**
      * CSS custom properties on top of every theme's (the embed's `vars` shape): `base` for both schemes, `light`
      * and `dark` for one, e.g. `{ "base": { "--radius": "8px" }, "dark": { "--accent": "#65c5ff" } }`.
      */
@@ -134,7 +139,7 @@ export interface Hosting {
   worker: boolean;
   localRunner: boolean;
   brand?: HostingBrand;
-  theme?: { family?: string; vars?: HostingVars; transition?: "logo" | "circle" | "none" };
+  theme?: { family?: string; families?: string[]; vars?: HostingVars; transition?: "logo" | "circle" | "none" };
   /** The file it came from, for messages; undefined for the defaults. */
   file?: string;
 }
@@ -269,11 +274,18 @@ export function readHostingFile(path: string, read: { card?: boolean } = {}): Om
     };
   }
   if (d.theme !== undefined) {
-    const t = fields(d.theme, "theme", ["family", "vars", "transition"], path);
+    const t = fields(d.theme, "theme", ["family", "families", "vars", "transition"], path);
     out.theme = {};
     if (t.family !== undefined) {
       if (typeof t.family !== "string" || !folder.test(t.family)) throw new Error(`${path}: theme.family must be a theme's name, e.g. "solid-light"`);
       out.theme.family = t.family;
+    }
+    if (t.families !== undefined) {
+      const list = t.families;
+      if (!Array.isArray(list) || !list.length || !list.every((f): f is string => typeof f === "string" && folder.test(f)) || new Set(list).size !== list.length)
+        throw new Error(`${path}: theme.families must list theme names, each once, e.g. ["solid-light"]`);
+      if (out.theme.family && !list.includes(out.theme.family)) throw new Error(`${path}: theme.family "${out.theme.family}" isn't in theme.families`);
+      out.theme.families = list;
     }
     if (t.vars !== undefined) {
       const v = fields(t.vars, "theme.vars", ["base", "light", "dark"], path);

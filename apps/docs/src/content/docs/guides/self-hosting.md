@@ -40,7 +40,7 @@ The hosting file says where the copy lives and how it differs from runbun.dev. T
 {
   "name": "Solid Playground",
   "brand": { "logo": "brand/solid.svg", "logoDark": "brand/solid-dark.svg", "home": "https://www.solidjs.com/", "card": "brand/card.png" },
-  "theme": { "family": "solid-light" },
+  "theme": { "families": ["solid-light"] },
   "localRunner": false,
   "gallery": ["solid-vite-hmr", "solid-ssr-dashboard", "astro-solid-demo", "reactivescript", "reactivescript-selects"],
   "defaultProject": "solid-vite-hmr",
@@ -56,7 +56,7 @@ Every field is optional:
 | `editorOrigins` | `["http://localhost:5173"]` | Where people open your playground. The first is its canonical URL: the page's `<link rel="canonical">`, its share cards, `robots.txt` and `sitemap.xml` point there. |
 | `name` | `"runbun.dev"` | Your site's name in the page titles, share cards and "Open in …". |
 | `brand` | none | Your logo and name in place of runbun's, see [Your own brand and theme](#your-own-brand-and-theme). |
-| `theme` | Pierre | The theme a first visit gets, and CSS variables on top of every theme. |
+| `theme` | Pierre, every theme | The theme a first visit gets, the themes the picker offers, CSS variables on top of every theme, and how a theme switch looks. |
 | `localRunner` | `true` | `false` leaves out the header's Local Bun switch. |
 | `gallery` | all of them | Which bundled examples the gallery lists, by folder name, in this order. `dist/examples.json` lists the folders a release has; the others still open with `?example=<folder>`. |
 | `defaultProject` | a small demo | The example (a folder name) that opens at `/`. |
@@ -94,6 +94,16 @@ Configure reads the logo files into `hosting.js` and copies the card into `dist/
 ```
 
 The variables are the [embed's](/reference/embed-api/#theming): `--bg`, `--panel`, `--canvas`, `--fg`, `--muted`, `--border`, `--accent`, `--radius`, `--font-ui`, `--font-mono`.
+
+`theme.families` narrows the theme picker to the families you list, in the same names; a first visit gets the first unless `theme.family` names another of them. With a single family the picker offers the color scheme alone: system, light and dark.
+
+```json
+{
+  "theme": { "families": ["solid-light"] }
+}
+```
+
+A visitor who picked another theme before you narrowed the list gets yours on their next visit.
 
 `theme.transition` is how a switch between light and dark, or to another theme, reveals the new colors:
 

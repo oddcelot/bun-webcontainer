@@ -50,7 +50,9 @@ Fields, all optional:
   `bun scripts/brand-card.ts <hosting.json> <card.png>` draws one from the file's logo, name, description and theme
   (the example's `brand/solid-card.png`). Default: none, runbun's own.
 - `theme`: how the playground looks before a visitor picks a theme. `family` is the theme family a first visit gets,
-  by its light variant (`"solid-light"`, `"github-light"`; `src/themeColors.ts` lists them). `vars` are CSS custom
+  by its light variant (`"solid-light"`, `"github-light"`; `src/themeColors.ts` lists them). `families` are the ones
+  the picker offers (default: all, and `family` then defaults to the first); with one, the picker is the color scheme
+  alone, and a visitor's earlier pick outside the list gives way to `family`. `vars` are CSS custom
   properties on top of every theme's, in the embed's `vars` shape: `base` for both schemes, `light` and `dark` for
   one (`{ "base": { "--radius": "8px" } }`). `transition` is how a theme switch reveals the new colors: `"logo"` in the
   shape of the logo, growing from the middle of the window (`brand.logo` with a circle behind it, or runbun's

@@ -1,4 +1,4 @@
-import { For, createSignal, onSettled, type ParentProps } from "solid-js";
+import { For, Show, createSignal, onSettled, type ParentProps } from "solid-js";
 import { Popover } from "@kobalte/core/popover";
 import { ToggleGroup } from "@kobalte/core/toggle-group";
 import { FAMILIES, FamilyListbox } from "./FamilyListbox";
@@ -25,13 +25,15 @@ export type AppearanceProps = ParentProps<{
   preview: (family: string) => void;
   /** Keep a family. */
   pick: (family: string) => void;
+  /** The families to offer, by their light themes. With one, the list is left out. Default: all. */
+  families?: string[];
   /** The trigger's id. */
   id?: string;
 }>;
 
 /**
- * Appearance: a swatch button opening the system/light/dark toggle over the theme families, then `children` (more
- * sections). A family under the pointer or keyboard focus previews at once; clicking one keeps it, and closing the
+ * Appearance: a swatch button opening the system/light/dark toggle over the theme families (`families`, left out
+ * when there is one), then `children` (more sections). A family under the pointer or keyboard focus previews at once; clicking one keeps it, and closing the
  * popover or moving the pointer off the list without one puts the kept family back. Where the mode and family live is
  * the caller's (the props).
  */
@@ -97,7 +99,9 @@ export function AppearancePicker(props: AppearanceProps) {
                 )}
               </For>
             </ToggleGroup>
+            <Show when={props.families?.length !== 1}>
             <FamilyListbox
+              families={props.families}
               value={kept()}
               onPick={(light) => {
                 setKept(light);
@@ -107,6 +111,7 @@ export function AppearancePicker(props: AppearanceProps) {
               onPointerLeave={restore}
               onEscape={dismiss}
             />
+            </Show>
             {props.children}
           </Popover.Content>
         </Popover.Portal>

@@ -130,7 +130,7 @@ if (dev.contentOrigin !== "http://run.runbun.localhost:5199" || dev.editorOrigin
     want("a brand: its card is the pages' picture", !!cardFile && existsSync(join(dist, cardFile)) && branded.includes(`name="twitter:image" content="https://play.example.org/${cardFile}"`) && !/content="[^"]*og\.png/.test(branded) && read("configure.html").includes(cardFile!));
     want("a brand: the card's alt text", branded.split('content="Solid Playground: run SolidJS projects in your browser, beside the Solid logo"').length === 3 && !branded.includes("pixel-art kitchen"));
     const brand = JSON.parse(/export default (.*);/.exec(read("hosting.js"))![1]);
-    want("a brand: hosting.js has the logos, the theme and no Local Bun", brand.brand.logo.startsWith("data:image/svg+xml;base64,") && brand.brand.logoDark !== brand.brand.logo && brand.brand.home === "https://www.solidjs.com/" && brand.theme.family === "solid-light" && brand.localRunner === false);
+    want("a brand: hosting.js has the logos, the theme and no Local Bun", brand.brand.logo.startsWith("data:image/svg+xml;base64,") && brand.brand.logoDark !== brand.brand.logo && brand.brand.home === "https://www.solidjs.com/" && brand.theme.families.join() === "solid-light" && brand.localRunner === false);
     configure(dist, loadHosting("production", { HOSTING: "hosting/example.json" }));
     want("a brand: configured twice, the same HTML", read("index.html") === branded);
     configure(dist, loadHosting("production", {}));
@@ -144,6 +144,8 @@ if (dev.contentOrigin !== "http://run.runbun.localhost:5199" || dev.editorOrigin
       ["a card's alt text without a card", { brand: { logo: join(app, "hosting/brand/solid.svg"), cardAlt: "x" } }],
       ["a theme variable that isn't a custom property", { theme: { vars: { base: { color: "red" } } } }],
       ["a theme transition that isn't one", { theme: { transition: "fade" } }],
+      ["an empty list of theme families", { theme: { families: [] } }],
+      ["a first-visit theme family the host doesn't offer", { theme: { family: "github-light", families: ["solid-light"] } }],
     ] as const) {
       writeFileSync(solid, JSON.stringify(file));
       try {

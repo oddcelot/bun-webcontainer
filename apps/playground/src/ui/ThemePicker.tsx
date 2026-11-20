@@ -1,6 +1,6 @@
 import { createSignal, onSettled } from "solid-js";
 import { AppearancePicker } from "@runbun/ui/solid/AppearancePicker";
-import { familyOf, pickFamily, preloadThemes, setColorMode, switchTheme, themeState, watchTheme } from "../theme";
+import { OFFERED, familyOf, pickFamily, preloadThemes, setColorMode, switchTheme, themeState, watchTheme } from "../theme";
 
 /**
  * The shared appearance picker (@runbun/ui) over the playground's theme. The theme
@@ -26,6 +26,7 @@ export function ThemePicker() {
       id="theme"
       mode={theme().mode}
       family={familyOf(theme()) ?? ""}
+      families={OFFERED}
       setMode={(mode) => switchTheme(() => setColorMode(mode))}
       preview={pickFamily}
       pick={pickFamily}
