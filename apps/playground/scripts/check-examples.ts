@@ -87,9 +87,11 @@ try {
       await page.goto(`http://${split ? "runbun.localhost" : "localhost"}:${PORT}/?example=${name === "demo" ? "" : name}`, { waitUntil: "domcontentloaded" });
       const status = await settled(page);
       const ms = Date.now() - started;
-      // A start that timed out leaves the program running (it may still come up), so the status doesn't show it.
-      const timedOut = await page.evaluate(() => document.querySelector(".xterm-rows")?.textContent?.includes("worker start timed out") ?? false);
-      const bad = !status || status.state === "error" || crashes.length || timedOut;
+      // What leaves the program running, so the status doesn't show it: a start that timed out (it may still come up),
+      // the runtime's channel failing, a worker_threads thread (a wasm binding's) that didn't load.
+      const text = await page.evaluate(() => document.querySelector(".xterm-rows")?.textContent ?? "");
+      const runtimeError = ["worker start timed out", "worker error:", "failed to load the worker of thread"].find((s) => text.includes(s));
+      const bad = !status || status.state === "error" || crashes.length || runtimeError;
       if (bad) failed++;
       console.log(`${bad ? "✗" : "✓"} ${name}: ${status ? status.text : "didn't settle"} (${(ms / 1000).toFixed(1)} s)`);
       if (bad) {
