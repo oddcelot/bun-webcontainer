@@ -422,7 +422,7 @@ function EmbedMenu() {
         <Show when={e.has("install")}>
           <MenuItem
             icon="i-lucide-download"
-            label="bun install"
+            label="Install dependencies"
             disabled={!app.session.canRun || !!app.session.busy.install}
             onSelect={() => app.session.ready() && e.install()}
           />

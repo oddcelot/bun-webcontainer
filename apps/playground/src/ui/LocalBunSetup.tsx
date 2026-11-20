@@ -73,7 +73,7 @@ export function LocalBunSetup(props: { open: boolean; onOpenChange: (open: boole
       <DialogDescription>
         {props.lost
           ? "The runner stopped. Start it again and open the new link."
-          : "Run, bun install and bun test use the Bun on your computer, in a sandbox. Child processes, bun:ffi and real sockets work."}
+          : "Run, install and tests use the Bun on your computer, in a sandbox. Child processes, bun:ffi and real sockets work."}
       </DialogDescription>
       <Show when={detected === "mobile"}>
         <p class="note">

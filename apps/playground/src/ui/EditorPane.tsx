@@ -122,7 +122,7 @@ export function EditorPane(props: { start?: JSX.Element; end?: JSX.Element }) {
       log("error", asConsoleEntry(r.stderr));
       // JS and TS errors are already marked as you type; mark where other files stop parsing, until the next edit.
       const at = errorLocation(r.stderr);
-      if (at && !CHECKED.test(path)) editor.setDiagnostics([{ severity: "error", message: at.message, line: at.line, column: at.column, length: 0, source: "bun fmt" }]);
+      if (at && !CHECKED.test(path)) editor.setDiagnostics([{ severity: "error", message: at.message, line: at.line, column: at.column, length: 0, source: "format" }]);
     } catch (e) {
       if (!quiet) log("error", `[fmt] ${e}`);
     }
@@ -353,7 +353,7 @@ export function EditorPane(props: { start?: JSX.Element; end?: JSX.Element }) {
         </Show>
         {/* Over the code's top right corner, shown while the pointer is over the code (always on touch screens). */}
         <Show when={has("format") && ws.state.active && !ws.state.changesShown && ws.readOnlyText(ws.state.active!) === undefined && !ws.isReadonly(ws.state.active!)}>
-          <Tip class="format" type="button" tip="Format the open file with bun fmt" keys={keysFor("format").map(chordKeys)} onClick={() => void formatOpenFile()}>
+          <Tip class="format" type="button" tip="Format the open file" keys={keysFor("format").map(chordKeys)} onClick={() => void formatOpenFile()}>
             <i class="i-lucide-wand-sparkles" aria-hidden="true" /> Format
           </Tip>
         </Show>

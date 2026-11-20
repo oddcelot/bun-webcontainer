@@ -149,7 +149,7 @@ export function StatusBar(props: { treeShown: boolean; toggleFiles(): void; togg
           class="format-on-save"
           aria-pressed={ws.formatOnSave() ? "true" : "false"}
           keys={keys("save")}
-          tip={ws.formatOnSave() ? "Format on save is on (bun fmt). Auto-saves skip it" : "Format on save is off. Click to turn it on"}
+          tip={ws.formatOnSave() ? "Format on save is on. Auto-saves skip it" : "Format on save is off. Click to turn it on"}
           onClick={() => ws.setFormatOnSave(!ws.formatOnSave())}
         >
           <i class="i-lucide-wand-sparkles" aria-hidden="true" />
@@ -313,17 +313,17 @@ function Install() {
   const busy = () => !!session.busy.install;
   const view = () => {
     const st = state();
-    if (busy()) return { icon: "i-lucide-loader-circle spin", label: "Installing…", tip: "bun install is running" };
+    if (busy()) return { icon: "i-lucide-loader-circle spin", label: "Installing…", tip: "Installing dependencies" };
     switch (st.kind) {
       case "none":
         return undefined;
       case "missing":
-        return { icon: "i-lucide-package-x", label: "Not installed", tip: `Missing: ${listed(st.names)}. Click to run bun install` };
+        return { icon: "i-lucide-package-x", label: "Not installed", tip: `Missing: ${listed(st.names)}. Click to install` };
       case "stale":
         return {
           icon: "i-lucide-package-minus",
           label: "bun.lock out of date",
-          tip: `package.json changed ${listed(st.names)} since bun.lock. Click to run bun install`,
+          tip: `package.json changed ${listed(st.names)} since bun.lock. Click to install`,
         };
       case "unreadable":
         return { icon: "i-lucide-package-x", label: `${st.file} unreadable`, tip: `${st.file} has a syntax error. Click to open` };
@@ -331,7 +331,7 @@ function Install() {
         return {
           icon: "i-lucide-package-check",
           label: String(st.count),
-          tip: `${plural(st.count, "dependency")} installed. Click to run bun install again`,
+          tip: `${plural(st.count, "dependency")} installed. Click to install again`,
         };
     }
   };

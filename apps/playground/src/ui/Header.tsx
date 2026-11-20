@@ -151,7 +151,7 @@ export function Header() {
             </Tip>
           }
         >
-          <MenuItem icon="i-lucide-download" label="bun install" disabled={!!s.busy.install} onSelect={() => s.ready() && app.install()} />
+          <MenuItem icon="i-lucide-download" label="Install dependencies" disabled={!!s.busy.install} onSelect={() => s.ready() && app.install()} />
         </Menu>
       </span>
       {/* The step debugger (a prototype): only where it works, not on the content origin (bwc-4i8.40). */}
