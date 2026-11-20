@@ -87,12 +87,16 @@ async function create(req: Request, env: Env, url: URL): Promise<Response> {
   if (!payload || !/^[A-Za-z0-9_-]+$/.test(payload)) return json(400, { error: "not a share payload" });
   if (payload.length > MAX_PAYLOAD) return json(413, { error: "project too large for a short link" });
   const id = await idFor(payload);
-  if ((await env.LINKS.get(id)) === null) {
-    const card = await cardFor(payload);
+  const kept = await env.LINKS.getWithMetadata<Dates>(id, "stream");
+  void kept.value?.cancel();
+  let card = kept.metadata?.card ?? null;
+  if (kept.value === null) {
+    card = await cardFor(payload);
     await env.LINKS.put(id, payload, { metadata: { created: today(), ...(card ? { card } : {}) } satisfies Dates });
   }
-  // A path, not a URL: the page adds its own origin (runbun.dev, workers.dev or a local dev server).
-  return json(200, { id, path: `/s/${id}` });
+  // A path, not a URL: the page adds its own origin (runbun.dev, workers.dev or a local dev server). `card`: the link
+  // has a share card, which the page asks for once so it is drawn before the link is posted anywhere (src/share.ts).
+  return json(200, { id, path: `/s/${id}`, ...(card ? { card: true } : {}) });
 }
 
 async function open(id: string, env: Env, url: URL, ctx: ExecutionContext): Promise<Response> {
@@ -104,20 +108,26 @@ async function open(id: string, env: Env, url: URL, ctx: ExecutionContext): Prom
     ctx.waitUntil(env.LINKS.put(id, payload, { metadata: { ...metadata, viewed: today() } satisfies Dates }).catch(() => {}));
   if (payload === null) return new Response("This short link doesn't exist (or never did).", { status: 404, headers: { "content-type": "text/plain; charset=utf-8" } });
   if (!metadata?.card) return Response.redirect(`${url.origin}/#code=${payload}`, 302);
-  return new Response(cardPage(metadata.card, id, payload, url), { headers: { "content-type": "text/html; charset=utf-8", "x-robots-tag": "noindex" } });
+  // The card's picture only once it is drawn: drawing takes more CPU time than a request may get on Workers' Free
+  // plan, and a picture that failed to draw would be a broken one wherever the link is posted. Until then the site's.
+  const drawn = await env.LINKS.get(CARD_KEY + id, "stream");
+  void drawn?.cancel();
+  return new Response(cardPage(metadata.card, id, payload, url, drawn !== null), { headers: { "content-type": "text/html; charset=utf-8", "x-robots-tag": "noindex" } });
 }
 
+/** What the site's own card (og.png) shows, as index.html says it. */
+const SITE_CARD_ALT = "A pixel-art kitchen counter with a dumpling in a bamboo steamer, under the words: Bun in your browser";
 const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 /**
  * What a link with a card answers instead of a redirect, which carries no tags: the card for whatever reads the page
  * to show a preview, and for a browser the same redirect from a script. The payload is base64url, safe as it is.
  */
-function cardPage(card: Card, id: string, payload: string, url: URL): string {
+function cardPage(card: Card, id: string, payload: string, url: URL, drawn: boolean): string {
   const title = escape(card.title);
   const description = escape(card.description ?? `A project on ${url.host}: open it to edit and run it in your browser.`);
-  const image = `${url.origin}/s/${id}/card.png`;
-  const alt = escape([card.title, card.description, card.tags?.join(", ")].filter(Boolean).map((part) => part!.replace(/\.$/, "")).join(". "));
+  const image = drawn ? `${url.origin}/s/${id}/card.png` : `${url.origin}/og.png`;
+  const alt = drawn ? escape([card.title, card.description, card.tags?.join(", ")].filter(Boolean).map((part) => part!.replace(/\.$/, "")).join(". ")) : SITE_CARD_ALT;
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -151,7 +161,8 @@ function cardPage(card: Card, id: string, payload: string, url: URL): string {
 
 /**
  * GET /s/<id>/card.png: the link's card, drawn once and kept beside the link (and at the edge), since a link's card
- * never changes. A link without one, or a card that can't be drawn, gets the site's.
+ * never changes. A link without one, or a card that can't be drawn, gets the site's. The playground asks for it right
+ * after making the link; a request the runtime stops for its CPU time leaves nothing behind, and the next one tries again.
  */
 async function cardImage(id: string, req: Request, env: Env, url: URL, ctx: ExecutionContext): Promise<Response> {
   const cached = await caches.default.match(req);
@@ -167,7 +178,8 @@ async function cardImage(id: string, req: Request, env: Env, url: URL, ctx: Exec
     if (!metadata?.card) return site;
     try {
       const drawn = await drawCard(metadata.card, url.host);
-      ctx.waitUntil(env.LINKS.put(CARD_KEY + id, drawn).catch(() => {}));
+      // Kept before answering: the link's page names the picture from the moment this is there.
+      await env.LINKS.put(CARD_KEY + id, drawn).catch(() => {});
       res = png(drawn);
     } catch (e) {
       console.error(`card ${id}: ${e instanceof Error ? e.stack : e}`);

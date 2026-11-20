@@ -87,6 +87,7 @@ A link to runbun.dev shows runbun.dev's card where it is posted: the pixel kitch
 
 - Only short links (Share → **Copy short link**, `runbun.dev/s/…`) get one. A link with the project in its `#code=…` part never reaches the server, so nothing can read the project to describe it; `?example=` and `?repo=` links show runbun.dev's card too.
 - The card is fixed when the link is made. Change `card`, make a new short link.
+- The picture is drawn right after the link is made. Until it is there, and if drawing it fails, the link shows your title and description with runbun.dev's picture.
 - A title is cut at 80 characters, a description at 180, and up to four tags are shown. The card's font has Latin letters only.
 - The picture holds nothing but that text: a link can't put an image of its own on the card.
 

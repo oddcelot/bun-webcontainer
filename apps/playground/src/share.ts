@@ -132,7 +132,9 @@ export const noteLines = (l: Link) =>
 export async function shortLink(l: Link): Promise<string> {
   const payload = l.url.slice(l.url.indexOf(PREFIX) + PREFIX.length);
   const res = await fetch(`${BASE}api/short`, { method: "POST", body: payload });
-  const body = (await res.json().catch(() => ({}))) as { path?: string; error?: string };
+  const body = (await res.json().catch(() => ({}))) as { path?: string; error?: string; card?: boolean };
   if (!res.ok || !body.path) throw new Error(body.error ?? `link shortener failed (${res.status})`);
+  // A share card of its own (runbun.json's `card`): drawn by the first request for it, so before the link is posted.
+  if (body.card) void fetch(`${BASE}${body.path.slice(1)}/card.png`).catch(() => {});
   return new URL(body.path, location.origin).href;
 }

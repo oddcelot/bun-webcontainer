@@ -3,6 +3,7 @@
 // (workerd, where Satori has to load as it does when deployed): makes short links from payloads packed as src/share.ts
 // packs them and checks
 //   (a) a project whose runbun.json has `card` gets a page with the card's tags, which opens the project from a script,
+//       and which names the site's picture until the card's is drawn,
 //   (b) its picture is a 1200x630 PNG, drawn once (the second request is the same bytes), with long-term caching,
 //   (c) a project without `card` still gets the plain redirect, and its picture is the site's,
 //   (d) `card` falls back to package.json's name, drops a bad accent with the rest of a malformed `card`,
@@ -29,10 +30,13 @@ async function pack(files: Record<string, string>): Promise<string> {
   const packed = await new Response(new Blob([JSON.stringify({ v: 1, files })]).stream().pipeThrough(new CompressionStream("deflate-raw"))).arrayBuffer();
   return Buffer.from(packed).toString("base64url");
 }
+/** Whether the last link made says it has a card (what the page reads to ask for the picture). */
+let said: boolean | undefined;
 async function link(files: Record<string, string> | string): Promise<string> {
   const res = await fetch(`${ORIGIN}/api/short`, { method: "POST", headers: { origin: ORIGIN }, body: typeof files === "string" ? files : await pack(files) });
-  const body = (await res.json()) as { id?: string; error?: string };
+  const body = (await res.json()) as { id?: string; error?: string; card?: boolean };
   if (!body.id) throw new Error(`no short link: ${res.status} ${body.error}`);
+  said = body.card;
   return body.id;
 }
 const page = (id: string) => fetch(`${ORIGIN}/s/${id}`, { redirect: "manual" });
@@ -61,6 +65,11 @@ try {
     "package.json": config({ name: "todo-api", description: "from package.json" }),
     "runbun.json": `{ // a comment, as runbun.json may have\n "name": "Todo API with SQLite", "description": "A JSON API over bun:sqlite.", "tags": ["Bun.serve", "SQLite"], "card": { "accent": "#f472b6" } }`,
   });
+  const saidCard = said;
+  // Before its picture is drawn the page names the site's: a picture that fails to draw is never a broken one.
+  const before = await (await page(carded)).text();
+  report("(a) making the link says it has a card, and its page names the site's picture until the card is drawn", saidCard === true && /property="og:image" content="[^"]*\/og\.png"/.test(before) && before.includes('property="og:title" content="Todo API with SQLite"'));
+  await (await picture(carded)).arrayBuffer();
   const res = await page(carded);
   const html = await res.text();
   const meta = (key: string) => new RegExp(`<meta (?:property|name)="${key}" content="([^"]*)"`).exec(html)?.[1];
@@ -88,7 +97,7 @@ try {
   report(
     "(b) its picture is a 1200x630 PNG, kept for good",
     first.status === 200 && first.headers.get("content-type") === "image/png" && isPng && view.getUint32(16) === 1200 && view.getUint32(20) === 630 && /immutable/.test(first.headers.get("cache-control") ?? ""),
-    `${first.status} ${first.headers.get("content-type")}, ${isPng ? `${view.getUint32(16)}x${view.getUint32(20)}` : "not a PNG"}, ${png.length} bytes, drawn in ${took} ms`,
+    `${first.status} ${first.headers.get("content-type")}, ${isPng ? `${view.getUint32(16)}x${view.getUint32(20)}` : "not a PNG"}, ${png.length} bytes, answered in ${took} ms`,
   );
   if (process.env.KEEP && isPng) writeFileSync(process.env.KEEP, png);
   const again = new Uint8Array(await (await picture(carded)).arrayBuffer());
@@ -96,11 +105,12 @@ try {
 
   // (c) a project that doesn't ask.
   const plain = await link({ "index.ts": "console.log('plain')", "runbun.json": config({ name: "Plain" }) });
+  const saidPlain = said;
   const plainPage = await page(plain);
   const plainPicture = await picture(plain);
   report(
     "(c) a link without a card redirects as before, and its picture is the site's",
-    plainPage.status === 302 && /\/#code=/.test(plainPage.headers.get("location") ?? "") && plainPicture.status === 302 && !!plainPicture.headers.get("location")?.endsWith("/og.png"),
+    saidPlain === undefined && plainPage.status === 302 && /\/#code=/.test(plainPage.headers.get("location") ?? "") && plainPicture.status === 302 && !!plainPicture.headers.get("location")?.endsWith("/og.png"),
     `page ${plainPage.status}, picture ${plainPicture.status} -> ${plainPicture.headers.get("location")}`,
   );
 
