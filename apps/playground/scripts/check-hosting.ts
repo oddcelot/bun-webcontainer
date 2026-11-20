@@ -27,7 +27,7 @@ if (!chrome) {
   process.exit(1);
 }
 
-const gallery = ["solid-vite-hmr", "solid-ssr-dashboard", "astro-solid-demo"];
+const gallery = ["solid-vite-hmr", "solid-ssr-dashboard", "astro-solid-demo", "reactivescript", "reactivescript-selects"];
 // Its own brand too: a logo next to the hosting file, the Solid theme for a first visit, no Local Bun switch.
 const hosting = { name: "Solid Playground", brand: { logo: "solid.svg", home: "https://www.solidjs.com/" }, theme: { family: "solid-light" }, localRunner: false, gallery, defaultProject: gallery[0], landing: false, editorOrigins: [`http://localhost:${PORT}`] };
 /** An example's card name, as src/examples.ts reads it: runbun.json's over example.json's. */
