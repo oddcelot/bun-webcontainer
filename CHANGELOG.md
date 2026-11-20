@@ -5,6 +5,37 @@ browser, its editor, and the docs at docs.runbun.dev. They release together at o
 `package.json`, tagged `v<version>`), organised by part. `@runbun/astro` keeps its own changelog in
 [packages/astro/CHANGELOG.md](./packages/astro/CHANGELOG.md).
 
+## 0.7.0 — 2026-11-20
+
+The playground can now run on your own domain: each release ships a build for any host, which one script points at
+yours, with its own name, gallery and default project. Projects that use rolldown's threads or `Bun.plugin` (the
+ReactiveScript, Astro Solid and Solid SSR examples) now run on runbun.dev, not only on a local dev server. Nothing
+needs action.
+
+### Playground
+
+- **Added** — **Host your own copy of the playground.** Each release from this one on carries
+  `runbun-playground-<version>.tar.gz`: a build for any host and `configure.ts`, which points it at yours from one
+  hosting file (`node configure.ts dist my-hosting.json`). The file can also give it its own name, choose which
+  examples the gallery lists and which one opens first, and leave out the landing page; short links, Feedback and the
+  git proxy stay with runbun.dev. The archive's README says how to serve it.
+- **Fixed** — **A program that doesn't start says so.** When a run didn't come up within 15 seconds the status still
+  showed Running; it now shows that the program didn't start, and switches to Running if it comes up late.
+
+### Runtime
+
+- **Fixed** — **Vite projects that use rolldown's threads run on runbun.dev.** The ReactiveScript examples exited with
+  "Worker: only the project's files can run in a Worker here"; they only worked on a local dev server.
+- **Fixed** — **Programs that import through `Bun.plugin` start on runbun.dev.** The Solid SSR dashboard example, whose
+  preload compiles its JSX, stopped with "worker start timed out"; it only worked on a local dev server.
+- **Fixed** — **Threaded wasm bindings start their threads on runbun.dev.** The Astro Solid example stopped with
+  "worker error: couldn't read a message from the runtime" when rolldown started its thread pool.
+- **Fixed** — **Threads and child processes load the ES modules their parent required.** A `worker_threads` thread
+  importing a module its parent had loaded with `require()` got an empty module, so threaded wasm bindings such as
+  rolldown's failed to start their threads.
+- **Fixed** — **`self` can be assigned, as in Bun.** `globalThis.self = …` threw "Cannot set property self", so
+  rolldown's wasm thread workers failed to load.
+
 ## 0.6.0 — 2026-11-19
 
 Git grows up in the playground: merge, rebase, stash and tag work in the terminal and in the Git view, with
