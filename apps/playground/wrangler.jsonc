@@ -11,6 +11,12 @@
   "name": "bun-playground",
   "compatibility_date": "2026-10-28",
   "main": "worker/index.ts",
+  // A shared project's share card (worker/card.ts): its fonts as bytes and the logo as text, beside the wasm modules
+  // (Satori's layout engine, resvg), which wrangler bundles as modules by itself.
+  "rules": [
+    { "type": "Data", "globs": ["**/*.woff"], "fallthrough": true },
+    { "type": "Text", "globs": ["**/*.svg"], "fallthrough": true }
+  ],
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",

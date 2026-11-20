@@ -78,6 +78,7 @@ moon run playground:check-release-archive              # the self-hosting archiv
 moon run playground:test-lockfile                      # the bun.lock an install writes = native bun install's (needs npm)
 moon run playground:test-sqlite                         # bun:sqlite (SQLite's wasm build) vs native Bun: errors, safeIntegers, as(), deserialize (headless Chrome)
 moon run playground:test-processes                     # child processes (Bun.spawn, child_process, Bun.$) vs native Bun (headless Chrome)
+moon run playground:test-worker-card               # a shared project's share card: the Worker draws it in wrangler's local runtime (scripts/worker-card.ts)
 moon run playground:test-vm                        # node:vm (contexts over a `with` scope) vs native Bun (headless Chrome)
 moon run playground:test-bun-apis                  # Bun.FileSystemRouter, Bun.plugin, Bun.stdout.writer() vs native Bun (headless Chrome)
 moon run playground:test-node-test-run             # node:test run() and bun test as a child process vs native Bun (headless Chrome)

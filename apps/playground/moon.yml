@@ -182,6 +182,14 @@ tasks:
     toolchains: ['bun']
     options:
       cache: false
+  test-worker-card:
+    # A shared project's own share card (worker/card.ts, scripts/worker-card.ts): the Worker in wrangler's local runtime
+    # makes short links and draws their cards with Satori and resvg, which load there as they do deployed. Needs
+    # wrangler, so it isn't part of `test`.
+    command: 'bun scripts/worker-card.ts'
+    toolchains: ['bun']
+    options:
+      cache: false
   test-vm:
     # node:vm end to end (scripts/vm.ts): scripts/vm/cases.ts runs in the embed in headless Chrome and must print what
     # native Bun prints, but for the differences the script lists (a context shares the worker's realm). Needs Chrome,

@@ -107,6 +107,21 @@
       "type": "array",
       "items": { "enum": ["cross-origin-isolation", "local-bun"] },
       "description": "What it can't run without: cross-origin isolation (Vite, Rolldown), or Bun on the reader's machine (child processes, native addons). The playground says so up front."
+    },
+    "card": {
+      "description": "A share card of its own for a short link to the project (Share → Short link): the picture the link gets where it is posted, with the project's title, description and tags, instead of runbun.dev's. true: all defaults. Text in the Latin alphabet.",
+      "oneOf": [
+        { "type": "boolean" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "title": { "type": "string", "minLength": 1, "description": "The card's title, up to 80 characters. Default: name, then package.json's name." },
+            "description": { "type": "string", "minLength": 1, "description": "A line or two under the title, up to 180 characters. Default: description, then package.json's." },
+            "accent": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "description": "The color of the card's bottom edge, as #rrggbb. Default: runbun.dev's blue." }
+          }
+        }
+      ]
     }
   }
 }
