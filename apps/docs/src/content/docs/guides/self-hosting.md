@@ -69,7 +69,7 @@ Every field is optional:
 
 `brand`, `theme` and `localRunner` need a release after 0.7.0.
 
-With a `brand`, the playground reads as yours: your logo and `name` stand in the header where runbun.dev has its dumpling and a random bun pun, the logo is the page's icon, and the page title is `name` alone. The status bar gets a "Powered by runbun" link.
+With a `brand`, the playground reads as yours: your logo and `name` stand in the header where runbun.dev has its dumpling and a random bun pun, the logo is the page's icon, and the page title is `name` alone. The status bar's About link opens runbun.dev's about page, which says what the playground runs on (with `landing` on, it opens your copy of that page instead).
 
 | `brand` field | What it sets |
 | --- | --- |

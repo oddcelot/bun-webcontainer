@@ -43,7 +43,7 @@ Fields, all optional:
 - `brand`: makes the playground the host's own. Its `logo` (an SVG, PNG or WebP next to the hosting file, at most
   64 kB; `logoDark` for dark themes) and `name` stand in the header where runbun has its dumpling and the visit's
   random name, linking to `home` if it names one; the logo is the page's icon; `name` alone is the page title, and
-  `description` the pages' description. The status bar then says "Powered by runbun". Configure reads the logos into
+  `description` the pages' description. The status bar's About link then opens runbun.dev's about page (its tip: "Powered by runbun"), unless `landing` is on. Configure reads the logos into
   `hosting.js` as data: URLs, so there is no file to serve. Default: none, runbun's own.
 - `theme`: how the playground looks before a visitor picks a theme. `family` is the theme family a first visit gets,
   by its light variant (`"solid-light"`, `"github-light"`; `src/themeColors.ts` lists them). `vars` are CSS custom

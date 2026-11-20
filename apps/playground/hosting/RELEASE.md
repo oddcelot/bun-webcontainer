@@ -30,7 +30,7 @@ All fields are optional:
 - `brand`: your logo and `name` in the header in place of runbun's, your logo as the page's icon, and `name` alone
   as the page title: `{ "logo": "logo.svg", "logoDark": "logo-dark.svg", "home": "https://example.org/",
   "description": "…" }`. Only `logo` is required: an SVG, PNG or WebP file next to the hosting file, at most 64 kB.
-  The status bar then says "Powered by runbun".
+  The status bar's About link then opens runbun.dev's about page (its tip: "Powered by runbun"), unless `landing` is on.
 - `theme`: `{ "family": "solid-light" }` is the theme family a first visit gets, by its light variant (the theme
   picker lists them: `pierre-light`, `github-light`, `solid-light`, …). `vars` sets CSS custom properties on top of
   every theme: `{ "vars": { "base": { "--radius": "8px" }, "dark": { "--accent": "#65c5ff" } } }`.

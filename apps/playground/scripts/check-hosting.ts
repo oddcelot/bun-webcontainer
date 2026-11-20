@@ -87,13 +87,13 @@ try {
       localBun: !!document.querySelector("#local-bun"),
       icons: [...document.querySelectorAll<HTMLLinkElement>("link[rel~=icon]")].map((l) => l.href.slice(0, 19)),
       canvas: getComputedStyle(document.documentElement).getPropertyValue("--canvas").trim(),
-      poweredBy: [...document.querySelectorAll("footer a")].some((a) => a.textContent?.trim() === "Powered by runbun"),
+      about: [...document.querySelectorAll<HTMLAnchorElement>("footer a")].find((a) => a.textContent?.trim() === "About")?.href,
     }));
     if (brand.name !== "Solid Playground" || !brand.logo || brand.dumpling) problems.push(`the header's brand: ${JSON.stringify(brand)}`);
     if (brand.localBun) problems.push("the header has the Local Bun switch");
     if (brand.icons.join() !== "data:image/svg+xml;") problems.push(`the page's icons: ${brand.icons.join(", ")}`);
     if (!["#eef2f7", "#020e1e"].includes(brand.canvas)) problems.push(`a first visit isn't in the Solid theme (--canvas: ${brand.canvas})`);
-    if (!brand.poweredBy) problems.push("the status bar doesn't say Powered by runbun");
+    if (brand.about !== "https://runbun.dev/about") problems.push(`the status bar's About goes to ${brand.about}, not runbun.dev's about page`);
 
     // The gallery: every card in every section.
     await page.click("#example");

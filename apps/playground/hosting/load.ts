@@ -58,8 +58,8 @@ export interface HostingFile {
   localRunner?: boolean;
   /**
    * Makes the playground the host's own: its logo and `name` in the header in place of runbun's dumpling and the
-   * random bun names, its logo as the page's icon, and `name` alone as the page title. The status bar then says
-   * "Powered by runbun".
+   * random bun names, its logo as the page's icon, and `name` alone as the page title. The status bar's About
+   * then opens runbun.dev's about page ("Powered by runbun"), unless the host has the landing page itself.
    */
   brand?: {
     /** The logo: an SVG, PNG or WebP file next to the hosting file (a path relative to it), at most 64 kB. Shown 24px high. */
