@@ -8,7 +8,8 @@
  * and builds use the defaults below: project code on the editor's own origin, the docs on localhost:4321 in dev and
  * docs.runbun.dev in builds. Single env vars still override a field, for the test scripts that start a dev server with
  * a content origin (scripts/check-examples.ts --split): VITE_CONTENT_ORIGIN, VITE_EDITOR_ORIGINS (comma-separated),
- * DOCS_URL, CANARY=1.
+ * DOCS_URL, CANARY=1. HOSTING_LOCAL=1 leaves out the file's `contentOrigin` and `editorOrigins`, which name hosts that
+ * a dev server on localhost isn't: a file written for a deploy (hosting/example.json) then runs here as it is.
  *
  * The Cloudflare Worker's side (wrangler.jsonc: routes, KV and D1 bindings, vars) is not read from here: wrangler only
  * reads its own config. scripts/hosting-check.ts checks that wrangler.jsonc's vars name the same hosts as these files.
@@ -303,6 +304,7 @@ export function readHostingFile(path: string, read: { card?: boolean } = {}): Om
 /** The build's hosting settings: defaults, then the `HOSTING` file, then single env vars (see above). */
 export function loadHosting(mode: string, env: Record<string, string | undefined> = process.env): Hosting {
   const file = env.HOSTING ? readHostingFile(env.HOSTING) : {};
+  if (env.HOSTING_LOCAL === "1") delete file.contentOrigin, delete file.editorOrigins;
   const where = env.HOSTING ?? "env";
   const docs = env.DOCS_URL || file.docsUrl || (mode === "development" ? "http://localhost:4321/" : "https://docs.runbun.dev/");
   const editors = env.VITE_EDITOR_ORIGINS

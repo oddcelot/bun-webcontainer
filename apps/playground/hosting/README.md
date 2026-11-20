@@ -70,6 +70,9 @@ The page's canonical and share-card URLs, `robots.txt` and `sitemap.xml` follow 
 Single env vars override a field, for the test scripts: `VITE_CONTENT_ORIGIN`, `VITE_EDITOR_ORIGINS`
 (comma-separated), `DOCS_URL`, `CANARY=1`.
 
+To look at a file written for a deploy on a dev server, `HOSTING_LOCAL=1` leaves out its `contentOrigin` and
+`editorOrigins`, so project code runs on localhost: `HOSTING=hosting/example.json HOSTING_LOCAL=1 bunx vite`.
+
 A build from source serves from any base path (`bunx vite build --base=/sub/path/`; the archive's is `/`) and needs
 cross-origin isolation headers, see the playground's README, Deploying. On Cloudflare, `wrangler.jsonc` keeps its own copy of the hosts (`vars`, `routes`):
 `bun scripts/hosting-check.ts` checks the two agree.

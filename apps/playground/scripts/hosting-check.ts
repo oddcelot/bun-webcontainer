@@ -24,6 +24,13 @@ const deploys: [env: string, file: string][] = [
 ];
 
 const problems: string[] = [];
+// HOSTING_LOCAL=1: a deploy's file on a dev server runs project code on the dev server's own origin.
+{
+  const local = loadHosting("development", { HOSTING: "hosting/example.json", HOSTING_LOCAL: "1" });
+  if (local.contentOrigin !== undefined || local.editorOrigins.join() !== "http://localhost:5173" || local.name !== "Solid Playground")
+    problems.push(`HOSTING_LOCAL=1 kept the example's origins: ${local.contentOrigin}, ${local.editorOrigins}`);
+  if (!loadHosting("development", { HOSTING: "hosting/example.json" }).contentOrigin) problems.push("hosting/example.json has no contentOrigin without HOSTING_LOCAL");
+}
 for (const [env, file] of deploys) {
   const w = env ? wrangler.env[env] : wrangler;
   const h = loadHosting("production", { HOSTING: file });
