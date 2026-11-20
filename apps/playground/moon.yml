@@ -386,6 +386,47 @@ tasks:
       - '@group(sources)'
     outputs:
       - 'dist/**/*'
+  release-archive:
+    # The playground for self-hosting (hosting/RELEASE.md): a build without a hosting file (any host; hosting/configure.ts
+    # points it at one) in dist-release/dist/, packed with that script by scripts/release-archive.ts into
+    # dist-release/runbun-playground-<version>.tar.gz. Attach it to the v<version> GitHub Release.
+    script: >-
+      bun scripts/copy-wasm.ts --strip && bunx tsrs --noEmit && bunx tsrs -p tsconfig.sw.json &&
+      bunx vite build --outDir dist-release/dist && bun scripts/release-archive.ts
+    env:
+      HOSTING: ''
+      VITE_CONTENT_ORIGIN: ''
+      VITE_EDITOR_ORIGINS: ''
+      DOCS_URL: ''
+      CANARY: ''
+    deps:
+      - 'semver-wasm:build'
+      - 'compress-wasm:build'
+      - 'transpile-wasm:build'
+      - 'bundle-wasm:build'
+      - 'resolve-wasm:build'
+      - 'fmt-wasm:build'
+      - 'check-wasm:build'
+      - 'tsrs-ls-wasm:build'
+      - 'git-wasm:build'
+      - 'shell-wasm:build'
+      - 'htmlrewriter-wasm:build'
+      - 'crypto-wasm:build'
+    options:
+      cache: false
+      runInCI: false
+  check-release-archive:
+    # The release archive as a self-hoster gets it (scripts/check-examples.ts --archive): unpacked into a temp folder,
+    # pointed at two origins by its own configure.ts under node, served, and the gallery's projects run from it.
+    command: 'bun scripts/check-examples.ts --split --archive'
+    # node: the archive's configure.ts runs under it, as a self-hoster runs it.
+    toolchains: ['bun', 'node']
+    deps:
+      - 'release-archive'
+    options:
+      cache: false
+      runInCI: false
+      mutex: 'check-examples'
   dev:
     # strictPort: the docs frame the playground at localhost:5173 (apps/docs/site-urls.ts).
     command: 'bun run dev --strictPort'

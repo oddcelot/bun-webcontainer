@@ -6,6 +6,12 @@ compiled in: `configure.ts` writes it into a built folder (`hosting.js`, which p
 runs it last with `HOSTING=<file>` (relative to `apps/playground`); a prebuilt copy runs it on its own:
 `node hosting/configure.ts <dist> <file>`. In dev, the server serves the `HOSTING` file's values.
 
+The release archive is that prebuilt copy: `moon run playground:release-archive` builds without a hosting file and
+packs `dist/` with `configure.ts`, `load.ts` and `RELEASE.md` (its README) into
+`dist-release/runbun-playground-<version>.tar.gz`; `moon run playground:check-release-archive` unpacks it elsewhere,
+configures it for two origins under node and runs the gallery from it. Attach it to the release:
+`gh release upload v<version> apps/playground/dist-release/runbun-playground-<version>.tar.gz`.
+
 | File              | Deploy                                     | moon task                    |
 | ----------------- | ------------------------------------------ | ---------------------------- |
 | `runbun.dev.json` | https://runbun.dev, code on run.runbun.dev | `playground:build`, `deploy` |
@@ -26,5 +32,6 @@ Fields, all optional:
 Single env vars override a field, for the test scripts: `VITE_CONTENT_ORIGIN`, `VITE_EDITOR_ORIGINS`
 (comma-separated), `DOCS_URL`, `CANARY=1`.
 
-The build serves from any base path (`bunx vite build --base=/sub/path/`) and needs cross-origin isolation headers, see the playground's README, Deploying. On Cloudflare, `wrangler.jsonc` keeps its own copy of the hosts (`vars`, `routes`):
+A build from source serves from any base path (`bunx vite build --base=/sub/path/`; the archive's is `/`) and needs
+cross-origin isolation headers, see the playground's README, Deploying. On Cloudflare, `wrangler.jsonc` keeps its own copy of the hosts (`vars`, `routes`):
 `bun scripts/hosting-check.ts` checks the two agree.

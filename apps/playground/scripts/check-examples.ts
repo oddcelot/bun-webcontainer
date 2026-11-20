@@ -11,6 +11,9 @@
 //                                                 run.runbun.dev: what crosses from the editor's origin to it
 //   bun scripts/check-examples.ts --preview --split ...  both: a build for any host, pointed at the two origins by
 //                                                 hosting/configure.ts, as a self-hosted copy is
+//   bun scripts/check-examples.ts --archive [file.tar.gz] [--split] ...  the self-hosting release archive
+//                                                 (playground:release-archive): unpacked elsewhere, configured
+//                                                 with its own configure.ts under node, then served
 // Chrome: CHROME=<path to the binary>, else the usual install on macOS or Linux.
 import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -24,9 +27,18 @@ const SETTLE_WITHIN = 90_000;
 /** How long the status must hold still to count as settled (installs and runs follow each other). */
 const STEADY_FOR = 2_000;
 
-const preview = process.argv.includes("--preview");
+const archiveAt = process.argv.indexOf("--archive");
+const archiveArg = process.argv[archiveAt + 1]?.endsWith(".tar.gz") ? process.argv[archiveAt + 1] : undefined;
+// Without a path: this version's, as playground:release-archive writes it.
+const archive =
+  archiveAt < 0 ? undefined : (archiveArg ?? join(app, `dist-release/runbun-playground-${(await Bun.file(join(app, "../../package.json")).json()).version}.tar.gz`));
+if (archive && !existsSync(archive)) {
+  console.error(`no ${archive}: moon run playground:release-archive`);
+  process.exit(1);
+}
+const preview = process.argv.includes("--preview") || !!archive;
 const split = process.argv.includes("--split");
-const only = process.argv.slice(2).filter((a) => a !== "--preview" && a !== "--split");
+const only = process.argv.slice(2).filter((a) => a !== "--preview" && a !== "--split" && a !== "--archive" && a !== archiveArg);
 const names = readdirSync(join(app, "examples"))
   .filter((d) => existsSync(join(app, "examples", d, "package.json")))
   .filter((d) => !only.length || only.includes(d))
@@ -46,7 +58,24 @@ if (!chrome) {
 
 // A production build with the default hosting (hosting/load.ts), without runbun.dev's content origin (project code runs
 // on this one, as in dev).
-if (preview) {
+let served = join(app, "dist-check");
+let unpacked: string | undefined;
+if (archive) {
+  const dir = (unpacked = mkdtempSync(join(tmpdir(), "check-archive-")));
+  const tar = Bun.spawnSync(["tar", "-xzf", archive, "-C", dir], { stdout: "inherit", stderr: "inherit" });
+  if (tar.exitCode) process.exit(tar.exitCode);
+  const root = join(dir, readdirSync(dir)[0]);
+  const file = join(dir, "hosting.json");
+  const editor = split ? `http://runbun.localhost:${PORT}` : `http://localhost:${PORT}`;
+  await Bun.write(file, JSON.stringify({ ...(split && { contentOrigin: `http://run.runbun.localhost:${PORT}` }), editorOrigins: [editor] }));
+  // From the unpacked folder, as its README says: nothing of this repo's.
+  const r = Bun.spawnSync(["node", "configure.ts", "dist", file], { cwd: root, stdout: "inherit", stderr: "inherit" });
+  if (r.exitCode) {
+    rmSync(dir, { recursive: true, force: true });
+    process.exit(r.exitCode);
+  }
+  served = join(root, "dist");
+} else if (preview) {
   const env = { ...process.env, HOSTING: "", VITE_CONTENT_ORIGIN: "", VITE_EDITOR_ORIGINS: "" };
   for (const cmd of [["bun", "scripts/copy-wasm.ts", "--strip"], ["bunx", "tsrs", "-p", "tsconfig.sw.json"], ["bunx", "vite", "build", "--outDir", "dist-check"]]) {
     const r = Bun.spawnSync(cmd, { cwd: app, env, stdout: "inherit", stderr: "inherit" });
@@ -62,7 +91,7 @@ if (preview) {
 }
 
 // Its output only matters if it doesn't start (it forwards the page's console warnings otherwise).
-const viteArgs = preview ? ["preview", "--outDir", "dist-check"] : [];
+const viteArgs = preview ? ["preview", "--outDir", served] : [];
 const vite = Bun.spawn(["bunx", "vite", ...viteArgs, "--port", String(PORT), "--strictPort"], {
   cwd: app,
   stdout: "pipe",
@@ -114,6 +143,7 @@ try {
   vite.kill();
   await vite.exited;
   rmSync(profile, { recursive: true, force: true });
+  if (unpacked) rmSync(unpacked, { recursive: true, force: true });
 }
 console.log(failed ? `\n${failed} of ${names.length} failed` : `\n${names.length} projects run in the browser`);
 process.exit(failed ? 1 : 0);
