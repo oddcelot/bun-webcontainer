@@ -1,8 +1,10 @@
 # Hosting files
 
-Where a playground build is hosted: one JSON file per deploy, picked at build time with `HOSTING=<file>` (relative to
-`apps/playground`). `load.ts` reads and checks it; `vite.config.ts` compiles the values in and adds the content origin's
-rules to the build's `_headers`.
+Where a playground build is hosted: one JSON file per deploy. `load.ts` reads and checks it. Nothing about the host is
+compiled in: `configure.ts` writes it into a built folder (`hosting.js`, which pages and workers load at startup,
+`src/hosting.ts`; `sw.js`'s first lines; the HTML's docs links; the content origin's rules in `_headers`). A build
+runs it last with `HOSTING=<file>` (relative to `apps/playground`); a prebuilt copy runs it on its own:
+`node hosting/configure.ts <dist> <file>`. In dev, the server serves the `HOSTING` file's values.
 
 | File              | Deploy                                     | moon task                    |
 | ----------------- | ------------------------------------------ | ---------------------------- |
@@ -24,6 +26,5 @@ Fields, all optional:
 Single env vars override a field, for the test scripts: `VITE_CONTENT_ORIGIN`, `VITE_EDITOR_ORIGINS`
 (comma-separated), `DOCS_URL`, `CANARY=1`.
 
-The build serves from any base path (`bunx vite build --base=/sub/path/`) and needs cross-origin isolation headers, see
-the playground's README, Deploying. On Cloudflare, `wrangler.jsonc` keeps its own copy of the hosts (`vars`, `routes`):
+The build serves from any base path (`bunx vite build --base=/sub/path/`) and needs cross-origin isolation headers, see the playground's README, Deploying. On Cloudflare, `wrangler.jsonc` keeps its own copy of the hosts (`vars`, `routes`):
 `bun scripts/hosting-check.ts` checks the two agree.

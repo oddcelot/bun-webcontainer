@@ -22,5 +22,5 @@
   Access-Control-Allow-Origin: *
   Content-Type: application/schema+json
 
-# The content origin's rules (CORP cross-origin, noindex, host.html framable by any page) are added by the build for
-# the hosting file's contentOrigin, which these rules have to name by host: vite.config.ts contentOriginHeaders().
+# The content origin's rules (CORP cross-origin, noindex, host.html framable by any page) name its host, so
+# hosting/configure.ts adds them for the hosting file's contentOrigin, at the end of the build or on a prebuilt copy.

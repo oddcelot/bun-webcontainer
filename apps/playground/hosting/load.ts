@@ -1,7 +1,8 @@
 /**
  * Where a playground build is hosted: the settings a deploy changes, in one file per deploy (hosting/runbun.dev.json,
- * hosting/canary.json; a self-hosted copy writes its own). vite.config.ts reads them through loadHosting(); nothing else
- * in the build reads hosting env vars.
+ * hosting/canary.json; a self-hosted copy writes its own). Nothing about the host is compiled in: hosting/configure.ts
+ * writes these into a built folder (vite.config.ts runs it at the end of a build), and the dev server serves them
+ * (src/hosting.ts). Nothing else reads hosting env vars.
  *
  * `HOSTING=<file>` (relative to apps/playground, or absolute) picks the file; the moon tasks set it. Without one, dev
  * and builds use the defaults below: project code on the editor's own origin, the docs on localhost:4321 in dev and

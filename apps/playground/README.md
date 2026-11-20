@@ -93,7 +93,8 @@ User-facing gaps are listed at https://docs.runbun.dev/compatibility/ and kept i
 local Rust builds, so build them first). Any static HTTPS host works. For a sub-path, build with
 `bunx vite build --base=/sub/path/`; the service worker derives its paths from its own URL.
 
-Where a build is hosted comes from one file per deploy, `HOSTING=hosting/<name>.json` at build time
+Where a build is hosted comes from one file per deploy, `HOSTING=hosting/<name>.json`, which the build's last step
+(`hosting/configure.ts`) writes into `dist/`, and which a prebuilt copy (the release archive) gets the same way
 (`hosting/README.md`): the docs it links, the origin that runs project code, the editor origins that may drive it, and
 whether it is a canary. `hosting/runbun.dev.json` and `hosting/canary.json` are this repo's; without one, project code
 runs on the editor's origin and the Docs link goes to http://localhost:4321/ (`astro dev`) in dev and

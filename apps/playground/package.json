@@ -2,6 +2,9 @@
   "name": "bun-playground",
   "private": true,
   "type": "module",
+  "imports": {
+    "#hosting": "./src/hostingDefaults.ts"
+  },
   "scripts": {
     "predev": "bun scripts/copy-wasm.ts",
     "prebuild": "bun scripts/copy-wasm.ts --strip",

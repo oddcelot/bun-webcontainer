@@ -9,6 +9,8 @@
 //                                                 runbun.dev serves, with Vite's worker chunks and inlined assets
 //   bun scripts/check-examples.ts --split ...     project code on its own origin (run.runbun.localhost), as on
 //                                                 run.runbun.dev: what crosses from the editor's origin to it
+//   bun scripts/check-examples.ts --preview --split ...  both: a build for any host, pointed at the two origins by
+//                                                 hosting/configure.ts, as a self-hosted copy is
 // Chrome: CHROME=<path to the binary>, else the usual install on macOS or Linux.
 import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -24,10 +26,6 @@ const STEADY_FOR = 2_000;
 
 const preview = process.argv.includes("--preview");
 const split = process.argv.includes("--split");
-if (preview && split) {
-  console.error("--split runs on the dev server: not with --preview");
-  process.exit(1);
-}
 const only = process.argv.slice(2).filter((a) => a !== "--preview" && a !== "--split");
 const names = readdirSync(join(app, "examples"))
   .filter((d) => existsSync(join(app, "examples", d, "package.json")))
@@ -52,6 +50,13 @@ if (preview) {
   const env = { ...process.env, HOSTING: "", VITE_CONTENT_ORIGIN: "", VITE_EDITOR_ORIGINS: "" };
   for (const cmd of [["bun", "scripts/copy-wasm.ts", "--strip"], ["bunx", "tsrs", "-p", "tsconfig.sw.json"], ["bunx", "vite", "build", "--outDir", "dist-check"]]) {
     const r = Bun.spawnSync(cmd, { cwd: app, env, stdout: "inherit", stderr: "inherit" });
+    if (r.exitCode) process.exit(r.exitCode);
+  }
+  // As a self-hosted copy: the built folder pointed at its host afterwards, by the same script (with node, as one would).
+  if (split) {
+    const file = join(mkdtempSync(join(tmpdir(), "check-hosting-")), "hosting.json");
+    await Bun.write(file, JSON.stringify({ contentOrigin: `http://run.runbun.localhost:${PORT}`, editorOrigins: [`http://runbun.localhost:${PORT}`] }));
+    const r = Bun.spawnSync(["node", "hosting/configure.ts", "dist-check", file], { cwd: app, stdout: "inherit", stderr: "inherit" });
     if (r.exitCode) process.exit(r.exitCode);
   }
 }
