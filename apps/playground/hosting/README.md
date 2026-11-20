@@ -52,7 +52,10 @@ Fields, all optional:
 - `theme`: how the playground looks before a visitor picks a theme. `family` is the theme family a first visit gets,
   by its light variant (`"solid-light"`, `"github-light"`; `src/themeColors.ts` lists them). `vars` are CSS custom
   properties on top of every theme's, in the embed's `vars` shape: `base` for both schemes, `light` and `dark` for
-  one (`{ "base": { "--radius": "8px" } }`). Default: Pierre, no variables.
+  one (`{ "base": { "--radius": "8px" } }`). `transition` is how a theme switch reveals the new colors: `"logo"` in the
+  shape of the logo, growing from the middle of the window (`brand.logo` with a circle behind it, or runbun's
+  dumpling), `"circle"` in a plain circle, `"none"` at once, without a view transition (`src/theme.ts`). Default:
+  Pierre, no variables, `"logo"`.
 - `localRunner`: `false` leaves out the header's Local Bun switch (`packages/connect`). Default: `true`.
 
 - `worker`: the host runs `worker/index.ts` next to the files (`wrangler.jsonc`): short links, Feedback, signing in

@@ -39,8 +39,11 @@ export interface RuntimeHosting {
    * title, its share card (`card`: the picture's file name in the folder), and About opening runbun.dev's about page.
    */
   brand: { logo: string; logoDark: string | null; home: string | null; description: string | null; card: string | null; cardAlt: string | null } | null;
-  /** The theme family first-time visitors get (its light variant), and chrome variables on top of every theme's. */
-  theme: { family?: string; vars?: Vars } | null;
+  /**
+   * The theme family first-time visitors get (its light variant), chrome variables on top of every theme's, and how a
+   * theme switch reveals the new colors (src/theme.ts; default "logo").
+   */
+  theme: { family?: string; vars?: Vars; transition?: "logo" | "circle" | "none" } | null;
 }
 
 export const HOSTING: RuntimeHosting = hosting;

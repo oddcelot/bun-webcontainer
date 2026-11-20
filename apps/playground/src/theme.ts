@@ -243,9 +243,25 @@ export const setColorMode = (mode: ColorMode) => controller.setColorMode(mode);
 /**
  * The mask's shape (bun-mask.svg, the logo's outline): its aspect, where the body's middle sits in it, and the body
  * as an ellipse: half-axes of 0.49 × width across and 0.45 × height below the middle (above, it reaches further).
- * A branded host (the hosting file's `brand`) gets a plain circle (style.css).
+ * The hosting file's `theme.transition` picks another: "circle" a plain circle (style.css), "logo" on a branded host
+ * its own logo (`OWN`), "none" no transition.
  */
-const MASK = HOSTING.brand ? { aspect: 1, cx: 0.5, cy: 0.5, a: 0.5, b: 0.5 } : { aspect: 66.25 / 76, cx: 38 / 76, cy: 35.7 / 66.25, a: 0.49, b: 0.45 };
+const HOW = HOSTING.theme?.transition ?? "logo";
+const MASK = HOW === "circle" ? { aspect: 1, cx: 0.5, cy: 0.5, a: 0.5, b: 0.5 } : { aspect: 66.25 / 76, cx: 38 / 76, cy: 35.7 / 66.25, a: 0.49, b: 0.45 };
+/**
+ * A branded host's logo as the mask: its shape isn't known (it may have holes, or nothing in its middle), so it can't
+ * cover the window on its own. A circle grows behind it, starting later, and covers what the logo leaves out.
+ */
+const OWN = HOW === "logo" && HOSTING.brand ? { aspect: 1 } : null;
+if (OWN && HOSTING.brand) {
+  // The mask reads the logo's alpha, so the light theme's does for both.
+  document.documentElement.style.setProperty("--theme-switch-mask", `url("${HOSTING.brand.logo}")`);
+  const img = new Image();
+  img.src = HOSTING.brand.logo;
+  void img.decode().then(() => { if (img.naturalWidth && img.naturalHeight) OWN.aspect = img.naturalHeight / img.naturalWidth; }, () => {});
+}
+/** When the circle behind a host's logo starts growing, as a share of the transition. */
+const CIRCLE_FROM = 0.3;
 /** How wide the mask must be for its shape to cover the window from (x, y), with a margin. */
 function coverWidth(x: number, y: number) {
   const a = MASK.a;
@@ -261,11 +277,12 @@ function coverWidth(x: number, y: number) {
 
 /**
  * Runs a theme change (a color mode or family pick) as a view transition: the new colors reveal in the shape of the
- * Bun logo, growing at a steady pace from the middle of the window until it covers it. Without View Transitions, or
- * with reduced motion, the change applies at once.
+ * Bun logo (or the host's, see `OWN`), growing at a steady pace from the middle of the window until it covers it.
+ * Without View Transitions, with reduced motion, or with the hosting file's `theme.transition: "none"`, the change
+ * applies at once.
  */
 export function switchTheme(change: () => void) {
-  if (!("startViewTransition" in document) || matchMedia("(prefers-reduced-motion: reduce)").matches) return change();
+  if (HOW === "none" || !("startViewTransition" in document) || matchMedia("(prefers-reduced-motion: reduce)").matches) return change();
   const transition = document.startViewTransition(async () => {
     change();
     await themeApplied();
@@ -279,21 +296,33 @@ export function switchTheme(change: () => void) {
   const w = coverWidth(mx, my);
   const h = w * MASK.aspect;
   // style.css gives the new layer the mask while this class is on.
-  const classes = HOSTING.brand ? ["theme-switch", "theme-switch-plain"] : ["theme-switch"];
+  const classes = OWN ? ["theme-switch", "theme-switch-own"] : HOW === "circle" ? ["theme-switch", "theme-switch-plain"] : ["theme-switch"];
+  // The host's logo ends well past the window on both axes; its circle ends just past the corners.
+  const lw = 1.4 * Math.max(innerWidth, innerHeight / (OWN?.aspect ?? 1));
+  const lh = lw * (OWN?.aspect ?? 1);
+  const c = 1.1 * Math.hypot(innerWidth, innerHeight);
+  const at = (width: number, height: number) => `${mx - width / 2}px ${my - height / 2}px`;
+  const frames: Keyframe[] | PropertyIndexedKeyframes = OWN
+    ? [
+        { maskSize: "0px 0px, 0px 0px", maskPosition: `${at(0, 0)}, ${at(0, 0)}` },
+        { offset: CIRCLE_FROM, maskSize: `${lw * CIRCLE_FROM}px ${lh * CIRCLE_FROM}px, 0px 0px`, maskPosition: `${at(lw * CIRCLE_FROM, lh * CIRCLE_FROM)}, ${at(0, 0)}` },
+        { maskSize: `${lw}px ${lh}px, ${c}px ${c}px`, maskPosition: `${at(lw, lh)}, ${at(c, c)}` },
+      ]
+    : {
+        maskSize: ["0px 0px", `${w}px ${h}px`],
+        // The body's middle stays on the window's middle as it grows.
+        maskPosition: [`${mx}px ${my}px`, `${mx - MASK.cx * w}px ${my - MASK.cy * h}px`],
+      };
   document.documentElement.classList.add(...classes);
   transition.finished.finally(() => document.documentElement.classList.remove(...classes));
   transition.ready
     .then(() => {
       const reveal = document.documentElement.animate(
-        {
-          maskSize: ["0px 0px", `${w}px ${h}px`],
-          // The body's middle stays on the window's middle as it grows.
-          maskPosition: [`${mx}px ${my}px`, `${mx - MASK.cx * w}px ${my - MASK.cy * h}px`],
-        },
+        frames,
         // `forwards`: the transition is torn down a frame after the animation ends, and without it the mask falls
         // back to style.css's 0 size for that frame, flashing the old theme. Cancelled once the transition is
         // done, or the filled animation would outlive it and override the next switch's mask.
-        { duration: 250, easing: "linear", fill: "forwards", pseudoElement: "::view-transition-new(root)" },
+        { duration: OWN ? 400 : 250, easing: "linear", fill: "forwards", pseudoElement: "::view-transition-new(root)" },
       );
       transition.finished.finally(() => reveal.cancel());
     })

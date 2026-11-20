@@ -95,6 +95,16 @@ Configure reads the logo files into `hosting.js` and copies the card into `dist/
 
 The variables are the [embed's](/reference/embed-api/#theming): `--bg`, `--panel`, `--canvas`, `--fg`, `--muted`, `--border`, `--accent`, `--radius`, `--font-ui`, `--font-mono`.
 
+`theme.transition` is how a switch between light and dark, or to another theme, reveals the new colors:
+
+| Value | What a switch looks like |
+| --- | --- |
+| `"logo"` (default) | The new colors grow out of the middle of the window in the shape of your logo (runbun's dumpling without a `brand`). The shape is the logo's opaque part, so use one with a transparent background. |
+| `"circle"` | The same, in a plain circle. |
+| `"none"` | The colors change at once. |
+
+Visitors who ask their system for reduced motion always get the change at once.
+
 The gallery's examples come from [runbun-examples](https://github.com/oddcelot/runbun-examples): a release bundles the ones it had when it was built. To add one, open a pull request there; it ships in the next release.
 
 ## 3. Configure the files

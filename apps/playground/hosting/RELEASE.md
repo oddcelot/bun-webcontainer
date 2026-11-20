@@ -36,6 +36,8 @@ All fields are optional:
 - `theme`: `{ "family": "solid-light" }` is the theme family a first visit gets, by its light variant (the theme
   picker lists them: `pierre-light`, `github-light`, `solid-light`, …). `vars` sets CSS custom properties on top of
   every theme: `{ "vars": { "base": { "--radius": "8px" }, "dark": { "--accent": "#65c5ff" } } }`.
+  `"transition"` is how a theme switch reveals the new colors: `"logo"` (the default) in the shape of your logo,
+  `"circle"` in a plain circle, `"none"` at once.
 - `localRunner`: `false` leaves out the header's Local Bun switch. Default: true.
 
 `hosting.example.json` is a whole one: a Solid playground with the logos in `brand/`.

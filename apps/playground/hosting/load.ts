@@ -88,6 +88,12 @@ export interface HostingFile {
      * and `dark` for one, e.g. `{ "base": { "--radius": "8px" }, "dark": { "--accent": "#65c5ff" } }`.
      */
     vars?: HostingVars;
+    /**
+     * How a theme switch (light/dark, another family) reveals the new colors: "logo" grows them out of the middle of
+     * the window in the shape of the logo (`brand.logo`, or runbun's), "circle" in a circle, "none" switches at once.
+     * Default: "logo".
+     */
+    transition?: "logo" | "circle" | "none";
   };
 }
 
@@ -128,7 +134,7 @@ export interface Hosting {
   worker: boolean;
   localRunner: boolean;
   brand?: HostingBrand;
-  theme?: { family?: string; vars?: HostingVars };
+  theme?: { family?: string; vars?: HostingVars; transition?: "logo" | "circle" | "none" };
   /** The file it came from, for messages; undefined for the defaults. */
   file?: string;
 }
@@ -263,7 +269,7 @@ export function readHostingFile(path: string, read: { card?: boolean } = {}): Om
     };
   }
   if (d.theme !== undefined) {
-    const t = fields(d.theme, "theme", ["family", "vars"], path);
+    const t = fields(d.theme, "theme", ["family", "vars", "transition"], path);
     out.theme = {};
     if (t.family !== undefined) {
       if (typeof t.family !== "string" || !folder.test(t.family)) throw new Error(`${path}: theme.family must be a theme's name, e.g. "solid-light"`);
@@ -273,6 +279,10 @@ export function readHostingFile(path: string, read: { card?: boolean } = {}): Om
       const v = fields(t.vars, "theme.vars", ["base", "light", "dark"], path);
       out.theme.vars = {};
       for (const key of ["base", "light", "dark"] as const) if (v[key] !== undefined) out.theme.vars[key] = vars(v[key], `theme.vars.${key}`, path);
+    }
+    if (t.transition !== undefined) {
+      if (t.transition !== "logo" && t.transition !== "circle" && t.transition !== "none") throw new Error(`${path}: theme.transition must be "logo", "circle" or "none"`);
+      out.theme.transition = t.transition;
     }
   }
   return out;

@@ -1142,8 +1142,9 @@ header button:disabled { opacity: 0.5; cursor: default; transition: opacity 0.12
 /* Theme switches reveal the new colors in the shape of the Bun logo (theme.ts animates it), instead of a crossfade. */
 ::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
 html.theme-switch::view-transition-new(root) { mask: url("./bun-mask.svg") no-repeat 0 0 / 0 0; }
-/* A branded host's (the hosting file's `brand`): a circle. */
+/* The hosting file's `theme.transition`: "circle", and a branded host's "logo": its own, with a circle behind it. */
 html.theme-switch-plain::view-transition-new(root) { mask-image: radial-gradient(closest-side, #000 99.5%, transparent); }
+html.theme-switch-own::view-transition-new(root) { mask-image: var(--theme-switch-mask), radial-gradient(closest-side, #000 99.5%, transparent); }
 /*
  * While the app boots, index.html's static header stays invisible: with nothing to paint, the browser keeps showing
  * the previous page (e.g. before a project switch) until the real header renders (mountUI drops data-booting).

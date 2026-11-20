@@ -143,6 +143,7 @@ if (dev.contentOrigin !== "http://run.runbun.localhost:5199" || dev.editorOrigin
       ["a card that isn't a PNG", { brand: { logo: join(app, "hosting/brand/solid.svg"), card: join(app, "hosting/brand/solid.svg") } }],
       ["a card's alt text without a card", { brand: { logo: join(app, "hosting/brand/solid.svg"), cardAlt: "x" } }],
       ["a theme variable that isn't a custom property", { theme: { vars: { base: { color: "red" } } } }],
+      ["a theme transition that isn't one", { theme: { transition: "fade" } }],
     ] as const) {
       writeFileSync(solid, JSON.stringify(file));
       try {
