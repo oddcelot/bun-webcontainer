@@ -173,6 +173,10 @@ g.__importMetaResolve = importMetaResolve;
 /** A served data file's value (see moduleServer.ts dataModule). */
 g.__parseDataFile = parseDataFile;
 g.process = process;
+// `self` a program can set, as in Bun (a getter and a setter on the global object; the browser's Worker has only the
+// getter): a Node-style wasm thread worker does `Object.assign(globalThis, { self: globalThis, ... })`.
+let selfValue: unknown = globalThis;
+Object.defineProperty(globalThis, "self", { get: () => selfValue, set: (v) => void (selfValue = v), enumerable: true, configurable: true });
 // Bun's Worker, on the process kernel (the browser's own can't load the project's files).
 g.Worker = WebWorker;
 // lol-html (wasm, loaded on first use). A global only, not a `Bun` member, as in Bun.
