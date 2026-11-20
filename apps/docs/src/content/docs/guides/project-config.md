@@ -74,6 +74,10 @@ The [examples](https://github.com/oddcelot/runbun-examples) use it: the Blank st
 
 ## Share cards
 
+:::caution[Not turned on yet]
+runbun.dev doesn't make share cards yet: `card` is read and checked, and a short link shows runbun.dev's card. A copy you host turns them on with the Worker's `SHARE_CARDS` variable.
+:::
+
 A link to runbun.dev shows runbun.dev's card where it is posted: the pixel kitchen and "Bun in your browser". With `card`, a **short link** to your project shows the project instead: its title, a line of description and its tags on a card drawn for it.
 
 ```jsonc

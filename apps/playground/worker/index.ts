@@ -32,6 +32,11 @@ interface Env {
   CONTENT_HOST: string;
   /** The editor origin the content host sends visitors to. */
   EDITOR_ORIGIN: string;
+  /**
+   * "1" turns on share cards of a project's own (card.ts). Off unless set (wrangler.jsonc sets it nowhere yet): a link
+   * is then made and opened as before cards, its payload never inflated, and nothing is drawn.
+   */
+  SHARE_CARDS?: string;
   /** Sign in with GitHub (auth.ts): the runbun-dev org's GitHub App, and Better Auth's cookie key. Secrets. */
   GITHUB_CLIENT_ID?: string;
   GITHUB_CLIENT_SECRET?: string;
@@ -71,6 +76,8 @@ interface Dates {
 }
 /** A drawn card's key: this and the link's id (15 characters, where a link's key is its 10). */
 const CARD_KEY = "card:";
+/** Whether this deploy makes share cards (Env.SHARE_CARDS). */
+const cards = (env: Env) => env.SHARE_CARDS === "1";
 const FOREVER = "public, max-age=31536000, immutable";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -89,9 +96,9 @@ async function create(req: Request, env: Env, url: URL): Promise<Response> {
   const id = await idFor(payload);
   const kept = await env.LINKS.getWithMetadata<Dates>(id, "stream");
   void kept.value?.cancel();
-  let card = kept.metadata?.card ?? null;
+  let card = (cards(env) && kept.metadata?.card) || null;
   if (kept.value === null) {
-    card = await cardFor(payload);
+    card = cards(env) ? await cardFor(payload) : null;
     await env.LINKS.put(id, payload, { metadata: { created: today(), ...(card ? { card } : {}) } satisfies Dates });
   }
   // A path, not a URL: the page adds its own origin (runbun.dev, workers.dev or a local dev server). `card`: the link
@@ -107,7 +114,7 @@ async function open(id: string, env: Env, url: URL, ctx: ExecutionContext): Prom
   if (payload !== null && metadata?.viewed !== today())
     ctx.waitUntil(env.LINKS.put(id, payload, { metadata: { ...metadata, viewed: today() } satisfies Dates }).catch(() => {}));
   if (payload === null) return new Response("This short link doesn't exist (or never did).", { status: 404, headers: { "content-type": "text/plain; charset=utf-8" } });
-  if (!metadata?.card) return Response.redirect(`${url.origin}/#code=${payload}`, 302);
+  if (!cards(env) || !metadata?.card) return Response.redirect(`${url.origin}/#code=${payload}`, 302);
   // The card's picture only once it is drawn: drawing takes more CPU time than a request may get on Workers' Free
   // plan, and a picture that failed to draw would be a broken one wherever the link is posted. Until then the site's.
   const drawn = await env.LINKS.get(CARD_KEY + id, "stream");
@@ -168,7 +175,7 @@ async function cardImage(id: string, req: Request, env: Env, url: URL, ctx: Exec
   const cached = await caches.default.match(req);
   if (cached) return cached;
   const site = Response.redirect(`${url.origin}/og.png`, 302);
-  if (!ID.test(id)) return site;
+  if (!cards(env) || !ID.test(id)) return site;
   const png = (bytes: ArrayBuffer | Uint8Array) => new Response(bytes as BodyInit, { headers: { "content-type": "image/png", "cache-control": FOREVER } });
   let res: Response;
   const kept = await env.LINKS.get(CARD_KEY + id, "arrayBuffer");

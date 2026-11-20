@@ -8,7 +8,8 @@
 //   (c) a project without `card` still gets the plain redirect, and its picture is the site's,
 //   (d) `card` falls back to package.json's name, drops a bad accent with the rest of a malformed `card`,
 //   (e) text of three bytes a character fits the link's metadata, a payload that inflates without end has no card,
-//   (f) markup in a title is escaped in the page.
+//   (f) markup in a title is escaped in the page,
+//   (g) without SHARE_CARDS (the Worker's var, off where wrangler.jsonc doesn't set it) no link has a card.
 // It prints one ok/FAIL line per check and exits 1 if any failed. Local only: nothing is deployed or stored remotely.
 //   bun scripts/worker-card.ts            (KEEP=<file.png> also writes the first card's picture there, to look at)
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -48,16 +49,23 @@ const dir = mkdtempSync(join(tmpdir(), "worker-card-"));
 const site = join(dir, "site");
 await Bun.write(join(site, "index.html"), "<!doctype html><title>site</title>\n");
 await Bun.write(join(site, "og.png"), Bun.file(join(app, "public/og.png")));
-const wrangler = Bun.spawn(["bunx", "wrangler", "dev", "--local", "--port", String(PORT), "--assets", site, "--persist-to", join(dir, "state")], { cwd: app, stdout: "pipe", stderr: "pipe" });
 const log = { text: "" };
-for (const stream of [wrangler.stdout, wrangler.stderr]) void (async () => { for await (const chunk of stream) log.text += new TextDecoder().decode(chunk); })();
-
-try {
+/** The Worker in wrangler's local runtime, with share cards on or off, once it answers. */
+async function serve(cards: boolean) {
+  const vars = cards ? ["--var", "SHARE_CARDS:1"] : [];
+  const proc = Bun.spawn(["bunx", "wrangler", "dev", "--local", "--port", String(PORT), "--assets", site, "--persist-to", join(dir, cards ? "state" : "state-off"), ...vars], { cwd: app, stdout: "pipe", stderr: "pipe" });
+  for (const stream of [proc.stdout, proc.stderr]) void (async () => { for await (const chunk of stream) log.text += new TextDecoder().decode(chunk); })();
   const end = Date.now() + 60_000;
   while (!(await fetch(`${ORIGIN}/og.png`).then((r) => r.ok, () => false))) {
-    if (Date.now() > end || wrangler.exitCode !== null) throw new Error(`the Worker didn't start:\n${log.text.slice(-2000)}`);
+    if (Date.now() > end || proc.exitCode !== null) throw new Error(`the Worker didn't start:\n${log.text.slice(-2000)}`);
     await Bun.sleep(300);
   }
+  return proc;
+}
+let wrangler = await serve(true).catch((e) => (report("the Worker started", false, String(e)), null));
+
+try {
+  if (!wrangler) throw new Error("no Worker to check");
 
   // (a) the page of a link with a card.
   const carded = await link({
@@ -139,11 +147,25 @@ try {
 
   const errors = log.text.split("\n").filter((l) => /\bcard \w{10}:/.test(l));
   report("no card failed to draw", errors.length === 0, errors.slice(0, 3).join(" | "));
+
+  // (g) the same project on a Worker without the var.
+  wrangler.kill();
+  await wrangler.exited;
+  wrangler = await serve(false);
+  const off = await link({ "index.ts": "console.log('todo')", "runbun.json": config({ name: "Todo API with SQLite", card: true }) });
+  const saidOff = said;
+  const offPage = await page(off);
+  const offPicture = await picture(off);
+  report(
+    "(g) without SHARE_CARDS a project that asks for a card gets the plain redirect and the site's picture",
+    saidOff === undefined && offPage.status === 302 && /\/#code=/.test(offPage.headers.get("location") ?? "") && offPicture.status === 302 && !!offPicture.headers.get("location")?.endsWith("/og.png"),
+    `page ${offPage.status}, picture ${offPicture.status} -> ${offPicture.headers.get("location")}`,
+  );
 } catch (e) {
   report("the checks ran", false, e instanceof Error ? e.message : String(e));
 } finally {
-  wrangler.kill();
-  await wrangler.exited;
+  wrangler?.kill();
+  await wrangler?.exited;
   rmSync(dir, { recursive: true, force: true });
 }
 console.log(failed ? `\n${failed} check(s) failed` : "\nall checks passed");
