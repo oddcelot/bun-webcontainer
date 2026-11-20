@@ -4,6 +4,7 @@ import type { Vars } from "@runbun/embed/protocol";
 import { CONTENT_ORIGIN } from "./contentOrigin";
 import { envelope } from "./contentProtocol";
 import { THEME_VARS, elysiaThemes } from "./elysiaTheme";
+import { SOLID_THEME_VARS, solidThemes } from "./solidTheme";
 import { FAMILIES, chromeVars, withRealColors } from "./themeColors";
 
 export { FAMILIES };
@@ -19,7 +20,7 @@ export const EMBEDDED = "embed" in document.documentElement.dataset;
 
 const controller = createThemeController({
   catalog: createThemeCatalog({
-    themes: [themes, elysiaThemes],
+    themes: [themes, elysiaThemes, solidThemes],
     defaultLightThemeName: "pierre-light",
     defaultDarkThemeName: "pierre-dark",
   }),
@@ -52,8 +53,8 @@ export function setThemeVars(vars: Vars | undefined) {
   applyChrome();
 }
 
-/** The theme's own variables: its chrome colors, plus what its family declares (e.g. Elysia's overlay). */
-const themeVarsFor = (theme: ThemeLike) => ({ ...chromeVars(theme), ...THEME_VARS[themeName()] });
+/** The theme's own variables: its chrome colors, plus what its family declares (e.g. Elysia's overlay, Solid's font). */
+const themeVarsFor = (theme: ThemeLike) => ({ ...chromeVars(theme), ...THEME_VARS[themeName()], ...SOLID_THEME_VARS[themeName()] });
 
 /**
  * `?vars=`: the embed's `vars` shape, limited to the overlay. Other chrome variables feed `background` too, and a

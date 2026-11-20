@@ -7,9 +7,10 @@
 //   sRGB, since it rejects display-p3).
 import { themes } from "@pierre/theming/themes";
 import { elysiaLight, elysiaDark } from "../src/elysiaTheme";
+import { solidLight, solidDark } from "../src/solidTheme";
 import { FAMILIES, chromeVars, withRealColors } from "../src/themeColors";
 
-const own: Record<string, unknown> = { "elysia-light": elysiaLight, "elysia-dark": elysiaDark };
+const own: Record<string, unknown> = { "elysia-light": elysiaLight, "elysia-dark": elysiaDark, "solid-light": solidLight, "solid-dark": solidDark };
 const load = async (name: string): Promise<any> => {
   if (own[name]) return own[name];
   const theme = await themes.getTheme(name);

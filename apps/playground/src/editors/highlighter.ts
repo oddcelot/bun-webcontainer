@@ -1,5 +1,6 @@
 import { registerCustomTheme } from "@pierre/diffs";
 import { elysiaDark, elysiaLight } from "../elysiaTheme";
+import { solidDark, solidLight } from "../solidTheme";
 
 /**
  * Every @pierre/diffs surface (the editor, the viewer, the Changes tab) highlights with @pierre/highlights (bundled
@@ -8,9 +9,12 @@ import { elysiaDark, elysiaLight } from "../elysiaTheme";
  */
 export const HIGHLIGHTER = "highlights" as const;
 
-// @pierre/diffs resolves theme names from its own bundles; the Elysia pair (elysiaTheme.ts) has to be registered.
+// @pierre/diffs resolves theme names from its own bundles; the Elysia and Solid pairs (elysiaTheme.ts, solidTheme.ts)
+// have to be registered.
 registerCustomTheme("elysia-light", async () => elysiaLight.zed, "zed");
 registerCustomTheme("elysia-dark", async () => elysiaDark.zed, "zed");
+registerCustomTheme("solid-light", async () => solidLight.zed, "zed");
+registerCustomTheme("solid-dark", async () => solidDark.zed, "zed");
 
 /**
  * The language for a file, where its extension alone picks the wrong one. Highlights has no ReactiveScript lexer:
