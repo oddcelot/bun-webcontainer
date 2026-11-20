@@ -32,6 +32,7 @@ for (const [env, file] of deploys) {
     if (got !== want) problems.push(`${where}: ${what} is ${JSON.stringify(got)}, the hosting file says ${JSON.stringify(want)}`);
   };
   if (!h.contentOrigin) problems.push(`${where}: no contentOrigin, but the Worker serves a content host`);
+  if (!h.worker) problems.push(`${where}: no "worker": true, but wrangler.jsonc deploys the Worker there`);
   expect("vars.CONTENT_HOST", w.vars.CONTENT_HOST, h.contentOrigin && new URL(h.contentOrigin).host);
   expect("vars.EDITOR_ORIGIN", w.vars.EDITOR_ORIGIN, h.editorOrigins[0]);
   expect("vars.DOCS_ORIGIN", w.vars.DOCS_ORIGIN, new URL(h.docsUrl).origin);
@@ -53,7 +54,8 @@ throws({ HOSTING: "hosting/missing.json" }, /HOSTING=hosting\/missing\.json/);
 throws({ VITE_CONTENT_ORIGIN: "https://run.example/sub" }, /must be an origin/);
 throws({ VITE_CONTENT_ORIGIN: "https://example.com", VITE_EDITOR_ORIGINS: "https://example.com" }, /also an editor origin/);
 const defaults = loadHosting("production", {});
-if (defaults.contentOrigin || defaults.editorOrigins.join() !== "http://localhost:5173" || defaults.docsUrl !== "https://docs.runbun.dev/" || defaults.canary)
+if (!loadHosting("development", {}).worker) problems.push("the dev server's default has no worker (it answers the git proxy and sign-in)");
+if (defaults.contentOrigin || defaults.editorOrigins.join() !== "http://localhost:5173" || defaults.docsUrl !== "https://docs.runbun.dev/" || defaults.canary || defaults.worker)
   problems.push(`defaults changed: ${JSON.stringify(defaults)}`);
 const dev = loadHosting("development", { HOSTING: "hosting/runbun.dev.json", VITE_CONTENT_ORIGIN: "http://run.runbun.localhost:5199/", VITE_EDITOR_ORIGINS: "http://runbun.localhost:5199" });
 if (dev.contentOrigin !== "http://run.runbun.localhost:5199" || dev.editorOrigins.join() !== "http://runbun.localhost:5199") problems.push(`env overrides: ${JSON.stringify(dev)}`);

@@ -13,4 +13,5 @@ export default {
   gallery: null,
   defaultProject: null,
   landing: true,
+  worker: true,
 } satisfies RuntimeHosting;

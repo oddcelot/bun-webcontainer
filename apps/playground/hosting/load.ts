@@ -45,6 +45,13 @@ export interface HostingFile {
   defaultProject?: string;
   /** Show the landing page to first-time visitors at `/`. false opens the playground right away. Default: true. */
   landing?: boolean;
+  /**
+   * The host runs worker/index.ts (wrangler.jsonc) next to the files: short links (/s/, /api/short), feedback
+   * (/api/feedback), signing in with GitHub (/api/auth/) and the git proxy (/git-proxy/, for git clone and GitHub
+   * dependencies). Without it the playground leaves those out. Default: true in dev (vite.config.ts answers the git
+   * proxy and sign-in), false in builds.
+   */
+  worker?: boolean;
 }
 
 /** The settings a build uses, defaults filled in, URLs normalized. */
@@ -60,6 +67,7 @@ export interface Hosting {
   gallery?: string[];
   defaultProject?: string;
   landing: boolean;
+  worker: boolean;
   /** The file it came from, for messages; undefined for the defaults. */
   file?: string;
 }
@@ -89,7 +97,7 @@ export function readHostingFile(path: string): HostingFile {
     throw new Error(`HOSTING=${path}: ${(e as Error).message}`);
   }
   if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error(`${path}: not a JSON object`);
-  const known = new Set(["$schema", "docsUrl", "contentOrigin", "editorOrigins", "canary", "name", "gallery", "defaultProject", "landing"]);
+  const known = new Set(["$schema", "docsUrl", "contentOrigin", "editorOrigins", "canary", "name", "gallery", "defaultProject", "landing", "worker"]);
   for (const key of Object.keys(data)) if (!known.has(key)) throw new Error(`${path}: unknown field "${key}" (fields: ${[...known].slice(1).join(", ")})`);
   const d = data as Record<string, unknown>;
   const out: HostingFile = {};
@@ -102,7 +110,7 @@ export function readHostingFile(path: string): HostingFile {
     if (!Array.isArray(d.editorOrigins) || d.editorOrigins.length === 0) throw new Error(`${path}: editorOrigins must be a non-empty array of origins`);
     out.editorOrigins = d.editorOrigins.map((o, i) => origin(o, `editorOrigins[${i}]`, path));
   }
-  for (const key of ["canary", "landing"] as const)
+  for (const key of ["canary", "landing", "worker"] as const)
     if (d[key] !== undefined) {
       if (typeof d[key] !== "boolean") throw new Error(`${path}: ${key} must be true or false`);
       out[key] = d[key];
@@ -146,6 +154,7 @@ export function loadHosting(mode: string, env: Record<string, string | undefined
     gallery: file.gallery,
     defaultProject: file.defaultProject,
     landing: file.landing ?? true,
+    worker: file.worker ?? mode === "development",
     file: env.HOSTING,
   };
 }

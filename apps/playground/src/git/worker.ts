@@ -7,7 +7,7 @@ import { runWasi } from "./wasi";
 // hold up the page, and a network command can block on its requests (http.ts). Messages are handled in order, so a
 // command sees every change the page sent before it.
 
-/** A command: `wasm` is git.wasm's URL, `proxy` the git proxy's (`…/git-proxy/`). */
+/** A command: `wasm` is git.wasm's URL, `proxy` the git proxy's (`…/git-proxy/`), or "" on a host without one. */
 type Run = { id: number; args: string[]; env: Record<string, string>; wasm: string; proxy: string };
 export type ToWorker = { ops: Op[] } | { run: Run };
 export type FromWorker =

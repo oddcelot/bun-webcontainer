@@ -52,6 +52,7 @@ with a content origin, that origin's rules in `dist/_headers`. Run it again with
 Running code needs WebAssembly Memory64: Chrome and Edge 133+, Firefox 134+. Safari and iOS browsers get the editor
 without Run.
 
-What runbun.dev has that a static copy doesn't: short links for Share (`/s/…`), the Feedback dialog (`/api/feedback`),
-signing in with GitHub and the git proxy for `git clone` (`/git-proxy/…`). They are runbun.dev's Cloudflare Worker,
-not part of this archive.
+What runbun.dev has that a static copy doesn't: short links for Share, the Feedback dialog, signing in with GitHub,
+and the git proxy that `git clone` and GitHub dependencies in `bun install` go through. They are runbun.dev's
+Cloudflare Worker, not part of this archive, so the playground leaves them out: Share offers the full link, and git
+and GitHub dependencies say they need a proxy. Opening a public GitHub repository (`?repo=owner/name`) still works.

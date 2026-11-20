@@ -26,6 +26,11 @@ export interface RuntimeHosting {
   defaultProject: string | null;
   /** Whether `/` may show the landing page (index.html reads the same from data-landing). */
   landing: boolean;
+  /**
+   * Whether runbun.dev's Worker (worker/index.ts) answers next to the files: short links, feedback, signing in with
+   * GitHub, the git proxy. Without it the playground leaves them out.
+   */
+  worker: boolean;
 }
 
 export const HOSTING: RuntimeHosting = hosting;

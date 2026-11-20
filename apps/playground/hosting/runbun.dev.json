@@ -1,5 +1,6 @@
 {
   "docsUrl": "https://docs.runbun.dev/",
   "contentOrigin": "https://run.runbun.dev",
-  "editorOrigins": ["https://runbun.dev", "http://127.0.0.1:7357"]
+  "editorOrigins": ["https://runbun.dev", "http://127.0.0.1:7357"],
+  "worker": true
 }

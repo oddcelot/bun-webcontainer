@@ -38,6 +38,11 @@ Fields, all optional:
 - `landing`: `false` opens the playground at `/` right away, also for first-time visitors and at `/about`, and drops
   the status bar's About link. Default: `true`.
 
+- `worker`: the host runs `worker/index.ts` next to the files (`wrangler.jsonc`): short links, Feedback, signing in
+  with GitHub and the git proxy (git clone, GitHub dependencies). Without it the playground leaves them out: no short
+  link in Share, no Feedback button, no sign-in, and git and GitHub dependencies say why they can't. Default: `true`
+  in dev (the dev server answers the git proxy and sign-in), `false` in builds; this repo's files set `true`.
+
 The page's canonical and share-card URLs, `robots.txt` and `sitemap.xml` follow the first editor origin.
 
 Single env vars override a field, for the test scripts: `VITE_CONTENT_ORIGIN`, `VITE_EDITOR_ORIGINS`

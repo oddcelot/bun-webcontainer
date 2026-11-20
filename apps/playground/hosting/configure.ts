@@ -46,6 +46,7 @@ export function runtimeHosting(h: Hosting, base = "/") {
     gallery: h.gallery ?? null,
     defaultProject: h.defaultProject ?? null,
     landing: h.landing,
+    worker: h.worker,
   };
 }
 

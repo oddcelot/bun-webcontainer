@@ -181,7 +181,10 @@ export function StatusBar(props: { treeShown: boolean; toggleFiles(): void; togg
       >
         Bun {BUN_VERSION}
       </Tip>
-      <Feedback />
+      {/* Feedback goes to runbun.dev's Worker (the hosting file's `worker`). */}
+      <Show when={HOSTING.worker}>
+        <Feedback />
+      </Show>
       {/* The landing page, which a host can leave out (the hosting file's `landing`). */}
       <Show when={HOSTING.landing}>
         <Tip as="a" href={`${import.meta.env.BASE_URL}about`} target="_blank" rel="noopener" placement="top-end" tip="What runbun.dev is and how it runs Bun">

@@ -1,4 +1,5 @@
 import { BASE } from "../base";
+import { HOSTING } from "../hosting";
 import type { VFS } from "@runbun/vfs";
 import { apply, follow, snapshot, type Op } from "./mirror";
 import { servePage, type HttpAsk } from "./http";
@@ -122,7 +123,7 @@ async function exec(vfs: VFS, args: string[], colors: boolean, onProgress?: (p: 
   c.current = id;
   const r = await new Promise<Result>((resolve) => {
     c.pending.set(id, { done: resolve, progress: onProgress, seen: { bytes: 0 } });
-    c.worker.postMessage({ run: { id, args, env: colors ? { GIT_COLOR: "1" } : {}, wasm: new URL(`${BASE}git.wasm`, location.href).href, proxy: new URL(`${BASE}git-proxy/`, location.href).href } } satisfies ToWorker);
+    c.worker.postMessage({ run: { id, args, env: colors ? { GIT_COLOR: "1" } : {}, wasm: new URL(`${BASE}git.wasm`, location.href).href, proxy: HOSTING.worker ? new URL(`${BASE}git-proxy/`, location.href).href : "" } } satisfies ToWorker);
   });
   if ("error" in r) throw new Error(r.error);
   const bytes = new Uint8Array(r.out.reduce((n, b) => n + b.length, 0));
