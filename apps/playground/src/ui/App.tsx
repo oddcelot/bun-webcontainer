@@ -12,7 +12,7 @@ import { Explorer, toggleFiles, toggleGit } from "./Explorer";
 import { inCommitBox } from "../git/store";
 import { Header } from "./Header";
 import { StatusToast } from "./Status";
-import { StatusBar, statusDisplay } from "./StatusBar";
+import { StatusBar } from "./StatusBar";
 import { Unsupported } from "./Unsupported";
 import type { Sized } from "../projectConfig";
 
@@ -245,9 +245,7 @@ export function App() {
             );
           }}
         </Resizable>
-        <Show when={statusDisplay() === "toast"}>
-          <StatusToast status={app.session.status()} />
-        </Show>
+        <StatusToast status={app.session.status()} />
       </main>
       <StatusBar
         treeShown={columnSizes()[0] > 0}
