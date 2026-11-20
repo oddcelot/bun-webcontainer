@@ -28,6 +28,17 @@ Fields, all optional:
   where the content host sends visitors (`EDITOR_ORIGIN` in `wrangler.jsonc`). Add `http://127.0.0.1:7357` for the
   local runner (`packages/connect`). Default: `["http://localhost:5173"]`.
 - `canary`: shows the canary badge (`src/canary.ts`). Default: `false`.
+- `name`: the site's name, in place of "runbun.dev" in the page titles, the share cards' site name and "Open in …".
+  Default: `"runbun.dev"`.
+- `gallery`: the example folders (`examples/`) the gallery lists, in this order. The others still open by
+  `?example=<folder>`. Default: all of them. The build lists its folders in `dist/examples.json`; configure refuses a
+  name that isn't one.
+- `defaultProject`: the example folder a URL without a project opens. Default: the confetti demo (then at
+  `?example=demo`).
+- `landing`: `false` opens the playground at `/` right away, also for first-time visitors and at `/about`, and drops
+  the status bar's About link. Default: `true`.
+
+The page's canonical and share-card URLs, `robots.txt` and `sitemap.xml` follow the first editor origin.
 
 Single env vars override a field, for the test scripts: `VITE_CONTENT_ORIGIN`, `VITE_EDITOR_ORIGINS`
 (comma-separated), `DOCS_URL`, `CANARY=1`.

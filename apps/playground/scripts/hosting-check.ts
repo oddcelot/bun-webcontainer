@@ -62,17 +62,38 @@ if (dev.contentOrigin !== "http://run.runbun.localhost:5199" || dev.editorOrigin
 // second host only, and sw.js's manifest must hash the files as they are now.
 {
   const dist = mkdtempSync(join(tmpdir(), "hosting-configure-"));
+  const want = (what: string, ok: boolean) => ok || problems.push(`configure: ${what}`);
   try {
-    const page = '<a href="https://docs.runbun.dev/guides/">Guides</a>';
+    const page = [
+      '<html lang="en">',
+      "<title>Bun Playground | runbun.dev</title>",
+      '<link rel="canonical" href="https://runbun.dev/" />',
+      '<meta property="og:site_name" content="runbun.dev" />',
+      '<meta property="og:image" content="https://runbun.dev/og.png?v=2" />',
+      "<script>document.title = `Bun Playground · ${t} · runbun.dev`;</script>",
+      '<a href="https://docs.runbun.dev/guides/">Guides</a>',
+    ].join("\n");
     writeFileSync(join(dist, "index.html"), page);
+    writeFileSync(join(dist, "sitemap.xml"), "<loc>https://runbun.dev/</loc>\n");
+    writeFileSync(join(dist, "examples.json"), '["demo","solid-vite-hmr","starter-http"]\n');
     writeFileSync(join(dist, "_headers"), "/*\n  Cross-Origin-Opener-Policy: same-origin\n");
     writeFileSync(join(dist, "sw.js"), `var __SHELL__ = {"index.html":"stale"};\nself.addEventListener("fetch", () => {});\n`);
+    const solid = join(dist, "..", `${dist.split("/").at(-1)}-solid.json`);
+    writeFileSync(solid, JSON.stringify({ name: "Solid Playground", gallery: ["solid-vite-hmr", "starter-http"], defaultProject: "solid-vite-hmr", landing: false }));
     configure(dist, loadHosting("production", { HOSTING: "hosting/runbun.dev.json" }));
-    configure(dist, loadHosting("production", { VITE_CONTENT_ORIGIN: "https://run.example.org", VITE_EDITOR_ORIGINS: "https://example.org", DOCS_URL: "https://docs.example.org/" }), "/play/");
     const read = (f: string) => readFileSync(join(dist, f), "utf8");
+    want("runbun.dev's own hosting leaves the HTML as built", read("index.html") === page);
+    configure(dist, loadHosting("production", { HOSTING: solid, VITE_CONTENT_ORIGIN: "https://run.example.org", VITE_EDITOR_ORIGINS: "https://example.org", DOCS_URL: "https://docs.example.org/" }), "/play/");
     const sha = (f: string) => createHash("sha256").update(readFileSync(join(dist, f))).digest("hex").slice(0, 16);
-    const want = (what: string, ok: boolean) => ok || problems.push(`configure: ${what}`);
-    want("index.html links the new docs", read("index.html") === page.replace("https://docs.runbun.dev/", "https://docs.example.org/"));
+    const html = read("index.html");
+    want("index.html links the new docs", html.includes('href="https://docs.example.org/guides/"'));
+    want("index.html is canonical at the new site, under the base", html.includes('href="https://example.org/play/"') && html.includes('content="https://example.org/play/og.png?v=2"'));
+    want("index.html names the site", html.includes("<title>Bun Playground | Solid Playground</title>") && html.includes("· Solid Playground`") && html.includes('content="Solid Playground"'));
+    want("index.html has no runbun.dev left", !html.includes("runbun.dev"));
+    want("index.html starts in the playground", html.startsWith('<html lang="en" data-landing="off">'));
+    want("sitemap.xml lists the new site", read("sitemap.xml") === "<loc>https://example.org/play/</loc>\n");
+    const runtime = JSON.parse(/export default (.*);/.exec(read("hosting.js"))![1]);
+    want("hosting.js has the gallery and default project", runtime.gallery.join() === "solid-vite-hmr,starter-http" && runtime.defaultProject === "solid-vite-hmr" && runtime.name === "Solid Playground");
     want("hosting.js has the new host", read("hosting.js").includes('"contentOrigin":"https://run.example.org"') && !read("hosting.js").includes("runbun.dev"));
     const headers = read("_headers");
     want("_headers keeps its own rules", headers.startsWith("/*\n  Cross-Origin-Opener-Policy: same-origin\n"));
@@ -83,6 +104,15 @@ if (dev.contentOrigin !== "http://run.runbun.localhost:5199" || dev.editorOrigin
     want("sw.js keeps its code once", sw.slice(2).join("\n") === 'self.addEventListener("fetch", () => {});\n');
     configure(dist, loadHosting("production", {}));
     want("no content origin: no _headers rules", !read("_headers").includes("configure.ts: begin"));
+    want("back to the defaults: the landing page again", read("index.html").startsWith('<html lang="en">\n'));
+    writeFileSync(solid, JSON.stringify({ gallery: ["solid-vite-hrm"] }));
+    try {
+      configure(dist, loadHosting("production", { HOSTING: solid }));
+      want("a misspelled gallery folder is refused", false);
+    } catch (e) {
+      want(`a misspelled gallery folder names the folders (${(e as Error).message})`, /no example "solid-vite-hrm".*solid-vite-hmr/.test((e as Error).message));
+    }
+    rmSync(solid, { force: true });
   } finally {
     rmSync(dist, { recursive: true, force: true });
   }

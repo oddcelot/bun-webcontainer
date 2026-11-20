@@ -10,7 +10,8 @@
  * - hosting.js, which every page and worker loads when it starts (src/hosting.ts);
  * - sw.js's first lines: `__HOSTING__` (the editor origins, src/sw.ts) and `__SHELL__`, the service worker's manifest
  *   of every file and its hash, which it caches by: the files changed here get new hashes, so browsers refetch them;
- * - the HTML pages' links to the docs (index.html's static parts);
+ * - the HTML pages' static parts: the docs links, the canonical and share-card URLs, the site's name in the titles,
+ *   whether the landing page shows; robots.txt's and sitemap.xml's URLs;
  * - _headers (Cloudflare, Netlify): the content origin's rules, which have to name its host.
  */
 import { createHash } from "node:crypto";
@@ -18,8 +19,11 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { loadHosting, type Hosting } from "./load.ts";
 
-/** What a build has before any configure: the docs links index.html is written with (vite.config.ts docsLink()). */
-const BUILT_DOCS = "https://docs.runbun.dev/";
+/**
+ * What a build has before any configure: the docs links, site URL and name its HTML is written with (index.html,
+ * vite.config.ts docsLink()), and which the first configure replaces.
+ */
+const BUILT = { docsUrl: "https://docs.runbun.dev/", siteUrl: "https://runbun.dev/", name: "runbun.dev" };
 const SHELL_LINE = /^var __SHELL__ = .*;\n/m;
 const HOSTING_LINE = /^var __HOSTING__ = .*;\n/m;
 const HEADERS_BEGIN = "# hosting/configure.ts: begin";
@@ -27,9 +31,22 @@ const HEADERS_END = "# hosting/configure.ts: end";
 
 const hash = (data: Uint8Array | string) => createHash("sha256").update(data).digest("hex").slice(0, 16);
 
-/** The values pages and workers read (src/hosting.ts RuntimeHosting). */
-export function runtimeHosting(h: Hosting) {
-  return { docsUrl: h.docsUrl, contentOrigin: h.contentOrigin ?? null, editorOrigins: h.editorOrigins, canary: h.canary };
+/**
+ * The values pages and workers read (src/hosting.ts RuntimeHosting). `siteUrl` is the first editor origin under the
+ * build's base: the page's canonical URL.
+ */
+export function runtimeHosting(h: Hosting, base = "/") {
+  return {
+    docsUrl: h.docsUrl,
+    contentOrigin: h.contentOrigin ?? null,
+    editorOrigins: h.editorOrigins,
+    canary: h.canary,
+    name: h.name,
+    siteUrl: h.editorOrigins[0] + base,
+    gallery: h.gallery ?? null,
+    defaultProject: h.defaultProject ?? null,
+    landing: h.landing,
+  };
 }
 
 /** The settings a configured folder has now (its hosting.js), if any. */
@@ -48,17 +65,41 @@ function current(dist: string): ReturnType<typeof runtimeHosting> | undefined {
 export function configure(dist: string, hosting: Hosting, base = "/"): void {
   const sw = join(dist, "sw.js");
   if (!existsSync(sw) || !existsSync(join(dist, "index.html"))) throw new Error(`${dist}: not a built playground (no index.html or sw.js)`);
-  const next = runtimeHosting(hosting);
-  const before = current(dist);
+  const next = runtimeHosting(hosting, base);
+  const before = { ...BUILT, ...current(dist) };
+
+  // The example folders the build has (vite.config.ts writes examples.json): a name that isn't one is a typo.
+  const list = join(dist, "examples.json");
+  if (existsSync(list)) {
+    const folders = new Set<string>(JSON.parse(readFileSync(list, "utf8")));
+    for (const name of [...(next.gallery ?? []), ...(next.defaultProject ? [next.defaultProject] : [])])
+      if (!folders.has(name)) throw new Error(`${hosting.file ?? "hosting"}: no example "${name}" in this build (${[...folders].join(", ")})`);
+  }
 
   writeFileSync(join(dist, "hosting.js"), `// hosting/configure.ts${hosting.file ? ` from ${hosting.file}` : ""}; read by src/hosting.ts.\nexport default ${JSON.stringify(next)};\n`);
 
-  const docsBefore = before?.docsUrl ?? BUILT_DOCS;
-  if (docsBefore !== next.docsUrl)
-    for (const page of readdirSync(dist).filter((f) => f.endsWith(".html"))) {
-      const file = join(dist, page);
-      writeFileSync(file, readFileSync(file, "utf8").replaceAll(`href="${docsBefore}`, `href="${next.docsUrl}`));
-    }
+  // The HTML's static parts, which load before any script: the docs links, the canonical and share-card URLs, the
+  // site's name in the titles, and whether index.html's head script may show the landing page (data-landing).
+  const swaps: [string, string][] = [
+    [`href="${before.docsUrl}`, `href="${next.docsUrl}`],
+    [`href="${before.siteUrl}`, `href="${next.siteUrl}`],
+    [`content="${before.siteUrl}`, `content="${next.siteUrl}`],
+    [`· ${before.name}`, `· ${next.name}`],
+    [`| ${before.name}`, `| ${next.name}`],
+    [`property="og:site_name" content="${before.name}"`, `property="og:site_name" content="${next.name}"`],
+  ].filter(([a, b]) => a !== b) as [string, string][];
+  for (const page of readdirSync(dist).filter((f) => f.endsWith(".html"))) {
+    const file = join(dist, page);
+    let html = readFileSync(file, "utf8");
+    for (const [a, b] of swaps) html = html.replaceAll(a, b);
+    html = html.replace(/<html([^>]*?)( data-landing="off")?>/, (_, attrs) => `<html${attrs}${next.landing ? "" : ' data-landing="off"'}>`);
+    writeFileSync(file, html);
+  }
+  // Search engines find the site under its own URL.
+  for (const name of ["robots.txt", "sitemap.xml"]) {
+    const file = join(dist, name);
+    if (existsSync(file) && before.siteUrl !== next.siteUrl) writeFileSync(file, readFileSync(file, "utf8").replaceAll(before.siteUrl, next.siteUrl));
+  }
 
   const headers = join(dist, "_headers");
   if (existsSync(headers)) {

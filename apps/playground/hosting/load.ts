@@ -34,6 +34,17 @@ export interface HostingFile {
   editorOrigins?: string[];
   /** A canary build: shows src/canary.ts's badge. Default: false. */
   canary?: boolean;
+  /** The site's name, in the page titles and share cards in place of "runbun.dev". */
+  name?: string;
+  /**
+   * The gallery's projects: folder names of the examples (apps/playground/examples), in this order. Default: all of
+   * them. Others still open by `?example=<name>`.
+   */
+  gallery?: string[];
+  /** The example (a folder name) the playground opens when the URL names no project. Default: the confetti demo. */
+  defaultProject?: string;
+  /** Show the landing page to first-time visitors at `/`. false opens the playground right away. Default: true. */
+  landing?: boolean;
 }
 
 /** The settings a build uses, defaults filled in, URLs normalized. */
@@ -45,6 +56,10 @@ export interface Hosting {
   /** Origins (no path), at least one. */
   editorOrigins: string[];
   canary: boolean;
+  name: string;
+  gallery?: string[];
+  defaultProject?: string;
+  landing: boolean;
   /** The file it came from, for messages; undefined for the defaults. */
   file?: string;
 }
@@ -74,7 +89,7 @@ export function readHostingFile(path: string): HostingFile {
     throw new Error(`HOSTING=${path}: ${(e as Error).message}`);
   }
   if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error(`${path}: not a JSON object`);
-  const known = new Set(["$schema", "docsUrl", "contentOrigin", "editorOrigins", "canary"]);
+  const known = new Set(["$schema", "docsUrl", "contentOrigin", "editorOrigins", "canary", "name", "gallery", "defaultProject", "landing"]);
   for (const key of Object.keys(data)) if (!known.has(key)) throw new Error(`${path}: unknown field "${key}" (fields: ${[...known].slice(1).join(", ")})`);
   const d = data as Record<string, unknown>;
   const out: HostingFile = {};
@@ -87,9 +102,24 @@ export function readHostingFile(path: string): HostingFile {
     if (!Array.isArray(d.editorOrigins) || d.editorOrigins.length === 0) throw new Error(`${path}: editorOrigins must be a non-empty array of origins`);
     out.editorOrigins = d.editorOrigins.map((o, i) => origin(o, `editorOrigins[${i}]`, path));
   }
-  if (d.canary !== undefined) {
-    if (typeof d.canary !== "boolean") throw new Error(`${path}: canary must be true or false`);
-    out.canary = d.canary;
+  for (const key of ["canary", "landing"] as const)
+    if (d[key] !== undefined) {
+      if (typeof d[key] !== "boolean") throw new Error(`${path}: ${key} must be true or false`);
+      out[key] = d[key];
+    }
+  if (d.name !== undefined) {
+    if (typeof d.name !== "string" || !d.name.trim() || /[<>"&]/.test(d.name)) throw new Error(`${path}: name must be a non-empty string without < > " &`);
+    out.name = d.name.trim();
+  }
+  const folder = /^[A-Za-z0-9._-]+$/;
+  if (d.gallery !== undefined) {
+    if (!Array.isArray(d.gallery) || !d.gallery.length || !d.gallery.every((g) => typeof g === "string" && folder.test(g)))
+      throw new Error(`${path}: gallery must be a non-empty array of example folder names`);
+    out.gallery = d.gallery;
+  }
+  if (d.defaultProject !== undefined) {
+    if (typeof d.defaultProject !== "string" || !folder.test(d.defaultProject)) throw new Error(`${path}: defaultProject must be an example folder name`);
+    out.defaultProject = d.defaultProject;
   }
   return out;
 }
@@ -112,6 +142,10 @@ export function loadHosting(mode: string, env: Record<string, string | undefined
     contentOrigin: content,
     editorOrigins: editors,
     canary: env.CANARY ? env.CANARY === "1" : (file.canary ?? false),
+    name: file.name ?? "runbun.dev",
+    gallery: file.gallery,
+    defaultProject: file.defaultProject,
+    landing: file.landing ?? true,
     file: env.HOSTING,
   };
 }

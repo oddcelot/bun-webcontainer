@@ -417,8 +417,9 @@ tasks:
       runInCI: false
   check-release-archive:
     # The release archive as a self-hoster gets it (scripts/check-examples.ts --archive): unpacked into a temp folder,
-    # pointed at two origins by its own configure.ts under node, served, and the gallery's projects run from it.
-    command: 'bun scripts/check-examples.ts --split --archive'
+    # pointed at two origins by its own configure.ts under node, served, and the gallery's projects run from it. Then
+    # made a host's own (scripts/check-hosting.ts): a name, a gallery of three, a default project, no landing page.
+    script: 'bun scripts/check-examples.ts --split --archive && bun scripts/check-hosting.ts'
     # node: the archive's configure.ts runs under it, as a self-hoster runs it.
     toolchains: ['bun', 'node']
     deps:

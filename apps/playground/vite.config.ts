@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -146,18 +146,22 @@ function pgliteNotNode(): Plugin {
 function hostingModule(): Plugin {
   const id = "\0runbun-hosting";
   let serve = true;
+  let base = "/";
   return {
     name: "runbun-hosting",
     // Before Vite's resolver, which would follow package.json's `imports` to src/hostingDefaults.ts.
     enforce: "pre",
-    configResolved: (config) => void (serve = config.command === "serve"),
+    configResolved(config) {
+      serve = config.command === "serve";
+      base = config.base;
+    },
     resolveId(source) {
       if (source === "#hosting") return id;
       if (source === "../hosting.js" && !serve) return { id: source, external: true };
     },
     load(source) {
       if (source !== id) return;
-      if (serve) return `export default ${JSON.stringify(runtimeHosting(loadHosting("development")))};`;
+      if (serve) return `export default ${JSON.stringify(runtimeHosting(loadHosting("development"), base))};`;
       return 'import hosting from "../hosting.js";\nexport default hosting;';
     },
   };
@@ -180,7 +184,17 @@ function configureDist(): Plugin {
     },
     closeBundle: {
       order: "post",
-      handler: () => configure(dist, loadHosting("production"), base),
+      handler() {
+        // The example folders this build bundles (src/examples.ts), so configure can tell a misspelled `gallery` or
+        // `defaultProject` from a real one, here and on a prebuilt copy.
+        const examples = fileURLToPath(new URL("examples", import.meta.url));
+        const folders = readdirSync(examples, { withFileTypes: true })
+          .filter((e) => e.isDirectory() && (existsSync(join(examples, e.name, "example.json")) || existsSync(join(examples, e.name, "runbun.json"))))
+          .map((e) => e.name)
+          .sort();
+        writeFileSync(join(dist, "examples.json"), JSON.stringify(folders) + "\n");
+        configure(dist, loadHosting("production"), base);
+      },
     },
   };
 }

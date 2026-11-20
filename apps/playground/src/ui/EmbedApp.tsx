@@ -18,6 +18,7 @@ import { Gallery } from "./Gallery";
 import { Preview } from "./Preview";
 import { StatusPill, StatusToast } from "./Status";
 import { Unsupported } from "./Unsupported";
+import { HOSTING } from "../hosting";
 
 export const EmbedContext = createContext<Embed>();
 
@@ -429,7 +430,7 @@ function EmbedMenu() {
         {/* After the menu has closed and handed focus back, or that would take it from the dialog. */}
         <MenuItem icon="i-lucide-rotate-ccw" label="Reset" onSelect={() => (e.edited() ? setTimeout(() => setAsking(true), 50) : void e.reset())} />
         <Show when={e.has("open")}>
-          <MenuItem icon={<img src={logo} alt="" width="14" height="12" />} label="Open in runbun.dev" onSelect={() => void e.openInPlayground()}>
+          <MenuItem icon={<img src={logo} alt="" width="14" height="12" />} label={`Open in ${HOSTING.name}`} onSelect={() => void e.openInPlayground()}>
             <i class="i-lucide-arrow-up-right" aria-hidden="true" />
           </MenuItem>
         </Show>

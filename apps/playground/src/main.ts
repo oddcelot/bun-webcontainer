@@ -1,6 +1,7 @@
 import "virtual:uno.css";
 import { seedDemo } from "./demo";
 import { examples, loadExample, repoExamples } from "./examples";
+import { HOSTING } from "./hosting";
 import { loadRepo, parseRepo, repoQuery } from "./github";
 import { isShareLink, loadShareLink, rememberSource } from "./share";
 import { createPlayground } from "./boot";
@@ -49,8 +50,10 @@ function sourceOf(url: URL) {
   const gitParam = url.searchParams.get("git") ?? "";
   const cloned = gitParam ? gitUrl(gitParam) : null;
   const share = isShareLink(url.hash) ? url.hash : "";
+  // A URL that names no project opens the hosting file's defaultProject (src/hosting.ts), else the demo.
+  const named = repoParam || gitParam || share || url.searchParams.has("example") || url.searchParams.has("folder");
   return {
-    exampleName: url.searchParams.get("example") ?? "",
+    exampleName: url.searchParams.get("example") ?? (named ? "" : (HOSTING.defaultProject ?? "")),
     repoParam,
     repo: repoParam ? parseRepo(repoParam) : null,
     gitParam,

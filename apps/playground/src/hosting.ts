@@ -16,6 +16,16 @@ export interface RuntimeHosting {
   editorOrigins: string[];
   /** A canary build: shows src/canary.ts's badge. */
   canary: boolean;
+  /** The site's name ("runbun.dev"), in titles and "Open in …". */
+  name: string;
+  /** The page's canonical URL: the first editor origin under the build's base. */
+  siteUrl: string;
+  /** The gallery's example folders, in order, or null for all of them (src/examples.ts). */
+  gallery: string[] | null;
+  /** The example a URL without a project opens, or null for the demo (src/main.ts). */
+  defaultProject: string | null;
+  /** Whether `/` may show the landing page (index.html reads the same from data-landing). */
+  landing: boolean;
 }
 
 export const HOSTING: RuntimeHosting = hosting;

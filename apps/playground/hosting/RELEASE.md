@@ -22,6 +22,13 @@ All fields are optional:
   you and people you trust run code in it.
 - `docsUrl`: where the playground's Docs links go. Default: https://docs.runbun.dev/.
 - `canary`: shows a "canary build" badge. Default: false.
+- `name`: your site's name, in the page titles and share cards in place of "runbun.dev".
+- `gallery`: which bundled examples the gallery lists, in order, by folder name; `dist/examples.json` lists them.
+  The others still open by `?example=<folder>`. Default: all of them.
+- `defaultProject`: the example (a folder name) your playground opens at `/`. Default: a small demo.
+- `landing`: `false` opens the playground right away instead of runbun.dev's landing page. Default: true.
+
+The canonical URL, the share cards' URLs, `robots.txt` and `sitemap.xml` point at the first editor origin.
 
 ## 2. Configure the build
 

@@ -8,4 +8,9 @@ export default {
   contentOrigin: null,
   editorOrigins: ["http://localhost:5173"],
   canary: false,
+  name: "runbun.dev",
+  siteUrl: "http://localhost:5173/",
+  gallery: null,
+  defaultProject: null,
+  landing: true,
 } satisfies RuntimeHosting;
