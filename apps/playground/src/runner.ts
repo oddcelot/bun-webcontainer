@@ -245,7 +245,7 @@ export class Runner {
     const m = e.data;
     if (m.type === "module") {
       try {
-        port.postMessage(await serveModule(this.vfs, m.path, (msg) => this.log("error", msg), m.target));
+        port.postMessage(await serveModule(this.vfs, m.path, (msg) => this.log("error", msg), m.target, m.worker));
       } catch (err) {
         port.postMessage(textResponse(500, String(err)));
       }

@@ -30,7 +30,7 @@ interface PreviewRequest {
   base: string;
 }
 /** Sent to a page. */
-type Ask = { type: "module"; path: string; target: "browser" | "bun" } | { type: "preview"; req: PreviewRequest };
+type Ask = { type: "module"; path: string; target: "browser" | "bun"; worker?: string } | { type: "preview"; req: PreviewRequest };
 /** A preview page's WebSocket, from previewWebSocket (swPage.ts). */
 interface WsRequest {
   type: "ws";
@@ -267,7 +267,8 @@ async function serveModule(url: URL, clientId: string): Promise<Response> {
   if (at) path = path.slice(at[0].length);
   if (at && !owner) return new Response("The playground page that served this module is gone", isolated({ status: 410, headers: { "content-type": "text/plain" } }));
   // The worker runs the program (Bun's runtime conditions); a page gets the browser's.
-  const r = await ask({ type: "module", path, target: (await windowClient(clientId)) ? "browser" : "bun" }, owner);
+  // `worker`: which Worker asks (each has its own client id), as the page keeps the ES modules each ran itself apart.
+  const r = await ask({ type: "module", path, target: (await windowClient(clientId)) ? "browser" : "bun", worker: clientId }, owner);
   // A stylesheet as a `<link>` loads it, CSS imported from code is a module (`__css/<path>`).
   const type = url.pathname.endsWith(".css") && !path.startsWith("__css/") ? "text/css" : "text/javascript";
   return new Response(r.body, isolated({

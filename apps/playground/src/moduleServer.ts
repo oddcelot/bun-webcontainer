@@ -501,14 +501,19 @@ async function serveCommonJS(vfs: VFS, path: string, onError: (msg: string) => v
 }
 
 /**
- * ES modules the worker ran itself (a `require()` of one nothing had imported, worker/node/module.ts loadEsm), by path:
- * their export names once it has. A later `import` of one gets a module that re-exports that instance (syncEsmModule).
+ * ES modules the worker ran itself (a `require()` of one nothing had imported, worker/node/module.ts loadEsm), by worker
+ * and path (`at`): their export names once it has. A later `import` of one gets a module that re-exports that
+ * instance (syncEsmModule). Per worker: a worker_threads thread or a child process has its own modules, and an
+ * `import` there of a module its parent ran itself must get the module, not the parent's instance it can't reach.
  */
 const syncEsm = new Map<string, { names: Promise<string[] | null>; settle: (names: string[] | null) => void }>();
 /** ES modules served to the worker: one of them may be imported but not yet run, so the worker can't run it itself. */
 const servedEsm = new Set<string>();
 /** Modules `mock.module` replaced in the worker (worker/node/module.ts mockModule), by path: their export names. */
 const mocks = new Map<string, string[]>();
+
+/** The key of `path` as `worker` (the service worker's client id of the Worker that asked; "" if it didn't say) has it. */
+const at = (worker: string, path: string) => `${worker}\n${path}`;
 
 /** For a new worker (Run): nothing served or run yet. */
 export function resetSyncEsm() {
@@ -520,14 +525,14 @@ export function resetSyncEsm() {
 }
 
 /** The worker's synchronous requests about the ES modules it runs itself: `claim/<path>`, `done/<names>/<path>`, `fail/<path>`. */
-function syncEsmRequest(req: string): ModuleResponse {
+function syncEsmRequest(req: string, worker: string): ModuleResponse {
   const [, what, rest] = /^(claim|done|fail|mock|plugins)\/(.*)$/.exec(req) ?? [];
   // `mock/<names>/<path>`: refused once the module has been served (it is, or is being, imported).
   if (what === "mock") {
     const slash = rest.indexOf("/");
     const path = norm(rest.slice(slash + 1));
-    if (servedEsm.has(path)) return { status: 409, body: "" };
-    mocks.set(path, JSON.parse(decodeURIComponent(rest.slice(0, slash))) as string[]);
+    if (servedEsm.has(at(worker, path))) return { status: 409, body: "" };
+    mocks.set(at(worker, path), JSON.parse(decodeURIComponent(rest.slice(0, slash))) as string[]);
     return { status: 200, body: "" };
   }
   // `plugins/<filters>`: the worker's runtime plugins now (worker/plugins.ts), before it imports anything else.
@@ -539,18 +544,18 @@ function syncEsmRequest(req: string): ModuleResponse {
   }
   if (what === "claim") {
     const path = norm(rest);
-    if (servedEsm.has(path) || syncEsm.has(path)) return { status: 409, body: "" };
+    if (servedEsm.has(at(worker, path)) || syncEsm.has(at(worker, path))) return { status: 409, body: "" };
     let settle!: (names: string[] | null) => void;
     const names = new Promise<string[] | null>((r) => (settle = r));
-    syncEsm.set(path, { names, settle });
+    syncEsm.set(at(worker, path), { names, settle });
     return { status: 200, body: "" };
   }
   if (what === "done" || what === "fail") {
     const slash = what === "done" ? rest.indexOf("/") : -1;
     const path = norm(rest.slice(slash + 1));
-    const entry = syncEsm.get(path);
+    const entry = syncEsm.get(at(worker, path));
     entry?.settle(what === "done" ? (JSON.parse(decodeURIComponent(rest.slice(0, slash))) as string[]) : null);
-    if (what === "fail") syncEsm.delete(path);
+    if (what === "fail") syncEsm.delete(at(worker, path));
     return { status: 200, body: "" };
   }
   return { status: 404, body: "" };
@@ -617,7 +622,7 @@ function askPlugins(importer: string, spec: string): Promise<PluginAnswer> {
  * `__plugin/<importer>/<specifier>`: what the worker's runtime plugins make of an import (pluginRoutes.ts). Exports the
  * worker holds come from it; source is served as an ES module; a file no onLoad hook takes, as itself.
  */
-async function servePlugin(vfs: VFS, rawPath: string, onError: (msg: string) => void): Promise<ModuleResponse> {
+async function servePlugin(vfs: VFS, rawPath: string, onError: (msg: string) => void, worker: string): Promise<ModuleResponse> {
   const [importer, spec] = rawPath.slice(9).split("/").map(decodeURIComponent);
   const answer = await askPlugins(importer, spec);
   const q = JSON.stringify;
@@ -636,7 +641,7 @@ export { ${named.map((n, i) => `__s${i} as ${q(n)}`).join(", ")} };` : ""}`,
     };
   }
   const { key, contents, dir, importer: self, file } = answer;
-  return serveModuleOnce(vfs, file, onError, "bun", { key, url: `${VFS_ROOT}${pluginUrl(importer, spec)}`, contents, dir, importer: self });
+  return serveModuleOnce(vfs, file, onError, "bun", worker, { key, url: `${VFS_ROOT}${pluginUrl(importer, spec)}`, contents, dir, importer: self });
 }
 
 /**
@@ -649,25 +654,25 @@ export const ENTRY_PREFIX = "__entry/";
  * A module for the service worker. Serving can read files it only finds on the way (requires it follows, re-exports),
  * some of them large installed files kept out of memory: each is loaded and the module served again (withLoaded).
  */
-export function serveModule(vfs: VFS, rawPath: string, onError: (msg: string) => void, target: ModuleTarget = "browser"): Promise<ModuleResponse> {
-  return withLoaded(vfs, () => serveModuleOnce(vfs, rawPath, onError, target));
+export function serveModule(vfs: VFS, rawPath: string, onError: (msg: string) => void, target: ModuleTarget = "browser", worker = ""): Promise<ModuleResponse> {
+  return withLoaded(vfs, () => serveModuleOnce(vfs, rawPath, onError, target, worker));
 }
 
-async function serveModuleOnce(vfs: VFS, rawPath: string, onError: (msg: string) => void, target: ModuleTarget, plugin?: PluginSource): Promise<ModuleResponse> {
-  if (target === "bun" && rawPath.startsWith("__esmsync/")) return syncEsmRequest(rawPath.slice(10));
-  if (target === "bun" && rawPath.startsWith("__plugin/")) return servePlugin(vfs, rawPath, onError);
+async function serveModuleOnce(vfs: VFS, rawPath: string, onError: (msg: string) => void, target: ModuleTarget, worker: string, plugin?: PluginSource): Promise<ModuleResponse> {
+  if (target === "bun" && rawPath.startsWith("__esmsync/")) return syncEsmRequest(rawPath.slice(10), worker);
+  if (target === "bun" && rawPath.startsWith("__plugin/")) return servePlugin(vfs, rawPath, onError, worker);
   let path = norm(rawPath);
   // `__entry/<path>`: the program the worker runs, whose extension can make it CommonJS or an ES module (moduleKindOf).
   const entry = path.startsWith(ENTRY_PREFIX);
   if (entry) path = path.slice(ENTRY_PREFIX.length);
   await loadResolver(vfs);
-  const mocked = target === "bun" && !plugin ? mocks.get(path) : undefined;
+  const mocked = target === "bun" && !plugin ? mocks.get(at(worker, path)) : undefined;
   if (mocked) {
-    servedEsm.add(path);
+    servedEsm.add(at(worker, path));
     return { status: 200, body: mockedModule(path, mocked) };
   }
   if (path.startsWith("__node/")) {
-    if (target === "bun") servedEsm.add(path);
+    if (target === "bun") servedEsm.add(at(worker, path));
     return { status: 200, body: builtinModule(path.slice(7)) };
   }
   if (path.startsWith("__host/")) return { status: 200, body: hostModule(path.slice(7)) };
@@ -717,10 +722,10 @@ async function serveModuleOnce(vfs: VFS, rawPath: string, onError: (msg: string)
     const transpiled = restored.code;
     let code = transpiled;
     if (target === "bun") {
-      const sync = plugin ? undefined : syncEsm.get(path);
+      const sync = plugin ? undefined : syncEsm.get(at(worker, path));
       const names = sync && (await sync.names);
       if (names) return { status: 200, body: syncEsmModule(path, names) };
-      if (!plugin) servedEsm.add(path);
+      if (!plugin) servedEsm.add(at(worker, path));
     }
     TARGET = target;
     // The hoisted imports are final URLs already (the transpiler leaves those alone).
