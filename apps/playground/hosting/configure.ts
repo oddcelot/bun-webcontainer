@@ -77,6 +77,7 @@ export function runtimeHosting(h: Hosting, base = "/") {
     siteUrl: h.editorOrigins[0] + base,
     gallery: h.gallery ?? null,
     defaultProject: h.defaultProject ?? null,
+    languages: h.languages ?? null,
     landing: h.landing,
     worker: h.worker,
     localRunner: h.localRunner,

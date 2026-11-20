@@ -43,6 +43,7 @@ The hosting file says where the copy lives and how it differs from runbun.dev. T
   "theme": { "families": ["solid-light"] },
   "localRunner": false,
   "gallery": ["solid-vite-hmr", "solid-ssr-dashboard", "astro-solid-demo", "reactivescript", "reactivescript-selects"],
+  "languages": ["reactivescript"],
   "defaultProject": "solid-vite-hmr",
   "landing": false,
   "editorOrigins": ["https://solid.runbun.dev"]
@@ -60,6 +61,7 @@ Every field is optional:
 | `localRunner` | `true` | `false` leaves out the header's Local Bun switch. |
 | `debugger` | `false` | `true` turns on the [debugger](/playground/running-code/#debugger), a prototype. |
 | `gallery` | all of them | Which bundled examples the gallery lists, by folder name, in this order. `dist/examples.json` lists the folders a release has; the others still open with `?example=<folder>`. |
+| `languages` | all of them | The [language packs](/playground/editor/) the editor enables, by id; today `reactivescript`. A file of a pack you leave out is a plain file, and examples that need it leave the gallery. `[]` enables none. configure stops on an id it doesn't have. |
 | `defaultProject` | a small demo | The example (a folder name) that opens at `/`. |
 | `landing` | `true` | `false` opens the playground right away instead of runbun.dev's landing page. |
 | `contentOrigin` | none | A second origin that runs project code, see [below](#a-separate-origin-for-project-code). |
@@ -68,7 +70,7 @@ Every field is optional:
 
 ### Your own brand and theme
 
-`brand`, `theme`, `localRunner` and `debugger` need a release after 0.7.0.
+`brand`, `theme`, `localRunner`, `debugger` and `languages` need a release after 0.7.0.
 
 With a `brand`, the playground reads as yours: your logo and `name` stand in the header where runbun.dev has its dumpling and a random bun pun, the logo is the page's icon, and the page title is `name` alone. The status bar's About link opens runbun.dev's about page, which says what the playground runs on (with `landing` on, it opens your copy of that page instead).
 
