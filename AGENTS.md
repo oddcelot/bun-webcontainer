@@ -74,6 +74,7 @@ moon run connect:test                                  # the local runner end to
 moon run playground:fmt-examples                       # the gallery's projects (examples/ submodule, demo included) are `bun fmt`-clean
 moon run playground:check-examples                     # each of them installs and runs in the playground (headless Chrome)
 moon run playground:check-examples-split playground:check-examples-preview  # the same on a content origin, and from a production build
+moon run playground:check-release-archive              # the self-hosting archive (hosting/README.md): unpacked, configured by node, run
 moon run playground:test-lockfile                      # the bun.lock an install writes = native bun install's (needs npm)
 moon run playground:test-sqlite                         # bun:sqlite (SQLite's wasm build) vs native Bun: errors, safeIntegers, as(), deserialize (headless Chrome)
 moon run playground:test-processes                     # child processes (Bun.spawn, child_process, Bun.$) vs native Bun (headless Chrome)
@@ -172,8 +173,10 @@ Four release lines, each a hand-written changelog drafted by git-cliff (Brewfile
 
 - **runbun** (every part but the packages'): version in the root `package.json`, `CHANGELOG.md`, `v<version>` tags;
   `moon run root:changelog` drafts the next section (`cliff.toml`). Pushing the tag runs
-  `.github/workflows/release.yml`, which checks the tag and the section and creates the GitHub Release. Deploying
-  runbun.dev and docs.runbun.dev stays a separate step.
+  `.github/workflows/release.yml`, which checks the tag and the section and creates the GitHub Release. Then attach
+  the self-hosting archive, built locally (CI can't build the wasm crates): `moon run playground:check-release-archive`,
+  then `gh release upload v<version> apps/playground/dist-release/runbun-playground-<version>.tar.gz`
+  (`apps/playground/hosting/README.md`). Deploying runbun.dev and docs.runbun.dev stays a separate step.
 - **@runbun/astro**, **@runbun/connect** and **@runbun/embed**: `packages/<name>/package.json`, `packages/<name>/CHANGELOG.md`,
   `<name>-v<version>` tags; `moon run <name>:changelog` (`packages/<name>/cliff.toml`). Pushing the tag runs
   `.github/workflows/publish-<name>.yml`, which publishes to npm over trusted publishing and creates the GitHub

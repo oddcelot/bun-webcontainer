@@ -55,11 +55,12 @@ const FRAMED = new RegExp(`^${BASE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(embed
 const CONTENT = new URL(self.location.href).searchParams.has("content");
 
 /**
- * The editor origins a content-origin preview may talk to (vite.config.ts defines it from VITE_EDITOR_ORIGINS, as
- * contentOrigin.ts reads it). The bridge posts to one of these, found from the host frame that owns the preview.
+ * The editor origins a content-origin preview may talk to: the hosting file's editorOrigins, as contentOrigin.ts reads
+ * them. sw.js's first lines set `__HOSTING__` (hosting/configure.ts in builds, vite.config.ts in dev). The bridge posts
+ * to one of these, found from the host frame that owns the preview.
  */
-declare const __EDITOR_ORIGINS__: string[] | undefined;
-const EDITOR_ORIGINS: string[] = typeof __EDITOR_ORIGINS__ === "object" ? __EDITOR_ORIGINS__ : [];
+declare const __HOSTING__: { editorOrigins: string[] } | undefined;
+const EDITOR_ORIGINS: string[] = typeof __HOSTING__ === "object" && __HOSTING__ ? __HOSTING__.editorOrigins : [];
 /** The bridge protocol's version (contentProtocol.ts PROTOCOL_VERSION; vite.config.ts defines it too). */
 declare const __PROTOCOL_VERSION__: number;
 

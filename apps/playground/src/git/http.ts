@@ -72,6 +72,8 @@ type Request = { method: string; url: string; headers: [string, string][] } | st
 
 /** git's request head as a request to the proxy at `proxy` (`…/git-proxy/`), or why it can't go. */
 function toProxy(proxy: string, head: string): Request {
+  // A self-hosted copy without runbun.dev's Worker (the hosting file's `worker`, src/hosting.ts).
+  if (!proxy) return "this playground has no git proxy, which git needs to reach a remote (runbun.dev has one)";
   const [first, ...lines] = head.split("\n").filter(Boolean);
   const [method, url] = first.split(" ");
   const u = new URL(url);

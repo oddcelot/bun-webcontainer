@@ -3,6 +3,7 @@ import type { JSX } from "@solidjs/web";
 import { LONG_LINK, MAX_SHORT, badgeUrl, formats, noteLines, shareLink, shortLink, type Link } from "../share";
 import { exportZip, zipName } from "../archive";
 import { AppContext } from "./context";
+import { HOSTING } from "../hosting";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -86,7 +87,8 @@ export function ShareMenu() {
                 icon="i-lucide-link-2"
                 title="Copy short link"
                 sub={l().url.length > MAX_SHORT ? "Too large. Share from GitHub instead" : "Stores a copy on runbun.dev"}
-                hidden={!!l().short}
+                // Short links live in runbun.dev's Worker (the hosting file's `worker`).
+                hidden={!!l().short || !HOSTING.worker}
                 disabled={l().url.length > MAX_SHORT}
                 working="Shortening…"
                 copy={copyShort}

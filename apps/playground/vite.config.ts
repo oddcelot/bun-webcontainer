@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { join, relative } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import solid from "@solidjs/vite-plugin";
 import UnoCSS from "unocss/vite";
@@ -10,6 +10,8 @@ import { rolldown, type OutputBundle } from "rolldown";
 import { defaultClientConditions, defineConfig, runnerImport, type Plugin } from "vite";
 import { BUN_VERSION } from "./src/worker/bunVersion";
 import type { AuthEnv } from "./worker/auth";
+import { configure, runtimeHosting } from "./hosting/configure";
+import { loadHosting, type Hosting } from "./hosting/load";
 import { npmNotice, npmPackageDir, postgresNotice, render, rustNotices, sqliteNotice } from "./scripts/licenses";
 
 const isolation = {
@@ -18,10 +20,16 @@ const isolation = {
 };
 
 /**
- * With VITE_CONTENT_ORIGIN set (src/contentOrigin.ts), this server also answers as the content origin, whose documents
+ * Where this server or build is hosted (hosting/load.ts: the `HOSTING` file, e.g. hosting/runbun.dev.json), for the
+ * dev and preview servers' headers and the dev service worker. Builds don't compile it in: configureDist() writes it.
+ */
+const hosting: Hosting = loadHosting("development");
+
+/**
+ * With a content origin (src/contentOrigin.ts), this server also answers as the content origin, whose documents
  * (host.html, previews) the editor frames under its COEP: they need CORP cross-origin to be embeddable.
  */
-const contentOrigin = !!process.env.VITE_CONTENT_ORIGIN;
+const contentOrigin = !!hosting.contentOrigin;
 const served = contentOrigin ? { ...isolation, "Cross-Origin-Resource-Policy": "cross-origin" } : isolation;
 
 /**
@@ -30,7 +38,7 @@ const served = contentOrigin ? { ...isolation, "Cross-Origin-Resource-Policy": "
  * Production sets the same in public/_headers.
  */
 function originHeaders(): Plugin {
-  const host = contentOrigin ? new URL(process.env.VITE_CONTENT_ORIGIN!).host : "";
+  const host = contentOrigin ? new URL(hosting.contentOrigin!).host : "";
   const set = (req: { url?: string; headers: { host?: string } }, res: { setHeader(k: string, v: string): void }, next: () => void) => {
     res.setHeader("Origin-Agent-Cluster", "?1");
     if (req.headers.host === host) res.setHeader("X-Robots-Tag", "noindex");
@@ -49,7 +57,7 @@ function originHeaders(): Plugin {
         const path = (req.url ?? "").split("?")[0];
         if (req.headers.host !== host || !/^\/__(preview|vfs)\//.test(path)) return next();
         const { stranded } = (await server.ssrLoadModule("/worker/stranded.ts")) as typeof import("./worker/stranded");
-        const editor = (process.env.VITE_EDITOR_ORIGINS ?? "http://localhost:5173").split(",")[0].trim();
+        const editor = hosting.editorOrigins[0];
         const r = stranded(path, editor)!;
         res.statusCode = r.status;
         r.headers.forEach((v, k) => res.setHeader(k, v));
@@ -129,13 +137,73 @@ function pgliteNotNode(): Plugin {
 }
 
 /**
- * The docs site the playground links to: `DOCS_URL` when set (a canary or preview deploy), else the local docs dev
- * server (`astro dev`) while developing and docs.runbun.dev in builds. The app reads it as `import.meta.env.DOCS_URL`.
+ * Where the playground is hosted, for src/hosting.ts (`#hosting`; package.json maps it to defaults outside Vite). Dev: the `HOSTING` file's values,
+ * inline. Builds: a static import of `hosting.js` next to index.html, which configureDist() writes and a deploy of a
+ * prebuilt copy rewrites (hosting/configure.ts). Every chunk is in assets/, so it is "../hosting.js" from any of them;
+ * the import stays external. Static, not `await import()`: a worker whose modules wait on a top-level await sets its
+ * message handler late, and the page's first messages to it are lost.
  */
-function docsUrl(mode: string): string {
-  const url = process.env.DOCS_URL || (mode === "development" ? "http://localhost:4321/" : "https://docs.runbun.dev/");
-  return url.endsWith("/") ? url : url + "/";
+function hostingModule(): Plugin {
+  const id = "\0runbun-hosting";
+  let serve = true;
+  let base = "/";
+  return {
+    name: "runbun-hosting",
+    // Before Vite's resolver, which would follow package.json's `imports` to src/hostingDefaults.ts.
+    enforce: "pre",
+    configResolved(config) {
+      serve = config.command === "serve";
+      base = config.base;
+    },
+    resolveId(source) {
+      if (source === "#hosting") return id;
+      if (source === "../hosting.js" && !serve) return { id: source, external: true };
+    },
+    load(source) {
+      if (source !== id) return;
+      if (serve) return `export default ${JSON.stringify(runtimeHosting(loadHosting("development"), base))};`;
+      return 'import hosting from "../hosting.js";\nexport default hosting;';
+    },
+  };
 }
+
+/**
+ * Builds end by pointing the output at the `HOSTING` file's host (hosting/configure.ts): hosting.js, sw.js's first
+ * lines, the HTML's docs links and _headers. The same step a prebuilt copy runs on its own host. Last, after Vite has
+ * copied public/ (_headers) and written sw.js.
+ */
+function configureDist(): Plugin {
+  let dist = "";
+  let base = "/";
+  return {
+    name: "configure-dist",
+    apply: "build",
+    configResolved(config) {
+      dist = resolve(config.root, config.build.outDir);
+      base = config.base;
+    },
+    closeBundle: {
+      order: "post",
+      handler() {
+        // The example folders this build bundles (src/examples.ts), so configure can tell a misspelled `gallery` or
+        // `defaultProject` from a real one, here and on a prebuilt copy.
+        const examples = fileURLToPath(new URL("examples", import.meta.url));
+        const folders = readdirSync(examples, { withFileTypes: true })
+          .filter((e) => e.isDirectory() && (existsSync(join(examples, e.name, "example.json")) || existsSync(join(examples, e.name, "runbun.json"))))
+          .map((e) => e.name)
+          .sort();
+        writeFileSync(join(dist, "examples.json"), JSON.stringify(folders) + "\n");
+        configure(dist, loadHosting("production"), base);
+      },
+    },
+  };
+}
+
+/**
+ * The docs site the playground links to in dev: the hosting file's docsUrl (or `DOCS_URL`), else the local docs dev
+ * server (`astro dev`). Builds are written with docs.runbun.dev; configureDist() sets the hosting file's.
+ */
+const docsUrl = (mode: string): string => (mode === "development" ? loadHosting(mode).docsUrl : "https://docs.runbun.dev/");
 
 /** index.html's static parts (for crawlers and no-JS visitors) link the same docs as the app, and name the Bun release. */
 function docsLink(url: string): Plugin {
@@ -171,15 +239,13 @@ function embedRoutes(): Plugin {
   };
 }
 
-/** What sw.ts reads at build time: the editor origins (as src/contentOrigin.ts) and the bridge protocol's version. */
+/**
+ * What sw.ts reads at build time: the bridge protocol's version. Its editor origins come from `__HOSTING__`, a line
+ * in front of it (hosting/configure.ts in builds, the dev middleware below).
+ */
 function swDefines(): Record<string, string> {
-  const origins = (process.env.VITE_EDITOR_ORIGINS ?? "http://localhost:5173")
-    .split(",")
-    .map((o) => o.trim())
-    .filter(Boolean)
-    .map((o) => new URL(o).origin);
   const version = /PROTOCOL_VERSION = (\d+)/.exec(readFileSync(fileURLToPath(new URL("src/contentProtocol.ts", import.meta.url)), "utf8"))![1];
-  return { __EDITOR_ORIGINS__: JSON.stringify(origins), __PROTOCOL_VERSION__: version };
+  return { __PROTOCOL_VERSION__: version };
 }
 
 /**
@@ -191,6 +257,7 @@ function swDefines(): Record<string, string> {
  *
  * Builds put the shell manifest in front of it: every file the build ships (public/ included), path → SHA-256, which
  * sw.ts caches by. Each deploy changes sw.js, so browsers install the new worker; dev has no manifest.
+ * hosting/configure.ts rehashes it after writing hosting.js and the HTML.
  */
 function serviceWorker(): Plugin {
   let publicDir = "";
@@ -239,7 +306,7 @@ function serviceWorker(): Plugin {
           for (const [k, v] of Object.entries(served)) res.setHeader(k, v);
           res.setHeader("content-type", "text/javascript; charset=utf-8");
           res.setHeader("cache-control", "no-cache");
-          res.end(code);
+          res.end(`var __HOSTING__ = ${JSON.stringify({ editorOrigins: hosting.editorOrigins })};\n` + code);
         } catch (e) {
           next(e);
         }
@@ -405,13 +472,10 @@ function configSchema(): Plugin {
 
 export default defineConfig(({ mode }) => ({
   define: {
-    "import.meta.env.DOCS_URL": JSON.stringify(docsUrl(mode)),
-    // CANARY=1 (playground:deploy-canary) shows the canary badge (src/canary.ts).
-    "import.meta.env.CANARY": JSON.stringify(process.env.CANARY === "1"),
     // @babel/types (under @solidjs/babel-plugin, the fast path's Solid 2 JSX) reads this as it loads; a page has no `process`.
     "process.env.BABEL_TYPES_8_BREAKING": "false",
   },
-  plugins: [examplesSubmodule(), configSchema(), UnoCSS(), solid({ exclude: ["examples/**", "fixtures/**"] }), hostPackageNames(), emnapiNotNode(), pgliteNotNode(), docsLink(docsUrl(mode)), embedRoutes(), originHeaders(), serviceWorker(), workerRoutesDev(), thirdPartyLicenses()],
+  plugins: [examplesSubmodule(), configSchema(), UnoCSS(), solid({ exclude: ["examples/**", "fixtures/**"] }), hostPackageNames(), emnapiNotNode(), pgliteNotNode(), hostingModule(), docsLink(docsUrl(mode)), embedRoutes(), originHeaders(), serviceWorker(), configureDist(), workerRoutesDev(), thirdPartyLicenses()],
   build: {
     target: "esnext",
     rollupOptions: {
@@ -421,12 +485,12 @@ export default defineConfig(({ mode }) => ({
     },
   },
   // In builds, worker bundles (the runtime and rolldown's wasi worker) only get worker.plugins.
-  worker: { format: "es", plugins: () => [emnapiNotNode(), pgliteNotNode(), workerPackages()] },
+  worker: { format: "es", plugins: () => [emnapiNotNode(), pgliteNotNode(), workerPackages(), hostingModule()] },
   // Vite's default `localhost` bind may be ::1 only. As a content origin (src/contentOrigin.ts: run.runbun.localhost next to
   // the editor at runbun.localhost) the server listens on 127.0.0.1, which every *.localhost name reaches (browsers resolve
   // them to loopback and try IPv4); Vite's Host check is told to accept those names.
   server: { headers: served, ...(contentOrigin && { host: "127.0.0.1", allowedHosts: ["localhost", ".localhost"] }) },
-  preview: { headers: served },
+  preview: { headers: served, ...(contentOrigin && { host: "127.0.0.1", allowedHosts: ["localhost", ".localhost"] }) },
   // A second dev server beside yours (scripts/check-examples.ts) gets its own: two servers optimizing into one cache
   // folder invalidate each other's files (504 "Outdated Optimize Dep" on every load).
   cacheDir: process.env.VITE_CACHE_DIR || undefined,

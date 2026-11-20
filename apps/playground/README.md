@@ -93,11 +93,14 @@ User-facing gaps are listed at https://docs.runbun.dev/compatibility/ and kept i
 local Rust builds, so build them first). Any static HTTPS host works. For a sub-path, build with
 `bunx vite build --base=/sub/path/`; the service worker derives its paths from its own URL.
 
-The Docs link goes to `DOCS_URL` when it's set at build or dev time, else to http://localhost:4321/ (`astro dev`) in
-dev and https://docs.runbun.dev/ in builds. For a canary or preview deploy, build both sites with the same pair:
-`DOCS_URL=https://docs.canary.example PLAYGROUND_URL=https://canary.example bun run build` (here and in `../docs`).
-The canary does that: `moon run playground:deploy-canary docs:deploy-canary` builds both into `dist-canary/` with
-https://canary.runbun.dev/ and https://docs-canary.runbun.dev/, marks them `noindex` (`scripts/canary-dist.ts`), shows a "Canary build" notice that links production (`CANARY=1`:
+Where a build is hosted comes from one file per deploy, `HOSTING=hosting/<name>.json`, which the build's last step
+(`hosting/configure.ts`) writes into `dist/`, and which a prebuilt copy (the release archive) gets the same way
+(`hosting/README.md`): the docs it links, the origin that runs project code, the editor origins that may drive it, and
+whether it is a canary. `hosting/runbun.dev.json` and `hosting/canary.json` are this repo's; without one, project code
+runs on the editor's origin and the Docs link goes to http://localhost:4321/ (`astro dev`) in dev and
+https://docs.runbun.dev/ in builds. The docs site reads `DOCS_URL` and `PLAYGROUND_URL` itself (`../docs/site-urls.ts`).
+The canary: `moon run playground:deploy-canary docs:deploy-canary` builds both into `dist-canary/` with
+https://canary.runbun.dev/ and https://docs-canary.runbun.dev/, marks them `noindex` (`scripts/canary-dist.ts`), shows a "Canary build" notice that links production (`canary` in its hosting file, `CANARY=1` for the docs:
 `src/canary.ts` here, `src/components/Banner.astro` in the docs; not in `/embed`), and deploys them with
 `wrangler deploy --env canary` (workers `bun-playground-canary` and `bun-playground-docs-canary`, its own short-link
 KV namespace `runbun-links-canary`).
@@ -108,7 +111,7 @@ The page must be cross-origin isolated (`Cross-Origin-Opener-Policy: same-origin
 `Cross-Origin-Embedder-Policy: credentialless`). `public/_headers` sets them on Cloudflare (Pages, and Workers
 static assets) and Netlify; hosts that can't send headers (GitHub Pages) need a COOP/COEP service-worker workaround.
 
-Cloudflare Workers: `wrangler.jsonc` deploys `dist/` as static assets: `moon run playground:deploy`, which builds, runs the gallery's projects on the dev server, with a split content origin and from a production build (`check-examples`, `check-examples-split`, `check-examples-preview`), and only then runs `bunx wrangler deploy --env=""` (the empty env is production; `--env canary` is the canary). Build with moon, not a bare `bun run build`: the moon task sets `VITE_CONTENT_ORIGIN` and `VITE_EDITOR_ORIGINS`, which put project code on https://run.runbun.dev (a build without them runs it on the editor's origin). The same Worker and assets answer on run.runbun.dev (run-canary.runbun.dev for the canary), created as custom domains by `wrangler deploy`: there `/api/*` and `/s/*` are refused and the editor's pages redirect to https://runbun.dev (`CONTENT_HOST`, `EDITOR_ORIGIN` in `wrangler.jsonc`). The editor origins include http://127.0.0.1:7357, the local runner's page (`packages/connect`).
+Cloudflare Workers: `wrangler.jsonc` deploys `dist/` as static assets: `moon run playground:deploy`, which builds, runs the gallery's projects on the dev server, with a split content origin and from a production build (`check-examples`, `check-examples-split`, `check-examples-preview`), and only then runs `bunx wrangler deploy --env=""` (the empty env is production; `--env canary` is the canary). Build with moon, not a bare `bun run build`: the moon task sets `HOSTING=hosting/runbun.dev.json`, which puts project code on https://run.runbun.dev (a build without it runs it on the editor's origin) and adds that host's rules to `dist/_headers`. The same Worker and assets answer on run.runbun.dev (run-canary.runbun.dev for the canary), created as custom domains by `wrangler deploy`: there `/api/*` and `/s/*` are refused and the editor's pages redirect to https://runbun.dev (`CONTENT_HOST`, `EDITOR_ORIGIN` in `wrangler.jsonc`; `scripts/hosting-check.ts`, part of `test`, checks they match the hosting files). The editor origins include http://127.0.0.1:7357, the local runner's page (`packages/connect`).
 It serves only on the custom domain https://runbun.dev: `workers_dev` and `preview_urls` are off, so search engines
 don't find a duplicate copy of the site (the same goes for the docs and both canaries).
 A small Worker (`worker/index.ts`) runs first only on `/api/*`, `/s/*` and the editor's HTML pages (so the content host can redirect them), for opt-in short links: `POST /api/short`
@@ -119,6 +122,6 @@ database (schema in `worker/migrations/`; `FEEDBACK_LIMIT` per IP); `bun scripts
 ratings per page. Everything else is the static site. It fits the Workers Free plan (1,000 new links a day, KV's write
 limit; D1 allows 100,000 rows written a day). `bun run typecheck:worker` regenerates its types; locally,
 `bunx wrangler dev --local` runs it (pass `--compatibility-date` if your workerd is older than `wrangler.jsonc`'s).
-A fork deploying under its own account should drop or replace the `routes` entry and create its own KV namespace
+A fork deploying under its own account writes its own hosting file, sets `vars` and `routes` to the same hosts, and creates its own KV namespace
 (`bunx wrangler kv namespace create runbun-links`) and D1 database (`bunx wrangler d1 create runbun-feedback`, then
 `bunx wrangler d1 migrations apply FEEDBACK --remote`).

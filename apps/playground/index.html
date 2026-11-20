@@ -40,7 +40,9 @@
         // ?open: straight into the playground, e.g. from the docs' "Open playground" (src/entry.ts drops it from the URL).
         const project = q.has("example") || q.has("repo") || q.has("connect") || q.has("open") || location.hash.startsWith("#code=");
         const about = location.pathname.endsWith("/about");
-        if (!about && (project || localStorage.getItem("playground.opened"))) document.documentElement.dataset.view = "app";
+        // data-landing="off": a host without the landing page (hosting/configure.ts, the hosting file's `landing`).
+        const landing = document.documentElement.dataset.landing !== "off";
+        if (!landing || (!about && (project || localStorage.getItem("playground.opened")))) document.documentElement.dataset.view = "app";
       } catch {}
     </script>
     <!--

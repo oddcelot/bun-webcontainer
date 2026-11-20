@@ -1,5 +1,5 @@
 import type { Semver } from "./semver";
-import { githubTarballUrl, gunzip, installFromBunLock, installPath, packageFiles, parseBunLock, pruneNodeModules, splitKey, staleInLock, untar } from "./lockfile";
+import { githubTarballUrl, githubUnavailable, gunzip, installFromBunLock, installPath, packageFiles, parseBunLock, pruneNodeModules, splitKey, staleInLock, untar } from "./lockfile";
 import { lockedPackages, resolveProject, writeBunLock, type Manifest, type ResolveHost } from "./lockfileWrite";
 import { cacheTarball, fetchPackument, fetchTarball, fetchVersion, setNpmrc } from "./pkgCache";
 import { tarballRoot } from "./gitDeps";
@@ -50,6 +50,8 @@ function resolveHost(vfs: VFS, semver: Semver): ResolveHost {
     },
     link: (name) => links(vfs)[name],
     async github(dep) {
+      const unavailable = githubUnavailable();
+      if (unavailable) throw new Error(unavailable);
       const res = await fetch(githubTarballUrl(dep)).catch((e) => {
         throw new Error(`couldn't reach GitHub through the playground's git proxy: ${e instanceof Error ? e.message : e}`);
       });

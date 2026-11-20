@@ -1,5 +1,6 @@
 import { createSignal } from "solid-js";
 import { BASE } from "./base";
+import { HOSTING } from "./hosting";
 
 // Signed in with GitHub (worker/auth.ts: Better Auth, cookies only): who, and the calls that change it. The token
 // itself stays in an httpOnly cookie this code can't read; the git proxy and /api/github/* use it. Asked lazily, when
@@ -20,6 +21,12 @@ let asked: Promise<void> | undefined;
 /** Reads who is signed in, once (again with `force`). */
 export function loadAccount(force = false): Promise<void> {
   if (asked && !force) return asked;
+  // A host without runbun.dev's Worker has no sign-in (a static host may answer /api/ with its index page).
+  if (!HOSTING.worker) {
+    setAvailable(false);
+    setAccount(null);
+    return (asked = Promise.resolve());
+  }
   const reading = fetch(api("auth/get-session"), { credentials: "same-origin" })
     .then(async (r) => {
       if (r.status === 503 || r.status === 404) setAvailable(false);

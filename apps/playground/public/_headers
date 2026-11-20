@@ -22,22 +22,5 @@
   Access-Control-Allow-Origin: *
   Content-Type: application/schema+json
 
-# The content origin (src/contentOrigin.ts; worker/index.ts answers there too): it runs project code and is framed by the
-# editor under COEP, so CORP cross-origin; it never appears in search results. Absolute URLs match by host (Workers static
-# assets), so these rules only apply there; the canary's host is the second. Same as vite.config.ts's originHeaders().
-https://run.runbun.dev/*
-  Cross-Origin-Resource-Policy: cross-origin
-  X-Robots-Tag: noindex
-https://run-canary.runbun.dev/*
-  Cross-Origin-Resource-Policy: cross-origin
-  X-Robots-Tag: noindex
-# host.html may be framed by any page (an embedder frames /embed, which frames this): who may drive it is its own check of
-# its parent against the build's editor origins. /host is the same page, as the assets serve it without ".html".
-https://run.runbun.dev/host
-  Content-Security-Policy: frame-ancestors *
-https://run.runbun.dev/host.html
-  Content-Security-Policy: frame-ancestors *
-https://run-canary.runbun.dev/host
-  Content-Security-Policy: frame-ancestors *
-https://run-canary.runbun.dev/host.html
-  Content-Security-Policy: frame-ancestors *
+# The content origin's rules (CORP cross-origin, noindex, host.html framable by any page) name its host, so
+# hosting/configure.ts adds them for the hosting file's contentOrigin, at the end of the build or on a prebuilt copy.

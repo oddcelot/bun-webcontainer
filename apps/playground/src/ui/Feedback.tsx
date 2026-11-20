@@ -7,6 +7,7 @@ import { MAX_SHORT, shareLink, shortLink } from "../share";
 import { BUN_VERSION } from "../worker/bunVersion";
 import { AppContext } from "./context";
 import { Tip } from "@runbun/ui/solid/Tip";
+import { HOSTING } from "../hosting";
 
 /**
  * The status bar's Feedback button and its dialog: a message, an optional address to answer, and, if the sender
@@ -39,7 +40,7 @@ function environment(failing: string[]): Record<string, string> {
     browser: navigator.userAgent,
     window: `${innerWidth}×${innerHeight} @${devicePixelRatio}x`,
     ...(failing.length ? { unsupported: failing.join(", ") } : {}),
-    ...(import.meta.env.CANARY ? { build: "canary" } : {}),
+    ...(HOSTING.canary ? { build: "canary" } : {}),
   };
 }
 

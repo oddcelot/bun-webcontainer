@@ -6,6 +6,7 @@ import "@fontsource/pixelify-sans/latin-600.css";
 import "@fontsource/pixelify-sans/latin-700.css";
 // The landing page's shared 8-bit parts (cards, buttons, dumplings); see style.css #landing.
 import "@runbun/ui/css/retro.css";
+import { HOSTING } from "./hosting";
 
 // index.html's script. On the landing page (runbun.dev/ on a first visit), "Open the playground" starts the
 // playground in place: no navigation, and the landing page is dropped. index.html's head script picks the view.
@@ -20,7 +21,7 @@ function showPlayground() {
   try {
     // Later visits skip the landing page (index.html's head script reads this).
     localStorage.setItem("playground.opened", "1");
-    document.title = `Bun Playground · ${sessionStorage.getItem("title") || "Bun playground"} · runbun.dev`;
+    document.title = `Bun Playground · ${sessionStorage.getItem("title") || "Bun playground"} · ${HOSTING.name}`;
   } catch {}
 }
 

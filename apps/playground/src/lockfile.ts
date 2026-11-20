@@ -7,6 +7,7 @@ import { flattenOverrides, overridesInLock, overridesOf } from "./overrides";
 import { lockedGitHub, lockedGitRepo, tarballPath, type GitHubDep } from "./gitDeps";
 import { links } from "./links";
 import { BASE } from "./base";
+import { HOSTING } from "./hosting";
 import { applyPatchFile } from "./patches";
 import { untar } from "./tar";
 
@@ -186,6 +187,9 @@ function normalize(path: string): string {
 
 /** The tarball of a GitHub repository at a ref, through the playground's git proxy (worker/gitProxy.ts). */
 export const githubTarballUrl = (dep: GitHubDep) => new URL(`${BASE}git-proxy/codeload.github.com/${tarballPath(dep)}`, location.href).href;
+/** Why GitHub dependencies can't install here, if they can't: their tarballs come through the git proxy. */
+export const githubUnavailable = () =>
+  HOSTING.worker ? undefined : "GitHub dependencies install through a git proxy, which this playground doesn't have (runbun.dev has one)";
 
 /**
  * INSTALLED_AS_BYTES: installed files go into the VFS as the tarball's bytes, not decoded to strings. V8 stores a
@@ -214,6 +218,8 @@ async function packageTarball(vfs: Pick<VFS, "files" | "readBytes">, id: { name:
     return { tgz: bytes, url };
   }
   if (gh) {
+    const unavailable = githubUnavailable();
+    if (unavailable) throw new Error(`${id.name}: ${unavailable}`);
     const integrity = entry[3];
     const url = githubTarballUrl(gh);
     return { tgz: await fetchTarball(url, typeof integrity === "string" && integrity ? (b) => checkIntegrity(b, integrity) : undefined), url };

@@ -14,6 +14,7 @@ import { Feedback } from "./Feedback";
 import { StatusPill } from "./Status";
 import { Tip } from "@runbun/ui/solid/Tip";
 import { Menu, MenuGroup, MenuItem, MenuTrigger } from "@runbun/ui/solid/Menu";
+import { HOSTING } from "../hosting";
 
 /** What Bun treats a file as, by extension (its loader), named as editors do. */
 const LANGUAGES: Record<string, string> = {
@@ -180,10 +181,16 @@ export function StatusBar(props: { treeShown: boolean; toggleFiles(): void; togg
       >
         Bun {BUN_VERSION}
       </Tip>
-      <Feedback />
-      <Tip as="a" href={`${import.meta.env.BASE_URL}about`} target="_blank" rel="noopener" placement="top-end" tip="What runbun.dev is and how it runs Bun">
-        About
-      </Tip>
+      {/* Feedback goes to runbun.dev's Worker (the hosting file's `worker`). */}
+      <Show when={HOSTING.worker}>
+        <Feedback />
+      </Show>
+      {/* The landing page, which a host can leave out (the hosting file's `landing`). */}
+      <Show when={HOSTING.landing}>
+        <Tip as="a" href={`${import.meta.env.BASE_URL}about`} target="_blank" rel="noopener" placement="top-end" tip="What runbun.dev is and how it runs Bun">
+          About
+        </Tip>
+      </Show>
       <Tip as="a" href={`${DOCS}privacy/`} target="_blank" rel="noopener" placement="top-end" tip="Privacy: no tracking, and what is stored">
         Privacy
       </Tip>

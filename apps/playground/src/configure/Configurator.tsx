@@ -15,6 +15,7 @@ import { Input } from "@runbun/ui/solid/Input";
 import { Select } from "@runbun/ui/solid/Select";
 import { highlightSnippet } from "./highlight";
 import { attributes, elementSnippet, iframeSnippet, inlineFile, type Attr, type Form } from "./snippet";
+import { HOSTING } from "../hosting";
 
 // runbun.dev/configure: a form over every <bun-playground> option, a live embed with those options, and the snippet to
 // paste. The form's Look settings go to the embed only; the page wears the docs' theme when they frame it.
@@ -57,7 +58,7 @@ const FEATURE_INFO: Record<Feature, string> = {
   format: "Format button, bun fmt. 7 MB on first use",
   install: "Install button",
   terminal: "Interactive terminal",
-  open: "Open in runbun.dev",
+  open: `Open in ${HOSTING.name}`,
   watch: "Restart the program when an edit is saved",
   autosave: "An Auto-save switch over the editor",
   close: "Close buttons on the tabs. On in full mode",

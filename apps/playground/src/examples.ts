@@ -1,5 +1,6 @@
 import type { VFS } from "@runbun/vfs";
 import type { LibraryProject } from "@runbun/embed/protocol";
+import { HOSTING } from "./hosting";
 import { readConfig } from "./projectConfig";
 
 // The gallery's projects come from the examples repo (oddcelot/runbun-examples), a git submodule at examples/: each
@@ -54,21 +55,28 @@ const KIND_ORDER: ProjectKind[] = ["starter", "example", "github"];
 /** A card's icon: its first tag's logo, else Bun's. */
 const iconOf = (tags: string[]) => tags.map((t) => techIcons[t]).find(Boolean) ?? "i-logos-bun?bg";
 
-export const catalog: CatalogEntry[] = Object.entries(metas)
+/** The hosting file's `gallery` (src/hosting.ts): only these folders, in its order; else all of them by their `order`. */
+const shown = HOSTING.gallery;
+/** Every project of the examples repo, gallery or not: `?example=` and embeds open any of them. */
+const everything = Object.entries(metas)
   .filter(([, m]) => m.name)
   .map(([folder, m]) => {
     const entry: CatalogEntry = {
-      value: m.repo ? `repo:${m.repo}` : folder === "demo" ? "" : folder,
+      // The demo is the bare URL, unless the host opens another project there (defaultProject).
+      value: m.repo ? `repo:${m.repo}` : folder === "demo" && !HOSTING.defaultProject ? "" : folder,
       kind: m.repo ? "github" : (m.kind ?? "example"),
       name: m.name!,
       description: m.description ?? "",
       tags: m.tags ?? [],
       icon: iconOf(m.tags ?? []),
     };
-    return [entry, m.order ?? Infinity] as const;
+    return [entry, folder, shown ? shown.indexOf(folder) : (m.order ?? Infinity)] as const;
   })
-  .sort(([a, ao], [b, bo]) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || ao - bo || a.name.localeCompare(b.name))
-  .map(([entry]) => entry);
+  .sort(([a, , ao], [b, , bo]) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || ao - bo || a.name.localeCompare(b.name));
+
+/** The gallery's projects (ui/ProjectPicker.tsx). */
+export const catalog: CatalogEntry[] = everything.filter(([, folder]) => !shown || shown.includes(folder)).map(([entry]) => entry);
+const all = everything.map(([entry]) => entry);
 
 /**
  * An embed's library (`library` on <bun-playground>, protocol.ts) as gallery entries, valued by id: starters first,
@@ -89,11 +97,11 @@ export function libraryCatalog(projects: LibraryProject[]): CatalogEntry[] {
 }
 
 /** The bundled projects (starters and examples) by fixture name, for labels; the demo isn't one. */
-export const examples: Record<string, string> = Object.fromEntries(catalog.filter((e) => e.kind !== "github" && e.value).map((e) => [e.value, e.name]));
+export const examples: Record<string, string> = Object.fromEntries(all.filter((e) => e.kind !== "github" && e.value).map((e) => [e.value, e.name]));
 
 /** Public GitHub repos in the gallery, by `?repo=` query (see github.ts). */
 export const repoExamples: Record<string, string> = Object.fromEntries(
-  catalog.filter((e) => e.kind === "github").map((e) => [e.value.slice(5), `${e.name} (from GitHub)`]),
+  all.filter((e) => e.kind === "github").map((e) => [e.value.slice(5), `${e.name} (from GitHub)`]),
 );
 
 /** The files of the examples repo's `<name>/` (`demo` included) by path, without touching the VFS; null if there is no such example. */
