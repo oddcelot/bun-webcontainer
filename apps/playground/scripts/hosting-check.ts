@@ -96,6 +96,7 @@ if (dev.contentOrigin !== "http://run.runbun.localhost:5199" || dev.editorOrigin
     want("sitemap.xml lists the new site", read("sitemap.xml") === "<loc>https://example.org/play/</loc>\n");
     const runtime = JSON.parse(/export default (.*);/.exec(read("hosting.js"))![1]);
     want("hosting.js has the gallery and default project", runtime.gallery.join() === "solid-vite-hmr,starter-http" && runtime.defaultProject === "solid-vite-hmr" && runtime.name === "Solid Playground");
+    want("hosting.js names the hosting file, not its path", read("hosting.js").startsWith(`// hosting/configure.ts from ${solid.split("/").at(-1)};`));
     want("hosting.js has the new host", read("hosting.js").includes('"contentOrigin":"https://run.example.org"') && !read("hosting.js").includes("runbun.dev"));
     const headers = read("_headers");
     want("_headers keeps its own rules", headers.startsWith("/*\n  Cross-Origin-Opener-Policy: same-origin\n"));
