@@ -41,6 +41,7 @@ All fields are optional:
   `"transition"` is how a theme switch reveals the new colors: `"logo"` (the default) in the shape of your logo,
   `"circle"` in a plain circle, `"none"` at once.
 - `localRunner`: `false` leaves out the header's Local Bun switch. Default: true.
+- `debugger`: `true` turns on the step debugger, a prototype. Default: false.
 
 `hosting.example.json` is a whole one: a Solid playground with the logos in `brand/`.
 

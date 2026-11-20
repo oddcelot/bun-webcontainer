@@ -42,7 +42,7 @@ A Git view in place of the file tree, and a `git` command in the console, both r
 
 ### Debugger
 
-Set breakpoints, step through code and evaluate expressions while the program is paused.
+Set breakpoints, step through code and evaluate expressions while the program is paused. A prototype, off unless the hosting file turns it on.
 
 [Debugger →](/playground/running-code/#debugger)
 

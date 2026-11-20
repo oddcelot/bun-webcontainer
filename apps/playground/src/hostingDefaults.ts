@@ -15,6 +15,7 @@ export default {
   landing: true,
   worker: true,
   localRunner: true,
+  debugger: false,
   brand: null,
   theme: null,
 } satisfies RuntimeHosting;

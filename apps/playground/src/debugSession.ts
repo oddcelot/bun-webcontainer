@@ -9,6 +9,7 @@
  */
 import { createSignal } from "solid-js";
 import { CONTENT_ORIGIN } from "./contentOrigin";
+import { HOSTING } from "./hosting";
 import { isHostIsolated, onHost } from "./contentHost";
 import { CommandQueue, CTL_INTS, DEBUG_BUFFER_BYTES, type DebugCommand, type DebugPaused, type DebugStart } from "./debugProtocol";
 
@@ -20,8 +21,9 @@ const STORE_KEY = "bwc:breakpoints";
 const [hostIsolated, setHostIsolated] = createSignal(false);
 if (CONTENT_ORIGIN) onHost(() => setHostIsolated(isHostIsolated()));
 
+// Off unless the hosting file turns it on (`debugger`): a prototype.
 export const debugAvailable = (): boolean =>
-  CONTENT_ORIGIN ? hostIsolated() : typeof SharedArrayBuffer === "function" && globalThis.crossOriginIsolated === true;
+  HOSTING.debugger && (CONTENT_ORIGIN ? hostIsolated() : typeof SharedArrayBuffer === "function" && globalThis.crossOriginIsolated === true);
 
 function loadBreakpoints(): Record<string, number[]> {
   try {

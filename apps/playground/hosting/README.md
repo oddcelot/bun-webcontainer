@@ -59,6 +59,8 @@ Fields, all optional:
   dumpling), `"circle"` in a plain circle, `"none"` at once, without a view transition (`src/theme.ts`). Default:
   Pierre, no variables, `"logo"`.
 - `localRunner`: `false` leaves out the header's Local Bun switch (`packages/connect`). Default: `true`.
+- `debugger`: `true` turns on the step debugger, a prototype: the Debug buttons, breakpoints and the Debug panel
+  (`src/debugSession.ts`). Default: `false`; `DEBUGGER=1` turns it on for one dev server or build.
 
 - `worker`: the host runs `worker/index.ts` next to the files (`wrangler.jsonc`): short links, Feedback, signing in
   with GitHub and the git proxy (git clone, GitHub dependencies). Without it the playground leaves them out: no short
