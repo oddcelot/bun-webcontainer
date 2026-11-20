@@ -73,6 +73,7 @@ moon run astro-demo:check-static                       # a static <Code> page st
 moon run connect:test                                  # the local runner end to end (sandbox-exec on macOS; bwrap on Linux)
 moon run playground:fmt-examples                       # the gallery's projects (examples/ submodule, demo included) are `bun fmt`-clean
 moon run playground:check-examples                     # each of them installs and runs in the playground (headless Chrome)
+moon run playground:check-examples-split playground:check-examples-preview  # the same on a content origin, and from a production build
 moon run playground:test-lockfile                      # the bun.lock an install writes = native bun install's (needs npm)
 moon run playground:test-sqlite                         # bun:sqlite (SQLite's wasm build) vs native Bun: errors, safeIntegers, as(), deserialize (headless Chrome)
 moon run playground:test-processes                     # child processes (Bun.spawn, child_process, Bun.$) vs native Bun (headless Chrome)
@@ -104,6 +105,7 @@ bun install                                # root bun workspace (playground, doc
                                            # node_modules per package; shared versions in package.json's catalog
 (cd apps/playground && bunx tsrs --noEmit && bun run dev)      # verify in Chrome (Memory64)
 (cd apps/docs && bun run check && bun run build)               # docs site; `bun run deploy` publishes docs.runbun.dev
+moon run playground:deploy                               # runbun.dev: build, the three example checks, then wrangler deploy
 moon run playground:deploy-canary docs:deploy-canary      # canary.runbun.dev + docs-canary.runbun.dev (noindex)
 scripts/dev.ts                                           # playground (:5173) + docs (:4321) dev servers; docs embeds need both
 (cd apps/playground && bun run swatches)                       # after changing theme families: packages/ui/themes.json (also the swatches), code-themes/

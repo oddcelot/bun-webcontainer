@@ -140,6 +140,24 @@ tasks:
     toolchains: ['bun']
     options:
       cache: false
+      # The three share port 5199 and the examples' installs.
+      mutex: 'check-examples'
+  check-examples-split:
+    # The same with project code on its own origin (run.runbun.localhost), as runbun.dev runs it on run.runbun.dev:
+    # what crosses from the editor's origin to the content origin (BroadcastChannel, shared memory, relayed ports).
+    command: 'bun scripts/check-examples.ts --split'
+    toolchains: ['bun']
+    options:
+      cache: false
+      mutex: 'check-examples'
+  check-examples-preview:
+    # The same against a production build (dist-check/, vite preview): Vite's worker chunks and inlined assets, which
+    # the dev server doesn't have.
+    command: 'bun scripts/check-examples.ts --preview'
+    toolchains: ['bun']
+    options:
+      cache: false
+      mutex: 'check-examples'
   test-processes:
     # Child processes end to end (scripts/processes.ts): a project that spawns, pipes, kills and nests children runs
     # in the embed in headless Chrome, on the editor's origin and on a content origin, and prints what native Bun
@@ -386,6 +404,20 @@ tasks:
     options:
       cache: false
       runInCI: false
+  deploy:
+    # runbun.dev: the production build, deployed once the gallery runs on the dev server, with a split content origin
+    # and from a production build (runbun.dev runs code on run.runbun.dev, from built chunks; each catches what the
+    # others can't). One after another: they share a port, and the preview build copies the wasm the build does.
+    command: 'bunx wrangler deploy --env=""'
+    deps:
+      - 'build'
+      - 'check-examples'
+      - 'check-examples-split'
+      - 'check-examples-preview'
+    options:
+      cache: false
+      runInCI: false
+      runDepsInParallel: false
   deploy-canary:
     # canary.runbun.dev (wrangler.jsonc env.canary): a production build into dist-canary/ that links docs-canary, so
     # moon's cached dist/ stays the runbun.dev build. noindex keeps it out of search results.
