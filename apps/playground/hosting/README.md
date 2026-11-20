@@ -44,7 +44,11 @@ Fields, all optional:
   64 kB; `logoDark` for dark themes) and `name` stand in the header where runbun has its dumpling and the visit's
   random name, linking to `home` if it names one; the logo is the page's icon; `name` alone is the page title, and
   `description` the pages' description. The status bar's About link then opens runbun.dev's about page (its tip: "Powered by runbun"), unless `landing` is on. Configure reads the logos into
-  `hosting.js` as data: URLs, so there is no file to serve. Default: none, runbun's own.
+  `hosting.js` as data: URLs, so there is no file to serve. `card` is the picture a shared link gets (og:image) in
+  place of runbun's kitchen: a 1200x630 PNG next to the hosting file, at most 1 MB, which configure copies into the
+  folder as `brand-card-<hash>.png`; `cardAlt` says what it shows (default: `name`).
+  `bun scripts/brand-card.ts <hosting.json> <card.png>` draws one from the file's logo, name, description and theme
+  (the example's `brand/solid-card.png`). Default: none, runbun's own.
 - `theme`: how the playground looks before a visitor picks a theme. `family` is the theme family a first visit gets,
   by its light variant (`"solid-light"`, `"github-light"`; `src/themeColors.ts` lists them). `vars` are CSS custom
   properties on top of every theme's, in the embed's `vars` shape: `base` for both schemes, `light` and `dark` for

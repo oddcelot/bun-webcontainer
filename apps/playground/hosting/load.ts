@@ -13,6 +13,7 @@
  * The Cloudflare Worker's side (wrangler.jsonc: routes, KV and D1 bindings, vars) is not read from here: wrangler only
  * reads its own config. scripts/hosting-check.ts checks that wrangler.jsonc's vars name the same hosts as these files.
  */
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, extname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -70,6 +71,13 @@ export interface HostingFile {
     home?: string;
     /** The pages' description, for search results and share cards. Default: runbun's. */
     description?: string;
+    /**
+     * The picture a link to the playground gets where it is shared (og:image): a PNG next to the hosting file, 1200 by
+     * 630 pixels, at most 1 MB. Configure copies it into the folder. Default: runbun's.
+     */
+    card?: string;
+    /** What the card shows, for people who can't see it. Default: `name`. */
+    cardAlt?: string;
   };
   /** How the playground looks before a visitor picks a theme themself. */
   theme?: {
@@ -90,12 +98,18 @@ export interface HostingVars {
   dark?: Record<string, string>;
 }
 
-/** A hosting file's `brand`, its logo files read into data: URLs (hosting.js carries them; nothing to copy or serve). */
+/**
+ * A hosting file's `brand`, its logo files read into data: URLs (hosting.js carries them; nothing to copy or serve).
+ * The card is a file: `file` is the name configure gives it in the folder, from its contents (share sites cache a
+ * picture by its URL).
+ */
 export interface HostingBrand {
   logo: string;
   logoDark: string | null;
   home: string | null;
   description: string | null;
+  card: { file: string; data: Uint8Array } | null;
+  cardAlt: string | null;
 }
 
 /** The settings a build uses, defaults filled in, URLs normalized. */
@@ -152,6 +166,26 @@ function logo(value: unknown, field: string, dir: string, path: string): string 
   return `data:${type};base64,${data.toString("base64")}`;
 }
 
+const CARD_MAX = 1024 * 1024;
+const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+/** A share card: a 1200x630 PNG. `dir` is the hosting file's folder. */
+function card(value: unknown, dir: string, path: string): { file: string; data: Uint8Array } {
+  if (typeof value !== "string" || !value) throw new Error(`${path}: brand.card must be a file path, relative to the hosting file`);
+  let data: Buffer;
+  try {
+    data = readFileSync(resolve(dir, value));
+  } catch (e) {
+    throw new Error(`${path}: brand.card: ${(e as Error).message}`);
+  }
+  // A PNG starts with its signature, then the IHDR chunk: the width and height at bytes 16 and 20.
+  if (data.length < 24 || PNG.some((b, i) => data[i] !== b)) throw new Error(`${path}: brand.card must be a PNG file: ${value}`);
+  const [width, height] = [data.readUInt32BE(16), data.readUInt32BE(20)];
+  if (width !== 1200 || height !== 630) throw new Error(`${path}: brand.card is ${width}x${height}; a share card is 1200x630`);
+  if (data.length > CARD_MAX) throw new Error(`${path}: brand.card is ${data.length} bytes; a card may be 1 MB at most`);
+  return { file: `brand-card-${createHash("sha256").update(data).digest("hex").slice(0, 12)}.png`, data };
+}
+
 const VAR_NAME = /^--[a-z0-9-]+$/i;
 function vars(value: unknown, field: string, path: string): Record<string, string> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${path}: ${field} must be an object of CSS custom properties`);
@@ -166,8 +200,11 @@ function fields(value: unknown, field: string, known: string[], path: string): R
   return value as Record<string, unknown>;
 }
 
-/** Reads and checks a hosting file; throws with the file's name on anything it doesn't know. */
-export function readHostingFile(path: string): Omit<HostingFile, "brand"> & { brand?: HostingBrand } {
+/**
+ * Reads and checks a hosting file; throws with the file's name on anything it doesn't know. `card: false` leaves the
+ * brand's card unread, for the script that draws it (scripts/brand-card.ts).
+ */
+export function readHostingFile(path: string, read: { card?: boolean } = {}): Omit<HostingFile, "brand"> & { brand?: HostingBrand } {
   const file = isAbsolute(path) ? path : resolve(here, path);
   let data: unknown;
   try {
@@ -209,16 +246,20 @@ export function readHostingFile(path: string): Omit<HostingFile, "brand"> & { br
     out.defaultProject = d.defaultProject;
   }
   if (d.brand !== undefined) {
-    const b = fields(d.brand, "brand", ["logo", "logoDark", "home", "description"], path);
+    const b = fields(d.brand, "brand", ["logo", "logoDark", "home", "description", "card", "cardAlt"], path);
     const dir = dirname(file);
     if (b.home !== undefined && (typeof b.home !== "string" || !/^https?:$/.test(URL.parse(b.home)?.protocol ?? ""))) throw new Error(`${path}: brand.home must be an http(s) URL`);
     if (b.description !== undefined && (typeof b.description !== "string" || !b.description.trim() || /[<>"&]/.test(b.description)))
       throw new Error(`${path}: brand.description must be a non-empty string without < > " &`);
+    if (b.cardAlt !== undefined && (typeof b.cardAlt !== "string" || !b.cardAlt.trim() || /[<>"&]/.test(b.cardAlt))) throw new Error(`${path}: brand.cardAlt must be a non-empty string without < > " &`);
+    if (b.cardAlt !== undefined && b.card === undefined) throw new Error(`${path}: brand.cardAlt describes brand.card, which isn't set`);
     out.brand = {
       logo: logo(b.logo, "brand.logo", dir, path),
       logoDark: b.logoDark === undefined ? null : logo(b.logoDark, "brand.logoDark", dir, path),
       home: (b.home as string | undefined) ?? null,
       description: (b.description as string | undefined)?.trim() ?? null,
+      card: b.card === undefined || read.card === false ? null : card(b.card, dir, path),
+      cardAlt: (b.cardAlt as string | undefined)?.trim() ?? null,
     };
   }
   if (d.theme !== undefined) {

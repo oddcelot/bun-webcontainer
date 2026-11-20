@@ -15,7 +15,7 @@
  * - _headers (Cloudflare, Netlify): the content origin's rules, which have to name its host.
  */
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { loadHosting, type Hosting } from "./load.ts";
 
@@ -26,7 +26,12 @@ import { loadHosting, type Hosting } from "./load.ts";
 const BUILT = { docsUrl: "https://docs.runbun.dev/", siteUrl: "https://runbun.dev/", name: "runbun.dev", brand: null as RuntimeBrand | null };
 /** The pages' description as index.html has it (the same text in its meta, og: and twitter: tags). */
 const DESCRIPTION = "Run Bun.serve apps, install packages and edit TypeScript in a tab, built from Bun&#39;s own Rust crates compiled to wasm64.";
-type RuntimeBrand = { logo: string; logoDark: string | null; home: string | null; description: string | null };
+/** What index.html's share card shows (the same text in its og: and twitter: tags). */
+const CARD_ALT = "A pixel-art kitchen counter with a dumpling in a bamboo steamer, under the words: Bun in your browser";
+/** A brand as hosting.js has it: `card` is its share card's file name in the folder. */
+type RuntimeBrand = { logo: string; logoDark: string | null; home: string | null; description: string | null; card?: string | null; cardAlt?: string | null };
+/** A share card's tag, and the build's own picture when a brand's stands in for it. */
+const CARD_TAG = /(property="og:image"|name="twitter:image") content="([^"]*)"(?: data-built="([^"]*)")?/g;
 
 /**
  * The texts a `brand` changes in the HTML, for a host's name and brand: the pages' titles (index.html's, its share
@@ -36,12 +41,15 @@ type RuntimeBrand = { logo: string; logoDark: string | null; home: string | null
  */
 function pageTexts(name: string, brand: RuntimeBrand | null): string[] {
   const description = `content="${brand?.description ?? DESCRIPTION}"`;
-  if (brand) return [`<title>${name}</title><!-- embed -->`, `<title>${name}</title>`, `:title" content="${name}"`, description];
+  // A brand's card says what it shows; without one the picture is still the build's.
+  const alt = `:alt" content="${brand?.card ? (brand.cardAlt ?? name) : CARD_ALT}"`;
+  if (brand) return [`<title>${name}</title><!-- embed -->`, `<title>${name}</title>`, `:title" content="${name}"`, description, alt];
   return [
     `<title>Bun playground · ${name}</title>`,
     `<title>Bun Playground: Run Bun Online in Your Browser | ${name}</title>`,
     `:title" content="Bun Playground: run Bun in your browser · ${name}"`,
     description,
+    alt,
   ];
 }
 
@@ -72,7 +80,8 @@ export function runtimeHosting(h: Hosting, base = "/") {
     landing: h.landing,
     worker: h.worker,
     localRunner: h.localRunner,
-    brand: h.brand ?? null,
+    // The card's picture is a file configure() writes; hosting.js names it.
+    brand: h.brand ? { ...h.brand, card: h.brand.card?.file ?? null } : null,
     theme: h.theme ?? null,
   };
 }
@@ -131,6 +140,11 @@ export function configure(dist: string, hosting: Hosting, base = "/"): void {
       /<html([^>]*?)( data-landing="off")?( data-brand="[^"]*")?>/,
       (_, attrs) => `<html${attrs}${next.landing ? "" : ' data-landing="off"'}${next.brand ? ` data-brand="${next.name}"` : ""}>`,
     );
+    // The share card: a brand's picture in place of the build's, whose URL stays in the tag for another configure.
+    html = html.replace(CARD_TAG, (_, tag: string, url: string, kept?: string) => {
+      const built = kept ?? url.slice(url.lastIndexOf("/") + 1);
+      return next.brand?.card ? `${tag} content="${next.siteUrl}${next.brand.card}" data-built="${built}"` : `${tag} content="${next.siteUrl}${built}"`;
+    });
     // The page's icon: a brand's logo in place of the build's icons and web manifest (runbun's), which stay in the
     // HTML under a rel no browser reads, so another configure can bring them back.
     html = html.replace(BRAND_ICON, "");
@@ -138,6 +152,10 @@ export function configure(dist: string, hosting: Hosting, base = "/"): void {
     if (next.brand) html = html.replace("</head>", `  <link rel="icon" data-brand href="${next.brand.logo}" />\n  </head>`);
     writeFileSync(file, html);
   }
+  // The brand's card, under a name from its contents; the one before it goes.
+  const card = hosting.brand?.card;
+  if (before.brand?.card && before.brand.card !== card?.file && /^brand-card-[0-9a-f]+\.png$/.test(before.brand.card)) rmSync(join(dist, before.brand.card), { force: true });
+  if (card) writeFileSync(join(dist, card.file), card.data);
   // Search engines find the site under its own URL.
   for (const name of ["robots.txt", "sitemap.xml"]) {
     const file = join(dist, name);

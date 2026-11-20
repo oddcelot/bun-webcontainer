@@ -36,9 +36,9 @@ export interface RuntimeHosting {
   localRunner: boolean;
   /**
    * The host's own brand, or null for runbun's: its logo (data: URLs) and `name` in the header, `name` as the page
-   * title, "Powered by runbun" in the status bar.
+   * title, its share card (`card`: the picture's file name in the folder), and About opening runbun.dev's about page.
    */
-  brand: { logo: string; logoDark: string | null; home: string | null; description: string | null } | null;
+  brand: { logo: string; logoDark: string | null; home: string | null; description: string | null; card: string | null; cardAlt: string | null } | null;
   /** The theme family first-time visitors get (its light variant), and chrome variables on top of every theme's. */
   theme: { family?: string; vars?: Vars } | null;
 }
