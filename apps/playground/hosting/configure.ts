@@ -16,7 +16,7 @@
  */
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { loadHosting, type Hosting } from "./load.ts";
 
 /**
@@ -77,7 +77,9 @@ export function configure(dist: string, hosting: Hosting, base = "/"): void {
       if (!folders.has(name)) throw new Error(`${hosting.file ?? "hosting"}: no example "${name}" in this build (${[...folders].join(", ")})`);
   }
 
-  writeFileSync(join(dist, "hosting.js"), `// hosting/configure.ts${hosting.file ? ` from ${hosting.file}` : ""}; read by src/hosting.ts.\nexport default ${JSON.stringify(next)};\n`);
+  // The hosting file by name only: hosting.js is public, and its path is the deployer's machine.
+  const from = hosting.file ? ` from ${basename(hosting.file)}` : "";
+  writeFileSync(join(dist, "hosting.js"), `// hosting/configure.ts${from}; read by src/hosting.ts.\nexport default ${JSON.stringify(next)};\n`);
 
   // The HTML's static parts, which load before any script: the docs links, the canonical and share-card URLs, the
   // site's name in the titles, and whether index.html's head script may show the landing page (data-landing).
