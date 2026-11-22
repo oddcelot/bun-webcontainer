@@ -13,7 +13,9 @@ export function previewDevtools() {
     "html, body { height: 100%; margin: 0; background: oklch(0.16 0.015 265); }" +
     "[data-solid-dev-toolbar] { position: fixed !important; inset: 0 !important; }" +
     "[data-solid-dev-toolbar-dock], [data-solid-dev-toolbar-dock][hidden] { display: flex !important; height: 100% !important; max-height: none !important; border-top: 0 !important; box-shadow: none !important; }" +
-    "[data-solid-dev-toolbar-handle], [data-solid-dev-toolbar-resize] { display: none !important; }";
+    "[data-solid-dev-toolbar-handle], [data-solid-dev-toolbar-resize] { display: none !important; }" +
+    // Its close button, the one icon button without a name: the dock hides the pane.
+    "[data-solid-dev-toolbar-dock] [data-solid-icon-button]:not([title]):not([aria-label]) { display: none !important; }";
   /** The dock's frame (ui/Devtools.tsx), a sibling of this one; undefined without it or on another origin. */
   const frame = (): Document | undefined => {
     try {
