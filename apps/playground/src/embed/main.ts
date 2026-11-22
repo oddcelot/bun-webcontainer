@@ -12,7 +12,7 @@ import { BUN_VERSION } from "../worker/bunVersion";
 import { isFeature, isLayout, isMode, lockedFeatures, optionsFromUrl, resolveFeatures } from "./config";
 import { mountEmbed } from "./mount";
 import { parseRequests } from "./requests";
-import { readConfig, type ProjectConfig } from "../projectConfig";
+import { CONFIG_FILE, readConfig, type ProjectConfig } from "../projectConfig";
 import { watchChanges } from "./changes";
 import { installWriting } from "../install";
 import { responseReserve } from "../preview";
@@ -398,6 +398,7 @@ function applyConfig(inline: boolean): ProjectConfig {
   for (const p of problems) log("warn", `[config] ${p}`);
   // Hidden ones (generated, such as a package.json) stay in the project and the tree, out of the tabs.
   const hidden = new Set([...(init?.hidden ?? []).map(bare), ...(config.hidden ?? [])]);
+  if (workspace.isHiddenConfig(CONFIG_FILE)) hidden.add(CONFIG_FILE);
   workspace.setReadonly(config.readonly ?? []);
   const listed = inline ? Object.keys(initFiles).map(bare) : (config.open ?? []);
   const tabs = listed.filter((path) => vfs.files.has(path) && !hidden.has(path));

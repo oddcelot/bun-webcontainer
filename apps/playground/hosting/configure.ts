@@ -82,6 +82,7 @@ export function runtimeHosting(h: Hosting, base = "/") {
     worker: h.worker,
     localRunner: h.localRunner,
     debugger: h.debugger,
+    showConfig: h.showConfig,
     panels: h.panels ?? null,
     // The card's picture is a file configure() writes; hosting.js names it.
     brand: h.brand ? { ...h.brand, card: h.brand.card?.file ?? null } : null,

@@ -5,7 +5,8 @@
     pointer-events: none !important;
   }
   .tooltip {
-    z-index: 40;
+    /* Over everything, dialogs (41) and their popups (45) included. */
+    z-index: 50;
     display: flex;
     flex-wrap: wrap;
     align-items: center;

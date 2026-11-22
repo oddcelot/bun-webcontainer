@@ -18,7 +18,7 @@ import { setThemeVars, urlVars } from "./theme";
 import { showCanaryBadge } from "./canary";
 import { setBaseline, setBaselineSource } from "./changes";
 import { parseRequests } from "./embed/requests";
-import { readConfig, type ProjectConfig } from "./projectConfig";
+import { CONFIG_FILE, readConfig, type ProjectConfig } from "./projectConfig";
 import { git, release } from "./git/git";
 import { gitName, gitUrl } from "./git/remoteUrl";
 
@@ -283,6 +283,7 @@ function applyConfig(): ProjectConfig {
   const config = readConfig((path) => vfs.readText(path), problems);
   for (const p of problems) log("warn", `[config] ${p}`);
   const hidden = new Set(config.hidden ?? []);
+  if (workspace.isHiddenConfig(CONFIG_FILE)) hidden.add(CONFIG_FILE);
   workspace.setReadonly(config.readonly ?? []);
   const tabs = (config.open ?? []).filter((p) => vfs.files.has(p) && !hidden.has(p));
   for (const path of tabs) openFile(path);

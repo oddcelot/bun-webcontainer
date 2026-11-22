@@ -118,6 +118,10 @@ The editor is where you write the project's files, with a file tree, tabs and a 
 
 Large files open and scroll quickly: the editor renders only the lines in view.
 
+## Settings
+
+The gear in the header opens **Settings**, a full-window page with its sections in a sidebar. The **Playground** sections hold your own settings, kept in this browser for every project: **Editor** (auto-save, format on save, and whether the project's `runbun.json` shows in the file tree and the tabs; hidden, it still applies) and **Running** (restart on save, the [fast path](/playground/fast-path/)). The **Project** sections edit the open project's [`runbun.json`](/guides/project-config/) as a form: **Entry & env**, **Files**, **Layout**, **Preview** and **Gallery card**. **Open runbun.json** opens the file itself.
+
 ## Keyboard shortcuts
 
 | Shortcut | Does |

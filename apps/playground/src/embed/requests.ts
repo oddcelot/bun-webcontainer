@@ -35,3 +35,10 @@ export function parseRequests(list: string): PresetRequest[] {
   }
   return out;
 }
+
+/** A preset as `parseRequests` reads it back: METHOD /path, each header as -H "Name: value", then the body. */
+export function formatRequest(r: PresetRequest): string {
+  const quote = (s: string) => (s.includes('"') ? `'${s}'` : `"${s}"`);
+  const path = r.path.startsWith("/") ? r.path : `/${r.path}`;
+  return [`${r.method} ${path}`, ...(r.headers ?? []).map(([n, v]) => `-H ${quote(`${n}: ${v}`)}`), r.body.trim()].filter(Boolean).join(" ");
+}

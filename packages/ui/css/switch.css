@@ -1,0 +1,61 @@
+/* Switch: an on/off toggle, a track with a sliding thumb. Over the uno preset's tokens. */
+@layer runbun-ui {
+  .switch {
+    position: relative;
+    flex-shrink: 0;
+    width: 32px;
+    height: 18px;
+    padding: 0;
+    border: 1px solid var(--control-border);
+    border-radius: 999px;
+    background: var(--control);
+    cursor: pointer;
+    transition:
+      background 0.15s,
+      border-color 0.15s;
+
+    .thumb {
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--muted);
+      transition:
+        translate 0.15s,
+        background 0.15s;
+    }
+
+    &:hover {
+      border-color: color-mix(in srgb, var(--fg) 30%, var(--control-border));
+    }
+    &:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+    &[aria-checked="true"] {
+      border-color: var(--accent);
+      background: var(--accent);
+
+      .thumb {
+        translate: 14px 0;
+        background: var(--panel);
+      }
+    }
+    &[data-unset] {
+      opacity: 0.55;
+    }
+    &:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .switch,
+    .switch .thumb {
+      transition: none;
+    }
+  }
+}

@@ -1,0 +1,135 @@
+/* PathList: rows of paths, each removable, in one box whose last row adds one. Over the uno preset's tokens. */
+@layer runbun-ui {
+  .path-list {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--control-border);
+    border-radius: var(--inner-radius);
+    list-style: none;
+
+    > li {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      height: 32px;
+      padding: 0 5px 0 10px;
+      font: 12px var(--font-mono);
+
+      & + li {
+        border-top: 1px solid color-mix(in srgb, var(--control-border) 60%, transparent);
+      }
+    }
+
+    .path {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* The add row: the field takes the path's place, the + the ×'s. */
+    > li.add {
+      padding-left: 4px;
+      background: color-mix(in srgb, var(--control) 35%, transparent);
+    }
+
+    .combobox,
+    .control {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+    }
+
+    /* The input and the chevron that opens every suggestion, drawn as one field. */
+    .control {
+      align-items: center;
+      height: 24px;
+      border: 1px solid transparent;
+      border-radius: var(--inner-radius);
+
+      &:focus-within {
+        border-color: var(--control-border);
+        background: var(--control);
+      }
+    }
+
+    .trigger {
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      border: 0;
+      border-radius: var(--inner-radius);
+      background: none;
+      color: var(--muted);
+      cursor: pointer;
+
+      &:hover {
+        background: var(--control-hover);
+        color: var(--fg);
+      }
+
+      &[data-expanded] .chevron {
+        rotate: 180deg;
+      }
+    }
+
+    .chevron {
+      display: grid;
+      transition: rotate 0.15s;
+    }
+
+    .control .input {
+      flex: 1;
+      min-width: 0;
+      height: 24px;
+      padding: 0 6px;
+      border: 0;
+      background: none;
+      font: 12px var(--font-mono);
+      outline: none;
+    }
+
+    .remove,
+    .add-button {
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+      width: 24px;
+      height: 24px;
+      padding: 0;
+      border: 1px solid transparent;
+      border-radius: var(--inner-radius);
+      background: none;
+      color: var(--muted);
+      cursor: pointer;
+
+      &:hover:not(:disabled) {
+        background: var(--control-hover);
+        color: var(--fg);
+      }
+    }
+
+    .add-button {
+      border-color: var(--control-border);
+      background: var(--control);
+      color: var(--fg);
+
+      &:disabled {
+        color: var(--muted);
+        opacity: 0.6;
+        cursor: default;
+      }
+    }
+  }
+
+  .path-menu {
+    min-width: 0;
+    font: 12px var(--font-mono);
+  }
+}

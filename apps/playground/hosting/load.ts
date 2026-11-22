@@ -72,6 +72,11 @@ export interface HostingFile {
    */
   localRunner?: boolean;
   /**
+   * The project's runbun.json in the file tree and the tabs. false keeps it out of both (it still applies, and Settings
+   * edits it); visitors can show it again in Settings. Default: true.
+   */
+  showConfig?: boolean;
+  /**
    * The step debugger (a prototype): the Debug buttons, breakpoints and the Debug panel. Default: false (env
    * DEBUGGER=1 turns it on, like CANARY).
    */
@@ -165,6 +170,7 @@ export interface Hosting {
   worker: boolean;
   localRunner: boolean;
   debugger: boolean;
+  showConfig: boolean;
   panels?: HostingPanels;
   brand?: HostingBrand;
   theme?: { family?: string; families?: string[]; vars?: HostingVars; transition?: "logo" | "circle" | "none" };
@@ -256,7 +262,7 @@ export function readHostingFile(path: string, read: { card?: boolean } = {}): Om
     throw new Error(`HOSTING=${path}: ${(e as Error).message}`);
   }
   if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error(`${path}: not a JSON object`);
-  const known = new Set(["$schema", "docsUrl", "contentOrigin", "editorOrigins", "canary", "name", "gallery", "defaultProject", "languages", "landing", "worker", "localRunner", "debugger", "panels", "brand", "theme"]);
+  const known = new Set(["$schema", "docsUrl", "contentOrigin", "editorOrigins", "canary", "name", "gallery", "defaultProject", "languages", "landing", "worker", "localRunner", "debugger", "showConfig", "panels", "brand", "theme"]);
   for (const key of Object.keys(data)) if (!known.has(key)) throw new Error(`${path}: unknown field "${key}" (fields: ${[...known].slice(1).join(", ")})`);
   const d = data as Record<string, unknown>;
   const out: Omit<HostingFile, "brand"> & { brand?: HostingBrand } = {};
@@ -269,7 +275,7 @@ export function readHostingFile(path: string, read: { card?: boolean } = {}): Om
     if (!Array.isArray(d.editorOrigins) || d.editorOrigins.length === 0) throw new Error(`${path}: editorOrigins must be a non-empty array of origins`);
     out.editorOrigins = d.editorOrigins.map((o, i) => origin(o, `editorOrigins[${i}]`, path));
   }
-  for (const key of ["canary", "landing", "worker", "localRunner", "debugger"] as const)
+  for (const key of ["canary", "landing", "worker", "localRunner", "debugger", "showConfig"] as const)
     if (d[key] !== undefined) {
       if (typeof d[key] !== "boolean") throw new Error(`${path}: ${key} must be true or false`);
       out[key] = d[key];
@@ -376,6 +382,7 @@ export function loadHosting(mode: string, env: Record<string, string | undefined
     worker: file.worker ?? mode === "development",
     localRunner: file.localRunner ?? true,
     debugger: env.DEBUGGER ? env.DEBUGGER === "1" : (file.debugger ?? false),
+    showConfig: file.showConfig ?? true,
     panels: file.panels,
     brand: file.brand,
     theme: file.theme,

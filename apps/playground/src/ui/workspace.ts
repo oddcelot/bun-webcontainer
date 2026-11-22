@@ -4,11 +4,14 @@ import type { EditorCursor, EditorDiagnostic } from "../editors/types";
 import { pref } from "../prefs";
 import { EMBEDDED } from "../theme";
 import { bindFastPref } from "../fastPath";
+import { HOSTING } from "../hosting";
+import { CONFIG_FILE } from "../projectConfig";
 
 const AUTOSAVE_KEY = "runbun:autosave";
 const WATCH_KEY = "runbun:watch";
 const FORMAT_ON_SAVE_KEY = "runbun:format-on-save";
 const FAST_KEY = "runbun:fast";
+const SHOW_CONFIG_KEY = "runbun:show-config";
 
 /**
  * Which files are open in tabs, which one is active, and which have edits not yet written to the VFS. Writes go
@@ -45,6 +48,10 @@ export function createWorkspace() {
     ? createSignal(false)
     : pref(FAST_KEY, false, { serialize: (on) => (on ? "on" : "off"), deserialize: (s) => s === "on" });
   bindFastPref(fast);
+  /** runbun.json in the file tree and the tabs; the host's `showConfig` until the reader picks (Settings). */
+  const [showConfig, setShowConfigPref] = EMBEDDED
+    ? createSignal(HOSTING.showConfig)
+    : pref(SHOW_CONFIG_KEY, HOSTING.showConfig, { serialize: (on) => (on ? "on" : "off"), deserialize: (s) => s === "on" });
   const saved = new Set<() => void>();
   // Read-only declaration files a definition opened (TypeScript's libs, Bun's bundled types), by their checker path:
   // not the VFS's, which has no leading "/" or scheme. Kept out of the store: lib.dom.d.ts is megabytes.
@@ -83,6 +90,14 @@ export function createWorkspace() {
     setFormatOnSave,
     fast,
     setFast,
+    showConfig,
+    /** Shows or hides runbun.json in the tree and the tabs; hiding closes its tab. */
+    setShowConfig(on: boolean) {
+      setShowConfigPref(on);
+      if (!on) this.close(CONFIG_FILE);
+    },
+    /** Whether `path` is runbun.json while the reader keeps it out of sight. */
+    isHiddenConfig: (path: string) => path === CONFIG_FILE && !showConfig(),
     /** Calls `fn` after each save the reader made (as they type, or Ctrl/Cmd+S), not those before Run; returns the unsubscribe. */
     onSaved(fn: () => void) {
       saved.add(fn);
