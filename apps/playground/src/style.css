@@ -1547,6 +1547,118 @@ html[data-booting] #app > header > * { visibility: hidden; animation: boot-fallb
 .info-tip code {
   font: 11px var(--font-mono);
 }
+/* Quick open and the command palette (Palette.tsx): a field and its matches, near the top as in VS Code. */
+.dialog-positioner:has(> .dialog.palette) {
+  padding-top: 10vh;
+}
+.dialog.palette {
+  display: flex;
+  flex-direction: column;
+  width: min(38rem, calc(100vw - 2rem));
+  max-height: min(28rem, 70vh);
+  padding: 6px;
+
+  .palette-input {
+    height: 32px;
+    padding: 0 10px;
+    border: 1px solid var(--control-border);
+    border-radius: var(--inner-radius);
+    background: var(--control);
+    color: var(--fg);
+    font: inherit;
+    font-size: 13px;
+    outline: none;
+
+    &:focus {
+      border-color: var(--accent);
+    }
+  }
+
+  .palette-list {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    margin: 6px 0 0;
+    padding: 0;
+    list-style: none;
+
+    &:empty {
+      display: none;
+    }
+
+    li {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      height: 28px;
+      padding: 0 8px;
+      border-radius: var(--inner-radius);
+      font-size: 13px;
+      cursor: pointer;
+
+      &[aria-selected="true"] {
+        background: var(--control-hover);
+      }
+
+      > i {
+        flex-shrink: 0;
+        color: var(--muted);
+        font-size: 13px;
+      }
+    }
+
+    .label {
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+
+    mark {
+      background: none;
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .detail {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      color: var(--muted);
+      font-size: 12px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .keys {
+      display: flex;
+      gap: 6px;
+      margin-left: auto;
+      flex-shrink: 0;
+      color: var(--muted);
+
+      .chord {
+        display: inline-flex;
+        gap: 2px;
+      }
+
+      kbd {
+        min-width: 1.5em;
+        padding: 0 4px;
+        border: 1px solid var(--control-border);
+        border-bottom-width: 2px;
+        border-radius: 4px;
+        background: var(--control);
+        font: 11px/16px var(--font-mono);
+        text-align: center;
+      }
+    }
+  }
+
+  .palette-empty {
+    margin: 10px 8px 6px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+}
 /* Settings (Settings.tsx): full screen, a sidebar of sections (the reader's own, the project's runbun.json) beside the open one. */
 .dialog-positioner:has(> .dialog.settings) {
   padding-top: 0;

@@ -121,6 +121,8 @@ The gear in the header opens **Settings**, a full-window page with its sections 
 
 | Shortcut | Does |
 |---|---|
+| <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>P</kbd> | Go to a file: type part of its name or path (`quickOpen`; not in embeds) |
+| <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd>, <kbd>F1</kbd> | Show all commands, with their keys (`commandPalette`; in Go to a file, type <kbd>&gt;</kbd>; not in embeds) |
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Enter</kbd> | Run |
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>Enter</kbd> | Send the preview's request, from anywhere |
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>.</kbd> | Stop the server |
@@ -137,7 +139,7 @@ The gear in the header opens **Settings**, a full-window page with its sections 
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>B</kbd> | Show or hide the file tree |
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd> | Show the Git view in place of the file tree (again: back to the files) |
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>J</kbd> | Show or hide the console |
-| <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>K</kbd> | Show or hide the preview |
+| <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Alt</kbd>+<kbd>B</kbd> | Show or hide the preview |
 | <kbd>Esc</kbd> | Leave the expanded preview |
 | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd> | Bring [Solid's devtools](/playground/preview/#solids-devtools) forward, in projects that have them (`showDevtools`; not in embeds) |
 | <kbd>F8</kbd>, <kbd>F10</kbd>, <kbd>F11</kbd>, <kbd>Shift</kbd>+<kbd>F11</kbd> | While the [debugger](/playground/running-code/#debugger) is paused: resume, step over, step into, step out |

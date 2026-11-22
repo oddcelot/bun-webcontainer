@@ -5,6 +5,11 @@ import { Input } from "@runbun/ui/solid/Input";
 import { COMMANDS, checkOverrides, chordKeys, chordOf, currentOverrides, keysFor, scopeOf, sameChord, setOverrides, setRecordingKeys, type Command, type Overrides } from "../keymap";
 import { Key, Keys, Tip } from "@runbun/ui/solid/Tip";
 
+// Open from the header's button or the command palette.
+const [shortcutsOpen, setShortcutsOpen] = createSignal(false);
+/** Opens the shortcuts dialog (the command palette's Keyboard shortcuts). */
+export const openShortcuts = () => setShortcutsOpen(true);
+
 /**
  * The keyboard shortcuts in effect, each one re-recordable (or reset), and the JSON that changes them: command names
  * to a chord, a list of chords, or null to unbind. Kept in this browser, for every project. Its button is in the header.
@@ -12,6 +17,8 @@ import { Key, Keys, Tip } from "@runbun/ui/solid/Tip";
 export function Shortcuts(props: { id?: string }) {
   return (
     <Dialog
+      open={shortcutsOpen()}
+      onOpenChange={setShortcutsOpen}
       class="shortcuts"
       trigger={
         <Tip as={DialogTrigger} id={props.id} tip="Keyboard shortcuts" aria-label="Keyboard shortcuts">
@@ -26,6 +33,7 @@ export function Shortcuts(props: { id?: string }) {
 
 /** The commands by what they act on, in the dialog's order. */
 const GROUPS: { title: string; commands: Command[] }[] = [
+  { title: "Go", commands: ["quickOpen", "commandPalette"] },
   { title: "Run", commands: ["run", "stop"] },
   { title: "Files", commands: ["save", "format", "closeTab"] },
   { title: "Code", commands: ["goToDefinition", "showHover", "suggest", "signatureHelp"] },
