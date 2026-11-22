@@ -9,7 +9,7 @@ import { chordKeys, keysFor, matches, type Command } from "../keymap";
 import type { Embed } from "../embed/main";
 import type { Feature } from "@runbun/embed/protocol";
 import { AppContext } from "./context";
-import { Console } from "./Console";
+import { Dock } from "./Dock";
 import { EditorPane } from "./EditorPane";
 import { Splits, createSizes, shareVars, withShares, type Split } from "./EmbedSplit";
 import { Explorer, toggleGit } from "./Explorer";
@@ -213,7 +213,7 @@ export function EmbedApp() {
         </Show>
         <Show when={showConsole()}>
           <section id="console-wrap" class="pane" hidden={!has("console")}>
-            <Console />
+            <Dock />
           </section>
         </Show>
         <Splits splits={splits()} sizes={sizes} />

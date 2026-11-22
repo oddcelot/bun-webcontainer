@@ -1,18 +1,14 @@
 import { Show, onSettled, useContext } from "solid-js";
 import { AppContext } from "./context";
+import type { DockTab } from "./dockTab";
 import { Tip } from "@runbun/ui/solid/Tip";
 
-/** The console pane: its header (line, error and warning counts, Clear) over the terminal. */
-export function Console() {
+/** The console in the dock's header: line, error and warning counts, Clear. */
+function ConsoleHead() {
   const app = useContext(AppContext);
   const counts = app.session.counts;
-  let el!: HTMLDivElement;
-  onSettled(() => app.terminal.attach(el));
   return (
     <>
-      <div id="console-head">
-        <i class="i-lucide-square-terminal" aria-hidden="true" />
-        <span class="label">Console</span>
         <Tip as="span" id="console-count" class="chip" tip="Lines">
           {counts.lines}
         </Tip>
@@ -40,8 +36,16 @@ export function Console() {
         >
           <i class="i-lucide-trash-2" aria-hidden="true" />
         </Tip>
-      </div>
-      <div id="console" ref={el} />
     </>
   );
 }
+
+/** The terminal. */
+function ConsoleBody() {
+  const app = useContext(AppContext);
+  let el!: HTMLDivElement;
+  onSettled(() => app.terminal.attach(el));
+  return <div id="console" ref={el} />;
+}
+
+export const consoleTab: DockTab = { id: "console", title: "Console", icon: "i-lucide-square-terminal", Head: ConsoleHead, Body: ConsoleBody };
