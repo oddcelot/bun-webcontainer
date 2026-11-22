@@ -17,6 +17,9 @@ export const draftKey = (t: PreviewTab) => JSON.stringify([t.method, t.path, t.b
 /** Whether a request with `method` carries a body (the panel's Body section). */
 export const hasBody = (method: string) => method !== "GET" && method !== "HEAD";
 
+/** The zoom steps a page preview steps through, as the browsers' zoom does. */
+export const ZOOMS = [0.25, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
+
 /** One preview tab: its own request, and the page (kept loaded while hidden) or response it shows. */
 export type PreviewTab = {
   id: number;
@@ -39,6 +42,8 @@ export type PreviewTab = {
   /** draftKey of the request `response` answers. */
   sentKey: string;
   view: "frame" | "response";
+  /** The page's zoom, as a fraction (1 = 100%), one of ZOOMS; the frame is scaled, the page inside isn't touched. */
+  zoom: number;
   /** The page's <title>, once one loaded. */
   title: string;
   response: Card | null;
@@ -68,6 +73,7 @@ export function createPreviews(running: () => boolean = () => false, read: (path
     raw: false,
     sentKey: "",
     view: "frame",
+    zoom: 1,
     title: "",
     response: null,
     pending,
@@ -159,6 +165,13 @@ export function createPreviews(running: () => boolean = () => false, read: (path
           t.raw = false;
         }
         t.panel = section ? true : !t.panel;
+      });
+    },
+    /** Zooms tab `id` one step in (+1) or out (-1), or back to 100% (0). */
+    zoom(id: number, dir: -1 | 0 | 1) {
+      update(id, (t) => {
+        const i = ZOOMS.findIndex((z) => z >= t.zoom - 1e-6);
+        t.zoom = dir === 0 ? 1 : ZOOMS[Math.min(ZOOMS.length - 1, Math.max(0, i + dir))]!;
       });
     },
     /** Shows the request as Raw text, or back as the section's fields. */
