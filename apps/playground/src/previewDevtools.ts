@@ -106,25 +106,52 @@ export function previewDevtools() {
     doc.body.append(host);
     // Solid hands events to the toolbar's handlers (`_$$click` on a node) from listeners on the root it rendered into,
     // and a portal's mount joins in when it finds that root above the portal. A page that hydrates (solid-ssr-dashboard)
-    // doesn't find it, so in the frame nothing answers a click. Here, once the event has passed the host: a handler Solid
-    // ran defines the event's currentTarget; without one, run them as Solid would, from the target up to the host.
+    // doesn't find it, so in the frame nothing answers a click; elsewhere Solid does. So: on the way down, each handler
+    // on the event's path is wrapped to note that it ran; on the way back up, past every listener on the frame's
+    // document (Solid's among them), an event no handler noted gets them run as Solid would, from the target up to the
+    // host. Without the note a toggle (Inspect element) ran twice, Solid's and this, and stayed off.
     const mine = host;
-    for (const type of DELEGATED)
-      doc.addEventListener(type, (e) => {
-        if (!mine.isConnected || !mine.contains(e.target as Node) || Object.getOwnPropertyDescriptor(e, "currentTarget")) return;
-        const key = `_$$${type}`;
-        type Handled = Node & Record<string, unknown>;
-        for (let node = e.target as Handled | null; node && (node as Node) !== mine; node = node.parentNode as unknown as Handled | null) {
-          const handler = node[key] as ((this: Node, ...a: unknown[]) => void) | { handleEvent(e: Event): void } | undefined;
-          if (!handler || (node as unknown as { disabled?: boolean }).disabled) continue;
+    const win = doc.defaultView!;
+    type Handler = ((this: Node, ...a: unknown[]) => void) & { __runbunWraps?: true };
+    type Handled = Node & Record<string, unknown>;
+    // The events (and anything else passed along) a handler of the toolbar was called with.
+    const ran = new WeakSet<object>();
+    const path = (e: Event, fn: (node: Handled) => boolean | void) => {
+      for (let node = e.target as Handled | null; node && (node as Node) !== mine; node = node.parentNode as unknown as Handled | null) if (fn(node)) break;
+    };
+    for (const type of DELEGATED) {
+      const key = `_$$${type}`;
+      win.addEventListener(
+        type,
+        (e) => {
+          if (!mine.isConnected || !mine.contains(e.target as Node)) return;
+          path(e, (node) => {
+            const handler = node[key] as Handler | undefined;
+            if (typeof handler !== "function" || handler.__runbunWraps) return;
+            const wrapped: Handler = function (this: Node, ...a: unknown[]) {
+              for (const x of a) if (x && typeof x === "object") ran.add(x);
+              return handler.apply(this, a);
+            };
+            wrapped.__runbunWraps = true;
+            node[key] = wrapped;
+          });
+        },
+        true,
+      );
+      win.addEventListener(type, (e) => {
+        if (!mine.isConnected || !mine.contains(e.target as Node) || ran.has(e)) return;
+        path(e, (node) => {
+          const handler = node[key] as Handler | { handleEvent(e: Event): void } | undefined;
+          if (!handler || (node as unknown as { disabled?: boolean }).disabled) return;
           Object.defineProperty(e, "currentTarget", { configurable: true, value: node });
           const data = node[`${key}Data`];
-          if (data !== undefined) (handler as (this: Node, ...a: unknown[]) => void).call(node, data, e);
+          if (data !== undefined) (handler as Handler).call(node, data, e);
           else if (typeof handler === "function") handler.call(node, e);
           else handler.handleEvent(e);
-          if (e.cancelBubble) break;
-        }
+          return e.cancelBubble;
+        });
       });
+    }
     if (!watching) {
       watching = true;
       // The open toolbar makes room for itself under the page; it isn't there.

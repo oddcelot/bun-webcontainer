@@ -115,12 +115,17 @@ async function fullPlayground(page: Page) {
     await pane.click(".runbun-devtools-host:not([hidden]) #solid-dev-toolbar-view-structure");
     await Bun.sleep(500);
     const picked = await pane.evaluate(() => document.querySelector(".runbun-devtools-host:not([hidden]) #solid-dev-toolbar-view-structure")?.getAttribute("aria-selected"));
-    // The search button toggles: open after one click means its handler ran once, not twice.
-    await pane.click(".runbun-devtools-host:not([hidden]) [data-solid-dev-toolbar-search]");
+    // Inspect element toggles: on after one click and off after the next means its handler ran once per click, where
+    // Solid delegates the event as well as where previewDevtools has to (a handler run twice leaves it off).
+    const inspect = ".runbun-devtools-host:not([hidden]) [aria-label^='Inspect element']";
+    const inspecting = () => pane.$eval(inspect, (b) => b.hasAttribute("data-active"));
+    await pane.click(inspect);
     await Bun.sleep(500);
-    const searching = await pane.evaluate(() => !!document.querySelector(".runbun-devtools-host:not([hidden]) [data-solid-dev-toolbar-palette-layer] *"));
-    await page.keyboard.press("Escape");
-    report(`${example}: a click in the toolbar works, once`, picked === "true" && searching, { structureSelected: picked, searchOpened: searching });
+    const on = await inspecting();
+    await pane.click(inspect);
+    await Bun.sleep(500);
+    const off = !(await inspecting());
+    report(`${example}: a click in the toolbar works, once`, picked === "true" && on && off, { structureSelected: picked, inspectOn: on, inspectOffAgain: off });
   }
 
   // Keys pressed in the pane: the toolbar's first, the playground's after.
