@@ -42,7 +42,6 @@ The hosting file says where the copy lives and how it differs from runbun.dev. T
   "brand": { "logo": "brand/solid.svg", "logoDark": "brand/solid-dark.svg", "home": "https://www.solidjs.com/", "card": "brand/card.png" },
   "theme": { "families": ["solid-light"] },
   "localRunner": false,
-  "panels": { "console": false },
   "gallery": ["solid-vite-hmr", "solid-ssr-dashboard", "astro-solid-demo", "reactivescript", "reactivescript-selects"],
   "languages": ["reactivescript"],
   "defaultProject": "solid-vite-hmr",
