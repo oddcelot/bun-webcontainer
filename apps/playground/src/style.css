@@ -2881,9 +2881,9 @@ body:has(#req-handle[data-dragging]) * {
   display: flex;
   align-items: center;
   gap: 6px;
-  /* As tall with a pane that adds nothing to it as with the console's Clear button: switching tabs moves nothing. */
+  /* As tall as the editor's and the preview's tab bars, whatever the picked pane adds: switching tabs moves nothing. */
   box-sizing: border-box;
-  height: 33px;
+  height: 37px;
   padding: 4px 8px;
   background: var(--panel);
   border-bottom: 1px solid var(--border);
@@ -2911,16 +2911,14 @@ body:has(#req-handle[data-dragging]) * {
     }
   }
 
-  /* The tabs are the editor's and the preview's (@runbun/ui tabs.css), in this bar instead of one of their own. */
+  /* The tabs are the editor's and the preview's (@runbun/ui tabs.css), inset like theirs; the bar around them is this one. */
+  &[data-tabs] {
+    padding: 0 8px 0 0;
+  }
+
   .tabs {
-    margin: -2px 4px -2px -6px;
-    padding: 0;
     border-bottom: 0;
     background: none;
-
-    .tab {
-      padding-block: 2px;
-    }
   }
 
   .chip {
