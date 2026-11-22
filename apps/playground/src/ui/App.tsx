@@ -5,6 +5,7 @@ import { Preview } from "./Preview";
 import { pref } from "../prefs";
 import { AppContext } from "./context";
 import { Dock } from "./Dock";
+import { showDevtools } from "./Devtools";
 import { debugKey } from "./DebugPanel";
 import { EditorPane } from "./EditorPane";
 import { Explorer, toggleFiles, toggleGit } from "./Explorer";
@@ -172,6 +173,10 @@ export function App() {
         if (!toggleGit(app, columnSizes()[0] > 0, () => toggleColumn(0))) return;
       } else if (matches("togglePreview", e)) toggle(0);
       else if (matches("toggleConsole", e)) toggle(1);
+      else if (matches("showDevtools", e)) {
+        if (!showDevtools(app)) return;
+        if (!(columnSizes()[2] > 0 && rowSizes()[1] > 0)) toggle(1);
+      }
       else return;
       e.preventDefault();
       e.stopPropagation();

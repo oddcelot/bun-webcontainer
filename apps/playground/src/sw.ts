@@ -1,7 +1,8 @@
 /// <reference lib="webworker" />
 // Built to <base>sw.js as one classic script (vite.config.ts serviceWorker). Page-side code lives in swPage.ts.
-import { previewBridge, previewColorScheme, previewWebSocket } from "#sw-page";
+import { previewBridge, previewColorScheme, previewDevtools, previewWebSocket } from "#sw-page";
 import { injectScripts, injectScriptsInStream } from "./previewInject";
+import { DEVTOOLS_MODULE, patchDevtools } from "./devtoolsPatch";
 import { HEADERS_HEADER, PANEL_COOKIE, mergeHeaders, unpackHeaders } from "./request";
 
 declare const self: ServiceWorkerGlobalScope;
@@ -354,6 +355,10 @@ async function servePreview(req: Request, url: URL, path?: string, ownerId = pre
     // parts (streamed SSR) shows in parts.
     out = injectScriptsInStream(stream, previewScripts(base, editor));
     headers.delete("content-length");
+  } else if (DEVTOOLS_MODULE.test(path) && /javascript/.test(headers.get("content-type") ?? "")) {
+    // A prototype: Solid's devtools render where the page says (previewDevtools.ts).
+    out = patchDevtools(await new Response(stream).text());
+    headers.delete("content-length");
   } else if (editor && req.mode === "navigate" && req.destination === "iframe" && /[/+]json\b|^text\/plain\b/.test(headers.get("content-type") ?? "")) {
     // A frame that follows a link to JSON or text: the editor can't read its document (another origin), so the page is
     // a wrapper that tells it what came (previewBridge reads the metas and the <pre>).
@@ -377,6 +382,7 @@ function previewScripts(base: string, editor?: string): string {
   return (
     `<script>(${previewWebSocket})(${JSON.stringify(base)})</script>` +
     `<script>(${previewColorScheme})()</script>` +
+    `<script>(${previewDevtools})()</script>` +
     // `editor` is the host frame's, checked against the configured origins: never a value from the page.
     (editor ? `<script>(${previewBridge})(${JSON.stringify(base)}, ${JSON.stringify(editor)}, ${__PROTOCOL_VERSION__})</script>` : "")
   );

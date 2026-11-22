@@ -33,7 +33,9 @@ function MethodBadge(props: { method: string }) {
  * Keys pressed in a page stay in its frame, so a frame hands its key presses to the playground's window as well, for
  * the shortcuts there. A shortcut that's handled there doesn't also reach the page.
  */
-function forwardKeys(e: KeyboardEvent) {
+export function forwardKeys(e: KeyboardEvent) {
+  // A key the devtools pane handed to the page (previewDevtools.ts): that pane forwards it if the page doesn't take it.
+  if ((e as KeyboardEvent & { __runbunFromDock?: boolean }).__runbunFromDock) return;
   const copy = new KeyboardEvent("keydown", e);
   dispatchEvent(copy);
   if (copy.defaultPrevented) e.preventDefault();

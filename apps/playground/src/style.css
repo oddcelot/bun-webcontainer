@@ -2975,6 +2975,31 @@ body:has(#req-handle[data-dragging]) * {
     }
   }
 }
+/* The devtools pane (ui/Devtools.tsx): the frame the toolbar renders into, and what it says until one does. */
+.devtools {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+
+  #devtools-frame {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    border: 0;
+  }
+
+  .devtools-empty {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    margin: 0;
+    padding: 16px;
+    color: var(--muted);
+    text-align: center;
+  }
+}
 .dock-pane {
   flex: 1;
   min-height: 0;

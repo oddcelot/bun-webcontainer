@@ -22,6 +22,8 @@ export const COMMANDS = {
   toggleGit: { label: "Show or hide Git", keys: ["Mod+Shift+G"] },
   toggleConsole: { label: "Show or hide the console", keys: ["Mod+J"] },
   togglePreview: { label: "Show or hide the preview", keys: ["Mod+K"] },
+  // The key Solid's toolbar opens itself with over a page; in the dock it is a tab (ui/Devtools.tsx).
+  showDevtools: { label: "Show Solid's devtools (projects that have them)", keys: ["Alt+Shift+D"] },
   exitFullscreen: { label: "Leave the expanded preview", keys: ["Escape"] },
 } satisfies Record<string, { label: string; keys: string[]; scope?: Scope }>;
 
