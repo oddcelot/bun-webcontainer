@@ -84,12 +84,22 @@ Limits: the server isn't reachable from outside the browser, there's no HTTP cac
 
 For browser-only projects there is also an experimental way to skip the install and the worker: see [Fast path for browser-only projects](/playground/fast-path/).
 
-## Solid's devtools
+## Devtools
+
+The pane under the preview has a **Devtools** tab, next to the console, in a project with Solid's or Vue's devtools. It shows them for the page in the active preview tab, in place of the panel that would sit over your page.
+
+<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd> brings the tab forward from anywhere in the playground, and a run that fails switches to the console, where its output says why.
+
+### Solid
 
 In a project that uses [`@solidjs/start-devtools`](https://github.com/solidjs/solid-start-devtools) (the [Solid Start + devtools](https://runbun.dev/?example=solid-start-devtools) and [Solid 2 SSR](https://runbun.dev/?example=solid-ssr-dashboard) examples do), the pane under the preview opens on a **Devtools** tab next to the console. The toolbar that would sit over your page is there instead, always open: Health, Activity and Structure for the page in the active preview tab. Switch preview tabs and it switches with them; reload the page and it comes back with it.
 
-- <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd> brings the Devtools tab forward from anywhere in the playground.
 - The toolbar's own keys work in the tab: <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>K</kbd> finds a component, signal or call, <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> picks an element in the page, <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>H</kbd> highlights updates.
-- A run that fails switches to the console, where its output says why.
 
-Experimental. The tab needs the preview on the playground's own origin, so it isn't there on runbun.dev, which runs project code on a separate origin: there the toolbar stays over the page, as in a browser tab. A [self-hosted](/guides/self-hosting/) copy without a `contentOrigin` has it.
+### Vue
+
+In a project with [`vite-plugin-vue-devtools`](https://devtools.vuejs.org/guide/vite-plugin) (the [Vue + Pinia + DevTools](https://runbun.dev/?example=vue-demo) example has it), the tab shows Vue DevTools: the component tree with each component's props and state, Pinia's stores, the timeline, routes and the Vite module graph. The floating Vue button in the page goes; the tab is its panel. Switching preview tabs, or a new run, loads them for that page.
+
+### Where it works
+
+Experimental. The tab needs the preview on the playground's own origin, so it isn't there on runbun.dev, which runs project code on a separate origin: there the devtools stay over the page, as in a browser tab. A [self-hosted](/guides/self-hosting/) copy without a `contentOrigin` has it.

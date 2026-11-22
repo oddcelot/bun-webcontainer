@@ -40,6 +40,20 @@ export function previewDevtools() {
       return undefined;
     }
   };
+  // Vue's devtools (vite-plugin-vue-devtools): their panel is the dock's, so the page's floating button and panel go,
+  // where there's a dock (the full playground, an embed) on this origin.
+  const docked = (() => {
+    try {
+      return !!window.parent.document.getElementById("dock-head");
+    } catch {
+      return false;
+    }
+  })();
+  if (docked) {
+    const hide = document.createElement("style");
+    hide.textContent = "#__vue-devtools-container__ { display: none !important; }";
+    document.documentElement.append(hide);
+  }
   let host: DevtoolsHost | undefined;
   // This page's styles, copied into the frame.
   const copies: Element[] = [];
@@ -67,12 +81,12 @@ export function previewDevtools() {
         doc.head.insertBefore(c, fill);
       }
   };
-  // Alt+Shift+D opens and closes the toolbar; in the dock it is always open, and the key is the playground's: it brings
+  // Alt+Shift+D opens and closes the toolbar (Solid's, and Vue's panel too); in the dock it is always open, and the key is the playground's: it brings
   // the Devtools tab forward (keymap.ts showDevtools). Caught before the toolbar's own listener, and passed up.
   addEventListener(
     "keydown",
     (e) => {
-      if (!host || !e.altKey || !e.shiftKey || e.code !== "KeyD") return;
+      if (!(host || (docked && document.getElementById("__vue-devtools-container__"))) || !e.altKey || !e.shiftKey || e.code !== "KeyD") return;
       e.stopImmediatePropagation();
       e.preventDefault();
       const up = window.parent as typeof window;
