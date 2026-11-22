@@ -2486,6 +2486,39 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
   #request #open-tab, #preview-wrap:not(.expanded) #request #expand { display: none; }
 }
 #request button { background: var(--control); color: inherit; border: 1px solid var(--control-border); border-radius: 6px; padding: 3px 10px; cursor: pointer; }
+#request .zoom {
+  display: inline-flex;
+  gap: 0;
+  &[hidden] {
+    display: none;
+  }
+  button {
+    border-radius: 0;
+    padding: 0 6px;
+    &:first-child {
+      border-radius: 6px 0 0 6px;
+    }
+    &:last-child {
+      border-radius: 0 6px 6px 0;
+    }
+    & + button {
+      margin-left: -1px;
+    }
+    &:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+  }
+  .zoom-level {
+    min-width: 4ch;
+    justify-content: center;
+    font: 11px var(--font-ui);
+    font-variant-numeric: tabular-nums;
+  }
+}
+@container (width < 420px) {
+  #request .zoom { display: none; }
+}
 #expand, #req-send { display: grid; place-items: center; padding: 0 8px; }
 #req-panel-toggle {
   &[aria-pressed="true"] {
@@ -2823,8 +2856,23 @@ body:has(#req-handle[data-dragging]) * {
 #req-body .pierre-host { height: 100%; overflow: auto; background: var(--bg); }
 #req-body diffs-container { min-height: 100%; }
 #req-body[data-empty]::after { content: attr(data-placeholder); position: absolute; top: 8px; left: 41px; color: var(--muted); font: italic 12px/20px var(--font-ui); opacity: 0.8; pointer-events: none; }
-#preview-views { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.preview-frame { flex: 1; width: 100%; border: 0; }
+#preview-views { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
+.preview-frame {
+  flex: 1;
+  width: 100%;
+  border: 0;
+  /* Zoomed: the frame is laid out at 1/zoom of the room and scaled to fill it, so the page sees a larger or smaller
+     viewport (as browser zoom gives) without its document being touched (it may be cross-origin). */
+  &[data-zoomed] {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: calc(100% / var(--zoom));
+    height: calc(100% / var(--zoom));
+    transform: scale(var(--zoom));
+    transform-origin: 0 0;
+  }
+}
 .preview-frame[hidden], .preview-response[hidden], #req-handle[hidden] { display: none; }
 /* The response card's metrics, and from them the least room it keeps under a request body (--response-reserve: its
    padding, the status line's pill, the headers line and a body box of three lines; ui/Preview.tsx and embed/main.ts

@@ -10,7 +10,7 @@ import { CONTENT_ORIGIN } from "../contentOrigin";
 import { onFrameMessage } from "../previewBridge";
 import { BODY_ROOM_LINES, normalize, previewUrl, responseReserve, PREFIX, type Card } from "../preview";
 import { AppContext } from "./context";
-import { draftKey, hasBody, type PreviewTab, type Rows, type Section } from "./previews";
+import { ZOOMS, draftKey, hasBody, type PreviewTab, type Rows, type Section } from "./previews";
 import { fromAuth, paramRows, queryOf, sent, toCurl, toFetch, toHttp, type Auth, type BodyMode, type Field } from "../request";
 import { Tip } from "@runbun/ui/solid/Tip";
 
@@ -187,6 +187,17 @@ export function Preview() {
           >
             <i class="i-lucide-external-link" aria-hidden="true" />
           </Tip>
+          <span class="zoom" role="group" aria-label="Zoom" hidden={active().view !== "frame"}>
+            <Tip type="button" class="zoom-out" tip="Zoom out" aria-label="Zoom out" disabled={active().zoom <= ZOOMS[0]!} onClick={() => p.zoom(s.active, -1)}>
+              <i class="i-lucide-zoom-out" aria-hidden="true" />
+            </Tip>
+            <Tip type="button" class="zoom-level" tip="Reset zoom to 100%" aria-label={`Zoom ${Math.round(active().zoom * 100)}%, reset to 100%`} onClick={() => p.zoom(s.active, 0)}>
+              {Math.round(active().zoom * 100)}%
+            </Tip>
+            <Tip type="button" class="zoom-in" tip="Zoom in" aria-label="Zoom in" disabled={active().zoom >= ZOOMS[ZOOMS.length - 1]!} onClick={() => p.zoom(s.active, 1)}>
+              <i class="i-lucide-zoom-in" aria-hidden="true" />
+            </Tip>
+          </span>
           <Tip
             type="button"
             id="expand"
@@ -213,6 +224,8 @@ export function Preview() {
                     title="preview"
                     allow={CONTENT_ORIGIN ? `cross-origin-isolated ${CONTENT_ORIGIN}` : undefined}
                     hidden={id !== s.active || tab.view !== "frame"}
+                    style={tab.zoom === 1 ? undefined : { "--zoom": tab.zoom }}
+                    data-zoomed={tab.zoom === 1 ? undefined : ""}
                     ref={(el) => p.frames.set(id, el)}
                     onLoad={(e) => {
                       // On the content origin the page's window is cross-origin: its bridge does all of this (previewBridge.ts).

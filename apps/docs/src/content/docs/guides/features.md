@@ -48,7 +48,7 @@ Set breakpoints, step through code and evaluate expressions while the program is
 
 ## Preview
 
-When your code starts a server, the preview shows it, with a request bar for sending any method, path, headers and body, several tabs, WebSockets, cookies and streaming.
+When your code starts a server, the preview shows it, with a request bar for sending any method, path, headers and body, several tabs, WebSockets, cookies and streaming. A page preview zooms from 25% to 200% with the buttons in the request bar, per tab.
 
 [Preview →](/playground/preview/)
 
