@@ -1,6 +1,6 @@
-import { For, Show, createMemo, createSignal, onSettled, useContext, type ParentProps } from "solid-js";
+import { For, Show, createMemo, createSignal, onSettled, untrack, useContext, type ParentProps } from "solid-js";
 import { applyEdits, modify } from "jsonc-parser";
-import { Dialog, DialogActions, DialogClose, DialogTitle, DialogTrigger, useDialogContext } from "@runbun/ui/solid/Dialog";
+import { Dialog, DialogClose, DialogTitle, DialogTrigger, useDialogContext } from "@runbun/ui/solid/Dialog";
 import { Button } from "@runbun/ui/solid/Button";
 import { Field } from "@runbun/ui/solid/Field";
 import { Input } from "@runbun/ui/solid/Input";
@@ -31,8 +31,21 @@ export function Settings(props: { id?: string }) {
   );
 }
 
-type Section = "playground" | "project";
-
+/** The sections, in the sidebar's order, under their group: the reader's own, then the project's runbun.json. */
+const SECTIONS = [
+  { id: "editor", group: "playground", label: "Editor", icon: "i-lucide-file-pen-line" },
+  { id: "running", group: "playground", label: "Running", icon: "i-lucide-play" },
+  { id: "project-running", group: "project", label: "Entry & env", icon: "i-lucide-terminal" },
+  { id: "files", group: "project", label: "Files", icon: "i-lucide-files" },
+  { id: "layout", group: "project", label: "Layout", icon: "i-lucide-layout-panel-left" },
+  { id: "preview", group: "project", label: "Preview", icon: "i-lucide-app-window" },
+  { id: "card", group: "project", label: "Gallery card", icon: "i-lucide-id-card" },
+] as const;
+type Section = (typeof SECTIONS)[number]["id"];
+const GROUPS = [
+  { id: "playground", label: "Playground", hint: "Yours, in this browser, for every project" },
+  { id: "project", label: "Project", hint: `Its ${CONFIG_FILE}, shared with it` },
+] as const;
 
 /** A setting's row: its name and what it does on the left, its control on the right. */
 function Row(props: ParentProps<{ label: string; hint?: string }>) {
@@ -53,28 +66,55 @@ function Row(props: ParentProps<{ label: string; hint?: string }>) {
 function SettingsForm() {
   const app = useContext(AppContext);
   const dialog = useDialogContext();
-  const [section, setSection] = createSignal<Section>("playground");
+  const project = projectConfig();
+  const [section, setSection] = createSignal<Section>("editor");
+  const current = () => SECTIONS.find((s) => s.id === section())!;
+  /** Up and Down (Home, End) move between the sections, as a vertical tab list does. */
+  const onNavKey = (e: KeyboardEvent) => {
+    const i = SECTIONS.findIndex((s) => s.id === section());
+    const next = { ArrowUp: i - 1, ArrowDown: i + 1, Home: 0, End: SECTIONS.length - 1 }[e.key];
+    if (next === undefined || !SECTIONS[next]) return;
+    e.preventDefault();
+    setSection(SECTIONS[next].id);
+    (e.currentTarget as HTMLElement).querySelector<HTMLElement>(`[data-section="${SECTIONS[next].id}"]`)?.focus();
+  };
   return (
     <>
-      <DialogTitle>Settings</DialogTitle>
-      <div class="settings-sections">
-        <Segmented
-          label="Section"
-          value={section()}
-          options={[
-            ["playground", "Playground", "i-lucide-monitor-cog", "Yours, in this browser, for every project"],
-            ["project", "Project", "i-lucide-file-cog", `This project's ${CONFIG_FILE}, shared with it`],
-          ]}
-          onChange={(v) => setSection(v as Section)}
-        />
-      </div>
-      <div class="settings-body">
-        <Show when={section() === "playground"} fallback={<ProjectSettings />}>
-          <PlaygroundSettings />
-        </Show>
-      </div>
-      <DialogActions>
-        <Show when={section() === "project"}>
+      <header class="settings-header">
+        <DialogTitle>Settings</DialogTitle>
+        <DialogClose class="settings-close">
+          <i class="i-lucide-x" aria-hidden="true" />
+          <span class="sr-only">Close</span>
+        </DialogClose>
+      </header>
+      <div class="settings-main">
+        <nav class="settings-nav">
+          <div role="tablist" aria-label="Settings" aria-orientation="vertical" onKeyDown={onNavKey}>
+            <For each={GROUPS}>
+              {(group) => (
+                <>
+                  <h3 title={group.hint}>{group.label}</h3>
+                  <For each={SECTIONS.filter((s) => s.group === group.id)}>
+                    {(s) => (
+                      <button
+                        type="button"
+                        role="tab"
+                        id={`settings-tab-${s.id}`}
+                        data-section={s.id}
+                        aria-controls="settings-panel"
+                        aria-selected={section() === s.id ? "true" : "false"}
+                        tabindex={section() === s.id ? 0 : -1}
+                        onClick={() => setSection(s.id)}
+                      >
+                        <i class={s.icon} aria-hidden="true" />
+                        {s.label}
+                      </button>
+                    )}
+                  </For>
+                </>
+              )}
+            </For>
+          </div>
           <Button
             class="open-config"
             onClick={() => {
@@ -82,37 +122,73 @@ function SettingsForm() {
               dialog.close();
             }}
           >
-            Open {CONFIG_FILE}
+            <i class="i-lucide-file-json" aria-hidden="true" /> Open {CONFIG_FILE}
           </Button>
-        </Show>
-        <DialogClose>Done</DialogClose>
-      </DialogActions>
+        </nav>
+        <section class="settings-panel" id="settings-panel" role="tabpanel" aria-labelledby={`settings-tab-${section()}`}>
+          <div class="settings-page">
+            <h2>
+              <Show when={current().group === "project"}>
+                <span class="group">{CONFIG_FILE}</span>
+              </Show>
+              {current().label}
+            </h2>
+            <SectionPage section={section()} project={project} />
+          </div>
+        </section>
+      </div>
     </>
   );
 }
 
-/** The reader's own settings, the header's toggles among them. */
-function PlaygroundSettings() {
+/** The open section's page. */
+function SectionPage(props: { section: Section; project: ProjectConfigState }) {
+  return (
+    <>
+      <Show when={props.section === "editor"}>
+        <EditorSettings />
+      </Show>
+      <Show when={props.section === "running"}>
+        <RunningSettings />
+      </Show>
+      <Show when={props.section !== "editor" && props.section !== "running"}>
+        <ProjectPage section={props.section} project={props.project} />
+      </Show>
+    </>
+  );
+}
+
+/** The editor's settings: the reader's own. */
+function EditorSettings() {
   const ws = useContext(AppContext).workspace;
   return (
     <div class="settings-list">
       <Row label="Auto-save" hint="Save edits shortly after typing stops. Off, they wait for Save, Run, Install or Share.">
         <Switch label="Auto-save" checked={ws.autosave()} onChange={ws.setAutosave} />
       </Row>
-      <Row label="Restart on save" hint="Restart the program on every save (bun --watch). Off, only Run restarts it.">
-        <Switch label="Restart on save" checked={ws.watch()} onChange={ws.setWatch} />
-      </Row>
       <Row label="Format on save" hint="Save (Ctrl/Cmd+S) formats the file with bun fmt first.">
         <Switch label="Format on save" checked={ws.formatOnSave()} onChange={ws.setFormatOnSave} />
+      </Row>
+      <Row label={`Show ${CONFIG_FILE}`} hint={`In the file tree and the tabs. Hidden, it still applies, and the ${CONFIG_FILE} sections here edit it.`}>
+        <Switch label={`Show ${CONFIG_FILE}`} checked={ws.showConfig()} onChange={(on) => ws.setShowConfig(on)} />
+      </Row>
+    </div>
+  );
+}
+
+/** How runs go: the reader's own. */
+function RunningSettings() {
+  const ws = useContext(AppContext).workspace;
+  return (
+    <div class="settings-list">
+      <Row label="Restart on save" hint="Restart the program on every save (bun --watch). Off, only Run restarts it.">
+        <Switch label="Restart on save" checked={ws.watch()} onChange={ws.setWatch} />
       </Row>
       <Row
         label="Fast path"
         hint={`Experimental. Browser-only projects run without an install, packages from esm.sh; no dev server, so no hot reload. Applies on the next Run; a project's ${CONFIG_FILE} can opt out.`}
       >
         <Switch label="Fast path" checked={ws.fast()} onChange={ws.setFast} />
-      </Row>
-      <Row label={`Show ${CONFIG_FILE}`} hint="In the file tree and the tabs. Hidden, it still applies, and the Project tab here edits it.">
-        <Switch label={`Show ${CONFIG_FILE}`} checked={ws.showConfig()} onChange={(on) => ws.setShowConfig(on)} />
       </Row>
     </div>
   );
@@ -159,8 +235,8 @@ function FileList(props: { label: string; hint: string; value: string[] | undefi
   );
 }
 
-/** The open project's runbun.json, field by field. */
-function ProjectSettings() {
+/** The open project's runbun.json as the form reads and writes it, kept current while Settings is open. */
+function projectConfig() {
   const { vfs, workspace: ws } = useContext(AppContext);
   const [text, setText] = createSignal(vfs.readText(CONFIG_FILE));
   onSettled(() => vfs.onChange(({ path }) => path === CONFIG_FILE && setText(vfs.readText(CONFIG_FILE))));
@@ -194,9 +270,17 @@ function ProjectSettings() {
     vfs.write(CONFIG_FILE, after);
     if (key === "readonly") ws.setReadonly((value as string[] | undefined) ?? []);
   }
-  /** A tri-state: unset (the default), or true/false. */
-  const tri = (v: boolean | undefined) => (v === undefined ? "default" : v ? "on" : "off");
-  const fromTri = (v: string) => (v === "default" ? undefined : v === "on");
+  return { text, parsed, c, files, folders, broken, set };
+}
+type ProjectConfigState = ReturnType<typeof projectConfig>;
+
+/** A tri-state: unset (the default), or true/false. */
+const tri = (v: boolean | undefined) => (v === undefined ? "default" : v ? "on" : "off");
+const fromTri = (v: string) => (v === "default" ? undefined : v === "on");
+
+/** One section of the open project's runbun.json, field by field. */
+function ProjectPage(props: { section: Section; project: ProjectConfigState }) {
+  const { text, parsed, c, files, folders, broken, set } = untrack(() => props.project);
 
   return (
     <div class="settings-list project">
@@ -213,7 +297,7 @@ function ProjectSettings() {
           <p class="settings-note">This project has no {CONFIG_FILE}. A change here creates it.</p>
         </Show>
 
-        <h3>Running</h3>
+        <Show when={props.section === "project-running"}>
         <div class="settings-grid">
           <Field label="Entry" hint="what Run starts">
             <Input spellcheck={false} value={c().run?.entry ?? ""} placeholder="guessed" onChange={(e) => {
@@ -255,15 +339,15 @@ function ProjectSettings() {
             </Row>
           )}
         </For>
-
-        <h3>Files</h3>
-        <div class="settings-grid three">
+        </Show>
+        <Show when={props.section === "files"}>
+        <div class="settings-stack">
           <FileList label="Open" hint="as tabs, the first shown" value={c().open} suggestions={files()} onChange={(v) => set("open", v)} />
           <FileList label="Hidden" hint="kept out of the tabs" value={c().hidden} suggestions={files()} onChange={(v) => set("hidden", v)} />
           <FileList label="Read-only" hint="files or folders" value={c().readonly} suggestions={[...folders(), ...files()]} onChange={(v) => set("readonly", v)} />
         </div>
-
-        <h3>Layout</h3>
+        </Show>
+        <Show when={props.section === "layout"}>
         <p class="settings-note">Applies when the project opens.</p>
         <For each={PANELS}>
           {([panel, label]) => (
@@ -293,20 +377,26 @@ function ProjectSettings() {
             onChange={(v) => set("layout", v === "default" ? undefined : v)}
           />
         </Row>
-        <div class="settings-grid three">
-          <For each={SIZES}>
-            {([key, label, hint]) => (
-              <Field label={`${label} %`} hint={hint}>
-                <Input type="number" min={1} max={99} value={c().sizes?.[key] ?? ""} onChange={(e) => {
+        <For each={SIZES}>
+          {([key, label, hint]) => (
+            <Row label={`${label} size`} hint={`Percent ${hint}; empty: as the reader left it.`}>
+              <Input
+                class="percent"
+                type="number"
+                min={1}
+                max={99}
+                aria-label={`${label} size, percent`}
+                value={c().sizes?.[key] ?? ""}
+                onChange={(e) => {
                   const n = e.currentTarget.valueAsNumber;
                   set("sizes", { ...c().sizes, [key]: n > 0 && n < 100 ? n : undefined });
-                }} />
-              </Field>
-            )}
-          </For>
-        </div>
-
-        <h3>Preview</h3>
+                }}
+              />
+            </Row>
+          )}
+        </For>
+        </Show>
+        <Show when={props.section === "preview"}>
         <div class="settings-grid">
           <Field label="Path" hint="where it points first">
             <Input spellcheck={false} value={c().preview?.path ?? ""} placeholder="/" onChange={(e) => set("preview", { ...c().preview, path: e.currentTarget.value.trim() || undefined })} />
@@ -315,8 +405,9 @@ function ProjectSettings() {
             <Input multiline rows={3} spellcheck={false} value={lines(c().preview?.requests)} onChange={(e) => set("preview", { ...c().preview, requests: fromLines(e.currentTarget.value) })} />
           </Field>
         </div>
-
-        <h3>Gallery card</h3>
+        </Show>
+        <Show when={props.section === "card"}>
+        <p class="settings-note">How the project shows in a gallery: the playground's examples, an embed's library.</p>
         <div class="settings-grid">
           <Field label="Name">
             <Input value={c().name ?? ""} onChange={(e) => set("name", e.currentTarget.value.trim())} />
@@ -340,6 +431,7 @@ function ProjectSettings() {
             onChange={(v) => set("kind", v === "default" ? undefined : v)}
           />
         </Row>
+        </Show>
       </Show>
     </div>
   );

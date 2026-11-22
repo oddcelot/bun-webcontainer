@@ -120,7 +120,7 @@ Large files open and scroll quickly: the editor renders only the lines in view.
 
 ## Settings
 
-The gear in the header opens **Settings**. **Playground** holds your own settings, kept in this browser for every project: auto-save, restart on save, format on save, the [fast path](/playground/fast-path/), and whether the project's `runbun.json` shows in the file tree and the tabs. Hidden, it still applies. **Project** edits the open project's [`runbun.json`](/guides/project-config/) as a form, and **Open runbun.json** opens the file itself.
+The gear in the header opens **Settings**, a full-window page with its sections in a sidebar. The **Playground** sections hold your own settings, kept in this browser for every project: **Editor** (auto-save, format on save, and whether the project's `runbun.json` shows in the file tree and the tabs; hidden, it still applies) and **Running** (restart on save, the [fast path](/playground/fast-path/)). The **Project** sections edit the open project's [`runbun.json`](/guides/project-config/) as a form: **Entry & env**, **Files**, **Layout**, **Preview** and **Gallery card**. **Open runbun.json** opens the file itself.
 
 ## Keyboard shortcuts
 
