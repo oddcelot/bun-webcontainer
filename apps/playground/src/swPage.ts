@@ -210,3 +210,5 @@ export function previewBridge(base: string, editor: string, v: number): void {
   });
   post({ kind: "hello" });
 }
+
+export { previewDevtools } from "./previewDevtools";

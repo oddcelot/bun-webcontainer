@@ -3,3 +3,4 @@
 export function previewColorScheme(): void;
 export function previewWebSocket(prefix: string): void;
 export function previewBridge(base: string, editor: string, v: number): void;
+export function previewDevtools(): void;

@@ -1,16 +1,10 @@
 // A prototype (probe/devtools-dock): Solid's devtools (@solidjs/start-devtools) in the playground's dock instead of
 // over the previewed page. The package has no way to say where its toolbar goes, so the service worker rewrites its
-// module as it serves it (patchDevtools: one line, tied to 1.0.x's build output), and the preview page gets a script
+// module as it serves it (devtoolsPatch.ts: one line, tied to 1.0.x's build output), and the preview page gets a script
 // that answers with the dock's frame (previewDevtools). The toolbar still runs in the page, where the app's signals
 // are; only its DOM is in the frame. Same origin only: with a content origin the frame would have to be served there.
 
-/** The paths of the package's modules, as Vite serves them (its own files, or the optimizer's bundle of them). */
-export const DEVTOOLS_MODULE = /start-devtools/;
-
-/** The toolbar's Portal with a `mount`: what the page's `__runbunDevtoolsMount` returns, or the page's body as before. */
-export const patchDevtools = (js: string) => js.replace(/return \[\s*createComponent\(Portal, \{/, (m) => `${m} get mount() { return globalThis.__runbunDevtoolsMount?.(); },`);
-
-/** Runs in a preview page, from its first script (sw.ts previewScripts): no imports, nothing from outside its body. */
+/** Runs in a preview page, from its first script (sw.ts previewScripts, by way of swPage.ts): no imports, nothing from outside its body. */
 export function previewDevtools() {
   if (window.parent === window) return;
   const KEY = "solid-start-devtools:dock";

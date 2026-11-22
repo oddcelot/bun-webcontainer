@@ -1,8 +1,8 @@
 /// <reference lib="webworker" />
 // Built to <base>sw.js as one classic script (vite.config.ts serviceWorker). Page-side code lives in swPage.ts.
-import { previewBridge, previewColorScheme, previewWebSocket } from "#sw-page";
+import { previewBridge, previewColorScheme, previewDevtools, previewWebSocket } from "#sw-page";
 import { injectScripts, injectScriptsInStream } from "./previewInject";
-import { DEVTOOLS_MODULE, patchDevtools, previewDevtools } from "./previewDevtools";
+import { DEVTOOLS_MODULE, patchDevtools } from "./devtoolsPatch";
 import { HEADERS_HEADER, PANEL_COOKIE, mergeHeaders, unpackHeaders } from "./request";
 
 declare const self: ServiceWorkerGlobalScope;
