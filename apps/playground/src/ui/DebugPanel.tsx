@@ -1,6 +1,7 @@
 import { For, Show, createSignal, useContext } from "solid-js";
 import { Tip } from "@runbun/ui/solid/Tip";
 import { debugSession, type DebugScope } from "../debugSession";
+import type { DockTab } from "./dockTab";
 import { AppContext } from "./context";
 
 const SCOPES: Record<DebugScope["kind"], string> = { local: "Local", block: "Block", module: "Module" };
@@ -15,10 +16,8 @@ export function debugKey(e: KeyboardEvent): boolean {
   return true;
 }
 
-/** The debugger pane, above the console while Debug is on: step buttons, call stack, variables of the paused frame, and an evaluate box. */
-export function DebugPanel() {
-  const app = useContext(AppContext);
-  const [results, setResults] = createSignal<{ expr: string; ok: boolean; result: string }[]>([]);
+/** The debugger in the dock's header: the step buttons and where the program is paused. */
+function DebugHead() {
   const paused = debugSession.paused;
   const status = () => {
     const p = paused();
@@ -31,18 +30,25 @@ export function DebugPanel() {
     </Tip>
   );
   return (
+    <>
+      {step("i-lucide-play", "Resume", "F8", debugSession.resume)}
+      {step("i-lucide-step-forward", "Step over", "F10", debugSession.stepOver)}
+      {step("i-lucide-arrow-down-to-line", "Step into", "F11", debugSession.stepInto)}
+      {step("i-lucide-arrow-up-from-line", "Step out", "⇧F11", debugSession.stepOut)}
+      <span class="status" data-paused={paused() ? "" : undefined}>
+        {status()}
+      </span>
+    </>
+  );
+}
+
+/** The debugger pane, a tab of the dock while Debug is on: call stack, variables of the paused frame, and an evaluate box. */
+function DebugPanel() {
+  const app = useContext(AppContext);
+  const [results, setResults] = createSignal<{ expr: string; ok: boolean; result: string }[]>([]);
+  const paused = debugSession.paused;
+  return (
     <div id="debug-panel">
-      <div class="head">
-        <i class="i-lucide-bug" aria-hidden="true" />
-        <span class="label">Debug</span>
-        {step("i-lucide-play", "Resume", "F8", debugSession.resume)}
-        {step("i-lucide-step-forward", "Step over", "F10", debugSession.stepOver)}
-        {step("i-lucide-arrow-down-to-line", "Step into", "F11", debugSession.stepInto)}
-        {step("i-lucide-arrow-up-from-line", "Step out", "⇧F11", debugSession.stepOut)}
-        <span class="status" data-paused={paused() ? "" : undefined}>
-          {status()}
-        </span>
-      </div>
       <div class="body">
         <section class="stack">
           <h3>Call stack</h3>
@@ -113,3 +119,6 @@ export function DebugPanel() {
     </div>
   );
 }
+
+// Each pause is a new object, so each one brings the tab forward; so does turning Debug on.
+export const debugTab: DockTab = { id: "debug", title: "Debug", tip: "The paused program: call stack, variables, evaluate", icon: "i-lucide-bug", when: debugSession.enabled, attention: () => debugSession.paused() ?? debugSession.enabled(), Head: DebugHead, Body: DebugPanel };

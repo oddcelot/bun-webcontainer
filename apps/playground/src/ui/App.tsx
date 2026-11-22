@@ -4,9 +4,8 @@ import { matches, recordingKeys } from "../keymap";
 import { Preview } from "./Preview";
 import { pref } from "../prefs";
 import { AppContext } from "./context";
-import { Console } from "./Console";
-import { DebugPanel, debugKey } from "./DebugPanel";
-import { debugSession } from "../debugSession";
+import { Dock } from "./Dock";
+import { debugKey } from "./DebugPanel";
 import { EditorPane } from "./EditorPane";
 import { Explorer, toggleFiles, toggleGit } from "./Explorer";
 import { inCommitBox } from "../git/store";
@@ -243,13 +242,7 @@ export function App() {
                             <Resizable.Handle class="resize-handle" aria-label="Resize preview and console" />
                             <Resizable.Panel panelId="console-wrap" initialSize={rows[1]} minSize="60px">
                               {() => (
-                                <>
-                                  {/* In the console's panel, above it: the rows split stays two panels. */}
-                                  <Show when={debugSession.enabled()}>
-                                    <DebugPanel />
-                                  </Show>
-                                  <Console />
-                                </>
+<Dock />
                               )}
                             </Resizable.Panel>
                           </>

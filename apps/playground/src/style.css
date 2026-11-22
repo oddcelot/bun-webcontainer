@@ -2876,65 +2876,124 @@ body:has(#req-handle[data-dragging]) * {
 #preview-tabs .add { flex-shrink: 0; display: grid; place-items: center; padding: 0 8px; border: 0; border-radius: var(--inner-radius); background: none; color: var(--muted); cursor: pointer; }
 #preview-tabs .add:hover { color: var(--fg); background: var(--control-hover); }
 #console-wrap { display: flex; flex-direction: column; min-height: 0; }
-#console-head { display: flex; align-items: center; gap: 6px; padding: 4px 8px; background: var(--panel); border-bottom: 1px solid var(--border); color: var(--muted); }
-#console-head .label { color: var(--fg); font-weight: 600; }
-#console-head .chip { display: inline-flex; align-items: center; gap: 3px; min-width: 1.6em; justify-content: center; padding: 0 6px; border-radius: 999px; background: var(--control); font: 11px/16px var(--font-mono); }
-#console-head .chip[hidden] { display: none; }
-#console-head .chip.error { color: var(--error); background: color-mix(in srgb, var(--error) 14%, var(--panel)); }
-#console-head .chip.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, var(--panel)); }
-#clear { margin-left: auto; padding: 4px 6px; }
-#clear:hover:not(:disabled) { background: var(--control-hover); }
-#clear:disabled { opacity: 0.4; cursor: default; }
-/* The debugger, above the console in its panel. */
-#debug-panel {
-  flex: 0 0 55%;
+/* The dock's header (ui/Dock.tsx): the pane's name, or the tabs once there are several, then what the picked pane adds. */
+#dock-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  /* As tall as the editor's and the preview's tab bars, whatever the picked pane adds: switching tabs moves nothing. */
+  box-sizing: border-box;
+  height: 37px;
+  padding: 4px 8px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+
+  .label {
+    color: var(--fg);
+    font-weight: 600;
+  }
+
+  .tools {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  &[data-tabs] .tools {
+    justify-content: flex-end;
+
+    #clear,
+    .status {
+      margin-left: 0;
+    }
+  }
+
+  /* The tabs are the editor's and the preview's (@runbun/ui tabs.css), inset like theirs; the bar around them is this one. */
+  &[data-tabs] {
+    padding: 0 8px 0 0;
+  }
+
+  .tabs {
+    border-bottom: 0;
+    background: none;
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    min-width: 1.6em;
+    justify-content: center;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: var(--control);
+    font: 11px/16px var(--font-mono);
+
+    &[hidden] {
+      display: none;
+    }
+
+    &.error {
+      color: var(--error);
+      background: color-mix(in srgb, var(--error) 14%, var(--panel));
+    }
+
+    &.warn {
+      color: var(--warn);
+      background: color-mix(in srgb, var(--warn) 14%, var(--panel));
+    }
+  }
+
+  /* The debugger's step buttons and where it is paused. */
+  .step {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 6px;
+
+    &:hover:not(:disabled) {
+      background: var(--control-hover);
+    }
+
+    &:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+  }
+
+  .status {
+    margin-left: auto;
+    overflow: hidden;
+    font: 11px/16px var(--font-mono);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    &[data-paused] {
+      color: var(--warn);
+    }
+  }
+}
+.dock-pane {
+  flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  border-bottom: 1px solid var(--border);
 
-  > .head {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 4px 8px;
-    background: var(--panel);
-    border-bottom: 1px solid var(--border);
-    color: var(--muted);
-
-    .label {
-      margin-right: 4px;
-      color: var(--fg);
-      font-weight: 600;
-    }
-
-    .step {
-      display: inline-flex;
-      align-items: center;
-      padding: 4px 6px;
-
-      &:hover:not(:disabled) {
-        background: var(--control-hover);
-      }
-
-      &:disabled {
-        opacity: 0.4;
-        cursor: default;
-      }
-    }
-
-    .status {
-      margin-left: auto;
-      overflow: hidden;
-      font: 11px/16px var(--font-mono);
-      text-overflow: ellipsis;
-      white-space: nowrap;
-
-      &[data-paused] {
-        color: var(--warn);
-      }
-    }
+  &[hidden] {
+    display: none;
   }
+}
+#clear { margin-left: auto; padding: 4px 6px; }
+#clear:hover:not(:disabled) { background: var(--control-hover); }
+#clear:disabled { opacity: 0.4; cursor: default; }
+/* The debugger, a pane of the dock. */
+#debug-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 
   > .body {
     flex: 1;

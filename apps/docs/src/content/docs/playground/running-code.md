@@ -58,7 +58,7 @@ Pause your program at a line and look around, without leaving the playground.
 The debugger is a prototype and off by default, runbun.dev included. A [self-hosted copy](/guides/self-hosting/) turns it on with `"debugger": true` in its hosting file.
 :::
 
-1. Turn on **Debug**, the bug icon in the header or the status bar. A Debug panel opens above the console.
+1. Turn on **Debug**, the bug icon in the header or the status bar. A Debug tab opens next to the Console tab, under the preview, and comes forward each time the program pauses.
 2. Click a line number to set a breakpoint, a small red dot beside the number. Click again to remove it. A `debugger;` statement in your code pauses there too.
 3. Press **Run**. Debug applies to runs started after you turn it on.
 
