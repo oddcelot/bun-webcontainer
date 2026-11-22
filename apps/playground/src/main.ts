@@ -289,7 +289,8 @@ function applyConfig(): ProjectConfig {
   if (tabs.length) workspace.activate(tabs[0]);
   else if (!hidden.has(entryFile())) openFile(entryFile());
   workspace.setSizes(config.sizes ?? null);
-  workspace.setPanels(config.panels ?? null);
+  // The host's `panels` under the project's: a pane neither names stays as the reader left it.
+  workspace.setPanels(HOSTING.panels || config.panels ? { ...HOSTING.panels, ...config.panels } : null);
   const presets = parseRequests((config.preview?.requests ?? []).join("; "));
   if (presets.length) previews.presets(presets);
   else if (config.preview?.path) previews.start(config.preview.path);

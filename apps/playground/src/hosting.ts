@@ -38,6 +38,8 @@ export interface RuntimeHosting {
   localRunner: boolean;
   /** Whether the step debugger (a prototype) is on: the Debug buttons, breakpoints, the Debug panel (src/debugSession.ts). */
   debugger: boolean;
+  /** The panes a project opens with where its runbun.json `panels` doesn't say (src/main.ts applyConfig), or null for the reader's layout. */
+  panels: { files?: boolean; preview?: boolean; console?: boolean } | null;
   /**
    * The host's own brand, or null for runbun's: its logo (data: URLs) and `name` in the header, `name` as the page
    * title, its share card (`card`: the picture's file name in the folder), and About opening runbun.dev's about page.

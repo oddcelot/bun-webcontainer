@@ -77,6 +77,12 @@ export interface HostingFile {
    */
   debugger?: boolean;
   /**
+   * Which panes the playground opens with, where a project's runbun.json `panels` doesn't say: `files`, `preview`,
+   * `console`, each true (shown) or false (hidden). The reader can still show and hide them, and a hidden console
+   * opens when the program fails. Default: all as the reader left them. The embed has its own modes.
+   */
+  panels?: HostingPanels;
+  /**
    * Makes the playground the host's own: its logo and `name` in the header in place of runbun's dumpling and the
    * random bun names, its logo as the page's icon, and `name` alone as the page title. The status bar's About
    * then opens runbun.dev's about page ("Powered by runbun"), unless the host has the landing page itself.
@@ -159,6 +165,7 @@ export interface Hosting {
   worker: boolean;
   localRunner: boolean;
   debugger: boolean;
+  panels?: HostingPanels;
   brand?: HostingBrand;
   theme?: { family?: string; families?: string[]; vars?: HostingVars; transition?: "logo" | "circle" | "none" };
   /** The file it came from, for messages; undefined for the defaults. */
@@ -226,6 +233,10 @@ function vars(value: unknown, field: string, path: string): Record<string, strin
   return value as Record<string, string>;
 }
 
+/** The panes a hosting file's `panels` can show or hide: the full playground's (src/ui/App.tsx). */
+const HOSTING_PANELS = ["files", "preview", "console"] as const;
+export type HostingPanels = Partial<Record<(typeof HOSTING_PANELS)[number], boolean>>;
+
 function fields(value: unknown, field: string, known: string[], path: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${path}: ${field} must be an object`);
   for (const key of Object.keys(value)) if (!known.includes(key)) throw new Error(`${path}: unknown field "${field}.${key}" (fields: ${known.join(", ")})`);
@@ -245,7 +256,7 @@ export function readHostingFile(path: string, read: { card?: boolean } = {}): Om
     throw new Error(`HOSTING=${path}: ${(e as Error).message}`);
   }
   if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error(`${path}: not a JSON object`);
-  const known = new Set(["$schema", "docsUrl", "contentOrigin", "editorOrigins", "canary", "name", "gallery", "defaultProject", "languages", "landing", "worker", "localRunner", "debugger", "brand", "theme"]);
+  const known = new Set(["$schema", "docsUrl", "contentOrigin", "editorOrigins", "canary", "name", "gallery", "defaultProject", "languages", "landing", "worker", "localRunner", "debugger", "panels", "brand", "theme"]);
   for (const key of Object.keys(data)) if (!known.has(key)) throw new Error(`${path}: unknown field "${key}" (fields: ${[...known].slice(1).join(", ")})`);
   const d = data as Record<string, unknown>;
   const out: Omit<HostingFile, "brand"> & { brand?: HostingBrand } = {};
@@ -302,6 +313,15 @@ export function readHostingFile(path: string, read: { card?: boolean } = {}): Om
       cardAlt: (b.cardAlt as string | undefined)?.trim() ?? null,
     };
   }
+  if (d.panels !== undefined) {
+    const p = fields(d.panels, "panels", [...HOSTING_PANELS], path);
+    out.panels = {};
+    for (const key of HOSTING_PANELS)
+      if (p[key] !== undefined) {
+        if (typeof p[key] !== "boolean") throw new Error(`${path}: panels.${key} must be true or false`);
+        out.panels[key] = p[key];
+      }
+  }
   if (d.theme !== undefined) {
     const t = fields(d.theme, "theme", ["family", "families", "vars", "transition"], path);
     out.theme = {};
@@ -356,6 +376,7 @@ export function loadHosting(mode: string, env: Record<string, string | undefined
     worker: file.worker ?? mode === "development",
     localRunner: file.localRunner ?? true,
     debugger: env.DEBUGGER ? env.DEBUGGER === "1" : (file.debugger ?? false),
+    panels: file.panels,
     brand: file.brand,
     theme: file.theme,
     file: env.HOSTING,

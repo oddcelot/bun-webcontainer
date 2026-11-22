@@ -62,8 +62,12 @@ export function App() {
   let split: RootChildrenProps | undefined;
   // The split from before one was hidden, to show both again at.
   let shown = rows;
+  // Whether `panels` (the project's or the host's) hid the console and the reader hasn't toggled it since: it opens
+  // when the program fails, since its output says why.
+  let configHidConsole = false;
   const toggle = (i: number) => {
     if (!split || !cols) return;
+    if (i === 1) configHidConsole = false;
     const sizes = split.sizes;
     // With both hidden, the right column is too: show it with just this one.
     if (!(cols.sizes[2] > 0)) {
@@ -111,8 +115,10 @@ export function App() {
         split.setSizes(saved.rows);
       }
       overridden = false;
+      configHidConsole = false;
     } else {
       overridden = true;
+      configHidConsole = want?.console === false;
       if (shares) setShares(shares);
       if (want?.files !== undefined && want.files !== cols.sizes[0] > 0) toggleColumn(0);
       const right = cols.sizes[2] > 0;
@@ -134,6 +140,17 @@ export function App() {
     () => [app.workspace.panels(), app.workspace.sizes()] as const,
     ([want, shares]) => {
       setPanels(want, shares);
+    },
+  );
+  createEffect(
+    () => app.session.settled().state,
+    (state) => {
+      if (state !== "error" || !configHidConsole || !cols || !split) return;
+      if (cols.sizes[2] > 0 && split.sizes[1] > 0) return;
+      // Like the panels it undoes, not the reader's layout to save.
+      applying = true;
+      toggle(1);
+      requestAnimationFrame(() => (applying = false));
     },
   );
   onSettled(() => {

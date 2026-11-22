@@ -6,7 +6,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { configure } from "../hosting/configure";
+import { configure, runtimeHosting } from "../hosting/configure";
 import { fileURLToPath } from "node:url";
 import { loadHosting } from "../hosting/load";
 
@@ -138,6 +138,7 @@ if (dev.contentOrigin !== "http://run.runbun.localhost:5199" || dev.editorOrigin
     want("a brand: the card's alt text", branded.split('content="Solid Playground: run SolidJS projects in your browser, beside the Solid logo"').length === 3 && !branded.includes("pixel-art kitchen"));
     const brand = JSON.parse(/export default (.*);/.exec(read("hosting.js"))![1]);
     want("a brand: hosting.js has the logos, the theme and no Local Bun", brand.brand.logo.startsWith("data:image/svg+xml;base64,") && brand.brand.logoDark !== brand.brand.logo && brand.brand.home === "https://www.solidjs.com/" && brand.theme.families.join() === "solid-light" && brand.localRunner === false);
+    want("a brand: hosting.js has its panes, the defaults have none", brand.panels.console === false && runtimeHosting(loadHosting("production", {})).panels === null);
     configure(dist, loadHosting("production", { HOSTING: "hosting/example.json" }));
     want("a brand: configured twice, the same HTML", read("index.html") === branded);
     configure(dist, loadHosting("production", {}));
@@ -149,6 +150,8 @@ if (dev.contentOrigin !== "http://run.runbun.localhost:5199" || dev.editorOrigin
       ["a logo that doesn't exist", { brand: { logo: "nope.svg" } }],
       ["a card that isn't a PNG", { brand: { logo: join(app, "hosting/brand/solid.svg"), card: join(app, "hosting/brand/solid.svg") } }],
       ["a card's alt text without a card", { brand: { logo: join(app, "hosting/brand/solid.svg"), cardAlt: "x" } }],
+      ["a pane the playground doesn't have", { panels: { tabs: false } }],
+      ["a pane that isn't on or off", { panels: { console: "hidden" } }],
       ["a theme variable that isn't a custom property", { theme: { vars: { base: { color: "red" } } } }],
       ["a theme transition that isn't one", { theme: { transition: "fade" } }],
       ["an empty list of theme families", { theme: { families: [] } }],
