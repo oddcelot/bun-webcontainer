@@ -1,0 +1,17 @@
+diff --git a/dist/highlighter/shiki-editor.js b/dist/highlighter/shiki-editor.js
+index c68b3c518ca88a589802b2d354ecb990577a1648..4d088bcc548f6baecc4adee2464260127bf82595 100644
+--- a/dist/highlighter/shiki-editor.js
++++ b/dist/highlighter/shiki-editor.js
+@@ -90,8 +90,10 @@ var ShikiEditorTokenizer = class {
+ 	#ensureActiveTheme() {
+ 		if (this.#themeName === "") return;
+ 		this.backend?.getTheme(this.#themeName);
+-		const { colorMap } = this.#highlighter.setTheme(this.#themeName);
+-		this.#colorMap = colorMap;
++		const { theme, colorMap } = this.#highlighter.setTheme(this.#themeName);
++		// Shiki keeps colors it can't tokenize (display-p3) as placeholders in the color map; codeToHast swaps them back via colorReplacements, so must we.
++		const replacements = theme.colorReplacements;
++		this.#colorMap = replacements ? colorMap.map((c) => replacements[c.toLowerCase()] ?? replacements[c] ?? c) : colorMap;
+ 	}
+ 	dispose() {
+ 		this.#isCleanedUp = true;
