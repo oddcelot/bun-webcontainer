@@ -5,6 +5,22 @@ browser, its editor, and the docs at docs.runbun.dev. They release together at o
 `package.json`, tagged `v<version>`), organised by part. `@runbun/astro` keeps its own changelog in
 [packages/astro/CHANGELOG.md](./packages/astro/CHANGELOG.md).
 
+## 0.8.1 — 2026-11-22
+
+Solid's server functions now work in the preview, and the Solid examples show Solid's devtools: a dock with the
+app's errors, actions, ownership tree and reactivity graph. A new example runs Solid's start mode with server
+functions. Nothing needs action.
+
+### Playground
+
+- **Added** — **Solid's devtools in the Solid examples.** The Solid 2, ReactiveScript and Solid SSR examples show
+  Solid's devtools dock, and a new Solid Start + devtools example runs start mode with server functions.
+
+### Runtime
+
+- **Fixed** — **Solid server functions work in the preview.** A `"use server"` call from a page answered 403, and with
+  the check off it lost its arguments: the server got neither the `Origin` nor the `Content-Length` a browser sends.
+
 ## 0.8.0 — 2026-11-22
 
 A self-hosted playground can now look like its own site: a hosting file gives it a brand (logo, name, share card), a

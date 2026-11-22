@@ -26,8 +26,8 @@ Visitors run code in browsers with WebAssembly Memory64: Chrome and Edge 133+, F
 Each [release](https://github.com/oddcelot/bun-webcontainer/releases) from v0.7.0 on has a `runbun-playground-<version>.tar.gz`:
 
 ```sh
-curl -LO https://github.com/oddcelot/bun-webcontainer/releases/download/v0.8.0/runbun-playground-0.8.0.tar.gz
-tar -xzf runbun-playground-0.8.0.tar.gz && cd runbun-playground-0.8.0
+curl -LO https://github.com/oddcelot/bun-webcontainer/releases/download/v0.8.1/runbun-playground-0.8.1.tar.gz
+tar -xzf runbun-playground-0.8.1.tar.gz && cd runbun-playground-0.8.1
 ```
 
 Inside: `dist/` (the site), `configure.ts` and `load.ts` (the script that points it at your host), a `README.md`, and `hosting.example.json`. To pin a version in a deploy script, keep the archive's SHA-256 (`shasum -a 256`) next to the version and check it after the download, as solid-playground's [`scripts/build.ts`](https://github.com/oddcelot/solid-playground/blob/main/scripts/build.ts) does.
