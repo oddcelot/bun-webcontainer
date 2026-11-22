@@ -30,6 +30,8 @@ export function previewDevtools() {
     // Its close button, the one icon button without a name: the dock hides the pane.
     "[data-solid-dev-toolbar-dock] [data-solid-icon-button]:not([title]):not([aria-label]) { display: none !important; }";
   type Tagged = Element & { __runbunDocument?: Document };
+  // The events @solidjs/web delegates (its DelegatedEvents).
+  const DELEGATED = ["beforeinput", "click", "dblclick", "contextmenu", "focusin", "focusout", "input", "keydown", "keyup", "mousedown", "mousemove", "mouseout", "mouseover", "mouseup", "pointerdown", "pointermove", "pointerout", "pointerover", "pointerup", "touchend", "touchmove", "touchstart"];
   /** The dock's frame (ui/Devtools.tsx), a sibling of this one; undefined without it or on another origin. */
   const frame = (): Document | undefined => {
     try {
@@ -102,6 +104,27 @@ export function previewDevtools() {
       return c.defaultPrevented;
     };
     doc.body.append(host);
+    // Solid hands events to the toolbar's handlers (`_$$click` on a node) from listeners on the root it rendered into,
+    // and a portal's mount joins in when it finds that root above the portal. A page that hydrates (solid-ssr-dashboard)
+    // doesn't find it, so in the frame nothing answers a click. Here, once the event has passed the host: a handler Solid
+    // ran defines the event's currentTarget; without one, run them as Solid would, from the target up to the host.
+    const mine = host;
+    for (const type of DELEGATED)
+      doc.addEventListener(type, (e) => {
+        if (!mine.isConnected || !mine.contains(e.target as Node) || Object.getOwnPropertyDescriptor(e, "currentTarget")) return;
+        const key = `_$$${type}`;
+        type Handled = Node & Record<string, unknown>;
+        for (let node = e.target as Handled | null; node && (node as Node) !== mine; node = node.parentNode as unknown as Handled | null) {
+          const handler = node[key] as ((this: Node, ...a: unknown[]) => void) | { handleEvent(e: Event): void } | undefined;
+          if (!handler || (node as unknown as { disabled?: boolean }).disabled) continue;
+          Object.defineProperty(e, "currentTarget", { configurable: true, value: node });
+          const data = node[`${key}Data`];
+          if (data !== undefined) (handler as (this: Node, ...a: unknown[]) => void).call(node, data, e);
+          else if (typeof handler === "function") handler.call(node, e);
+          else handler.handleEvent(e);
+          if (e.cancelBubble) break;
+        }
+      });
     if (!watching) {
       watching = true;
       // The open toolbar makes room for itself under the page; it isn't there.
