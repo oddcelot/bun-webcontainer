@@ -53,6 +53,8 @@ export const techIcons: Record<string, string> = {
   "Node.js": "i-logos-nodejs-icon?bg",
   Lit: "i-logos-lit-icon?bg",
   Hono: "i-logos-hono?bg",
+  Vue: "i-logos-vue?bg",
+  Pinia: "i-logos-pinia?bg",
 };
 
 const KIND_ORDER: ProjectKind[] = ["starter", "example", "github"];
