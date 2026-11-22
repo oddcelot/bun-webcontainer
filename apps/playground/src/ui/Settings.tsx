@@ -10,6 +10,8 @@ import { Switch } from "@runbun/ui/solid/Switch";
 import { Tip } from "@runbun/ui/solid/Tip";
 import { CONFIG_FILE, readConfig, type Panel, type ProjectConfig, type Requirement, type Sized } from "../projectConfig";
 import { AppContext } from "./context";
+import type { JSX } from "@solidjs/web";
+import { commandOf, isShellCommand } from "../scripts";
 import { Fields, METHODS, MethodBadge } from "./RequestFields";
 import { hasBody } from "./previews";
 import { Select } from "@runbun/ui/solid/Select";
@@ -226,6 +228,26 @@ const REQUIRES: [Requirement, string, string][] = [
   ["local-bun", "Local Bun", "Native Bun on the reader's machine: child processes, native addons"],
 ];
 
+/** A field whose label has an info button: its tooltip says what the field does, with examples. */
+function InfoField(props: ParentProps<{ id: string; label: string; hint?: string; info: JSX.Element }>) {
+  // Built here, under this component: the tooltip renders its content later, in a portal with no owner.
+  const tip = <span class="info-tip">{untrack(() => props.info)}</span>;
+  return (
+    <div class="field">
+      <span class="field-label">
+        <label for={props.id}>{props.label}</label>
+        <Show when={props.hint}>
+          <span class="field-hint">{props.hint}</span>
+        </Show>
+        <Tip type="button" class="info" tip={tip} aria-label={`About ${props.label}`}>
+          <i class="i-lucide-info" aria-hidden="true" />
+        </Tip>
+      </span>
+      {props.children}
+    </div>
+  );
+}
+
 /** A preset request being edited, with whether its headers and body show. */
 type Draft = PresetRequest & { open: boolean };
 
@@ -389,7 +411,20 @@ function projectConfig() {
     vfs.write(CONFIG_FILE, after);
     if (key === "readonly") ws.setReadonly((value as string[] | undefined) ?? []);
   }
-  return { text, parsed, c, files, folders, broken, set };
+  // What Run starts without runbun.json's `run`: the playground's own guess (scripts.ts commandOf), read with the file left out.
+  const guessed = createMemo(() => {
+    version();
+    text();
+    return commandOf((p) => vfs.files.has(p), (p) => (p === CONFIG_FILE ? undefined : vfs.readText(p)));
+  });
+  /** The guess is a file to name (not a package.json script run through the shell). */
+  const guessShown = () => !isShellCommand(guessed().entry, guessed().args);
+  /** The command Run starts, as one line. */
+  const commandLine = () => {
+    const run = c().run ?? guessed();
+    return isShellCommand(run.entry, run.args) ? run.args[1]! : ["bun", run.entry, ...run.args].join(" ");
+  };
+  return { text, parsed, c, files, folders, broken, set, guessed, guessShown, commandLine };
 }
 type ProjectConfigState = ReturnType<typeof projectConfig>;
 
@@ -399,7 +434,7 @@ const fromTri = (v: string) => (v === "default" ? undefined : v === "on");
 
 /** One section of the open project's runbun.json, field by field. */
 function ProjectPage(props: { section: Section; project: ProjectConfigState }) {
-  const { text, parsed, c, files, folders, broken, set } = untrack(() => props.project);
+  const { text, parsed, c, files, folders, broken, set, guessed, guessShown, commandLine } = untrack(() => props.project);
 
   return (
     <div class="settings-list project">
@@ -418,27 +453,82 @@ function ProjectPage(props: { section: Section; project: ProjectConfigState }) {
 
         <Show when={props.section === "project-running"}>
         <div class="settings-grid">
-          <Field label="Entry" hint="what Run starts">
-            <Input spellcheck={false} value={c().run?.entry ?? ""} placeholder="guessed" onChange={(e) => {
-              const entry = e.currentTarget.value.trim();
-              set("run", entry ? { entry, ...(c().run?.args.length ? { args: c().run!.args } : {}) } : undefined);
-            }} />
-          </Field>
-          <Field label="Arguments" hint="space-separated">
-            <Input spellcheck={false} disabled={!c().run} value={(c().run?.args ?? []).join(" ")} onChange={(e) => {
-              const args = e.currentTarget.value.split(/\s+/).filter(Boolean);
-              if (c().run) set("run", { entry: c().run!.entry, ...(args.length ? { args } : {}) });
-            }} />
-          </Field>
+          <InfoField
+            id="settings-entry"
+            label="Entry"
+            hint="the file Run starts"
+            info={
+              <>
+                The file Run starts, as <code>bun &lt;entry&gt;</code>, relative to the project's root. Empty, it's guessed: package.json's{" "}
+                <code>module</code> or <code>main</code>, a <code>bun &lt;file&gt;</code> dev or start script, a script that runs a package's bin (<code>vite</code>),
+                else <code>index.ts</code>. Examples: <code>src/server.ts</code>, <code>index.html</code>
+              </>
+            }
+          >
+            <Input
+              id="settings-entry"
+              spellcheck={false}
+              list="settings-entry-files"
+              value={c().run?.entry ?? ""}
+              placeholder={guessShown() ? `${guessed().entry} (guessed)` : "index.ts"}
+              onChange={(e) => {
+                const entry = e.currentTarget.value.trim().replace(/^\.?\//, "");
+                set("run", entry ? { entry, ...(c().run?.args.length ? { args: c().run!.args } : {}) } : undefined);
+              }}
+            />
+            <datalist id="settings-entry-files">
+              <For each={files().filter((f) => /\.(m?[jt]sx?|html)$/.test(f))}>{(f) => <option value={f} />}</For>
+            </datalist>
+          </InfoField>
+          <InfoField
+            id="settings-args"
+            label="Arguments"
+            hint="space-separated"
+            info={
+              <>
+                Passed to the program after the entry, <code>bun &lt;entry&gt; &lt;arguments&gt;</code>; it reads them in <code>Bun.argv</code> (or{" "}
+                <code>process.argv</code>) from index 2. Examples: <code>--port 3000</code>, <code>--verbose data.json</code>
+              </>
+            }
+          >
+            <Input
+              id="settings-args"
+              spellcheck={false}
+              value={(c().run?.args ?? []).join(" ")}
+              placeholder={!c().run && guessShown() && guessed().args.length ? `${guessed().args.join(" ")} (guessed)` : "--port 3000"}
+              onChange={(e) => {
+                const args = e.currentTarget.value.split(/\s+/).filter(Boolean);
+                // Arguments need an entry: the guessed one, written out, when none is set.
+                const entry = c().run?.entry ?? (guessShown() ? guessed().entry : undefined);
+                if (entry) set("run", args.length || c().run ? { entry, ...(args.length ? { args } : {}) } : undefined);
+              }}
+            />
+          </InfoField>
         </div>
+        <p class="settings-command">
+          Run starts <code>{commandLine()}</code>
+          <Show when={!c().run}>
+            <span class="settings-note"> (guessed)</span>
+          </Show>
+        </p>
         <Row label="Run once opened" hint="Code from a link still waits for the reader's Run.">
           <Switch label="Run once opened" checked={c().autorun !== false} onChange={(on) => set("autorun", on ? undefined : false)} />
         </Row>
         <Row label="Allow the fast path" hint="Off: always install and start the dev server, even with the reader's fast path on.">
           <Switch label="Allow the fast path" checked={c().fastPath !== false} onChange={(on) => set("fastPath", on ? undefined : false)} />
         </Row>
-        <Field label="Environment" hint="KEY=value per line; not for secrets, the file is shared">
-          <Input multiline rows={3} spellcheck={false} value={Object.entries(c().env ?? {}).map(([k, v]) => `${k}=${v}`).join("\n")} onChange={(e) => {
+        <InfoField
+          id="settings-env"
+          label="Environment"
+          hint="KEY=value per line"
+          info={
+            <>
+              Set in <code>process.env</code> and <code>Bun.env</code> for the program, over the defaults. Not for secrets: the file is shared
+              with the project. Example: <code>LOG_LEVEL=debug</code>, <code>PORT=3000</code>
+            </>
+          }
+        >
+          <Input id="settings-env" placeholder={"LOG_LEVEL=debug\nPORT=3000"} multiline rows={3} spellcheck={false} value={Object.entries(c().env ?? {}).map(([k, v]) => `${k}=${v}`).join("\n")} onChange={(e) => {
             const env: Record<string, string> = {};
             for (const line of fromLines(e.currentTarget.value)) {
               const i = line.indexOf("=");
@@ -446,7 +536,7 @@ function ProjectPage(props: { section: Section; project: ProjectConfigState }) {
             }
             set("env", env);
           }} />
-        </Field>
+        </InfoField>
         <For each={REQUIRES}>
           {([need, label, hint]) => (
             <Row label={`Needs ${label}`} hint={`${hint}. The playground says so up front where it's missing.`}>

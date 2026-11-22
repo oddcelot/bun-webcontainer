@@ -1543,6 +1543,10 @@ html[data-booting] #app > header > * { visibility: hidden; animation: boot-fallb
   padding: 0;
   background: none;
 }
+/* An info button's tooltip in Settings: prose with code (portaled, so not under .dialog.settings). */
+.info-tip code {
+  font: 11px var(--font-mono);
+}
 /* Settings (Settings.tsx): full screen, a sidebar of sections (the reader's own, the project's runbun.json) beside the open one. */
 .dialog-positioner:has(> .dialog.settings) {
   padding-top: 0;
@@ -1831,6 +1835,43 @@ html[data-booting] #app > header > * { visibility: hidden; animation: boot-fallb
     display: flex;
     flex-direction: column;
     gap: 18px;
+  }
+
+  .field-label .info {
+    display: inline-grid;
+    place-items: center;
+    align-self: center;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: none;
+    color: var(--muted);
+    cursor: help;
+
+    &:hover,
+    &:focus-visible {
+      color: var(--fg);
+    }
+
+    i {
+      font-size: 12px;
+    }
+  }
+
+  .settings-command {
+    margin: -4px 0 0;
+    font-size: 12px;
+    color: var(--muted);
+
+    code {
+      padding: 1px 6px;
+      border-radius: 4px;
+      background: var(--control);
+      color: var(--fg);
+      font: 12px var(--font-mono);
+    }
   }
 
   .settings-note {
