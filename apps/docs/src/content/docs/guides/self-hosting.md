@@ -26,8 +26,8 @@ Visitors run code in browsers with WebAssembly Memory64: Chrome and Edge 133+, F
 Each [release](https://github.com/oddcelot/bun-webcontainer/releases) from v0.7.0 on has a `runbun-playground-<version>.tar.gz`:
 
 ```sh
-curl -LO https://github.com/oddcelot/bun-webcontainer/releases/download/v0.7.0/runbun-playground-0.7.0.tar.gz
-tar -xzf runbun-playground-0.7.0.tar.gz && cd runbun-playground-0.7.0
+curl -LO https://github.com/oddcelot/bun-webcontainer/releases/download/v0.8.0/runbun-playground-0.8.0.tar.gz
+tar -xzf runbun-playground-0.8.0.tar.gz && cd runbun-playground-0.8.0
 ```
 
 Inside: `dist/` (the site), `configure.ts` and `load.ts` (the script that points it at your host), a `README.md`, and `hosting.example.json`. To pin a version in a deploy script, keep the archive's SHA-256 (`shasum -a 256`) next to the version and check it after the download, as solid-playground's [`scripts/build.ts`](https://github.com/oddcelot/solid-playground/blob/main/scripts/build.ts) does.
@@ -70,7 +70,7 @@ Every field is optional:
 
 ### Your own brand and theme
 
-`brand`, `theme`, `localRunner`, `debugger` and `languages` need a release after 0.7.0.
+`brand`, `theme`, `localRunner`, `debugger` and `languages` need 0.8.0 or later.
 
 With a `brand`, the playground reads as yours: your logo and `name` stand in the header where runbun.dev has its dumpling and a random bun pun, the logo is the page's icon, and the page title is `name` alone. The status bar's About link opens runbun.dev's about page, which says what the playground runs on (with `landing` on, it opens your copy of that page instead).
 
