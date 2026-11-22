@@ -1,4 +1,4 @@
-import { For, Show, createMemo, createSignal, onSettled, untrack, useContext, type ParentProps } from "solid-js";
+import { For, Show, createMemo, createSignal, createStore, onSettled, snapshot, untrack, useContext, type ParentProps } from "solid-js";
 import { applyEdits, modify } from "jsonc-parser";
 import { Dialog, DialogClose, DialogTitle, DialogTrigger, useDialogContext } from "@runbun/ui/solid/Dialog";
 import { Button } from "@runbun/ui/solid/Button";
@@ -10,6 +10,11 @@ import { Switch } from "@runbun/ui/solid/Switch";
 import { Tip } from "@runbun/ui/solid/Tip";
 import { CONFIG_FILE, readConfig, type Panel, type ProjectConfig, type Requirement, type Sized } from "../projectConfig";
 import { AppContext } from "./context";
+import { Fields, METHODS, MethodBadge } from "./RequestFields";
+import { hasBody } from "./previews";
+import { Select } from "@runbun/ui/solid/Select";
+import { formatRequest, parseRequests, type PresetRequest } from "../embed/requests";
+import type { Field as RequestField } from "../request";
 
 /**
  * Settings, its button in the header: the reader's own (kept in this browser, for every project; the header's toggles
@@ -194,7 +199,6 @@ function RunningSettings() {
   );
 }
 
-const lines = (list: string[] | undefined) => (list ?? []).join("\n");
 const fromLines = (text: string) =>
   text
     .split("\n")
@@ -221,6 +225,121 @@ const REQUIRES: [Requirement, string, string][] = [
   ["cross-origin-isolation", "cross-origin isolation", "SharedArrayBuffer and threads (Vite, Rolldown); runbun.dev has it, some hosts don't"],
   ["local-bun", "Local Bun", "Native Bun on the reader's machine: child processes, native addons"],
 ];
+
+/** A preset request being edited, with whether its headers and body show. */
+type Draft = PresetRequest & { open: boolean };
+
+/**
+ * runbun.json's `preview.requests` as a list: each a method, a path, and (opened) its headers and body, as the preview's
+ * request bar has them; rows can be added and removed. Edits are kept here and written shortly after typing stops.
+ */
+function RequestPresets(props: { requests: string[]; onChange: (requests: string[]) => void }) {
+  // Read once: the list is the source while it's shown (a write coming back mustn't reset a row being typed in).
+  const [drafts, setDrafts] = createStore<{ list: Draft[] }>({ list: parseRequests(untrack(() => props.requests).join("; ")).map((r) => ({ ...r, open: false })) });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const write = (now = false) => {
+    clearTimeout(timer);
+    const save = () => props.onChange(snapshot(drafts.list).filter((r) => r.path.trim()).map(({ open: _, ...r }) => formatRequest(r)));
+    if (now) save();
+    else timer = setTimeout(save, 400);
+  };
+  onSettled(() => () => {
+    // Settings closing or the section changing: what's still waiting is written.
+    if (timer !== undefined) write(true);
+  });
+  const edit = (i: number, fn: (d: Draft) => void, now = false) => {
+    setDrafts((s) => fn(s.list[i]!));
+    write(now);
+  };
+  const headerRows = (d: Draft): RequestField[] => (d.headers ?? []).map(([name, value]) => ({ name, value, on: true }));
+  return (
+    <div class="request-presets">
+      <Show when={drafts.list.length} fallback={<p class="settings-note">None: the preview opens on its path.</p>}>
+        <ol>
+          <For each={drafts.list} keyed={false}>
+            {(d, i) => (
+              <li class="preset" data-open={d().open ? "" : undefined}>
+                <div class="line">
+                  <Select<string>
+                    class="method"
+                    label={`Request ${i + 1}: method`}
+                    options={METHODS}
+                    value={d().method}
+                    onChange={(m) => m && edit(i, (x) => void (x.method = m), true)}
+                    placement="bottom-start"
+                    menuClass="method-menu"
+                    text={(m) => <MethodBadge method={m} />}
+                  />
+                  <input
+                    class="input path"
+                    spellcheck={false}
+                    placeholder="/path"
+                    aria-label={`Request ${i + 1}: path`}
+                    value={d().path}
+                    onInput={(e) => edit(i, (x) => void (x.path = e.currentTarget.value))}
+                  />
+                  <Tip
+                    type="button"
+                    class="more"
+                    tip={d().open ? "Hide headers and body" : "Headers and body"}
+                    aria-label={`Request ${i + 1}: headers and body`}
+                    aria-expanded={d().open ? "true" : "false"}
+                    onClick={() => setDrafts((s) => void (s.list[i]!.open = !s.list[i]!.open))}
+                  >
+                    <i class="i-lucide-sliders-horizontal" aria-hidden="true" />
+                    <Show when={(d().headers?.length ?? 0) + (d().body.trim() ? 1 : 0)}>{(n) => <span class="count">{n()}</span>}</Show>
+                  </Tip>
+                  <Tip type="button" class="remove" tip="Remove" aria-label={`Remove request ${i + 1}`} onClick={() => {
+                    setDrafts((s) => void s.list.splice(i, 1));
+                    write(true);
+                  }}>
+                    <i class="i-lucide-x" aria-hidden="true" />
+                  </Tip>
+                </div>
+                <Show when={d().open}>
+                  <div class="details">
+                    <span class="sub">Headers</span>
+                    <Fields
+                      label={`Request ${i + 1}: headers`}
+                      rows={headerRows(d())}
+                      hidden={false}
+                      onChange={(row, change) =>
+                        edit(i, (x) => {
+                          const h = (x.headers ??= []);
+                          if (!h[row]) h.push([change.name ?? "", change.value ?? ""]);
+                          else {
+                            if (change.name !== undefined) h[row][0] = change.name;
+                            if (change.value !== undefined) h[row][1] = change.value;
+                          }
+                        })
+                      }
+                      onRemove={(row) => edit(i, (x) => void x.headers?.splice(row, 1), true)}
+                    />
+                    <Show when={hasBody(d().method)}>
+                      <span class="sub">Body</span>
+                      <Input
+                        multiline
+                        rows={3}
+                        spellcheck={false}
+                        placeholder='{"name": "value"}, sent as JSON when it parses'
+                        aria-label={`Request ${i + 1}: body`}
+                        value={d().body}
+                        onInput={(e) => edit(i, (x) => void (x.body = e.currentTarget.value))}
+                      />
+                    </Show>
+                  </div>
+                </Show>
+              </li>
+            )}
+          </For>
+        </ol>
+      </Show>
+      <Button class="add" onClick={() => setDrafts((s) => void s.list.push({ method: "GET", path: "/", body: "", open: false }))}>
+        <i class="i-lucide-plus" aria-hidden="true" /> Add a request
+      </Button>
+    </div>
+  );
+}
 
 /** A list of project paths under its label, each removable, with a field that adds one. */
 function FileList(props: { label: string; hint: string; value: string[] | undefined; suggestions: string[]; onChange: (v: string[]) => void }) {
@@ -397,13 +516,17 @@ function ProjectPage(props: { section: Section; project: ProjectConfigState }) {
         </For>
         </Show>
         <Show when={props.section === "preview"}>
-        <div class="settings-grid">
-          <Field label="Path" hint="where it points first">
+        <div class="settings-stack">
+          <Field label="Path" hint="where the preview opens">
             <Input spellcheck={false} value={c().preview?.path ?? ""} placeholder="/" onChange={(e) => set("preview", { ...c().preview, path: e.currentTarget.value.trim() || undefined })} />
           </Field>
-          <Field label="Requests" hint="one per line, each in its own tab: GET /api">
-            <Input multiline rows={3} spellcheck={false} value={lines(c().preview?.requests)} onChange={(e) => set("preview", { ...c().preview, requests: fromLines(e.currentTarget.value) })} />
-          </Field>
+          <div class="field">
+            <span class="field-label">
+              Requests
+              <span class="field-hint">each opens in its own preview tab, the first sent on Run</span>
+            </span>
+            <RequestPresets requests={untrack(() => c().preview?.requests ?? [])} onChange={(requests) => set("preview", { ...c().preview, requests })} />
+          </div>
         </div>
         </Show>
         <Show when={props.section === "card"}>

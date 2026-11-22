@@ -1537,6 +1537,12 @@ html[data-booting] #app > header > * { visibility: hidden; animation: boot-fallb
 .shortcuts-row dt { display: flex; flex-direction: column; min-width: 0; }
 .shortcuts-row dt code { color: var(--muted); font: 10.5px var(--font-mono); }
 .shortcuts-row dd { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; margin: 0; }
+/* The request bar's header rows in Settings: the whole list, on the page's background (an id, to win over #req-panel's). */
+#settings-panel .request-presets .fields {
+  max-height: none;
+  padding: 0;
+  background: none;
+}
 /* Settings (Settings.tsx): full screen, a sidebar of sections (the reader's own, the project's runbun.json) beside the open one. */
 .dialog-positioner:has(> .dialog.settings) {
   padding-top: 0;
@@ -1718,6 +1724,94 @@ html[data-booting] #app > header > * { visibility: hidden; animation: boot-fallb
 
     &.three {
       grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
+  .request-presets {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+
+    ol {
+      align-self: stretch;
+      display: flex;
+      flex-direction: column;
+      margin: 0;
+      padding: 0;
+      border: 1px solid var(--control-border);
+      border-radius: var(--inner-radius);
+      list-style: none;
+    }
+
+    .preset {
+      & + .preset {
+        border-top: 1px solid color-mix(in srgb, var(--control-border) 60%, transparent);
+      }
+
+      &[data-open] {
+        background: color-mix(in srgb, var(--control) 40%, transparent);
+      }
+    }
+
+    .line {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 4px 4px 6px;
+
+      .method {
+        flex-shrink: 0;
+        padding: 3px 4px 3px 3px;
+      }
+
+      .path {
+        flex: 1;
+        min-width: 0;
+        height: 26px;
+        font: 12px var(--font-mono);
+      }
+
+      .more,
+      .remove {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        flex-shrink: 0;
+        height: 26px;
+        padding: 0 6px;
+        border: 0;
+        border-radius: var(--inner-radius);
+        background: none;
+        color: var(--muted);
+        cursor: pointer;
+
+        &:hover {
+          background: var(--control-hover);
+          color: var(--fg);
+        }
+      }
+
+      .more[aria-expanded="true"] {
+        color: var(--accent);
+      }
+
+      .count {
+        font-size: 11px;
+      }
+    }
+
+    .details {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 0 8px 10px 10px;
+
+      .sub {
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 11px;
+      }
     }
   }
 
@@ -2750,7 +2844,8 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
    column, with 24px buttons at the end. Rows are as tall as they are, up to four, then scroll; the body's editor is as
    tall as its lines (set there; this until it's measured), with a hint while it's empty, and the panes' resize handle
    under it. */
-#req-panel {
+/* Also the preset requests in Settings (Settings.tsx RequestPresets), which use the same fields. */
+:is(#req-panel, .request-presets) {
   display: flex;
   flex-direction: column;
   flex: 0 0 auto;
@@ -2911,6 +3006,8 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
   }
   .field {
     display: flex;
+    /* A row, over @runbun/ui's .field (a label over its control), which shares the class name. */
+    flex-direction: row;
     align-items: center;
     gap: 6px;
     height: 30px;

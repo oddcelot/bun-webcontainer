@@ -16,4 +16,12 @@
       outline-offset: -1px;
     }
   }
+
+  /* A textarea's height is its rows, not one control's. */
+  textarea.input {
+    height: auto;
+    min-height: var(--control-height);
+    padding: 6px 8px;
+    line-height: 1.5;
+  }
 }
