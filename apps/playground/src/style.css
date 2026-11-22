@@ -2164,6 +2164,8 @@ html[data-booting] #app > header > * { visibility: hidden; animation: boot-fallb
 #status::before { content: ""; flex-shrink: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--dot); }
 /* As a toast (ui/Status.tsx): over the panes' bottom-right corner, above the expanded preview (20), fading (and sliding) out once hidden. Before the states so theirs win. */
 #status.toast { position: absolute; right: 12px; bottom: 12px; z-index: 21; max-width: calc(100% - 24px); height: 26px; font-size: 12px; background: var(--panel); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3); transition: opacity 0.2s, transform 0.2s, visibility 0.2s; }
+/* In the full playground's status bar: smaller, on the bar's line (over #statusbar > span's flat look). */
+#statusbar > #status { height: 18px; min-width: 0; margin: 0 4px; padding: 0 8px 0 4px; border: 1px solid var(--control-border); border-radius: 999px; font-size: 11px; }
 #status.toast[data-hidden] { opacity: 0; transform: translateY(6px); visibility: hidden; }
 #status[data-state="busy"] { --dot: var(--warn); color: var(--fg); }
 #status[data-state="busy"]::before { animation: status-pulse 1s ease-in-out infinite alternate; }
