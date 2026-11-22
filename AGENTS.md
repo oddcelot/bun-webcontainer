@@ -81,6 +81,7 @@ moon run playground:test-processes                     # child processes (Bun.sp
 moon run playground:test-vm                        # node:vm (contexts over a `with` scope) vs native Bun (headless Chrome)
 moon run playground:test-bun-apis                  # Bun.FileSystemRouter, Bun.plugin, Bun.stdout.writer() vs native Bun (headless Chrome)
 moon run playground:test-node-test-run             # node:test run() and bun test as a child process vs native Bun (headless Chrome)
+moon run playground:test-solid-start               # Solid start mode: server rendering, a server function, @solidjs/start-devtools (headless Chrome)
 scripts/setup-bun.ts                       # recreate bun/ (pinned commit + patches/bun/ via git am); bun/ is not tracked
 scripts/export-bun-patches.ts              # after committing in bun/ on wasm-experiment
 scripts/bun-upgrade.ts --check             # newer Bun release? do patches/bun/ still apply? (changes nothing)

@@ -286,6 +286,14 @@ tasks:
     toolchains: ['bun']
     options:
       cache: false
+  test-solid-start:
+    # Solid's start mode end to end (scripts/solid-start.ts): fixtures/solid-start (server rendering, server functions,
+    # @solidjs/start-devtools) is installed from npm and run in the embed in headless Chrome; a server function must
+    # come back with what it was sent. Needs Chrome and the npm registry, so it isn't part of `test`.
+    command: 'bun scripts/solid-start.ts'
+    toolchains: ['bun']
+    options:
+      cache: false
   test-compress:
     # zstd and brotli end to end (scripts/compress.ts): fixtures/compress runs in the embed in headless Chrome (Bun.zstd*,
     # node:zlib's brotli and zstd, CompressionStream) and prints what native Bun prints for it; data native Bun
