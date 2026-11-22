@@ -1,27 +1,20 @@
-/* PathList: removable rows of paths over a field that adds one. Over the uno preset's tokens. */
+/* PathList: rows of paths, each removable, in one box whose last row adds one. Over the uno preset's tokens. */
 @layer runbun-ui {
   .path-list {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--control-border);
+    border-radius: var(--inner-radius);
+    list-style: none;
 
-    ul {
-      display: flex;
-      flex-direction: column;
-      margin: 0;
-      padding: 0;
-      border: 1px solid var(--control-border);
-      border-radius: var(--inner-radius);
-      list-style: none;
-    }
-
-    li {
+    > li {
       display: flex;
       align-items: center;
-      gap: 4px;
-      min-height: 26px;
-      padding: 0 2px 0 8px;
+      gap: 6px;
+      height: 32px;
+      padding: 0 5px 0 10px;
       font: 12px var(--font-mono);
 
       & + li {
@@ -37,15 +30,43 @@
       white-space: nowrap;
     }
 
+    /* The add row: the field takes the path's place, the + the ×'s. */
+    > li.add {
+      padding-left: 4px;
+      background: color-mix(in srgb, var(--control) 35%, transparent);
+    }
+
+    .combobox,
+    .control {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+    }
+
+    .control .input {
+      flex: 1;
+      min-width: 0;
+      height: 24px;
+      padding: 0 6px;
+      border-color: transparent;
+      background: none;
+      font: 12px var(--font-mono);
+
+      &:focus {
+        border-color: var(--control-border);
+        background: var(--control);
+      }
+    }
+
     .remove,
     .add-button {
       display: grid;
       place-items: center;
       flex-shrink: 0;
-      width: 22px;
-      height: 22px;
+      width: 24px;
+      height: 24px;
       padding: 0;
-      border: 0;
+      border: 1px solid transparent;
       border-radius: var(--inner-radius);
       background: none;
       color: var(--muted);
@@ -55,28 +76,23 @@
         background: var(--control-hover);
         color: var(--fg);
       }
+    }
+
+    .add-button {
+      border-color: var(--control-border);
+      background: var(--control);
+      color: var(--fg);
+
       &:disabled {
-        opacity: 0.4;
+        color: var(--muted);
+        opacity: 0.6;
         cursor: default;
       }
     }
+  }
 
-    .empty {
-      margin: 0;
-      color: var(--muted);
-      font-size: 11px;
-    }
-
-    .add {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-
-      .input {
-        flex: 1;
-        min-width: 0;
-        font: 12px var(--font-mono);
-      }
-    }
+  .path-menu {
+    min-width: 0;
+    font: 12px var(--font-mono);
   }
 }

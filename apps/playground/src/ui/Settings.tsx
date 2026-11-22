@@ -371,7 +371,7 @@ function FileList(props: { label: string; hint: string; value: string[] | undefi
         {props.label}
         <span class="field-hint">{props.hint}</span>
       </span>
-      <PathList label={props.label} value={props.value ?? []} suggestions={props.suggestions} onChange={(v) => props.onChange(v)} placeholder="Add a file" />
+      <PathList label={props.label} value={props.value ?? []} suggestions={props.suggestions} onChange={(v) => props.onChange(v)} placeholder="Add a file…" />
     </div>
   );
 }
