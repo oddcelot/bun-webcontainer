@@ -37,7 +37,8 @@
 
   /* The popup. It portals out of the page, so it sets its own font size. */
   .select-menu {
-    z-index: 30;
+    /* Over a dialog (41), for a select in one. */
+    z-index: 45;
     min-width: 16rem;
     border: 1px solid var(--control-border);
     border-radius: calc(var(--inner-radius) + 4px + 1px);
