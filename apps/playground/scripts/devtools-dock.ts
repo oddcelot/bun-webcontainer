@@ -110,6 +110,17 @@ async function fullPlayground(page: Page) {
     await page.goto(`${EDITOR}/?example=${example}`, { waitUntil: "domcontentloaded" });
     s = await until(page, (s) => s.inFrame, 240_000);
     report(`${example}: the toolbar is in the dock`, s.tabs.join() === "Devtools*,Console" && s.shownIsActive && s.inFrame && !s.inPage, s);
+    // Its buttons answer: Solid's event delegation reaches them in the frame.
+    const pane = page.frames().find((f) => f.name() === "runbun-devtools")!;
+    await pane.click(".runbun-devtools-host:not([hidden]) #solid-dev-toolbar-view-structure");
+    await Bun.sleep(500);
+    const picked = await pane.evaluate(() => document.querySelector(".runbun-devtools-host:not([hidden]) #solid-dev-toolbar-view-structure")?.getAttribute("aria-selected"));
+    // The search button toggles: open after one click means its handler ran once, not twice.
+    await pane.click(".runbun-devtools-host:not([hidden]) [data-solid-dev-toolbar-search]");
+    await Bun.sleep(500);
+    const searching = await pane.evaluate(() => !!document.querySelector(".runbun-devtools-host:not([hidden]) [data-solid-dev-toolbar-palette-layer] *"));
+    await page.keyboard.press("Escape");
+    report(`${example}: a click in the toolbar works, once`, picked === "true" && searching, { structureSelected: picked, searchOpened: searching });
   }
 
   // Keys pressed in the pane: the toolbar's first, the playground's after.
