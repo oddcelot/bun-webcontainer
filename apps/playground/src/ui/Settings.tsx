@@ -56,7 +56,7 @@ const GROUPS = [
 ] as const;
 
 /** A setting's row: its name and what it does on the left, its control on the right. */
-function Row(props: ParentProps<{ label: string; hint?: string }>) {
+function Row(props: ParentProps<{ label: string; hint?: string; reset?: ResetProps }>) {
   return (
     <div class="settings-row">
       <div class="text">
@@ -65,10 +65,16 @@ function Row(props: ParentProps<{ label: string; hint?: string }>) {
           <span class="hint">{props.hint}</span>
         </Show>
       </div>
-      <div class="control">{props.children}</div>
+      <div class="control">
+        <Show when={props.reset}>{(r) => <Reset what={props.label} shown={r().shown} default={r().default} onReset={() => r().onReset()} />}</Show>
+        {props.children}
+      </div>
     </div>
   );
 }
+
+/** A setting's way back to its default: shown when `shown`, the tooltip naming `default`. */
+type ResetProps = { shown: boolean; default: string; onReset: () => void };
 
 // Inside the dialog's content, so each opening reads the file afresh (the content unmounts on close).
 function SettingsForm() {
@@ -161,18 +167,25 @@ function SectionPage(props: { section: Section; project: ProjectConfigState }) {
   );
 }
 
+/** A reader's setting's reset: shown while it differs from its default. */
+const pref = (value: boolean, initial: boolean, set: (v: boolean) => void): ResetProps => ({ shown: value !== initial, default: initial ? "on" : "off", onReset: () => set(initial) });
+
 /** The editor's settings: the reader's own. */
 function EditorSettings() {
   const ws = useContext(AppContext).workspace;
   return (
     <div class="settings-list">
-      <Row label="Auto-save" hint="Save edits shortly after typing stops. Off, they wait for Save, Run, Install or Share.">
+      <Row label="Auto-save" hint="Save edits shortly after typing stops. Off, they wait for Save, Run, Install or Share." reset={pref(ws.autosave(), true, ws.setAutosave)}>
         <Switch label="Auto-save" checked={ws.autosave()} onChange={ws.setAutosave} />
       </Row>
-      <Row label="Format on save" hint="Save (Ctrl/Cmd+S) formats the file with bun fmt first.">
+      <Row label="Format on save" hint="Save (Ctrl/Cmd+S) formats the file with bun fmt first." reset={pref(ws.formatOnSave(), false, ws.setFormatOnSave)}>
         <Switch label="Format on save" checked={ws.formatOnSave()} onChange={ws.setFormatOnSave} />
       </Row>
-      <Row label={`Show ${CONFIG_FILE}`} hint={`In the file tree and the tabs. Hidden, it still applies, and the ${CONFIG_FILE} sections here edit it.`}>
+      <Row
+        label={`Show ${CONFIG_FILE}`}
+        hint={`In the file tree and the tabs. Hidden, it still applies, and the ${CONFIG_FILE} sections here edit it.`}
+        reset={pref(ws.showConfig(), HOSTING.showConfig, (on) => ws.setShowConfig(on))}
+      >
         <Switch label={`Show ${CONFIG_FILE}`} checked={ws.showConfig()} onChange={(on) => ws.setShowConfig(on)} />
       </Row>
     </div>
@@ -184,12 +197,13 @@ function RunningSettings() {
   const ws = useContext(AppContext).workspace;
   return (
     <div class="settings-list">
-      <Row label="Restart on save" hint="Restart the program on every save (bun --watch). Off, only Run restarts it.">
+      <Row label="Restart on save" hint="Restart the program on every save (bun --watch). Off, only Run restarts it." reset={pref(ws.watch(), true, ws.setWatch)}>
         <Switch label="Restart on save" checked={ws.watch()} onChange={ws.setWatch} />
       </Row>
       <Row
         label="Fast path"
         hint={`Experimental. Browser-only projects run without an install, packages from esm.sh; no dev server, so no hot reload. Applies on the next Run; a project's ${CONFIG_FILE} can opt out.`}
+        reset={pref(ws.fast(), false, ws.setFast)}
       >
         <Switch label="Fast path" checked={ws.fast()} onChange={ws.setFast} />
       </Row>
@@ -250,9 +264,9 @@ const REQUIRES: [Requirement, string, string][] = [
 ];
 
 /** A field whose label has an info button: its tooltip says what the field does, with examples. */
-function InfoField(props: ParentProps<{ id: string; label: string; hint?: string; info: JSX.Element }>) {
+function InfoField(props: ParentProps<{ id: string; label: string; hint?: string; info?: JSX.Element; reset?: ResetProps }>) {
   // Built here, under this component: the tooltip renders its content later, in a portal with no owner.
-  const tip = <span class="info-tip">{untrack(() => props.info)}</span>;
+  const tip = untrack(() => props.info) && <span class="info-tip">{untrack(() => props.info)}</span>;
   return (
     <div class="field">
       <span class="field-label">
@@ -260,9 +274,12 @@ function InfoField(props: ParentProps<{ id: string; label: string; hint?: string
         <Show when={props.hint}>
           <span class="field-hint">{props.hint}</span>
         </Show>
-        <Tip type="button" class="info" tip={tip} aria-label={`About ${props.label}`}>
-          <i class="i-lucide-info" aria-hidden="true" />
-        </Tip>
+        <Show when={tip}>
+          <Tip type="button" class="info" tip={tip} aria-label={`About ${props.label}`}>
+            <i class="i-lucide-info" aria-hidden="true" />
+          </Tip>
+        </Show>
+        <Show when={props.reset}>{(r) => <Reset what={props.label} shown={r().shown} default={r().default} onReset={() => r().onReset()} />}</Show>
       </span>
       {props.children}
     </div>
@@ -453,6 +470,8 @@ type ProjectConfigState = ReturnType<typeof projectConfig>;
 /** One section of the open project's runbun.json, field by field. */
 function ProjectPage(props: { section: Section; project: ProjectConfigState }) {
   const { text, parsed, c, files, folders, broken, set, guessed, guessShown, commandLine } = untrack(() => props.project);
+  /** A field's reset: shown while the file sets it, back to `fallback` by leaving it out. */
+  const unset = (key: keyof ProjectConfig, value: unknown, fallback: string): ResetProps => ({ shown: value !== undefined, default: fallback, onReset: () => set(key, undefined) });
 
   return (
     <div class="settings-list project">
@@ -475,6 +494,7 @@ function ProjectPage(props: { section: Section; project: ProjectConfigState }) {
             id="settings-entry"
             label="Entry"
             hint="the file Run starts"
+            reset={{ shown: !!c().run, default: guessShown() ? `${guessed().entry} (guessed)` : "guessed from package.json", onReset: () => set("run", undefined) }}
             info={
               <>
                 The file Run starts, as <code>bun &lt;entry&gt;</code>, relative to the project's root. Empty, it's guessed: package.json's{" "}
@@ -502,6 +522,7 @@ function ProjectPage(props: { section: Section; project: ProjectConfigState }) {
             id="settings-args"
             label="Arguments"
             hint="space-separated"
+            reset={{ shown: !!c().run?.args.length, default: "none", onReset: () => c().run && set("run", { entry: c().run!.entry }) }}
             info={
               <>
                 Passed to the program after the entry, <code>bun &lt;entry&gt; &lt;arguments&gt;</code>; it reads them in <code>Bun.argv</code> (or{" "}
@@ -529,16 +550,21 @@ function ProjectPage(props: { section: Section; project: ProjectConfigState }) {
             <span class="settings-note"> (guessed)</span>
           </Show>
         </p>
-        <Row label="Run once opened" hint="Code from a link still waits for the reader's Run.">
-          <Switch label="Run once opened" checked={c().autorun !== false} onChange={(on) => set("autorun", on ? undefined : false)} />
+        <Row label="Run once opened" hint="Code from a link still waits for the reader's Run." reset={unset("autorun", c().autorun, "on")}>
+          <Switch label="Run once opened" checked={c().autorun ?? true} unset={c().autorun === undefined} onChange={(on) => set("autorun", on)} />
         </Row>
-        <Row label="Allow the fast path" hint="Off: always install and start the dev server, even with the reader's fast path on.">
-          <Switch label="Allow the fast path" checked={c().fastPath !== false} onChange={(on) => set("fastPath", on ? undefined : false)} />
+        <Row
+          label="Allow the fast path"
+          hint="Off: always install and start the dev server, even with the reader's fast path on."
+          reset={unset("fastPath", c().fastPath, "on, when the reader has it on")}
+        >
+          <Switch label="Allow the fast path" checked={c().fastPath ?? true} unset={c().fastPath === undefined} onChange={(on) => set("fastPath", on)} />
         </Row>
         <InfoField
           id="settings-env"
           label="Environment"
           hint="KEY=value per line"
+          reset={unset("env", c().env, "none, the playground's own")}
           info={
             <>
               Set in <code>process.env</code> and <code>Bun.env</code> for the program, over the defaults. Not for secrets: the file is shared
@@ -557,9 +583,14 @@ function ProjectPage(props: { section: Section; project: ProjectConfigState }) {
         </InfoField>
         <For each={REQUIRES}>
           {([need, label, hint]) => (
-            <Row label={`Needs ${label}`} hint={`${hint}. The playground says so up front where it's missing.`}>
+            <Row
+              label={`Needs ${label}`}
+              hint={`${hint}. The playground says so up front where it's missing.`}
+              reset={{ shown: (c().requires ?? []).includes(need), default: "off", onReset: () => set("requires", (c().requires ?? []).filter((r) => r !== need)) }}
+            >
               <Switch
                 label={`Needs ${label}`}
+                unset={!(c().requires ?? []).includes(need)}
                 checked={(c().requires ?? []).includes(need)}
                 onChange={(on) => set("requires", on ? [...(c().requires ?? []), need] : (c().requires ?? []).filter((r) => r !== need))}
               />
@@ -575,11 +606,13 @@ function ProjectPage(props: { section: Section; project: ProjectConfigState }) {
         </div>
         </Show>
         <Show when={props.section === "layout"}>
-        <p class="settings-note">Applies when the project opens. A faint switch is a default; one this project sets has a reset beside it.</p>
+        <p class="settings-note">Applies when the project opens.</p>
         <For each={PANELS}>
           {([panel, label]) => (
-            <Row label={`Show the ${label.toLowerCase()}`}>
-              <Reset what={label} shown={c().panels?.[panel] !== undefined} default={panelDefault(panel)} onReset={() => set("panels", { ...c().panels, [panel]: undefined })} />
+            <Row
+              label={`Show the ${label.toLowerCase()}`}
+              reset={{ shown: c().panels?.[panel] !== undefined, default: panelDefault(panel), onReset: () => set("panels", { ...c().panels, [panel]: undefined }) }}
+            >
               <Switch
                 label={`Show the ${label.toLowerCase()}`}
                 checked={c().panels?.[panel] ?? HOSTING.panels?.[panel as "files"] ?? true}
@@ -589,8 +622,7 @@ function ProjectPage(props: { section: Section; project: ProjectConfigState }) {
             </Row>
           )}
         </For>
-        <Row label="Embed layout" hint="The preview beside the editor or under it, unless the embedding page says.">
-          <Reset what="Embed layout" shown={!!c().layout} default="side" onReset={() => set("layout", undefined)} />
+        <Row label="Embed layout" hint="The preview beside the editor or under it, unless the embedding page says." reset={unset("layout", c().layout, "side")}>
           <Segmented
             label="Embed layout"
             value={c().layout ?? "side"}
@@ -603,7 +635,11 @@ function ProjectPage(props: { section: Section; project: ProjectConfigState }) {
         </Row>
         <For each={SIZES}>
           {([key, label, hint]) => (
-            <Row label={`${label} size`} hint={`Percent ${hint}; empty: as the reader left it.`}>
+            <Row
+              label={`${label} size`}
+              hint={`Percent ${hint}.`}
+              reset={{ shown: c().sizes?.[key] !== undefined, default: "as the reader left it", onReset: () => set("sizes", { ...c().sizes, [key]: undefined }) }}
+            >
               <Input
                 class="percent"
                 type="number"
@@ -611,6 +647,7 @@ function ProjectPage(props: { section: Section; project: ProjectConfigState }) {
                 max={99}
                 aria-label={`${label} size, percent`}
                 value={c().sizes?.[key] ?? ""}
+                placeholder="auto"
                 onChange={(e) => {
                   const n = e.currentTarget.valueAsNumber;
                   set("sizes", { ...c().sizes, [key]: n > 0 && n < 100 ? n : undefined });
@@ -622,9 +659,9 @@ function ProjectPage(props: { section: Section; project: ProjectConfigState }) {
         </Show>
         <Show when={props.section === "preview"}>
         <div class="settings-stack">
-          <Field label="Path" hint="where the preview opens">
-            <Input spellcheck={false} value={c().preview?.path ?? ""} placeholder="/" onChange={(e) => set("preview", { ...c().preview, path: e.currentTarget.value.trim() || undefined })} />
-          </Field>
+          <InfoField id="settings-preview-path" label="Path" hint="where the preview opens" reset={{ shown: !!c().preview?.path, default: "/", onReset: () => set("preview", { ...c().preview, path: undefined }) }}>
+            <Input id="settings-preview-path" spellcheck={false} value={c().preview?.path ?? ""} placeholder="/" onChange={(e) => set("preview", { ...c().preview, path: e.currentTarget.value.trim() || undefined })} />
+          </InfoField>
           <div class="field">
             <span class="field-label">
               Requests
@@ -647,16 +684,15 @@ function ProjectPage(props: { section: Section; project: ProjectConfigState }) {
         <Field label="Description">
           <Input value={c().description ?? ""} onChange={(e) => set("description", e.currentTarget.value.trim())} />
         </Field>
-        <Row label="Kind">
+        <Row label="Kind" hint="Starter: a small project to build on. Example: one that shows a framework or feature." reset={unset("kind", c().kind, "none")}>
           <Segmented
             label="Kind"
-            value={c().kind ?? "default"}
+            value={c().kind ?? ""}
             options={[
-              ["default", "None"],
               ["starter", "Starter"],
               ["example", "Example"],
             ]}
-            onChange={(v) => set("kind", v === "default" ? undefined : v)}
+            onChange={(v) => set("kind", v)}
           />
         </Row>
         </Show>
