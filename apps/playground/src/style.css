@@ -2975,6 +2975,12 @@ body:has(#req-handle[data-dragging]) * {
     }
   }
 }
+#devtools-frame {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  border: 0;
+}
 .dock-pane {
   flex: 1;
   min-height: 0;
