@@ -2881,6 +2881,9 @@ body:has(#req-handle[data-dragging]) * {
   display: flex;
   align-items: center;
   gap: 6px;
+  /* As tall with a pane that adds nothing to it as with the console's Clear button: switching tabs moves nothing. */
+  box-sizing: border-box;
+  height: 33px;
   padding: 4px 8px;
   background: var(--panel);
   border-bottom: 1px solid var(--border);
