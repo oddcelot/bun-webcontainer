@@ -134,12 +134,7 @@ function SettingsForm() {
         </nav>
         <section class="settings-panel" id="settings-panel" role="tabpanel" aria-labelledby={`settings-tab-${section()}`}>
           <div class="settings-page">
-            <h2>
-              <Show when={current().group === "project"}>
-                <span class="group">{CONFIG_FILE}</span>
-              </Show>
-              {current().label}
-            </h2>
+            <h2>{current().label}</h2>
             <SectionPage section={section()} project={project} />
           </div>
         </section>

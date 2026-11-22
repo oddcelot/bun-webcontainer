@@ -1661,18 +1661,9 @@ html[data-booting] #app > header > * { visibility: hidden; animation: boot-fallb
     padding: 20px 28px 40px;
 
     h2 {
-      display: flex;
-      align-items: baseline;
-      gap: 8px;
       margin: 0 0 14px;
       font-size: 18px;
       font-weight: 600;
-
-      .group {
-        color: var(--muted);
-        font: 12px var(--font-mono);
-        font-weight: 400;
-      }
     }
   }
 
