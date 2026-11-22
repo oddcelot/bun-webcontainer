@@ -138,7 +138,6 @@ if (dev.contentOrigin !== "http://run.runbun.localhost:5199" || dev.editorOrigin
     want("a brand: the card's alt text", branded.split('content="Solid Playground: run SolidJS projects in your browser, beside the Solid logo"').length === 3 && !branded.includes("pixel-art kitchen"));
     const brand = JSON.parse(/export default (.*);/.exec(read("hosting.js"))![1]);
     want("a brand: hosting.js has the logos, the theme and no Local Bun", brand.brand.logo.startsWith("data:image/svg+xml;base64,") && brand.brand.logoDark !== brand.brand.logo && brand.brand.home === "https://www.solidjs.com/" && brand.theme.families.join() === "solid-light" && brand.localRunner === false);
-    want("a brand: hosting.js has its panes, the defaults have none", brand.panels.console === false && runtimeHosting(loadHosting("production", {})).panels === null);
     configure(dist, loadHosting("production", { HOSTING: "hosting/example.json" }));
     want("a brand: configured twice, the same HTML", read("index.html") === branded);
     configure(dist, loadHosting("production", {}));
@@ -165,6 +164,8 @@ if (dev.contentOrigin !== "http://run.runbun.localhost:5199" || dev.editorOrigin
         problems.push(`configure: ${what} was accepted`);
       } catch {}
     }
+    writeFileSync(solid, JSON.stringify({ panels: { console: false } }));
+    want("panels: hosting.js has the host's panes, the defaults have none", runtimeHosting(loadHosting("production", { HOSTING: solid })).panels?.console === false && runtimeHosting(loadHosting("production", {})).panels === null);
     writeFileSync(solid, JSON.stringify({ gallery: ["solid-vite-hrm"] }));
     try {
       configure(dist, loadHosting("production", { HOSTING: solid }));
