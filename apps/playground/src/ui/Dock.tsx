@@ -1,5 +1,6 @@
-import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, useContext } from "solid-js";
 import { TabItem, TabList } from "@runbun/ui/solid/Tabs";
+import { AppContext } from "./context";
 import { DOCK_TABS } from "./dockTabs";
 
 /**
@@ -7,13 +8,14 @@ import { DOCK_TABS } from "./dockTabs";
  * tabs in its header once there is more than one to pick. With one, the header is that pane's name alone.
  */
 export function Dock() {
+  const app = useContext(AppContext);
   const [picked, setPicked] = createSignal(DOCK_TABS[0].id);
-  const offered = createMemo(() => DOCK_TABS.filter((t) => !t.when || t.when()));
+  const offered = createMemo(() => DOCK_TABS.filter((t) => !t.when || t.when(app)));
   // A picked tab that is no longer offered gives way to the first.
   const active = createMemo(() => (offered().find((t) => t.id === picked()) ?? offered()[0]).id);
   let before: unknown[] = [];
   createEffect(
-    () => DOCK_TABS.map((t) => t.attention?.()),
+    () => DOCK_TABS.map((t) => t.attention?.(app)),
     (now) => {
       const i = now.findIndex((a, n) => a && a !== before[n]);
       before = now;
@@ -51,7 +53,7 @@ export function Dock() {
         </div>
       </div>
       {DOCK_TABS.map((t) => (
-        <Show when={!t.when || t.when()}>
+        <Show when={offered().includes(t)}>
           <div class="dock-pane" id={`dock-pane-${t.id}`} role={offered().length > 1 ? "tabpanel" : undefined} aria-label={offered().length > 1 ? t.title : undefined} hidden={active() !== t.id}>
             {t.Body()}
           </div>

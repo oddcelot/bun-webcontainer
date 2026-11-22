@@ -48,4 +48,6 @@ function ConsoleBody() {
   return <div id="console" ref={el} />;
 }
 
-export const consoleTab: DockTab = { id: "console", title: "Console", tip: "What the program prints, and a shell", icon: "i-lucide-square-terminal", Head: ConsoleHead, Body: ConsoleBody };
+export const consoleTab: DockTab = { id: "console", title: "Console", tip: "What the program prints, and a shell", icon: "i-lucide-square-terminal", // Each failed run settles on a new status, so each one brings the console forward: its output says why.
+  attention: (app) => (app.session.settled().state === "error" ? app.session.settled() : undefined),
+  Head: ConsoleHead, Body: ConsoleBody };
