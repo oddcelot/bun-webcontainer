@@ -1,6 +1,6 @@
 import type { FileContents, VFS } from "@runbun/vfs";
 import { HOSTING } from "../hosting";
-import type { LanguageId } from "./ids";
+import type { LanguageId } from "../../hosting/load";
 import type { LanguagePack, LanguageView } from "./types";
 
 // The library of language packs that ship with runbun. A host picks the ones it enables (hosting file's `languages`,
