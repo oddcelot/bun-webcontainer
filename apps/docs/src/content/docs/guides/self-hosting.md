@@ -42,6 +42,7 @@ The hosting file says where the copy lives and how it differs from runbun.dev. T
   "brand": { "logo": "brand/solid.svg", "logoDark": "brand/solid-dark.svg", "home": "https://www.solidjs.com/", "card": "brand/card.png" },
   "theme": { "families": ["solid-light"] },
   "localRunner": false,
+  "panels": { "console": false },
   "gallery": ["solid-vite-hmr", "solid-ssr-dashboard", "astro-solid-demo", "reactivescript", "reactivescript-selects"],
   "languages": ["reactivescript"],
   "defaultProject": "solid-vite-hmr",
@@ -60,6 +61,7 @@ Every field is optional:
 | `theme` | Pierre, every theme | The theme a first visit gets, the themes the picker offers, CSS variables on top of every theme, and how a theme switch looks. |
 | `localRunner` | `true` | `false` leaves out the header's Local Bun switch. |
 | `debugger` | `false` | `true` turns on the [debugger](/playground/running-code/#debugger), a prototype. |
+| `panels` | as the visitor left them | Which panes the playground opens with: `files`, `preview` and `console`, each `true` or `false`. `{ "console": false }` opens without the console. A project's own [`panels`](/guides/project-config/) win, visitors can still show and hide every pane, and a console you hid opens when the program fails. Embeds keep their modes. |
 | `gallery` | all of them | Which bundled examples the gallery lists, by folder name, in this order. `dist/examples.json` lists the folders a release has; the others still open with `?example=<folder>`. |
 | `languages` | all of them | The [language packs](/playground/editor/) the editor enables, by id; today `reactivescript`. A file of a pack you leave out is a plain file, and examples that need it leave the gallery. `[]` enables none. configure stops on an id it doesn't have. |
 | `defaultProject` | a small demo | The example (a folder name) that opens at `/`. |
@@ -70,7 +72,7 @@ Every field is optional:
 
 ### Your own brand and theme
 
-`brand`, `theme`, `localRunner`, `debugger` and `languages` need 0.8.0 or later.
+`brand`, `theme`, `localRunner`, `debugger` and `languages` need 0.8.0 or later, `panels` 0.9.0.
 
 With a `brand`, the playground reads as yours: your logo and `name` stand in the header where runbun.dev has its dumpling and a random bun pun, the logo is the page's icon, and the page title is `name` alone. The status bar's About link opens runbun.dev's about page, which says what the playground runs on (with `landing` on, it opens your copy of that page instead).
 
