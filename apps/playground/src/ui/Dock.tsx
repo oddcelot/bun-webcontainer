@@ -22,7 +22,7 @@ export function Dock() {
   );
   return (
     <>
-      <div id="dock-head">
+      <div id="dock-head" data-tabs={offered().length > 1 ? "" : undefined}>
         <Show
           when={offered().length > 1}
           fallback={
@@ -43,9 +43,12 @@ export function Dock() {
             </For>
           </TabList>
         </Show>
-        {DOCK_TABS.map((t) => (
-          <Show when={t.Head && active() === t.id}>{t.Head!()}</Show>
-        ))}
+        {/* What the picked pane adds: next to its name alone, at the far end from the tabs (a count beside a tab reads as that tab's). */}
+        <div class="tools">
+          {DOCK_TABS.map((t) => (
+            <Show when={t.Head && active() === t.id}>{t.Head!()}</Show>
+          ))}
+        </div>
       </div>
       {DOCK_TABS.map((t) => (
         <Show when={!t.when || t.when()}>
