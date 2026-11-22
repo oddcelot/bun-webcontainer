@@ -4,6 +4,7 @@ import type { DevtoolsHost } from "../previewDevtools";
 import { AppContext, type App } from "./context";
 import type { DockTab } from "./dockTab";
 import { forwardKeys } from "./Preview";
+import { previewUrl } from "../preview";
 
 // Alt+Shift+D (keymap.ts showDevtools): each press brings the tab forward.
 const [asked, setAsked] = createSignal(0);
@@ -15,7 +16,10 @@ export function showDevtools(app: App): boolean {
   return true;
 }
 
-/** A prototype: offered for a project that depends on @solidjs/start-devtools, where the preview is on this origin. */
+/** Which devtools a project has: Solid's (@solidjs/start-devtools) or Vue's (vite-plugin-vue-devtools); null for none. */
+type Kind = "solid" | "vue";
+
+/** A prototype: offered for a project with Solid's or Vue's devtools, where the preview is on this origin. */
 export function devtoolsOffered(app: App): boolean {
   return offered(app);
 }
@@ -30,23 +34,25 @@ function watchPackageJson(vfs: App["vfs"]) {
   vfs.onClear(() => setPkgVersion((n) => n + 1));
 }
 
-function offered(app: App): boolean {
-  if (CONTENT_ORIGIN || !app.session.ready()) return false;
+function kindOf(app: App): Kind | null {
+  if (CONTENT_ORIGIN || !app.session.ready()) return null;
   watchPackageJson(app.vfs);
   pkgVersion();
   try {
-    return app.vfs.readText("package.json")?.includes('"@solidjs/start-devtools"') ?? false;
+    const pkg = app.vfs.readText("package.json") ?? "";
+    return pkg.includes('"@solidjs/start-devtools"') ? "solid" : pkg.includes('"vite-plugin-vue-devtools"') ? "vue" : null;
   } catch {
-    return false;
+    return null;
   }
 }
+const offered = (app: App) => kindOf(app) !== null;
 
 /**
  * The frame Solid's devtools render into from the preview pages (previewDevtools.ts finds it by its name), one host
  * per page. Shows the active preview tab's, drops those whose page is gone, and hands keys pressed in it to that page's
  * toolbar, then to the playground's shortcuts.
  */
-function DevtoolsBody() {
+function SolidDevtools() {
   const app = useContext(AppContext);
   const [shown, setShown] = createSignal(false);
   let frame!: HTMLIFrameElement;
@@ -114,10 +120,63 @@ function DevtoolsBody() {
   );
 }
 
+// vite-plugin-vue-devtools's client (`<preview>/__devtools__/`) talks to the app over postMessage when it's in a frame
+// (it expects the app's own overlay as its parent) and over a BroadcastChannel when it's a window of its own: the app
+// listens on both. In the dock it is in a frame whose parent is the playground, so the playground passes its messages
+// on to the channel and back, renaming the key that tells the two transports apart (@vue/devtools-kit's messaging).
+const VUE_FRAME_KEY = "__devtools-kit-iframe-messaging-event-key__";
+const VUE_CHANNEL_KEY = "__devtools-kit-broadcast-messaging-event-key__";
+const VUE_CHANNEL = "__devtools-kit:broadcast-channel__";
+
+/**
+ * Vue's devtools for the page in the active preview tab: their client from the Vite server, in a frame, wired to the app
+ * through the playground (above). Loaded afresh when the active preview tab or the program changes.
+ */
+function VueDevtools() {
+  const app = useContext(AppContext);
+  let frame!: HTMLIFrameElement;
+  // The URL to load: once the program serves something, the client for the active preview tab's server.
+  const src = () => (app.session.ports().length ? `${previewUrl("/__devtools__/")}?tab=${app.previews.state.active}` : undefined);
+  onSettled(() => {
+    const channel = new BroadcastChannel(VUE_CHANNEL);
+    const fromFrame = (e: MessageEvent) => {
+      if (e.source !== frame.contentWindow || typeof e.data !== "string" || !e.data.includes(VUE_FRAME_KEY)) return;
+      channel.postMessage(e.data.replace(VUE_FRAME_KEY, VUE_CHANNEL_KEY));
+    };
+    channel.onmessage = (e) => {
+      if (typeof e.data !== "string" || !e.data.includes(VUE_CHANNEL_KEY)) return;
+      frame.contentWindow?.postMessage(e.data.replace(VUE_CHANNEL_KEY, VUE_FRAME_KEY), "*");
+    };
+    addEventListener("message", fromFrame);
+    return () => {
+      removeEventListener("message", fromFrame);
+      channel.close();
+    };
+  });
+  return (
+    <div class="devtools">
+      <iframe ref={frame} id="devtools-frame" title="Vue devtools" src={src()} />
+      <Show when={!src()}>
+        <p class="devtools-empty">Vue's devtools show up here once the program's dev server runs.</p>
+      </Show>
+    </div>
+  );
+}
+
+/** The Devtools tab's pane: the project's kind of devtools, mounted afresh when another project brings another kind. */
+function DevtoolsBody() {
+  const app = useContext(AppContext);
+  return (
+    <Show when={kindOf(app)} keyed>
+      {(kind) => (kind === "vue" ? <VueDevtools /> : <SolidDevtools />)}
+    </Show>
+  );
+}
+
 export const devtoolsTab: DockTab = {
   id: "devtools",
   title: "Devtools",
-  tip: "Solid's devtools, for the page in the active preview tab",
+  tip: "The project's devtools (Solid's or Vue's), for the page in the active preview tab",
   icon: "i-lucide-activity",
   when: offered,
   attention: () => asked() || undefined,
