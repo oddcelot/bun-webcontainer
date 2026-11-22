@@ -1692,6 +1692,12 @@ html[data-booting] #app > header > * { visibility: hidden; animation: boot-fallb
     border-bottom: 1px solid color-mix(in srgb, var(--control-border) 60%, transparent);
     font-size: 13px;
 
+    /* A line between rows only: none under the last of a run. */
+    &:not(:has(+ .settings-row)) {
+      padding-bottom: 0;
+      border-bottom: 0;
+    }
+
     .text {
       display: flex;
       flex-direction: column;
