@@ -11,6 +11,12 @@
   "name": "bun-playground",
   "compatibility_date": "2026-10-28",
   "main": "worker/index.ts",
+  // A shared project's share card (worker/card.ts): its fonts as bytes and the logo as text, beside the wasm modules
+  // (Satori's layout engine, resvg), which wrangler bundles as modules by itself.
+  "rules": [
+    { "type": "Data", "globs": ["**/*.woff"], "fallthrough": true },
+    { "type": "Text", "globs": ["**/*.svg"], "fallthrough": true }
+  ],
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
@@ -27,6 +33,8 @@
     { "name": "FEEDBACK_LIMIT", "namespace_id": "1003", "simple": { "limit": 5, "period": 60 } }
   ],
   // The docs post page ratings and feedback from their own origin (worker/index.ts allows it with CORS).
+  // Share cards of a project's own (worker/card.ts) are off: add "SHARE_CARDS": "1" to an environment's vars to turn
+  // them on there.
   "vars": { "DOCS_ORIGIN": "https://docs.runbun.dev", "CONTENT_HOST": "run.runbun.dev", "EDITOR_ORIGIN": "https://runbun.dev" },
   // Custom domains: `wrangler deploy` creates their DNS records and certificates in the runbun.dev zone.
   "routes": [

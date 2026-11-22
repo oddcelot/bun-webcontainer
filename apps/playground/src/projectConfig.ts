@@ -49,6 +49,12 @@ export type ProjectConfig = {
   preview?: { path?: string; requests?: string[] };
   /** What it can't run without: the playground says so up front. */
   requires?: Requirement[];
+  /**
+   * A share card of its own for a short link to the project (worker/card.ts): the picture the link gets where it is
+   * posted, drawn from `title` (default: `name`, then package.json's) and `description` (the same), with `tags` and
+   * an `accent` color. `true` in the file is `{}`: all defaults. Without it a link shows the site's card.
+   */
+  card?: { title?: string; description?: string; accent?: string };
 };
 
 /** JSON with comments and trailing commas (as tsconfig.json), parsed; throws like JSON.parse. */
@@ -81,7 +87,7 @@ export function readConfig(read: (path: string) => string | undefined, problems:
   const c: ProjectConfig = {};
   const bad = (field: string, want: string) => problems.push(`${CONFIG_FILE}: "${field}" must be ${want}, ignored`);
   for (const key of Object.keys(r))
-    if (!["$schema", "name", "description", "kind", "tags", "run", "autorun", "fastPath", "env", "open", "hidden", "readonly", "panels", "layout", "sizes", "preview", "requires"].includes(key)) problems.push(`${CONFIG_FILE}: unknown field "${key}"`);
+    if (!["$schema", "name", "description", "kind", "tags", "run", "autorun", "fastPath", "env", "open", "hidden", "readonly", "panels", "layout", "sizes", "preview", "requires", "card"].includes(key)) problems.push(`${CONFIG_FILE}: unknown field "${key}"`);
 
   if (r.name !== undefined) typeof r.name === "string" && r.name ? (c.name = r.name) : bad("name", "a string");
   if (r.description !== undefined) typeof r.description === "string" ? (c.description = r.description) : bad("description", "a string");
@@ -139,6 +145,13 @@ export function readConfig(read: (path: string) => string | undefined, problems:
       c.requires = r.requires.filter((x): x is Requirement => (REQUIREMENTS as readonly string[]).includes(x));
       for (const x of r.requires) if (!c.requires.includes(x as Requirement)) problems.push(`${CONFIG_FILE}: unknown requirement "${x}"`);
     }
+  }
+  if (r.card !== undefined && r.card !== false) {
+    const card = (r.card === true ? {} : r.card) as { title?: unknown; description?: unknown; accent?: unknown };
+    const text = (v: unknown) => v === undefined || (typeof v === "string" && !!v.trim());
+    if (typeof card !== "object" || card === null || Array.isArray(card) || !text(card.title) || !text(card.description) || (card.accent !== undefined && (typeof card.accent !== "string" || !/^#[0-9a-f]{6}$/i.test(card.accent))))
+      bad("card", 'true or { "title"?: "…", "description"?: "…", "accent"?: "#rrggbb" }');
+    else c.card = { title: card.title as string | undefined, description: card.description as string | undefined, accent: card.accent as string | undefined };
   }
   return c;
 }

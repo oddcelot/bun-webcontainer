@@ -23,7 +23,7 @@ Clearing the site's data in your browser removes all of it.
 ## Share links
 
 - **A normal share link** (`runbun.dev/#code=…`) carries the project in the part of the URL after `#`. Browsers don't send that part to the server, so nothing is uploaded.
-- **A short link** (`runbun.dev/s/…`) is only made when you pick **Copy short link**, or attach the project to [feedback](#feedback). It stores a copy of the project on runbun.dev (Cloudflare Workers KV), and **anyone with the link can open it**. Files that may hold secrets (`.env`, keys, `.npmrc`) and binary files are left out. Next to the copy we keep the day it was created and the day it was last opened, and nothing about who made it.
+- **A short link** (`runbun.dev/s/…`) is only made when you pick **Copy short link**, or attach the project to [feedback](#feedback). It stores a copy of the project on runbun.dev (Cloudflare Workers KV), and **anyone with the link can open it**. Files that may hold secrets (`.env`, keys, `.npmrc`) and binary files are left out. Next to the copy we keep the day it was created and the day it was last opened, and nothing about who made it. Once share cards are turned on (they aren't yet), if the project's `runbun.json` asks for a [share card](/guides/project-config/#share-cards), we also keep the card's text (the title, description and tags from that file) and the picture drawn from it; sites where the link is posted fetch both to show a preview.
 
 Short links are kept until they're removed. To have one removed, email [privacy@runbun.dev](mailto:privacy@runbun.dev) with the link. The same address takes reports of illegal content and requests about personal data.
 

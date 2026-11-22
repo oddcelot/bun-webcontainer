@@ -45,7 +45,10 @@ The playground's **Settings** (the gear in the header) edits it as a form in its
   },
 
   // What it needs
-  "requires": []
+  "requires": [],
+
+  // How a short link to it looks where it is posted
+  "card": { "title": "HTTP API in 40 lines", "accent": "#f472b6" }
 }
 ```
 
@@ -67,7 +70,32 @@ The playground's editor completes the fields, shows what each does when you hove
 | `preview` | `path`: what the preview requests first. `requests`: requests to try, each in its own preview tab, written `METHOD /path [-H "Name: value"] [body]` as in an embed's [`requests`](/reference/embed-api/). |
 | `requires` | `cross-origin-isolation` (Vite and Rolldown need it) or `local-bun` (child processes, native addons): if the page lacks it, the console says so when the project opens. |
 
+| `card` | A share card of the project's own for a [short link](/guides/features/) to it: the picture and text the link shows where it is posted (chat apps, social sites), instead of runbun.dev's. `true` uses `name` and `description` (then `package.json`'s) and `tags`; `title`, `description` and `accent` (the color of the card's edge, `#rrggbb`) set them for the card alone. See [share cards](#share-cards). |
+
 The [examples](https://github.com/oddcelot/runbun-examples) use it: the Blank starter hides the preview, the HTTP API starter comes with requests to try.
+
+## Share cards
+
+:::caution[Not turned on yet]
+runbun.dev doesn't make share cards yet: `card` is read and checked, and a short link shows runbun.dev's card. A copy you host turns them on with the Worker's `SHARE_CARDS` variable.
+:::
+
+A link to runbun.dev shows runbun.dev's card where it is posted: the pixel kitchen and "Bun in your browser". With `card`, a **short link** to your project shows the project instead: its title, a line of description and its tags on a card drawn for it.
+
+```jsonc
+{
+  "name": "Todo API with SQLite",
+  "description": "A JSON API over bun:sqlite: create, list and tick off todos.",
+  "tags": ["Bun.serve", "SQLite"],
+  "card": true
+}
+```
+
+- Only short links (Share → **Copy short link**, `runbun.dev/s/…`) get one. A link with the project in its `#code=…` part never reaches the server, so nothing can read the project to describe it; `?example=` and `?repo=` links show runbun.dev's card too.
+- The card is fixed when the link is made. Change `card`, make a new short link.
+- The picture is drawn right after the link is made. Until it is there, and if drawing it fails, the link shows your title and description with runbun.dev's picture.
+- A title is cut at 80 characters, a description at 180, and up to four tags are shown. The card's font has Latin letters only.
+- The picture holds nothing but that text: a link can't put an image of its own on the card.
 
 ## What wins
 

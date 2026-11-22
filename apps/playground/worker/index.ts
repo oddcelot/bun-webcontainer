@@ -1,4 +1,5 @@
 import { createAuth, githubRepos, githubToken, withCookies, type Auth } from "./auth";
+import { cardFor, drawCard, type Card } from "./card";
 import { GIT_PROXY, gitProxy } from "./gitProxy";
 import { stranded } from "./stranded";
 
@@ -7,8 +8,10 @@ import { stranded } from "./stranded";
 //
 // Opt-in short links for Share: POST /api/short stores a share payload (the text after "#code=") in KV under an id
 // derived from its content, so sharing the same project twice gives the same link and costs no second write.
-// GET /s/<id> redirects to /#code=<payload>, which the playground already knows how to open. GET /about is the home
-// page (index.html), which shows its landing page there. Everything else is the static site.
+// GET /s/<id> redirects to /#code=<payload>, which the playground already knows how to open. A project whose
+// runbun.json asks for a share card of its own (`card`, card.ts) gets a page with the card's tags that does the same
+// from a script, and GET /s/<id>/card.png is its picture. GET /about is the home page (index.html), which shows its
+// landing page there. Everything else is the static site.
 //
 // GET/POST /git-proxy/<host>/<repo>/... forwards git's smart-HTTP requests to a few git hosts (gitProxy.ts), for `git
 // clone` and `fetch` in the playground. /api/auth/* is sign-in with GitHub (Better Auth, no database: auth.ts), and
@@ -29,6 +32,11 @@ interface Env {
   CONTENT_HOST: string;
   /** The editor origin the content host sends visitors to. */
   EDITOR_ORIGIN: string;
+  /**
+   * "1" turns on share cards of a project's own (card.ts). Off unless set (wrangler.jsonc sets it nowhere yet): a link
+   * is then made and opened as before cards, its payload never inflated, and nothing is drawn.
+   */
+  SHARE_CARDS?: string;
   /** Sign in with GitHub (auth.ts): the runbun-dev org's GitHub App, and Better Auth's cookie key. Secrets. */
   GITHUB_CLIENT_ID?: string;
   GITHUB_CLIENT_SECRET?: string;
@@ -57,11 +65,20 @@ async function idFor(payload: string): Promise<string> {
   return id;
 }
 
-/** Kept with each link, as "YYYY-MM-DD" days. Links stored before this have none until they're opened. */
+/**
+ * Kept with each link: "YYYY-MM-DD" days (links stored before this have none until they're opened), and its share
+ * card's text when the project asks for one.
+ */
 interface Dates {
   created?: string;
   viewed?: string;
+  card?: Card;
 }
+/** A drawn card's key: this and the link's id (15 characters, where a link's key is its 10). */
+const CARD_KEY = "card:";
+/** Whether this deploy makes share cards (Env.SHARE_CARDS). */
+const cards = (env: Env) => env.SHARE_CARDS === "1";
+const FOREVER = "public, max-age=31536000, immutable";
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -77,9 +94,16 @@ async function create(req: Request, env: Env, url: URL): Promise<Response> {
   if (!payload || !/^[A-Za-z0-9_-]+$/.test(payload)) return json(400, { error: "not a share payload" });
   if (payload.length > MAX_PAYLOAD) return json(413, { error: "project too large for a short link" });
   const id = await idFor(payload);
-  if ((await env.LINKS.get(id)) === null) await env.LINKS.put(id, payload, { metadata: { created: today() } satisfies Dates });
-  // A path, not a URL: the page adds its own origin (runbun.dev, workers.dev or a local dev server).
-  return json(200, { id, path: `/s/${id}` });
+  const kept = await env.LINKS.getWithMetadata<Dates>(id, "stream");
+  void kept.value?.cancel();
+  let card = (cards(env) && kept.metadata?.card) || null;
+  if (kept.value === null) {
+    card = cards(env) ? await cardFor(payload) : null;
+    await env.LINKS.put(id, payload, { metadata: { created: today(), ...(card ? { card } : {}) } satisfies Dates });
+  }
+  // A path, not a URL: the page adds its own origin (runbun.dev, workers.dev or a local dev server). `card`: the link
+  // has a share card, which the page asks for once so it is drawn before the link is posted anywhere (src/share.ts).
+  return json(200, { id, path: `/s/${id}`, ...(card ? { card: true } : {}) });
 }
 
 async function open(id: string, env: Env, url: URL, ctx: ExecutionContext): Promise<Response> {
@@ -90,7 +114,87 @@ async function open(id: string, env: Env, url: URL, ctx: ExecutionContext): Prom
   if (payload !== null && metadata?.viewed !== today())
     ctx.waitUntil(env.LINKS.put(id, payload, { metadata: { ...metadata, viewed: today() } satisfies Dates }).catch(() => {}));
   if (payload === null) return new Response("This short link doesn't exist (or never did).", { status: 404, headers: { "content-type": "text/plain; charset=utf-8" } });
-  return Response.redirect(`${url.origin}/#code=${payload}`, 302);
+  if (!cards(env) || !metadata?.card) return Response.redirect(`${url.origin}/#code=${payload}`, 302);
+  // The card's picture only once it is drawn: drawing takes more CPU time than a request may get on Workers' Free
+  // plan, and a picture that failed to draw would be a broken one wherever the link is posted. Until then the site's.
+  const drawn = await env.LINKS.get(CARD_KEY + id, "stream");
+  void drawn?.cancel();
+  return new Response(cardPage(metadata.card, id, payload, url, drawn !== null), { headers: { "content-type": "text/html; charset=utf-8", "x-robots-tag": "noindex" } });
+}
+
+/** What the site's own card (og.png) shows, as index.html says it. */
+const SITE_CARD_ALT = "A pixel-art kitchen counter with a dumpling in a bamboo steamer, under the words: Bun in your browser";
+const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+/**
+ * What a link with a card answers instead of a redirect, which carries no tags: the card for whatever reads the page
+ * to show a preview, and for a browser the same redirect from a script. The payload is base64url, safe as it is.
+ */
+function cardPage(card: Card, id: string, payload: string, url: URL, drawn: boolean): string {
+  const title = escape(card.title);
+  const description = escape(card.description ?? `A project on ${url.host}: open it to edit and run it in your browser.`);
+  const image = drawn ? `${url.origin}/s/${id}/card.png` : `${url.origin}/og.png`;
+  const alt = drawn ? escape([card.title, card.description, card.tags?.join(", ")].filter(Boolean).map((part) => part!.replace(/\.$/, "")).join(". ")) : SITE_CARD_ALT;
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>${title} · ${url.host}</title>
+    <meta name="description" content="${description}" />
+    <meta name="robots" content="noindex" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="${url.host}" />
+    <meta property="og:url" content="${url.origin}/s/${id}" />
+    <meta property="og:title" content="${title}" />
+    <meta property="og:description" content="${description}" />
+    <meta property="og:image" content="${image}" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="${alt}" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="${title}" />
+    <meta name="twitter:description" content="${description}" />
+    <meta name="twitter:image" content="${image}" />
+    <meta name="twitter:image:alt" content="${alt}" />
+    <script>location.replace("/#code=${payload}");</script>
+  </head>
+  <body>
+    <p><a href="/#code=${payload}">Open ${title} on ${url.host}</a></p>
+  </body>
+</html>
+`;
+}
+
+/**
+ * GET /s/<id>/card.png: the link's card, drawn once and kept beside the link (and at the edge), since a link's card
+ * never changes. A link without one, or a card that can't be drawn, gets the site's. The playground asks for it right
+ * after making the link; a request the runtime stops for its CPU time leaves nothing behind, and the next one tries again.
+ */
+async function cardImage(id: string, req: Request, env: Env, url: URL, ctx: ExecutionContext): Promise<Response> {
+  const cached = await caches.default.match(req);
+  if (cached) return cached;
+  const site = Response.redirect(`${url.origin}/og.png`, 302);
+  if (!cards(env) || !ID.test(id)) return site;
+  const png = (bytes: ArrayBuffer | Uint8Array) => new Response(bytes as BodyInit, { headers: { "content-type": "image/png", "cache-control": FOREVER } });
+  let res: Response;
+  const kept = await env.LINKS.get(CARD_KEY + id, "arrayBuffer");
+  if (kept) res = png(kept);
+  else {
+    const { metadata } = await env.LINKS.getWithMetadata<Dates>(id, "stream");
+    if (!metadata?.card) return site;
+    try {
+      const drawn = await drawCard(metadata.card, url.host);
+      // Kept before answering: the link's page names the picture from the moment this is there.
+      await env.LINKS.put(CARD_KEY + id, drawn).catch(() => {});
+      res = png(drawn);
+    } catch (e) {
+      console.error(`card ${id}: ${e instanceof Error ? e.stack : e}`);
+      return site;
+    }
+  }
+  ctx.waitUntil(caches.default.put(req, res.clone()));
+  return res;
 }
 
 /** One piece of feedback as stored: what the sender typed or picked, and only what they chose to include. */
@@ -226,6 +330,7 @@ export default {
     if (url.hostname === env.CONTENT_HOST) return contentHost(req, env, url);
     if (url.pathname === "/api/short" && req.method === "POST") return create(req, env, url);
     if (url.pathname === "/api/feedback" && (req.method === "POST" || req.method === "OPTIONS")) return feedback(req, env, url);
+    if (url.pathname.startsWith("/s/") && url.pathname.endsWith("/card.png") && req.method === "GET") return cardImage(url.pathname.slice(3, -"/card.png".length), req, env, url, ctx);
     if (url.pathname.startsWith("/s/")) return open(url.pathname.slice(3), env, url, ctx);
     if (url.pathname.startsWith("/api/auth/")) {
       const auth = authFor(env, url.origin);

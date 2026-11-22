@@ -68,7 +68,7 @@ Dependencies install automatically when one of your own projects or an example o
 - <details>
   <summary><strong>Share:</strong> the Share menu copies a link with the whole project in the URL (nothing is uploaded), a Markdown badge, or HTML.</summary>
 
-  `node_modules`, `.git`, binary files and secrets (`.env`, keys, `.npmrc`) are left out. Very long links can be shortened to `runbun.dev/s/<id>`, which stores a copy on runbun.dev (see [Privacy](/privacy/)).
+  `node_modules`, `.git`, binary files and secrets (`.env`, keys, `.npmrc`) are left out. Very long links can be shortened to `runbun.dev/s/<id>`, which stores a copy on runbun.dev (see [Privacy](/privacy/)). Once share cards are turned on, a short link can show a [card of the project's own](/guides/project-config/#share-cards) where it is posted.
 
   **Download as zip** saves every file except `node_modules` and `.git`, binaries included.
 
