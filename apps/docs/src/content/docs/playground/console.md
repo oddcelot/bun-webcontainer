@@ -5,7 +5,7 @@ sidebar:
   order: 2
 ---
 
-The console is a terminal under the editor. It runs `bun` and `git` commands, a shell over the project's files, and shows your program's output.
+The console is a terminal under the editor. It shares that pane with the [debugger](/playground/running-code/#debugger) and [Solid's devtools](/playground/preview/#solids-devtools), each a tab, and comes forward when a run fails. It runs `bun` and `git` commands, a shell over the project's files, and shows your program's output.
 
 A terminal with colors, clickable links, history (<kbd>↑</kbd>/<kbd>↓</kbd>) and line editing (<kbd>Ctrl</kbd>+<kbd>A</kbd>/<kbd>E</kbd>/<kbd>U</kbd>). <kbd>Ctrl</kbd>+<kbd>C</kbd> on an empty line stops the server; <kbd>Ctrl</kbd>+<kbd>L</kbd> clears.
 
