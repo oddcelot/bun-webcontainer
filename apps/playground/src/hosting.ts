@@ -32,6 +32,8 @@ export interface RuntimeHosting {
    * GitHub, the git proxy. Without it the playground leaves them out.
    */
   worker: boolean;
+  /** The language packs this host enables, by id (src/languages), or null for all of them. */
+  languages: string[] | null;
   /** Whether the header has the Local Bun switch (packages/connect). */
   localRunner: boolean;
   /** Whether the step debugger (a prototype) is on: the Debug buttons, breakpoints, the Debug panel (src/debugSession.ts). */

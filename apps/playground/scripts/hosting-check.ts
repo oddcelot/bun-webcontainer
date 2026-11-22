@@ -88,7 +88,7 @@ if (dev.contentOrigin !== "http://run.runbun.localhost:5199" || dev.editorOrigin
     writeFileSync(join(dist, "_headers"), "/*\n  Cross-Origin-Opener-Policy: same-origin\n");
     writeFileSync(join(dist, "sw.js"), `var __SHELL__ = {"index.html":"stale"};\nself.addEventListener("fetch", () => {});\n`);
     const solid = join(dist, "..", `${dist.split("/").at(-1)}-solid.json`);
-    writeFileSync(solid, JSON.stringify({ name: "Solid Playground", gallery: ["solid-vite-hmr", "starter-http"], defaultProject: "solid-vite-hmr", landing: false }));
+    writeFileSync(solid, JSON.stringify({ name: "Solid Playground", gallery: ["solid-vite-hmr", "starter-http"], defaultProject: "solid-vite-hmr", languages: ["reactivescript"], landing: false }));
     configure(dist, loadHosting("production", { HOSTING: "hosting/runbun.dev.json" }));
     const read = (f: string) => readFileSync(join(dist, f), "utf8");
     want("runbun.dev's own hosting leaves the HTML as built", read("index.html") === page);
@@ -102,7 +102,7 @@ if (dev.contentOrigin !== "http://run.runbun.localhost:5199" || dev.editorOrigin
     want("index.html starts in the playground", html.startsWith('<html lang="en" data-landing="off">'));
     want("sitemap.xml lists the new site", read("sitemap.xml") === "<loc>https://example.org/play/</loc>\n");
     const runtime = JSON.parse(/export default (.*);/.exec(read("hosting.js"))![1]);
-    want("hosting.js has the gallery and default project", runtime.gallery.join() === "solid-vite-hmr,starter-http" && runtime.defaultProject === "solid-vite-hmr" && runtime.name === "Solid Playground");
+    want("hosting.js has the gallery and default project", runtime.gallery.join() === "solid-vite-hmr,starter-http" && runtime.defaultProject === "solid-vite-hmr" && runtime.name === "Solid Playground" && runtime.languages.join() === "reactivescript");
     want("hosting.js names the hosting file, not its path", read("hosting.js").startsWith(`// hosting/configure.ts from ${solid.split("/").at(-1)};`));
     want("hosting.js has the new host", read("hosting.js").includes('"contentOrigin":"https://run.example.org"') && !read("hosting.js").includes("runbun.dev"));
     const headers = read("_headers");
@@ -152,6 +152,8 @@ if (dev.contentOrigin !== "http://run.runbun.localhost:5199" || dev.editorOrigin
       ["a theme variable that isn't a custom property", { theme: { vars: { base: { color: "red" } } } }],
       ["a theme transition that isn't one", { theme: { transition: "fade" } }],
       ["an empty list of theme families", { theme: { families: [] } }],
+      ["a language pack the library doesn't have", { languages: ["reactivescrip"] }],
+      ["a language pack named twice", { languages: ["reactivescript", "reactivescript"] }],
       ["a first-visit theme family the host doesn't offer", { theme: { family: "github-light", families: ["solid-light"] } }],
     ] as const) {
       writeFileSync(solid, JSON.stringify(file));

@@ -40,6 +40,7 @@ All fields are optional:
   are left to pick), and the first is what a first visit gets unless `"family"` names another.
   `"transition"` is how a theme switch reveals the new colors: `"logo"` (the default) in the shape of your logo,
   `"circle"` in a plain circle, `"none"` at once.
+- `languages`: the language packs to enable, by id (`reactivescript`); a file of one left out is a plain file. Default: all.
 - `localRunner`: `false` leaves out the header's Local Bun switch. Default: true.
 - `debugger`: `true` turns on the step debugger, a prototype. Default: false.
 

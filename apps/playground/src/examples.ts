@@ -1,6 +1,7 @@
 import type { VFS } from "@runbun/vfs";
 import type { LibraryProject } from "@runbun/embed/protocol";
 import { HOSTING } from "./hosting";
+import { enabledLanguages } from "./languages";
 import { readConfig } from "./projectConfig";
 
 // The gallery's projects come from the examples repo (oddcelot/runbun-examples), a git submodule at examples/: each
@@ -11,8 +12,11 @@ const files = import.meta.glob<string>(
   ["../examples/*/**/*", "../examples/*/**/.*", "!../examples/*/**/node_modules/**", "!../examples/*/example.json", "!../examples/*/**/*.{png,jpg,jpeg,gif,webp,ico,woff,woff2,sqlite,db}"],
   { query: "?raw", import: "default" },
 );
-/** The examples repo's example.json (its example.schema.json): a project, or a GitHub repo to open (`repo`). */
-type ExampleMeta = { name?: string; description?: string; kind?: "starter" | "example"; order?: number; tags?: string[]; repo?: string };
+/**
+ * The examples repo's example.json (its example.schema.json): a project, or a GitHub repo to open (`repo`). `languages`:
+ * the language packs (src/languages) it needs; a host that leaves one out has no card for it.
+ */
+type ExampleMeta = { name?: string; description?: string; kind?: "starter" | "example"; order?: number; tags?: string[]; repo?: string; languages?: string[] };
 const exampleJsons = import.meta.glob<ExampleMeta>("../examples/*/example.json", { eager: true, import: "default" });
 // A folder's runbun.json may carry its card too (name, description, kind, tags), over example.json's: example.json
 // stays for what's only the gallery's (order, repo) and for folders without the fields.
@@ -55,6 +59,9 @@ const KIND_ORDER: ProjectKind[] = ["starter", "example", "github"];
 /** A card's icon: its first tag's logo, else Bun's. */
 const iconOf = (tags: string[]) => tags.map((t) => techIcons[t]).find(Boolean) ?? "i-logos-bun?bg";
 
+/** Whether this host enables every language pack (src/languages) an example's `languages` names. */
+const supported = (m: ExampleMeta) => (m.languages ?? []).every((id) => enabledLanguages.some((l) => l.id === id));
+
 /** The hosting file's `gallery` (src/hosting.ts): only these folders, in its order; else all of them by their `order`. */
 const shown = HOSTING.gallery;
 /** Every project of the examples repo, gallery or not: `?example=` and embeds open any of them. */
@@ -70,12 +77,12 @@ const everything = Object.entries(metas)
       tags: m.tags ?? [],
       icon: iconOf(m.tags ?? []),
     };
-    return [entry, folder, shown ? shown.indexOf(folder) : (m.order ?? Infinity)] as const;
+    return [entry, folder, shown ? shown.indexOf(folder) : (m.order ?? Infinity), supported(m)] as const;
   })
   .sort(([a, , ao], [b, , bo]) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || ao - bo || a.name.localeCompare(b.name));
 
-/** The gallery's projects (ui/ProjectPicker.tsx). */
-export const catalog: CatalogEntry[] = everything.filter(([, folder]) => !shown || shown.includes(folder)).map(([entry]) => entry);
+/** The gallery's projects (ui/ProjectPicker.tsx): not those that need a language pack the host leaves out (`languages`, an example's example.json). */
+export const catalog: CatalogEntry[] = everything.filter(([, folder, , ok]) => ok && (!shown || shown.includes(folder))).map(([entry]) => entry);
 const all = everything.map(([entry]) => entry);
 
 /**

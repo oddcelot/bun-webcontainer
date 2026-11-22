@@ -8,9 +8,9 @@ import { cssComplete, cssHover, cssTemplateAt } from "../cssTemplates";
 import { createPierre } from "../editors/pierre";
 import { chordKeys, keysFor, matches } from "../keymap";
 import type { CodeEditor, EditorLocation } from "../editors/types";
-import { asConsoleEntry, errorLocation, fmt, fmtRx } from "../fmt";
+import { asConsoleEntry, errorLocation, fmt } from "../fmt";
 import { complete, definition, hover, readTypes, resolveCompletion, signatureHelp, TYPED } from "../typecheck";
-import { RX } from "../typecheck/rx";
+import { languageFor, loadLanguage } from "../languages";
 import { debugSession } from "../debugSession";
 import { AppContext } from "./context";
 import { guarded } from "./guarded";
@@ -45,8 +45,8 @@ export function EditorPane(props: { start?: JSX.Element; end?: JSX.Element }) {
   let timer: ReturnType<typeof setTimeout> | undefined;
   /** A project file the type checker answers for (a read-only declaration tab isn't one: it's not in the project). */
   const typed = (file: string) => TYPED.test(file) && has("types") && ws.readOnlyText(file) === undefined;
-  // A ReactiveScript module: hovers and definitions through its TSX projection (typecheck/rx.ts), no completions.
-  const rx = (file: string) => RX.test(file) && has("types") && ws.readOnlyText(file) === undefined;
+  // A module of a language pack (ReactiveScript): hovers and definitions through its TSX projection (src/languages), no completions.
+  const rx = (file: string) => !!languageFor(file) && has("types") && ws.readOnlyText(file) === undefined;
   // Schema hints for .json files (runbun.json, or one naming its $schema), with type hints.
   const json = (file: string) => JSON_FILE.test(file) && has("types") && ws.readOnlyText(file) === undefined;
   // CSS hints in a JS/TS file's css`…` templates (cssTemplates.ts), with type hints: the template at a position, if any.
@@ -105,10 +105,11 @@ export function EditorPane(props: { start?: JSX.Element; end?: JSX.Element }) {
     const path = current;
     if (!path || !editor || !has("format") || ws.readOnlyText(path) !== undefined || ws.isReadonly(path)) return;
     try {
-      if (RX.test(path)) {
-        // A ReactiveScript module is reflowed a lot (its one-line handlers and blocks open up): only when asked for.
-        if (quiet) return;
-        const r = await fmtRx(vfs, path, editor.getText());
+      const language = languageFor(path);
+      const pack = language && (await loadLanguage(language));
+      if (pack?.format) {
+        if (quiet && !pack.formatOnSave) return;
+        const r = await pack.format(vfs, path, editor.getText(), fmt);
         if (path !== current) return;
         if (r.status === "ok") return editor.replace(r.out);
         if (r.status === "skip") log("error", `[fmt] ${path} doesn't parse: ${r.detail}`);

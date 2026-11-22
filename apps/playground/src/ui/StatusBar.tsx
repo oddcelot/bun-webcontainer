@@ -13,6 +13,7 @@ import { Feedback } from "./Feedback";
 import { Tip } from "@runbun/ui/solid/Tip";
 import { Menu, MenuGroup, MenuItem, MenuTrigger } from "@runbun/ui/solid/Menu";
 import { HOSTING } from "../hosting";
+import { languageByExt } from "../languages";
 
 /** What Bun treats a file as, by extension (its loader), named as editors do. */
 const LANGUAGES: Record<string, string> = {
@@ -24,7 +25,6 @@ const LANGUAGES: Record<string, string> = {
   mjs: "JavaScript",
   cjs: "JavaScript",
   jsx: "JavaScript JSX",
-  rx: "ReactiveScript",
   json: "JSON",
   jsonc: "JSON with Comments",
   toml: "TOML",
@@ -38,7 +38,7 @@ const LANGUAGES: Record<string, string> = {
 
 const language = (path: string) => {
   const ext = /\.([^./]+)$/.exec(path)?.[1].toLowerCase();
-  return (ext && LANGUAGES[ext]) ?? "Plain Text";
+  return (ext && (LANGUAGES[ext] ?? languageByExt(ext)?.name)) ?? "Plain Text";
 };
 
 // The TypeScript version the checker ports, as "7.1".

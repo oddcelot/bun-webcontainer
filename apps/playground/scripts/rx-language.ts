@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Checks the language support for ReactiveScript (.rx) files (src/typecheck/rx.ts) in headless Chrome against a running
+// Checks the language support for ReactiveScript (.rx) files (src/languages/reactivescript/rx.ts) in headless Chrome against a running
 // playground: opens the `reactivescript` example, waits for its install and run, opens src/app.rx and checks
 //   (a) resting the pointer on a name shows its TypeScript type,
 //   (b) the compiler's own rule errors are markers with source rx(<rule>),
@@ -119,7 +119,7 @@ try {
   const attr = await hoverOn(page, buttonLine, "onClick");
   report("(f) hover on an element and an attribute", !!tag && /HTMLElementTags\.button/.test(tag) && !!attr && /onClick/.test(attr), `<button: ${JSON.stringify(opening)}; button: ${JSON.stringify(closing)}; onClick: ${JSON.stringify(attr)}; its line's tokens: ${tokens}`);
 
-  // (g) Format: the equation's indent is put right, which gives the example as it is written (rxFormat.ts).
+  // (g) Format: the equation's indent is put right, which gives the example as it is written (languages/reactivescript/rxFormat.ts).
   await focus(page);
   await k.press("a", [MOD]);
   await k.press("ArrowLeft");
@@ -201,7 +201,7 @@ try {
   report("(h) no type errors in src/main.ts, which mounts the module", !!entry && !entry.error && entryErrors.length === 0, entry ? rawDiagnostics(entry) : "no answer from the type checker");
 
   // (e) the wasm modules loaded.
-  const bad = consoleLog.filter((l) => /^(rxc|tsrs):/.test(l) || l.startsWith("pageerror:"));
+  const bad = consoleLog.filter((l) => /^(rxc|reactivescript|tsrs):/.test(l) || l.startsWith("pageerror:"));
   report("(e) rxc.wasm and tsrs load", bad.length === 0 && (await lsRequests(page, ".rx.tsx")) > 0, bad.length ? bad.join(" | ") : "no console error starting with rxc: or tsrs:");
 
   if (process.env.DUMP || failed) await dump(page);

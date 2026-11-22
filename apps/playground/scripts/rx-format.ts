@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Runs the playground's ReactiveScript formatter (src/rxFormat.ts: the module disguised as TSX, `bun fmt`, the disguise
+// Runs the playground's ReactiveScript formatter (src/languages/reactivescript/rxFormat.ts: the module disguised as TSX, `bun fmt`, the disguise
 // undone, the result accepted only when four checks show the program did not change) over .rx files with native
 // `bun fmt`. Against upstream's examples it tells what a new compiler version or a change to the disguise broke:
 //   D=$(mktemp -d); git clone --depth 1 https://github.com/solidjs/reactivescript "$D/rs"; bun scripts/rx-format.ts -v "$D/rs"
@@ -16,9 +16,9 @@
 import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { formatRx, formatUnchecked, RX_FMT_FLAGS, type RxFormatHost, type RxFormatResult } from "../src/rxFormat";
+import { formatRx, formatUnchecked, RX_FMT_FLAGS, type RxFormatHost, type RxFormatResult } from "../src/languages/reactivescript/rxFormat";
 
-// ---- rxc.wasm: the analysis build, as src/typecheck/rx.ts loads it (here from disk) ----
+// ---- rxc.wasm: the analysis build, as src/languages/reactivescript/rx.ts loads it (here from disk) ----
 
 type Exports = { memory: WebAssembly.Memory; rx_alloc(n: number): number; rx_free(ptr: number, n: number): void; rx_call(ptr: number, len: number): number };
 type Read = (path: string) => string | undefined;
@@ -87,7 +87,7 @@ function bunfmt(text: string): { ok: true; out: string } | { ok: false; err: str
   return { ok: true, out: dec.decode(r.stdout) };
 }
 
-// ---- the pipeline (src/rxFormat.ts), over native `bun fmt` and rxc.wasm from disk ----
+// ---- the pipeline (src/languages/reactivescript/rxFormat.ts), over native `bun fmt` and rxc.wasm from disk ----
 
 let current = "";
 const host: RxFormatHost = { fmt: async (tsx) => bunfmt(tsx), analyze: async (text) => analyze(current, text) };

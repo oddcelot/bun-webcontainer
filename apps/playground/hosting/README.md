@@ -36,6 +36,10 @@ Fields, all optional:
 - `gallery`: the example folders (`examples/`) the gallery lists, in this order. The others still open by
   `?example=<folder>`. Default: all of them. The build lists its folders in `dist/examples.json`; configure refuses a
   name that isn't one.
+- `languages`: the language packs (`src/languages`) the playground enables, by id; today `reactivescript`. A file of a
+  pack left out is a plain file: no errors or types of the pack's own, no formatter, and no gallery card for an example
+  that needs it. A pack's code loads only when a project has a file it reads. Default: all of them; `[]` enables none.
+  configure refuses an id that isn't one.
 - `defaultProject`: the example folder a URL without a project opens. Default: the confetti demo (then at
   `?example=demo`).
 - `landing`: `false` opens the playground at `/` right away, also for first-time visitors and at `/about`, and drops

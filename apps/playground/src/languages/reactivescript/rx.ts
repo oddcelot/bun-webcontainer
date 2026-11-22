@@ -1,6 +1,7 @@
 import type { FileContents, VFS } from "@runbun/vfs";
 import rxcUrl from "@reactivescript/language-server/src/rxc.wasm?url";
-import type { EditorDiagnostic } from "../editors/types";
+import type { EditorDiagnostic } from "../../editors/types";
+import type { LanguageView } from "../types";
 
 // Types for ReactiveScript (.rx) files, as its language server gets them: the compiler's analysis build (rxc.wasm, the
 // one @reactivescript/language-server ships) projects a module to TSX and says which spans of the two texts are the
@@ -107,7 +108,7 @@ function positionAt(starts: number[], offset: number): Position {
 }
 
 /** One module and its projection: positions from one to the other. */
-export class RxView {
+export class RxView implements LanguageView {
   private readonly srcLines: number[];
   private readonly srcEnd: number;
   private readonly tsxLines: number[];
@@ -173,7 +174,7 @@ export class RxView {
   }
 
   /** Whether the type checker's error `code` is one the projection causes, not the module. */
-  static ignores(code: unknown): boolean {
+  ignores(code: unknown): boolean {
     return IMPLICIT_ANY.has(Number(code));
   }
 }

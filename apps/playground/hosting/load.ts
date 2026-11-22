@@ -18,6 +18,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, extname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { LANGUAGE_IDS } from "../src/languages/ids";
 
 /** A hosting file's fields (all optional): see hosting/README.md. */
 export interface HostingFile {
@@ -43,6 +44,12 @@ export interface HostingFile {
    * them. Others still open by `?example=<name>`.
    */
   gallery?: string[];
+  /**
+   * The language packs the playground enables, by id (src/languages/ids.ts: "reactivescript"). Files of a pack left out
+   * are plain files: no types or errors of the pack's own, no formatter, no gallery cards that need it. Default: all of
+   * them; [] enables none.
+   */
+  languages?: string[];
   /** The example (a folder name) the playground opens when the URL names no project. Default: the confetti demo. */
   defaultProject?: string;
   /** Show the landing page to first-time visitors at `/`. false opens the playground right away. Default: true. */
@@ -141,6 +148,7 @@ export interface Hosting {
   name: string;
   gallery?: string[];
   defaultProject?: string;
+  languages?: string[];
   landing: boolean;
   worker: boolean;
   localRunner: boolean;
@@ -231,7 +239,7 @@ export function readHostingFile(path: string, read: { card?: boolean } = {}): Om
     throw new Error(`HOSTING=${path}: ${(e as Error).message}`);
   }
   if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error(`${path}: not a JSON object`);
-  const known = new Set(["$schema", "docsUrl", "contentOrigin", "editorOrigins", "canary", "name", "gallery", "defaultProject", "landing", "worker", "localRunner", "debugger", "brand", "theme"]);
+  const known = new Set(["$schema", "docsUrl", "contentOrigin", "editorOrigins", "canary", "name", "gallery", "defaultProject", "languages", "landing", "worker", "localRunner", "debugger", "brand", "theme"]);
   for (const key of Object.keys(data)) if (!known.has(key)) throw new Error(`${path}: unknown field "${key}" (fields: ${[...known].slice(1).join(", ")})`);
   const d = data as Record<string, unknown>;
   const out: Omit<HostingFile, "brand"> & { brand?: HostingBrand } = {};
@@ -258,6 +266,14 @@ export function readHostingFile(path: string, read: { card?: boolean } = {}): Om
     if (!Array.isArray(d.gallery) || !d.gallery.length || !d.gallery.every((g) => typeof g === "string" && folder.test(g)))
       throw new Error(`${path}: gallery must be a non-empty array of example folder names`);
     out.gallery = d.gallery;
+  }
+  if (d.languages !== undefined) {
+    const list = d.languages;
+    if (!Array.isArray(list) || new Set(list).size !== list.length || !list.every((l): l is string => typeof l === "string"))
+      throw new Error(`${path}: languages must list language pack ids, each once, e.g. ["reactivescript"]`);
+    const unknown = list.filter((l) => !(LANGUAGE_IDS as readonly string[]).includes(l));
+    if (unknown.length) throw new Error(`${path}: unknown language pack "${unknown[0]}" in languages (packs: ${LANGUAGE_IDS.join(", ")})`);
+    out.languages = list;
   }
   if (d.defaultProject !== undefined) {
     if (typeof d.defaultProject !== "string" || !folder.test(d.defaultProject)) throw new Error(`${path}: defaultProject must be an example folder name`);
@@ -329,6 +345,7 @@ export function loadHosting(mode: string, env: Record<string, string | undefined
     name: file.name ?? "runbun.dev",
     gallery: file.gallery,
     defaultProject: file.defaultProject,
+    languages: file.languages,
     landing: file.landing ?? true,
     worker: file.worker ?? mode === "development",
     localRunner: file.localRunner ?? true,
