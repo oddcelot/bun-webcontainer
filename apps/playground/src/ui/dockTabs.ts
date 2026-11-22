@@ -4,4 +4,4 @@ import { devtoolsTab } from "./Devtools";
 import type { DockTab } from "./dockTab";
 
 /** The dock's tabs, in order; the first one offered is the one a page opens on. */
-export const DOCK_TABS: DockTab[] = [consoleTab, debugTab, devtoolsTab];
+export const DOCK_TABS: DockTab[] = [devtoolsTab, consoleTab, debugTab];
