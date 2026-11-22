@@ -19,8 +19,21 @@ export function showDevtools(app: App): boolean {
 export function devtoolsOffered(app: App): boolean {
   return offered(app);
 }
+// Bumped when a project's package.json may have changed (a write, or another project loaded): `offered` reads the file,
+// which isn't reactive, so the dock asks again on these.
+const [pkgVersion, setPkgVersion] = createSignal(0, { ownedWrite: true });
+const watched = new WeakSet<App["vfs"]>();
+function watchPackageJson(vfs: App["vfs"]) {
+  if (watched.has(vfs)) return;
+  watched.add(vfs);
+  vfs.onChange(({ path }) => path === "package.json" && setPkgVersion((n) => n + 1));
+  vfs.onClear(() => setPkgVersion((n) => n + 1));
+}
+
 function offered(app: App): boolean {
   if (CONTENT_ORIGIN || !app.session.ready()) return false;
+  watchPackageJson(app.vfs);
+  pkgVersion();
   try {
     return app.vfs.readText("package.json")?.includes('"@solidjs/start-devtools"') ?? false;
   } catch {
