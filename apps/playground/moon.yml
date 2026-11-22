@@ -294,6 +294,14 @@ tasks:
     toolchains: ['bun']
     options:
       cache: false
+  test-devtools-dock:
+    # The dock under the preview and its Devtools tab (scripts/devtools-dock.ts): the console alone, the Debug tab at a
+    # pause, a failed run's console; Solid's devtools in the dock for solid-start-devtools and solid-ssr-dashboard, their
+    # keys, one toolbar per preview tab, and the embed. Needs Chrome and the npm registry, so it isn't part of `test`.
+    command: 'bun scripts/devtools-dock.ts'
+    toolchains: ['bun']
+    options:
+      cache: false
   test-compress:
     # zstd and brotli end to end (scripts/compress.ts): fixtures/compress runs in the embed in headless Chrome (Bun.zstd*,
     # node:zlib's brotli and zstd, CompressionStream) and prints what native Bun prints for it; data native Bun
