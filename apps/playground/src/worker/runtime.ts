@@ -595,10 +595,29 @@ function servedHeaders(res: Response, setCookies: string[], head = false): [stri
   return headers;
 }
 
-/** A server-side Request; it keeps forbidden header names (Cookie, Origin, Upgrade, Sec-*), see requestHeaders.ts. */
-function serverRequest(path: string, init: { method?: string; body?: BodyInit | null }, headers: [string, string][]) {
+/**
+ * A server-side Request; it keeps forbidden header names (Cookie, Origin, Upgrade, Sec-*), see requestHeaders.ts. A
+ * request with a body gets the Origin and Content-Length the browser sends with it: it adds them after the service
+ * worker, which relays the request without them, and servers rely on both (`@solidjs/web`'s same-origin check, a
+ * Node request's body read only when its length or chunking is announced).
+ */
+function serverRequest(path: string, init: { method?: string; body?: ArrayBuffer | null }, headers: [string, string][]) {
   headers = headers.map(([k, v]) => [k, k === "origin" || k === "referer" ? asPageOrigin(v) : v]);
+  if (init.method && init.method !== "GET" && init.method !== "HEAD") {
+    const has = (name: string) => headers.some(([k]) => k.toLowerCase() === name);
+    const origin = pageOrigin();
+    if (origin && !has("origin")) headers.push(["origin", origin]);
+    if (!has("content-length") && !has("transfer-encoding")) headers.push(["content-length", String(init.body?.byteLength ?? 0)]);
+  }
   return new Request(self.location.origin + path, { ...init, headers });
+}
+
+/** The origin a preview page has as the app at its server's URL (`http://localhost:3000`), if a server is up. */
+function pageOrigin(): string | undefined {
+  const inst = previewServer();
+  if (!inst) return;
+  const { hostname, port } = inst.server as { hostname: string; port: number };
+  return `http://${hostname === "0.0.0.0" || hostname === "::" ? "localhost" : hostname}:${port}`;
 }
 
 /**
@@ -607,11 +626,9 @@ function serverRequest(path: string, init: { method?: string; body?: BodyInit | 
  * deployed playground too, as they would locally.
  */
 function asPageOrigin(value: string): string {
-  const inst = previewServer();
+  const page = pageOrigin();
   const own = self.location.origin;
-  if (!inst || !value.startsWith(own)) return value;
-  const { hostname, port } = inst.server as { hostname: string; port: number };
-  const page = `http://${hostname === "0.0.0.0" || hostname === "::" ? "localhost" : hostname}:${port}`;
+  if (!page || !value.startsWith(own)) return value;
   const rest = value.slice(own.length);
   // `/__preview` or `/__preview/@<client id>` (preview.ts PREFIX) is where the page sits, not part of its path.
   const prefix = new RegExp(`^${BASE}__preview(?:/@[^/]+)?`).exec(rest)?.[0];

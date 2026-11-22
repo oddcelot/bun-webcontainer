@@ -65,6 +65,7 @@ With several, it shows the program's first; a program that serves nothing itself
 
   </details>
 - **Streaming:** streamed responses and Server-Sent Events arrive as they're sent.
+- **Requests from the page** reach your server as if the page were at the server's own URL (`http://localhost:<port>`): a `POST` carries the `Origin` and `Content-Length` a browser sends, so same-origin checks and body parsers (Solid's server functions, for one) work as they do locally.
 - <details>
   <summary><strong>Cookies</strong> are kept in the browser across restarts; list them with <code>cookies</code> in the console.</summary>
 
