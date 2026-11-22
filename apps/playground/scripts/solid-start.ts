@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // Solid's start mode end to end: fixtures/solid-start (`@solidjs/vite-plugin` with `ssr`, `start: { devtools: true }`
 // and `serverFunctions`, plus `@solidjs/start-devtools`) is installed from npm and run in the embed in headless Chrome.
-// Checks that the preview renders on the server and hydrates, that the devtools toolbar mounts, and that a server
+// Checks that the preview renders on the server and hydrates, that the devtools toolbar mounts (in the dock), and that a server
 // function's POST comes back with what it was sent: the preview's requests reach the in-browser Vite server with the
 // Origin and Content-Length a browser sends (runtime.ts serverRequest), without which `@solidjs/web` answers 403 and the
 // plugin drops the body.
@@ -90,17 +90,20 @@ try {
     report("install", install === "ok", install);
     await page.evaluate(() => (window as any).rpc("run", { entry: "index.ts" }));
 
-    // The preview: the app's frame, once it has hydrated (its button answers) and the toolbar has mounted.
+    // The preview: the app's frame, once it has hydrated (its button answers) and the toolbar has mounted, in the dock's
+    // Devtools tab (ui/Devtools.tsx), not over the page.
     let preview: Frame | undefined;
     for (let i = 0; i < 90 && !preview; i++) {
       const f = page.frames().find((x) => /__preview\/@[^/]+\/$/.test(x.url()));
-      const up = f && (await f.evaluate(() => !!document.querySelector("#inc") && !!document.querySelector("[data-solid-dev-toolbar]")).catch(() => false));
+      const editor = page.frames().find((x) => x.url().startsWith(`${EDITOR}/embed`));
+      const docked = await editor?.evaluate(() => !!(document.getElementById("devtools-frame") as HTMLIFrameElement | null)?.contentDocument?.querySelector(".runbun-devtools-host:not([hidden]) [data-solid-dev-toolbar]")).catch(() => false);
+      const up = f && docked && (await f.evaluate(() => !!document.querySelector("#inc") && !document.querySelector("[data-solid-dev-toolbar]")).catch(() => false));
       if (up) preview = f;
       else await Bun.sleep(1000);
     }
     const lines = () => page.evaluate(() => (window as any).lines as string[]);
     if (!preview) throw new Error(`the preview never showed the app with its toolbar:\n${(await lines()).join("\n")}`);
-    report("devtools toolbar", true, "[data-solid-dev-toolbar] mounted");
+    report("devtools toolbar", true, "[data-solid-dev-toolbar] mounted in the dock's Devtools tab");
 
     await Bun.sleep(1000);
     await preview.click("#inc");

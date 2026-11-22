@@ -122,7 +122,7 @@ if (dev.contentOrigin !== "http://run.runbun.localhost:5199" || dev.editorOrigin
     for (const p of pages) writeFileSync(join(dist, p), readFileSync(join(app, p), "utf8"));
     // As built: the pages name runbun.dev, and no hosting.js says otherwise.
     rmSync(join(dist, "hosting.js"));
-    writeFileSync(join(dist, "examples.json"), '["astro-solid-demo","demo","reactivescript","reactivescript-selects","solid-ssr-dashboard","solid-vite-hmr","starter-http"]\n');
+    writeFileSync(join(dist, "examples.json"), '["astro-solid-demo","demo","reactivescript","reactivescript-selects","solid-ssr-dashboard","solid-start-devtools","solid-vite-hmr","starter-http"]\n');
     configure(dist, loadHosting("production", {}));
     const built = pages.map(read);
     configure(dist, loadHosting("production", { HOSTING: "hosting/example.json" }));

@@ -140,6 +140,7 @@ Large files open and scroll quickly: the editor renders only the lines in view.
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>J</kbd> | Show or hide the console |
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>K</kbd> | Show or hide the preview |
 | <kbd>Esc</kbd> | Leave the expanded preview |
+| <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd> | Bring [Solid's devtools](/playground/preview/#solids-devtools) forward, in projects that have them (`showDevtools`; not in embeds) |
 | <kbd>F8</kbd>, <kbd>F10</kbd>, <kbd>F11</kbd>, <kbd>Shift</kbd>+<kbd>F11</kbd> | While the [debugger](/playground/running-code/#debugger) is paused: resume, step over, step into, step out |
 
 They work in the preview page too, and in an embed, where showing or hiding a pane works only for the panes its author didn't turn off (`features="-console"`).

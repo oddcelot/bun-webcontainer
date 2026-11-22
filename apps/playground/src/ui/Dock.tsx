@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createMemo, createSignal, useContext } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, untrack, useContext } from "solid-js";
 import { TabItem, TabList } from "@runbun/ui/solid/Tabs";
 import { AppContext } from "./context";
 import { DOCK_TABS } from "./dockTabs";
@@ -48,14 +48,15 @@ export function Dock() {
         {/* What the picked pane adds: next to its name alone, at the far end from the tabs (a count beside a tab reads as that tab's). */}
         <div class="tools">
           {DOCK_TABS.map((t) => (
-            <Show when={t.Head && active() === t.id}>{t.Head!()}</Show>
+            <Show when={t.Head && active() === t.id}>{untrack(() => t.Head!())}</Show>
           ))}
         </div>
       </div>
       {DOCK_TABS.map((t) => (
         <Show when={offered().includes(t)}>
           <div class="dock-pane" id={`dock-pane-${t.id}`} role={offered().length > 1 ? "tabpanel" : undefined} aria-label={offered().length > 1 ? t.title : undefined} hidden={active() !== t.id}>
-            {t.Body()}
+            {/* Untracked: what a pane reads as it sets up mustn't build it again (a new terminal, a new frame). */}
+            {untrack(() => t.Body())}
           </div>
         </Show>
       ))}
