@@ -5,6 +5,49 @@ browser, its editor, and the docs at docs.runbun.dev. They release together at o
 `package.json`, tagged `v<version>`), organised by part. `@runbun/astro` keeps its own changelog in
 [packages/astro/CHANGELOG.md](./packages/astro/CHANGELOG.md).
 
+## 0.8.0 — 2026-11-22
+
+A self-hosted playground can now look like its own site: a hosting file gives it a brand (logo, name, share card), a
+theme and the themes it offers, and the language packs it enables, ReactiveScript being the first. The playground
+gains a Solid theme, and the step debugger, a prototype, is now off unless a host turns it on. Nothing needs action;
+to update a self-hosted copy, unpack this release's archive.
+
+### Playground
+
+- **Added** — **A self-hosted playground can carry its own brand.** A hosting file's `brand` puts your logo and name in
+  the header, the page's icon and its titles, and `brand.card` replaces runbun's picture where a link to it is shared.
+  `theme` picks the theme a first visit gets, and `localRunner: false` leaves out the Local Bun switch.
+- **Added** — **Self-hosted playgrounds pick their languages.** A hosting file's `languages` lists the language packs
+  to enable, ReactiveScript being the first; a pack left out is gone from the editor, and so are the gallery's
+  examples that need it. Leaving the key out enables them all.
+- **Added** — **A self-hosted playground can offer only some themes.** The hosting file's `theme.families` lists them;
+  with a single one, the picker is just system, light and dark.
+- **Added** — **A self-hosted playground switches themes in the shape of its own logo.** The hosting file's
+  `theme.transition` picks the logo, a plain circle, or no transition at all.
+- **Added** — **A Solid theme.** The theme picker has a Solid family, light and dark, in the SolidJS sites' colors and
+  their font, Geist.
+- **Changed** — **The run status is a toast over the panes.** It used to be a pill in the status bar unless you
+  switched it under Appearance; that switch is gone.
+- **Changed** — **The step debugger is off unless a host turns it on.** It's a prototype: runbun.dev no longer shows
+  the Debug button, and a self-hosted copy enables it with `"debugger": true`.
+- **Changed** — **Install and format read as what they do.** Menus and tooltips say "Install dependencies" and "Format
+  the open file" instead of naming `bun install` and `bun fmt`.
+- **Fixed** — **A self-hosted copy no longer shows where it was configured.** `configure.ts` wrote the hosting file's
+  full local path into the served `hosting.js`; it now names the file only.
+- **Fixed** — **The ReactiveScript examples no longer reload once on their first run.** Vite found the ReactiveScript
+  runtime only after the page had loaded, optimized it then and reloaded the preview.
+
+### Editor
+
+- **Fixed** — **A ReactiveScript app's `main.ts` has no type error.** `app.mount(main(app))` was underlined with
+  "Argument of type 'Element' is not assignable to parameter of type '() => unknown'".
+
+### Docs
+
+- **Added** — **Host your own playground.** The new [Self-hosting](https://docs.runbun.dev/guides/self-hosting/) guide
+  takes a release archive to your own domain: one hosting file for its name, gallery, default project and origins,
+  then `configure.ts` and any static host that sends two headers.
+
 ## 0.7.0 — 2026-11-20
 
 The playground can now run on your own domain: each release ships a build for any host, which one script points at
