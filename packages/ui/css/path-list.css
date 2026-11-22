@@ -1,0 +1,82 @@
+/* PathList: removable rows of paths over a field that adds one. Over the uno preset's tokens. */
+@layer runbun-ui {
+  .path-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+
+    ul {
+      display: flex;
+      flex-direction: column;
+      margin: 0;
+      padding: 0;
+      border: 1px solid var(--control-border);
+      border-radius: var(--inner-radius);
+      list-style: none;
+    }
+
+    li {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      min-height: 26px;
+      padding: 0 2px 0 8px;
+      font: 12px var(--font-mono);
+
+      & + li {
+        border-top: 1px solid color-mix(in srgb, var(--control-border) 60%, transparent);
+      }
+    }
+
+    .path {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .remove,
+    .add-button {
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      border: 0;
+      border-radius: var(--inner-radius);
+      background: none;
+      color: var(--muted);
+      cursor: pointer;
+
+      &:hover:not(:disabled) {
+        background: var(--control-hover);
+        color: var(--fg);
+      }
+      &:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+    }
+
+    .empty {
+      margin: 0;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .add {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+
+      .input {
+        flex: 1;
+        min-width: 0;
+        font: 12px var(--font-mono);
+      }
+    }
+  }
+}

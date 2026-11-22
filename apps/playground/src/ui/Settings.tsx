@@ -5,7 +5,8 @@ import { Button } from "@runbun/ui/solid/Button";
 import { Field } from "@runbun/ui/solid/Field";
 import { Input } from "@runbun/ui/solid/Input";
 import { Segmented } from "@runbun/ui/solid/Segmented";
-import { Chip, Chips } from "@runbun/ui/solid/Chips";
+import { PathList } from "@runbun/ui/solid/PathList";
+import { Switch } from "@runbun/ui/solid/Switch";
 import { Tip } from "@runbun/ui/solid/Tip";
 import { CONFIG_FILE, readConfig, type Panel, type ProjectConfig, type Requirement, type Sized } from "../projectConfig";
 import { AppContext } from "./context";
@@ -32,12 +33,6 @@ export function Settings(props: { id?: string }) {
 
 type Section = "playground" | "project";
 
-/** On/off as a Segmented's values. */
-const onOff = (on: boolean) => (on ? "on" : "off");
-const ON_OFF: [string, string][] = [
-  ["on", "On"],
-  ["off", "Off"],
-];
 
 /** A setting's row: its name and what it does on the left, its control on the right. */
 function Row(props: ParentProps<{ label: string; hint?: string }>) {
@@ -102,22 +97,22 @@ function PlaygroundSettings() {
   return (
     <div class="settings-list">
       <Row label="Auto-save" hint="Save edits shortly after typing stops. Off, they wait for Save, Run, Install or Share.">
-        <Segmented label="Auto-save" value={onOff(ws.autosave())} options={ON_OFF} onChange={(v) => ws.setAutosave(v === "on")} />
+        <Switch label="Auto-save" checked={ws.autosave()} onChange={ws.setAutosave} />
       </Row>
       <Row label="Restart on save" hint="Restart the program on every save (bun --watch). Off, only Run restarts it.">
-        <Segmented label="Restart on save" value={onOff(ws.watch())} options={ON_OFF} onChange={(v) => ws.setWatch(v === "on")} />
+        <Switch label="Restart on save" checked={ws.watch()} onChange={ws.setWatch} />
       </Row>
       <Row label="Format on save" hint="Save (Ctrl/Cmd+S) formats the file with bun fmt first.">
-        <Segmented label="Format on save" value={onOff(ws.formatOnSave())} options={ON_OFF} onChange={(v) => ws.setFormatOnSave(v === "on")} />
+        <Switch label="Format on save" checked={ws.formatOnSave()} onChange={ws.setFormatOnSave} />
       </Row>
       <Row
         label="Fast path"
         hint={`Experimental. Browser-only projects run without an install, packages from esm.sh; no dev server, so no hot reload. Applies on the next Run; a project's ${CONFIG_FILE} can opt out.`}
       >
-        <Segmented label="Fast path" value={onOff(ws.fast())} options={ON_OFF} onChange={(v) => ws.setFast(v === "on")} />
+        <Switch label="Fast path" checked={ws.fast()} onChange={ws.setFast} />
       </Row>
       <Row label={`Show ${CONFIG_FILE}`} hint="In the file tree and the tabs. Hidden, it still applies, and the Project tab here edits it.">
-        <Segmented label={`Show ${CONFIG_FILE}`} value={onOff(ws.showConfig())} options={ON_OFF} onChange={(v) => ws.setShowConfig(v === "on")} />
+        <Switch label={`Show ${CONFIG_FILE}`} checked={ws.showConfig()} onChange={(on) => ws.setShowConfig(on)} />
       </Row>
     </div>
   );
@@ -147,9 +142,22 @@ const SIZES: [Sized, string, string][] = [
   ["preview", "Preview", "of its column, over the console"],
 ];
 const REQUIRES: [Requirement, string, string][] = [
-  ["cross-origin-isolation", "Cross-origin isolation", "SharedArrayBuffer, threads: runbun.dev has it, some hosts don't"],
-  ["local-bun", "Local Bun", "Native Bun on the reader's machine (Local Bun)"],
+  ["cross-origin-isolation", "cross-origin isolation", "SharedArrayBuffer and threads (Vite, Rolldown); runbun.dev has it, some hosts don't"],
+  ["local-bun", "Local Bun", "Native Bun on the reader's machine: child processes, native addons"],
 ];
+
+/** A list of project paths under its label, each removable, with a field that adds one. */
+function FileList(props: { label: string; hint: string; value: string[] | undefined; suggestions: string[]; onChange: (v: string[]) => void }) {
+  return (
+    <div class="field">
+      <span class="field-label">
+        {props.label}
+        <span class="field-hint">{props.hint}</span>
+      </span>
+      <PathList label={props.label} value={props.value ?? []} suggestions={props.suggestions} onChange={(v) => props.onChange(v)} placeholder="Add a file" />
+    </div>
+  );
+}
 
 /** The open project's runbun.json, field by field. */
 function ProjectSettings() {
@@ -163,6 +171,14 @@ function ProjectSettings() {
     return { config, problems };
   });
   const c = () => parsed().config;
+  // The project's files and folders, offered when adding to a list (not node_modules or .git).
+  const [version, setVersion] = createSignal(0);
+  onSettled(() => vfs.onChange(({ created, removed }) => (created || removed) && setVersion((n) => n + 1)));
+  const files = createMemo(() => {
+    version();
+    return [...vfs.files.keys()].filter((p) => !/(^|\/)(node_modules|\.git)\//.test(p)).sort();
+  });
+  const folders = createMemo(() => [...new Set(files().flatMap((p) => p.split("/").slice(0, -1).map((_, i, parts) => `${parts.slice(0, i + 1).join("/")}/`)))].sort());
   /** The file doesn't parse: the form would write over what it can't read. */
   const broken = () => parsed().problems.some((p) => p.startsWith(`${CONFIG_FILE} isn't valid JSON`) || p.startsWith(`${CONFIG_FILE} must hold`));
 
@@ -179,7 +195,7 @@ function ProjectSettings() {
     if (key === "readonly") ws.setReadonly((value as string[] | undefined) ?? []);
   }
   /** A tri-state: unset (the default), or true/false. */
-  const tri = (v: boolean | undefined) => (v === undefined ? "default" : onOff(v));
+  const tri = (v: boolean | undefined) => (v === undefined ? "default" : v ? "on" : "off");
   const fromTri = (v: string) => (v === "default" ? undefined : v === "on");
 
   return (
@@ -213,18 +229,10 @@ function ProjectSettings() {
           </Field>
         </div>
         <Row label="Run once opened" hint="Code from a link still waits for the reader's Run.">
-          <Segmented label="Run once opened" value={tri(c().autorun)} options={[["default", "Default"], ...ON_OFF]} onChange={(v) => set("autorun", fromTri(v))} />
+          <Switch label="Run once opened" checked={c().autorun !== false} onChange={(on) => set("autorun", on ? undefined : false)} />
         </Row>
-        <Row label="Fast path" hint="Never: always install and start the dev server, even with the reader's fast path on.">
-          <Segmented
-            label="Fast path"
-            value={c().fastPath === false ? "never" : "allowed"}
-            options={[
-              ["allowed", "Allowed"],
-              ["never", "Never"],
-            ]}
-            onChange={(v) => set("fastPath", v === "never" ? false : undefined)}
-          />
+        <Row label="Allow the fast path" hint="Off: always install and start the dev server, even with the reader's fast path on.">
+          <Switch label="Allow the fast path" checked={c().fastPath !== false} onChange={(on) => set("fastPath", on ? undefined : false)} />
         </Row>
         <Field label="Environment" hint="KEY=value per line; not for secrets, the file is shared">
           <Input multiline rows={3} spellcheck={false} value={Object.entries(c().env ?? {}).map(([k, v]) => `${k}=${v}`).join("\n")} onChange={(e) => {
@@ -236,23 +244,23 @@ function ProjectSettings() {
             set("env", env);
           }} />
         </Field>
-        <Row label="Needs" hint="The playground says so up front where it's missing.">
-          <Chips label="Needs" value={c().requires ?? []} onChange={(v) => set("requires", v)}>
-            <For each={REQUIRES}>{([value, label, tip]) => <Chip value={value} tip={tip}>{label}</Chip>}</For>
-          </Chips>
-        </Row>
+        <For each={REQUIRES}>
+          {([need, label, hint]) => (
+            <Row label={`Needs ${label}`} hint={`${hint}. The playground says so up front where it's missing.`}>
+              <Switch
+                label={`Needs ${label}`}
+                checked={(c().requires ?? []).includes(need)}
+                onChange={(on) => set("requires", on ? [...(c().requires ?? []), need] : (c().requires ?? []).filter((r) => r !== need))}
+              />
+            </Row>
+          )}
+        </For>
 
         <h3>Files</h3>
         <div class="settings-grid three">
-          <Field label="Open" hint="as tabs, first shown">
-            <Input multiline rows={3} spellcheck={false} value={lines(c().open)} onChange={(e) => set("open", fromLines(e.currentTarget.value))} />
-          </Field>
-          <Field label="Hidden" hint="kept out of the tabs">
-            <Input multiline rows={3} spellcheck={false} value={lines(c().hidden)} onChange={(e) => set("hidden", fromLines(e.currentTarget.value))} />
-          </Field>
-          <Field label="Read-only" hint="files or folders">
-            <Input multiline rows={3} spellcheck={false} value={lines(c().readonly)} onChange={(e) => set("readonly", fromLines(e.currentTarget.value))} />
-          </Field>
+          <FileList label="Open" hint="as tabs, the first shown" value={c().open} suggestions={files()} onChange={(v) => set("open", v)} />
+          <FileList label="Hidden" hint="kept out of the tabs" value={c().hidden} suggestions={files()} onChange={(v) => set("hidden", v)} />
+          <FileList label="Read-only" hint="files or folders" value={c().readonly} suggestions={[...folders(), ...files()]} onChange={(v) => set("readonly", v)} />
         </div>
 
         <h3>Layout</h3>
