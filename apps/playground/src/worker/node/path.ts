@@ -1,3 +1,4 @@
+import { globMatch } from "../../resolver";
 const cwd = () => (globalThis as { process?: { cwd?: () => string } }).process?.cwd?.() ?? "/";
 
 function segments(p: string, abs: boolean): string {
@@ -99,6 +100,24 @@ function format(o: Partial<ParsedPath>): string {
   return dir === o.root ? dir + base : `${dir}/${base}`;
 }
 
+/** `path.matchesGlob(path, pattern)` (Node 22): Bun's own matcher, as `Bun.Glob#match`; leading dots aren't special. */
+function matchesGlob(p: string, pattern: string): boolean {
+  if (typeof p !== "string") throw argType("path", p);
+  if (typeof pattern !== "string") throw argType("pattern", pattern);
+  return globMatch(pattern, p);
+}
+/** Node's (and Bun's) wording: `The "path" argument must be of type string. Received type number (1)`. */
+const received = (v: unknown) =>
+  v == null
+    ? `Received ${v}`
+    : typeof v === "function"
+      ? `Received function ${v.name}`
+      : typeof v === "object"
+        ? `Received an instance of ${(v as object).constructor?.name ?? "Object"}`
+        : `Received type ${typeof v} (${String(v)})`;
+const argType = (name: string, v: unknown) =>
+  Object.assign(new TypeError(`The "${name}" argument must be of type string. ${received(v)}`), { code: "ERR_INVALID_ARG_TYPE" });
+
 const path = {
   sep: "/",
   delimiter: ":",
@@ -113,6 +132,7 @@ const path = {
   parse,
   format,
   toNamespacedPath: (p: string) => p,
+  matchesGlob,
   posix: undefined as unknown,
   win32: undefined as unknown,
 };

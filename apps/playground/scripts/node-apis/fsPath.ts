@@ -1,5 +1,6 @@
-// fs.cp's folders and options: what Nuxt's dev server (Nitro) leans on.
+// fs.cp's folders and options, and path.matchesGlob: what Nuxt's dev server (Nitro) leans on.
 import fs from "node:fs";
+import path from "node:path";
 import type { Case } from "./cases.ts";
 
 export async function fsPathCases(t: Case) {
@@ -21,4 +22,21 @@ export async function fsPathCases(t: Case) {
   t("fs.cpSync force: true over a file", () => (fs.cpSync(at("a/b/x.json"), at("out2/x.json")), fs.readFileSync(at("out2/x.json"), "utf8")));
   fs.rmSync(root, { recursive: true, force: true });
 
+  t("path.matchesGlob is a function", () => typeof path.matchesGlob);
+  for (const [p, g] of [
+    ["a/b/x.json", "**/*.json"],
+    ["a/b/x.json", "a/*.json"],
+    ["src/x.ts", "src/**"],
+    ["x.ts", "*.{ts,js}"],
+    ["/abs/p/x.vue", "/abs/**/*.vue"],
+    [".hidden/x", "**/x"],
+    ["a/b", "a/b/"],
+    ["node_modules/vue/index.js", "**/node_modules/**"],
+    ["a/b/c", "a/?/c"],
+    ["a/x", "a/[!y]"],
+  ])
+    t(`path.matchesGlob ${p} ${g}`, () => path.matchesGlob(p, g));
+  t("path.matchesGlob of a number", () => path.matchesGlob(1 as never, "*"));
+  t("path.matchesGlob with no pattern", () => path.matchesGlob("x", undefined as never));
+  t("path.posix.matchesGlob", () => path.posix.matchesGlob("a/b.ts", "**/*.ts"));
 }
