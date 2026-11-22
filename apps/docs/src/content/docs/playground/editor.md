@@ -72,12 +72,7 @@ The editor is where you write the project's files, with a file tree, tabs and a 
 
   </details>
 - Resizable panes
-- <details>
-  <summary><strong>Run status</strong> shows as a pill in the status bar (default) or a toast over the panes; pick one under <strong>Appearance</strong>.</summary>
-
-  The toast fades a few seconds after the program settles; errors stay until the next change.
-
-  </details>
+- **Run status** (installing, running, exited) shows as a pill in the status bar, beside the server's port. An embed shows it as a toast over the panes, or in its bar with the [`status`](/reference/embed-api/) option.
 - <details>
   <summary><strong>Status bar</strong> along the bottom: pane buttons, what the program is doing and its port, the open file's errors and cursor, format on save, install state and save state.</summary>
 

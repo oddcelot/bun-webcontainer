@@ -11,7 +11,6 @@ import { EditorPane } from "./EditorPane";
 import { Explorer, toggleFiles, toggleGit } from "./Explorer";
 import { inCommitBox } from "../git/store";
 import { Header } from "./Header";
-import { StatusToast } from "./Status";
 import { StatusBar } from "./StatusBar";
 import { Unsupported } from "./Unsupported";
 import type { Sized } from "../projectConfig";
@@ -260,7 +259,6 @@ export function App() {
             );
           }}
         </Resizable>
-        <StatusToast status={app.session.status()} />
       </main>
       <StatusBar
         treeShown={columnSizes()[0] > 0}

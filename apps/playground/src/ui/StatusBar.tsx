@@ -1,5 +1,6 @@
 import { For, Show, createSignal, onSettled, useContext } from "solid-js";
 import { installState, type InstallState } from "../installState";
+import { StatusPill } from "./Status";
 import { onSaveState, type SaveState } from "../persist";
 import { trackChanges } from "../changes";
 import { DOCS } from "../base";
@@ -89,6 +90,8 @@ export function StatusBar(props: { treeShown: boolean; toggleFiles(): void; togg
           <span class="sr-only">Debugger</span>
         </Tip>
       </Show>
+      {/* The program's status (Installing, Running index.ts, Exited with code 1), announced as it changes. */}
+      <StatusPill role="status" status={app.session.status()} />
       <Ports previewShown={props.previewShown} showPreview={() => props.toggle(0)} />
       <span class="spacer" />
       <Changed git={gitOn()} gitShown={shows("git")} toggleGit={props.toggleGit} />
