@@ -81,6 +81,11 @@ export function PathList(props: { label: string; value: string[]; suggestions: s
                     },
                   } as object)}
                 />
+                <Combobox.Trigger class="trigger" aria-label={`Show the suggestions for ${props.label}`}>
+                  <Combobox.Icon class="chevron">
+                    <i class="i-lucide-chevron-down" aria-hidden="true" />
+                  </Combobox.Icon>
+                </Combobox.Trigger>
               </Combobox.Control>
               <Combobox.Portal>
                 <Combobox.Content class="select-menu path-menu">

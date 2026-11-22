@@ -43,19 +43,56 @@
       display: flex;
     }
 
+    /* The input and the chevron that opens every suggestion, drawn as one field. */
+    .control {
+      align-items: center;
+      height: 24px;
+      border: 1px solid transparent;
+      border-radius: var(--inner-radius);
+
+      &:focus-within {
+        border-color: var(--control-border);
+        background: var(--control);
+      }
+    }
+
+    .trigger {
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      border: 0;
+      border-radius: var(--inner-radius);
+      background: none;
+      color: var(--muted);
+      cursor: pointer;
+
+      &:hover {
+        background: var(--control-hover);
+        color: var(--fg);
+      }
+
+      &[data-expanded] .chevron {
+        rotate: 180deg;
+      }
+    }
+
+    .chevron {
+      display: grid;
+      transition: rotate 0.15s;
+    }
+
     .control .input {
       flex: 1;
       min-width: 0;
       height: 24px;
       padding: 0 6px;
-      border-color: transparent;
+      border: 0;
       background: none;
       font: 12px var(--font-mono);
-
-      &:focus {
-        border-color: var(--control-border);
-        background: var(--control);
-      }
+      outline: none;
     }
 
     .remove,
