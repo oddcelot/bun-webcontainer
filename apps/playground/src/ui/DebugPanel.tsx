@@ -121,4 +121,4 @@ function DebugPanel() {
 }
 
 // Each pause is a new object, so each one brings the tab forward; so does turning Debug on.
-export const debugTab: DockTab = { id: "debug", title: "Debug", icon: "i-lucide-bug", when: debugSession.enabled, attention: () => debugSession.paused() ?? debugSession.enabled(), Head: DebugHead, Body: DebugPanel };
+export const debugTab: DockTab = { id: "debug", title: "Debug", tip: "The paused program: call stack, variables, evaluate", icon: "i-lucide-bug", when: debugSession.enabled, attention: () => debugSession.paused() ?? debugSession.enabled(), Head: DebugHead, Body: DebugPanel };

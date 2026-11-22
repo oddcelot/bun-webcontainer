@@ -2891,35 +2891,15 @@ body:has(#req-handle[data-dragging]) * {
     font-weight: 600;
   }
 
+  /* The tabs are the editor's and the preview's (@runbun/ui tabs.css), in this bar instead of one of their own. */
   .tabs {
-    display: flex;
-    gap: 2px;
-    margin: -2px 4px -2px -4px;
+    margin: -2px 4px -2px -6px;
+    padding: 0;
+    border-bottom: 0;
+    background: none;
 
-    [role="tab"] {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 2px 8px;
-      border: 0;
-      border-radius: 4px;
-      background: none;
-      color: var(--muted);
-      font: inherit;
-      cursor: pointer;
-
-      .label {
-        color: inherit;
-      }
-
-      &:hover {
-        background: var(--control-hover);
-      }
-
-      &[aria-selected="true"] {
-        background: var(--control);
-        color: var(--fg);
-      }
+    .tab {
+      padding-block: 2px;
     }
   }
 

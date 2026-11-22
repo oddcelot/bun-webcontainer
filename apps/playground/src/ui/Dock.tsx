@@ -1,4 +1,5 @@
 import { For, Show, createEffect, createMemo, createSignal } from "solid-js";
+import { TabItem, TabList } from "@runbun/ui/solid/Tabs";
 import { DOCK_TABS } from "./dockTabs";
 
 /**
@@ -31,16 +32,16 @@ export function Dock() {
             </>
           }
         >
-          <div class="tabs" role="tablist" aria-label="Panes under the preview">
+          <TabList class="tabs tablist" label="Panes under the preview" onSelect={setPicked}>
             <For each={offered()}>
               {(t) => (
-                <button type="button" role="tab" id={`dock-tab-${t.id}`} aria-selected={active() === t.id ? "true" : "false"} aria-controls={`dock-pane-${t.id}`} onClick={() => setPicked(t.id)}>
+                <TabItem value={t.id} selected={active() === t.id} title={t.tip}>
                   <i class={t.icon} aria-hidden="true" />
-                  <span class="label">{t.title}</span>
-                </button>
+                  {t.title}
+                </TabItem>
               )}
             </For>
-          </div>
+          </TabList>
         </Show>
         {DOCK_TABS.map((t) => (
           <Show when={t.Head && active() === t.id}>{t.Head!()}</Show>
@@ -48,7 +49,7 @@ export function Dock() {
       </div>
       {DOCK_TABS.map((t) => (
         <Show when={!t.when || t.when()}>
-          <div class="dock-pane" id={`dock-pane-${t.id}`} role={offered().length > 1 ? "tabpanel" : undefined} aria-labelledby={offered().length > 1 ? `dock-tab-${t.id}` : undefined} hidden={active() !== t.id}>
+          <div class="dock-pane" id={`dock-pane-${t.id}`} role={offered().length > 1 ? "tabpanel" : undefined} aria-label={offered().length > 1 ? t.title : undefined} hidden={active() !== t.id}>
             {t.Body()}
           </div>
         </Show>

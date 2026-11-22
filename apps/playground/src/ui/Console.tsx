@@ -48,4 +48,4 @@ function ConsoleBody() {
   return <div id="console" ref={el} />;
 }
 
-export const consoleTab: DockTab = { id: "console", title: "Console", icon: "i-lucide-square-terminal", Head: ConsoleHead, Body: ConsoleBody };
+export const consoleTab: DockTab = { id: "console", title: "Console", tip: "What the program prints, and a shell", icon: "i-lucide-square-terminal", Head: ConsoleHead, Body: ConsoleBody };

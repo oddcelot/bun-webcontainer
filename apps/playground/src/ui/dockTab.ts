@@ -5,9 +5,11 @@ import type { JSX } from "@solidjs/web";
  * one of these there.
  */
 export interface DockTab {
-  /** In the tab's and the pane's ids (`dock-tab-<id>`, `dock-pane-<id>`). */
+  /** In the pane's id (`dock-pane-<id>`). */
   id: string;
   title: string;
+  /** The tab's tooltip. */
+  tip: string;
   /** An icon class (`i-lucide-…`). */
   icon: string;
   /** Whether the dock offers the tab now (tracked); always, without it. Its pane is unmounted while it doesn't. */
