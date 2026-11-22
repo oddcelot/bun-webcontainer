@@ -42,6 +42,7 @@ All fields are optional:
   `"circle"` in a plain circle, `"none"` at once.
 - `languages`: the language packs to enable, by id (`reactivescript`); a file of one left out is a plain file. Default: all.
 - `localRunner`: `false` leaves out the header's Local Bun switch. Default: true.
+- `showConfig`: `false` keeps a project's `runbun.json` out of the file tree and the tabs (it still applies). Default: true.
 - `debugger`: `true` turns on the step debugger, a prototype. Default: false.
 
 `hosting.example.json` is a whole one: a Solid playground with the logos in `brand/`.

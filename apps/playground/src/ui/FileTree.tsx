@@ -1,4 +1,4 @@
-import { Show, createEffect, createSignal, onSettled, useContext } from "solid-js";
+import { Show, createEffect, createSignal, onSettled, untrack, useContext } from "solid-js";
 import {
   FileTree as PierreTree,
   themeToTreeStyles,
@@ -127,8 +127,8 @@ export function FileTree() {
   let open: ReadonlySet<string> = new Set();
   // The active tab, as last applied. Selecting it below calls onSelectionChange from inside that effect.
   let active: string | null = null;
-  /** The VFS's files but those an embedding page generated. */
-  const paths = () => treePaths(vfs).filter((p) => !ws.isGenerated(p));
+  /** The VFS's files but those an embedding page generated, and runbun.json while it's hidden (Settings). */
+  const paths = () => treePaths(vfs).filter((p) => !ws.isGenerated(p) && !ws.isHiddenConfig(p));
 
   // Rename, delete and New file here, unless an embed is read-only.
   const editable = () => app.features?.has("edit") ?? true;
@@ -155,7 +155,7 @@ export function FileTree() {
   const tree = new PierreTree({
     // A dot on files open in a tab.
     renderRowDecoration: ({ item }) => (item.kind === "file" && open.has(item.path) ? { text: "●", title: "Open in a tab" } : null),
-    paths: paths(),
+    paths: untrack(paths),
     initialExpansion: "closed",
     search: true,
     ...TREE_LOOK,
@@ -268,7 +268,7 @@ export function FileTree() {
       pending.set(op.path, op);
     };
     const unsubscribe = vfs.onChange(({ path, created, removed }) => {
-      if ((created || removed) && !inGitDir(path) && !ws.isGenerated(path)) queue({ type: removed ? "remove" : "add", path });
+      if ((created || removed) && !inGitDir(path) && !ws.isGenerated(path) && !ws.isHiddenConfig(path)) queue({ type: removed ? "remove" : "add", path });
     });
     // The tree keeps a folder whose files are gone; a removed directory takes its row (and anything left in it).
     const unsubscribeDirs = vfs.onDir((path, removed) => {
@@ -314,7 +314,7 @@ export function FileTree() {
     }),
   );
   createEffect(
-    () => ws.state.treeVersion,
+    () => [ws.state.treeVersion, ws.showConfig()],
     guarded("file tree", () => {
       tree.resetPaths(paths());
     }),
