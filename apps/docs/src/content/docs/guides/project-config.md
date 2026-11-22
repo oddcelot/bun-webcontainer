@@ -14,6 +14,8 @@ sidebar:
 
 A `runbun.json` beside `package.json` tells the playground how to open and run the project. It's optional, and so is every field in it: what's missing is guessed as before. Comments and trailing commas are allowed.
 
+The playground's **Settings** (the gear in the header), **Project** tab, edits it as a form: each change rewrites only that field, keeping your comments and layout, and a field set back to its default leaves the file. A project without the file gets one on the first change.
+
 ```jsonc
 {
   "$schema": "https://runbun.dev/schema/runbun.json",

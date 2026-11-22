@@ -12,7 +12,7 @@ The playground at runbun.dev is an editor, a console, a preview and a Git view o
 
 ## Editor and files
 
-A syntax-highlighted editor with a file tree, tabs, auto-save, formatting, TypeScript completions and hovers, a diff of your changes, and configurable keyboard shortcuts.
+A syntax-highlighted editor with a file tree, tabs, auto-save, formatting, TypeScript completions and hovers, a diff of your changes, and configurable keyboard shortcuts. Settings (the gear in the header) holds your preferences and edits the project's `runbun.json` as a form.
 
 [Editor and files →](/playground/editor/) ([Keyboard shortcuts](/playground/editor/#keyboard-shortcuts))
 

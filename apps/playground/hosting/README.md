@@ -63,8 +63,8 @@ Fields, all optional:
   dumpling), `"circle"` in a plain circle, `"none"` at once, without a view transition (`src/theme.ts`). Default:
   Pierre, no variables, `"logo"`.
 - `localRunner`: `false` leaves out the header's Local Bun switch (`packages/connect`). Default: `true`.
-- `showConfig`: `false` keeps a project's `runbun.json` out of the file tree and the tabs (it still applies). Default:
-  `true`.
+- `showConfig`: `false` keeps a project's `runbun.json` out of the file tree and the tabs (it still applies); visitors can
+  show it again in Settings. Default: `true`.
 - `panels`: which panes the playground opens with where a project's runbun.json `panels` doesn't say: `files`,
   `preview`, `console`, each `true` or `false` (`{ "console": false }`: no console until the visitor opens it or the
   program fails). Not saved as the visitor's layout; embeds keep their modes. Default: as the visitor left them.

@@ -59,7 +59,7 @@ Every field is optional:
 | `brand` | none | Your logo and name in place of runbun's, see [Your own brand and theme](#your-own-brand-and-theme). |
 | `theme` | Pierre, every theme | The theme a first visit gets, the themes the picker offers, CSS variables on top of every theme, and how a theme switch looks. |
 | `localRunner` | `true` | `false` leaves out the header's Local Bun switch. |
-| `showConfig` | `true` | `false` keeps a project's [`runbun.json`](/guides/project-config/) out of the file tree and the tabs. It still applies. |
+| `showConfig` | `true` | `false` keeps a project's [`runbun.json`](/guides/project-config/) out of the file tree and the tabs. It still applies, and visitors can show it again in Settings. |
 | `debugger` | `false` | `true` turns on the [debugger](/playground/running-code/#debugger), a prototype. |
 | `panels` | as the visitor left them | Which panes the playground opens with: `files`, `preview` and `console`, each `true` or `false`. `{ "console": false }` opens without the console. A project's own [`panels`](/guides/project-config/) win, visitors can still show and hide every pane, and a console you hid opens when the program fails. Embeds keep their modes. |
 | `gallery` | all of them | Which bundled examples the gallery lists, by folder name, in this order. `dist/examples.json` lists the folders a release has; the others still open with `?example=<folder>`. |

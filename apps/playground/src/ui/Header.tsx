@@ -9,6 +9,7 @@ import { AutosaveTip } from "./EditorPane";
 import { LocalBunSetup } from "./LocalBunSetup";
 import { ProjectPicker } from "./ProjectPicker";
 import { ShareMenu } from "./ShareMenu";
+import { Settings } from "./Settings";
 import { Shortcuts } from "./Shortcuts";
 import { Storage } from "./Storage";
 import { ThemePicker } from "./ThemePicker";
@@ -211,6 +212,7 @@ export function Header() {
         <Storage id="storage" />
       </Show>
       <Shortcuts id="shortcuts" />
+      <Settings id="settings" />
       <ThemePicker />
     </>
   );

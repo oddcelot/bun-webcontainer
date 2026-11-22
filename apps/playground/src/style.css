@@ -1078,7 +1078,7 @@ html[data-view="opening"] {
 header { display: flex; gap: 8px; align-items: center; padding: 6px 10px 4px; }
 header button:not(.select-trigger), #docs, #clear, #request button { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 /* By id: the share menu is in the header too, and its items mustn't take this height. */
-#example, #run, #run-more, #local-bun, #debug, #autosave, #watch, #docs, #share, #shortcuts, #storage, #theme { height: var(--control-height); }
+#example, #run, #run-more, #local-bun, #debug, #autosave, #watch, #docs, #share, #shortcuts, #settings, #storage, #theme { height: var(--control-height); }
 /* Run and its menu (bun install): one control split in two. */
 #run-group { display: inline-flex; }
 #run { border-radius: 6px 0 0 6px; }
@@ -1537,6 +1537,102 @@ html[data-booting] #app > header > * { visibility: hidden; animation: boot-fallb
 .shortcuts-row dt { display: flex; flex-direction: column; min-width: 0; }
 .shortcuts-row dt code { color: var(--muted); font: 10.5px var(--font-mono); }
 .shortcuts-row dd { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; margin: 0; }
+/* Settings (Settings.tsx): the reader's toggles and the project's runbun.json, a tab each. */
+.dialog.settings {
+  display: flex;
+  flex-direction: column;
+  width: min(42rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 14vh - 2rem);
+
+  .settings-sections {
+    margin: 10px 0 4px;
+  }
+
+  .segmented button {
+    white-space: nowrap;
+  }
+
+  .settings-body {
+    min-height: 0;
+    overflow: auto;
+    margin: 0 -16px;
+    padding: 4px 16px 0;
+  }
+
+  .settings-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 8px 0;
+
+    h3 {
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    textarea {
+      resize: vertical;
+      font: 12px var(--font-mono);
+    }
+  }
+
+  .settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    font-size: 12px;
+
+    .text {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .control {
+      flex-shrink: 0;
+    }
+  }
+
+  .settings-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+
+    &.three {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
+  .settings-note {
+    margin: 0;
+    color: var(--muted);
+    font-size: 11px;
+  }
+
+  .settings-problems {
+    margin: 0;
+    padding: 6px 10px 6px 24px;
+    border: 1px solid color-mix(in srgb, var(--warn) 50%, transparent);
+    border-radius: var(--radius);
+    color: var(--fg);
+    font-size: 11px;
+  }
+
+  .dialog-actions .open-config {
+    margin-right: auto;
+  }
+}
 .shortcuts-row .chord { display: inline-flex; gap: 2px; }
 .shortcuts-row .chord + .chord::before { content: "or"; align-self: center; margin-right: 4px; color: var(--muted); font-size: 11px; }
 .shortcuts-row kbd { min-width: 1.5em; padding: 1px 5px; border: 1px solid var(--control-border); border-bottom-width: 2px; border-radius: 4px; background: var(--control); font: 11px/16px var(--font-mono); text-align: center; }
