@@ -1706,7 +1706,33 @@ html[data-booting] #app > header > * { visibility: hidden; animation: boot-fallb
     }
 
     .control {
+      display: flex;
+      align-items: center;
+      gap: 8px;
       flex-shrink: 0;
+    }
+
+    /* Kept in place while hidden, so the controls line up whether a row has one or not. */
+    .reset {
+      display: grid;
+      place-items: center;
+      width: 24px;
+      height: 24px;
+      padding: 0;
+      border: 0;
+      border-radius: var(--inner-radius);
+      background: none;
+      color: var(--muted);
+      cursor: pointer;
+      visibility: hidden;
+
+      &[data-shown] {
+        visibility: visible;
+      }
+      &:hover {
+        background: var(--control-hover);
+        color: var(--fg);
+      }
     }
 
     .segmented button {

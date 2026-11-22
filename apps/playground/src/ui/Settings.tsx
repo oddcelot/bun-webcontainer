@@ -10,6 +10,7 @@ import { Switch } from "@runbun/ui/solid/Switch";
 import { Tip } from "@runbun/ui/solid/Tip";
 import { CONFIG_FILE, readConfig, type Panel, type ProjectConfig, type Requirement, type Sized } from "../projectConfig";
 import { AppContext } from "./context";
+import { HOSTING } from "../hosting";
 import type { JSX } from "@solidjs/web";
 import { commandOf, isShellCommand } from "../scripts";
 import { Fields, METHODS, MethodBadge } from "./RequestFields";
@@ -206,6 +207,31 @@ const clean = (v: unknown): unknown =>
   typeof v === "object" && v !== null && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).filter(([, x]) => !isEmpty(x))) : v;
 /** A value the file leaves out: undefined, an empty string, list or object. */
 const isEmpty = (v: unknown) => v === undefined || v === "" || (Array.isArray(v) ? !v.length : typeof v === "object" && v !== null && !Object.keys(v).length);
+
+/** What a pane does when runbun.json doesn't say: this host's `panels`, else the reader's layout (embeds: shown). */
+const panelDefault = (panel: Panel) => {
+  const host = HOSTING.panels?.[panel as "files"];
+  if (host !== undefined) return `${host ? "shown" : "hidden"}, as this playground's host sets`;
+  return panel === "tabs" ? "shown" : "as the reader left it (shown at first)";
+};
+
+/** A setting's reset: shown while runbun.json sets it, its tooltip naming the default it goes back to. */
+function Reset(props: { what: string; shown: boolean; default: string; onReset: () => void }) {
+  return (
+    <Tip
+      type="button"
+      class="reset"
+      tip={`Reset to the default: ${props.default}`}
+      aria-label={`Reset ${props.what} to the default`}
+      data-shown={props.shown ? "" : undefined}
+      tabindex={props.shown ? 0 : -1}
+      aria-hidden={props.shown ? undefined : "true"}
+      onClick={() => props.onReset()}
+    >
+      <i class="i-lucide-rotate-ccw" aria-hidden="true" />
+    </Tip>
+  );
+}
 
 const PANELS: [Panel, string][] = [
   ["files", "File tree"],
@@ -423,9 +449,6 @@ function projectConfig() {
 }
 type ProjectConfigState = ReturnType<typeof projectConfig>;
 
-/** A tri-state: unset (the default), or true/false. */
-const tri = (v: boolean | undefined) => (v === undefined ? "default" : v ? "on" : "off");
-const fromTri = (v: string) => (v === "default" ? undefined : v === "on");
 
 /** One section of the open project's runbun.json, field by field. */
 function ProjectPage(props: { section: Section; project: ProjectConfigState }) {
@@ -552,33 +575,30 @@ function ProjectPage(props: { section: Section; project: ProjectConfigState }) {
         </div>
         </Show>
         <Show when={props.section === "layout"}>
-        <p class="settings-note">Applies when the project opens.</p>
+        <p class="settings-note">Applies when the project opens. A faint switch is a default; one this project sets has a reset beside it.</p>
         <For each={PANELS}>
           {([panel, label]) => (
-            <Row label={label}>
-              <Segmented
-                label={label}
-                value={tri(c().panels?.[panel])}
-                options={[
-                  ["default", "Default"],
-                  ["on", "Show"],
-                  ["off", "Hide"],
-                ]}
-                onChange={(v) => set("panels", { ...c().panels, [panel]: fromTri(v) })}
+            <Row label={`Show the ${label.toLowerCase()}`}>
+              <Reset what={label} shown={c().panels?.[panel] !== undefined} default={panelDefault(panel)} onReset={() => set("panels", { ...c().panels, [panel]: undefined })} />
+              <Switch
+                label={`Show the ${label.toLowerCase()}`}
+                checked={c().panels?.[panel] ?? HOSTING.panels?.[panel as "files"] ?? true}
+                unset={c().panels?.[panel] === undefined}
+                onChange={(on) => set("panels", { ...c().panels, [panel]: on })}
               />
             </Row>
           )}
         </For>
         <Row label="Embed layout" hint="The preview beside the editor or under it, unless the embedding page says.">
+          <Reset what="Embed layout" shown={!!c().layout} default="side" onReset={() => set("layout", undefined)} />
           <Segmented
             label="Embed layout"
-            value={c().layout ?? "default"}
+            value={c().layout ?? "side"}
             options={[
-              ["default", "Default"],
-              ["side", "Side"],
-              ["stack", "Stack"],
+              ["side", "Side", "i-lucide-columns-2"],
+              ["stack", "Stack", "i-lucide-rows-2"],
             ]}
-            onChange={(v) => set("layout", v === "default" ? undefined : v)}
+            onChange={(v) => set("layout", v)}
           />
         </Row>
         <For each={SIZES}>
