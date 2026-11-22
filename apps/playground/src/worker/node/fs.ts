@@ -462,7 +462,16 @@ function cpSync(a: unknown, b: unknown, opts?: { recursive?: boolean; force?: bo
   const to = toPath(b, "dest");
   const ka = keyOf(from);
   if (!exists(ka)) throw fsError("ENOENT", "cp", from);
-  if (isFile(ka)) return copyFileSync(from, to, opts?.errorOnExist && opts.force === false ? 1 : 0);
+  if (isFile(ka)) {
+    // As Node and Bun: with `force: false` an existing file is left as it is, or with `errorOnExist` an error.
+    if (opts?.force === false && exists(keyOf(to))) {
+      if (!opts.errorOnExist) return;
+      throw Object.assign(new Error(`Target already exists: cp returned EEXIST (${to} already exists) ${to}`), { name: "SystemError", code: "ERR_FS_CP_EEXIST", syscall: "cp", path: to });
+    }
+    // Unlike copyFile, cp makes the folders the copy goes in.
+    mkdirSync(path.dirname(to), { recursive: true });
+    return copyFileSync(from, to);
+  }
   if (!opts?.recursive) throw Object.assign(new Error(`Recursive option is required to copy a directory: cp returned EISDIR (${from} is a directory (not copied)) ${from}`), { code: "ERR_FS_EISDIR" });
   mkdirSync(to, { recursive: true });
   for (const e of vfs.readdir(ka)) cpSync(`${from}/${e.name}`, `${to}/${e.name}`, opts);

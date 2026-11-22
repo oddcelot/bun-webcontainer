@@ -37,7 +37,7 @@ Built-ins import with or without the `node:` prefix. Labels are explained on the
 | `module` | 🟡 Partial | `builtinModules`, `isBuiltin`, `createRequire` and `SourceMap` work; `require()` of an ES module has limits. [Details](#module) |
 | `net` | ⚪ Stub | `isIP*` works; no sockets. |
 | `os` | 🟡 Partial | Fixed values: Linux, x64, `/home/user`, `/tmp`, and Linux's `constants`. `cpus()` and `networkInterfaces()` are empty. |
-| `path`, `path/posix` | ✅ Works | POSIX only. `path.win32` behaves like POSIX; `path/win32` is missing. |
+| `path`, `path/posix` | ✅ Works | POSIX only. `path.win32` behaves like POSIX; `path/win32` is missing. `matchesGlob` matches as `Bun.Glob` does. |
 | `perf_hooks` | 🟡 Partial | `performance`, `PerformanceObserver`. `monitorEventLoopDelay` reports zeros. |
 | `process` | 🟡 Partial | Reports Linux x64 and Node v24.3.0; the console is `stdin`, `stdout` and `stderr`, and exit works as in Bun. [Details](#process) |
 | `punycode` | ✅ Works | |
@@ -177,7 +177,7 @@ Works as Bun has it: `create`, `run`, `bind`, `intercept`, `add`, `remove`, `ent
 
 Works:
 
-- Sync, callback and promise APIs over the project's files: read/write/append, `stat`, `readdir` (with `Dirent`), `mkdir`, `rm`, `rename`, `copyFile`, `cp`, file descriptors, `FileHandle`, read/write streams.
+- Sync, callback and promise APIs over the project's files: read/write/append, `stat`, `readdir` (with `Dirent`), `mkdir`, `rm`, `rename`, `copyFile`, `cp` (which makes the folders its copy goes in, and takes `force` and `errorOnExist`), file descriptors, `FileHandle`, read/write streams.
 - `watch` (also recursive) and `watchFile` fire on changes.
 
 Not supported:
