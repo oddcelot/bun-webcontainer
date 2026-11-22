@@ -21,7 +21,10 @@ export const COMMANDS = {
   toggleExplorer: { label: "Show or hide the file tree", keys: ["Mod+B"] },
   toggleGit: { label: "Show or hide Git", keys: ["Mod+Shift+G"] },
   toggleConsole: { label: "Show or hide the console", keys: ["Mod+J"] },
-  togglePreview: { label: "Show or hide the preview", keys: ["Mod+K"] },
+  // Mod+Alt+B as VS Code's right-hand side bar (Mod+B the left): the preview is the right-hand column.
+  togglePreview: { label: "Show or hide the preview", keys: ["Mod+Alt+B"] },
+  quickOpen: { label: "Go to a file", keys: ["Mod+P"] },
+  commandPalette: { label: "Show all commands", keys: ["Mod+Shift+P", "F1"] },
   // The key Solid's toolbar opens itself with over a page; in the dock it is a tab (ui/Devtools.tsx).
   showDevtools: { label: "Show Solid's devtools (projects that have them)", keys: ["Alt+Shift+D"] },
   exitFullscreen: { label: "Leave the expanded preview", keys: ["Escape"] },

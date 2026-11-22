@@ -16,6 +16,9 @@ export function showDevtools(app: App): boolean {
 }
 
 /** A prototype: offered for a project that depends on @solidjs/start-devtools, where the preview is on this origin. */
+export function devtoolsOffered(app: App): boolean {
+  return offered(app);
+}
 function offered(app: App): boolean {
   if (CONTENT_ORIGIN || !app.session.ready()) return false;
   try {

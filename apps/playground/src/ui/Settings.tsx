@@ -19,6 +19,11 @@ import { Select } from "@runbun/ui/solid/Select";
 import { formatRequest, parseRequests, type PresetRequest } from "../embed/requests";
 import type { Field as RequestField } from "../request";
 
+// Open from the header's button or the command palette.
+const [settingsOpen, setSettingsOpen] = createSignal(false);
+/** Opens Settings (the command palette's Open Settings). */
+export const openSettings = () => setSettingsOpen(true);
+
 /**
  * Settings, its button in the header: the reader's own (kept in this browser, for every project; the header's toggles
  * are the same ones) and the open project's runbun.json as a form. The form edits the file in place, keeping its
@@ -27,6 +32,8 @@ import type { Field as RequestField } from "../request";
 export function Settings(props: { id?: string }) {
   return (
     <Dialog
+      open={settingsOpen()}
+      onOpenChange={setSettingsOpen}
       class="settings"
       trigger={
         <Tip as={DialogTrigger} id={props.id} tip="Settings" aria-label="Settings">
