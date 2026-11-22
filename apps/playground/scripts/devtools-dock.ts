@@ -6,6 +6,8 @@
 // - solid-start-devtools and solid-ssr-dashboard open on the Devtools tab, with the toolbar in the dock's frame and not
 //   over the page; Cmd+K opens its search there (and not the playground's Mod+K), Alt+Shift+D brings the tab back;
 //   a second preview tab, and a reload, keep one toolbar shown, the active tab's;
+// - vue-demo opens on the Devtools tab too, with Vue DevTools' client in the dock showing the app's components and
+//   Pinia store, and the page's own DevTools button hidden;
 // - in the embed, the tab shows too, and after an edit (Vite reloads a start-mode page for it) the toolbar is back, on
 //   the page shown.
 // Installs the examples from npm, so it isn't part of `test`.
@@ -156,6 +158,24 @@ async function fullPlayground(page: Page) {
   await page.click("#preview-tabs .tab:last-of-type .close");
   s = await until(page, (s) => s.hosts === 1, 10_000);
   report("closing a preview tab drops its toolbar", s.hosts === 1 && s.shownIsActive, s);
+
+  // Vue's devtools: their client in the dock's frame, wired to the app; the page's own button hidden.
+  await page.goto(`${EDITOR}/?example=vue-demo`, { waitUntil: "domcontentloaded" });
+  s = await until(page, (s) => s.tabs.join() === "Devtools*,Console" && /Running/.test(s.status), 240_000);
+  report("vue-demo: the Devtools tab, forward", s.tabs.join() === "Devtools*,Console", s.tabs);
+  let tree = "";
+  for (let i = 0; i < 60 && !tree.includes("<TodoItem"); i++) {
+    await Bun.sleep(1000);
+    const client = page.frames().find((f) => f.url().includes("/__devtools__/"));
+    tree = (await client?.evaluate(() => document.body.innerText).catch(() => "")) ?? "";
+  }
+  report("vue-demo: the dock shows the component tree and the store", tree.includes("<App>") && tree.includes("<TodoItem") && tree.includes("todos"), tree.slice(0, 120));
+  const vuePage = page.frames().find((f) => f.url().includes("/__preview/") && !f.url().includes("/__devtools__/"));
+  const button = await vuePage?.evaluate(() => {
+    const c = document.getElementById("__vue-devtools-container__");
+    return c ? getComputedStyle(c).display : "missing";
+  });
+  report("vue-demo: the page's own DevTools button is hidden", button === "none", button);
   report("no page errors", errors.length === 0, errors.slice(0, 3).join(" | ") || "none");
 }
 
