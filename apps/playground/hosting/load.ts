@@ -18,7 +18,13 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, extname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { LANGUAGE_IDS } from "../src/languages/ids";
+
+/**
+ * The language packs of the library (src/languages/index.ts), by id: what a hosting file's `languages` may name. Here,
+ * not beside the library, because the release archive ships this file alone; the library's type keeps the two in step.
+ */
+export const LANGUAGE_IDS = ["reactivescript"] as const;
+export type LanguageId = (typeof LANGUAGE_IDS)[number];
 
 /** A hosting file's fields (all optional): see hosting/README.md. */
 export interface HostingFile {
@@ -45,7 +51,7 @@ export interface HostingFile {
    */
   gallery?: string[];
   /**
-   * The language packs the playground enables, by id (src/languages/ids.ts: "reactivescript"). Files of a pack left out
+   * The language packs the playground enables, by id (LANGUAGE_IDS: "reactivescript"). Files of a pack left out
    * are plain files: no types or errors of the pack's own, no formatter, no gallery cards that need it. Default: all of
    * them; [] enables none.
    */
