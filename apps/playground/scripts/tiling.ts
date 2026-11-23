@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // The tiling layout (ui/Tiles.tsx over @runbun/ui's Tiling) in headless Chrome, against a dev server that is already running:
-// the panels tile the room, the keyboard moves, turns, maximizes, floats and hides them, a drag drops one onto
+// the panels tile the room, the keyboard (Mod+K, then a key) moves, turns, maximizes, floats and hides them, a drag drops one onto
 // another's side, and through all of it the preview's frame never loads again and the layout survives a reload.
 //   bun scripts/tiling.ts [url]        (default http://localhost:5173; SHOTS=<dir> keeps a screenshot per step)
 // Chrome: CHROME=<path to the binary>, else the usual install on macOS or Linux.
@@ -54,6 +54,11 @@ const chord = async (page: Page, keys: string) => {
   for (const m of mods) await page.keyboard.down(m);
   await page.keyboard.press(key.length === 1 ? (`Key${key}` as "KeyA") : (key as "ArrowLeft"));
   for (const m of mods.reverse()) await page.keyboard.up(m);
+};
+/** A tiling command by its keys: the panel keys' chord (Mod+K), then the command's key (keymap.ts tileKeyCommand). */
+const tileKey = async (page: Page, key: string) => {
+  await chord(page, `${process.platform === "darwin" ? "Meta" : "Ctrl"}+K`);
+  await chord(page, key);
 };
 const center = (b: Box) => ({ x: b.x + b.w / 2, y: b.y + b.h / 2 });
 /** No two shown, tiled panels overlap, and none is empty. */
@@ -121,23 +126,23 @@ try {
   await page.mouse.click(center(t.console).x, center(t.console).y);
   t = await settled(page);
   report("a click focuses the tile", t.console.focused && !t.editor.focused, { console: t.console.focused, editor: t.editor.focused });
-  await chord(page, "Ctrl+Alt+K");
+  await tileKey(page, "K");
   t = await settled(page);
-  report("Ctrl+Alt+K focuses the tile above", t.preview.focused, Object.entries(t).filter(([, b]) => b.focused).map(([n]) => n));
-  await chord(page, "Ctrl+Alt+J");
-  await chord(page, "Ctrl+Alt+Shift+H");
+  report("Mod+K, K focuses the tile above", t.preview.focused, Object.entries(t).filter(([, b]) => b.focused).map(([n]) => n));
+  await tileKey(page, "J");
+  await tileKey(page, "Shift+H");
   t = await settled(page);
   report("move left: the console becomes a column between editor and preview", tiled(t) && t.console.h === t.editor.h && t.console.x > t.editor.x && t.console.x < t.preview.x, t);
   await shot(page, "console-moved-left");
-  await chord(page, "Ctrl+Alt+Shift+J");
+  await tileKey(page, "Shift+J");
   t = await settled(page);
   report("move down at the edge: the console spans the bottom", tiled(t) && t.console.x === t.files.x && t.console.x + t.console.w === t.preview.x + t.preview.w && t.console.y > t.editor.y, t);
   await shot(page, "console-bottom");
-  await chord(page, "Ctrl+Alt+S");
+  await tileKey(page, "S");
   t = await settled(page);
   report("turn the split: the console is a full-height column", tiled(t) && t.console.h === t.files.h && t.console.y === t.files.y, t);
   await shot(page, "split-turned");
-  await chord(page, "Ctrl+Alt+F");
+  await tileKey(page, "F");
   t = await settled(page);
   const room = await page.evaluate(() => {
     const r = document.querySelector("[data-tiling-root]")!.getBoundingClientRect();
@@ -145,15 +150,15 @@ try {
   });
   report("maximize fills the room", t.console.max && t.console.w >= room.w - 10 && t.console.h >= room.h - 10, { console: t.console, room });
   await shot(page, "maximized");
-  await chord(page, "Ctrl+Alt+F");
-  await chord(page, "Ctrl+Alt+V");
+  await tileKey(page, "F");
+  await tileKey(page, "V");
   t = await settled(page);
   report("float lifts the console off the tiles", t.console.floating && tiled(t) && t.editor.w > 0, t);
   await shot(page, "floating");
-  await chord(page, "Ctrl+Alt+V");
+  await tileKey(page, "V");
   t = await settled(page);
   report("tiled again, beside the tile it was next to", !t.console.floating && tiled(t) && (t.console.x === t.preview.x || t.console.y === t.preview.y), t);
-  await chord(page, "Ctrl+Alt+C");
+  await tileKey(page, "C");
   t = await settled(page);
   report("hide: the others take the room", t.console.hidden && tiled(t), t);
   await page.keyboard.down("Meta");
