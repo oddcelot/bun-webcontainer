@@ -6,8 +6,8 @@ import type { TilingCommand } from "../keymap";
 import { pref } from "../prefs";
 
 /**
- * The playground's panels in the tiling layout (a prototype; `?layout=tiling` or the command palette turns it on):
- * the four panels as tiles of `@runbun/ui`'s Tiling, the layout kept in localStorage, and the keymap's tiling
+ * The playground's panels in the tiling layout (the default; `?layout=classic` or the command palette goes back to the
+ * fixed columns): the four panels as tiles of `@runbun/ui`'s Tiling, the layout kept in localStorage, and the keymap's tiling
  * commands run on it.
  */
 
@@ -40,14 +40,14 @@ const NARROW = "(width < 700px)";
 
 const MODE_KEY = "layout.mode";
 
-/** Whether this page uses the tiling layout: `?layout=tiling|classic` picks (and is kept), else the last pick. */
+/** Whether this page uses the tiling layout: `?layout=tiling|classic` picks (and is kept), else the last pick, else it does. */
 export function tilingMode(): boolean {
   try {
     const asked = new URLSearchParams(location.search).get("layout");
     if (asked === "tiling" || asked === "classic") localStorage.setItem(MODE_KEY, asked);
-    return localStorage.getItem(MODE_KEY) === "tiling";
+    return localStorage.getItem(MODE_KEY) !== "classic";
   } catch {
-    return false;
+    return true;
   }
 }
 
