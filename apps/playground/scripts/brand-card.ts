@@ -29,7 +29,9 @@ const fonts = [
 ];
 
 // The theme family's dark variant (Pierre's without one): the page behind, the text, the accent.
-const family = themes.families.find((f) => f.light === hosting.theme?.family || f.dark === hosting.theme?.family);
+// As the playground picks it (src/theme.ts): `family`, else the first of `families`.
+const wanted = hosting.theme?.family ?? hosting.theme?.families?.[0];
+const family = themes.families.find((f) => f.light === wanted || f.dark === wanted);
 const chrome = (themes.chrome as Record<string, Record<string, string>>)[family?.dark ?? "pierre-dark"]!;
 const rgb = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
 const mix = (a: string, b: string, share: number) =>
