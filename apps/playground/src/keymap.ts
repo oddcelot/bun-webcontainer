@@ -28,6 +28,23 @@ export const COMMANDS = {
   // The key Solid's toolbar opens itself with over a page; in the dock it is a tab (ui/Devtools.tsx).
   showDevtools: { label: "Show the devtools (projects with Solid's, Vue's or Nuxt's)", keys: ["Alt+Shift+D"] },
   exitFullscreen: { label: "Leave the expanded preview", keys: ["Escape"] },
+  // The tiling layout's (ui/Tiles.tsx), after Hyprland's dispatchers. Ctrl+Alt on macOS too: Cmd+Alt+arrows switch
+  // the browser's tabs. Letters and arrows only: with Alt held, macOS reports another character for `=` or `-`.
+  focusLeft: { label: "Tiling: focus the panel on the left", keys: ["Ctrl+Alt+H", "Ctrl+Alt+ArrowLeft"] },
+  focusDown: { label: "Tiling: focus the panel below", keys: ["Ctrl+Alt+J", "Ctrl+Alt+ArrowDown"] },
+  focusUp: { label: "Tiling: focus the panel above", keys: ["Ctrl+Alt+K", "Ctrl+Alt+ArrowUp"] },
+  focusRight: { label: "Tiling: focus the panel on the right", keys: ["Ctrl+Alt+L", "Ctrl+Alt+ArrowRight"] },
+  moveLeft: { label: "Tiling: move the panel left", keys: ["Ctrl+Alt+Shift+H", "Ctrl+Alt+Shift+ArrowLeft"] },
+  moveDown: { label: "Tiling: move the panel down", keys: ["Ctrl+Alt+Shift+J", "Ctrl+Alt+Shift+ArrowDown"] },
+  moveUp: { label: "Tiling: move the panel up", keys: ["Ctrl+Alt+Shift+K", "Ctrl+Alt+Shift+ArrowUp"] },
+  moveRight: { label: "Tiling: move the panel right", keys: ["Ctrl+Alt+Shift+L", "Ctrl+Alt+Shift+ArrowRight"] },
+  tileSplit: { label: "Tiling: turn the panel's split", keys: ["Ctrl+Alt+S"] },
+  tileMaximize: { label: "Tiling: maximize the panel, or restore it", keys: ["Ctrl+Alt+F"] },
+  tileFloat: { label: "Tiling: float the panel, or tile it again", keys: ["Ctrl+Alt+V"] },
+  tileClose: { label: "Tiling: hide the panel", keys: ["Ctrl+Alt+C"] },
+  tileGrow: { label: "Tiling: grow the panel", keys: ["Ctrl+Alt+G"] },
+  tileShrink: { label: "Tiling: shrink the panel", keys: ["Ctrl+Alt+R"] },
+  tileReset: { label: "Tiling: reset the layout", keys: [] },
 } satisfies Record<string, { label: string; keys: string[]; scope?: Scope }>;
 
 /**
@@ -48,6 +65,25 @@ export type Scope = "preview";
 export const scopeOf = (command: Command): string | undefined => (COMMANDS[command] as { scope?: string }).scope;
 
 export type Command = keyof typeof COMMANDS;
+/** The tiling layout's commands (ui/Tiles.tsx runs them), which only work in that layout. */
+export const TILING_COMMANDS = [
+  "focusLeft",
+  "focusDown",
+  "focusUp",
+  "focusRight",
+  "moveLeft",
+  "moveDown",
+  "moveUp",
+  "moveRight",
+  "tileSplit",
+  "tileMaximize",
+  "tileFloat",
+  "tileClose",
+  "tileGrow",
+  "tileShrink",
+  "tileReset",
+] as const satisfies Command[];
+export type TilingCommand = (typeof TILING_COMMANDS)[number];
 export type Overrides = Partial<Record<Command, string | string[] | null>>;
 
 const STORAGE_KEY = "keymap";
@@ -126,7 +162,7 @@ export function matches(command: Command, e: KeyboardEvent): boolean {
  * to keep from its page (contentProtocol.ts OwnedChord).
  */
 export function windowChords(): { key: string; ctrl: boolean; alt: boolean; shift: boolean; meta: boolean }[] {
-  return (["run", "stop", "send", "toggleExplorer", "toggleGit", "togglePreview", "toggleConsole"] as Command[]).flatMap(chords);
+  return (["run", "stop", "send", "toggleExplorer", "toggleGit", "togglePreview", "toggleConsole", ...TILING_COMMANDS] as Command[]).flatMap(chords);
 }
 
 /** The overrides in effect. */

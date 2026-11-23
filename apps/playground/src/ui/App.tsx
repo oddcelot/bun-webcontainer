@@ -1,6 +1,6 @@
 import { Show, createEffect, createSignal, onSettled, untrack, useContext } from "solid-js";
 import { Resizable, type RootChildrenProps } from "@kobalte/core/resizable";
-import { COMMANDS, keysFor, matches, recordingKeys, type Command } from "../keymap";
+import { COMMANDS, TILING_COMMANDS, keysFor, matches, recordingKeys, type Command, type TilingCommand } from "../keymap";
 import { Palette, openPalette, type PaletteCommand } from "./Palette";
 import { openSettings } from "./Settings";
 import { openShortcuts } from "./Shortcuts";
@@ -16,6 +16,7 @@ import { inCommitBox } from "../git/store";
 import { Header } from "./Header";
 import { StatusBar } from "./StatusBar";
 import { Unsupported } from "./Unsupported";
+import { Tiles, createTiles, runTilingCommand, setTilingMode, tilingMode } from "./Tiles";
 import type { Sized } from "../projectConfig";
 
 /** Panel sizes as fractions, kept across reloads. A hidden panel isn't kept: after a reload it opens at its size from before. */
@@ -37,6 +38,8 @@ const GLOBAL: Command[] = ["run", "stop", "toggleExplorer", "toggleGit", "toggle
 
 export function App() {
   const app = useContext(AppContext);
+  // The tiling layout (ui/Tiles.tsx), when this page uses it: then it places and toggles the panels, not the columns below.
+  const tiling = tilingMode() ? createTiles() : undefined;
   // Per panel, not the root's initialSizes: the root's list only reached the first panel after a reload.
   const [columns, saveColumns] = sizesPref("layout.columns", [0.14, 0.43, 0.43]);
   const [rows, saveRows] = sizesPref("layout.right", [0.5, 0.5]);
@@ -48,6 +51,7 @@ export function App() {
   // Each column's width from before it was hidden, to show it again at.
   const widths = [...columns];
   const toggleColumn = (i: number) => {
+    if (tiling) return tiling.toggle(i === 0 ? "files" : "preview");
     if (!cols) return;
     const [tree, editor, right] = cols.sizes;
     if (i === 0) {
@@ -71,8 +75,9 @@ export function App() {
   // when the program fails, since its output says why.
   let configHidConsole = false;
   const toggle = (i: number) => {
-    if (!split || !cols) return;
     if (i === 1) configHidConsole = false;
+    if (tiling) return tiling.toggle(i ? "console" : "preview");
+    if (!split || !cols) return;
     const sizes = split.sizes;
     // With both hidden, the right column is too: show it with just this one.
     if (!(cols.sizes[2] > 0)) {
@@ -144,12 +149,17 @@ export function App() {
   createEffect(
     () => [app.workspace.panels(), app.workspace.sizes()] as const,
     ([want, shares]) => {
-      setPanels(want, shares);
+      // The tiling layout takes a project's `panels`; its `sizes` name the classic columns, and are left out there.
+      if (tiling) {
+        configHidConsole = want?.console === false;
+        tiling.override(want ? { files: want.files, preview: want.preview, console: want.console } : null);
+      } else setPanels(want, shares);
     },
   );
   createEffect(
     () => app.session.settled().state,
     (state) => {
+      if (state === "error" && configHidConsole && tiling) return tiling.reveal("console");
       if (state !== "error" || !configHidConsole || !cols || !split) return;
       if (cols.sizes[2] > 0 && split.sizes[1] > 0) return;
       // Like the panels it undoes, not the reader's layout to save.
@@ -158,9 +168,16 @@ export function App() {
       requestAnimationFrame(() => (applying = false));
     },
   );
+  const treeShown = () => (tiling ? tiling.shown("files") : columnSizes()[0] > 0);
+  const previewShown = () => (tiling ? tiling.shown("preview") : columnSizes()[2] > 0 && rowSizes()[0] > 0);
+  const consoleShown = () => (tiling ? tiling.shown("console") : columnSizes()[2] > 0 && rowSizes()[1] > 0);
   /** Runs a command of the page (a shortcut, or the command palette); false if it doesn't apply here, to leave the key be. */
   const perform = (command: Command): boolean => {
     const s = app.session;
+    if ((TILING_COMMANDS as readonly Command[]).includes(command)) {
+      if (tiling) runTilingCommand(tiling, command as TilingCommand);
+      return !!tiling;
+    }
     switch (command) {
       case "run":
         if (s.canRun && !s.busy.run && s.ready()) app.run();
@@ -172,7 +189,7 @@ export function App() {
         toggleColumn(0);
         return true;
       case "toggleGit":
-        return toggleGit(app, columnSizes()[0] > 0, () => toggleColumn(0));
+        return toggleGit(app, treeShown(), () => toggleColumn(0));
       case "togglePreview":
         toggle(0);
         return true;
@@ -181,7 +198,7 @@ export function App() {
         return true;
       case "showDevtools":
         if (!showDevtools(app)) return false;
-        if (!(columnSizes()[2] > 0 && rowSizes()[1] > 0)) toggle(1);
+        if (!consoleShown()) toggle(1);
         return true;
       case "quickOpen":
         openPalette("files");
@@ -216,6 +233,15 @@ export function App() {
       run: () => void perform(c),
       when: c === "showDevtools" ? () => devtoolsOffered(app) : c === "toggleGit" ? () => !!app.git : undefined,
     })),
+    ...(tiling ? TILING_COMMANDS : []).map((c) => ({
+      id: c,
+      label: COMMANDS[c].label,
+      get keys() {
+        return keysFor(c);
+      },
+      run: () => void perform(c),
+    })),
+    { id: "layout", label: tiling ? "Switch to the classic layout (reloads)" : "Switch to the tiling layout (reloads)", run: () => setTilingMode(!tiling) },
     { id: "install", label: "Install dependencies", run: () => app.session.ready() && app.install(), when: () => app.session.canRun },
     { id: "settings", label: "Open Settings", run: openSettings },
     { id: "shortcuts", label: "Keyboard shortcuts", run: openShortcuts },
@@ -233,7 +259,7 @@ export function App() {
         e.stopPropagation();
         return;
       }
-      const command = GLOBAL.find((c) => matches(c, e));
+      const command = GLOBAL.find((c) => matches(c, e)) ?? (tiling && TILING_COMMANDS.find((c) => matches(c, e)));
       if (!command || !perform(command)) return;
       e.preventDefault();
       e.stopPropagation();
@@ -255,6 +281,25 @@ export function App() {
           `typeof p.children === "function" ? p.children(...) : p.children`, and each read of p.children builds the
           JSX again, so plain children would render twice (a detached second editor, console and preview that live on).
         */}
+        {tiling ? (
+          <Tiles
+            tiles={tiling}
+            panes={{
+              files: () => (
+                <nav id="tree">
+                  <Explorer />
+                </nav>
+              ),
+              editor: () => (
+                <section id="editor-pane">
+                  <EditorPane />
+                </section>
+              ),
+              preview: () => <Preview />,
+              console: () => <Dock />,
+            }}
+          />
+        ) : (
         <Resizable
           onSizesChange={(sizes) => {
             setColumnSizes(sizes);
@@ -317,14 +362,15 @@ export function App() {
             );
           }}
         </Resizable>
+        )}
       </main>
       <Palette commands={paletteCommands} />
       <StatusBar
-        treeShown={columnSizes()[0] > 0}
-        toggleFiles={() => toggleFiles(app, columnSizes()[0] > 0, () => toggleColumn(0))}
-        toggleGit={() => toggleGit(app, columnSizes()[0] > 0, () => toggleColumn(0))}
-        previewShown={columnSizes()[2] > 0 && rowSizes()[0] > 0}
-        consoleShown={columnSizes()[2] > 0 && rowSizes()[1] > 0}
+        treeShown={treeShown()}
+        toggleFiles={() => toggleFiles(app, treeShown(), () => toggleColumn(0))}
+        toggleGit={() => toggleGit(app, treeShown(), () => toggleColumn(0))}
+        previewShown={previewShown()}
+        consoleShown={consoleShown()}
         toggle={toggle}
       />
     </>
