@@ -1,6 +1,6 @@
 import { BASE } from "./base";
 import { CONTENT_ORIGIN } from "./contentOrigin";
-import { fetchContent, notifyReload } from "./contentHost";
+import { fetchContent, notifyReload, watchContentTabs } from "./contentHost";
 import { HEADERS_HEADER, packHeaders, type Built } from "./request";
 
 /**
@@ -22,6 +22,19 @@ let channel: BroadcastChannel | undefined;
 export function reloadOwnTabs(): void {
   if (CONTENT_ORIGIN) notifyReload(PREFIX);
   else (channel ??= new BroadcastChannel("bun-preview")).postMessage({ reload: PREFIX });
+}
+
+/**
+ * Calls `fn` as this page's previews in browser tabs of their own show (`open`) and go, each tab by an id that a reload
+ * renews (swPage.ts previewWebSocket).
+ */
+export function watchOwnTabs(fn: (id: string, open: boolean) => void): void {
+  if (CONTENT_ORIGIN) watchContentTabs((base, id, open) => base === PREFIX && fn(id, open));
+  else
+    (channel ??= new BroadcastChannel("bun-preview")).addEventListener("message", (e) => {
+      const d = e.data;
+      if (d?.tab === PREFIX && typeof d.id === "string") fn(d.id, d.open === true);
+    });
 }
 
 // Added by sw.ts to every preview response (x-robots-tag too on the content origin), not sent by the user's server.

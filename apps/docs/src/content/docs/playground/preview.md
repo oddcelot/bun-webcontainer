@@ -56,7 +56,7 @@ With several, it shows the program's first; a program that serves nothing itself
   <kbd>Cmd</kbd>-click (<kbd>Ctrl</kbd>-click off macOS) or middle-click a link in a page to open it in a new preview tab in the background; add <kbd>Shift</kbd> to switch to it.
 
   </details>
-- **Open in a new tab:** the page gets its own browser tab, still served by the playground (keep the playground tab open). It loads again when the panel's preview does: on Run, and when you save a file the page uses.
+- **Open in a new tab:** the page gets its own browser tab, still served by the playground (keep the playground tab open). It loads again when the panel's preview does: on Run, and when you save a file the page uses. While it is open the preview panel is hidden; it shows again once you close the tab.
 - **Requests stay inside:** `fetch("/api/x")`, links, forms and redirects from the preview page reach your server.
 - <details>
   <summary><strong>WebSockets:</strong> the preview page's <code>WebSocket</code> connects to your server, and so does the program's own <code>new WebSocket</code>.</summary>

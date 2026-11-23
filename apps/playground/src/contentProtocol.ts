@@ -51,7 +51,9 @@ export type ToEditor =
   | { kind: "sw"; d: any }
   /** A message to the host could not be read (messageerror: e.g. shared memory sent across origins). */
   | { kind: "merr" }
-  | { kind: "pong"; n: number; workers: number };
+  | { kind: "pong"; n: number; workers: number }
+  /** A preview page on this origin in a browser tab of its own showed (`open`) or went (swPage.ts previewWebSocket). */
+  | { kind: "tab"; base: string; id: string; open: boolean };
 
 type Envelope = { v: number; kind: string };
 
