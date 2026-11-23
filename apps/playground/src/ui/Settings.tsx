@@ -6,6 +6,7 @@ import { Field } from "@runbun/ui/solid/Field";
 import { Input } from "@runbun/ui/solid/Input";
 import { Segmented } from "@runbun/ui/solid/Segmented";
 import { PathList } from "@runbun/ui/solid/PathList";
+import { PathInput } from "@runbun/ui/solid/PathInput";
 import { Switch } from "@runbun/ui/solid/Switch";
 import { Tip } from "@runbun/ui/solid/Tip";
 import { CONFIG_FILE, readConfig, type Panel, type ProjectConfig, type Requirement, type Sized } from "../projectConfig";
@@ -577,20 +578,14 @@ function ProjectPage(props: { section: Section; project: ProjectConfigState }) {
               </>
             }
           >
-            <Input
+            <PathInput
               id="settings-entry"
-              spellcheck={false}
-              list="settings-entry-files"
+              label="Entry"
               value={c().run?.entry ?? ""}
+              suggestions={files().filter((f) => /\.(m?[jt]sx?|html)$/.test(f))}
               placeholder={guessShown() ? `${guessed().entry} (guessed)` : "index.ts"}
-              onChange={(e) => {
-                const entry = e.currentTarget.value.trim().replace(/^\.?\//, "");
-                set("run", entry ? { entry, ...(c().run?.args.length ? { args: c().run!.args } : {}) } : undefined);
-              }}
+              onChange={(entry) => set("run", entry ? { entry, ...(c().run?.args.length ? { args: c().run!.args } : {}) } : undefined)}
             />
-            <datalist id="settings-entry-files">
-              <For each={files().filter((f) => /\.(m?[jt]sx?|html)$/.test(f))}>{(f) => <option value={f} />}</For>
-            </datalist>
           </InfoField>
           <InfoField
             id="settings-args"
