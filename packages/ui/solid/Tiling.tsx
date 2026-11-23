@@ -37,7 +37,7 @@ import "../css/tiling.css";
  */
 
 export type { Dir, Fixed, Rect, Split, Tree } from "./tilingTree";
-export { setShare } from "./tilingTree";
+export { setShare, layout as placeTiles } from "./tilingTree";
 
 /** What there is to keep: the tree of the tiled tiles, the hidden ones (which keep their place in it), and the floating ones' boxes as shares of the room. */
 export type TilingLayout<T extends string = string> = { tree: Tree | null; hidden: T[]; floating: Partial<Record<T, Rect>> };
