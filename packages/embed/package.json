@@ -6,6 +6,9 @@
   "license": "MIT",
   "keywords": ["bun", "playground", "embed", "custom-element", "web-component", "repl", "sandbox"],
   "homepage": "https://docs.runbun.dev/guides/embedding/",
+  "repository": { "type": "git", "url": "git+https://github.com/oddcelot/bun-webcontainer.git", "directory": "packages/embed" },
+  "bugs": "https://github.com/oddcelot/bun-webcontainer/issues",
+  "funding": "https://github.com/sponsors/oddcelot",
   "sideEffects": ["./dist/index.js", "./src/index.ts"],
   "exports": {
     ".": { "runbun-source": "./src/index.ts", "types": "./dist/index.d.ts", "default": "./dist/index.js" },

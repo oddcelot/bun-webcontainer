@@ -6,6 +6,9 @@
   "license": "MIT",
   "keywords": ["astro-integration", "astro-component", "bun", "playground", "code", "highlight"],
   "homepage": "https://docs.runbun.dev/guides/astro/",
+  "repository": { "type": "git", "url": "git+https://github.com/oddcelot/bun-webcontainer.git", "directory": "packages/astro" },
+  "bugs": "https://github.com/oddcelot/bun-webcontainer/issues",
+  "funding": "https://github.com/sponsors/oddcelot",
   "exports": {
     ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
     "./remark": { "types": "./dist/remark.d.ts", "default": "./dist/remark.js" },

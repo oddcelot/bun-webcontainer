@@ -7,6 +7,8 @@
   "keywords": ["bun", "playground", "runbun", "sandbox", "bubblewrap", "local-runner"],
   "homepage": "https://docs.runbun.dev/guides/local-bun/",
   "repository": { "type": "git", "url": "git+https://github.com/oddcelot/bun-webcontainer.git", "directory": "packages/connect" },
+  "bugs": "https://github.com/oddcelot/bun-webcontainer/issues",
+  "funding": "https://github.com/sponsors/oddcelot",
   "bin": {
     "runbun-connect": "src/cli.ts"
   },
