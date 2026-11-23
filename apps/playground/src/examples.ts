@@ -55,6 +55,7 @@ export const techIcons: Record<string, string> = {
   Hono: "i-logos-hono?bg",
   Vue: "i-logos-vue?bg",
   Pinia: "i-logos-pinia?bg",
+  Nuxt: "i-logos-nuxt-icon?bg",
 };
 
 const KIND_ORDER: ProjectKind[] = ["starter", "example", "github"];

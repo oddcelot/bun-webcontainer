@@ -6,6 +6,7 @@
 // - solid-start-devtools and solid-ssr-dashboard open on the Devtools tab, with the toolbar in the dock's frame and not
 //   over the page; Cmd+K opens its search there (and not the playground's Mod+K), Alt+Shift+D brings the tab back;
 //   a second preview tab, and a reload, keep one toolbar shown, the active tab's;
+// - nuxt-demo opens on it as well, with Nuxt DevTools' client in the dock and the page's own panel hidden;
 // - vue-demo opens on the Devtools tab too, with Vue DevTools' client in the dock showing the app's components and
 //   Pinia store, and the page's own DevTools button hidden;
 // - in the embed, the tab shows too, and after an edit (Vite reloads a start-mode page for it) the toolbar is back, on
@@ -176,6 +177,24 @@ async function fullPlayground(page: Page) {
     return c ? getComputedStyle(c).display : "missing";
   });
   report("vue-demo: the page's own DevTools button is hidden", button === "none", button);
+
+  // Nuxt's devtools: their client in the dock's frame, handed the page's devtools host; the page's own panel hidden.
+  await page.goto(`${EDITOR}/?example=nuxt-demo`, { waitUntil: "domcontentloaded" });
+  s = await until(page, (s) => s.tabs.join() === "Devtools*,Console" && /Running/.test(s.status), 300_000);
+  report("nuxt-demo: the Devtools tab, forward", s.tabs.join() === "Devtools*,Console", s.tabs);
+  let nuxtClient = "";
+  for (let i = 0; i < 120 && !nuxtClient.includes("Nuxt DevTools"); i++) {
+    await Bun.sleep(1000);
+    const client = page.frames().find((f) => f.url().includes("/__nuxt_devtools__/client"));
+    nuxtClient = (await client?.evaluate(() => document.body.innerText).catch(() => "")) ?? "";
+  }
+  report("nuxt-demo: the dock shows Nuxt DevTools", nuxtClient.includes("Nuxt DevTools"), nuxtClient.slice(0, 80));
+  const nuxtPage = await (await page.$(".preview-frame:not([hidden])"))?.contentFrame();
+  const panel = await nuxtPage?.evaluate(() => {
+    const c = document.getElementById("nuxt-devtools-container");
+    return c ? getComputedStyle(c).display : "missing";
+  });
+  report("nuxt-demo: the page's own DevTools panel is hidden", panel === "none", panel);
   report("no page errors", errors.length === 0, errors.slice(0, 3).join(" | ") || "none");
 }
 
