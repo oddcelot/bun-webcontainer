@@ -340,6 +340,14 @@ export function createPreviews(running: () => boolean = () => false, read: (path
      * After Run: tabs showing a page or a GET response load again; a POST and the like isn't replayed. A preset tab
      * not sent yet goes with its own request if it's the one showing, else waits to be opened.
      */
+    /**
+     * Asks again in the tabs that got no server's answer (503: none running yet, or the program had none listening),
+     * once one listens: a dev server can come up after the program counted as started.
+     */
+    retryUnserved() {
+      for (const tab of state.tabs)
+        if (tab.view === "response" && tab.response?.status.startsWith("503") && /No server running|No Bun\.serve handler/.test(tab.response.text)) void previews.request(tab.id);
+    },
     reload() {
       for (const tab of state.tabs) {
         if (tab.pending) {
