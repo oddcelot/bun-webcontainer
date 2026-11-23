@@ -28,7 +28,8 @@ import "../css/tiling.css";
  * Each part carries data attributes to style by: the root `data-tiling-root`, `data-animating` (for the moment after
  * a command, to transition the rectangles) and `data-dragging`; a tile `data-tiling-tile`, `data-tile` (its id),
  * `data-focused`, `data-hidden`, `data-floating`, `data-maximized` and `data-dragging`; a handle `data-tiling-handle`,
- * `data-orientation` (`horizontal` between tiles side by side) and `data-active`; the indicator `data-tiling-drop`.
+ * `data-orientation` (`horizontal` between tiles side by side) and `data-active`; a crossing of handles
+ * `data-tiling-crossing` and `data-active`; the indicator `data-tiling-drop`.
  */
 
 export type { Dir, Rect, Tree } from "./tilingTree";
@@ -532,13 +533,16 @@ function Corner(props: DivProps) {
 
 /**
  * The borders between the tiles, one separator per split with both sides showing: dragged, moved with the arrow
- * keys when focused, and evened out by a double click. The props go on each.
+ * keys when focused, and evened out by a double click. The props go on each. Where borders meet (three tiles at a
+ * T, four at a cross) there is a crossing to drag them all by at once, in both directions.
  */
 function Handles(props: DivProps) {
   const root = useContext(RootContext);
   const t = root.tiling.internal;
   const rest = omit(props, "class");
-  const [active, setActive] = createSignal<string | null>(null);
+  const [active, setActive] = createSignal<readonly string[]>([]);
+  // The borders of the crossing under the pointer, to light them up with it.
+  const [hot, setHot] = createSignal<readonly string[]>([]);
   // By path: a string stays the same row of <For> while its handle's rectangle changes under the pointer.
   const paths = createMemo(() => (t.max.get() === null ? t.view().handles.map((h) => h.path) : []));
   const handle = (path: string) => t.view().handles.find((h) => h.path === path);
@@ -547,27 +551,61 @@ function Handles(props: DivProps) {
     const tree = t.saved.now().tree;
     if (tree !== null) t.commit({ ...t.saved.now(), tree: setRatio(tree, path, ratio) });
   };
-  const drag = (path: string, e: PointerEvent) => {
+  /** Drags the borders at `paths` (one, or a crossing's) to the pointer, each along its own direction. */
+  const drag = (paths: readonly string[], e: PointerEvent) => {
     if (e.button !== 0) return;
     e.preventDefault();
     root.setDragging(BORDER);
-    setActive(path);
+    setActive(paths);
     track(
       (e) => {
-        const h = t.viewNow().handles.find((h) => h.path === path);
-        if (!h) return;
         const p = root.point(e);
-        const size = sizeOf(h);
-        if (size <= 2 * t.minSize) return;
-        const at = h.axis === "row" ? p.x - h.box.x : p.y - h.box.y;
-        set(path, Math.min(size - t.minSize, Math.max(t.minSize, at - t.gap / 2)) / size);
+        for (const path of paths) {
+          // Looked up again per border: moving one changes the box of the ones inside it.
+          const h = t.viewNow().handles.find((h) => h.path === path);
+          if (!h) continue;
+          const size = sizeOf(h);
+          if (size <= 2 * t.minSize) continue;
+          const at = h.axis === "row" ? p.x - h.box.x : p.y - h.box.y;
+          set(path, Math.min(size - t.minSize, Math.max(t.minSize, at - t.gap / 2)) / size);
+        }
       },
       () => {
         root.setDragging(null);
-        setActive(null);
+        setActive([]);
       },
     );
   };
+  /**
+   * Where a border ends on one across it, as the borders' paths joined by commas (several ending at one spot, a
+   * cross, are one crossing): a string stays the same row of <For> while the crossing moves.
+   */
+  const crossings = createMemo(() => {
+    if (t.max.get() !== null) return new Map<string, Rect>();
+    const handles = t.view().handles;
+    const near = (a: number, b: number) => Math.abs(a - b) <= 1;
+    const at = new Map<string, { paths: Set<string>; rect: Rect }>();
+    for (const r of handles) {
+      if (r.axis !== "row") continue;
+      for (const c of handles) {
+        if (c.axis !== "col") continue;
+        const [bar, line] = [r.rect, c.rect];
+        // The line ends on the bar's side, or the bar on the line's.
+        const ends = (near(line.x, bar.x + bar.w) || near(line.x + line.w, bar.x)) && line.y >= bar.y - 1 && line.y + line.h <= bar.y + bar.h + 1;
+        const stands = (near(bar.y, line.y + line.h) || near(bar.y + bar.h, line.y)) && bar.x >= line.x - 1 && bar.x + bar.w <= line.x + line.w + 1;
+        if (!ends && !stands) continue;
+        const spot = `${Math.round(bar.x)},${Math.round(line.y)}`;
+        const found = at.get(spot) ?? { paths: new Set<string>(), rect: { x: bar.x, y: line.y, w: bar.w, h: line.h } };
+        found.paths.add(r.path).add(c.path);
+        at.set(spot, found);
+      }
+    }
+    // "." for the root's border, whose path is empty.
+    return new Map([...at.values()].map((c) => [[...c.paths].map((p) => p || ".").sort().join(","), c.rect]));
+  });
+  const crossingKeys = createMemo(() => [...crossings().keys()]);
+  const pathsOf = (key: string) => key.split(",").map((p) => (p === "." ? "" : p));
+  const lit = (path: string) => active().includes(path) || hot().includes(path);
   const nudge = (path: string, e: KeyboardEvent) => {
     const h = handle(path);
     if (!h) return;
@@ -582,6 +620,7 @@ function Handles(props: DivProps) {
     return h ? Math.round((100 * (h.axis === "row" ? h.rect.x - h.box.x : h.rect.y - h.box.y)) / Math.max(1, sizeOf(h))) : undefined;
   };
   return (
+    <>
     <For each={paths()}>
       {(path) => (
         <div
@@ -594,9 +633,9 @@ function Handles(props: DivProps) {
           aria-valuenow={share(path)}
           data-tiling-handle=""
           data-orientation={handle(path)?.axis === "row" ? "horizontal" : "vertical"}
-          data-active={active() === path ? "" : undefined}
+          data-active={lit(path) ? "" : undefined}
           style={rectStyle(handle(path)?.rect)}
-          onPointerDown={(e) => drag(path, e)}
+          onPointerDown={(e) => drag([path], e)}
           onKeyDown={(e) => nudge(path, e)}
           onDblClick={() => {
             set(path, 0.5);
@@ -606,6 +645,24 @@ function Handles(props: DivProps) {
         />
       )}
     </For>
+    <For each={crossingKeys()}>
+      {(key) => (
+        <div
+          class="tiling-crossing"
+          data-tiling-crossing=""
+          data-active={pathsOf(key).some((p) => active().includes(p)) && active().length > 1 ? "" : undefined}
+          style={rectStyle(crossings().get(key))}
+          onPointerDown={(e) => drag(pathsOf(key), e)}
+          onPointerEnter={() => setHot(pathsOf(key))}
+          onPointerLeave={() => setHot([])}
+          onDblClick={() => {
+            for (const path of pathsOf(key)) set(path, 0.5);
+            t.animate();
+          }}
+        />
+      )}
+    </For>
+    </>
   );
 }
 

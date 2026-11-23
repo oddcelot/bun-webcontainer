@@ -83,6 +83,24 @@ try {
   report("the four panels tile the room", Object.keys(t).length === 4 && tiled(t) && t.files.x < t.editor.x && t.editor.x < t.preview.x && t.preview.y < t.console.y, t);
   await shot(page, "start");
 
+  // Where the editor, the preview and the console meet: one drag moves both borders.
+  const crossing = await page.evaluate(() => {
+    const all = [...document.querySelectorAll<HTMLElement>("[data-tiling-crossing]")].map((el) => el.getBoundingClientRect());
+    return all.map((r) => ({ x: r.x + r.width / 2, y: r.y + r.height / 2 }));
+  });
+  if (crossing.length === 1) {
+    await page.mouse.move(crossing[0].x, crossing[0].y);
+    const lit = await page.evaluate(() => document.querySelectorAll("[data-tiling-handle][data-active]").length);
+    await page.mouse.down();
+    await page.mouse.move(crossing[0].x + 50, crossing[0].y + 40, { steps: 5 });
+    await shot(page, "crossing");
+    await page.mouse.up();
+    const c = await settled(page);
+    report("a crossing drags both borders at once", lit === 2 && tiled(c) && c.editor.w === t.editor.w + 50 && c.preview.h === t.preview.h + 40 && c.console.h === t.console.h - 40 && c.files.w === t.files.w, { lit, editor: [t.editor.w, c.editor.w], preview: [t.preview.h, c.preview.h] });
+    await page.mouse.click(crossing[0].x + 50, crossing[0].y + 40, { clickCount: 2 });
+    t = await settled(page);
+  } else report("a crossing drags both borders at once", false, { crossings: crossing.length });
+
   // Run, so there is a preview frame to keep alive (the default project needs no install to serve).
   await page.keyboard.down("Meta");
   await page.keyboard.press("Enter");

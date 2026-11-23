@@ -120,7 +120,7 @@ What works:
 | Maximize / restore | Ctrl+Alt+F | |
 | Float / tile again | Ctrl+Alt+V | drag a floating panel by its grip; resize by its corner |
 | Hide the panel | Ctrl+Alt+C (Mod+B, Mod+J, Mod+Alt+B and the status bar still toggle) | |
-| Grow / shrink | Ctrl+Alt+G / Ctrl+Alt+R | drag a border; double-click resets it; arrows when focused |
+| Grow / shrink | Ctrl+Alt+G / Ctrl+Alt+R | drag a border, or the spot where borders meet to move them all at once; double-click resets; arrows when focused |
 | Reset the layout | palette: "Tiling: reset the layout" | |
 
 - Moving by keyboard: a sibling in that direction trades places; a longer neighbor gets the panel beside it at full

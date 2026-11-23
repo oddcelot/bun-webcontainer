@@ -122,6 +122,34 @@
         background: var(--accent);
       }
     }
+    /* Where borders meet: a wider spot over the gap that drags them all, lighting them up with it. */
+    .tiling-crossing {
+      position: absolute;
+      z-index: 5;
+      cursor: move;
+      touch-action: none;
+      /* A wider spot to hit than the gap. */
+      &::before {
+        content: "";
+        position: absolute;
+        inset: -5px;
+      }
+      &::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        margin: auto;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: transparent;
+        transition: background-color 0.1s;
+      }
+      &:hover::after,
+      &[data-active]::after {
+        background: var(--accent);
+      }
+    }
     /* Where a dragged tile would land. */
     .tiling-drop {
       position: absolute;
