@@ -74,6 +74,15 @@ export function setThemeVars(vars: Vars | undefined) {
 /** The host's own variables (the hosting file's `theme.vars`), on every theme. */
 const hostVars = { base: cleanVars(HOSTING.theme?.vars?.base), light: cleanVars(HOSTING.theme?.vars?.light), dark: cleanVars(HOSTING.theme?.vars?.dark) };
 
+// The host's fonts (the hosting file's `theme.fonts`): stylesheets for the families its variables name, as an embed's
+// `fonts` loads them. Until one arrives the text shows in the stack's next font.
+for (const href of HOSTING.theme?.fonts ?? []) {
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.href = href;
+  document.head.append(link);
+}
+
 /**
  * The theme's own variables: its chrome colors, plus what its family declares (e.g. Elysia's overlay, Solid's font),
  * then the host's.

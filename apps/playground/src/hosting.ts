@@ -48,10 +48,10 @@ export interface RuntimeHosting {
    */
   brand: { logo: string; logoDark: string | null; home: string | null; description: string | null; card: string | null; cardAlt: string | null } | null;
   /**
-   * The theme family first-time visitors get (its light variant), the families the picker offers, chrome variables on top of every theme's, and how a
+   * The theme family first-time visitors get (its light variant), the families the picker offers, chrome variables on top of every theme's, the stylesheets of the fonts they name, and how a
    * theme switch reveals the new colors (src/theme.ts; default "logo").
    */
-  theme: { family?: string; families?: string[]; vars?: Vars; transition?: "logo" | "circle" | "none" } | null;
+  theme: { family?: string; families?: string[]; vars?: Vars; fonts?: string[]; transition?: "logo" | "circle" | "none" } | null;
 }
 
 export const HOSTING: RuntimeHosting = hosting;
