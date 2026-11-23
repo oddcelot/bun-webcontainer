@@ -43,30 +43,30 @@
       &[data-dragging] {
         opacity: 0.55;
       }
-      /* The grip: a badge in the middle of the tile (its content: an icon), there while the move key is held. */
+      /* The grip: a small chip in the middle of the tile (its content: an icon), there while the move key is held. */
       .tiling-grip {
         position: absolute;
         inset: 0;
         z-index: 5;
         display: grid;
         place-items: center;
-        width: 52px;
-        height: 52px;
+        width: 30px;
+        height: 30px;
         margin: auto;
-        border: 1.5px solid var(--accent);
-        border-radius: 14px;
-        background: color-mix(in srgb, var(--accent) 22%, var(--panel));
-        box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
-        color: var(--fg);
-        font-size: 22px;
+        border: 1px solid var(--control-border);
+        border-radius: 50%;
+        background: color-mix(in srgb, var(--panel) 72%, transparent);
+        backdrop-filter: blur(6px);
+        color: var(--muted);
+        font-size: 14px;
         cursor: grab;
         opacity: 0;
         pointer-events: none;
-        scale: 0.85;
-        transition: opacity 0.12s, scale 0.12s, background-color 0.12s;
+        transition: opacity 0.16s, color 0.12s, border-color 0.12s;
         touch-action: none;
         &:hover {
-          background: color-mix(in srgb, var(--accent) 40%, var(--panel));
+          border-color: color-mix(in srgb, var(--accent) 70%, transparent);
+          color: var(--fg);
         }
       }
       .tiling-corner {
@@ -89,13 +89,9 @@
     &[data-move-key] {
       .tiling-tile:not([data-maximized]) {
         cursor: grab;
-        &::after {
-          background: color-mix(in srgb, var(--accent) 7%, transparent);
-        }
         .tiling-grip {
           opacity: 1;
           pointer-events: auto;
-          scale: 1;
         }
       }
       /* A frame would take the press that starts the drag. */
