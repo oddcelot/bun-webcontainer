@@ -97,7 +97,7 @@ try {
     await page.mouse.up();
     const c = await settled(page);
     report("a crossing drags both borders at once", lit === 2 && tiled(c) && c.editor.w === t.editor.w + 50 && c.preview.h === t.preview.h + 40 && c.console.h === t.console.h - 40 && c.files.w === t.files.w, { lit, editor: [t.editor.w, c.editor.w], preview: [t.preview.h, c.preview.h] });
-    await page.mouse.click(crossing[0].x + 50, crossing[0].y + 40, { clickCount: 2 });
+    await page.mouse.click(crossing[0].x + 50, crossing[0].y + 40, { count: 2 });
     t = await settled(page);
   } else report("a crossing drags both borders at once", false, { crossings: crossing.length });
 

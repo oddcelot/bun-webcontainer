@@ -1,17 +1,18 @@
-import { For, Show, createContext, createEffect, createMemo, createSignal, onSettled, useContext } from "solid-js";
+import { For, Show, createContext, createEffect, createMemo, createSignal, onSettled, untrack, useContext } from "solid-js";
+import { Tiling, createTiling, type TilingLayout } from "@runbun/ui/solid/Tiling";
 import { Tip } from "@runbun/ui/solid/Tip";
 import { Menu, MenuCheckItem, MenuGroup, MenuItem, MenuSeparator, MenuTrigger } from "@runbun/ui/solid/Menu";
 import { Dialog, DialogActions, DialogClose, DialogDescription, DialogTitle } from "@runbun/ui/solid/Dialog";
 import { Button } from "@runbun/ui/solid/Button";
 import logo from "../bun-logo.svg";
-import { COST } from "../embed/config";
+import { COST, PANE_GAP } from "../embed/config";
 import { chordKeys, keysFor, matches, type Command } from "../keymap";
 import type { Embed } from "../embed/main";
 import type { Feature } from "@runbun/embed/protocol";
 import { AppContext } from "./context";
 import { Dock } from "./Dock";
 import { EditorPane } from "./EditorPane";
-import { Splits, createSizes, shareVars, withShares, type Split } from "./EmbedSplit";
+import { PANES as TILES, buildLayout, createSizes, type Built, type Pane, type Shape } from "./EmbedLayout";
 import { Explorer, toggleGit } from "./Explorer";
 import { inCommitBox } from "../git/store";
 import { Gallery } from "./Gallery";
@@ -23,21 +24,11 @@ import { HOSTING } from "../hosting";
 export const EmbedContext = createContext<Embed>();
 
 const CANT_RUN = "This browser can't run code here";
-// embed.css's narrow frames, which drop the tree.
+// Narrow frames put the side column under the editor, and drop the tree.
 const NARROW = "(max-width: 560px)";
 // Stacked, the tree sits beside the editor where the frame fits it (170px) and ~70 columns of 13px code with the
-// gutter (600px), plus the grid's padding and gap.
+// gutter (600px), plus the room's padding and the gap.
 const STACK_TREE = `(min-width: ${170 + 600 + 3 * 4}px)`;
-
-const TREE: Split = { size: "tree", a: "tree", b: "editor-pane", label: "Resize file tree" };
-const SIDE_PREVIEW: Split = { size: "side", a: "editor-pane", b: "preview-panel", label: "Resize editor and preview" };
-const SIDE_CONSOLE: Split = { size: "side", a: "editor-pane", b: "console-wrap", label: "Resize editor and console" };
-const ROWS: Split = { size: "rows", a: "preview-panel", b: "console-wrap", label: "Resize preview and console" };
-const BELOW: Split = { size: "console", a: "editor-pane", b: "console-wrap", label: "Resize editor and console" };
-// layout=stack: the editor over the side column, and the preview over the console.
-const STACK_PREVIEW: Split = { size: "stack", a: "editor-pane", b: "preview-panel", label: "Resize editor and preview" };
-const STACK_CONSOLE: Split = { size: "stack", a: "editor-pane", b: "console-wrap", label: "Resize editor and console" };
-const STACK_ROWS: Split = { size: "console", a: "preview-panel", b: "console-wrap", label: "Resize preview and console" };
 
 /** True from the first time `on()` is: a pane mounts once it's first shown and is only hidden after that (xterm and preview frames don't survive a remount). */
 function sticky(on: () => boolean) {
@@ -47,8 +38,9 @@ function sticky(on: () => boolean) {
 
 /**
  * The embed: its controls (status, Run, menu) in the editor's tab bar, or in a slim bar over the panes where there's
- * none (with the file's name), and the panes its mode and features turn on, laid out on a grid
- * (embed.css): the editor with the console under it, or beside a column of preview over console, a file tree first.
+ * none (with the file's name), and the panes its mode and features turn on, as tiles of a layout that is the embed's
+ * to decide (ui/EmbedLayout.ts): the editor with the console under it, or beside a column of preview over console, a
+ * file tree first. A reader drags the borders between them, and no more.
  */
 export function EmbedApp() {
   const app = useContext(AppContext);
@@ -61,7 +53,7 @@ export function EmbedApp() {
   const [roomy, setRoomy] = createSignal(roomyQuery.matches);
   const tree = () => editor() && has("files") && (!e.stacked() || roomy());
   const side = e.side;
-  // Out of the grid (stacked without room, or a narrow frame), the tree opens over the editor instead: a drawer, from the bar.
+  // Out of the layout (stacked without room, or a narrow frame), the tree opens over the editor instead: a drawer, from the bar.
   const drawerOk = () => editor() && has("files") && (e.stacked() ? !roomy() : narrow());
   const [open, setOpen] = createSignal(false);
   const drawer = () => open() && drawerOk();
@@ -126,6 +118,36 @@ export function EmbedApp() {
   const showPreview = sticky(() => has("preview"));
   const showConsole = sticky(() => has("console"));
   const sizes = createSizes(e.sizesKey);
+  const shape = (): Shape => ({
+    editor: editor(),
+    tree: tree() && !narrow(),
+    side: side(),
+    stacked: e.stacked(),
+    fit: e.stacked() && e.fit(),
+    narrow: narrow(),
+    preview: has("preview"),
+    console: has("console"),
+    // Only where it places something, so that a measurement elsewhere doesn't lay the panes out again.
+    fitPreview: e.stacked() && e.fit() && has("preview") ? e.fitPreview() : 0,
+    shares: e.shares(),
+  });
+  // The tree as last built: its borders' names and labels, by their path in it.
+  let built: Built = buildLayout(untrack(shape), sizes.get());
+  const layout = (): TilingLayout<Pane> => {
+    built = buildLayout(untrack(shape), sizes.get());
+    return { tree: built.tree, hidden: TILES.filter((p) => !built.shown.includes(p)), floating: {} };
+  };
+  const tiling = createTiling<Pane>({ tiles: TILES, defaultLayout: layout(), gap: PANE_GAP, minSize: { width: 110, height: 60 }, movable: false, animated: false });
+  createEffect(
+    () => JSON.stringify(shape()),
+    () => tiling.setLayout(layout()),
+    { defer: true },
+  );
+  // The drawer: over the editor's left edge, as wide as the tree would be.
+  const drawerStyle = () => {
+    const over = tiling.rect("editor");
+    return over ? { left: `${over.x}px`, top: `${over.y + drawerTop()}px`, width: `${sizes.get().tree ?? 170}px`, height: `${over.h - drawerTop()}px` } : {};
+  };
   // The app's shortcuts (App.tsx has them in the playground), on the way down and stopped there, so the editor doesn't
   // get a key that ran a command (its keymap has Mod+Enter as "insert a blank line"). The show and hide ones work the
   // menu's switches, so a pane the author locked stays as it is.
@@ -152,16 +174,6 @@ export function EmbedApp() {
     addEventListener("keydown", onKey, { capture: true });
     return () => removeEventListener("keydown", onKey, { capture: true });
   });
-  // A handle on each border between two shown panes, as the grid places them.
-  const splits = () =>
-    [
-      tree() && TREE,
-      side() && !e.stacked() && (has("preview") ? SIDE_PREVIEW : SIDE_CONSOLE),
-      e.stacked() && (has("preview") ? STACK_PREVIEW : STACK_CONSOLE),
-      e.stacked() && has("preview") && has("console") && STACK_ROWS,
-      ((side() && !e.stacked()) || !editor()) && has("preview") && has("console") && ROWS,
-      editor() && !side() && has("console") && BELOW,
-    ].filter((s): s is Split => !!s);
   const drawerProps: Drawer = { ok: drawerOk, open: drawer, toggle: toggleDrawer, onKey: onDrawerKey, ref: (el: HTMLElement) => (filesButton = el) };
   return (
     <div
@@ -186,37 +198,58 @@ export function EmbedApp() {
       <Show when={!app.session.canRun}>
         <Unsupported checks={app.support} />
       </Show>
-      <div id="embed-main" style={withShares(shareVars(e.shares(), e.stacked(), e.fit()), sizes.vars())}>
-        <Show when={showTree()}>
-          <nav id="tree" class="pane" ref={nav} hidden={!tree() && !drawer()} style={drawer() ? { top: `${drawerTop()}px` } : undefined} onKeyDown={onDrawerKey}>
-            <Explorer switcher />
-          </nav>
-        </Show>
-        <section id="editor-pane" class="pane" hidden={!editor()}>
-          <EditorPane
-            start={
-              <Show when={barless()}>
-                <BarStart drawer={drawerProps} />
-              </Show>
-            }
-            end={
-              <Show when={barless()}>
-                <BarEnd />
-              </Show>
-            }
+      <div id="embed-main">
+        <Tiling tiling={tiling}>
+          <Tiling.Tile
+            tileId="tree"
+            id="tree"
+            class="pane"
+            role="navigation"
+            aria-label="Files"
+            ref={(el: HTMLElement) => (nav = el)}
+            hidden={!shape().tree && !drawer()}
+            unplaced={drawer()}
+            style={drawer() ? drawerStyle() : undefined}
+            onKeyDown={onDrawerKey}
+          >
+            <Show when={showTree()}>
+              <Explorer switcher />
+            </Show>
+          </Tiling.Tile>
+          <Tiling.Tile tileId="editor" id="editor-pane" class="pane" aria-label="Editor" hidden={!editor()}>
+            <EditorPane
+              start={
+                <Show when={barless()}>
+                  <BarStart drawer={drawerProps} />
+                </Show>
+              }
+              end={
+                <Show when={barless()}>
+                  <BarEnd />
+                </Show>
+              }
+            />
+          </Tiling.Tile>
+          <Tiling.Tile tileId="preview" id="preview-panel" class="pane" aria-label="Preview" hidden={!has("preview")}>
+            <Show when={showPreview()}>
+              <Preview />
+            </Show>
+          </Tiling.Tile>
+          <Tiling.Tile tileId="console" id="console-wrap" class="pane" aria-label="Console" hidden={!has("console")}>
+            <Show when={showConsole()}>
+              <Dock />
+            </Show>
+          </Tiling.Tile>
+          <Tiling.Handles
+            labelFor={(path) => built.labels[path]}
+            onSplitResize={(path, size) => built.names[path] && sizes.moved(built.names[path], size)}
+            onSplitReset={(path) => {
+              if (!built.names[path]) return;
+              sizes.reset(built.names[path]);
+              tiling.setLayout(layout());
+            }}
           />
-        </section>
-        <Show when={showPreview()}>
-          <section id="preview-panel" class="pane" hidden={!has("preview")}>
-            <Preview />
-          </section>
-        </Show>
-        <Show when={showConsole()}>
-          <section id="console-wrap" class="pane" hidden={!has("console")}>
-            <Dock />
-          </section>
-        </Show>
-        <Splits splits={splits()} sizes={sizes} />
+        </Tiling>
         <Show when={e.options.status === "toast"}>
           <StatusToast status={app.session.status()} />
         </Show>

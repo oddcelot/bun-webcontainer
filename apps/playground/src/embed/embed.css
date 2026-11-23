@@ -51,111 +51,60 @@
 .embed-menu .cost { color: var(--muted); font-size: 11px; }
 .embed-menu .separator { height: 1px; margin: 4px; border: 0; background: var(--control-border); }
 
-/* Panes on a grid. Default (code mode): the editor, the console under it. The --vars are sizes a reader dragged (ui/EmbedSplit.tsx). */
-#embed-main { position: relative; flex: 1; min-height: 0; display: grid; gap: 4px; padding: 0 var(--gutter, 4px) var(--gutter, 4px); grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: "editor"; }
-#embed-main > .pane { min-width: 0; min-height: 0; overflow: hidden; border-radius: var(--radius); background: var(--bg); }
-#embed-main > .pane[hidden] { display: none; }
-/* --pane-border: a 1px edge around each pane, over its content (tab rows, the editor) and inside its size; the drawer
-   keeps its own. Under the handles (5) and the drawer (10). */
-#embed-main > .pane { position: relative; }
-#embed-main > .pane::after { content: ""; position: absolute; inset: 0; z-index: 3; border-radius: inherit; box-shadow: inset 0 0 0 1px var(--pane-border, transparent); pointer-events: none; }
-#embed[data-drawer] #tree::after { content: none; }
-#embed #tree { grid-area: tree; }
-#embed #editor-pane { grid-area: editor; }
-#embed #preview-panel { grid-area: preview; }
-#embed #console-wrap { grid-area: console; }
-#embed[data-editor][data-console]:not([data-side]) #embed-main { grid-template-rows: minmax(0, 1fr) var(--console-h, 150px); grid-template-areas: "editor" "console"; }
-#embed[data-side] #embed-main { grid-template-columns: var(--side-cols, minmax(0, 1fr) minmax(0, 1fr)); grid-template-areas: "editor side"; }
-#embed[data-side][data-preview] #embed-main { grid-template-areas: "editor preview"; }
-#embed[data-side]:not([data-preview]) #embed-main { grid-template-areas: "editor console"; }
-#embed[data-side][data-preview][data-console] #embed-main { grid-template-rows: var(--rows, minmax(0, 3fr) minmax(0, 2fr)); grid-template-areas: "editor preview" "editor console"; }
-/* A file tree before the rest. */
-#embed[data-tree] #embed-main { grid-template-columns: var(--tree-w, minmax(110px, 170px)) minmax(0, 1fr); grid-template-areas: "tree editor"; }
-#embed[data-tree][data-console]:not([data-side]) #embed-main { grid-template-areas: "tree editor" "tree console"; }
-#embed[data-tree][data-side] #embed-main { grid-template-columns: var(--tree-w, minmax(110px, 170px)) var(--side-cols, minmax(0, 1fr) minmax(0, 1fr)); }
-#embed[data-tree][data-side][data-preview] #embed-main { grid-template-areas: "tree editor preview"; }
-#embed[data-tree][data-side]:not([data-preview]) #embed-main { grid-template-areas: "tree editor console"; }
-#embed[data-tree][data-side][data-preview][data-console] #embed-main { grid-template-areas: "tree editor preview" "tree editor console"; }
-/* layout=stack: the side column under the editor (the tree beside the editor where there's room). Rows fit the content when the frame is as tall
-   as the embed asked (data-fit: a host with height="auto"), else they share the height; --stack-rows is a dragged share. */
-#embed[data-stack] {
-  --stack-default: minmax(0, 55fr) minmax(0, 45fr);
-  &[data-fit] {
-    /* --stack-preview: the preview's own height (embed/main.ts previewHeight), at least 200px. */
-    --stack-default: minmax(0, 1fr) var(--stack-preview, 200px);
+/* The panes' room. They are tiles (ui/EmbedApp.tsx, over @runbun/ui's Tiling) of a layout built from the mode, the
+   features and the frame's size (ui/EmbedLayout.ts): each gets its box from that, and a border between two is dragged. */
+#embed-main {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0 var(--gutter, 4px) var(--gutter, 4px);
+  > .tiling {
+    flex: 1;
+    height: auto;
+    min-height: 0;
   }
-  &[data-fit]:not([data-preview]) {
-    --stack-default: minmax(0, 1fr) 120px;
+  /* Over style.css's own position for a pane (#tree). */
+  .pane {
+    position: absolute;
+    &[hidden] {
+      display: none;
+    }
+    /* --pane-border: a 1px edge around each pane, over its content (tab rows, the editor) and inside its size; the
+       drawer keeps its own. Under the handles (5) and the drawer (10). In place of a tile's focus ring: the embed's
+       tiles aren't moved, so none is the one to act on. */
+    &::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 3;
+      border-radius: inherit;
+      box-shadow: inset 0 0 0 1px var(--pane-border, transparent);
+      pointer-events: none;
+    }
   }
-  &[data-side] #embed-main {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: var(--stack-rows, var(--stack-default));
-    grid-template-areas: "editor" "preview";
-  }
-  &[data-side]:not([data-preview]) #embed-main {
-    grid-template-areas: "editor" "console";
-  }
-  &[data-side][data-preview][data-console] #embed-main {
-    grid-template-rows: var(--stack-rows, var(--stack-default)) var(--console-h, 120px);
-    grid-template-areas: "editor" "preview" "console";
-  }
-  /* Room for the tree (ui/EmbedApp.tsx STACK_TREE): in the editor's row only. */
-  &[data-side][data-tree] #embed-main {
-    grid-template-columns: var(--tree-w, minmax(110px, 170px)) minmax(0, 1fr);
-    grid-template-areas: "tree editor" "preview preview";
-  }
-  &[data-side][data-tree]:not([data-preview]) #embed-main {
-    grid-template-areas: "tree editor" "console console";
-  }
-  &[data-side][data-tree][data-preview][data-console] #embed-main {
-    grid-template-areas: "tree editor" "preview preview" "console console";
+  /* The gap is 4px: a little more to take hold of. Under the status toast (21) and the expanded preview (20). */
+  .tiling-handle::before {
+    content: "";
+    position: absolute;
+    inset: -2px;
   }
 }
-/* The tree as a drawer over the editor's left edge (stacked, or a narrow frame; ui/EmbedApp.tsx): out of the flow, so
-   the grid stays as it is. Above the handles, under the status toast. */
+/* The tree as a drawer over the editor's left edge (stacked, or a narrow frame; ui/EmbedApp.tsx places it): out of
+   the layout, which stays as it is. Above the handles, under the status toast. */
 #embed[data-drawer] #tree {
-  display: block;
-  position: absolute;
-  grid-area: editor;
-  inset: 0 auto 0 0;
   z-index: 10;
-  width: var(--tree-w, 170px);
   max-width: calc(100% - 32px);
-  height: auto;
   border: 1px solid var(--control-border);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
   @media (prefers-reduced-motion: no-preference) {
     animation: tree-drawer 0.14s ease-out;
   }
+  &::after {
+    content: none;
+  }
 }
 @keyframes tree-drawer {
   from { opacity: 0; transform: translateX(-8px); }
-}
-/* Result mode: the preview (and the console under it), no editor. */
-#embed:not([data-editor]) #embed-main { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: "preview"; }
-#embed:not([data-editor]):not([data-preview]) #embed-main { grid-template-areas: "console"; }
-#embed:not([data-editor])[data-preview][data-console] #embed-main { grid-template-rows: var(--rows, minmax(0, 3fr) minmax(0, 2fr)); grid-template-areas: "preview" "console"; }
-
-/* Handles over the gaps (style.css's .resize-handle look), under the status toast (21) and the expanded preview (20). */
-#embed-main > .resize-handle { position: absolute; margin: 0; touch-action: none; }
-#embed-main > .resize-handle[hidden] { display: none; }
-#embed-main > .resize-handle[data-orientation="horizontal"] { cursor: col-resize; }
-#embed-main > .resize-handle[data-orientation="vertical"] { cursor: row-resize; }
-#embed-main > .resize-handle:hover::after { background: var(--accent); }
-
-/* Narrow frames stack the side column under the editor, and drop the tree. Not a stacked embed's (layout=stack): it
-   is in rows already, and its own rows (a fitted preview, a dragged share) hold at any width. */
-@media (max-width: 560px) {
-  #embed[data-side]:not([data-stack]) #embed-main { grid-template-columns: minmax(0, 1fr) !important; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) !important; grid-template-areas: "editor" "preview" !important; }
-  #embed[data-side]:not([data-stack]):not([data-preview]) #embed-main { grid-template-areas: "editor" "console" !important; }
-  #embed[data-side]:not([data-stack])[data-preview][data-console] #embed-main { grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) 120px !important; grid-template-areas: "editor" "preview" "console" !important; }
-  #embed[data-tree]:not([data-side]) #embed-main { grid-template-columns: minmax(0, 1fr); grid-template-areas: "editor" "console"; }
-  #embed[data-tree]:not([data-side]):not([data-console]) #embed-main { grid-template-areas: "editor"; }
-  #embed #tree { display: none; }
-  /* The stacked templates ignore the sizes: only the console under the editor keeps its handle. */
-  #embed-main > .resize-handle:not([data-size="console"]) { display: none; }
-  /* Stacked by the option too: the narrow template has fixed rows, so no handle moves anything. */
-  #embed[data-stack] #embed-main > .resize-handle {
-    display: none;
-  }
 }

@@ -6,8 +6,12 @@
 
 /** `row` puts `a` left of `b`, `col` puts it above. */
 export type Axis = "row" | "col";
-/** `ratio` is `a`'s share of the room the two have, less the gap. */
-export type Split = { axis: Axis; ratio: number; a: Tree; b: Tree };
+/**
+ * `ratio` is `a`'s share of the room the two have, less the gap. With `fixed`, that side keeps `size` pixels
+ * instead (a sidebar, a console's row) and the other gets the rest, whatever the room's size.
+ */
+export type Split = { axis: Axis; ratio: number; a: Tree; b: Tree; fixed?: Fixed };
+export type Fixed = { side: "a" | "b"; size: number };
 /** A panel's name, or two trees side by side. */
 export type Tree = string | Split;
 export type Rect = { x: number; y: number; w: number; h: number };
@@ -19,6 +23,12 @@ const MIN_RATIO = 0.08;
 export const clampRatio = (ratio: number) => Math.min(1 - MIN_RATIO, Math.max(MIN_RATIO, ratio));
 const axisOf = (dir: Dir): Axis => (dir === "left" || dir === "right" ? "row" : "col");
 const before = (dir: Dir) => dir === "left" || dir === "up";
+/** `a`'s pixels of the `total` the split's two sides have. */
+const firstOf = (split: Split, total: number) => {
+  if (!split.fixed) return Math.round(total * split.ratio);
+  const size = Math.min(Math.max(0, total), split.fixed.size);
+  return Math.round(split.fixed.side === "a" ? size : total - size);
+};
 
 export function leaves(tree: Tree | null): string[] {
   if (tree === null) return [];
@@ -71,12 +81,12 @@ export function layout(tree: Tree | null, box: Rect, gap: number, hidden: Readon
       return;
     }
     if (node.axis === "row") {
-      const w = Math.round((box.w - gap) * node.ratio);
+      const w = firstOf(node, box.w - gap);
       place(node.a, { ...box, w }, path + "a");
       place(node.b, { ...box, x: box.x + w + gap, w: box.w - w - gap }, path + "b");
       handles.push({ path, axis: "row", rect: { x: box.x + w, y: box.y, w: gap, h: box.h }, box });
     } else {
-      const h = Math.round((box.h - gap) * node.ratio);
+      const h = firstOf(node, box.h - gap);
       place(node.a, { ...box, h }, path + "a");
       place(node.b, { ...box, y: box.y + h + gap, h: box.h - h - gap }, path + "b");
       handles.push({ path, axis: "col", rect: { x: box.x, y: box.y + h, w: box.w, h: gap }, box });
@@ -88,6 +98,18 @@ export function layout(tree: Tree | null, box: Rect, gap: number, hidden: Readon
 
 export function setRatio(tree: Tree, path: string, ratio: number): Tree {
   return replaceAt(tree, path, (node) => (typeof node === "string" ? node : { ...node, ratio: clampRatio(ratio) }));
+}
+
+/**
+ * Gives the split at `path`'s first side `first` of the `total` pixels its two sides have: as a ratio, or for a
+ * fixed split as its side's pixels.
+ */
+export function setFirst(tree: Tree, path: string, first: number, total: number): Tree {
+  return replaceAt(tree, path, (node) => {
+    if (typeof node === "string" || total <= 0) return node;
+    const ratio = clampRatio(first / total);
+    return node.fixed ? { ...node, ratio, fixed: { ...node.fixed, size: Math.round(node.fixed.side === "a" ? first : total - first) } } : { ...node, ratio };
+  });
 }
 
 /** The tree without `tile`: its sibling takes the room of both. */
@@ -159,7 +181,7 @@ export function move(tree: Tree, tile: string, dir: Dir, rects: ReadonlyMap<stri
   }
   const parent = at(tree, path.slice(0, -1)) as Split;
   const sibling = path.endsWith("a") ? parent.b : parent.a;
-  if (sibling === next && parent.axis === axis) return replaceAt(tree, path.slice(0, -1), () => ({ ...parent, ratio: 1 - parent.ratio, a: parent.b, b: parent.a }));
+  if (sibling === next && parent.axis === axis) return replaceAt(tree, path.slice(0, -1), () => ({ ...parent, ratio: 1 - parent.ratio, a: parent.b, b: parent.a, ...(parent.fixed && { fixed: { ...parent.fixed, side: parent.fixed.side === "a" ? "b" : "a" } }) }));
   const [from, to] = [rects.get(tile)!, rects.get(next)!];
   const peers = axis === "row" ? Math.abs(from.y - to.y) <= 1 && Math.abs(from.h - to.h) <= 1 : Math.abs(from.x - to.x) <= 1 && Math.abs(from.w - to.w) <= 1;
   return insert(remove(tree, tile), tile, next, axis, peers ? before(dir) : !before(dir));
@@ -192,7 +214,8 @@ export function isTreeOf(value: unknown, tiles: readonly string[]): value is Tre
     if (typeof node === "string") return seen.push(node) > 0;
     if (typeof node !== "object" || node === null) return false;
     const s = node as Partial<Split>;
-    return (s.axis === "row" || s.axis === "col") && typeof s.ratio === "number" && s.ratio > 0 && s.ratio < 1 && ok(s.a) && ok(s.b);
+    const fixed = s.fixed === undefined || (typeof s.fixed === "object" && s.fixed !== null && (s.fixed.side === "a" || s.fixed.side === "b") && typeof s.fixed.size === "number" && s.fixed.size >= 0);
+    return (s.axis === "row" || s.axis === "col") && typeof s.ratio === "number" && s.ratio > 0 && s.ratio < 1 && fixed && ok(s.a) && ok(s.b);
   };
   if (value !== null && !ok(value)) return false;
   return seen.length === tiles.length && tiles.every((t) => seen.includes(t));

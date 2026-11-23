@@ -14,7 +14,9 @@ arrangement there is.
   of the editor.
 - Sizes are two arrays in localStorage (`layout.columns`, `layout.right`). `runbun.json` can override shown panels
   and sizes per project, in terms of those three columns.
-- The embed (`ui/EmbedApp.tsx`, `EmbedSplit.tsx`) has its own CSS-grid layout and is not part of this question.
+- The embed (`ui/EmbedApp.tsx`) had its own CSS-grid layout. It now draws its panes with the same `Tiling` component,
+  as a layout it decides itself; see "The embed" below. Whether a reader may rearrange an embed is not part of this
+  question.
 
 The hard constraint for any rework: **panels must not be moved in the DOM or remounted.** A moved iframe reloads
 (the preview, the devtools frame), the xterm terminal does not survive a remount, and the editor is an imperative
@@ -169,6 +171,28 @@ const tiling = createTiling({ tiles: ["files", "editor"], defaultLayout, initial
   need a workaround in Solid 2 as it is. The layout is uncontrolled (`initialLayout` + `onLayoutChange` +
   `setLayout`); a controlled `layout` prop and an `as` prop for the parts are not there yet.
 
+### The embed
+
+The embed uses `Tiling` as a renderer only: `ui/EmbedLayout.ts` builds the tree from the mode, the features, the
+`layout` option and the frame's width (and builds it again when one changes), and `createTiling` gets
+`movable: false, animated: false`. A reader drags the borders and no more: no keys, no grips, no floating. It replaced
+the grid templates in `embed.css` and the embed's own splitter (`EmbedSplit.tsx`).
+
+What it needed from the component, all of it there for the playground's tiling too:
+
+- **Fixed splits.** A split's side can keep its pixels (`fixed: { side, size }`) instead of a share: the file tree's
+  width, the console's row, the preview's row in a frame that fits its content. The playground's tiles are all shares
+  so far; a sidebar that keeps its width as the window grows would be this.
+- **`onSplitResize`, `onSplitReset`, `labelFor` on `Tiling.Handles`.** The embed keeps what a reader dragged by the
+  border's name (so it holds when the arrangement changes), answers a double click with its own default, and names
+  each separator.
+- **`unplaced` on `Tiling.Tile`.** The file tree as a drawer over the editor is placed by the embed, not the tree.
+- **A least size per direction**, and Home/End on a focused border.
+
+`scripts/embed-layout.ts` checks it (headless Chrome, a running dev server): 22 arrangements, the borders, the
+crossing, the keyboard, a reload, the drawer. Run against the grid it replaced, the panes' boxes were the same in 21;
+the 22nd was the grid being 7px off in a narrow frame with a file tree.
+
 Known gaps in the prototype:
 
 - Four tiles only (see E.1); the dock's tabs and Files/Git are as before.
@@ -177,7 +201,7 @@ Known gaps in the prototype:
   letters are AltGr combinations on some Windows keyboard layouts.
 - The grip sits over the top edge of each panel and can cover a few pixels of a tab bar while hovered.
 - The preview's own "expand" still exists next to "maximize"; one of them should go.
-- Not in the docs site or the changelog; the embed is unchanged.
+- Not in the docs site or the changelog.
 
 ## Open questions
 

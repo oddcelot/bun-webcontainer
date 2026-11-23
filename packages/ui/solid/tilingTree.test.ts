@@ -1,6 +1,6 @@
 // node packages/ui/solid/tilingTree.test.ts   (node >= 26 runs the TypeScript directly)
 import assert from "node:assert/strict";
-import { dwindle, insert, isTreeOf, layout, leaves, move, neighbor, remove, resize, setRatio, swap, toEdge, toggleSplit, type Tree } from "./tilingTree.ts";
+import { dwindle, insert, isTreeOf, layout, leaves, move, neighbor, remove, resize, setFirst, setRatio, swap, toEdge, toggleSplit, type Tree } from "./tilingTree.ts";
 
 const BOX = { x: 0, y: 0, w: 1008, h: 608 };
 // files | editor | preview over console
@@ -101,6 +101,31 @@ const rectsOf = (tree: Tree, hidden: string[] = []) => layout(tree, BOX, 8, new 
   assert.equal(isTreeOf({ axis: "row", ratio: 0.5, a: "files", b: "files" }, ["files"]), false);
   assert.equal(isTreeOf({ axis: "diag", ratio: 0.5, a: "files", b: "editor" }, ["files", "editor"]), false);
   assert.equal(isTreeOf({ axis: "row", ratio: 2, a: "files", b: "editor" }, ["files", "editor"]), false);
+}
+
+// A fixed split keeps its side's pixels whatever the room's size, and a drag sets them.
+{
+  const tree: Tree = { axis: "row", ratio: 0.2, fixed: { side: "a", size: 170 }, a: "files", b: { axis: "col", ratio: 0.5, fixed: { side: "b", size: 150 }, a: "editor", b: "console" } };
+  for (const box of [BOX, { x: 0, y: 0, w: 500, h: 400 }]) {
+    const { rects } = layout(tree, box, 8);
+    assert.equal(rects.get("files")!.w, 170);
+    assert.equal(rects.get("console")!.h, 150);
+    assert.equal(rects.get("editor")!.h, box.h - 8 - 150);
+  }
+  // No more than the room there is.
+  assert.equal(layout(tree, { x: 0, y: 0, w: 100, h: 100 }, 8).rects.get("files")!.w, 92);
+  const dragged = setFirst(setFirst(tree, "", 220, 1000), "b", 400, 600) as Extract<Tree, object>;
+  assert.equal(dragged.fixed!.size, 220);
+  assert.equal((dragged.b as Extract<Tree, object>).fixed!.size, 200);
+  // A split without one takes the share.
+  assert.equal((setFirst(START, "", 300, 1000) as Extract<Tree, object>).ratio, 0.3);
+  // Trading places, the pixels stay with the tile that had them.
+  const pair: Tree = { axis: "row", ratio: 0.2, fixed: { side: "a", size: 170 }, a: "files", b: "editor" };
+  const traded = move(pair, "files", "right", layout(pair, BOX, 8).rects) as Extract<Tree, object>;
+  assert.equal(traded.b, "files");
+  assert.deepEqual(traded.fixed, { side: "b", size: 170 });
+  assert.ok(isTreeOf(tree, ["files", "editor", "console"]));
+  assert.equal(isTreeOf({ ...tree, fixed: { side: "c", size: 1 } }, ["files", "editor", "console"]), false);
 }
 
 console.log("tiling: ok");
