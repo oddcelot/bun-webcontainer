@@ -2389,6 +2389,13 @@ main { position: relative; flex: 1; min-height: 0; padding: 0 4px 4px; }
     }
   }
 }
+/*
+ * While a row's menu is open its tile is over the others: the tree puts the menu in a layer of its own (z-index 4), which
+ * the next tile's code and focus ring would otherwise draw over where the menu reaches past the tree's edge.
+ */
+#tree-panel:has(.tree-menu) {
+  z-index: 9;
+}
 /* A file tree row's menu (FileTree.tsx): plain buttons dressed as select.css's options, shortcut keys at the end. */
 .tree-menu {
   display: flex;
