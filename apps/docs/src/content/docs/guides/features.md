@@ -99,7 +99,11 @@ Dependencies install automatically when one of your own projects or an example o
 
 runbun.dev installs as an app in its own window: **Install** in the address bar or the browser menu in Chrome and Edge, **File → Add to Dock** in Safari on macOS, **Share → Add to Home Screen** on iOS. The installed app:
 
-- opens straight on the playground (the landing page stays at `runbun.dev/about`).
+- opens straight on the playground (the landing page stays at `runbun.dev/about`);
+- uses the header as its title bar in Chrome and Edge (the chevron in the title bar switches it back);
+- opens runbun.dev links (examples, repositories, share links) in a new app window, in Chrome and Edge 139 or later;
+- offers **Blank starter** and **Starters and examples** from its icon's menu (right-click in the Dock or taskbar);
+- opens `.zip` files from Finder or Explorer (**Open With → runbun**), in Chrome and Edge.
 
 Projects and settings are the same as in the browser tab.
 

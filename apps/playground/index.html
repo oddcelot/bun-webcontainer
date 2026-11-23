@@ -38,7 +38,8 @@
       try {
         const q = new URLSearchParams(location.search);
         // ?open: straight into the playground, e.g. from the docs' "Open playground" (src/entry.ts drops it from the URL).
-        const project = q.has("example") || q.has("repo") || q.has("git") || q.has("connect") || q.has("open") || location.hash.startsWith("#code=");
+        // ?gallery: the manifest's "Starters and examples" shortcut.
+        const project = q.has("example") || q.has("repo") || q.has("git") || q.has("connect") || q.has("open") || q.has("gallery") || location.hash.startsWith("#code=");
         // Installed as an app (its own window): it opens on the playground, not the landing page.
         const installed = matchMedia("(display-mode: standalone), (display-mode: window-controls-overlay)").matches || navigator.standalone === true;
         const about = location.pathname.endsWith("/about");

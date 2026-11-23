@@ -8,6 +8,7 @@ import { createPlayground } from "./boot";
 import { VFS } from "@runbun/vfs";
 import { findLocalBun } from "./localBun";
 import { mountUI } from "./ui/mount";
+import { showGallery } from "./ui/ProjectPicker";
 import { attach, discard, heldProjects, listProjects, mirror, readDir, restore, shareProjectId, type StopSaving } from "./persist";
 import { clearPkgCache } from "./pkgCache";
 import { clearStore } from "./pkgStore";
@@ -446,3 +447,19 @@ async function begin(config: ProjectConfig) {
 }
 await begin(applyConfig());
 Object.assign(window, { vfs, semver: pg.semver });
+
+// The installed app (public/site.webmanifest): a .zip opened with it from the OS (`file_handlers`) opens here, as the
+// gallery's "Open a zip" does. Chrome holds the launch until a consumer is set.
+if ("launchQueue" in window) {
+  window.launchQueue.setConsumer(async ({ files }) => {
+    for (const handle of files) if (handle.kind === "file") await openZip(await (handle as FileSystemFileHandle).getFile());
+  });
+}
+// ?gallery (the app's "Starters and examples" shortcut): the gallery, open over the project. Dropped from the URL, so a
+// reload or a share doesn't open it again.
+if (params.has("gallery")) {
+  showGallery();
+  const url = new URL(location.href);
+  url.searchParams.delete("gallery");
+  history.replaceState(history.state, "", url);
+}
