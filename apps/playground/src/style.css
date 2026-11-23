@@ -3044,7 +3044,9 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
     }
   }
   .zoom-level {
-    min-width: 4ch;
+    /* Room for three digits and the sign whatever the level, so the buttons beside it stay put. */
+    box-sizing: content-box;
+    min-width: 4.5ch;
     justify-content: center;
     font: 11px var(--font-ui);
     font-variant-numeric: tabular-nums;
