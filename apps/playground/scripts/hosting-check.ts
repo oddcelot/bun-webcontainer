@@ -153,6 +153,7 @@ if (dev.contentOrigin !== "http://run.runbun.localhost:5199" || dev.editorOrigin
       ["a pane that isn't on or off", { panels: { console: "hidden" } }],
       ["a theme variable that isn't a custom property", { theme: { vars: { base: { color: "red" } } } }],
       ["a theme transition that isn't one", { theme: { transition: "fade" } }],
+      ["a font stylesheet that isn't https or the site's own", { theme: { fonts: ["http://example.com/fonts.css"] } }],
       ["an empty list of theme families", { theme: { families: [] } }],
       ["a language pack the library doesn't have", { languages: ["reactivescrip"] }],
       ["a language pack named twice", { languages: ["reactivescript", "reactivescript"] }],

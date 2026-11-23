@@ -100,6 +100,19 @@ Configure reads the logo files into `hosting.js` and copies the card into `dist/
 
 The variables are the [embed's](/reference/embed-api/#theming): `--bg`, `--panel`, `--canvas`, `--fg`, `--muted`, `--border`, `--accent`, `--radius`, `--font-ui`, `--font-mono`.
 
+A font named there shows only if the visitor has it, unless the playground loads it: `theme.fonts` lists stylesheets for that, each an https URL or a path from your site's root (a stylesheet you deploy beside the playground).
+
+```json
+{
+  "theme": {
+    "fonts": ["https://fonts.googleapis.com/css2?family=Inter&display=swap"],
+    "vars": { "base": { "--font-ui": "Inter, system-ui, sans-serif" } }
+  }
+}
+```
+
+Until the stylesheet arrives the text shows in the next font of the list.
+
 `theme.families` narrows the theme picker to the families you list, in the same names; a first visit gets the first unless `theme.family` names another of them. With a single family the picker offers the color scheme alone: system, light and dark.
 
 ```json

@@ -58,10 +58,11 @@ Fields, all optional:
   the picker offers (default: all, and `family` then defaults to the first); with one, the picker is the color scheme
   alone, and a visitor's earlier pick outside the list gives way to `family`. `vars` are CSS custom
   properties on top of every theme's, in the embed's `vars` shape: `base` for both schemes, `light` and `dark` for
-  one (`{ "base": { "--radius": "8px" } }`). `transition` is how a theme switch reveals the new colors: `"logo"` in the
+  one (`{ "base": { "--radius": "8px" } }`). `fonts` are stylesheets the playground loads, for the fonts `vars`
+  names in `--font-ui` and `--font-mono`: https URLs, or paths from the site's root. `transition` is how a theme switch reveals the new colors: `"logo"` in the
   shape of the logo, growing from the middle of the window (`brand.logo` with a circle behind it, or runbun's
   dumpling), `"circle"` in a plain circle, `"none"` at once, without a view transition (`src/theme.ts`). Default:
-  Pierre, no variables, `"logo"`.
+  Pierre, no variables, no fonts, `"logo"`.
 - `localRunner`: `false` leaves out the header's Local Bun switch (`packages/connect`). Default: `true`.
 - `showConfig`: `false` keeps a project's `runbun.json` out of the file tree and the tabs (it still applies); visitors can
   show it again in Settings. Default: `true`.

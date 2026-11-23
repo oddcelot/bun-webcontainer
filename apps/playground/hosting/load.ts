@@ -124,6 +124,12 @@ export interface HostingFile {
      */
     vars?: HostingVars;
     /**
+     * Stylesheets the playground loads, for the fonts `vars` names in `--font-ui` and `--font-mono` (an embed's
+     * `fonts`): https URLs, or paths from the site's root for a stylesheet deployed with it, e.g.
+     * `["https://fonts.googleapis.com/css2?family=Inter&display=swap"]`.
+     */
+    fonts?: string[];
+    /**
      * How a theme switch (light/dark, another family) reveals the new colors: "logo" grows them out of the middle of
      * the window in the shape of the logo (`brand.logo`, or runbun's), "circle" in a circle, "none" switches at once.
      * Default: "logo".
@@ -173,7 +179,7 @@ export interface Hosting {
   showConfig: boolean;
   panels?: HostingPanels;
   brand?: HostingBrand;
-  theme?: { family?: string; families?: string[]; vars?: HostingVars; transition?: "logo" | "circle" | "none" };
+  theme?: { family?: string; families?: string[]; vars?: HostingVars; fonts?: string[]; transition?: "logo" | "circle" | "none" };
   /** The file it came from, for messages; undefined for the defaults. */
   file?: string;
 }
@@ -329,7 +335,7 @@ export function readHostingFile(path: string, read: { card?: boolean } = {}): Om
       }
   }
   if (d.theme !== undefined) {
-    const t = fields(d.theme, "theme", ["family", "families", "vars", "transition"], path);
+    const t = fields(d.theme, "theme", ["family", "families", "vars", "fonts", "transition"], path);
     out.theme = {};
     if (t.family !== undefined) {
       if (typeof t.family !== "string" || !folder.test(t.family)) throw new Error(`${path}: theme.family must be a theme's name, e.g. "solid-light"`);
@@ -346,6 +352,13 @@ export function readHostingFile(path: string, read: { card?: boolean } = {}): Om
       const v = fields(t.vars, "theme.vars", ["base", "light", "dark"], path);
       out.theme.vars = {};
       for (const key of ["base", "light", "dark"] as const) if (v[key] !== undefined) out.theme.vars[key] = vars(v[key], `theme.vars.${key}`, path);
+    }
+    if (t.fonts !== undefined) {
+      const list = t.fonts;
+      // A stylesheet runs in the page: https, or the site's own.
+      if (!Array.isArray(list) || !list.every((u): u is string => typeof u === "string" && /^(https:\/\/|\/(?!\/))\S+$/.test(u)))
+        throw new Error(`${path}: theme.fonts must list stylesheets, each an https URL or a path from the site's root ("/fonts.css")`);
+      out.theme.fonts = list;
     }
     if (t.transition !== undefined) {
       if (t.transition !== "logo" && t.transition !== "circle" && t.transition !== "none") throw new Error(`${path}: theme.transition must be "logo", "circle" or "none"`);
