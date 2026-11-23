@@ -1,59 +1,57 @@
-# bun-webcontainer
+# runbun
 
-A StackBlitz/WebContainers-style Bun playground in the browser, built from Bun's own
-JSC-independent Rust crates compiled to wasm64 (Memory64) plus JS shims for the runtime APIs.
+**Bun in the browser.** [runbun.dev](https://runbun.dev) is a playground that runs Bun projects in a browser tab: no
+server, no install. It's built from Bun's own Rust crates (transpiler, bundler, resolver, `bun fmt`) compiled to
+WebAssembly, with `Bun.*`, `bun:*` and `node:*` shimmed in JavaScript.
 
-| Path | What |
-|---|---|
-| `apps/playground/` | The app: editor, file tree, VFS, worker runtime, `Bun.serve` preview, `bun install` (see its README) |
-| `apps/docs/` | Docs site (Astro Starlight) for docs.runbun.dev: features and compatibility |
-| `crates/transpile-wasm/` | Bun's transpiler (`bun_js_parser` + `bun_js_printer`) as wasm64 |
-| `crates/fmt-wasm/` | `bun fmt` (`bun_format` through `bun_lint_driver`) as wasm64: `bun fmt --stdin-filepath` itself over the VFS through `bun_sys` imports, configs included; byte-identical to native `bun fmt` |
-| `crates/tsrs-ls-wasm/` | [tsrs](https://github.com/oxc-project/tsrs)'s language service (TypeScript 7 in Rust) as a long-lived wasm32-wasip1 module: the editor's type errors (and hovers), files pushed in incrementally |
-| `crates/semver-wasm/` | `bun_semver` as wasm64 |
-| `crates/compress-wasm/` | zstd and brotli (pure Rust) as wasm64, for `Bun.zstd*` and node:zlib |
-| `crates/sys-wasm/` | probe: `bun_sys` file ops on wasm64 through host imports over the playground VFS |
-| `crates/resolve-wasm/` | `bun_resolver` on wasm64 (`resolve_c`): relative/bare/exports/imports/tsconfig paths over the VFS via `bun_sys` imports; 0.9 MB, only `bun_sys.*` imports |
-| `crates/sys-host/` | defines the `bun_sys_host_*` symbols bun_sys declares: `bun_sys.*` wasm imports (feature `imports`) or `-ENOSYS` stubs |
-| `crates/wasm-stubs/` | The C/C++ symbols (JSC, WebKit, ICU, sema) the parser links against, as stand-ins; linked by transpile, bundle, resolve and fmt |
-| `crates/shim-test/` | Native tests for the wasm mimalloc shim |
-| `packages/astro/` | `@runbun/astro`, published to npm: Astro integration and `<Code>`/`<Playground>` components |
-| `packages/ui/` | `@runbun/ui` (private): the UnoCSS preset, theme families and code themes the playground and docs share |
-| `packages/vfs/` | `@runbun/vfs` (private): the in-memory VFS and the `bun_sys` host imports over it; the crates' node tests use it too |
-| `patches/npm/` | Patches to npm dependencies (root `package.json` `patchedDependencies`) |
-| `patches/bun-codegen/` | Codegen output `scripts/setup-bun.ts` copies into `bun/` |
-| `patches/bun/` | Every change to upstream Bun as a patch series (one commit each), cfg-gated and marked `// wasm-experiment` |
-| `scripts/setup-bun.ts` | Recreates `bun/`: pinned commit + `patches/bun/` as commits on `wasm-experiment`, vendored crates, codegen |
-| `scripts/export-bun-patches.ts` | Exports `bun/`'s `wasm-experiment` commits to `patches/bun/` (pre-commit checks they match) |
-| `scripts/bun-upgrade.ts` | Follows Bun releases: `--check` reports a newer release and whether `patches/bun/` applies; `[tag]` rebases `bun/` onto it and updates pins, toolchains and the reported version |
-| `scripts/w64.ts` | wasm64 compile check of Bun crates |
-| `HANDOFF.md` | How the port works, findings, next steps |
+- **Run real projects:** `Bun.serve` with a live preview, `bun install` from npm, `bun test`, `bun:sqlite`, `Bun.$`,
+  and frameworks such as Elysia, Hono, Vite, Astro and Solid.
+- **Share them:** a link opens the project, ready to run.
+- **Embed them:** put runnable code blocks in your docs or blog.
 
-`brew bundle` installs the shell tools agents use (`Brewfile`: sd, ast-grep, wasm-tools, twiggy, cargo-machete, lychee, typos, hyperfine). `.prototools` pins Bun, Node 26 (the wasm64 tests need >= 24) and [moon](https://moonrepo.dev), which runs the wasm crates'
-builds and tests with caching (`proto install` once). The playground's gallery comes from
-[oddcelot/runbun-examples](https://github.com/oddcelot/runbun-examples), a submodule: clone with
-`--recurse-submodules`, or run `git submodule update --init` once.
+Docs: [docs.runbun.dev](https://docs.runbun.dev) · [What works](https://docs.runbun.dev/compatibility/) ·
+[Changelog](./CHANGELOG.md)
 
-```sh
-moon run :test                  # build every wasm crate (bun/ set up if missing) and run its test
-moon run transpile-wasm:test    # one crate
-moon run playground:build       # after the wasm builds it needs
-moon run docs:dev               # docs + playground dev servers
-```
+## Browsers
 
-By hand (the wrapper crates in `crates/` are one Cargo workspace with a shared `target/`; build them one at a time, as below):
+Code needs WebAssembly Memory64, which Chrome and Edge 133+ and Firefox 134+ have. Safari can open and edit projects,
+but can't run them yet. See [browser support](https://docs.runbun.dev/compatibility/browsers/).
 
-```sh
-scripts/setup-bun.ts
-W="-Zbuild-std=std,panic_abort --target wasm64-unknown-unknown --release"
-(cd crates/semver-wasm && cargo build $W && node test.ts)
-(cd crates/transpile-wasm && cargo build $W && node test.ts)
-(cd crates/sys-wasm && cargo build $W && node test.ts)
-(cd crates/resolve-wasm && cargo build $W && node test.ts)
-(cd crates/fmt-wasm && cargo build $W && node test.ts)
-(cd crates/tsrs-ls-wasm && cargo build --release --target wasm32-wasip1 && node test.ts)   # tsrs's Rust 1.100.0, not the nightly
-bun install                     # one bun workspace: apps/*, packages/*
-(cd apps/playground && bun run dev)  # http://localhost:5173, Chrome
-```
+## Packages
 
-Work is tracked with [beads](https://github.com/steveyegge/beads): `bd ready`.
+| Package | What |
+| --- | --- |
+| [`@runbun/embed`](./packages/embed) | `<bun-playground>`: a custom element that embeds a runnable playground in any page |
+| [`@runbun/astro`](./packages/astro) | An Astro integration: code blocks that turn into a playground on click |
+| [`@runbun/connect`](./packages/connect) | Runs playground code with the real Bun on your machine, sandboxed |
+
+To host the playground yourself, download the archive attached to each
+[release](https://github.com/oddcelot/bun-webcontainer/releases), as
+[self-hosting](https://docs.runbun.dev/guides/self-hosting/) explains.
+
+## Contributing
+
+Bug reports with a share link help most: [open an issue](https://github.com/oddcelot/bun-webcontainer/issues/new/choose).
+To build it and send changes, read [CONTRIBUTING.md](./CONTRIBUTING.md). Gallery examples live in
+[runbun-examples](https://github.com/oddcelot/runbun-examples).
+
+## Sponsor
+
+runbun is free and follows every Bun release. If it's useful to you, please consider
+[sponsoring](https://github.com/sponsors/oddcelot).
+
+## License
+
+The npm packages (`@runbun/embed`, `@runbun/astro`, `@runbun/connect`) are [MIT](./packages/embed/LICENSE): embed
+the playground anywhere.
+
+Everything else is [FSL-1.1-MIT](./LICENSE.md), the [Functional Source License](https://fsl.software). Use it, change
+it, self-host it for yourself, your team or your open source project. What it doesn't allow is offering it, or
+something built from it, as a competing commercial product. Each release becomes MIT two years after it came out.
+
+Not covered by it: code from other projects keeps its license. That includes Bun's own code (which `patches/bun/` changes; it stays MIT), the
+vendored `packages/astro-solid*` and `crates/git-wasm/patched/`, and the projects bundled into the playground. The
+runbun name isn't licensed for use by other products.
+
+runbun is an independent project, not affiliated with or endorsed by Oven or Bun. Bun's name and logo belong to their
+owners.
