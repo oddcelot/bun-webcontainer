@@ -120,7 +120,7 @@ The file tree, the editor, the preview and the console are panels that tile the 
 - **Resize:** drag the border between two panels, or the spot where borders meet to move them together. A double click resets a border.
 - **Move:** hold <kbd>Alt</kbd> and drag a panel by the grip that appears in its corner. Dropped on a side of another panel it splits that one, on its middle the two trade places, and on an edge of the window it takes the whole edge.
 - **Show and hide:** the buttons in the status bar, or the shortcuts below. A hidden panel comes back where it was.
-- **Start from an arrangement:** **Settings**, **Panels** shows a few as small pictures (columns, the console below, the console under the editor, the preview on the left, editor and preview only, stacked). Picking one replaces yours.
+- **Start from an arrangement:** **Settings**, **Panels** shows a few as small pictures (columns, the console below, the console under the editor, the preview on the left, editor and preview only, editor and console only, stacked). Picking one replaces yours.
 - **By keyboard:** press <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>K</kbd>, then one key. A hint lists them while it waits.
 
 | Key after <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>K</kbd> | Does |
