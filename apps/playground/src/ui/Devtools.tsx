@@ -173,13 +173,24 @@ type NuxtWindow = Window & { __NUXT_DEVTOOLS_HOST__?: object; __NUXT_DEVTOOLS_VI
 function NuxtDevtools() {
   const app = useContext(AppContext);
   let frame!: HTMLIFrameElement;
-  // No query: Nuxt fills in its client's base only for a request of `/__nuxt_devtools__/client/` itself. A new
-  // preview tab mounts this afresh instead (DevtoolsBody).
+  // Past the welcome page, which the client shows until its first visit is over (its Get Started, which also asks about
+  // usage statistics: a project's nuxt.config.ts sets `devtools.telemetry`). The client shares this origin's storage.
+  try {
+    localStorage.setItem("nuxt-devtools-first-visit", "false");
+  } catch {}
+  // The client's root. No query: Nuxt fills in the client's base only for the bare path. A new preview tab mounts this
+  // afresh instead (DevtoolsBody).
   const src = () => (app.session.ports().length ? previewUrl("/__nuxt_devtools__/client/") : undefined);
   onSettled(() => {
     let handed: object | undefined;
     const hand = () => {
       try {
+        // The client's router knows paths under its base (`/__nuxt_devtools__/client/`), not the preview's prefix in
+        // front of it: it starts on a "not found" page. Sent to the overview, as its welcome page's Get Started does.
+        type Router = { currentRoute: { value: { path: string } }; replace(to: string): unknown };
+        const root = frame.contentDocument?.getElementById("__nuxt") as (HTMLElement & { __vue_app__?: { config: { globalProperties: { $router?: Router } } } }) | null;
+        const router = root?.__vue_app__?.config.globalProperties.$router;
+        if (router?.currentRoute.value.path.includes("__preview")) void router.replace("/modules/overview");
         const view = (frame.contentWindow as NuxtWindow | null)?.__NUXT_DEVTOOLS_VIEW__;
         const page = app.previews.frames.get(app.previews.state.active)?.contentWindow as NuxtWindow | null | undefined;
         const host = page?.__NUXT_DEVTOOLS_HOST__;
