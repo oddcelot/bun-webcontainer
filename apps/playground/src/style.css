@@ -2436,6 +2436,10 @@ main { position: relative; flex: 1; min-height: 0; padding: 0 4px 4px; }
     font: inherit;
     text-align: start;
 
+    /* The pointer's or the arrow keys' item (FileTree.tsx focuses it): select.css's fill, which `background: none` above would hide. */
+    &[data-highlighted]:not([aria-disabled]) {
+      background: var(--control-hover);
+    }
     &[aria-disabled] {
       opacity: 0.5;
       cursor: default;
