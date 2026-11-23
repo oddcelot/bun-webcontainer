@@ -1,0 +1,35 @@
+name: Bug report
+description: Something in the playground, the docs or a package doesn't work as it should.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you got instead. Paste errors from the console or the terminal.
+    validations:
+      required: true
+  - type: input
+    id: link
+    attributes:
+      label: Share link
+      description: Share the project (Share → Copy link) so it can be reproduced in one click.
+      placeholder: https://runbun.dev/s/…
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and version
+      placeholder: Chrome 142 on macOS
+    validations:
+      required: true
+  - type: dropdown
+    id: part
+    attributes:
+      label: Where
+      options:
+        - Playground (runbun.dev)
+        - Docs (docs.runbun.dev)
+        - "@runbun/embed"
+        - "@runbun/astro"
+        - "@runbun/connect"
+        - Self-hosted copy

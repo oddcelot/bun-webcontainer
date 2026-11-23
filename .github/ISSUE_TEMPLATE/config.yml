@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/oddcelot/bun-webcontainer/security/advisories/new
+    about: Privately, please. See SECURITY.md.
+  - name: Add or change a gallery example
+    url: https://github.com/oddcelot/runbun-examples
+    about: The gallery's projects live in their own repository.
