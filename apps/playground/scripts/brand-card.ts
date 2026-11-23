@@ -38,7 +38,7 @@ const mix = (a: string, b: string, share: number) =>
   `#${rgb(a)
     .map((v, i) => Math.round(v * share + rgb(b)[i]! * (1 - share)).toString(16).padStart(2, "0"))
     .join("")}`;
-const C = { bg: chrome["--bg"]!, fg: "#ffffff", accent: chrome["--accent"]!, info: chrome["--info"]! };
+const C = { bg: chrome["--bg"]!, fg: "#ffffff", accent: chrome["--accent"]! };
 const muted = mix(C.fg, C.bg, 0.68);
 
 const logo = hosting.brand.logoDark ?? hosting.brand.logo;
@@ -65,8 +65,8 @@ const card = h(
     justifyContent: "space-between",
     padding: "0 88px 10px 80px",
     backgroundColor: C.bg,
-    // A glow of the accent behind the big mark, and the page a shade lighter towards it.
-    backgroundImage: `radial-gradient(circle at 82% 48%, ${mix(C.info, C.bg, 0.42)} 0%, ${mix(C.info, C.bg, 0.12)} 34%, ${C.bg} 62%)`,
+    // A glow of the accent (the brand's color) behind the big mark, and the page a shade lighter towards it.
+    backgroundImage: `radial-gradient(circle at 82% 48%, ${mix(C.accent, C.bg, 0.42)} 0%, ${mix(C.accent, C.bg, 0.12)} 34%, ${C.bg} 62%)`,
     color: C.fg,
     fontFamily: "Geist",
   },
@@ -76,7 +76,7 @@ const card = h(
       hosting.brand.description ? h("div", { marginTop: 28, fontSize: 32, lineHeight: 1.35, color: muted }, hosting.brand.description) : null,
     ]),
     mark(280),
-    h("div", { position: "absolute", left: 0, bottom: 0, width: 1200, height: 10, backgroundImage: `linear-gradient(90deg, ${mix(C.info, C.bg, 0.55)}, ${C.info}, ${C.accent})` }),
+    h("div", { position: "absolute", left: 0, bottom: 0, width: 1200, height: 10, backgroundImage: `linear-gradient(90deg, ${mix(C.accent, C.bg, 0.35)}, ${C.accent})` }),
   ],
 );
 
