@@ -25,7 +25,7 @@ The editor is where you write the project's files, with a file tree, tabs and a 
   - **Rename** and **Delete**; on a folder also **New file here** and **New folder here**.
   - **Duplicate** makes a copy beside a file (`util copy.ts`), open and ready to be named.
   - **Copy path** copies its path in the project.
-  - **Make read-only** keeps the editor from changing a file, or everything in a folder. **Hide from the file tree** takes a file or folder out of the tree, the tabs and Go to a file; it stays in the project and still runs. **Keep out of the tabs** only keeps a file from opening as a tab. All three are the project's own settings: they are written to its [`runbun.json`](/guides/project-config/) (`readonly`, `hiddenInTree`, `hidden`), so they go with the project when you share it. The same entry undoes each.
+  - **Make read-only** keeps the editor from changing a file, or everything in a folder. **Hide from the file tree** takes a file or folder out of the tree, the tabs and Go to a file; it stays in the project and still runs. Both are the project's own settings: they are written to its [`runbun.json`](/guides/project-config/) (`readonly`, `hiddenInTree`), so they go with the project when you share it. The same entry undoes each.
   - Where a project hides files, a button under the tree says how many and shows them (marked with a ring) or hides them again. That choice is yours, kept in this browser for every project; **Show hidden files** in Settings is the same switch.
 
   - <kbd>F2</kbd> renames the focused row in place.

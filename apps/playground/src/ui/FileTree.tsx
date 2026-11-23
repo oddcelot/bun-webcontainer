@@ -189,13 +189,13 @@ export function FileTree() {
   const [asking, setAsking] = createSignal<"file" | "folder" | null>(null);
 
   /** runbun.json's list under `key`, and whether the file can be edited here (it parses). */
-  const configList = (key: "hidden" | "hiddenInTree" | "readonly") => {
+  const configList = (key: "hiddenInTree" | "readonly") => {
     const problems: string[] = [];
     const config = readConfig((p) => vfs.readText(p), problems);
     return { list: config[key] ?? [], broken: problems.some((p) => p.includes("isn't valid JSON") || p.includes("must hold")) };
   };
   /** Adds `path` to runbun.json's list or takes it out, as Settings' form does: the rest of the file stays as it is. */
-  function toggleInConfig(key: "hidden" | "hiddenInTree" | "readonly", path: string) {
+  function toggleInConfig(key: "hiddenInTree" | "readonly", path: string) {
     const { list } = configList(key);
     const next = list.includes(path) ? list.filter((p) => p !== path) : [...list, path];
     // The editor's unsaved text of the file would otherwise overwrite this change on its next save.
@@ -204,9 +204,9 @@ export function FileTree() {
     const after = applyEdits(before, modify(before, [key], next.length ? next : undefined, { formattingOptions: { insertSpaces: true, tabSize: 2, eol: "\n" } }));
     vfs.write(CONFIG_FILE, after);
     if (key === "readonly") return ws.setReadonly(next);
-    if (key === "hiddenInTree") ws.setTreeHidden(next);
-    // Out of the tabs from now on, not only the next time the project opens: the file, or a hidden folder's files.
-    if (!next.includes(path) || (key === "hiddenInTree" && showing)) return;
+    ws.setTreeHidden(next);
+    // Out of the tabs too, now: the file, or a hidden folder's files.
+    if (!next.includes(path) || showing) return;
     for (const tab of [...ws.state.open]) if (tab === path || tab.startsWith(`${path}/`)) ws.close(tab);
   }
   /** A copy beside the file ("util copy.ts", then "util copy 2.ts"), open and ready to be named. */
@@ -336,19 +336,6 @@ export function FileTree() {
           toggleInConfig("hiddenInTree", path);
         },
       });
-      if (!folder) {
-        const hidden = configList("hidden");
-        const kept = hidden.list.includes(path);
-        actions.push({
-          label: kept ? "Let it open in tabs again" : "Keep out of the tabs",
-          icon: kept ? "i-lucide-panel-top-open" : "i-lucide-panel-top-close",
-          disabled: hidden.broken ? `fix ${CONFIG_FILE} first` : undefined,
-          run() {
-            context.close();
-            toggleInConfig("hidden", path);
-          },
-        });
-      }
     }
     actions.push("separator", {
       label: "Delete…",
