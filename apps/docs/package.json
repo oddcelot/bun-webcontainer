@@ -17,7 +17,7 @@
     "@fontsource/pixelify-sans": "^5.3.0",
     "@fontsource/press-start-2p": "^5.3.0",
     "@kobalte/core": "catalog:",
-    "@pierre/theme": "2.0.0",
+    "@pierre/theme": "2.1.0",
     "@runbun/astro": "workspace:*",
     "@runbun/ui": "workspace:*",
     "@solidjs/web": "catalog:",
@@ -33,6 +33,6 @@
     "@unocss/astro": "66.13.0",
     "tsrs": "7.1.0-beta.tsrs3",
     "unocss": "catalog:",
-    "wrangler": "^4.165.0"
+    "wrangler": "^4.167.0"
   }
 }
