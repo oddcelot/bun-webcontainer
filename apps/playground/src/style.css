@@ -3705,26 +3705,21 @@ body:has(#req-handle[data-dragging]) * {
 
 /* Canary builds only (src/canary.ts): a notice above the status bar, centred, in a colour no theme uses. */
 /* The tiling layout's keys, listed while the next key runs one of them (App.tsx). */
-/* Settings, Panels: the arrangements to pick from, each a small picture with a panel per color (the theme's own, faint). */
+/* Settings, Panels: the arrangements to pick from, each a small picture, its panels told apart by their icons. */
 .layout-presets {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
   gap: 12px;
 
+  /* One hue: the text color, faint; the editor alone in the accent, stronger (in a theme whose accent is its text color too). */
   [data-panel] {
-    --tint: var(--muted);
-  }
-
-  [data-panel="files"] {
-    --tint: var(--warn);
+    --tint: var(--fg);
+    --strength: 12%;
   }
 
   [data-panel="editor"] {
     --tint: var(--accent);
-  }
-
-  [data-panel="preview"] {
-    --tint: var(--ok);
+    --strength: 26%;
   }
 }
 
@@ -3769,8 +3764,8 @@ body:has(#req-handle[data-dragging]) * {
     display: grid;
     place-items: center;
     border-radius: 4px;
-    background: color-mix(in srgb, var(--tint) 22%, var(--bg));
-    color: color-mix(in srgb, var(--tint) 80%, var(--fg));
+    background: color-mix(in srgb, var(--tint) var(--strength), var(--bg));
+    color: color-mix(in srgb, var(--tint) 75%, var(--bg));
     font-size: 13px;
   }
 }
@@ -3789,22 +3784,9 @@ body:has(#req-handle[data-dragging]) * {
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    --tint: var(--muted);
 
-    &[data-panel="files"] {
-      --tint: var(--warn);
-    }
-
-    &[data-panel="editor"] {
-      --tint: var(--accent);
-    }
-
-    &[data-panel="preview"] {
-      --tint: var(--ok);
-    }
-
-    i {
-      color: var(--tint);
+    &[data-panel="editor"] i {
+      color: var(--accent);
     }
   }
 }
