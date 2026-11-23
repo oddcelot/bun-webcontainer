@@ -72,7 +72,7 @@ Every field is optional:
 
 ### Your own brand and theme
 
-`brand`, `theme`, `localRunner`, `debugger` and `languages` need 0.8.0 or later, `panels` and `showConfig` 0.9.0.
+`brand`, `theme`, `localRunner`, `debugger` and `languages` need 0.8.0 or later, `panels`, `showConfig` and `theme.fonts` 0.9.0.
 
 With a `brand`, the playground reads as yours: your logo and `name` stand in the header where runbun.dev has its dumpling and a random bun pun, the logo is the page's icon, and the page title is `name` alone. The status bar's About link opens runbun.dev's about page, which says what the playground runs on (with `landing` on, it opens your copy of that page instead).
 
