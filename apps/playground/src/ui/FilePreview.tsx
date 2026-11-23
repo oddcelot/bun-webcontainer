@@ -1,4 +1,5 @@
 import { Show, createEffect, createSignal, onSettled, useContext } from "solid-js";
+import { ALERT_CSS, githubMarkdown } from "../githubMarkdown";
 import { onTheme } from "../theme";
 import { AppContext } from "./context";
 import { guarded } from "./guarded";
@@ -61,7 +62,7 @@ li:has(> input[type="checkbox"]) { list-style: none; }`;
 
 /**
  * The open image or Markdown file, rendered in the editor's place. Markdown goes to a sandboxed frame without
- * scripts (a shared project's README may hold HTML), its project images inlined; links open in a new tab.
+ * scripts (a shared project's README may hold HTML), its project images inlined; links to the web open in a new tab.
  */
 export function FilePreview(props: { path: string; shown: boolean }) {
   const { vfs, log } = useContext(AppContext);
@@ -85,19 +86,23 @@ export function FilePreview(props: { path: string; shown: boolean }) {
   async function renderMarkdown(path: string) {
     await vfs.ensure([path]);
     const text = vfs.readText(path) ?? "";
-    // The parser loads with the first Markdown preview, not with the editor.
-    const [{ micromark }, { gfm, gfmHtml }] = await Promise.all([import("micromark"), import("micromark-extension-gfm")]);
-    const doc = new DOMParser().parseFromString(micromark(text, { allowDangerousHtml: true, extensions: [gfm()], htmlExtensions: [gfmHtml()] }), "text/html");
+    const doc = await githubMarkdown(text);
     for (const img of doc.querySelectorAll("img[src]")) {
       const at = resolve(path, img.getAttribute("src")!);
       if (at === null) continue;
       const url = vfs.files.has(at) && isImage(at) ? await dataUrl(at) : null;
       if (url) img.setAttribute("src", url);
     }
-    // Links between the project's files can't be followed from the frame: they stay as text.
-    for (const a of doc.querySelectorAll("a[href]")) if (resolve(path, a.getAttribute("href")!) !== null && !a.getAttribute("href")!.startsWith("#")) a.removeAttribute("href");
+    // Links to the web open in a new tab; a heading's (#…) scrolls the frame. Links between the project's files can't
+    // be followed from the frame: they stay as text.
+    for (const a of doc.querySelectorAll("a[href]")) {
+      const href = a.getAttribute("href")!;
+      if (href.startsWith("#")) continue;
+      if (resolve(path, href) === null) a.setAttribute("target", "_blank");
+      else a.removeAttribute("href");
+    }
     const csp = "default-src 'none'; img-src data: https: http:; media-src data: https:; style-src 'unsafe-inline'";
-    return `<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${csp}"><base target="_blank"><style>${frameStyle()}</style>${doc.body.innerHTML}`;
+    return `<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${csp}"><style>${frameStyle()}\n${ALERT_CSS}</style>${doc.body.innerHTML}`;
   }
 
   let token = 0;
