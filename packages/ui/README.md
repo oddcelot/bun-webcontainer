@@ -50,6 +50,7 @@ since they don't inherit the page's.
 | `Menu`, `MenuItem`, `MenuCheckItem`, `MenuGroup`, `MenuSeparator`, `MenuTrigger` | `solid/Menu.tsx` | A dropdown of actions and toggles |
 | `Dialog`, `DialogTitle`, `DialogDescription`, `DialogActions`, `DialogClose`, `DialogTrigger` | `solid/Dialog.tsx` | A modal: overlay, box and its parts |
 | `Input` | `solid/Input.tsx` | A text field; `multiline` for a textarea |
+| `PathInput` | `solid/PathInput.tsx` | One path, typed or picked from suggestions (a combobox) |
 | `Field` | `solid/Field.tsx` | A label (and hint) over its control |
 | `Segmented` | `solid/Segmented.tsx` | One of a few values, as a row of buttons |
 | `Chips`, `Chip` | `solid/Chips.tsx` | Any number of values, as a wrapping row of toggles |

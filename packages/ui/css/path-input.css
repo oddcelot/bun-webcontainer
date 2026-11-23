@@ -1,0 +1,65 @@
+/* PathInput: one path, typed or picked from suggestions; Input's look with a chevron at its end. Over the uno preset's tokens. */
+@layer runbun-ui {
+  .path-input {
+    display: flex;
+    width: 100%;
+
+    .control {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      box-sizing: border-box;
+      height: var(--control-height);
+      padding-right: 3px;
+      border: 1px solid var(--control-border);
+      border-radius: 6px;
+      background: var(--control);
+
+      &:focus-within {
+        outline: 1px solid var(--accent);
+        outline-offset: -1px;
+      }
+    }
+
+    .input {
+      flex: 1;
+      min-width: 0;
+      height: 100%;
+      padding: 0 8px;
+      border: 0;
+      background: none;
+      color: var(--fg);
+      font: 12px var(--font-mono);
+      outline: none;
+    }
+
+    .trigger {
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      border: 0;
+      border-radius: var(--inner-radius);
+      background: none;
+      color: var(--muted);
+      cursor: pointer;
+
+      &:hover {
+        background: var(--control-hover);
+        color: var(--fg);
+      }
+
+      &[data-expanded] .chevron {
+        rotate: 180deg;
+      }
+    }
+
+    .chevron {
+      display: grid;
+      transition: rotate 0.15s;
+    }
+  }
+}
