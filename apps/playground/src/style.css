@@ -2410,6 +2410,34 @@ main { position: relative; flex: 1; min-height: 0; padding: 0 4px 4px; }
     }
   }
 }
+/* Over the tree while files from the desktop are dragged over the page (FileTree.tsx): where a drop puts them. */
+.tree-drop {
+  position: absolute;
+  inset: 2px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: var(--pad);
+  border: 2px dashed var(--accent);
+  border-radius: var(--inner-radius);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  pointer-events: none;
+
+  .label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+    padding: 4px 10px;
+    overflow: hidden;
+    border-radius: var(--inner-radius);
+    background: var(--panel);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
 /*
  * While a row's menu is open its tile is over the others: the tree puts the menu in a layer of its own (z-index 4), which
  * the next tile's code and focus ring would otherwise draw over where the menu reaches past the tree's edge.

@@ -32,7 +32,9 @@ The editor is where you write the project's files, with a file tree, tabs and a 
   - <kbd>Delete</kbd> (or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Backspace</kbd>) deletes it after asking.
   - Open tabs follow a rename and close when their file is deleted; with Watch on, either restarts the program.
 
-  For ten seconds after, **Undo** under the tree (or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Z</kbd> in the tree) brings a deleted file or folder back, tabs included, or moves a renamed one back. In an opened folder, both reach the folder on disk.
+  **Drag files or folders** from your desktop onto the playground to add them to the project: dropped on a folder in the tree they go into it, anywhere else to the top of the project (the tree shows where). A file with the same path is replaced; `node_modules` and `.git` are skipped. A single dropped file opens in a tab.
+
+  For ten seconds after, **Undo** under the tree (or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Z</kbd> in the tree) brings a deleted file or folder back, tabs included, moves a renamed one back, or takes dropped files out again (and puts back the ones they replaced). In an opened folder, all of these reach the folder on disk.
 
   </details>
 - Tabs for open files: close with the × button, <kbd>Delete</kbd>, or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>W</kbd>
@@ -164,7 +166,7 @@ The gear in the header opens **Settings**, a full-window page with its sections 
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>W</kbd>, <kbd>Delete</kbd> | Close the focused tab |
 | <kbd>F2</kbd> | Rename the focused file or folder in the file tree |
 | <kbd>Delete</kbd>, <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Backspace</kbd> | Delete the focused file or folder in the file tree (asks first) |
-| <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Z</kbd> (in the file tree) | Undo the last rename or delete |
+| <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Z</kbd> (in the file tree) | Undo the last rename, delete or drop |
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>B</kbd> | Show or hide the file tree |
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd> | Show the Git view in place of the file tree (again: back to the files) |
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>J</kbd> | Show or hide the console |
