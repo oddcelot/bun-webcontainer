@@ -254,3 +254,8 @@ export async function writeContentCookies(base: string, lines: string[]): Promis
 export function notifyStopped(): void {
   void host?.then(({ port }) => send(port, { kind: "stopped" }), () => {});
 }
+
+/** Tells the preview pages under `base` on the content origin, those in browser tabs of their own, to load again. */
+export function notifyReload(base: string): void {
+  void host?.then(({ port }) => send(port, { kind: "reload", base }), () => {});
+}

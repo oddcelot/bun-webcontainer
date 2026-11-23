@@ -1,6 +1,6 @@
 import { BASE } from "./base";
 import { CONTENT_ORIGIN } from "./contentOrigin";
-import { fetchContent } from "./contentHost";
+import { fetchContent, notifyReload } from "./contentHost";
 import { HEADERS_HEADER, packHeaders, type Built } from "./request";
 
 /**
@@ -12,6 +12,16 @@ export let PREFIX = `${BASE}__preview`;
 export const previewUrl = (path: string) => (CONTENT_ORIGIN ?? "") + PREFIX + path;
 export function setPreviewOwner(clientId: string) {
   PREFIX = `${BASE}__preview/@${clientId}`;
+}
+
+let channel: BroadcastChannel | undefined;
+/**
+ * Loads this page's previews again where they are open in browser tabs of their own ("Open in a new tab"): the editor
+ * can't reach those, so their page script takes it from the channel (swPage.ts previewWebSocket), by this page's prefix.
+ */
+export function reloadOwnTabs(): void {
+  if (CONTENT_ORIGIN) notifyReload(PREFIX);
+  else (channel ??= new BroadcastChannel("bun-preview")).postMessage({ reload: PREFIX });
 }
 
 // Added by sw.ts to every preview response (x-robots-tag too on the content origin), not sent by the user's server.

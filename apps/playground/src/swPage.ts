@@ -132,7 +132,12 @@ export function previewWebSocket(prefix: string): void {
   // Leaving the page: tell the server, as a closing tab would.
   addEventListener("pagehide", () => open.forEach((_, ws) => ws.close(1001)));
   // The playground stopped the worker (Run restarts it): the connection dropped, so the page can reconnect.
-  new BroadcastChannel("bun-preview").onmessage = (e) => e.data === "stopped" && open.forEach((drop) => drop());
+  // Or it ran again, or the page's files changed: a preview in a browser tab of its own loads again, as the editor's
+  // frames do (preview.ts reloadOwnTabs; a frame is reloaded by its editor, and takes the frames inside it along).
+  new BroadcastChannel("bun-preview").onmessage = (e) => {
+    if (e.data === "stopped") open.forEach((drop) => drop());
+    else if (e.data?.reload === prefix && parent === window) location.reload();
+  };
   window.WebSocket = PreviewWebSocket as never;
 }
 

@@ -158,6 +158,8 @@ function connect(port: MessagePort) {
       out?.postMessage(res, res.buf ? [res.buf] : []);
     } else if (m.kind === "stopped") {
       previewChannel.postMessage("stopped");
+    } else if (m.kind === "reload") {
+      previewChannel.postMessage({ reload: m.base });
     } else if (m.kind === "ping") {
       reply(port, { kind: "pong", n: m.n, workers: workers.size });
     } else if (m.kind === "cookies") {
