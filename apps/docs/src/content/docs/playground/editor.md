@@ -38,6 +38,7 @@ The editor is where you write the project's files, with a file tree, tabs and a 
 
   </details>
 - Tabs for open files: close with the × button, <kbd>Delete</kbd>, or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>W</kbd>
+- **Previews** for images and Markdown. An image (PNG, JPEG, GIF, WebP, AVIF, SVG, ICO, BMP) opens as a picture, with its size. A Markdown file opens rendered the way GitHub renders it (tables, task lists, HTML; no scripts), with the project's images in it. SVG and Markdown files have a **Code** button over the corner to edit them, and **Preview** to go back.
 - <details>
   <summary><strong>Auto-save</strong> saves your edits a moment after you stop typing (on by default).</summary>
 
