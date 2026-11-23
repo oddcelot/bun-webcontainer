@@ -207,6 +207,23 @@ export function resize(tree: Tree, tile: string, delta: number, hidden: Readonly
   return tree;
 }
 
+/**
+ * Gives `tile`'s side of the nearest split along `axis` around it that `share` (0 to 1) of the split's room, as a
+ * ratio. The tree as it is if no such split holds the tile.
+ */
+export function setShare(tree: Tree, tile: string, axis: Axis, share: number): Tree {
+  const path = pathTo(tree, tile);
+  if (path === undefined) return tree;
+  for (let depth = path.length - 1; depth >= 0; depth--) {
+    if ((at(tree, path.slice(0, depth)) as Split).axis !== axis) continue;
+    return replaceAt(tree, path.slice(0, depth), (node) => {
+      const { fixed: _, ...split } = node as Split;
+      return { ...split, ratio: clampRatio(path[depth] === "a" ? share : 1 - share) };
+    });
+  }
+  return tree;
+}
+
 /** Whether `value` is a tree of exactly `tiles`, each once. */
 export function isTreeOf(value: unknown, tiles: readonly string[]): value is Tree | null {
   const seen: string[] = [];

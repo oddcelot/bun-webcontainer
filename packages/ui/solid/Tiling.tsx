@@ -37,6 +37,7 @@ import "../css/tiling.css";
  */
 
 export type { Dir, Fixed, Rect, Split, Tree } from "./tilingTree";
+export { setShare } from "./tilingTree";
 
 /** What there is to keep: the tree of the tiled tiles, the hidden ones (which keep their place in it), and the floating ones' boxes as shares of the room. */
 export type TilingLayout<T extends string = string> = { tree: Tree | null; hidden: T[]; floating: Partial<Record<T, Rect>> };
@@ -237,6 +238,14 @@ export function createTiling<T extends string>(options: TilingOptions<T>) {
       commit(next);
       refocus();
       animate();
+    },
+    /**
+     * Draws another layout, without it being the reader's (`onLayoutChange` isn't called): a stand-in for a narrow
+     * room, or a document's own sizes. What the reader changes from there is theirs again.
+     */
+    show(next: TilingLayout<T>) {
+      saved.set(next);
+      refocus();
     },
     /** The tile the commands act on (tracked). */
     focused: focus.get,

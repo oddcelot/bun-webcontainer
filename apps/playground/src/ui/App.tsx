@@ -150,10 +150,10 @@ export function App() {
   createEffect(
     () => [app.workspace.panels(), app.workspace.sizes()] as const,
     ([want, shares]) => {
-      // The tiling layout takes a project's `panels`; its `sizes` name the classic columns, and are left out there.
       if (tiling) {
         configHidConsole = want?.console === false;
         tiling.override(want ? { files: want.files, preview: want.preview, console: want.console } : null);
+        tiling.sizes(shares);
       } else setPanels(want, shares);
     },
   );

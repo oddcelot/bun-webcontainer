@@ -1,6 +1,7 @@
 import { For, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { Tiling, createTiling, isTilingLayout, type TilingLayout, type TilingState } from "@runbun/ui/solid/Tiling";
+import { Tiling, createTiling, isTilingLayout, setShare, type TilingLayout, type TilingState } from "@runbun/ui/solid/Tiling";
+import type { Sized } from "../projectConfig";
 import type { TilingCommand } from "../keymap";
 import { pref } from "../prefs";
 
@@ -12,7 +13,7 @@ import { pref } from "../prefs";
 
 export const TILES = ["files", "editor", "preview", "console"] as const;
 export type Tile = (typeof TILES)[number];
-export type Tiles = TilingState<Tile>;
+export type Tiles = ReturnType<typeof createTiles>;
 
 /** The ids the classic layout's panels have, which style.css and the scripts know them by. */
 const IDS: Record<Tile, string> = { files: "tree-panel", editor: "editor-panel", preview: "preview-panel", console: "console-wrap" };
@@ -47,7 +48,7 @@ export function setTilingMode(on: boolean) {
 }
 
 /** The panels' layout, kept across reloads. Create it in the component that renders `<Tiles>`. */
-export function createTiles(): Tiles {
+export function createTiles() {
   const [stored, store] = pref<TilingLayout<Tile>>("layout.tiles", START, {
     deserialize(data) {
       const layout: unknown = JSON.parse(data);
@@ -55,13 +56,49 @@ export function createTiles(): Tiles {
       return layout;
     },
   });
-  // Read once, like the classic layout's sizes: each tab keeps its own layout while open. The inset is the gap the
-  // classic panels' borders leave around them all.
-  return createTiling({ tiles: TILES, defaultLayout: START, initialLayout: untrack(stored), initialFocus: "editor", onLayoutChange: store, gap: 8, inset: 4 });
+  // Read once, like the classic layout's sizes: each tab keeps its own layout while open.
+  let own = untrack(stored);
+  let shares: Partial<Record<Sized, number>> | null = null;
+  // The inset is the gap the classic panels' borders leave around them all.
+  const tiling = createTiling({
+    tiles: TILES,
+    defaultLayout: START,
+    initialLayout: own,
+    initialFocus: "editor",
+    onLayoutChange(layout) {
+      store((own = layout));
+    },
+    gap: 8,
+    inset: 4,
+  });
+  return Object.assign(tiling, {
+    /**
+     * A project's runbun.json `sizes` (percent; null: none): the reader's layout with those shares, for as long as
+     * the project is open. Not kept, unless the reader changes the layout from there.
+     */
+    sizes(next: Partial<Record<Sized, number>> | null) {
+      if (!next && !shares) return;
+      shares = next;
+      tiling.show(next ? withShares(own, next) : own);
+    },
+  });
+}
+
+/**
+ * The layout with a project's `sizes`, which name the classic columns: the file tree's and the editor's share of
+ * the width they split, the preview's of the height it splits (with the console, as arranged at first).
+ */
+function withShares(layout: TilingLayout<Tile>, shares: Partial<Record<Sized, number>>): TilingLayout<Tile> {
+  let tree = layout.tree;
+  for (const tile of ["files", "editor", "preview"] as const) {
+    const share = shares[tile];
+    if (tree !== null && share !== undefined) tree = setShare(tree, tile, tile === "preview" ? "col" : "row", share / 100);
+  }
+  return { ...layout, tree };
 }
 
 /** Runs one of the keymap's tiling commands on the focused panel. */
-export function runTilingCommand(tiles: Tiles, command: TilingCommand) {
+export function runTilingCommand(tiles: TilingState<Tile>, command: TilingCommand) {
   switch (command) {
     case "focusLeft":
       return tiles.focusDirection("left");
