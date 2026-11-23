@@ -1,0 +1,17 @@
+{
+  "name": "Svelte Playground",
+  "brand": {
+    "logo": "brand/svelte.svg",
+    "home": "https://svelte.dev/",
+    "description": "Run Svelte projects in your browser: edit, install and preview, with nothing to set up.",
+    "card": "brand/svelte-card.png",
+    "cardAlt": "Svelte Playground: run Svelte projects in your browser, beside the Svelte logo"
+  },
+  "theme": { "families": ["svelte-light"] },
+  "localRunner": false,
+  "gallery": ["svelte-starter"],
+  "defaultProject": "svelte-starter",
+  "landing": false,
+  "contentOrigin": "https://run.play.example.org",
+  "editorOrigins": ["https://play.example.org"]
+}

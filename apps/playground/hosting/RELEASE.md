@@ -45,7 +45,8 @@ All fields are optional:
 - `showConfig`: `false` keeps a project's `runbun.json` out of the file tree and the tabs (it still applies); visitors can show it again in Settings. Default: true.
 - `debugger`: `true` turns on the step debugger, a prototype. Default: false.
 
-`hosting.example.json` is a whole one: a Solid playground with the logos in `brand/`.
+`hosting.example.json` is a whole one: a Solid playground with the logos in `brand/`. `hosting.svelte.json` is another,
+a Svelte playground, which also loads its fonts (`theme.fonts`) and sets them (`theme.vars`).
 
 The canonical URL, the share cards' URLs, `robots.txt` and `sitemap.xml` point at the first editor origin.
 

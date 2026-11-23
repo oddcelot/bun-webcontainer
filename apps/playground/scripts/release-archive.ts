@@ -31,6 +31,7 @@ for (const [from, to] of [
   ["hosting/load.ts", "load.ts"],
   ["hosting/RELEASE.md", "README.md"],
   ["hosting/example.json", "hosting.example.json"],
+  ["hosting/svelte.json", "hosting.svelte.json"],
   // The example's logos (its `brand`), at the paths it names.
   ["hosting/brand", "brand"],
 ])

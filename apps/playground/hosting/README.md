@@ -18,7 +18,9 @@ configures it for two origins under node and runs the gallery from it. Attach it
 | `canary.json`     | https://canary.runbun.dev                  | `playground:deploy-canary`   |
 
 `example.json` is the one the release archive ships (`hosting.example.json`, with `brand/`'s logos): a Solid
-playground with its own logo, theme and gallery. `scripts/hosting-check.ts` configures a build with it.
+playground with its own logo, theme and gallery. `scripts/hosting-check.ts` configures a build with it. `svelte.json`
+ships next to it (`hosting.svelte.json`): a Svelte playground in the Svelte theme family, with Fira Sans and Fira Mono
+from Google Fonts (`theme.fonts`, `theme.vars`).
 
 Fields, all optional:
 
