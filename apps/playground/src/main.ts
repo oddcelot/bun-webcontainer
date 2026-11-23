@@ -286,10 +286,13 @@ function applyConfig(): ProjectConfig {
   const hidden = new Set(config.hidden ?? []);
   if (workspace.isHiddenConfig(CONFIG_FILE)) hidden.add(CONFIG_FILE);
   workspace.setReadonly(config.readonly ?? []);
-  const tabs = (config.open ?? []).filter((p) => vfs.files.has(p) && !hidden.has(p));
+  const out = config.hiddenInTree ?? [];
+  workspace.setTreeHidden(out);
+  const kept = (p: string) => hidden.has(p) || workspace.isOutOfSight(p, out);
+  const tabs = (config.open ?? []).filter((p) => vfs.files.has(p) && !kept(p));
   for (const path of tabs) openFile(path);
   if (tabs.length) workspace.activate(tabs[0]);
-  else if (!hidden.has(entryFile())) openFile(entryFile());
+  else if (!kept(entryFile())) openFile(entryFile());
   workspace.setSizes(config.sizes ?? null);
   // The host's `panels` under the project's: a pane neither names stays as the reader left it.
   workspace.setPanels(HOSTING.panels || config.panels ? { ...HOSTING.panels, ...config.panels } : null);

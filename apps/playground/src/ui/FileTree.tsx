@@ -150,8 +150,19 @@ export function FileTree() {
   let open: ReadonlySet<string> = new Set();
   // The active tab, as last applied. Selecting it below calls onSelectionChange from inside that effect.
   let active: string | null = null;
-  /** The VFS's files but those an embedding page generated, and runbun.json while it's hidden (Settings). */
-  const paths = () => treePaths(vfs).filter((p) => !ws.isGenerated(p) && !ws.isHiddenConfig(p));
+  /**
+   * The VFS's files but those an embedding page generated, runbun.json while it's hidden (Settings), and what the
+   * project hides (runbun.json `hiddenInTree`) unless the reader shows hidden files.
+   */
+  // What the project hides and whether the reader shows it, as last applied (the effect below): the tree's own
+  // callbacks read these, not the signals.
+  let hiddenPaths = untrack(ws.treeHidden);
+  let showing = untrack(ws.showHidden);
+  let configShown = untrack(ws.showConfig);
+  const hiddenConfig = (path: string) => path === CONFIG_FILE && !configShown;
+  const isHidden = (path: string) => hiddenPaths.some((p) => path === p || path.startsWith(`${p}/`));
+  const outOfSight = (path: string) => !showing && isHidden(path);
+  const paths = () => treePaths(vfs).filter((p) => !ws.isGenerated(p) && !hiddenConfig(p) && !outOfSight(vfsPath(p)));
 
   // Rename, delete and New file here, unless an embed is read-only.
   const editable = () => app.features?.has("edit") ?? true;
@@ -178,13 +189,13 @@ export function FileTree() {
   const [asking, setAsking] = createSignal<"file" | "folder" | null>(null);
 
   /** runbun.json's list under `key`, and whether the file can be edited here (it parses). */
-  const configList = (key: "hidden" | "readonly") => {
+  const configList = (key: "hidden" | "hiddenInTree" | "readonly") => {
     const problems: string[] = [];
     const config = readConfig((p) => vfs.readText(p), problems);
     return { list: config[key] ?? [], broken: problems.some((p) => p.includes("isn't valid JSON") || p.includes("must hold")) };
   };
   /** Adds `path` to runbun.json's list or takes it out, as Settings' form does: the rest of the file stays as it is. */
-  function toggleInConfig(key: "hidden" | "readonly", path: string) {
+  function toggleInConfig(key: "hidden" | "hiddenInTree" | "readonly", path: string) {
     const { list } = configList(key);
     const next = list.includes(path) ? list.filter((p) => p !== path) : [...list, path];
     // The editor's unsaved text of the file would otherwise overwrite this change on its next save.
@@ -192,9 +203,11 @@ export function FileTree() {
     const before = vfs.readText(CONFIG_FILE) ?? `{\n  "$schema": "https://runbun.dev/schema/runbun.json"\n}\n`;
     const after = applyEdits(before, modify(before, [key], next.length ? next : undefined, { formattingOptions: { insertSpaces: true, tabSize: 2, eol: "\n" } }));
     vfs.write(CONFIG_FILE, after);
-    if (key === "readonly") ws.setReadonly(next);
-    // Kept out of the tabs from now on, not only the next time the project opens.
-    else if (next.includes(path) && ws.state.open.includes(path)) ws.close(path);
+    if (key === "readonly") return ws.setReadonly(next);
+    if (key === "hiddenInTree") ws.setTreeHidden(next);
+    // Out of the tabs from now on, not only the next time the project opens: the file, or a hidden folder's files.
+    if (!next.includes(path) || (key === "hiddenInTree" && showing)) return;
+    for (const tab of [...ws.state.open]) if (tab === path || tab.startsWith(`${path}/`)) ws.close(tab);
   }
   /** A copy beside the file ("util copy.ts", then "util copy 2.ts"), open and ready to be named. */
   function duplicate(path: string) {
@@ -215,7 +228,13 @@ export function FileTree() {
 
   const tree = new PierreTree({
     // A dot on files open in a tab.
-    renderRowDecoration: ({ item }) => (item.kind === "file" && open.has(item.path) ? { text: "●", title: "Open in a tab" } : null),
+    // And a ring on what the project hides, while the reader shows hidden files.
+    renderRowDecoration: ({ item }) =>
+      isHidden(vfsPath(item.path))
+        ? { text: "○", title: "Hidden from the file tree (runbun.json)" }
+        : item.kind === "file" && open.has(item.path)
+          ? { text: "●", title: "Open in a tab" }
+          : null,
     paths: untrack(paths),
     initialExpansion: "closed",
     search: true,
@@ -305,12 +324,24 @@ export function FileTree() {
           toggleInConfig("readonly", path);
         },
       });
+      const tree = configList("hiddenInTree");
+      const out = tree.list.includes(path);
+      const under = !out && isHidden(path);
+      actions.push({
+        label: out ? "Show in the file tree again" : under ? "Hidden, as its folder" : "Hide from the file tree",
+        icon: out ? "i-lucide-eye" : "i-lucide-eye-off",
+        disabled: tree.broken ? `fix ${CONFIG_FILE} first` : under ? "its folder is hidden" : undefined,
+        run() {
+          context.close();
+          toggleInConfig("hiddenInTree", path);
+        },
+      });
       if (!folder) {
         const hidden = configList("hidden");
         const kept = hidden.list.includes(path);
         actions.push({
           label: kept ? "Let it open in tabs again" : "Keep out of the tabs",
-          icon: kept ? "i-lucide-eye" : "i-lucide-eye-off",
+          icon: kept ? "i-lucide-panel-top-open" : "i-lucide-panel-top-close",
           disabled: hidden.broken ? `fix ${CONFIG_FILE} first` : undefined,
           run() {
             context.close();
@@ -389,14 +420,14 @@ export function FileTree() {
       pending.set(op.path, op);
     };
     const unsubscribe = vfs.onChange(({ path, created, removed }) => {
-      if ((created || removed) && !inGitDir(path) && !ws.isGenerated(path) && !ws.isHiddenConfig(path)) queue({ type: removed ? "remove" : "add", path });
+      if ((created || removed) && !inGitDir(path) && !ws.isGenerated(path) && !hiddenConfig(path) && !outOfSight(path)) queue({ type: removed ? "remove" : "add", path });
     });
     // The tree keeps a folder whose files are gone; a removed directory takes its row (and anything left in it).
     // And a folder made empty (New folder) gets one: its files would have brought it otherwise. Not an install's.
     const unsubscribeDirs = vfs.onDir((path, removed) => {
       if (inGitDir(path)) return;
       if (removed) queue({ type: "remove", path: `${path}/`, recursive: true });
-      else if (!inPackages(path)) queue({ type: "add", path: `${path}/` });
+      else if (!inPackages(path) && !outOfSight(path)) queue({ type: "add", path: `${path}/` });
     });
     // Files written between creating the tree and subscribing.
     tree.resetPaths(paths());
@@ -438,8 +469,11 @@ export function FileTree() {
     }),
   );
   createEffect(
-    () => [ws.state.treeVersion, ws.showConfig()],
-    guarded("file tree", () => {
+    () => [ws.state.treeVersion, ws.showConfig(), ws.treeHidden(), ws.showHidden()] as const,
+    guarded("file tree", ([, config, hidden, shown]) => {
+      configShown = config;
+      hiddenPaths = hidden;
+      showing = shown;
       tree.resetPaths(paths());
     }),
     { defer: true },
@@ -470,6 +504,12 @@ export function FileTree() {
         onSubmit={(name) => (asking() === "folder" ? vfs.mkdir(vfsPath(name)) : void app.newFile(name))}
         returnFocus={() => button}
       />
+      <Show when={ws.treeHidden().length && !undo()}>
+        <button type="button" class="tree-hidden" aria-pressed={ws.showHidden() ? "true" : "false"} onClick={() => ws.setShowHidden(!ws.showHidden())}>
+          <i class={ws.showHidden() ? "i-lucide-eye" : "i-lucide-eye-off"} aria-hidden="true" />
+          {ws.showHidden() ? "Showing" : "Show"} {ws.treeHidden().length} hidden
+        </button>
+      </Show>
       <Show when={undo()}>
         {(u) => (
           <div class="tree-undo" role="status">

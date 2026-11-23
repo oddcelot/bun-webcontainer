@@ -1,4 +1,4 @@
-import { createSignal, createStore } from "solid-js";
+import { createSignal, createStore, untrack } from "solid-js";
 import type { Panel, Sized } from "../projectConfig";
 import type { EditorCursor, EditorDiagnostic } from "../editors/types";
 import { pref } from "../prefs";
@@ -12,6 +12,7 @@ const WATCH_KEY = "runbun:watch";
 const FORMAT_ON_SAVE_KEY = "runbun:format-on-save";
 const FAST_KEY = "runbun:fast";
 const SHOW_CONFIG_KEY = "runbun:show-config";
+const SHOW_HIDDEN_KEY = "runbun:show-hidden";
 
 /**
  * Which files are open in tabs, which one is active, and which have edits not yet written to the VFS. Writes go
@@ -60,6 +61,10 @@ export function createWorkspace() {
   const [panels, setPanels] = createSignal<Partial<Record<Panel, boolean>> | null>(null);
   // Its `readonly` paths: files, and folders for everything under them.
   const [readonly, setReadonly] = createSignal<string[]>([]);
+  // Its `hiddenInTree` paths, likewise; and whether the reader shows them anyway (theirs, for every project).
+  const [treeHidden, setTreeHidden] = createSignal<string[]>([]);
+  const [showHidden, setShowHidden] = EMBEDDED ? createSignal(false) : pref(SHOW_HIDDEN_KEY, false, { serialize: (on) => (on ? "on" : "off"), deserialize: (s) => s === "on" });
+  const isTreeHidden = (path: string) => treeHidden().some((p) => path === p || path.startsWith(`${p}/`));
   // Its `sizes`, in percent (App.tsx sizes the panes by them); null: the reader's own.
   const [sizes, setSizes] = createSignal<Partial<Record<Sized, number>> | null>(null);
   // What the editor reports for the status bar.
@@ -119,6 +124,19 @@ export function createWorkspace() {
     setReadonly,
     /** Whether the editor leaves `path` as it is (runbun.json `readonly`); the program can still write it. */
     isReadonly: (path: string) => readonly().some((p) => path === p || path.startsWith(`${p}/`)),
+    /** The paths the open project keeps out of the file tree and the tabs (runbun.json `hiddenInTree`): files, or folders. */
+    treeHidden,
+    setTreeHidden,
+    /** Whether the reader shows those anyway (the tree's notice, Settings, the command palette). */
+    showHidden,
+    setShowHidden,
+    /** Whether `path` is one of them (itself, or in a hidden folder). */
+    isTreeHidden,
+    /**
+     * Whether `path` is one of them and the reader isn't showing them: not in the tree, the tabs or quick open. As of
+     * now, untracked; `list` for a caller that has just set the paths (a signal reads its old value until the flush).
+     */
+    isOutOfSight: (path: string, list: string[] = untrack(treeHidden)) => !untrack(showHidden) && list.some((p) => path === p || path.startsWith(`${p}/`)),
     /** The panes' shares of space the open project asks for (runbun.json `sizes`), likewise not saved. */
     sizes,
     setSizes,

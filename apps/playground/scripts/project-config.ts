@@ -22,6 +22,8 @@ const cases: [string, string | undefined, ProjectConfig, number?][] = [
   ["env coerces scalars, drops the rest", '{ "env": { "A": "x", "N": 1, "B": true, "O": {} } }', { env: { A: "x", N: "1", B: "true" } }],
   ["readonly: files and folders", '{ "readonly": ["./bun.lock", "vendor/", "/"] }', { readonly: ["bun.lock", "vendor"] }],
   ["readonly not a list", '{ "readonly": "bun.lock" }', {}, 1],
+  ["hiddenInTree: files and folders", '{ "hiddenInTree": ["./setup.ts", "scaffold/"] }', { hiddenInTree: ["setup.ts", "scaffold"] }],
+  ["hiddenInTree not a list", '{ "hiddenInTree": "setup.ts" }', {}, 1],
   ["panels",'{ "panels": { "files": true, "preview": false, "nope": true } }', { panels: { files: true, preview: false } }, 1],
   ["layout", '{ "layout": "stack" }', { layout: "stack" }],
   ["layout unknown", '{ "layout": "below" }', {}, 1],

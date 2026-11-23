@@ -404,8 +404,10 @@ function applyConfig(inline: boolean): ProjectConfig {
   const hidden = new Set([...(init?.hidden ?? []).map(bare), ...(config.hidden ?? [])]);
   if (workspace.isHiddenConfig(CONFIG_FILE)) hidden.add(CONFIG_FILE);
   workspace.setReadonly(config.readonly ?? []);
+  const out = config.hiddenInTree ?? [];
+  workspace.setTreeHidden(out);
   const listed = inline ? Object.keys(initFiles).map(bare) : (config.open ?? []);
-  const tabs = listed.filter((path) => vfs.files.has(path) && !hidden.has(path));
+  const tabs = listed.filter((path) => vfs.files.has(path) && !hidden.has(path) && !workspace.isOutOfSight(path, out));
   for (const path of tabs) workspace.open(path);
   const file = options.file && vfs.files.has(options.file) && !hidden.has(options.file) ? options.file : (tabs[0] ?? pg.entryFile());
   if (!hidden.has(file)) workspace.open(file);

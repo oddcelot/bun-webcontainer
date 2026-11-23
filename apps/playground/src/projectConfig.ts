@@ -34,6 +34,8 @@ export type ProjectConfig = {
   open?: string[];
   /** Files kept out of the tabs (still in the project and the tree). */
   hidden?: string[];
+  /** Files, and folders for everything in them, kept out of the file tree and the tabs until the reader shows hidden files. */
+  hiddenInTree?: string[];
   /** Files the editor won't change, and folders for everything in them; the program can still write them. */
   readonly?: string[];
   /** Panes to show (true) or hide (false) when the project opens; the others stay as they are. */
@@ -87,7 +89,7 @@ export function readConfig(read: (path: string) => string | undefined, problems:
   const c: ProjectConfig = {};
   const bad = (field: string, want: string) => problems.push(`${CONFIG_FILE}: "${field}" must be ${want}, ignored`);
   for (const key of Object.keys(r))
-    if (!["$schema", "name", "description", "kind", "tags", "run", "autorun", "fastPath", "env", "open", "hidden", "readonly", "panels", "layout", "sizes", "preview", "requires", "card"].includes(key)) problems.push(`${CONFIG_FILE}: unknown field "${key}"`);
+    if (!["$schema", "name", "description", "kind", "tags", "run", "autorun", "fastPath", "env", "open", "hidden", "hiddenInTree", "readonly", "panels", "layout", "sizes", "preview", "requires", "card"].includes(key)) problems.push(`${CONFIG_FILE}: unknown field "${key}"`);
 
   if (r.name !== undefined) typeof r.name === "string" && r.name ? (c.name = r.name) : bad("name", "a string");
   if (r.description !== undefined) typeof r.description === "string" ? (c.description = r.description) : bad("description", "a string");
@@ -108,6 +110,8 @@ export function readConfig(read: (path: string) => string | undefined, problems:
   }
   if (r.open !== undefined) isStrings(r.open) ? (c.open = r.open.map(bare)) : bad("open", "a list of paths");
   if (r.hidden !== undefined) isStrings(r.hidden) ? (c.hidden = r.hidden.map(bare)) : bad("hidden", "a list of paths");
+  if (r.hiddenInTree !== undefined)
+    isStrings(r.hiddenInTree) ? (c.hiddenInTree = r.hiddenInTree.map((p) => bare(p).replace(/\/+$/, "")).filter(Boolean)) : bad("hiddenInTree", "a list of paths");
   if (r.readonly !== undefined)
     isStrings(r.readonly) ? (c.readonly = r.readonly.map((p) => bare(p).replace(/\/+$/, "")).filter(Boolean)) : bad("readonly", "a list of paths");
   if (r.panels !== undefined) {
