@@ -49,7 +49,7 @@ function newTabPath(e: MouseEvent): string | undefined {
  * (so pages, scripts and links work); everything else shows status, headers and body. Several previews can be
  * open as tabs; the request bar acts on the active one.
  */
-export function Preview() {
+export function Preview(props: { openTab?: (url: string) => void }) {
   const app = useContext(AppContext);
   const p = app.previews;
   const s = p.state;
@@ -169,7 +169,9 @@ export function Preview() {
             disabled={disabled}
             onClick={() => {
               const path = active().path.trim() || "/";
-              window.open(previewUrl(path.startsWith("/") ? path : `/${path}`), "_blank", "noopener");
+              const url = previewUrl(path.startsWith("/") ? path : `/${path}`);
+              if (props.openTab) props.openTab(url);
+              else window.open(url, "_blank", "noopener");
             }}
           >
             <i class="i-lucide-external-link" aria-hidden="true" />

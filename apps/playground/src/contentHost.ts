@@ -36,6 +36,9 @@ export const answerAsks = (fn: typeof onAsk) => void (onAsk = fn);
 /** Told of each host frame that becomes ready (the first, and any after a loss): module and preview URLs name its id. */
 const hostListeners = new Set<(h: Host) => void>();
 export const onHost = (fn: (h: Host) => void) => void hostListeners.add(fn);
+/** Told of the preview pages on the content origin in browser tabs of their own, as they show and go. */
+let onTab: ((base: string, id: string, open: boolean) => void) | undefined;
+export const watchContentTabs = (fn: typeof onTab) => void (onTab = fn);
 /** Told when the host frame is lost, with why. */
 let onLost: ((reason: string) => void) | undefined;
 export const whenLost = (fn: typeof onLost) => void (onLost = fn);
@@ -116,6 +119,7 @@ function startHost(): Promise<Host> {
         if (d.kind === "sw") onAsk?.({ data: d.d, ports: m.ports });
         else if (d.kind === "w") workers.get(d.g)?.deliver(d.d, m.ports);
         else if (d.kind === "werr") workers.get(d.g)?.fail(d.message);
+        else if (d.kind === "tab") onTab?.(d.base, d.id, d.open);
         else if (d.kind === "pong") {
           seen = true;
           lastWorkers = d.workers;

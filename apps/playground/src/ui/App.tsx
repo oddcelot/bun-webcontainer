@@ -5,6 +5,7 @@ import { Palette, openPalette, type PaletteCommand } from "./Palette";
 import { openSettings } from "./Settings";
 import { openShortcuts } from "./Shortcuts";
 import { Preview } from "./Preview";
+import { watchOwnTabs } from "../preview";
 import { pref } from "../prefs";
 import { AppContext } from "./context";
 import { Dock } from "./Dock";
@@ -171,6 +172,35 @@ export function App() {
   const treeShown = () => (tiling ? tiling.shown("files") : columnSizes()[0] > 0);
   const previewShown = () => (tiling ? tiling.shown("preview") : columnSizes()[2] > 0 && rowSizes()[0] > 0);
   const consoleShown = () => (tiling ? tiling.shown("console") : columnSizes()[2] > 0 && rowSizes()[1] > 0);
+  // Previews opened in browser tabs of their own ("Open in a new tab"): the pane hides while one is open, and shows again
+  // when the last one closes, unless the reader showed it in the meantime. A reload is a close and an open: the pane
+  // waits a moment before it shows.
+  const ownTabs = new Set<string>();
+  let hidForTabs = false;
+  let check: ReturnType<typeof setTimeout> | undefined;
+  const showUnlessOpen = (after: number) => {
+    clearTimeout(check);
+    check = setTimeout(() => {
+      if (ownTabs.size || !hidForTabs) return;
+      hidForTabs = false;
+      if (!previewShown()) toggle(0);
+    }, after);
+  };
+  watchOwnTabs((id, open) => {
+    if (open) ownTabs.add(id);
+    else if (ownTabs.delete(id)) showUnlessOpen(2000);
+  });
+  const openOwnTab = (url: string) => {
+    window.open(url, "_blank", "noopener");
+    if (!previewShown()) return;
+    toggle(0);
+    hidForTabs = true;
+    // A tab that never says it opened (blocked, or still loading): the pane comes back.
+    showUnlessOpen(10_000);
+  };
+  createEffect(previewShown, (shown) => {
+    if (shown) hidForTabs = false;
+  });
   /** Runs a command of the page (a shortcut, or the command palette); false if it doesn't apply here, to leave the key be. */
   const perform = (command: Command): boolean => {
     const s = app.session;
@@ -295,7 +325,7 @@ export function App() {
                   <EditorPane />
                 </section>
               ),
-              preview: () => <Preview />,
+              preview: () => <Preview openTab={openOwnTab} />,
               console: () => <Dock />,
             }}
           />
@@ -344,7 +374,7 @@ export function App() {
                         return (
                           <>
                             <Resizable.Panel panelId="preview-panel" initialSize={rows[0]} minSize="80px">
-                              {() => <Preview />}
+                              {() => <Preview openTab={openOwnTab} />}
                             </Resizable.Panel>
                             <Resizable.Handle class="resize-handle" aria-label="Resize preview and console" />
                             <Resizable.Panel panelId="console-wrap" initialSize={rows[1]} minSize="60px">

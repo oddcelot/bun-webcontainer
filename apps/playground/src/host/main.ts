@@ -123,6 +123,11 @@ function connect(port: MessagePort) {
   navigator.serviceWorker.onmessage = (e) => reply(port, { kind: "sw", d: e.data }, [...e.ports]);
   // A message the editor sent could not be read here (shared memory across origins): the editor says so to its Runs.
   port.onmessageerror = () => reply(port, { kind: "merr" });
+  // The preview pages in browser tabs of their own, as they show and go: the editor's channel doesn't reach this origin.
+  previewChannel.onmessage = (e) => {
+    const d = e.data;
+    if (typeof d?.tab === "string" && typeof d.id === "string" && typeof d.open === "boolean") reply(port, { kind: "tab", base: d.tab, id: d.id, open: d.open });
+  };
   port.onmessage = async (e) => {
     if (!isMessage<ToHost>(e.data, "host")) return;
     const m = e.data;
