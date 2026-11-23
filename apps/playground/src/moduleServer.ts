@@ -311,6 +311,15 @@ function patchChokidar(code: string): string {
   return code.includes("_handleRead(") ? code.replace(/(\bitem\s*!==\s*directory\s*&&)(\s*!current\.has\(item\))/, "$1 item !== \"\" &&$2") : code;
 }
 
+/**
+ * @sveltejs/vite-plugin-svelte names a component's stylesheet `root + filename`, with `filename` already root-relative
+ * (`/src/App.svelte`). With the project at root "/" that is `//src/App.svelte?svelte&type=style&lang.css`, which the
+ * page reads as a URL on the host `src`, so the component's module never loads. Drop the root when it is "/".
+ */
+function patchSvelteStyleId(code: string): string {
+  return code.includes("function createVirtualImportId(") ? code.replace(/\bfilename\s*=\s*root\s*\+\s*filename;/, 'filename = (root === "/" ? "" : root) + filename;') : code;
+}
+
 
 const META_RE = /(?<![\w$.])import\.meta\.(url|dirname|filename|dir|file|path|env|main|resolve)\b|(?<![\w$.])import\s*\(\s*(?!["'\s])/g;
 
@@ -736,7 +745,7 @@ async function serveModuleOnce(vfs: VFS, rawPath: string, onError: (msg: string)
     code = esmDirname(code, path);
     const free = code.startsWith(META_REQUIRE);
     if (free) code = `var require = import.meta.require;${code.slice(META_REQUIRE.length)}`;
-    let body = rewriteMeta(hoistMetaRequire(vfs, hoistRequires(vfs, patchChokidar(code), dir, final), path, dir, final, free), path, target === "bun");
+    let body = rewriteMeta(hoistMetaRequire(vfs, hoistRequires(vfs, patchSvelteStyleId(patchChokidar(code)), dir, final), path, dir, final, free), path, target === "bun");
     // In the worker, the module's namespace once it has run, for a require() of it (worker/node/module.ts): imported
     // from its own URL, so it's this instance.
     if (plugin) {
