@@ -231,8 +231,9 @@ const PANEL_LOOKS: Record<Tile, { label: string; icon: string }> = {
   preview: { label: "Preview", icon: "i-lucide-app-window" },
   console: { label: "Console", icon: "i-lucide-square-terminal" },
 };
-/** The picture's room, in the units its panels are placed in (percent of the picture). */
-const PICTURE = { x: 0, y: 0, w: 100, h: 100 };
+/** The picture's room and the gap between its panels, in units of its own (16 by 10, as it is drawn). */
+const PICTURE = { x: 0, y: 0, w: 160, h: 100 };
+const PICTURE_GAP = 4;
 
 /** The panels' arrangement: the reader's own. A few to pick from, each a small picture of itself. */
 function PanelsSettings() {
@@ -258,9 +259,9 @@ function PanelsSettings() {
                 {(preset) => (
                   <button type="button" class="layout-preset" aria-pressed={isPreset(t().layout(), preset.layout) ? "true" : "false"} onClick={() => t().setLayout(preset.layout)}>
                     <span class="picture" aria-hidden="true">
-                      <For each={[...place(preset.layout.tree, PICTURE, 0, new Set(preset.layout.hidden)).rects]}>
+                      <For each={[...place(preset.layout.tree, PICTURE, PICTURE_GAP, new Set(preset.layout.hidden)).rects]}>
                         {([tile, r]) => (
-                          <span class="panel" data-panel={tile} title={PANEL_LOOKS[tile as Tile].label} style={{ left: `${r.x}%`, top: `${r.y}%`, width: `${r.w}%`, height: `${r.h}%` }}>
+                          <span class="panel" data-panel={tile} title={PANEL_LOOKS[tile as Tile].label} style={{ left: `${r.x / 1.6}%`, top: `${r.y}%`, width: `${r.w / 1.6}%`, height: `${r.h}%` }}>
                             <i class={PANEL_LOOKS[tile as Tile].icon} />
                           </span>
                         )}

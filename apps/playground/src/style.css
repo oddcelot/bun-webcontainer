@@ -3730,7 +3730,7 @@ body:has(#req-handle[data-dragging]) * {
 
 /* Canary builds only (src/canary.ts): a notice above the status bar, centred, in a colour no theme uses. */
 /* The tiling layout's keys, listed while the next key runs one of them (App.tsx). */
-/* Settings, Panels: the arrangements to pick from, each a small picture with a panel per color. */
+/* Settings, Panels: the arrangements to pick from, each a small picture with a panel per color (the theme's own). */
 .layout-presets {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
@@ -3793,11 +3793,9 @@ body:has(#req-handle[data-dragging]) * {
     position: absolute;
     display: grid;
     place-items: center;
-    box-sizing: border-box;
-    border: 2px solid var(--bg);
-    border-radius: 5px;
-    background: color-mix(in srgb, var(--tint) 30%, var(--panel));
-    color: color-mix(in srgb, var(--tint) 70%, var(--fg));
+    border-radius: 4px;
+    background: var(--tint);
+    color: var(--bg);
     font-size: 13px;
   }
 }
@@ -3831,7 +3829,7 @@ body:has(#req-handle[data-dragging]) * {
     }
 
     i {
-      color: color-mix(in srgb, var(--tint) 70%, var(--fg));
+      color: var(--tint);
     }
   }
 }
