@@ -103,7 +103,8 @@ runbun.dev installs as an app in its own window: **Install** in the address bar 
 - uses the header as its title bar in Chrome and Edge (the chevron in the title bar switches it back);
 - opens runbun.dev links (examples, repositories, share links) in a new app window, in Chrome and Edge 139 or later;
 - offers **Blank starter** and **Starters and examples** from its icon's menu (right-click in the Dock or taskbar);
-- opens `.zip` files from Finder or Explorer (**Open With → runbun**), in Chrome and Edge.
+- opens `.zip` files from Finder or Explorer (**Open With → runbun**), in Chrome and Edge;
+- opens `web+runbun:` links from other apps and pages, in Chrome and Edge (the first one asks for permission): `web+runbun://example/<name>`, `web+runbun://repo/<owner>/<repo>`, `web+runbun://git/<url>`, `web+runbun://s/<id>` (a short share link) and `web+runbun://gallery`.
 
 Projects and settings are the same as in the browser tab.
 

@@ -28,6 +28,29 @@
       } catch {}
     </script>
     <!--
+      A web+runbun: link (public/site.webmanifest's protocol_handlers) arrives as ?link=<the link>. It becomes the URL
+      it stands for before anything reads the URL: web+runbun://example/<name> → ?example=, repo/<owner/repo…> → ?repo=,
+      git/<url> → ?git=, gallery → ?gallery, open → ?open, s/<id> → /s/<id> (a short share link). Anything else opens
+      the playground.
+    -->
+    <script>
+      try {
+        const q = new URLSearchParams(location.search);
+        const link = q.get("link");
+        if (link !== null) {
+          q.delete("link");
+          const [, name = "", rest = ""] = /^web\+runbun:(?:\/\/)?([a-z]+)\/?(.*)$/i.exec(link) ?? [];
+          const kind = name.toLowerCase();
+          if (kind === "s" && /^[\w-]+$/.test(rest)) location.replace(new URL(`s/${rest}`, location.href));
+          else {
+            if ((kind === "example" || kind === "repo" || kind === "git") && rest) q.set(kind, rest);
+            else q.set(kind === "gallery" ? "gallery" : "open", "");
+            history.replaceState(null, "", location.pathname + "?" + q.toString().replace(/=(?=&|$)/g, "") + location.hash);
+          }
+        }
+      } catch {}
+    </script>
+    <!--
       Landing page or playground. runbun.dev/ opens on the landing page (#landing), which is what search engines index;
       its "Open the playground" button starts the playground in place (src/entry.ts). A link to a project (?example=,
       ?repo=, a #code= share link, /s/<id>) or to a local runner (?connect=, packages/connect) opens the playground
