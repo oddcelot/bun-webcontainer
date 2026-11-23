@@ -333,8 +333,8 @@ const SIZES: [Sized, string, string][] = [
   ["preview", "Preview", "of its column, over the console"],
 ];
 const REQUIRES: [Requirement, string, string][] = [
-  ["cross-origin-isolation", "cross-origin isolation", "SharedArrayBuffer and threads (Vite, Rolldown); runbun.dev has it, some hosts don't"],
-  ["local-bun", "Local Bun", "Native Bun on the reader's machine: child processes, native addons"],
+  ["cross-origin-isolation", "cross-origin isolation", "For projects that use SharedArrayBuffer or threads, like Vite and Rolldown. Where the page doesn't have it, the console warns when the project opens."],
+  ["local-bun", "Local Bun", "For projects that need Bun on your machine: child processes or native addons. With Local Bun off, the console warns when the project opens."],
 ];
 
 /** A field whose label has an info button: its tooltip says what the field does, with examples. */
@@ -654,7 +654,7 @@ function ProjectPage(props: { section: Section; project: ProjectConfigState }) {
           {([need, label, hint]) => (
             <Row
               label={`Needs ${label}`}
-              hint={`${hint}. The playground says so up front where it's missing.`}
+              hint={hint}
               reset={{ shown: (c().requires ?? []).includes(need), default: "off", onReset: () => set("requires", (c().requires ?? []).filter((r) => r !== need)) }}
             >
               <Switch
@@ -692,7 +692,7 @@ function ProjectPage(props: { section: Section; project: ProjectConfigState }) {
             </Row>
           )}
         </For>
-        <Row label="Embed layout" hint="The preview beside the editor or under it, unless the embedding page says." reset={unset("layout", c().layout, "side")}>
+        <Row label="Embed layout" hint="Whether the preview sits beside the editor or under it. The embedding page's own setting wins." reset={unset("layout", c().layout, "side")}>
           <Segmented
             label="Embed layout"
             value={c().layout ?? "side"}
