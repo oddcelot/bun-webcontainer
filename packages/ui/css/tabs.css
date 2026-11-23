@@ -29,7 +29,7 @@
       box-shadow: inset 0 0 0 1px var(--tab-track-border, transparent);
     }
 
-    /* Tabs size to their name up to 26rem (then "…"; the tooltip has the full name) and don't shrink: a full row scrolls. */
+    /* Tabs size to their name, from 6rem up to 26rem (then "…"; the tooltip has the full name) and don't shrink: a full row scrolls. */
     .tab {
       position: relative;
       display: flex;
@@ -54,9 +54,8 @@
       &[data-selected] {
         color: var(--fg);
       }
-      /* Without a ×, the tab is just its name: no room kept for one. */
+      /* Without a ×, no room is kept for one; the tab is still as wide as the others at least ("/" alone is a sliver). */
       &:not(:has(.close)) {
-        min-width: 0;
         padding-inline: 10px;
       }
       &:has(:focus-visible) {
