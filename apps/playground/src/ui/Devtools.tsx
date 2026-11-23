@@ -1,4 +1,4 @@
-import { Show, createEffect, createSignal, onSettled, useContext } from "solid-js";
+import { For, Show, createEffect, createSignal, onSettled, useContext } from "solid-js";
 import { CONTENT_ORIGIN } from "../contentOrigin";
 import type { DevtoolsHost } from "../previewDevtools";
 import { AppContext, type App } from "./context";
@@ -16,8 +16,8 @@ export function showDevtools(app: App): boolean {
   return true;
 }
 
-/** Which devtools a project has: Solid's (@solidjs/start-devtools) or Vue's (vite-plugin-vue-devtools); null for none. */
-type Kind = "solid" | "vue";
+/** Which devtools a project has: Solid's (@solidjs/start-devtools), Vue's (vite-plugin-vue-devtools), Nuxt's (nuxt). */
+type Kind = "solid" | "vue" | "nuxt";
 
 /** A prototype: offered for a project with Solid's or Vue's devtools, where the preview is on this origin. */
 export function devtoolsOffered(app: App): boolean {
@@ -40,7 +40,7 @@ function kindOf(app: App): Kind | null {
   pkgVersion();
   try {
     const pkg = app.vfs.readText("package.json") ?? "";
-    return pkg.includes('"@solidjs/start-devtools"') ? "solid" : pkg.includes('"vite-plugin-vue-devtools"') ? "vue" : null;
+    return pkg.includes('"@solidjs/start-devtools"') ? "solid" : pkg.includes('"vite-plugin-vue-devtools"') ? "vue" : pkg.includes('"nuxt"') ? "nuxt" : null;
   } catch {
     return null;
   }
@@ -163,12 +163,77 @@ function VueDevtools() {
   );
 }
 
+type NuxtWindow = Window & { __NUXT_DEVTOOLS_HOST__?: object; __NUXT_DEVTOOLS_VIEW__?: { setClient(host: object): void } };
+
+/**
+ * Nuxt's devtools for the page in the active preview tab: their client (`<preview>/__nuxt_devtools__/client/`) in a
+ * frame, handed the page's devtools host as Nuxt's own panel hands it (`__NUXT_DEVTOOLS_VIEW__.setClient`), and again
+ * whenever the page comes with another one (a reload, another tab). Same origin, so no messages in between.
+ */
+function NuxtDevtools() {
+  const app = useContext(AppContext);
+  let frame!: HTMLIFrameElement;
+  // Past the welcome page, which the client shows until its first visit is over (its Get Started, which also asks about
+  // usage statistics: a project's nuxt.config.ts sets `devtools.telemetry`). The client shares this origin's storage.
+  try {
+    localStorage.setItem("nuxt-devtools-first-visit", "false");
+  } catch {}
+  // The client's root. No query: Nuxt fills in the client's base only for the bare path. A new preview tab mounts this
+  // afresh instead (DevtoolsBody).
+  const src = () => (app.session.ports().length ? previewUrl("/__nuxt_devtools__/client/") : undefined);
+  onSettled(() => {
+    let handed: object | undefined;
+    const hand = () => {
+      try {
+        // The client's router knows paths under its base (`/__nuxt_devtools__/client/`), not the preview's prefix in
+        // front of it: it starts on a "not found" page. Sent to the overview, as its welcome page's Get Started does.
+        type Router = { currentRoute: { value: { path: string } }; replace(to: string): unknown };
+        const root = frame.contentDocument?.getElementById("__nuxt") as (HTMLElement & { __vue_app__?: { config: { globalProperties: { $router?: Router } } } }) | null;
+        const router = root?.__vue_app__?.config.globalProperties.$router;
+        if (router?.currentRoute.value.path.includes("__preview")) void router.replace("/modules/overview");
+        const view = (frame.contentWindow as NuxtWindow | null)?.__NUXT_DEVTOOLS_VIEW__;
+        const page = app.previews.frames.get(app.previews.state.active)?.contentWindow as NuxtWindow | null | undefined;
+        const host = page?.__NUXT_DEVTOOLS_HOST__;
+        if (!view || !host || host === handed) return;
+        view.setClient(host);
+        handed = host;
+      } catch {
+        // A page on another origin, or one still loading.
+      }
+    };
+    // A loaded client starts without a host.
+    const reset = () => void (handed = undefined);
+    frame.addEventListener("load", reset);
+    const timer = setInterval(hand, 500);
+    return () => {
+      clearInterval(timer);
+      frame.removeEventListener("load", reset);
+    };
+  });
+  return (
+    <div class="devtools">
+      <iframe ref={frame} id="devtools-frame" title="Nuxt devtools" src={src()} />
+      <Show when={!src()}>
+        <p class="devtools-empty">Nuxt's devtools show up here once the dev server runs.</p>
+      </Show>
+    </div>
+  );
+}
+
 /** The Devtools tab's pane: the project's kind of devtools, mounted afresh when another project brings another kind. */
 function DevtoolsBody() {
   const app = useContext(AppContext);
   return (
     <Show when={kindOf(app)} keyed>
-      {(kind) => (kind === "vue" ? <VueDevtools /> : <SolidDevtools />)}
+      {(kind) =>
+        kind === "vue" ? (
+          <VueDevtools />
+        ) : kind === "nuxt" ? (
+          <For each={[app.previews.state.active]}>{() => <NuxtDevtools />}</For>
+        ) : (
+          <SolidDevtools />
+        )
+      }
     </Show>
   );
 }
@@ -176,7 +241,7 @@ function DevtoolsBody() {
 export const devtoolsTab: DockTab = {
   id: "devtools",
   title: "Devtools",
-  tip: "The project's devtools (Solid's or Vue's), for the page in the active preview tab",
+  tip: "The project's devtools (Solid's, Vue's or Nuxt's), for the page in the active preview tab",
   icon: "i-lucide-activity",
   when: offered,
   attention: () => asked() || undefined,

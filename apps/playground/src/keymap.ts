@@ -26,7 +26,7 @@ export const COMMANDS = {
   quickOpen: { label: "Go to a file", keys: ["Mod+P"] },
   commandPalette: { label: "Show all commands", keys: ["Mod+Shift+P", "F1"] },
   // The key Solid's toolbar opens itself with over a page; in the dock it is a tab (ui/Devtools.tsx).
-  showDevtools: { label: "Show the devtools (projects with Solid's or Vue's)", keys: ["Alt+Shift+D"] },
+  showDevtools: { label: "Show the devtools (projects with Solid's, Vue's or Nuxt's)", keys: ["Alt+Shift+D"] },
   exitFullscreen: { label: "Leave the expanded preview", keys: ["Escape"] },
 } satisfies Record<string, { label: string; keys: string[]; scope?: Scope }>;
 

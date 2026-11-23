@@ -86,7 +86,7 @@ For browser-only projects there is also an experimental way to skip the install 
 
 ## Devtools
 
-The pane under the preview has a **Devtools** tab, next to the console, in a project with Solid's or Vue's devtools. It shows them for the page in the active preview tab, in place of the panel that would sit over your page.
+The pane under the preview has a **Devtools** tab, next to the console, in a project with Solid's, Vue's or Nuxt's devtools. It shows them for the page in the active preview tab, in place of the panel that would sit over your page.
 
 <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd> brings the tab forward from anywhere in the playground, and a run that fails switches to the console, where its output says why.
 
@@ -99,6 +99,10 @@ In a project that uses [`@solidjs/start-devtools`](https://github.com/solidjs/so
 ### Vue
 
 In a project with [`vite-plugin-vue-devtools`](https://devtools.vuejs.org/guide/vite-plugin) (the [Vue + Pinia + DevTools](https://runbun.dev/?example=vue-demo) example has it), the tab shows Vue DevTools: the component tree with each component's props and state, Pinia's stores, the timeline, routes and the Vite module graph. The floating Vue button in the page goes; the tab is its panel. Switching preview tabs, or a new run, loads them for that page.
+
+### Nuxt
+
+In a [Nuxt](https://nuxt.com/) project (the [Nuxt + DevTools](https://runbun.dev/?example=nuxt-demo) example), the tab shows [Nuxt DevTools](https://devtools.nuxt.com/): pages, components, imports, modules, the payload and the server's hooks, for the page in the active preview tab. The Nuxt button in the page goes; the tab is its panel. Actions that write files ask for a token Nuxt prints in the console, unless the project's `nuxt.config.ts` sets `devtools.disableAuthorization`.
 
 ### Where it works
 

@@ -9,6 +9,8 @@
 // A rejected `await` throws instead of returning, so the `catch` and `finally` blocks restore too; a `for await`
 // resumes before its body and after the loop. Everything is inserted within a line, so lines stay the transpiler's;
 // restoreContextMapped reports the inserts, for moving the source map's columns (sourceMap.ts, insertColumns).
+// Each insert sits between two `/*als*/` comments, so a function's source (`fn.toString()`, which packages send to a
+// page as an inline script) comes back as Bun printed it: see `withoutContext`.
 //
 // It reads Bun's printed output, not arbitrary source: `await` is followed by a space there and statements end in `;`.
 // When anything doesn't add up (unbalanced brackets) the code is returned as it came.
@@ -268,6 +270,13 @@ function forAwait(code: string, from: number): { bodyStart: number; end: number;
 
 let counter = 0;
 
+/** Around each insert (shown without it in the examples above). */
+const MARK = "/*als*/";
+const MARKED = /\/\*als\*\/[^]*?\/\*als\*\//g;
+
+/** `code` (some of `restoreContext`'s output) without the inserts. */
+export const withoutContext = (code: string) => (code.includes(MARK) ? code.replace(MARKED, "") : code);
+
 /** Text inserted into a line: `[original column, length]`, in column order. */
 export type Inserts = Map<number, [number, number][]>;
 
@@ -330,6 +339,7 @@ export function restoreContextMapped(code: string): { code: string; inserts: Ins
   let lineStart = 0;
   let scan = 0;
   for (const e of edits) {
+    e.text = MARK + e.text + MARK;
     out += code.slice(last, e.at) + e.text;
     last = e.at;
     for (let nl; (nl = code.indexOf("\n", scan)) >= 0 && nl < e.at; scan = nl + 1) {

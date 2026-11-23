@@ -141,7 +141,7 @@ The gear in the header opens **Settings**, a full-window page with its sections 
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>J</kbd> | Show or hide the console |
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Alt</kbd>+<kbd>B</kbd> | Show or hide the preview |
 | <kbd>Esc</kbd> | Leave the expanded preview |
-| <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd> | Bring [the devtools](/playground/preview/#devtools) forward, in projects with Solid's or Vue's (`showDevtools`; not in embeds) |
+| <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd> | Bring [the devtools](/playground/preview/#devtools) forward, in projects with Solid's, Vue's or Nuxt's (`showDevtools`; not in embeds) |
 | <kbd>F8</kbd>, <kbd>F10</kbd>, <kbd>F11</kbd>, <kbd>Shift</kbd>+<kbd>F11</kbd> | While the [debugger](/playground/running-code/#debugger) is paused: resume, step over, step into, step out |
 
 They work in the preview page too, and in an embed, where showing or hiding a pane works only for the panes its author didn't turn off (`features="-console"`).

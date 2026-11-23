@@ -82,6 +82,20 @@ parentPort!.on("message", (m) => {
   parentPort!.postMessage(m * workerData.n);
 });`,
   "idle.ts": `import { parentPort } from "node:worker_threads";\nparentPort!.on("message", () => {});`,
+  // A thread's servers on port 0 and on a socket path, which the program reaches (Nuxt's dev server: Nitro's worker).
+  "netthread.ts": `import { parentPort } from "node:worker_threads";
+import http from "node:http";
+import net from "node:net";
+const web = http.createServer((req, res) => res.end("thread http " + req.method + " " + req.url));
+const echo = (s: net.Socket) => s.on("data", (d) => s.write("echo " + d)).on("end", () => s.end());
+const onPath = net.createServer(echo);
+const onPort = net.createServer(echo);
+web.listen(0, () => onPath.listen("thread.sock", () => onPort.listen(0, () => parentPort!.postMessage({ web: (web.address() as net.AddressInfo).port, port: (onPort.address() as net.AddressInfo).port }))));
+parentPort!.on("message", async (m) => {
+  if (m === "close") return [web, onPath, onPort].forEach((x) => x.close()), parentPort!.close();
+  const r = await fetch("http://localhost:" + m + "/from-thread");
+  parentPort!.postMessage(r.status + " " + (await r.text()));
+});`,
   "done.ts": `import { parentPort } from "node:worker_threads";\nconsole.log("done.ts ran");\nparentPort!.postMessage("done");`,
   // A Web Worker: a listener added before onmessage runs first, as on the Web.
   "webworker.ts": `import { isMainThread, workerData } from "node:worker_threads";
@@ -241,6 +255,41 @@ log("$ code:", (await $\`bun child.ts\`.env({ ...process.env, CODE: "4" }).nothr
   const w5 = new Worker('const t = require("node:worker_threads"); t.parentPort.postMessage(t.workerData + 1)', { eval: true, workerData: 41 });
   log("wt eval:", await next("message", w5), await next("exit", w5));
 }
+// Between the program and a thread: HTTP to a server on port 0 both ways, net connections to a socket path and a port,
+// a net server and client in one process, and the errors for nothing listening there
+{
+  const { Worker } = await import("node:worker_threads");
+  const http = await import("node:http");
+  const net = await import("node:net");
+  const w = new Worker("./netthread.ts");
+  const next = () => new Promise<any>((r) => w.once("message", r));
+  const ports = await next();
+  const r = await fetch(\`http://localhost:\${ports.web}/a?b=1\`, { method: "POST", body: "x" });
+  log("thread http:", r.status, await r.text());
+  const mine = http.createServer((req, res) => res.end("program http " + req.url)).listen(0);
+  await new Promise((r) => mine.once("listening", r));
+  w.postMessage((mine.address() as any).port);
+  log("thread fetches the program:", await next());
+  const talk = (to: any) =>
+    new Promise<string>((done, fail) => {
+      let got = "";
+      const s = net.connect(to, () => s.end("hi"));
+      s.on("data", (d) => (got += d)).on("end", () => done(got)).on("error", (e: any) => fail(e));
+    });
+  log("net to a thread's path:", await talk({ path: "thread.sock" }));
+  log("net to a thread's port:", await talk({ port: ports.port, host: "127.0.0.1" }));
+  const local = net.createServer((s) => s.on("data", (d) => s.end("local " + d))).listen("local.sock");
+  await new Promise((r) => local.once("listening", r));
+  log("net in one process:", await talk("local.sock"));
+  local.close();
+  for (const to of [{ path: "nobody.sock" }, { port: 1, host: "127.0.0.1" }]) {
+    const e: any = await talk(to).catch((e) => e);
+    log("net to nothing:", e.code, e.syscall, e.address ?? "", e.port ?? "");
+  }
+  mine.close();
+  w.postMessage("close");
+  await new Promise((r) => w.once("exit", r));
+}
 // The Web Worker global: a file: URL and a path relative to the cwd, argv, env, workerData, messages both ways (self's
 // onmessage, addEventListener and postMessage), a transfer, an uncaught error, process.exit, terminate, an end
 {
@@ -352,6 +401,13 @@ const EXPECTED = [
   "done.ts ran",
   "wt url: done 0",
   "wt eval: 42 0",
+  "thread http: 200 thread http POST /a?b=1",
+  "thread fetches the program: 200 program http /from-thread",
+  "net to a thread's path: echo hi",
+  "net to a thread's port: echo hi",
+  "net in one process: local hi",
+  "net to nothing: ENOENT connect nobody.sock ",
+  "net to nothing: ECONNREFUSED connect 127.0.0.1 1",
   'ww hello: MessageEvent [false,{"k":1},["b1"],"w2","object",true,"undefined"] true open number',
   "ww echo: echo hi 1",
   'ww transfer: {"len":16} 0',

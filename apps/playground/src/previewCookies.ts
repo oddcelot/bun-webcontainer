@@ -37,10 +37,11 @@ function record(update: (r: Record<string, string[]>) => void) {
   } catch {}
 }
 
-/** A hidden same-origin frame at `url`, its document once loaded (undefined if it doesn't load). */
+/** A hidden same-origin frame at `url`, its document once loaded (undefined if it doesn't load), and whether it has. */
 function loadPage(url: string): {
   frame: HTMLIFrameElement;
   doc: Promise<Document | undefined>;
+  loaded: boolean;
 } {
   const frame = document.createElement("iframe");
   frame.hidden = true;
@@ -51,7 +52,9 @@ function loadPage(url: string): {
   });
   frame.src = url;
   document.body.append(frame);
-  return { frame, doc };
+  const page = { frame, doc, loaded: false };
+  void doc.then(() => (page.loaded = true));
+  return page;
 }
 
 /** Expires every cookie a page shows, at each path from the base down to the page's directory (where it may be set). */
@@ -74,10 +77,7 @@ function expireAll(doc: Document, base: string, dir: string) {
 
 /** The cookie pages of one preview base. */
 export class PreviewCookies {
-  private pages = new Map<
-    string,
-    { frame: HTMLIFrameElement; doc: Promise<Document | undefined> }
-  >();
+  private pages = new Map<string, ReturnType<typeof loadPage>>();
   private probe: Promise<boolean> | undefined;
 
   constructor(readonly base: string) {
@@ -103,8 +103,10 @@ export class PreviewCookies {
       });
     }
     this.pages.set(dir, p);
+    // Only loaded ones: a frame removed while loading never fires `load`, and the request waiting on it never went.
     for (const [old, page] of this.pages) {
       if (this.pages.size <= MAX_PAGES) break;
+      if (!page.loaded) continue;
       page.frame.remove();
       this.pages.delete(old);
     }

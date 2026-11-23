@@ -8,6 +8,8 @@
 // without being told one (a microtask nothing wrapped) would otherwise see the last one set, so restoring one
 // also queues a single microtask that clears `cur`.
 
+import { withoutContext } from "../../asyncAwait";
+
 type Ctx = ReadonlyMap<object, unknown> | undefined;
 type Fn = (...args: any[]) => any;
 
@@ -74,9 +76,20 @@ function activate() {
   globalThis.queueMicrotask = (fn: () => void) => native.queueMicrotask(bindContext(fn));
 }
 
-/** `__alsSave` and `__alsRestore`, which the modules' source pass calls, as globals. */
+/**
+ * `__alsSave` and `__alsRestore`, which the modules' source pass calls, as globals. A function's source leaves the pass
+ * out: code that sends one elsewhere (Nuxt's loading page inlines a function as a `<script>`) has no such globals there.
+ */
 export function installAsyncContext() {
   Object.assign(globalThis, { __alsSave: save, __alsRestore: restore });
+  const source = Function.prototype.toString;
+  Object.defineProperty(Function.prototype, "toString", {
+    value: function toString(this: Function) {
+      return withoutContext(source.call(this));
+    },
+    writable: true,
+    configurable: true,
+  });
 }
 
 class AsyncLocalStorage<T> {

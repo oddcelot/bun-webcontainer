@@ -519,8 +519,12 @@ export function createPlayground({ watch, localUrl, git }: { watch?: () => boole
     runner.onStdinWait = (on) => terminal.reading(on);
     if (runner instanceof Runner) runner.onStdinRaw = (on) => terminal.rawMode(on);
     runner.onPorts = (ports, shown) => {
+      const had = session.previewPort();
       session.setPorts(ports);
       session.setPreviewPort(shown);
+      // A server that comes up after the program counted as started (a dev server that reads keys before it listens,
+      // one slower than the wait for it): the preview tabs that asked before it did ask again.
+      if (had === undefined && shown !== undefined) previews.retryUnserved();
     };
     setRuntime(kind);
     if (previous) {

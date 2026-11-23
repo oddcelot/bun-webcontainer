@@ -35,7 +35,7 @@ Built-ins import with or without the `node:` prefix. Labels are explained on the
 | `http2` | ⚪ Stub | |
 | `inspector` | ⚪ Stub | `Session` answers `Runtime.enable` and `Profiler.enable` as Bun does; no profiler or debugger. [Details](#inspector) |
 | `module` | 🟡 Partial | `builtinModules`, `isBuiltin`, `createRequire` and `SourceMap` work; `require()` of an ES module has limits. [Details](#module) |
-| `net` | ⚪ Stub | `isIP*` works; no sockets. |
+| `net` | 🟡 Partial | `isIP*`; servers and connections between the program, its child processes and its `worker_threads` threads, on socket paths and ports. Nothing outside the playground connects. [Details](#net) |
 | `os` | 🟡 Partial | Fixed values: Linux, x64, `/home/user`, `/tmp`, and Linux's `constants`. `cpus()` and `networkInterfaces()` are empty. |
 | `path`, `path/posix` | ✅ Works | POSIX only. `path.win32` behaves like POSIX; `path/win32` is missing. `matchesGlob` matches as `Bun.Glob` does. |
 | `perf_hooks` | 🟡 Partial | `performance`, `PerformanceObserver`. `monitorEventLoopDelay` reports zeros. |
@@ -361,6 +361,16 @@ Works:
 - Files a program writes appear when it closes them or ends.
 
 Not supported: no symlinks or sockets; `poll_oneoff` doesn't wait.
+
+### `net`
+
+Works:
+
+- `net.createServer().listen(path)` or `.listen(port)` (`0` for any free port), and `net.connect` / `createConnection` / `new Socket().connect` to it, with `"connection"`, `"connect"`, `data`, `end` and `close` both ways. The program, its child processes and its `worker_threads` threads reach each other's servers, as processes on one machine do (Nuxt's dev server talks to its Nitro worker this way).
+- Connecting to nothing fails as in Node: `ENOENT` for a socket path, `ECONNREFUSED` for a port. A socket path is a file while its server listens, and goes when it closes.
+- `isIP`, `isIPv4`, `isIPv6`.
+
+Not supported: connections to anything outside the program and its processes (the browser has no sockets); `ref`/`unref` only decide whether an open connection keeps the program running.
 
 ### `worker_threads`
 

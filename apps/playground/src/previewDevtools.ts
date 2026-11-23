@@ -40,7 +40,7 @@ export function previewDevtools() {
       return undefined;
     }
   };
-  // Vue's devtools (vite-plugin-vue-devtools): their panel is the dock's, so the page's floating button and panel go,
+  // Vue's devtools (vite-plugin-vue-devtools) and Nuxt's: their panel is the dock's, so the page's floating button and panel go,
   // where there's a dock (the full playground, an embed) on this origin.
   const docked = (() => {
     try {
@@ -51,7 +51,7 @@ export function previewDevtools() {
   })();
   if (docked) {
     const hide = document.createElement("style");
-    hide.textContent = "#__vue-devtools-container__ { display: none !important; }";
+    hide.textContent = "#__vue-devtools-container__, #nuxt-devtools-container { display: none !important; }";
     document.documentElement.append(hide);
   }
   let host: DevtoolsHost | undefined;
@@ -86,7 +86,7 @@ export function previewDevtools() {
   addEventListener(
     "keydown",
     (e) => {
-      if (!(host || (docked && document.getElementById("__vue-devtools-container__"))) || !e.altKey || !e.shiftKey || e.code !== "KeyD") return;
+      if (!(host || (docked && document.querySelector("#__vue-devtools-container__, #nuxt-devtools-container"))) || !e.altKey || !e.shiftKey || e.code !== "KeyD") return;
       e.stopImmediatePropagation();
       e.preventDefault();
       const up = window.parent as typeof window;
