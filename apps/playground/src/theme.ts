@@ -84,7 +84,7 @@ for (const href of HOSTING.theme?.fonts ?? []) {
 }
 
 /**
- * The theme's own variables: its chrome colors, plus what its family declares (e.g. Elysia's overlay, Solid's font),
+ * The theme's own variables: its chrome colors, plus what its family declares (e.g. Elysia's overlay, Solid's radius),
  * then the host's.
  */
 const themeVarsFor = (theme: ThemeLike) => ({
