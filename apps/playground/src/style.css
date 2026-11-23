@@ -1583,6 +1583,8 @@ html[data-booting] #app > header > * { visibility: hidden; animation: boot-fallb
   padding: 6px;
 
   .palette-input {
+    /* Its own height, however long the list under it is (which scrolls instead). */
+    flex: none;
     height: 32px;
     padding: 0 10px;
     border: 1px solid var(--control-border);
@@ -1608,6 +1610,14 @@ html[data-booting] #app > header > * { visibility: hidden; animation: boot-fallb
 
     &:empty {
       display: none;
+    }
+
+    /* Rows scrolled out fade at that edge, as the tab rows do (packages/ui/css/tabs.css: its properties and keyframes). */
+    @supports (animation-timeline: scroll()) {
+      mask-image: linear-gradient(to bottom, transparent, #000 var(--fade-start), #000 calc(100% - var(--fade-end)), transparent);
+      animation: tabs-fade-start linear both, tabs-fade-end linear both;
+      animation-timeline: scroll(self block), scroll(self block);
+      animation-range: 0 24px, calc(100% - 24px) 100%;
     }
 
     li {
