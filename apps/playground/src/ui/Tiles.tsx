@@ -26,6 +26,18 @@ const START: TilingLayout<Tile> = {
   floating: {},
 };
 
+/**
+ * In a narrow window: one over the other at full width, the file tree hidden until asked for (the status bar's
+ * buttons and the keys show and hide each, as in a wide one).
+ */
+const STACK: TilingLayout<Tile> = {
+  tree: { axis: "col", ratio: 0.3, a: "files", b: { axis: "col", ratio: 0.45, a: "editor", b: { axis: "col", ratio: 0.6, a: "preview", b: "console" } } },
+  hidden: ["files"],
+  floating: {},
+};
+/** Narrower than this, the window gets a layout of its own (STACK at first): side by side, the panels would be slivers. */
+const NARROW = "(width < 700px)";
+
 const MODE_KEY = "layout.mode";
 
 /** Whether this page uses the tiling layout: `?layout=tiling|classic` picks (and is kept), else the last pick. */
@@ -49,28 +61,40 @@ export function setTilingMode(on: boolean) {
 
 /** The panels' layout, kept across reloads. Create it in the component that renders `<Tiles>`. */
 export function createTiles() {
-  const [stored, store] = pref<TilingLayout<Tile>>("layout.tiles", START, {
-    deserialize(data) {
-      const layout: unknown = JSON.parse(data);
-      if (!isTilingLayout(layout, TILES)) throw new Error("layout.tiles: not a layout of the panels");
-      return layout;
-    },
-  });
-  // Read once, like the classic layout's sizes: each tab keeps its own layout while open.
-  let own = untrack(stored);
+  const deserialize = (key: string) => (data: string) => {
+    const layout: unknown = JSON.parse(data);
+    if (!isTilingLayout(layout, TILES)) throw new Error(`${key}: not a layout of the panels`);
+    return layout;
+  };
+  const [stored, store] = pref<TilingLayout<Tile>>("layout.tiles", START, { deserialize: deserialize("layout.tiles") });
+  const [storedNarrow, storeNarrow] = pref<TilingLayout<Tile>>("layout.tiles.narrow", STACK, { deserialize: deserialize("layout.tiles.narrow") });
+  // Read once, like the classic layout's sizes: each tab keeps its own layouts while open. One for a wide window and
+  // one for a narrow one, each the reader's to change and kept apart.
+  const own = { wide: untrack(stored), narrow: untrack(storedNarrow) };
+  const query = matchMedia(NARROW);
+  let narrow = query.matches;
   let shares: Partial<Record<Sized, number>> | null = null;
+  // A project's sizes name the columns of a wide window.
+  const current = () => (narrow ? own.narrow : shares ? withShares(own.wide, shares) : own.wide);
   // The inset is the gap the classic panels' borders leave around them all.
   const tiling = createTiling({
     tiles: TILES,
     defaultLayout: START,
-    initialLayout: own,
+    initialLayout: current(),
     initialFocus: "editor",
     onLayoutChange(layout) {
-      store((own = layout));
+      if (narrow) storeNarrow((own.narrow = layout));
+      else store((own.wide = layout));
     },
     gap: 8,
     inset: 4,
   });
+  // For as long as the page (App creates this once).
+  query.addEventListener("change", () => {
+    narrow = query.matches;
+    tiling.show(current());
+  });
+  const resetWide = tiling.reset;
   return Object.assign(tiling, {
     /**
      * A project's runbun.json `sizes` (percent; null: none): the reader's layout with those shares, for as long as
@@ -79,7 +103,12 @@ export function createTiles() {
     sizes(next: Partial<Record<Sized, number>> | null) {
       if (!next && !shares) return;
       shares = next;
-      tiling.show(next ? withShares(own, next) : own);
+      if (!narrow) tiling.show(current());
+    },
+    /** Back to the layout this window's width starts with. */
+    reset() {
+      resetWide();
+      if (narrow) tiling.setLayout(STACK);
     },
   });
 }
