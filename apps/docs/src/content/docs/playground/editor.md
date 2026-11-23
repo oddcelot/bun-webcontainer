@@ -113,6 +113,28 @@ The editor is where you write the project's files, with a file tree, tabs and a 
 
 Large files open and scroll quickly: the editor renders only the lines in view.
 
+## Panels
+
+The file tree, the editor, the preview and the console are panels that tile the window, and the arrangement is yours:
+
+- **Resize:** drag the border between two panels, or the spot where borders meet to move them together. A double click resets a border.
+- **Move:** hold <kbd>Alt</kbd> and drag a panel by the grip that appears in its corner. Dropped on a side of another panel it splits that one, on its middle the two trade places, and on an edge of the window it takes the whole edge.
+- **Show and hide:** the buttons in the status bar, or the shortcuts below. A hidden panel comes back where it was.
+- **By keyboard:** press <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>K</kbd>, then one key. A hint lists them while it waits.
+
+| Key after <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>K</kbd> | Does |
+|---|---|
+| <kbd>H</kbd> <kbd>J</kbd> <kbd>K</kbd> <kbd>L</kbd>, or an arrow | Focus the panel on the left, below, above, on the right |
+| <kbd>Shift</kbd> with one of those | Move the focused panel that way |
+| <kbd>S</kbd> | Turn the panel's split: side by side becomes one over the other |
+| <kbd>F</kbd> | Maximize the panel, or restore it |
+| <kbd>V</kbd> | Float the panel over the others, or tile it again |
+| <kbd>C</kbd> | Hide the panel |
+| <kbd>G</kbd>, <kbd>R</kbd> | Grow, shrink the panel |
+| <kbd>Esc</kbd> | Leave without doing anything |
+
+The layout is kept in this browser. In a window narrower than 700px the panels stack one over the other and the file tree starts hidden; that layout is kept on its own, and the wide one returns when the window widens. A project's [`runbun.json`](/guides/project-config/) can show or hide panels and set their sizes for as long as it is open. **Tiling: reset the layout** in the command palette brings the first arrangement back, and **Switch to the classic layout** the fixed columns from before (file tree, editor, preview over console).
+
 ## Settings
 
 The gear in the header opens **Settings**, a full-window page with its sections in a sidebar. The **Playground** sections hold your own settings, kept in this browser for every project: **Editor** (auto-save, format on save, and whether the project's `runbun.json` shows in the file tree and the tabs; hidden, it still applies) and **Running** (restart on save, the [fast path](/playground/fast-path/)). The **Project** sections edit the open project's [`runbun.json`](/guides/project-config/) as a form: **Entry & env**, **Files**, **Layout**, **Preview** and **Gallery card**. **Open runbun.json** opens the file itself.
@@ -140,6 +162,7 @@ The gear in the header opens **Settings**, a full-window page with its sections 
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd> | Show the Git view in place of the file tree (again: back to the files) |
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>J</kbd> | Show or hide the console |
 | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Alt</kbd>+<kbd>B</kbd> | Show or hide the preview |
+| <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>K</kbd>, then a key | Move, resize and focus [the panels](#panels) (`tileKeys`; each command can have a chord of its own) |
 | <kbd>Esc</kbd> | Leave the expanded preview |
 | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd> | Bring [the devtools](/playground/preview/#devtools) forward, in projects with Solid's, Vue's or Nuxt's (`showDevtools`; not in embeds) |
 | <kbd>F8</kbd>, <kbd>F10</kbd>, <kbd>F11</kbd>, <kbd>Shift</kbd>+<kbd>F11</kbd> | While the [debugger](/playground/running-code/#debugger) is paused: resume, step over, step into, step out |

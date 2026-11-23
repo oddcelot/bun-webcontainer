@@ -1,6 +1,6 @@
 // node packages/ui/solid/tilingTree.test.ts   (node >= 26 runs the TypeScript directly)
 import assert from "node:assert/strict";
-import { dwindle, insert, isTreeOf, layout, leaves, move, neighbor, remove, resize, setFirst, setRatio, swap, toEdge, toggleSplit, type Tree } from "./tilingTree.ts";
+import { dwindle, insert, isTreeOf, layout, leaves, move, neighbor, remove, resize, setFirst, setRatio, setShare, swap, toEdge, toggleSplit, type Tree } from "./tilingTree.ts";
 
 const BOX = { x: 0, y: 0, w: 1008, h: 608 };
 // files | editor | preview over console
@@ -126,6 +126,20 @@ const rectsOf = (tree: Tree, hidden: string[] = []) => layout(tree, BOX, 8, new 
   assert.deepEqual(traded.fixed, { side: "b", size: 170 });
   assert.ok(isTreeOf(tree, ["files", "editor", "console"]));
   assert.equal(isTreeOf({ ...tree, fixed: { side: "c", size: 1 } }, ["files", "editor", "console"]), false);
+}
+
+// A share goes to the nearest split along that axis, whichever side the tile is on.
+{
+  const sized = setShare(setShare(setShare(START, "files", "row", 0.25), "editor", "row", 0.6), "preview", "col", 0.7) as Extract<Tree, object>;
+  assert.equal(sized.ratio, 0.25);
+  const rest = sized.b as Extract<Tree, object>;
+  assert.equal(rest.ratio, 0.6);
+  assert.equal((rest.b as Extract<Tree, object>).ratio, 0.7);
+  const console20 = setShare(START, "console", "col", 0.2) as Extract<Tree, object>;
+  assert.equal(((console20.b as Extract<Tree, object>).b as Extract<Tree, object>).ratio, 0.8);
+  // No split along that axis around it: as it was.
+  assert.deepEqual(setShare(START, "files", "col", 0.5), START);
+  assert.deepEqual(setShare(START, "nope", "row", 0.5), START);
 }
 
 console.log("tiling: ok");

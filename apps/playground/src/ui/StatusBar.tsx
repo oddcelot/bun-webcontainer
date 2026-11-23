@@ -72,6 +72,7 @@ export function StatusBar(props: { tiling?: boolean; treeShown: boolean; toggleF
 
   return (
     <footer id="statusbar">
+      <Changed git={gitOn()} gitShown={shows("git")} toggleGit={props.toggleGit} />
       <Tip tip="Show or hide the file tree" keys={keys("toggleExplorer")} type="button" aria-pressed={shows("files") ? "true" : "false"} onClick={props.toggleFiles}>
         {/* A panel on the left is where the tree is in the classic layout; a tile can be anywhere. */}
         <i class={props.tiling ? "i-lucide-folder-tree" : "i-lucide-panel-left"} aria-hidden="true" />
@@ -95,7 +96,6 @@ export function StatusBar(props: { tiling?: boolean; treeShown: boolean; toggleF
       <StatusPill role="status" status={app.session.status()} />
       <Ports previewShown={props.previewShown} showPreview={() => props.toggle(0)} />
       <span class="spacer" />
-      <Changed git={gitOn()} gitShown={shows("git")} toggleGit={props.toggleGit} />
       <Show when={!ws.state.changesShown && ws.state.active}>
         {(path) => (
           <>

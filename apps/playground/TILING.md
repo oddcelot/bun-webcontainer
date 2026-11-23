@@ -193,16 +193,21 @@ What it needed from the component, all of it there for the playground's tiling t
 crossing, the keyboard, a reload, the drawer. Run against the grid it replaced, the panes' boxes were the same in 21;
 the 22nd was the grid being 7px off in a narrow frame with a file tree.
 
-Known gaps in the prototype:
+Since then it is the default layout (`?layout=classic` or the palette goes back), and:
+
+- **Keys:** one chord (Mod+K, `tileKeys`), then a key, with a hint listing them; the Ctrl+Alt chords are gone, since
+  each collided with a window manager (Rectangle, GNOME) or an AltGr character.
+- **Narrow windows** (under 700px) have a layout of their own, stacked, kept apart from the wide one.
+- **A project's `sizes`** apply: each share goes to the nearest split along its axis around that tile.
+- It is in the docs (playground/editor.md, "Panels").
+
+Known gaps:
 
 - Four tiles only (see E.1); the dock's tabs and Files/Git are as before.
-- No small-screen behavior: tiles get as narrow as the room makes them.
-- The default keys are a guess. Ctrl+Alt+arrows collide with some window managers (Rectangle, GNOME); Ctrl+Alt
-  letters are AltGr combinations on some Windows keyboard layouts.
 - The grips only show while Alt is held with the keyboard's focus in the page itself: Alt pressed inside the preview's
-  page doesn't reach it. Nothing on screen says "hold Alt" yet, so the drag is only found by knowing it.
+  page doesn't reach it.
 - The preview's own "expand" still exists next to "maximize"; one of them should go.
-- Not in the docs site or the changelog.
+- The classic layout's code (Kobalte's splitter in App.tsx) is still there, behind the switch.
 
 ## Open questions
 

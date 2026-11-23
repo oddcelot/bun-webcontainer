@@ -1,6 +1,6 @@
 import { Show, createEffect, createSignal, onSettled, untrack, useContext } from "solid-js";
 import { Resizable, type RootChildrenProps } from "@kobalte/core/resizable";
-import { COMMANDS, TILING_COMMANDS, keysFor, matches, recordingKeys, type Command, type TilingCommand } from "../keymap";
+import { COMMANDS, TILING_COMMANDS, keysFor, matches, recordingKeys, tileKeyCommand, tileKeyHints, type Command, type TilingCommand } from "../keymap";
 import { Palette, openPalette, type PaletteCommand } from "./Palette";
 import { openSettings } from "./Settings";
 import { openShortcuts } from "./Shortcuts";
@@ -150,10 +150,10 @@ export function App() {
   createEffect(
     () => [app.workspace.panels(), app.workspace.sizes()] as const,
     ([want, shares]) => {
-      // The tiling layout takes a project's `panels`; its `sizes` name the classic columns, and are left out there.
       if (tiling) {
         configHidConsole = want?.console === false;
         tiling.override(want ? { files: want.files, preview: want.preview, console: want.console } : null);
+        tiling.sizes(shares);
       } else setPanels(want, shares);
     },
   );
@@ -201,9 +201,35 @@ export function App() {
   createEffect(previewShown, (shown) => {
     if (shown) hidForTabs = false;
   });
+  // The tiling layout's keys: after `tileKeys` the next key runs a tiling command (keymap.ts tileKeyCommand), and a
+  // hint lists them meanwhile. Moving and resizing take several presses, so those keep it open for a moment more.
+  const [tileKeys, setTileKeys] = createSignal(false);
+  let tileKeysEnd: ReturnType<typeof setTimeout> | undefined;
+  const endTileKeys = () => {
+    clearTimeout(tileKeysEnd);
+    setTileKeys(false);
+  };
+  /** Whether the key was one of them (and so not the page's or the editor's). */
+  const onTileKey = (e: KeyboardEvent): boolean => {
+    if (["Shift", "Control", "Alt", "Meta"].includes(e.key)) return true;
+    const command = tileKeyCommand(e);
+    clearTimeout(tileKeysEnd);
+    if (command && /^(move|tileGrow|tileShrink)/.test(command)) tileKeysEnd = setTimeout(endTileKeys, 1500);
+    else endTileKeys();
+    if (command) perform(command);
+    return !!command || e.key === "Escape";
+  };
   /** Runs a command of the page (a shortcut, or the command palette); false if it doesn't apply here, to leave the key be. */
   const perform = (command: Command): boolean => {
     const s = app.session;
+    if (command === "tileKeys") {
+      if (!tiling) return false;
+      // From a preview's page the next key would go to that page: the playground takes the keyboard.
+      if (document.activeElement instanceof HTMLIFrameElement) document.activeElement.blur();
+      clearTimeout(tileKeysEnd);
+      setTileKeys(true);
+      return true;
+    }
     if ((TILING_COMMANDS as readonly Command[]).includes(command)) {
       if (tiling) runTilingCommand(tiling, command as TilingCommand);
       return !!tiling;
@@ -263,7 +289,7 @@ export function App() {
       run: () => void perform(c),
       when: c === "showDevtools" ? () => devtoolsOffered(app) : c === "toggleGit" ? () => !!app.git : undefined,
     })),
-    ...(tiling ? TILING_COMMANDS : []).map((c) => ({
+    ...(tiling ? (["tileKeys", ...TILING_COMMANDS] as const) : []).map((c) => ({
       id: c,
       label: COMMANDS[c].label,
       get keys() {
@@ -289,13 +315,26 @@ export function App() {
         e.stopPropagation();
         return;
       }
-      const command = GLOBAL.find((c) => matches(c, e)) ?? (tiling && TILING_COMMANDS.find((c) => matches(c, e)));
+      if (tileKeys() && !matches("tileKeys", e)) {
+        if (!onTileKey(e)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      const command = GLOBAL.find((c) => matches(c, e)) ?? (tiling && (["tileKeys", ...TILING_COMMANDS] as const).find((c) => matches(c, e)));
       if (!command || !perform(command)) return;
       e.preventDefault();
       e.stopPropagation();
     };
     addEventListener("keydown", onKey, { capture: true });
-    return () => removeEventListener("keydown", onKey, { capture: true });
+    // A click, or the window losing the keyboard, ends the tiling keys.
+    addEventListener("pointerdown", endTileKeys, { capture: true });
+    addEventListener("blur", endTileKeys);
+    return () => {
+      removeEventListener("keydown", onKey, { capture: true });
+      removeEventListener("pointerdown", endTileKeys, { capture: true });
+      removeEventListener("blur", endTileKeys);
+    };
   });
   return (
     <>
@@ -394,6 +433,18 @@ export function App() {
         </Resizable>
         )}
       </main>
+      <Show when={tileKeys()}>
+        <div id="tile-keys" role="status">
+          {tileKeyHints().map((h) => (
+            <span>
+              {h.keys.map((key) => (
+                <kbd>{key}</kbd>
+              ))}
+              {h.does}
+            </span>
+          ))}
+        </div>
+      </Show>
       <Palette commands={paletteCommands} />
       <StatusBar
         tiling={!!tiling}

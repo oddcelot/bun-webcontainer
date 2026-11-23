@@ -28,22 +28,24 @@ export const COMMANDS = {
   // The key Solid's toolbar opens itself with over a page; in the dock it is a tab (ui/Devtools.tsx).
   showDevtools: { label: "Show the devtools (projects with Solid's, Vue's or Nuxt's)", keys: ["Alt+Shift+D"] },
   exitFullscreen: { label: "Leave the expanded preview", keys: ["Escape"] },
-  // The tiling layout's (ui/Tiles.tsx), after Hyprland's dispatchers. Ctrl+Alt on macOS too: Cmd+Alt+arrows switch
-  // the browser's tabs. Letters and arrows only: with Alt held, macOS reports another character for `=` or `-`.
-  focusLeft: { label: "Tiling: focus the panel on the left", keys: ["Ctrl+Alt+H", "Ctrl+Alt+ArrowLeft"] },
-  focusDown: { label: "Tiling: focus the panel below", keys: ["Ctrl+Alt+J", "Ctrl+Alt+ArrowDown"] },
-  focusUp: { label: "Tiling: focus the panel above", keys: ["Ctrl+Alt+K", "Ctrl+Alt+ArrowUp"] },
-  focusRight: { label: "Tiling: focus the panel on the right", keys: ["Ctrl+Alt+L", "Ctrl+Alt+ArrowRight"] },
-  moveLeft: { label: "Tiling: move the panel left", keys: ["Ctrl+Alt+Shift+H", "Ctrl+Alt+Shift+ArrowLeft"] },
-  moveDown: { label: "Tiling: move the panel down", keys: ["Ctrl+Alt+Shift+J", "Ctrl+Alt+Shift+ArrowDown"] },
-  moveUp: { label: "Tiling: move the panel up", keys: ["Ctrl+Alt+Shift+K", "Ctrl+Alt+Shift+ArrowUp"] },
-  moveRight: { label: "Tiling: move the panel right", keys: ["Ctrl+Alt+Shift+L", "Ctrl+Alt+Shift+ArrowRight"] },
-  tileSplit: { label: "Tiling: turn the panel's split", keys: ["Ctrl+Alt+S"] },
-  tileMaximize: { label: "Tiling: maximize the panel, or restore it", keys: ["Ctrl+Alt+F"] },
-  tileFloat: { label: "Tiling: float the panel, or tile it again", keys: ["Ctrl+Alt+V"] },
-  tileClose: { label: "Tiling: hide the panel", keys: ["Ctrl+Alt+C"] },
-  tileGrow: { label: "Tiling: grow the panel", keys: ["Ctrl+Alt+G"] },
-  tileShrink: { label: "Tiling: shrink the panel", keys: ["Ctrl+Alt+R"] },
+  // The tiling layout's (ui/Tiles.tsx), after Hyprland's dispatchers. They run from one chord and then a key (TILE_KEYS
+  // below), not a chord each: every Ctrl+Alt chord is some window manager's (Rectangle, GNOME), or a character on an
+  // AltGr keyboard. Each can still be given a chord of its own in the shortcuts dialog.
+  tileKeys: { label: "Tiling: panel keys (then H J K L, S, F, V, C, G, R)", keys: ["Mod+K"] },
+  focusLeft: { label: "Tiling: focus the panel on the left", keys: [] },
+  focusDown: { label: "Tiling: focus the panel below", keys: [] },
+  focusUp: { label: "Tiling: focus the panel above", keys: [] },
+  focusRight: { label: "Tiling: focus the panel on the right", keys: [] },
+  moveLeft: { label: "Tiling: move the panel left", keys: [] },
+  moveDown: { label: "Tiling: move the panel down", keys: [] },
+  moveUp: { label: "Tiling: move the panel up", keys: [] },
+  moveRight: { label: "Tiling: move the panel right", keys: [] },
+  tileSplit: { label: "Tiling: turn the panel's split", keys: [] },
+  tileMaximize: { label: "Tiling: maximize the panel, or restore it", keys: [] },
+  tileFloat: { label: "Tiling: float the panel, or tile it again", keys: [] },
+  tileClose: { label: "Tiling: hide the panel", keys: [] },
+  tileGrow: { label: "Tiling: grow the panel", keys: [] },
+  tileShrink: { label: "Tiling: shrink the panel", keys: [] },
   tileReset: { label: "Tiling: reset the layout", keys: [] },
 } satisfies Record<string, { label: string; keys: string[]; scope?: Scope }>;
 
@@ -84,6 +86,32 @@ export const TILING_COMMANDS = [
   "tileReset",
 ] as const satisfies Command[];
 export type TilingCommand = (typeof TILING_COMMANDS)[number];
+
+const DIRS: Record<string, "Left" | "Down" | "Up" | "Right"> = { h: "Left", j: "Down", k: "Up", l: "Right", arrowleft: "Left", arrowdown: "Down", arrowup: "Up", arrowright: "Right" };
+const TILE_KEYS: Record<string, TilingCommand> = { s: "tileSplit", f: "tileMaximize", v: "tileFloat", c: "tileClose", g: "tileGrow", r: "tileShrink" };
+/**
+ * After `tileKeys`: the tiling command the next key runs, if any. H J K L or an arrow focuses the panel that way, with
+ * Shift moves the focused one there; a letter does the rest.
+ */
+export function tileKeyCommand(e: KeyboardEvent): TilingCommand | undefined {
+  if (e.ctrlKey || e.altKey || e.metaKey) return;
+  const key = keyOf(e);
+  const dir = DIRS[key];
+  if (dir) return `${e.shiftKey ? "move" : "focus"}${dir}`;
+  return e.shiftKey ? undefined : TILE_KEYS[key];
+}
+/** The same for the reader: the keys and what they do, in the order the hint lists them (App.tsx). */
+export const tileKeyHints = (): { keys: string[]; does: string }[] => [
+  { keys: ["H", "J", "K", "L"], does: "focus" },
+  { keys: [isMac ? "⇧" : "Shift", "H", "J", "K", "L"], does: "move" },
+  { keys: ["S"], does: "turn split" },
+  { keys: ["F"], does: "maximize" },
+  { keys: ["V"], does: "float" },
+  { keys: ["C"], does: "hide" },
+  { keys: ["G"], does: "grow" },
+  { keys: ["R"], does: "shrink" },
+  { keys: ["Esc"], does: "done" },
+];
 export type Overrides = Partial<Record<Command, string | string[] | null>>;
 
 const STORAGE_KEY = "keymap";
@@ -162,7 +190,7 @@ export function matches(command: Command, e: KeyboardEvent): boolean {
  * to keep from its page (contentProtocol.ts OwnedChord).
  */
 export function windowChords(): { key: string; ctrl: boolean; alt: boolean; shift: boolean; meta: boolean }[] {
-  return (["run", "stop", "send", "toggleExplorer", "toggleGit", "togglePreview", "toggleConsole", ...TILING_COMMANDS] as Command[]).flatMap(chords);
+  return (["run", "stop", "send", "toggleExplorer", "toggleGit", "togglePreview", "toggleConsole", "tileKeys", ...TILING_COMMANDS] as Command[]).flatMap(chords);
 }
 
 /** The overrides in effect. */
