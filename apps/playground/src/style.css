@@ -18,6 +18,15 @@
 html, body { height: 100%; margin: 0; background: var(--canvas); color: var(--fg); font: 13px var(--font-ui); }
 body { display: flex; flex-direction: column; }
 /*
+ * Controls take the page's font (--font-ui: a theme's, a host's), not the browser's own for buttons and fields. In the
+ * components' layer and without specificity, so any rule that names a font (a component's, the app's) still wins.
+ */
+@layer runbun-ui {
+  :where(button, input, select, textarea) {
+    font-family: inherit;
+  }
+}
+/*
  * index.html: the landing page (#landing) until the playground starts (html[data-view="app"]), which then fills the
  * window in #app. The landing page scrolls like a document.
  */
