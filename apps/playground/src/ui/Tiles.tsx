@@ -13,7 +13,7 @@ import { pref } from "../prefs";
 
 export const TILES = ["files", "editor", "preview", "console"] as const;
 export type Tile = (typeof TILES)[number];
-export type Tiles = ReturnType<typeof createTiles>;
+export type Tiles = TilingState<Tile> & { sizes(next: Partial<Record<Sized, number>> | null): void };
 
 /** The ids the classic layout's panels have, which style.css and the scripts know them by. */
 const IDS: Record<Tile, string> = { files: "tree-panel", editor: "editor-panel", preview: "preview-panel", console: "console-wrap" };
@@ -35,6 +35,47 @@ const STACK: TilingLayout<Tile> = {
   hidden: ["files"],
   floating: {},
 };
+/**
+ * Arrangements to start from (Settings, Panels), each drawn there as a small picture of itself. Picking one makes it
+ * the reader's layout, theirs to change from there.
+ */
+export const PRESETS: { id: string; label: string; layout: TilingLayout<Tile> }[] = [
+  { id: "columns", label: "Columns", layout: START },
+  {
+    id: "console-below",
+    label: "Console below",
+    layout: { tree: { axis: "col", ratio: 0.72, a: { axis: "row", ratio: 0.16, a: "files", b: { axis: "row", ratio: 0.5, a: "editor", b: "preview" } }, b: "console" }, hidden: [], floating: {} },
+  },
+  {
+    id: "console-under-editor",
+    label: "Console under editor",
+    layout: { tree: { axis: "row", ratio: 0.16, a: "files", b: { axis: "row", ratio: 0.5, a: { axis: "col", ratio: 0.7, a: "editor", b: "console" }, b: "preview" } }, hidden: [], floating: {} },
+  },
+  {
+    id: "preview-left",
+    label: "Preview left",
+    layout: { tree: { axis: "row", ratio: 0.42, a: { axis: "col", ratio: 0.65, a: "preview", b: "console" }, b: { axis: "row", ratio: 0.72, a: "editor", b: "files" } }, hidden: [], floating: {} },
+  },
+  {
+    id: "side-by-side",
+    label: "Editor and preview",
+    layout: { tree: { axis: "row", ratio: 0.16, a: "files", b: { axis: "row", ratio: 0.5, a: "editor", b: { axis: "col", ratio: 0.5, a: "preview", b: "console" } } }, hidden: ["files", "console"], floating: {} },
+  },
+  { id: "stack", label: "Stacked", layout: STACK },
+];
+
+/** A layout's arrangement without its sizes: what a preset and a layout made from it still share after a resize. */
+const shape = (layout: TilingLayout<Tile>) => {
+  const of = (tree: TilingLayout<Tile>["tree"]): string => (tree === null ? "" : typeof tree === "string" ? tree : `${tree.axis}(${of(tree.a)},${of(tree.b)})`);
+  return `${of(layout.tree)}|${[...layout.hidden].sort()}|${Object.keys(layout.floating).sort()}`;
+};
+/** Whether `layout` is `preset`, resized or not. */
+export const isPreset = (layout: TilingLayout<Tile>, preset: TilingLayout<Tile>) => shape(layout) === shape(preset);
+
+/** This page's tiles, once App has made them (Settings reads and sets the layout). */
+let active: Tiles | undefined;
+export const activeTiles = () => active;
+
 /** Narrower than this, the window gets a layout of its own (STACK at first): side by side, the panels would be slivers. */
 const NARROW = "(width < 700px)";
 
@@ -95,7 +136,7 @@ export function createTiles() {
     tiling.show(current());
   });
   const resetWide = tiling.reset;
-  return Object.assign(tiling, {
+  return (active = Object.assign(tiling, {
     /**
      * A project's runbun.json `sizes` (percent; null: none): the reader's layout with those shares, for as long as
      * the project is open. Not kept, unless the reader changes the layout from there.
@@ -110,7 +151,7 @@ export function createTiles() {
       resetWide();
       if (narrow) tiling.setLayout(STACK);
     },
-  });
+  }));
 }
 
 /**

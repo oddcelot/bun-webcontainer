@@ -18,6 +18,8 @@ import { hasBody } from "./previews";
 import { Select } from "@runbun/ui/solid/Select";
 import { formatRequest, parseRequests, type PresetRequest } from "../embed/requests";
 import type { Field as RequestField } from "../request";
+import { placeTiles as place } from "@runbun/ui/solid/Tiling";
+import { PRESETS, TILES, activeTiles, isPreset, setTilingMode, type Tile } from "./Tiles";
 
 // Open from the header's button or the command palette.
 const [settingsOpen, setSettingsOpen] = createSignal(false);
@@ -50,6 +52,7 @@ export function Settings(props: { id?: string }) {
 const SECTIONS = [
   { id: "editor", group: "playground", label: "Editor", icon: "i-lucide-file-pen-line" },
   { id: "running", group: "playground", label: "Running", icon: "i-lucide-play" },
+  { id: "panels", group: "playground", label: "Panels", icon: "i-lucide-layout-dashboard" },
   { id: "project-running", group: "project", label: "Entry & env", icon: "i-lucide-terminal" },
   { id: "files", group: "project", label: "Files", icon: "i-lucide-files" },
   { id: "layout", group: "project", label: "Layout", icon: "i-lucide-layout-panel-left" },
@@ -167,7 +170,10 @@ function SectionPage(props: { section: Section; project: ProjectConfigState }) {
       <Show when={props.section === "running"}>
         <RunningSettings />
       </Show>
-      <Show when={props.section !== "editor" && props.section !== "running"}>
+      <Show when={props.section === "panels"}>
+        <PanelsSettings />
+      </Show>
+      <Show when={props.section !== "editor" && props.section !== "running" && props.section !== "panels"}>
         <ProjectPage section={props.section} project={props.project} />
       </Show>
     </>
@@ -214,6 +220,73 @@ function RunningSettings() {
       >
         <Switch label="Fast path" checked={ws.fast()} onChange={ws.setFast} />
       </Row>
+    </div>
+  );
+}
+
+/** How each panel shows in a preset's picture. */
+const PANEL_LOOKS: Record<Tile, { label: string; icon: string }> = {
+  files: { label: "Files", icon: "i-lucide-folder-tree" },
+  editor: { label: "Editor", icon: "i-lucide-code" },
+  preview: { label: "Preview", icon: "i-lucide-app-window" },
+  console: { label: "Console", icon: "i-lucide-square-terminal" },
+};
+/** The picture's room, in the units its panels are placed in (percent of the picture). */
+const PICTURE = { x: 0, y: 0, w: 100, h: 100 };
+
+/** The panels' arrangement: the reader's own. A few to pick from, each a small picture of itself. */
+function PanelsSettings() {
+  const tiles = activeTiles();
+  return (
+    <div class="settings-list">
+      <Row label="Layout" hint="Tiling: panels you can move, resize and hide. Classic: fixed columns. Switching reloads the page.">
+        <Segmented
+          label="Layout"
+          value={tiles ? "tiling" : "classic"}
+          options={[
+            ["tiling", "Tiling", "i-lucide-layout-dashboard"],
+            ["classic", "Classic", "i-lucide-columns-3"],
+          ]}
+          onChange={(v) => setTilingMode(v === "tiling")}
+        />
+      </Row>
+      <Show when={tiles} fallback={<p class="settings-note">The arrangements below come with the tiling layout.</p>}>
+        {(t) => (
+          <>
+            <div class="layout-presets" role="group" aria-label="Arrangement">
+              <For each={PRESETS}>
+                {(preset) => (
+                  <button type="button" class="layout-preset" aria-pressed={isPreset(t().layout(), preset.layout) ? "true" : "false"} onClick={() => t().setLayout(preset.layout)}>
+                    <span class="picture" aria-hidden="true">
+                      <For each={[...place(preset.layout.tree, PICTURE, 0, new Set(preset.layout.hidden)).rects]}>
+                        {([tile, r]) => (
+                          <span class="panel" data-panel={tile} title={PANEL_LOOKS[tile as Tile].label} style={{ left: `${r.x}%`, top: `${r.y}%`, width: `${r.w}%`, height: `${r.h}%` }}>
+                            <i class={PANEL_LOOKS[tile as Tile].icon} />
+                          </span>
+                        )}
+                      </For>
+                    </span>
+                    <span class="name">{preset.label}</span>
+                  </button>
+                )}
+              </For>
+            </div>
+            <ul class="layout-legend">
+              <For each={TILES}>
+                {(tile) => (
+                  <li data-panel={tile}>
+                    <i class={PANEL_LOOKS[tile].icon} aria-hidden="true" /> {PANEL_LOOKS[tile].label}
+                  </li>
+                )}
+              </For>
+            </ul>
+            <p class="settings-note">
+              Picking one replaces your arrangement in this window. From there it is yours again: drag a border to resize, hold Alt and drag a panel to move it, and the status bar's
+              buttons show and hide each.
+            </p>
+          </>
+        )}
+      </Show>
     </div>
   );
 }
