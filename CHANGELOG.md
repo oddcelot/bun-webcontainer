@@ -5,6 +5,90 @@ browser, its editor, and the docs at docs.runbun.dev. They release together at o
 `package.json`, tagged `v<version>`), organised by part. `@runbun/astro` keeps its own changelog in
 [packages/astro/CHANGELOG.md](./packages/astro/CHANGELOG.md).
 
+## 0.9.0 — 2026-11-23
+
+The playground's panels now tile the window: drag them where you want them, resize them, or pick an arrangement in
+the new Settings. A command palette goes to any file and runs any command, the preview zooms, and Vue and Nuxt join
+the gallery with their devtools in a tab of their own. Installed as an app, runbun behaves like one. Two things to
+know: showing or hiding the preview moved from Ctrl/Cmd+K to Ctrl/Cmd+Alt+B, and the Solid theme no longer brings
+Geist, so a self-hosted playground that wants it names it in its hosting file (`theme.fonts`, `theme.vars`).
+
+### Playground
+
+- **Added** — **Settings, and runbun.json as a form.** The gear in the header holds your preferences, including whether
+  runbun.json shows in the file tree, and edits the project's runbun.json field by field, keeping its comments.
+- **Added** — **Arrangements to pick in Settings.** The Panels section shows seven panel layouts as small pictures
+  (columns, console below, preview on the left, editor and preview only, editor and console only, and more); a click
+  applies one.
+- **Added** — **Go to a file and run any command from the keyboard.** Ctrl/Cmd+P finds a file by part of its name or
+  path; Ctrl/Cmd+Shift+P (or F1) lists every command with its shortcut. Showing or hiding the preview moves from
+  Ctrl/Cmd+K to Ctrl/Cmd+Alt+B.
+- **Added** — **Zoom the preview.** The request bar has zoom buttons (25% to 200%) for page previews; click the
+  percentage to go back to 100%.
+- **Added** — **Devtools have a tab of their own.** In a project that uses `@solidjs/start-devtools`, Vue DevTools or
+  Nuxt DevTools, the pane under the preview opens on a Devtools tab with the toolbar in it instead of over your page.
+  It follows the active preview tab, and Alt+Shift+D brings it forward. Experimental, and only where previews run on
+  the playground's own origin.
+- **Added** — **Vue and Nuxt in the gallery.** A Vue 3 + Vite starter and a todo list with Pinia and Vue DevTools; a
+  Nuxt 4 starter and an example with pages, shared state and Nuxt DevTools.
+- **Added** — **The installed app feels like one.** In Chrome and Edge the header is the title bar, runbun.dev links
+  open in a new app window, the app icon's menu has Blank starter and Starters and examples, and .zip files open with
+  it from Finder or Explorer. A link like web+runbun://example/starter-http, from another app or page, opens that
+  project in it.
+- **Added** — **A short link can show a card of the project's own.** With `card` in `runbun.json`, a short link shows
+  the project's title, description and tags where it is posted, instead of runbun.dev's card.
+- **Added** — **A self-hosted playground can choose which panes it opens with.** The hosting file's `panels` shows or
+  hides the file tree, the preview and the console; a hidden console opens by itself when the program fails.
+- **Added** — **A self-hosted playground can load its own fonts.** The hosting file's `theme.fonts` lists stylesheets
+  to load, for the fonts `--font-ui` and `--font-mono` name in `theme.vars`.
+- **Added** — **Hosts can hide runbun.json.** A self-hosted playground's `showConfig: false` keeps a project's
+  runbun.json out of the file tree and the tabs; it still applies.
+- **Changed** — **Panels you can rearrange.** The file tree, editor, preview and console now tile the window: drag a
+  border to resize, hold Alt and drag a panel to move it, or press Ctrl/Cmd+K and then a key (a hint lists them).
+  Narrow windows stack the panels. The fixed columns from before are the Columns arrangement in Settings.
+- **Changed** — **The debugger is a tab next to the console.** With Debug on, the pane under the preview has Console
+  and Debug tabs in place of the Debug panel squeezed above the console; the Debug tab comes forward each time the
+  program pauses, and a run that fails switches back to the console, where its output says why.
+- **Changed** — **The run status lives in the status bar.** Installing, Running and Exited show as a pill beside the
+  server's port instead of a toast over the console. The Git button is now the first of the status bar's panel
+  buttons, instead of on the right.
+- **Changed** — **A preview opened in a new tab takes the preview panel's place.** The panel hides while the tab is
+  open and comes back when you close it.
+- **Changed** — **Picking the Solid theme no longer shifts the layout.** It used a font of its own (Geist), which moved
+  the text and buttons on every switch; it now uses the same fonts as the other themes.
+- **Changed** — **An embed's borders can be dragged in a narrow frame too.** In a frame under 560px wide only the
+  console's border moved, and none when stacked; now each one does, and where two meet they drag together.
+- **Changed** — **The installed app opens on the playground.** A launch of runbun.dev installed as an app no longer
+  shows the landing page first; it stays at runbun.dev/about.
+- **Fixed** — **A preview opened in a new tab stays up to date.** It now loads again on Run and when you save a file
+  the page uses, as the preview panel does; before, it kept the old page until you reloaded it yourself.
+- **Fixed** — **Previews with many requests at once don't stall.** A page loading lots of modules in parallel could
+  hang on some of them.
+- **Fixed** — **The preview catches a dev server that starts late.** It showed "No server running" until you reloaded
+  it.
+- **Fixed** — **Buttons and fields follow the host's font.** With a host or an embed that sets `--font-ui`, the
+  header's buttons and the text fields kept the browser's default.
+- **Fixed** — **A lone preview tab is no longer a sliver.** A tab named "/" was only as wide as its slash; every tab
+  now has the same least width.
+- **Fixed** — **Pierre Vibrant keeps the code visible.** Previewing or picking it in the theme picker blanked the
+  editor's code until a reload.
+- **Fixed** — **Tooltips show in dialogs.** The Keyboard shortcuts dialog's tooltips were hidden behind it.
+
+### Runtime
+
+- **Added** — **Processes reach each other's servers.** `net` servers and connections, and `fetch` to `localhost`,
+  work between a program, its child processes and its worker_threads threads.
+- **Added** — **path.matchesGlob.** Matches a path against a glob, as in Bun.
+- **Fixed** — **fs.cp copies into folders that don't exist yet.** It makes them, as in Node and Bun, where it failed
+  with ENOENT; `force` and `errorOnExist` work too.
+- **Fixed** — **A function's source is what you wrote.** `fn.toString()` showed code the playground adds for
+  AsyncLocalStorage; code that sends a function to a page (Nuxt's loading screen) failed there.
+
+### Docs
+
+- **Added** — **Vue starter and Vue DevTools in the playground.** A Vue 3 + Vite starter and a Vue + Pinia example,
+  whose Vue DevTools open in the Devtools tab under the preview.
+
 ## 0.8.1 — 2026-11-22
 
 Solid's server functions now work in the preview, and the Solid examples show Solid's devtools: a dock with the
