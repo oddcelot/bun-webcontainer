@@ -2395,6 +2395,11 @@ main { position: relative; flex: 1; min-height: 0; padding: 0 4px 4px; }
  */
 #tree-panel:has(.tree-menu) {
   z-index: 9;
+
+  /* The tile's own focus ring shares that z-index and comes later: under the menu while it is open. */
+  &::after {
+    z-index: 3;
+  }
 }
 /* A file tree row's menu (FileTree.tsx): plain buttons dressed as select.css's options, shortcut keys at the end. */
 .tree-menu {
