@@ -75,3 +75,9 @@ What runbun.dev has that a static copy doesn't: short links for Share, the Feedb
 and the git proxy that `git clone` and GitHub dependencies in `bun install` go through. They are runbun.dev's
 Cloudflare Worker, not part of this archive, so the playground leaves them out: Share offers the full link, and git
 and GitHub dependencies say they need a proxy. Opening a public GitHub repository (`?repo=owner/name`) still works.
+
+## License
+
+[FSL-1.1-MIT](LICENSE.md), also in `dist/`; keep it there. A copy for yourself, your team or an open source project is
+fine, under your own name. A copy offered as a commercial product that competes with runbun is not. This release
+becomes MIT two years after it came out.
