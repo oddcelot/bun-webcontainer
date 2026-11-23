@@ -2425,6 +2425,13 @@ main { position: relative; flex: 1; min-height: 0; padding: 0 4px 4px; }
     font: inherit;
     font-size: 11px;
   }
+  hr {
+    width: 100%;
+    height: 1px;
+    margin: 4px 0;
+    border: 0;
+    background: var(--control-border);
+  }
 }
 /*
  * The explorer pane (Explorer.tsx): the file tree or the Git view, under a Files | Git switch in the embed. The tree stays mounted

@@ -20,7 +20,12 @@ The editor is where you write the project's files, with a file tree, tabs and a 
 - <details>
   <summary><strong>File tree</strong> with search and a "New file" button; right-click a file or folder to <strong>rename</strong> or <strong>delete</strong> it, or press <kbd>F2</kbd> or <kbd>Delete</kbd>.</summary>
 
-  Right-click a file or folder (or use its ⋯ button) to **rename** or **delete** it, or to add a file to a folder.
+  Right-click a file or folder (or use its ⋯ button) for its menu:
+
+  - **Rename** and **Delete**; on a folder also **New file here** and **New folder here**.
+  - **Duplicate** makes a copy beside a file (`util copy.ts`), open and ready to be named.
+  - **Copy path** copies its path in the project.
+  - **Make read-only** keeps the editor from changing a file, or everything in a folder, and **Keep out of the tabs** keeps a file from opening as a tab. Both are the project's own settings: they are written to its [`runbun.json`](/guides/project-config/) (`readonly`, `hidden`), so they go with the project when you share it. The same entry undoes each.
 
   - <kbd>F2</kbd> renames the focused row in place.
   - <kbd>Delete</kbd> (or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Backspace</kbd>) deletes it after asking.

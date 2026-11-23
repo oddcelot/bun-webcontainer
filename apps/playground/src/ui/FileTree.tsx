@@ -16,10 +16,20 @@ import { guarded } from "./guarded";
 import { PromptDialog } from "./PromptDialog";
 import { Tip } from "@runbun/ui/solid/Tip";
 import type { VFS } from "@runbun/vfs";
+import { applyEdits, modify } from "jsonc-parser";
+import { CONFIG_FILE, readConfig } from "../projectConfig";
 
 // `git` keeps its repository in .git/ (thousands of objects); like git's own tools, the tree doesn't list it.
 const inGitDir = (path: string) => /(^|\/)\.git(\/|$)/.test(path);
-const treePaths = (vfs: VFS) => [...vfs.files.keys()].filter((p) => !inGitDir(p));
+const inPackages = (path: string) => /(^|\/)node_modules(\/|$)/.test(path);
+/** The files, and the folders with nothing in them (made here with New folder): a folder with files comes with those. */
+const treePaths = (vfs: VFS) => {
+  const files = [...vfs.files.keys()].filter((p) => !inGitDir(p));
+  const filled = new Set<string>();
+  for (const p of files) for (let i = p.lastIndexOf("/"); i > 0 && !filled.has(p.slice(0, i)); i = p.lastIndexOf("/", i - 1)) filled.add(p.slice(0, i));
+  const empty = [...vfs.dirs].filter((d) => !filled.has(d) && !inGitDir(d) && !inPackages(d)).map((d) => `${d}/`);
+  return [...files, ...empty];
+};
 
 const TREE_VARS_KEY = "tree-vars";
 /** How long a rename or delete stays undoable (ms). */
@@ -72,7 +82,7 @@ const isDirectory = (item: FileTreeItemHandle | null): item is FileTreeDirectory
 const vfsPath = (path: string) => path.replace(/\/$/, "");
 
 /** `disabled`: why it can't run now (the item's title); it stays in the menu, focusable, and does nothing. */
-type MenuAction = { label: string; icon: string; keys?: string; disabled?: string; run(): void };
+type MenuAction = { label: string; icon: string; keys?: string; disabled?: string; run(): void } | "separator";
 
 /**
  * A row's context menu, in the light DOM the tree slots in: styled like the app's menus (select.css), at the row's
@@ -85,7 +95,14 @@ function contextMenu(actions: MenuAction[], context: ContextMenuOpenContext): HT
   const { top, bottom, left } = context.anchorRect;
   // A right-click's anchor is the pointer (no height); the row's button opens it below the button.
   Object.assign(menu.style, { position: "fixed", top: `${bottom > top ? bottom + 4 : top}px`, left: `${left}px` });
-  const items = actions.map((action) => {
+  const items: HTMLButtonElement[] = [];
+  for (const action of actions) {
+    if (action === "separator") {
+      const rule = document.createElement("hr");
+      rule.setAttribute("role", "separator");
+      menu.append(rule);
+      continue;
+    }
     const item = document.createElement("button");
     item.type = "button";
     item.className = "select-option";
@@ -105,9 +122,15 @@ function contextMenu(actions: MenuAction[], context: ContextMenuOpenContext): HT
     item.addEventListener("pointerenter", () => item.focus());
     item.addEventListener("focus", () => item.setAttribute("data-highlighted", ""));
     item.addEventListener("blur", () => item.removeAttribute("data-highlighted"));
-    return item;
+    items.push(item);
+    menu.append(item);
+  }
+  // Once it is in the page and has a size: back inside the window, if it would reach past the bottom or the right.
+  requestAnimationFrame(() => {
+    const r = menu.getBoundingClientRect();
+    if (r.bottom > innerHeight - 4) menu.style.top = `${Math.max(4, innerHeight - r.height - 4)}px`;
+    if (r.right > innerWidth - 4) menu.style.left = `${Math.max(4, innerWidth - r.width - 4)}px`;
   });
-  menu.append(...items);
   menu.addEventListener("keydown", (e) => {
     const step = e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0;
     if (!step) return;
@@ -151,6 +174,44 @@ export function FileTree() {
     void u.run();
   }
   const [newFileAt, setNewFileAt] = createSignal("new.ts");
+  /** What the dialog under the tree asks for: a new file's path, or a new folder's. */
+  const [asking, setAsking] = createSignal<"file" | "folder" | null>(null);
+
+  /** runbun.json's list under `key`, and whether the file can be edited here (it parses). */
+  const configList = (key: "hidden" | "readonly") => {
+    const problems: string[] = [];
+    const config = readConfig((p) => vfs.readText(p), problems);
+    return { list: config[key] ?? [], broken: problems.some((p) => p.includes("isn't valid JSON") || p.includes("must hold")) };
+  };
+  /** Adds `path` to runbun.json's list or takes it out, as Settings' form does: the rest of the file stays as it is. */
+  function toggleInConfig(key: "hidden" | "readonly", path: string) {
+    const { list } = configList(key);
+    const next = list.includes(path) ? list.filter((p) => p !== path) : [...list, path];
+    // The editor's unsaved text of the file would otherwise overwrite this change on its next save.
+    ws.saveAll();
+    const before = vfs.readText(CONFIG_FILE) ?? `{\n  "$schema": "https://runbun.dev/schema/runbun.json"\n}\n`;
+    const after = applyEdits(before, modify(before, [key], next.length ? next : undefined, { formattingOptions: { insertSpaces: true, tabSize: 2, eol: "\n" } }));
+    vfs.write(CONFIG_FILE, after);
+    if (key === "readonly") ws.setReadonly(next);
+    // Kept out of the tabs from now on, not only the next time the project opens.
+    else if (next.includes(path) && ws.state.open.includes(path)) ws.close(path);
+  }
+  /** A copy beside the file ("util copy.ts", then "util copy 2.ts"), open and ready to be named. */
+  function duplicate(path: string) {
+    const data = vfs.read(path);
+    if (data === undefined) return;
+    const slash = path.lastIndexOf("/") + 1;
+    const [dir, name] = [path.slice(0, slash), path.slice(slash)];
+    const dot = name.indexOf(".", 1);
+    const [stem, ext] = dot < 0 ? [name, ""] : [name.slice(0, dot), name.slice(dot)];
+    let copy = `${dir}${stem} copy${ext}`;
+    for (let n = 2; vfs.exists(copy); n++) copy = `${dir}${stem} copy ${n}${ext}`;
+    vfs.write(copy, data);
+    ws.open(copy);
+    offerUndo(`Duplicated ${path}`, () => app.removePath(copy).then(() => {}));
+    // Once the tree has the row (VFS changes reach it on the next frame).
+    requestAnimationFrame(() => requestAnimationFrame(() => tree.getItem(copy) && tree.startRenaming(copy)));
+  }
 
   const tree = new PierreTree({
     // A dot on files open in a tab.
@@ -175,39 +236,99 @@ export function FileTree() {
   });
 
   function menuActions(item: ContextMenuItem, context: ContextMenuOpenContext): MenuAction[] {
-    const actions: MenuAction[] = [
-      {
-        label: "Rename…",
-        icon: "i-lucide-pencil",
-        keys: "F2",
+    const path = vfsPath(item.path);
+    const folder = item.kind === "directory";
+    const actions: MenuAction[] = [];
+    if (folder)
+      actions.push(
+        {
+          label: "New file here…",
+          icon: "i-lucide-file-plus",
+          run() {
+            context.close();
+            setNewFileAt(`${item.path}new.ts`);
+            setAsking("file");
+          },
+        },
+        {
+          label: "New folder here…",
+          icon: "i-lucide-folder-plus",
+          run() {
+            context.close();
+            setNewFileAt(`${item.path}new`);
+            setAsking("folder");
+          },
+        },
+        "separator",
+      );
+    // A read-only file or folder (runbun.json) keeps its name and stays: Rename and Delete are offered, disabled.
+    const fixed = changeable(item.path) ? undefined : "read-only (runbun.json)";
+    actions.push({
+      label: "Rename…",
+      icon: "i-lucide-pencil",
+      keys: "F2",
+      disabled: fixed,
+      run() {
+        // Focus goes to the rename field, not back to the row.
+        context.close({ restoreFocus: false });
+        tree.startRenaming(item.path);
+      },
+    });
+    if (!folder)
+      actions.push({
+        label: "Duplicate",
+        icon: "i-lucide-copy-plus",
         run() {
-          // Focus goes to the rename field, not back to the row.
           context.close({ restoreFocus: false });
-          tree.startRenaming(item.path);
-        },
-      },
-      {
-        label: "Delete…",
-        icon: "i-lucide-trash-2",
-        keys: "⌦",
-        run() {
-          context.close();
-          setDeleting(item.path);
-        },
-      },
-    ];
-    if (item.kind === "directory")
-      actions.unshift({
-        label: "New file here…",
-        icon: "i-lucide-file-plus",
-        run() {
-          context.close();
-          setNewFileAt(`${item.path}new.ts`);
-          setAsking(true);
+          duplicate(path);
         },
       });
-    // A read-only file or folder (runbun.json) keeps its name and stays: Rename and Delete are offered, disabled.
-    if (!changeable(item.path)) for (const a of actions) if (a.icon !== "i-lucide-file-plus") a.disabled = "read-only (runbun.json)";
+    actions.push({
+      label: "Copy path",
+      icon: "i-lucide-clipboard",
+      run() {
+        context.close();
+        navigator.clipboard.writeText(path).catch(() => app.log("warn", `[files] couldn't copy the path: ${path}`));
+      },
+    });
+    // The project's own settings (runbun.json), which go with it when it is shared; not on runbun.json itself.
+    if (path !== CONFIG_FILE) {
+      const readonly = configList("readonly");
+      const listed = readonly.list.includes(path);
+      const inherited = !listed && ws.isReadonly(path);
+      actions.push("separator", {
+        label: listed ? "Make editable" : inherited ? "Read-only, as its folder" : "Make read-only",
+        icon: listed ? "i-lucide-lock-open" : "i-lucide-lock",
+        disabled: readonly.broken ? `fix ${CONFIG_FILE} first` : inherited ? "its folder is read-only" : undefined,
+        run() {
+          context.close();
+          toggleInConfig("readonly", path);
+        },
+      });
+      if (!folder) {
+        const hidden = configList("hidden");
+        const kept = hidden.list.includes(path);
+        actions.push({
+          label: kept ? "Let it open in tabs again" : "Keep out of the tabs",
+          icon: kept ? "i-lucide-eye" : "i-lucide-eye-off",
+          disabled: hidden.broken ? `fix ${CONFIG_FILE} first` : undefined,
+          run() {
+            context.close();
+            toggleInConfig("hidden", path);
+          },
+        });
+      }
+    }
+    actions.push("separator", {
+      label: "Delete…",
+      icon: "i-lucide-trash-2",
+      keys: "⌦",
+      disabled: fixed,
+      run() {
+        context.close();
+        setDeleting(item.path);
+      },
+    });
     return actions;
   }
 
@@ -271,8 +392,11 @@ export function FileTree() {
       if ((created || removed) && !inGitDir(path) && !ws.isGenerated(path) && !ws.isHiddenConfig(path)) queue({ type: removed ? "remove" : "add", path });
     });
     // The tree keeps a folder whose files are gone; a removed directory takes its row (and anything left in it).
+    // And a folder made empty (New folder) gets one: its files would have brought it otherwise. Not an install's.
     const unsubscribeDirs = vfs.onDir((path, removed) => {
-      if (removed && !inGitDir(path)) queue({ type: "remove", path: `${path}/`, recursive: true });
+      if (inGitDir(path)) return;
+      if (removed) queue({ type: "remove", path: `${path}/`, recursive: true });
+      else if (!inPackages(path)) queue({ type: "add", path: `${path}/` });
     });
     // Files written between creating the tree and subscribing.
     tree.resetPaths(paths());
@@ -321,7 +445,6 @@ export function FileTree() {
     { defer: true },
   );
 
-  const [asking, setAsking] = createSignal(false);
   let button!: HTMLButtonElement;
   /** How many files a delete takes: one for a file, everything below a folder. */
   const fileCount = (path: string) => (path.endsWith("/") ? vfs.list(vfsPath(path)).length : 1);
@@ -331,19 +454,20 @@ export function FileTree() {
       <div ref={host} style={{ height: "100%" }} onKeyDown={onKeyDown} />
       <Tip ref={(el: HTMLButtonElement) => (button = el)} id="newfile" type="button" tip="New file" aria-label="New file" onClick={() => {
           setNewFileAt("new.ts");
-          setAsking(true);
+          setAsking("file");
         }}
       >
         <i class="i-lucide-file-plus" aria-hidden="true" />
       </Tip>
       <PromptDialog
-        open={asking()}
-        onOpenChange={setAsking}
-        title="New file"
-        label="File path"
+        open={asking() !== null}
+        onOpenChange={(open) => open || setAsking(null)}
+        title={asking() === "folder" ? "New folder" : "New file"}
+        label={asking() === "folder" ? "Folder path" : "File path"}
         initial={newFileAt()}
         submit="Create"
-        onSubmit={(name) => app.newFile(name)}
+        check={(name) => (asking() === "folder" && vfs.exists(vfsPath(name)) ? `${vfsPath(name)} is there already` : undefined)}
+        onSubmit={(name) => (asking() === "folder" ? vfs.mkdir(vfsPath(name)) : void app.newFile(name))}
         returnFocus={() => button}
       />
       <Show when={undo()}>
