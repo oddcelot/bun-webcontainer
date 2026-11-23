@@ -2410,6 +2410,34 @@ main { position: relative; flex: 1; min-height: 0; padding: 0 4px 4px; }
     }
   }
 }
+/* Over the tree while files from the desktop are dragged over the page (FileTree.tsx): where a drop puts them. */
+.tree-drop {
+  position: absolute;
+  inset: 2px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: var(--pad);
+  border: 2px dashed var(--accent);
+  border-radius: var(--inner-radius);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  pointer-events: none;
+
+  .label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+    padding: 4px 10px;
+    overflow: hidden;
+    border-radius: var(--inner-radius);
+    background: var(--panel);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
 /*
  * While a row's menu is open its tile is over the others: the tree puts the menu in a layer of its own (z-index 4), which
  * the next tile's code and focus ring would otherwise draw over where the menu reaches past the tree's edge.
@@ -2940,7 +2968,7 @@ main { position: relative; flex: 1; min-height: 0; padding: 0 4px 4px; }
 /* Frames under the pointer would swallow the drag's pointer events. */
 body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
 #editor-pane { height: 100%; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-/* The code, and Format over its top right corner: shown while the pointer is over the code, or it has focus. */
+/* The code, and its actions over its top right corner (Format, Preview/Code): shown while the pointer is over the code, or one has focus. */
 .code-area {
   position: relative;
   display: flex;
@@ -2948,11 +2976,16 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
   flex-direction: column;
   min-height: 0;
 
-  > .format {
+  > .code-actions {
     position: absolute;
     top: 8px;
     right: 16px;
     z-index: 2;
+    display: flex;
+    gap: 6px;
+  }
+
+  .format {
     display: flex;
     align-items: center;
     gap: 4px;
@@ -2975,14 +3008,59 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
     }
   }
 
-  &:hover > .format,
-  > .format:focus-visible {
+  &:hover .format,
+  .format:focus-visible,
+  .format[data-pinned] {
     opacity: 1;
   }
 
   @media (hover: none) {
-    > .format {
+    .format {
       opacity: 1;
+    }
+  }
+}
+/* An image or Markdown file, rendered in the editor's place (FilePreview.tsx). */
+.file-preview {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  background: var(--bg);
+
+  &[hidden] {
+    display: none;
+  }
+
+  > iframe {
+    width: 100%;
+    height: 100%;
+    border: 0;
+  }
+
+  > .image {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    height: 100%;
+    margin: 0;
+    padding: 24px;
+    overflow: auto;
+    box-sizing: border-box;
+
+    img {
+      max-width: 100%;
+      max-height: calc(100% - 30px);
+      object-fit: contain;
+      /* A checkerboard behind transparent pixels. */
+      background: repeating-conic-gradient(color-mix(in srgb, var(--fg) 12%, transparent) 0 25%, transparent 0 50%) 0 0 / 16px 16px;
+      image-rendering: auto;
+    }
+
+    figcaption {
+      color: var(--muted);
+      font-size: 12px;
     }
   }
 }

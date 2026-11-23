@@ -1,5 +1,5 @@
 import { isLazy } from "@runbun/vfs";
-import { Show, createEffect, onSettled, useContext } from "solid-js";
+import { Show, createEffect, createSignal, onSettled, useContext } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { CHECKED, mountDiagnostics } from "../diagnostics";
 import { JSON_FILE, connectJsonFiles, jsonComplete, jsonHover } from "../jsonLanguage";
@@ -16,6 +16,7 @@ import { AppContext } from "./context";
 import { guarded } from "./guarded";
 import { EditorTabs } from "./Tabs";
 import { ChangesView } from "./Changes";
+import { FilePreview, onlyPreview, previewable } from "./FilePreview";
 import { Keys, Tip } from "@runbun/ui/solid/Tip";
 
 /** How long auto-save waits after the last keystroke. */
@@ -69,6 +70,23 @@ export function EditorPane(props: { start?: JSX.Element; end?: JSX.Element }) {
     return any;
   }
   ws.onSaveAll(saveAll);
+  /** SVG and Markdown files showing their code; the rest of them show rendered (images only ever do). */
+  const [asCode, setAsCode] = createSignal<ReadonlySet<string>>(new Set());
+  /** The active project file, if it shows rendered (FilePreview) in the editor's place. */
+  const previewed = () => {
+    const path = ws.state.active;
+    if (!path || ws.state.changesShown || !previewable(path) || ws.readOnlyText(path) !== undefined) return null;
+    return onlyPreview(path) || !asCode().has(path) ? path : null;
+  };
+  /** Switches an SVG or Markdown file between its code and the rendered view; its unsaved edits save first. */
+  function togglePreview(path: string) {
+    if (save(path)) ws.markSaved();
+    setAsCode((s) => {
+      const next = new Set(s);
+      if (!next.delete(path)) next.add(path);
+      return next;
+    });
+  }
   // Saving as you type again (the toggle back on, or an embed's switch turned off): edits waiting for Ctrl/Cmd+S save now.
   createEffect(
     () => ws.autosave() || !has("autosave"),
@@ -347,17 +365,28 @@ export function EditorPane(props: { start?: JSX.Element; end?: JSX.Element }) {
       </Show>
       {/* "No file open" only once the project has loaded, not while its first file is on the way. */}
       <div class="code-area">
-        <div id="editor" ref={el} hidden={ws.state.changesShown} data-empty={app.session.ready() && !ws.state.active ? "" : undefined} />
+        <div id="editor" ref={el} hidden={ws.state.changesShown || !!previewed()} data-empty={app.session.ready() && !ws.state.active ? "" : undefined} />
         {/* Kept while its tab is open (scroll position, rendered diffs), hidden behind a file tab. */}
         <Show when={ws.state.changes}>
           <ChangesView shown={ws.state.changesShown} />
         </Show>
+        <Show when={previewed()}>{(path) => <FilePreview path={path()} shown />}</Show>
         {/* Over the code's top right corner, shown while the pointer is over the code (always on touch screens). */}
-        <Show when={has("format") && ws.state.active && !ws.state.changesShown && ws.readOnlyText(ws.state.active!) === undefined && !ws.isReadonly(ws.state.active!)}>
-          <Tip class="format" type="button" tip="Format the open file" keys={keysFor("format").map(chordKeys)} onClick={() => void formatOpenFile()}>
-            <i class="i-lucide-wand-sparkles" aria-hidden="true" /> Format
-          </Tip>
-        </Show>
+        <div class="code-actions">
+          {/* An SVG or Markdown file: its code, or rendered (then the button stays in sight). */}
+          <Show when={ws.state.active && !ws.state.changesShown && previewable(ws.state.active) && !onlyPreview(ws.state.active) && ws.readOnlyText(ws.state.active) === undefined ? ws.state.active : null}>
+            {(path) => (
+              <Tip class="format" data-pinned={previewed() ? "" : undefined} type="button" tip={previewed() ? "Show the code" : "Show it rendered"} onClick={() => togglePreview(path())}>
+                <i class={previewed() ? "i-lucide-code" : "i-lucide-eye"} aria-hidden="true" /> {previewed() ? "Code" : "Preview"}
+              </Tip>
+            )}
+          </Show>
+          <Show when={has("format") && ws.state.active && !previewed() && !ws.state.changesShown && ws.readOnlyText(ws.state.active!) === undefined && !ws.isReadonly(ws.state.active!)}>
+            <Tip class="format" type="button" tip="Format the open file" keys={keysFor("format").map(chordKeys)} onClick={() => void formatOpenFile()}>
+              <i class="i-lucide-wand-sparkles" aria-hidden="true" /> Format
+            </Tip>
+          </Show>
+        </div>
       </div>
     </>
   );

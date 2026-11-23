@@ -43,8 +43,8 @@ function result(r: string | { error: string }, input: Uint8Array): string {
 
 const isObject = (v: unknown): v is Record<string, unknown> => (typeof v === "object" && v !== null) || typeof v === "function";
 
-// The option bits of transpile-wasm's `md_options` (apis.rs).
-const BITS = {
+/** The option bits of transpile-wasm's `md_options` (apis.rs). */
+export const BITS = {
   tables: 1,
   strikethrough: 1 << 1,
   tasklists: 1 << 2,

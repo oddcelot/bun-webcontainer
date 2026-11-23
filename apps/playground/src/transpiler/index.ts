@@ -322,5 +322,16 @@ export const markdownWasm = {
   events: (input: Uint8Array, options: number) => dataCall("markdown_events_c", input, options),
 };
 
+/**
+ * Bun's Markdown renderer (`Bun.markdown.html`) for the page, once the transpiler has loaded (asynchronously, if it
+ * hasn't yet). `options`: worker/markdown.ts's BITS. Throws where the transpiler can't load (no Memory64).
+ */
+export async function markdownToHtml(text: string, options: number): Promise<string> {
+  await loadTranspiler();
+  const r = dataCall("markdown_html_c", enc.encode(text), options);
+  if (typeof r !== "string") throw new Error(`markdown: ${r.error}`);
+  return r;
+}
+
 /** `Bun.XML.parse`'s parser (worker/xml.ts), loading the module on first use (workers only). */
 export const xmlWasm = { parse: (input: Uint8Array, flags: number) => dataCall("xml_parse_c", input, flags) };

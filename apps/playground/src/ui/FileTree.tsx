@@ -18,6 +18,7 @@ import { Tip } from "@runbun/ui/solid/Tip";
 import type { VFS } from "@runbun/vfs";
 import { applyEdits, modify } from "jsonc-parser";
 import { CONFIG_FILE, readConfig } from "../projectConfig";
+import { droppedFiles } from "../dropFiles";
 
 // `git` keeps its repository in .git/ (thousands of objects); like git's own tools, the tree doesn't list it.
 const inGitDir = (path: string) => /(^|\/)\.git(\/|$)/.test(path);
@@ -226,6 +227,65 @@ export function FileTree() {
     requestAnimationFrame(() => requestAnimationFrame(() => tree.getItem(copy) && tree.startRenaming(copy)));
   }
 
+  /** While files from the desktop are dragged over the page: the folder they'd go to (a tree path, "" for the top). */
+  const [dropAt, setDropAt] = createSignal<string | null>(null);
+  const hasFiles = (e: DragEvent) => e.dataTransfer?.types.includes("Files") === true;
+  /** The folder under the pointer in the tree (a file's own folder), else the project's top. */
+  function dropTarget(e: DragEvent): string {
+    const path = e.composedPath();
+    if (!path.includes(host)) return "";
+    const el = path[0] as Element;
+    const row = el.closest?.<HTMLElement>('[data-type="item"]');
+    if (!row) return "";
+    // A row that stands for folders in a chain (src/lib/): the one under the pointer.
+    const segment = el.closest?.("[data-item-flattened-subitem]")?.getAttribute("data-item-flattened-subitem");
+    if (segment?.endsWith("/")) return segment;
+    return row.dataset.itemType === "folder" ? (row.dataset.itemPath ?? "") : (row.dataset.itemParentPath ?? "");
+  }
+  /** Adds the dropped files under `dir` (existing ones are replaced); Undo puts back what was there. */
+  async function addDropped(data: DataTransfer, dir: string) {
+    const files = (await droppedFiles(data)).map(([p, d]) => [dir + p, d] as const);
+    if (!files.length) return;
+    ws.saveAll();
+    const before = new Map(files.map(([p]) => [p, vfs.read(p)]));
+    // The topmost folders the drop makes: Undo takes them away again.
+    const madeDirs = new Set<string>();
+    for (const [p] of files) {
+      const parts = p.split("/");
+      for (let i = dir.split("/").length; i < parts.length; i++) {
+        const d = parts.slice(0, i).join("/");
+        if (!vfs.exists(d)) {
+          madeDirs.add(d);
+          break;
+        }
+      }
+    }
+    const written: string[] = [];
+    for (const [p, d] of files)
+      try {
+        vfs.write(p, d);
+        written.push(p);
+      } catch (e) {
+        app.log("warn", `[files] couldn't add ${p}: ${e}`);
+      }
+    ws.markSaved();
+    if (!written.length) return;
+    if (written.length === 1) ws.open(written[0]);
+    const where = dir ? vfsPath(dir) : "the project";
+    const label = written.length === 1 ? `Added ${written[0]}` : `Added ${written.length} files to ${where}`;
+    app.log("sys", `[files] ${label}`);
+    offerUndo(label, async () => {
+      ws.saveAll();
+      for (const p of written) {
+        const old = before.get(p);
+        if (old === undefined) vfs.files.has(p) && vfs.remove(p);
+        else vfs.write(p, old);
+      }
+      for (const d of madeDirs) if (vfs.exists(d)) vfs.remove(d);
+      ws.markSaved();
+    });
+  }
+
   const tree = new PierreTree({
     // A dot on files open in a tab.
     // And a ring on what the project hides, while the reader shows hidden files.
@@ -418,7 +478,39 @@ export function FileTree() {
     });
     // Files written between creating the tree and subscribing.
     tree.resetPaths(paths());
+
+    // Files dragged in from the desktop, dropped anywhere on the page: into the folder under the pointer in the tree,
+    // else the project's top. Outside an editable tree's reach (a read-only folder or embed) the browser would open the
+    // file in place of the playground, so the drop is refused instead.
+    const allowed = (dir: string) => editable() && !ws.isReadonly(vfsPath(dir));
+    const onDragOver = (e: DragEvent) => {
+      if (!hasFiles(e) || e.defaultPrevented) return;
+      e.preventDefault();
+      const dir = dropTarget(e);
+      e.dataTransfer!.dropEffect = allowed(dir) ? "copy" : "none";
+      setDropAt(allowed(dir) ? dir : null);
+    };
+    const onDragLeave = (e: DragEvent) => {
+      // Out of the window (or into a frame, which takes the drop itself).
+      if (!e.relatedTarget) setDropAt(null);
+    };
+    const onDrop = (e: DragEvent) => {
+      if (!hasFiles(e) || e.defaultPrevented) return;
+      e.preventDefault();
+      setDropAt(null);
+      const dir = dropTarget(e);
+      if (allowed(dir)) void addDropped(e.dataTransfer!, dir).catch((err) => app.log("error", `[files] couldn't read the dropped files: ${err}`));
+    };
+    const onDragEnd = () => setDropAt(null);
+    addEventListener("dragover", onDragOver);
+    addEventListener("dragleave", onDragLeave);
+    addEventListener("drop", onDrop);
+    addEventListener("dragend", onDragEnd);
     return () => {
+      removeEventListener("dragover", onDragOver);
+      removeEventListener("dragleave", onDragLeave);
+      removeEventListener("drop", onDrop);
+      removeEventListener("dragend", onDragEnd);
       unsubscribe();
       unsubscribeDirs();
       unmount();
@@ -473,6 +565,13 @@ export function FileTree() {
   return (
     <>
       <div ref={host} style={{ height: "100%" }} onKeyDown={onKeyDown} />
+      <Show when={dropAt() !== null}>
+        <div class="tree-drop" aria-hidden="true">
+          <span class="label">
+            <i class="i-lucide-file-down" aria-hidden="true" /> Add to {dropAt() ? vfsPath(dropAt()!) : "the project"}
+          </span>
+        </div>
+      </Show>
       <Tip ref={(el: HTMLButtonElement) => (button = el)} id="newfile" type="button" tip="New file" aria-label="New file" onClick={() => {
           setNewFileAt("new.ts");
           setAsking("file");
