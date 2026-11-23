@@ -6,8 +6,7 @@ import type { TilingCommand } from "../keymap";
 import { pref } from "../prefs";
 
 /**
- * The playground's panels in the tiling layout (the default; `?layout=classic` or the command palette goes back to the
- * fixed columns): the four panels as tiles of `@runbun/ui`'s Tiling, the layout kept in localStorage, and the keymap's tiling
+ * The playground's panels: the four as tiles of `@runbun/ui`'s Tiling, the layout kept in localStorage, and the keymap's tiling
  * commands run on it.
  */
 
@@ -15,11 +14,11 @@ export const TILES = ["files", "editor", "preview", "console"] as const;
 export type Tile = (typeof TILES)[number];
 export type Tiles = TilingState<Tile> & { sizes(next: Partial<Record<Sized, number>> | null): void };
 
-/** The ids the classic layout's panels have, which style.css and the scripts know them by. */
+/** The panels' ids, which style.css and the scripts know them by. */
 const IDS: Record<Tile, string> = { files: "tree-panel", editor: "editor-panel", preview: "preview-panel", console: "console-wrap" };
 const LABELS: Record<Tile, string> = { files: "Files", editor: "Editor", preview: "Preview", console: "Console" };
 
-/** The classic arrangement: files, editor, preview over console. */
+/** The arrangement at first: files, editor, preview over console. */
 const START: TilingLayout<Tile> = {
   tree: { axis: "row", ratio: 0.16, a: "files", b: { axis: "row", ratio: 0.5, a: "editor", b: { axis: "col", ratio: 0.5, a: "preview", b: "console" } } },
   hidden: [],
@@ -79,27 +78,6 @@ export const activeTiles = () => active;
 /** Narrower than this, the window gets a layout of its own (STACK at first): side by side, the panels would be slivers. */
 const NARROW = "(width < 700px)";
 
-const MODE_KEY = "layout.mode";
-
-/** Whether this page uses the tiling layout: `?layout=tiling|classic` picks (and is kept), else the last pick, else it does. */
-export function tilingMode(): boolean {
-  try {
-    const asked = new URLSearchParams(location.search).get("layout");
-    if (asked === "tiling" || asked === "classic") localStorage.setItem(MODE_KEY, asked);
-    return localStorage.getItem(MODE_KEY) !== "classic";
-  } catch {
-    return true;
-  }
-}
-
-/** Switches layouts. With a reload: the panels would have to be mounted again, and a terminal doesn't survive that. */
-export function setTilingMode(on: boolean) {
-  localStorage.setItem(MODE_KEY, on ? "tiling" : "classic");
-  const url = new URL(location.href);
-  url.searchParams.delete("layout");
-  location.replace(url);
-}
-
 /** The panels' layout, kept across reloads. Create it in the component that renders `<Tiles>`. */
 export function createTiles() {
   const deserialize = (key: string) => (data: string) => {
@@ -109,7 +87,7 @@ export function createTiles() {
   };
   const [stored, store] = pref<TilingLayout<Tile>>("layout.tiles", START, { deserialize: deserialize("layout.tiles") });
   const [storedNarrow, storeNarrow] = pref<TilingLayout<Tile>>("layout.tiles.narrow", STACK, { deserialize: deserialize("layout.tiles.narrow") });
-  // Read once, like the classic layout's sizes: each tab keeps its own layouts while open. One for a wide window and
+  // Read once: each tab keeps its own layouts while open. One for a wide window and
   // one for a narrow one, each the reader's to change and kept apart.
   const own = { wide: untrack(stored), narrow: untrack(storedNarrow) };
   const query = matchMedia(NARROW);
@@ -117,7 +95,7 @@ export function createTiles() {
   let shares: Partial<Record<Sized, number>> | null = null;
   // A project's sizes name the columns of a wide window.
   const current = () => (narrow ? own.narrow : shares ? withShares(own.wide, shares) : own.wide);
-  // The inset is the gap the classic panels' borders leave around them all.
+  // The inset is the gap around them all, half of the one between two.
   const tiling = createTiling({
     tiles: TILES,
     defaultLayout: START,
@@ -155,7 +133,7 @@ export function createTiles() {
 }
 
 /**
- * The layout with a project's `sizes`, which name the classic columns: the file tree's and the editor's share of
+ * The layout with a project's `sizes`, which name the first arrangement's columns: the file tree's and the editor's share of
  * the width they split, the preview's of the height it splits (with the console, as arranged at first).
  */
 function withShares(layout: TilingLayout<Tile>, shares: Partial<Record<Sized, number>>): TilingLayout<Tile> {

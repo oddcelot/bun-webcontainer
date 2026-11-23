@@ -19,7 +19,7 @@ import { Select } from "@runbun/ui/solid/Select";
 import { formatRequest, parseRequests, type PresetRequest } from "../embed/requests";
 import type { Field as RequestField } from "../request";
 import { placeTiles as place } from "@runbun/ui/solid/Tiling";
-import { PRESETS, TILES, activeTiles, isPreset, setTilingMode, type Tile } from "./Tiles";
+import { PRESETS, TILES, activeTiles, isPreset, type Tile } from "./Tiles";
 
 // Open from the header's button or the command palette.
 const [settingsOpen, setSettingsOpen] = createSignal(false);
@@ -240,18 +240,7 @@ function PanelsSettings() {
   const tiles = activeTiles();
   return (
     <div class="settings-list">
-      <Row label="Layout" hint="Tiling: panels you can move, resize and hide. Classic: fixed columns. Switching reloads the page.">
-        <Segmented
-          label="Layout"
-          value={tiles ? "tiling" : "classic"}
-          options={[
-            ["tiling", "Tiling", "i-lucide-layout-dashboard"],
-            ["classic", "Classic", "i-lucide-columns-3"],
-          ]}
-          onChange={(v) => setTilingMode(v === "tiling")}
-        />
-      </Row>
-      <Show when={tiles} fallback={<p class="settings-note">The arrangements below come with the tiling layout.</p>}>
+      <Show when={tiles}>
         {(t) => (
           <>
             <div class="layout-presets" role="group" aria-label="Arrangement">

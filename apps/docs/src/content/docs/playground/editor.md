@@ -120,7 +120,7 @@ The file tree, the editor, the preview and the console are panels that tile the 
 - **Resize:** drag the border between two panels, or the spot where borders meet to move them together. A double click resets a border.
 - **Move:** hold <kbd>Alt</kbd> and drag a panel by the grip that appears in its corner. Dropped on a side of another panel it splits that one, on its middle the two trade places, and on an edge of the window it takes the whole edge.
 - **Show and hide:** the buttons in the status bar, or the shortcuts below. A hidden panel comes back where it was.
-- **Start from an arrangement:** **Settings**, **Panels** shows a few as small pictures (columns, the console below, the console under the editor, the preview on the left, editor and preview only, stacked). Picking one replaces yours; the same page switches to the classic fixed columns and back.
+- **Start from an arrangement:** **Settings**, **Panels** shows a few as small pictures (columns, the console below, the console under the editor, the preview on the left, editor and preview only, stacked). Picking one replaces yours.
 - **By keyboard:** press <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>K</kbd>, then one key. A hint lists them while it waits.
 
 | Key after <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>K</kbd> | Does |
@@ -134,7 +134,7 @@ The file tree, the editor, the preview and the console are panels that tile the 
 | <kbd>G</kbd>, <kbd>R</kbd> | Grow, shrink the panel |
 | <kbd>Esc</kbd> | Leave without doing anything |
 
-The layout is kept in this browser. In a window narrower than 700px the panels stack one over the other and the file tree starts hidden; that layout is kept on its own, and the wide one returns when the window widens. A project's [`runbun.json`](/guides/project-config/) can show or hide panels and set their sizes for as long as it is open. **Tiling: reset the layout** in the command palette brings the first arrangement back, and **Switch to the classic layout** the fixed columns from before (file tree, editor, preview over console).
+The layout is kept in this browser. In a window narrower than 700px the panels stack one over the other and the file tree starts hidden; that layout is kept on its own, and the wide one returns when the window widens. A project's [`runbun.json`](/guides/project-config/) can show or hide panels and set their sizes for as long as it is open. **Tiling: reset the layout** in the command palette brings the first arrangement back.
 
 ## Settings
 

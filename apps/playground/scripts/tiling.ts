@@ -74,12 +74,12 @@ try {
   const problems: string[] = [];
   page.on("pageerror", (e) => problems.push(`pageerror: ${(e as Error).message}`));
   page.on("console", (m) => {
-    // The workspace's own warning (its `readonly` list, read in an effect's apply) shows in the classic layout too.
+    // The workspace's own warning (its `readonly` list, read in an effect's apply) is not the layout's.
     if (m.text().includes('"createWorkspace.readonly"')) return;
     if (m.type() === "error" || (m.type() === "warn" && /solid|\[[A-Z_]{6,}\]/i.test(m.text()))) problems.push(`${m.type()}: ${m.text().slice(0, 300)}`);
   });
 
-  await page.goto(`${EDITOR}/?example=demo&layout=tiling`, { waitUntil: "domcontentloaded" });
+  await page.goto(`${EDITOR}/?example=demo`, { waitUntil: "domcontentloaded" });
   await page.waitForSelector("[data-tiling-root] [data-tiling-tile]", { timeout: 60_000 });
   await page.evaluate(() => localStorage.removeItem("layout.tiles"));
   await page.reload({ waitUntil: "domcontentloaded" });
@@ -216,10 +216,7 @@ try {
   await shot(page, "reloaded");
 
   report("no errors or Solid warnings in the console", problems.length === 0, problems);
-  await page.evaluate(() => {
-    localStorage.removeItem("layout.tiles");
-    localStorage.removeItem("layout.mode");
-  });
+  await page.evaluate(() => localStorage.removeItem("layout.tiles"));
 } finally {
   await browser.close();
 }

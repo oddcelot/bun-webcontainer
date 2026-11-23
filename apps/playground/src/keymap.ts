@@ -67,7 +67,7 @@ export type Scope = "preview";
 export const scopeOf = (command: Command): string | undefined => (COMMANDS[command] as { scope?: string }).scope;
 
 export type Command = keyof typeof COMMANDS;
-/** The tiling layout's commands (ui/Tiles.tsx runs them), which only work in that layout. */
+/** The tiling layout's commands (ui/Tiles.tsx runs them). */
 export const TILING_COMMANDS = [
   "focusLeft",
   "focusDown",

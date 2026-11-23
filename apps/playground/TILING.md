@@ -193,12 +193,14 @@ What it needed from the component, all of it there for the playground's tiling t
 crossing, the keyboard, a reload, the drawer. Run against the grid it replaced, the panes' boxes were the same in 21;
 the 22nd was the grid being 7px off in a narrow frame with a file tree.
 
-Since then it is the default layout (`?layout=classic` or the palette goes back), and:
+Since then it is the only layout (the fixed columns, Kobalte's splitter in App.tsx, and the switch between the two
+are gone; `layout.mode`, `layout.columns` and `layout.right` in localStorage are no longer read), and:
 
 - **Keys:** one chord (Mod+K, `tileKeys`), then a key, with a hint listing them; the Ctrl+Alt chords are gone, since
   each collided with a window manager (Rectangle, GNOME) or an AltGr character.
 - **Narrow windows** (under 700px) have a layout of their own, stacked, kept apart from the wide one.
 - **A project's `sizes`** apply: each share goes to the nearest split along its axis around that tile.
+- **Arrangements to pick** in Settings, Panels (`PRESETS` in ui/Tiles.tsx), each drawn as a small picture.
 - It is in the docs (playground/editor.md, "Panels").
 
 Known gaps:
@@ -207,13 +209,11 @@ Known gaps:
 - The grips only show while Alt is held with the keyboard's focus in the page itself: Alt pressed inside the preview's
   page doesn't reach it.
 - The preview's own "expand" still exists next to "maximize"; one of them should go.
-- The classic layout's code (Kobalte's splitter in App.tsx) is still there, behind the switch.
 
 ## Open questions
 
 1. Is four tiles enough to judge, or does the dock need splitting (E.1) before this is convincing?
-2. Should tiling replace the classic layout, or stay a mode? Replacing removes the Kobalte splitter code and the
-   reload on switching; classic then becomes the default tree.
+2. ~~Should tiling replace the classic layout, or stay a mode?~~ It replaced it.
 3. Are groups (tabbed tiles) wanted, or is "one panel per tile" the point?
-4. Key bindings: a leader-key scheme (one prefix, then h/j/k/l) would avoid the modifier collisions.
+4. ~~Key bindings~~: a leader key (Mod+K, then a key).
 5. What should `runbun.json` say: keep `panels`/`sizes` mapped onto the default tree, or add a `layout` tree?

@@ -2311,14 +2311,6 @@ html[data-booting] #app > header > * { visibility: hidden; animation: boot-fallb
 @keyframes status-pulse { to { opacity: 0.3; } }
 @media (prefers-reduced-motion: reduce) { #status[data-state="busy"]::before { animation: none; } #status.toast[data-hidden] { transform: none; } }
 main { position: relative; flex: 1; min-height: 0; padding: 0 4px 4px; }
-/*
- * The panes are cards with gaps between them. The gap is each pane's transparent border (the background stops at
- * the padding box, and so does overflow, along the inner curve): borders sit inside the size Kobalte gives a panel,
- * so the fractions still add up, and the handles stay centered in the gaps. The visible corner is the padding box's,
- * so the border's width goes on top of --radius.
- */
-[data-kb-resizable-panel]:not(#right) { border: 4px solid transparent; border-radius: calc(var(--radius) + 4px); background: var(--bg) padding-box; }
-main [data-kb-resizable-root] { height: 100%; }
 #tree { position: relative; height: 100%; }
 /* New file: at the end of the tree's search row (FileTree.tsx leaves the room), the same size and corner as the box. */
 #newfile { position: absolute; top: calc(var(--pad) + 1px); right: var(--pad); display: grid; place-items: center; width: var(--control-height); height: var(--control-height); padding: 0; border: 1px solid var(--control-border); border-radius: var(--inner-radius); background: var(--control); color: inherit; cursor: pointer; }
@@ -2858,22 +2850,6 @@ main [data-kb-resizable-root] { height: 100%; }
 .resize-handle { position: relative; z-index: 5; padding: 0; border: 0; background: none; outline: none; }
 .resize-handle[data-orientation="horizontal"] { width: 6px; margin: 0 -3px; }
 .resize-handle[data-orientation="vertical"] { height: 6px; margin: -3px 0; }
-/*
- * Kobalte links two handles into a draggable crossing only when one ends within 1px of the other's edge, so the
- * preview/console handle starts where the column handle beside it ends rather than under it.
- */
-#right .resize-handle[data-orientation="vertical"] { margin-left: 3px; }
-/* The crossing's grab box sits left of that handle, over the column border; Kobalte's inline overflow would clip it. */
-#right, #right > [data-kb-resizable-root] { overflow: visible !important; }
-/* Visible overflow also brings back the flex default of min-width/min-height: auto, which kept the column from
- * shrinking below its contents' width and pushed the request bar and console buttons off the screen. */
-#right, #right > [data-kb-resizable-root] { min-width: 0; min-height: 0; }
-/*
- * A hidden column (App.tsx) has no width: drop its border too, which would still take room, clip what's left of it
- * (#right's visible overflow would widen the page; paint containment also clips positioned descendants, like the
- * request bar's hidden native select), and keep it out of the Tab order.
- */
-#tree-panel[data-hidden], #right[data-hidden] { border-width: 0; overflow: hidden !important; contain: paint; visibility: hidden; }
 .resize-handle::after { content: ""; position: absolute; inset: 0; margin: auto; border-radius: 2px; background: transparent; transition: background-color 0.1s; }
 .resize-handle[data-orientation="horizontal"]::after { width: 3px; height: calc(100% - 2 * var(--radius)); }
 .resize-handle[data-orientation="vertical"]::after { height: 3px; width: calc(100% - 2 * var(--radius)); }
@@ -3401,7 +3377,6 @@ body:has(.resize-handle[data-dragging]) iframe { pointer-events: none; }
     display: none;
   }
 }
-/* Not the main layout's handle offset (#right, where it meets the column handle): this one spans its panel. */
 #preview-wrap #req-handle {
   flex: 0 0 auto;
   margin-left: 0;
