@@ -3,7 +3,7 @@
 // handles come out as valid code that does what the original does, and run with the worker's real AsyncLocalStorage
 // (src/worker/node/asyncHooks.ts) each `await` resumes in its caller's store, through `try`, `for await`, generators
 // and concurrent calls.
-import { restoreContext, restoreContextMapped } from "../src/asyncAwait.ts";
+import { restoreContext, restoreContextMapped, withoutContext } from "../src/asyncAwait.ts";
 import { decodeMappings, insertColumns, originalPosition } from "../src/sourceMap.ts";
 import { async_hooks, installAsyncContext } from "../src/worker/node/asyncHooks.ts";
 
@@ -32,9 +32,13 @@ const SHAPES: [string, string][] = [
 ];
 
 const wrap = (s: string) => `async function f() {\n${s}\n}`;
+/** The pass's output without the comments around each insert (the shapes above leave them out). */
+const unmarked = (s: string) => s.replaceAll("/*als*/", "");
 for (const [src, want] of SHAPES) {
   const printed = transpiler.transformSync(wrap(src)).trim();
-  const out = restoreContext(printed);
+  const marked = restoreContext(printed);
+  const out = unmarked(marked);
+  check(`source without the inserts: ${src}`, withoutContext(marked) === printed, marked);
   const body = out.slice(out.indexOf("\n") + 1, out.lastIndexOf("\n}"));
   check(`shape: ${src}`, body.trim() === want || body.includes(want), { printed, out });
   try {
@@ -46,9 +50,9 @@ for (const [src, want] of SHAPES) {
 
 // try and for await get a saved context to restore (a rejection or a loop resumes without returning through the await)
 {
-  const out = restoreContext(
+  const out = unmarked(restoreContext(
     transpiler.transformSync(`async function f(it) {\n try { await a; } catch (e) { b(); } finally { c(); }\n for await (const x of it) d(x);\n for await (const x of it) { await e; break; }\n}`),
-  );
+  ));
   check("try: catch and finally restore", /try \{[^]*\} catch \(e\) \{__alsRestore\(__t\d+\);/.test(out) && /finally \{__alsRestore\(__t\d+\);/.test(out), out);
   check("for await: braceless body restored each iteration", /of it\)\s*\{__alsRestore\(__f\d+\);d\(x\);\}\}finally/.test(out), out);
   check("for await: braced body restored", /of it\) \{__alsRestore\(__f\d+\);/.test(out), out);
@@ -81,6 +85,7 @@ return async function run() {
 }`;
 const build = new Function(`${restoreContext(transpiler.transformSync(program))}\nreturn build;`)() as (a: unknown, s: unknown) => () => Promise<string[]>;
 const run = build(als, sleep);
+check("a function's source leaves the pass out", !run.toString().includes("__als") && run.toString().includes("await sleep(1)"), run.toString());
 const results = await Promise.all(["r1", "r2"].map((id) => als.run(id, async () => (await run()).join(" "))));
 for (const [i, id] of ["r1", "r2"].entries()) {
   const want = `await=${id} catch=${id} finally=${id} for-await=${id} for-await=${id} after-loop=${id} after-break=${id} helper=${id} all=${id},${id}`;
