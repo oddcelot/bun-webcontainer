@@ -69,3 +69,9 @@ export function optionsFromUrl(params: URLSearchParams): Options {
     layout: params.get("layout") === "stack" ? "stack" : "side",
   };
 }
+
+/** Pixels between two panes (ui/EmbedLayout.ts lays them out; main.ts adds them up for `height="auto"`). */
+export const PANE_GAP = 4;
+/** The rows under a stacked editor in a frame that fits its content: the preview's least, and the console's. */
+export const STACK_PREVIEW = 200;
+export const STACK_CONSOLE = 120;

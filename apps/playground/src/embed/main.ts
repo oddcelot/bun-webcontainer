@@ -9,7 +9,7 @@ import { attach, discard, restore, SKIP, type StopSaving } from "../persist";
 import { isShareLink, loadShareLink, rememberSource, shareLink } from "../share";
 import { isFamily, pickFamily, setColorMode, setThemeVars } from "../theme";
 import { BUN_VERSION } from "../worker/bunVersion";
-import { isFeature, isLayout, isMode, lockedFeatures, optionsFromUrl, resolveFeatures } from "./config";
+import { PANE_GAP, STACK_CONSOLE, STACK_PREVIEW, isFeature, isLayout, isMode, lockedFeatures, optionsFromUrl, resolveFeatures } from "./config";
 import { mountEmbed } from "./mount";
 import { parseRequests } from "./requests";
 import { CONFIG_FILE, readConfig, type ProjectConfig } from "../projectConfig";
@@ -109,6 +109,8 @@ const embed = createRoot(() => {
   const stacked = () => side() && layout() === "stack" && !expanded();
   // The frame is as tall as the embed asked (`resize`): a host with height="auto". Stacked rows then fit the code.
   const [fit, setFit] = createSignal(false);
+  // The stacked preview row's height in such a frame (previewHeight below).
+  const [fitPreview, setFitPreview] = createSignal(STACK_PREVIEW);
   // The library project open now; null for anything else (the host's inline files, a share link, an example).
   const [project, setProject] = createSignal<string | null>(null);
   // The open project's runbun.json `sizes` (percent), under the sizes the reader dragged.
@@ -146,6 +148,8 @@ const embed = createRoot(() => {
     stacked,
     fit,
     setFit,
+    fitPreview,
+    setFitPreview,
     setMode,
     expanded,
     /** Asks the host for its modal (or to close it); it answers with `setExpanded`. */
@@ -472,11 +476,9 @@ const LINE = 20;
 /** Heights for the modes that don't fit their content (embed-element/index.ts HEIGHTS). */
 const MODE_HEIGHT: Partial<Record<Mode, number>> = { console: 360, preview: 420, full: 600, result: 420 };
 /**
- * Stacked (`layout=stack`), the editor fits its lines and the rows under it get these (embed.css, `data-fit`); the
- * preview grows past its 200 to fit a response (previewHeight).
+ * Stacked (`layout=stack`), the editor fits its lines and the rows under it get STACK_PREVIEW and STACK_CONSOLE
+ * (ui/EmbedLayout.ts, `fit`); the preview grows past its 200 to fit a response (previewHeight).
  */
-const STACK_PREVIEW = 200;
-const STACK_CONSOLE = 120;
 let unmeasured = 0;
 let measuredOnce = false;
 function wantedHeight() {
@@ -497,17 +499,17 @@ function wantedHeight() {
   // keep the height there is meanwhile rather than jump to the estimate.
   if (unmeasured++ < 30) requestAnimationFrame(() => sendResize(untrack(wantedHeight)));
   if (measuredOnce && lastHeight) return lastHeight;
-  // Before the editor is laid out, an estimate. Each stacked row adds its height and the 4px grid gap.
+  // Before the editor is laid out, an estimate. Each stacked row adds its height and the gap between panes.
   const lines = Math.min(Math.max((path ? (vfs.readText(path) ?? "") : "").split("\n").length, 3), 30);
-  const rows = stacked ? (embed.has("preview") ? STACK_PREVIEW + 4 : 0) + (embed.has("console") ? STACK_CONSOLE + 4 : 0) : 0;
+  const rows = stacked ? (embed.has("preview") ? STACK_PREVIEW + PANE_GAP : 0) + (embed.has("console") ? STACK_CONSOLE + PANE_GAP : 0) : 0;
   // The bar, or with tabs (and the bar's controls in their bar) the gap above the panes.
   return (embed.has("tabs") ? 4 : 40) + (embed.has("tabs") || embed.has("autosave") ? 38 : 0) + lines * LINE + 24 + (below ? 160 : 0) + rows + (pg.canRun ? 0 : 44);
 }
 
 /**
  * The height as laid out, measured: constants missed what fonts and classic scrollbars add (the code's horizontal
- * scrollbar is 11px), and the editor overflowed. It's what sits outside the panes (the bar, a notice), the grid's
- * padding and gaps, the editor pane's chrome (tab bar), the code (its lines, held to 3 to 30, its padding and
+ * scrollbar is 11px), and the editor overflowed. It's what sits outside the panes (the bar, a notice), the room's
+ * padding and the gaps between panes, the editor pane's chrome (tab bar), the code (its lines, held to 3 to 30, its padding and
  * scrollbar) and the rows under it at their fitted sizes. Undefined until the editor (Pierre's, in a shadow root) is
  * there.
  */
@@ -536,9 +538,9 @@ function measuredHeight(stacked: boolean, below: boolean): number | undefined {
   const consoleWrap = below && document.getElementById("console-wrap");
   const consoleH = consoleWrap && height(consoleWrap);
   const rows = (stacked ? [embed.has("preview") && previewHeight(), embed.has("console") && STACK_CONSOLE] : [consoleH]).filter((h): h is number => !!h);
-  const grid = getComputedStyle(main);
-  const gaps = (parseFloat(grid.rowGap) || 0) * rows.length + parseFloat(grid.paddingTop) + parseFloat(grid.paddingBottom);
-  // What sits above the panes (the bar, a notice), measured as such: the frame minus the grid is off by whatever the
+  const room = getComputedStyle(main);
+  const gaps = PANE_GAP * rows.length + parseFloat(room.paddingTop) + parseFloat(room.paddingBottom);
+  // What sits above the panes (the bar, a notice), measured as such: the frame minus the panes' room is off by whatever the
   // page overflows.
   const outside = [...(main.parentElement?.children ?? [])].reduce((sum, e) => sum + (e === main ? 0 : height(e)), 0);
   // The pane's tab bar, and a scrollbar of the host's own.
@@ -552,8 +554,8 @@ function measuredHeight(stacked: boolean, below: boolean): number | undefined {
  * (preview.ts responseReserve), so a tab that hasn't sent yet keeps the room its answer will take. With a body, the
  * response also gets what the body lacks of BODY_ROOM_LINES lines (`data-room` less `data-fit`): room to drag the
  * body down into, since a drag never resizes the embed. A page in the frame
- * with no body has no height of its own, so it keeps STACK_PREVIEW. Set as `--stack-preview` for the fitted rows
- * (embed.css); past the 640px the element allows, the frame isn't fitted and the rows share it, the response scrolling.
+ * with no body has no height of its own, so it keeps STACK_PREVIEW. Kept as `fitPreview` for the fitted rows
+ * (ui/EmbedLayout.ts); past the 640px the element allows, the frame isn't fitted and the rows share it, the response scrolling.
  *
  * Measured again on another tab, view or response (wantedHeight reads them), a card's content resizing, and the body's
  * lines changing (`bodyfit`, ui/Preview.tsx). Not on a drag of the body's handle: that only moves room between body and
@@ -584,7 +586,8 @@ function previewHeight(): number {
     h = Math.max(STACK_PREVIEW, Math.ceil(chrome + (shown ? slack + Math.max(content, responseReserve()) : content)));
   }
   // Settled, the row keeps its height and a taller response scrolls in it.
-  if (!settled) document.getElementById("embed")?.style.setProperty("--stack-preview", `${h}px`);
+  // After this measurement: it runs as an effect works out the height to ask for, where nothing may be set.
+  if (!settled) queueMicrotask(() => embed.setFitPreview(h));
   return h;
 }
 /** A measurement on the next frame, however many asked for one in this: no jitter while a body is typed. */
