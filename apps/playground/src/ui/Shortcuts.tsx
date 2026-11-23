@@ -2,7 +2,7 @@ import { For, Show, createSignal, createUniqueId, onSettled, untrack } from "sol
 import { Dialog, DialogActions, DialogClose, DialogTitle, DialogTrigger, useDialogContext } from "@runbun/ui/solid/Dialog";
 import { Button } from "@runbun/ui/solid/Button";
 import { Input } from "@runbun/ui/solid/Input";
-import { COMMANDS, checkOverrides, chordKeys, chordOf, currentOverrides, keysFor, scopeOf, sameChord, setOverrides, setRecordingKeys, type Command, type Overrides } from "../keymap";
+import { COMMANDS, TILING_COMMANDS, checkOverrides, chordKeys, chordOf, currentOverrides, keysFor, scopeOf, sameChord, setOverrides, setRecordingKeys, type Command, type Overrides } from "../keymap";
 import { Key, Keys, Tip } from "@runbun/ui/solid/Tip";
 
 // Open from the header's button or the command palette.
@@ -38,6 +38,7 @@ const GROUPS: { title: string; commands: Command[] }[] = [
   { title: "Files", commands: ["save", "format", "closeTab"] },
   { title: "Code", commands: ["goToDefinition", "showHover", "suggest", "signatureHelp"] },
   { title: "Layout", commands: ["toggleExplorer", "toggleGit", "toggleConsole", "togglePreview", "exitFullscreen"] },
+  { title: "Tiling layout", commands: [...TILING_COMMANDS] },
 ];
 
 // Inside Dialog.Content so each opening reads the keymap afresh (the content unmounts on close).
