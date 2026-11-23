@@ -162,10 +162,19 @@ try {
   t = await settled(page);
   report("Mod+J brings the console back", !t.console.hidden && tiled(t), t);
 
-  // Mouse: the grip drops the preview on the editor's left half; a border drag resizes.
+  // Mouse: with Alt held each tile shows its grip, which drops the preview on the editor's left half; a border drag resizes.
+  const grips = () =>
+    page.evaluate(() => [...document.querySelectorAll<HTMLElement>("[data-tiling-tile]:not([data-hidden]) [data-tiling-grip]")].map((g) => getComputedStyle(g).opacity === "1" && getComputedStyle(g).pointerEvents !== "none"));
+  const without = await grips();
+  await page.keyboard.down("Alt");
+  await new Promise((r) => setTimeout(r, 250));
+  const held = await grips();
+  await shot(page, "alt-held");
+  report("the grips show only while Alt is held", without.length === 4 && !without.some(Boolean) && held.every(Boolean), { without, held });
   const grip = center(t.preview);
-  await page.mouse.move(grip.x, t.preview.y + 4);
+  await page.mouse.move(grip.x, grip.y);
   await page.mouse.down();
+  await page.keyboard.up("Alt");
   await page.mouse.move(t.editor.x + t.editor.w * 0.15, center(t.editor).y, { steps: 8 });
   await shot(page, "dragging");
   const dropShown = await page.evaluate(() => !document.querySelector<HTMLElement>("[data-tiling-drop]")!.hidden);

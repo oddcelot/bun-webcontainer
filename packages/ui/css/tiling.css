@@ -43,30 +43,31 @@
       &[data-dragging] {
         opacity: 0.55;
       }
-      /* The grip: a pill at the top edge, shown while the pointer is over the tile. */
+      /* The grip: a badge in the middle of the tile (its content: an icon), there while the move key is held. */
       .tiling-grip {
         position: absolute;
-        top: 0;
-        left: 50%;
+        inset: 0;
         z-index: 5;
-        width: 44px;
-        height: 9px;
-        margin-left: -22px;
-        border-radius: 0 0 6px 6px;
-        background: color-mix(in srgb, var(--fg) 30%, transparent);
+        display: grid;
+        place-items: center;
+        width: 52px;
+        height: 52px;
+        margin: auto;
+        border: 1.5px solid var(--accent);
+        border-radius: 14px;
+        background: color-mix(in srgb, var(--accent) 22%, var(--panel));
+        box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+        color: var(--fg);
+        font-size: 22px;
         cursor: grab;
         opacity: 0;
-        transition: opacity 0.12s, background-color 0.12s;
+        pointer-events: none;
+        scale: 0.85;
+        transition: opacity 0.12s, scale 0.12s, background-color 0.12s;
         touch-action: none;
         &:hover {
-          background: var(--accent);
+          background: color-mix(in srgb, var(--accent) 40%, var(--panel));
         }
-      }
-      &:hover .tiling-grip {
-        opacity: 1;
-      }
-      &[data-maximized] .tiling-grip {
-        display: none;
       }
       .tiling-corner {
         display: none;
@@ -82,6 +83,24 @@
       }
       &[data-floating]:not([data-maximized]) .tiling-corner {
         display: block;
+      }
+    }
+    /* The move key (Alt) is held: every tile can be taken hold of, anywhere on it, and says so. */
+    &[data-move-key] {
+      .tiling-tile:not([data-maximized]) {
+        cursor: grab;
+        &::after {
+          background: color-mix(in srgb, var(--accent) 7%, transparent);
+        }
+        .tiling-grip {
+          opacity: 1;
+          pointer-events: auto;
+          scale: 1;
+        }
+      }
+      /* A frame would take the press that starts the drag. */
+      iframe {
+        pointer-events: none;
       }
     }
     &[data-animating] .tiling-tile {

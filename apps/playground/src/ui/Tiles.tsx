@@ -105,7 +105,9 @@ export function Tiles(props: { tiles: Tiles; panes: Record<Tile, () => JSX.Eleme
         {(tile) => (
           <Tiling.Tile tileId={tile} id={IDS[tile]} aria-label={LABELS[tile]}>
             {untrack(panes[tile])}
-            <Tiling.Grip title={`Drag to move ${LABELS[tile]} (or Alt+drag anywhere on it)`} />
+            <Tiling.Grip title={`Drag to move ${LABELS[tile]}`}>
+              <i class="i-lucide-move" aria-hidden="true" />
+            </Tiling.Grip>
             <Tiling.Corner />
           </Tiling.Tile>
         )}

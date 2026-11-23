@@ -26,7 +26,8 @@ import "../css/tiling.css";
  * terminal keeps its screen. For the same reason a hidden tile stays mounted (`data-hidden`).
  *
  * Each part carries data attributes to style by: the root `data-tiling-root`, `data-animating` (for the moment after
- * a command, to transition the rectangles) and `data-dragging`; a tile `data-tiling-tile`, `data-tile` (its id),
+ * a command, to transition the rectangles), `data-dragging` and `data-move-key` (while Alt is held, with movable
+ * tiles: the grips show); a tile `data-tiling-tile`, `data-tile` (its id),
  * `data-focused`, `data-hidden`, `data-floating`, `data-maximized` and `data-dragging`; a handle `data-tiling-handle`,
  * `data-orientation` (`horizontal` between tiles side by side) and `data-active`; a crossing of handles
  * `data-tiling-crossing` and `data-active`; the indicator `data-tiling-drop`.
@@ -389,6 +390,8 @@ function TilingRoot<T extends string>(props: DivProps & { tiling: TilingState<T>
   let root!: HTMLDivElement;
   const [dragging, setDragging] = createSignal<string | null>(null);
   const [drop, setDrop] = createSignal<Drop<string> | null>(null);
+  // Alt alone is held: a press on a tile would drag it. Not with other modifiers (a command's chord).
+  const [moveKey, setMoveKey] = createSignal(false);
   const point = (e: PointerEvent) => {
     const r = root.getBoundingClientRect();
     return { x: e.clientX - r.left, y: e.clientY - r.top };
@@ -468,6 +471,11 @@ function TilingRoot<T extends string>(props: DivProps & { tiling: TilingState<T>
         const tile = tileOf(document.activeElement);
         if (tile && document.activeElement instanceof HTMLIFrameElement) t.setFocus(tile);
       });
+    const onKey = (e: KeyboardEvent) => setMoveKey(t.movable && e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey);
+    const noKey = () => setMoveKey(false);
+    addEventListener("keydown", onKey, true);
+    addEventListener("keyup", onKey, true);
+    addEventListener("blur", noKey);
     root.addEventListener("pointerdown", onDown, { capture: true });
     root.addEventListener("focusin", onFocusIn);
     addEventListener("blur", onBlur);
@@ -480,6 +488,9 @@ function TilingRoot<T extends string>(props: DivProps & { tiling: TilingState<T>
     });
     return () => {
       observer.disconnect();
+      removeEventListener("keydown", onKey, true);
+      removeEventListener("keyup", onKey, true);
+      removeEventListener("blur", noKey);
       root.removeEventListener("pointerdown", onDown, { capture: true });
       root.removeEventListener("focusin", onFocusIn);
       removeEventListener("blur", onBlur);
@@ -489,7 +500,7 @@ function TilingRoot<T extends string>(props: DivProps & { tiling: TilingState<T>
 
   return (
     <RootContext value={{ tiling, point, dragging, setDragging, drop, dragTile, dragCorner }}>
-      <div ref={root} class={["tiling", props.class]} data-tiling-root="" data-animating={t.animating() ? "" : undefined} data-dragging={dragging() !== null ? "" : undefined} {...rest}>
+      <div ref={root} class={["tiling", props.class]} data-tiling-root="" data-animating={t.animating() ? "" : undefined} data-dragging={dragging() !== null ? "" : undefined} data-move-key={moveKey() ? "" : undefined} {...rest}>
         {props.children}
       </div>
     </RootContext>
@@ -532,7 +543,7 @@ function Tile(props: DivProps & { tileId: string; unplaced?: boolean }) {
   );
 }
 
-/** Inside a tile: where to take hold of it to drag it somewhere else. */
+/** Inside a tile: where to take hold of it to drag it somewhere else, shown while the move key (Alt) is held. Its content is the caller's (an icon). */
 function Grip(props: DivProps) {
   const root = useContext(RootContext);
   const tile = useContext(TileContext);

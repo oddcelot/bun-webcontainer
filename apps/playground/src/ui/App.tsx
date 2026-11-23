@@ -366,6 +366,7 @@ export function App() {
       </main>
       <Palette commands={paletteCommands} />
       <StatusBar
+        tiling={!!tiling}
         treeShown={treeShown()}
         toggleFiles={() => toggleFiles(app, treeShown(), () => toggleColumn(0))}
         toggleGit={() => toggleGit(app, treeShown(), () => toggleColumn(0))}
