@@ -5,6 +5,40 @@ browser, its editor, and the docs at docs.runbun.dev. They release together at o
 `package.json`, tagged `v<version>`), organised by part. `@runbun/astro` keeps its own changelog in
 [packages/astro/CHANGELOG.md](./packages/astro/CHANGELOG.md).
 
+## 0.10.0 — 2026-11-24
+
+The file tree does more: drag files and folders in from the desktop, right-click for a fuller menu, and hide files a
+project doesn't need you to see. Images and Markdown files open as previews, with GitHub's alerts. runbun is now
+licensed under FSL-1.1-MIT, and the docs and the self-hosting archive say what that allows. Nothing needs action.
+
+### Playground
+
+- **Added** — **Drag files and folders into the playground.** Drop them on a folder in the file tree to add them
+  there, or anywhere else for the top of the project; Undo takes them out again.
+- **Added** — **Images and Markdown files open as previews.** An image shows as a picture instead of "(binary file)",
+  and a README renders as on GitHub, with a Code button to edit it. GitHub's alerts (`> [!NOTE]`, `[!TIP]`,
+  `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]`) render as GitHub shows them, and headings get anchors.
+- **Added** — **More in a file's menu.** Right-click a file or folder for New folder here, Duplicate, Copy path, Make
+  read-only and Keep out of the tabs; the last two are written to the project's `runbun.json`.
+- **Added** — **A project can hide files from the file tree.** "Hide from the file tree" in a file's or folder's menu
+  (`hiddenInTree` in `runbun.json`) takes it out of the tree, the tabs and Go to a file; it still runs. A button under
+  the tree shows what is hidden, and hides it again.
+- **Changed** — **Keyboard shortcuts open full size.** The dialog takes the whole window, as Settings does, and shows
+  every shortcut without scrolling on a laptop's screen.
+- **Changed** — **Settings' Entry field is a combobox.** It lists the project's files to pick from, as the file lists
+  in Settings do, and still takes a path you type.
+- **Fixed** — **A file's menu draws cleanly.** With a narrow file tree, the editor beside it showed through Rename and
+  Delete and the tree's focus outline ran across them; hovering or using the arrow keys highlighted no item.
+- **Fixed** — **The self-hosting archive includes its license.** LICENSE.md sits at the archive's root and in dist/,
+  so a copy you deploy serves it as well.
+
+### Docs
+
+- **Added** — **The docs link to their source.** The header has the GitHub repository and a Sponsor key, and every
+  page an "Edit page" link.
+- **Added** — **The self-hosting guide says what the license allows.** A copy for yourself, your team or an open
+  source project is fine; a competing commercial product is not, until a release turns MIT after two years.
+
 ## 0.9.0 — 2026-11-23
 
 The playground's panels now tile the window: drag them where you want them, resize them, or pick an arrangement in
