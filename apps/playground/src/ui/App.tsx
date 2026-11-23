@@ -178,6 +178,7 @@ export function App() {
       run: () => void perform(c),
     })),
     { id: "install", label: "Install dependencies", run: () => app.session.ready() && app.install(), when: () => app.session.canRun },
+    { id: "showHidden", label: "Show or hide the project's hidden files", run: () => app.workspace.setShowHidden(!app.workspace.showHidden()), when: () => app.workspace.treeHidden().length > 0 },
     { id: "settings", label: "Open Settings", run: openSettings },
     { id: "shortcuts", label: "Keyboard shortcuts", run: openShortcuts },
   ];

@@ -92,9 +92,9 @@ function PaletteBody(props: { commands: PaletteCommand[]; close: () => void }) {
   const [query, setQuery] = createSignal(untrack(start));
   const [picked, setPicked] = createSignal(0);
   const mode = (): Mode => (query().startsWith(">") ? "commands" : "files");
-  // The project's files, as the tree shows them: not node_modules or .git, nor what the tree leaves out.
+  // The project's files, as the tree shows them: not node_modules or .git, nor what the tree leaves out (hidden files too).
   const files = untrack(() =>
-    [...app.vfs.files.keys()].filter((p) => !/(^|\/)(node_modules|\.git)\//.test(p) && !app.workspace.isGenerated(p) && !app.workspace.isHiddenConfig(p)).sort(),
+    [...app.vfs.files.keys()].filter((p) => !/(^|\/)(node_modules|\.git)\//.test(p) && !app.workspace.isGenerated(p) && !app.workspace.isHiddenConfig(p) && !app.workspace.isOutOfSight(p)).sort(),
   );
   const rows = createMemo<Row[]>(() => {
     if (mode() === "commands") {

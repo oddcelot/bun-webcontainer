@@ -51,6 +51,11 @@
       "items": { "type": "string" },
       "description": "Files kept out of the tabs; they stay in the project and the file tree."
     },
+    "hiddenInTree": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Files, and folders for everything in them (\"scaffold/\"), kept out of the file tree and the tabs. They stay in the project and still run; the reader can show hidden files."
+    },
     "readonly": {
       "type": "array",
       "items": { "type": "string" },

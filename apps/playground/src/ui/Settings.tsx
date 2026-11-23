@@ -201,6 +201,9 @@ function EditorSettings() {
       >
         <Switch label={`Show ${CONFIG_FILE}`} checked={ws.showConfig()} onChange={(on) => ws.setShowConfig(on)} />
       </Row>
+      <Row label="Show hidden files" hint={`What a project keeps out of its file tree (${CONFIG_FILE}'s hiddenInTree), in the tree and in Go to a file.`} reset={pref(ws.showHidden(), false, ws.setShowHidden)}>
+        <Switch label="Show hidden files" checked={ws.showHidden()} onChange={ws.setShowHidden} />
+      </Row>
     </div>
   );
 }
@@ -518,6 +521,7 @@ function projectConfig() {
     if (after === before) return;
     vfs.write(CONFIG_FILE, after);
     if (key === "readonly") ws.setReadonly((value as string[] | undefined) ?? []);
+    if (key === "hiddenInTree") ws.setTreeHidden(((value as string[] | undefined) ?? []).map((p) => p.replace(/\/+$/, "")));
   }
   // What Run starts without runbun.json's `run`: the playground's own guess (scripts.ts commandOf), read with the file left out.
   const guessed = createMemo(() => {
@@ -673,6 +677,7 @@ function ProjectPage(props: { section: Section; project: ProjectConfigState }) {
           <FileList label="Open" hint="as tabs, the first shown" value={c().open} suggestions={files()} onChange={(v) => set("open", v)} />
           <FileList label="Hidden" hint="kept out of the tabs" value={c().hidden} suggestions={files()} onChange={(v) => set("hidden", v)} />
           <FileList label="Read-only" hint="files or folders" value={c().readonly} suggestions={[...folders(), ...files()]} onChange={(v) => set("readonly", v)} />
+          <FileList label="Hidden in the file tree" hint="files or folders, until the reader shows hidden files" value={c().hiddenInTree} suggestions={[...folders(), ...files()]} onChange={(v) => set("hiddenInTree", v)} />
         </div>
         </Show>
         <Show when={props.section === "layout"}>

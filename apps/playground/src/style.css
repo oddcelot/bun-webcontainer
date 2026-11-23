@@ -2355,6 +2355,27 @@ main { position: relative; flex: 1; min-height: 0; padding: 0 4px 4px; }
 #newfile { position: absolute; top: calc(var(--pad) + 1px); right: var(--pad); display: grid; place-items: center; width: var(--control-height); height: var(--control-height); padding: 0; border: 1px solid var(--control-border); border-radius: var(--inner-radius); background: var(--control); color: inherit; cursor: pointer; }
 #newfile:hover { background: var(--control-hover); }
 /* Under the tree after a rename or delete (FileTree.tsx): what happened, and Undo. */
+/* Under the tree, where the project hides files (runbun.json hiddenInTree): how many, and the reader's switch to see them. */
+.tree-hidden {
+  position: absolute;
+  inset: auto auto var(--pad) var(--pad);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--inner-radius);
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+
+  &:hover,
+  &[aria-pressed="true"] {
+    color: var(--fg);
+  }
+}
 .tree-undo {
   position: absolute;
   inset: auto var(--pad) var(--pad);
@@ -2415,6 +2436,10 @@ main { position: relative; flex: 1; min-height: 0; padding: 0 4px 4px; }
     font: inherit;
     text-align: start;
 
+    /* The pointer's or the arrow keys' item (FileTree.tsx focuses it): select.css's fill, which `background: none` above would hide. */
+    &[data-highlighted]:not([aria-disabled]) {
+      background: var(--control-hover);
+    }
     &[aria-disabled] {
       opacity: 0.5;
       cursor: default;
@@ -2424,6 +2449,13 @@ main { position: relative; flex: 1; min-height: 0; padding: 0 4px 4px; }
     color: var(--muted);
     font: inherit;
     font-size: 11px;
+  }
+  hr {
+    width: 100%;
+    height: 1px;
+    margin: 4px 0;
+    border: 0;
+    background: var(--control-border);
   }
 }
 /*
