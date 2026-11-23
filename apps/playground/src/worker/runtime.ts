@@ -39,6 +39,7 @@ import { asyncError, codeError, fsError } from "./node/errors";
 import { capture, runIn } from "./node/asyncHooks";
 import { MIME, mimeOf } from "./mime";
 import { hooks, type NodeSocket } from "./node/serve";
+import { acceptConnection, netAddresses, netHooks } from "./node/net";
 import { flushDatabases } from "./node/sqlite";
 import { SQL, flushSql, sql } from "./sql";
 import nodePath from "./node/path";
@@ -217,8 +218,19 @@ let onServer: (() => void) | undefined;
 let nextPort = 40001;
 /** What the preview shows: the first server on a fixed port. */
 const previewServer = () => servers.find((s) => !s.ephemeral) ?? servers[0];
-/** Tells the page which ports the program serves (the status bar shows them); helpers on port 0 aren't listed. */
-const postPorts = () => post({ type: "ports", ports: servers.filter((s) => !s.ephemeral).map((s) => s.port) });
+/**
+ * Tells the page which ports the program serves (the status bar shows them). Helpers on port 0 aren't listed, but the
+ * page hears of them too, and of its plain net servers: the run's other processes reach them (`remoteFetch`, net.ts).
+ */
+const postPorts = () =>
+  post({
+    type: "ports",
+    ports: servers.filter((s) => !s.ephemeral).map((s) => s.port),
+    helpers: servers.filter((s) => s.ephemeral && !s.unix).map((s) => s.port),
+    net: netAddresses(),
+  });
+netHooks.changed = postPorts;
+netHooks.connect = (address, reply) => post({ type: "net-connect", address, reply }, [reply]);
 const stopServer = (inst: Instance) => {
   servers.splice(servers.indexOf(inst) >>> 0, 1);
   release(inst);
@@ -381,6 +393,8 @@ const localPeer = (hostname: string): SocketAddress => ({
 
 function createInstance(opts: ServeOptions): Instance {
   const requested = Number(opts.port ?? env.PORT ?? env.BUN_PORT ?? 3000);
+  // Port 0: the next one no process of the run serves.
+  if (requested === 0) while (taken.has(nextPort)) nextPort++;
   const port = requested === 0 ? nextPort++ : requested;
   const hostname = opts.hostname ?? "localhost";
   const inst: Instance = {
@@ -1420,9 +1434,17 @@ const fileFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   }
   if (!url.startsWith("file:")) {
     // A server this program started (Bun.serve, http.createServer) is answered in-process, as on a machine where
-    // localhost reaches it; the browser's network can't. A child process's server lives in another worker: unreachable.
+    // localhost reaches it; the browser's network can't. Another process's (a thread's, a child's) answers through the page.
     const inst = ownServer(url);
     if (inst) return loopbackFetch(inst, new Request(input, init));
+    const u = new URL(url);
+    // Asked of the run's other processes first, not only the ports `taken` lists: a port can reach a thread (by
+    // postMessage) before the page's word of who serves it does. Served by none, it goes out as before.
+    if (loopback.has(u.hostname) && u.protocol === "http:") {
+      const req = new Request(input, init);
+      const res = await remoteFetch(req.clone()).catch((e) => (e === NOBODY ? undefined : Promise.reject(e)));
+      if (res) return res;
+    }
     return networkFetch(input, withHeaders(input, init));
   }
   const path = norm(decodeURIComponent(new URL(url).pathname));
@@ -1435,6 +1457,55 @@ const fileFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
 function ownServer(url: string | URL): Instance | undefined {
   const u = new URL(url);
   return loopback.has(u.hostname) && u.protocol === "http:" ? servers.find((s) => s.port === Number(u.port || 80)) : undefined;
+}
+
+/**
+ * A request to a server of another process of the run (Nitro's dev server in a worker_threads thread, on port 0): the
+ * page hands it to that process (runner.ts `common`, "loopback"), which answers as it answers the preview, streamed
+ * (`head`, `chunk`…, `end` or `error`; see sendResponse). Redirects are followed as `loopbackFetch` follows them.
+ */
+/** `remoteFetch`'s rejection when no process of the run serves the port. */
+const NOBODY = Symbol("no process of the run serves the port");
+
+async function remoteFetch(req: Request, hops = 0): Promise<Response> {
+  const body = req.body ? await req.arrayBuffer() : null;
+  const { port1, port2 } = new MessageChannel();
+  const res = await new Promise<Response>((resolve, reject) => {
+    let ctrl: ReadableStreamDefaultController<Uint8Array>;
+    const stream = new ReadableStream<Uint8Array>({
+      start: (c) => void (ctrl = c),
+      cancel: () => (port1.postMessage({ type: "cancel" }), port1.close()),
+    });
+    let head = false;
+    port1.onmessage = ({ data }) => {
+      if (data.type === "head") {
+        head = true;
+        const res = new Response(req.method === "HEAD" || [101, 204, 205, 304].includes(data.status) ? null : stream, { status: data.status, statusText: data.statusText, headers: data.headers });
+        resolve(Object.defineProperties(res, { url: { value: req.url }, redirected: { value: hops > 0 } }));
+      } else if (data.type === "chunk") ctrl.enqueue(new Uint8Array(data.data));
+      else {
+        port1.close();
+        if (data.type === "end") ctrl.close();
+        else if (head) ctrl.error(connectionReset());
+        else reject(data.message === "ECONNREFUSED" ? NOBODY : connectionReset());
+      }
+    };
+    req.signal.addEventListener("abort", () => port1.postMessage({ type: "cancel" }));
+    const port = Number(new URL(req.url).port || 80);
+    post({ type: "loopback", port, url: req.url, method: req.method, headers: [...req.headers], body, reply: port2 }, [port2, ...(body ? [body] : [])]);
+  });
+  const location = res.headers.get("location");
+  if (req.redirect === "manual" || !REDIRECT_STATUS.has(res.status) || location === null) return res;
+  res.body?.cancel().catch(() => {});
+  if (req.redirect === "error") throw fetchError("UnexpectedRedirect", `UnexpectedRedirect fetching "${req.url}"`);
+  if (hops === MAX_REDIRECTS) throw fetchError("TooManyRedirects", "TooManyRedirects: The response redirected too many times");
+  const asGet = (res.status === 303 && req.method !== "GET" && req.method !== "HEAD") || ((res.status === 301 || res.status === 302) && req.method === "POST");
+  const next = new Request(new URL(location, req.url), { method: asGet ? "GET" : req.method, headers: req.headers, body: asGet ? null : body, redirect: req.redirect, signal: req.signal });
+  const u = new URL(next.url);
+  if (!loopback.has(u.hostname) || u.protocol !== "http:") return networkFetch(next);
+  const inst = ownServer(next.url);
+  if (inst) return loopbackFetch(inst, next);
+  return remoteFetch(next.clone(), hops + 1).catch((e) => (e === NOBODY ? networkFetch(next) : Promise.reject(e)));
 }
 
 /** Bun follows 126 redirects; the 127th fails. */
@@ -1808,6 +1879,19 @@ async function main() {
         return sendText(port, 500, fmt(err));
       }
       await sendResponse(port, out.res, out.setCookies, r.method === "HEAD");
+    } else if (m.type === "net-connect") acceptConnection(m.address, m.reply);
+    else if (m.type === "loopback") {
+      // Another process of the run's request to one of this one's servers (remoteFetch there).
+      const port = m.reply as MessagePort;
+      const inst = servers.find((s) => s.port === m.port && !s.unix);
+      if (!inst) return port.postMessage({ type: "error", message: "ECONNREFUSED" });
+      try {
+        const req = new Request(m.url, { method: m.method, headers: m.headers, body: m.body });
+        const out = await holdUntil(dispatch(inst, req, m.body?.byteLength));
+        await sendResponse(port, out.res, out.setCookies, m.method === "HEAD");
+      } catch (err) {
+        port.postMessage({ type: "error", message: fmt(err) });
+      }
     } else if (m.type === "ws") {
       const port = e.ports[0];
       const inst = m.port === undefined ? previewServer() : servers.find((s) => s.port === m.port);

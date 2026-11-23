@@ -565,7 +565,7 @@ describe("add", () => {
 | `import.meta.dir`, `file`, `path`, `main`, `env` | ✅ Works | `env` is `process.env`. In browser code (HTML imports), only `url`, `dirname` and `filename` are filled in. |
 | `import.meta.resolve` | ✅ Works | A package resolves to its `file:///<path>` URL; browser code gets the browser's own. [Details](#importmetaresolve) |
 | `import(expr)` with a computed path | ✅ Works | |
-| `fetch("file:///…")` | ✅ Works | Reads project files; `http://localhost:<port>` reaches the program's own servers. Other URLs go to the network. [Details](#fetchfile) |
+| `fetch("file:///…")` | ✅ Works | Reads project files; `http://localhost:<port>` reaches the program's own servers and those of its child processes and threads. Other URLs go to the network. [Details](#fetchfile) |
 | `Headers#toJSON` | ✅ Works | As in Bun: a plain object of lower-cased names, values joined with `, `, Set-Cookie as an array. |
 | `new Request()` headers | ✅ Works | `request.headers` keeps Cookie, Host, Origin, Referer and Content-Length, as in Bun. `fetch()` sends only what browsers allow. [Details](#new-request-headers) |
 | `Response.redirect` | ✅ Works | As in Bun, the Location is the URL as given (a relative one stays relative). |
@@ -582,7 +582,7 @@ describe("add", () => {
 
 ### `fetch("file:///…")`
 - Reads project files. Relative URLs throw.
-- `http://localhost:<port>` (and `127.0.0.1`) reaches a server this program started, `Bun.serve` or `http.createServer`, and follows its redirects as Bun does (`redirect: "manual"` and `"error"` too; `response.url` and `redirected` are set).
+- `http://localhost:<port>` (and `127.0.0.1`) reaches a server this program started, `Bun.serve` or `http.createServer`, or one a child process or `worker_threads` thread of it started, and follows its redirects as Bun does (`redirect: "manual"` and `"error"` too; `response.url` and `redirected` are set).
 - A child process's server isn't reachable.
 - Other URLs go to the network, subject to CORS.
 

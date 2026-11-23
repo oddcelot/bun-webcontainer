@@ -98,6 +98,10 @@ export class Runner {
   onPorts?: (ports: number[], shown: number | undefined) => void;
   /** Each program's (and child process's) ports as it last reported them: a restart's new program reports before it takes over. */
   private ports = new WeakMap<Worker, number[]>();
+  /** The ports of each one's servers on port 0 (helpers the preview doesn't show), which the run's loopback requests reach too. */
+  private helpers = new WeakMap<Worker, number[]>();
+  /** Where each one's plain net servers listen (socket paths, ports), which the run's `net.connect`s reach. */
+  private sockets = new WeakMap<Worker, (string | number)[]>();
   /** Called when the program starts or stops waiting for input on its stdin: the console then sends what is typed to `stdin`. */
   onStdinWait?: (on: boolean) => void;
   /** Called when the program switches its stdin to raw mode (`process.stdin.setRawMode`) or back: the console then sends each key as typed. */
@@ -645,6 +649,8 @@ export class Runner {
       else if (m.type === "cookies") this.storeCookies(m.path, m.setCookies);
       else if (m.type === "ports") {
         this.ports.set(worker, m.ports);
+        this.helpers.set(worker, m.helpers ?? []);
+        this.sockets.set(worker, m.net ?? []);
         this.shareTaken(worker);
         if (this.worker === worker) this.reportPorts();
       }
@@ -691,6 +697,22 @@ export class Runner {
     else if (m.type === "plugins-token") pluginWorker(m.token, (msg) => worker.postMessage(msg));
     else if (m.type === "plugin-answer") pluginAnswered(m.reply, m.answer);
     else if (m.type.startsWith("dbg-")) onDebugMessage(worker, m);
+    // A request to `localhost:<port>` that another process of its run serves (a worker_threads thread's server, a
+    // child's): that process answers it on `reply`, as the preview's requests (worker/runtime.ts remoteFetch).
+    else if (m.type === "loopback") {
+      const root = this.rootOf(worker);
+      const to = [root, ...this.descendants(root)].find((w) => w !== worker && [...(this.ports.get(w) ?? []), ...(this.helpers.get(w) ?? [])].includes(m.port));
+      if (to) to.postMessage(m, [m.reply]);
+      else m.reply.postMessage({ type: "error", message: "ECONNREFUSED" });
+    }
+    // A `net.connect` to a server of another process of its run (Nuxt's vite-node socket, in the program, from Nitro's
+    // thread): that process accepts it on `reply` (worker/node/net.ts).
+    else if (m.type === "net-connect") {
+      const root = this.rootOf(worker);
+      const to = [root, ...this.descendants(root)].find((w) => w !== worker && this.sockets.get(w)?.includes(m.address));
+      if (to) to.postMessage(m, [m.reply]);
+      else m.reply.postMessage({ type: "refused" });
+    }
     else if (m.type === "vfs") {
       const [a, b] = m.args;
       this.applying = worker;
@@ -734,6 +756,8 @@ export class Runner {
       // A server it starts answers previews when the program serves none (see `route`).
       else if (c.type === "ports") {
         this.ports.set(worker, c.ports);
+        this.helpers.set(worker, c.helpers ?? []);
+        this.sockets.set(worker, c.net ?? []);
         this.shareTaken(worker);
         this.reportPorts();
       } else this.common(worker, c);
@@ -812,7 +836,7 @@ export class Runner {
     const root = this.rootOf(worker);
     const run = [root, ...this.descendants(root)];
     for (const w of run) {
-      const taken = run.flatMap((o) => (o === w ? [] : (this.ports.get(o) ?? [])));
+      const taken = run.flatMap((o) => (o === w ? [] : [...(this.ports.get(o) ?? []), ...(this.helpers.get(o) ?? [])]));
       w.postMessage({ type: "taken", ports: [...new Set(taken)] });
     }
   }
@@ -839,6 +863,8 @@ export class Runner {
       this.kids.get(self.parent)?.delete(self.id);
       // A child process's server goes with it: the previews it was answering end, and its ports leave the list.
       this.endPending(worker);
+      this.helpers.delete(worker);
+      this.sockets.delete(worker);
       if (this.ports.delete(worker)) {
         this.shareTaken(self.parent);
         this.reportPorts();
