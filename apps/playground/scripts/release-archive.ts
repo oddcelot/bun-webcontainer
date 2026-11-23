@@ -33,6 +33,9 @@ for (const [from, to] of [
   ["hosting/example.json", "hosting.example.json"],
   // The example's logos (its `brand`), at the paths it names.
   ["hosting/brand", "brand"],
+  // The license (FSL-1.1-MIT): every copy carries its terms, the archive and a site served from dist/ alike.
+  ["../../LICENSE.md", "LICENSE.md"],
+  ["../../LICENSE.md", "dist/LICENSE.md"],
 ])
   cpSync(join(app, from), join(dir, to), { recursive: true });
 await Bun.write(join(dir, "VERSION"), `${version}\n`);
