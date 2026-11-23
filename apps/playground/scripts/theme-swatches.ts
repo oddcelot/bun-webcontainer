@@ -8,9 +8,10 @@
 import { themes } from "@pierre/theming/themes";
 import { elysiaLight, elysiaDark } from "../src/elysiaTheme";
 import { solidLight, solidDark } from "../src/solidTheme";
+import { svelteLight, svelteDark } from "../src/svelteTheme";
 import { FAMILIES, chromeVars, withRealColors } from "../src/themeColors";
 
-const own: Record<string, unknown> = { "elysia-light": elysiaLight, "elysia-dark": elysiaDark, "solid-light": solidLight, "solid-dark": solidDark };
+const own: Record<string, unknown> = { "elysia-light": elysiaLight, "elysia-dark": elysiaDark, "solid-light": solidLight, "solid-dark": solidDark, "svelte-light": svelteLight, "svelte-dark": svelteDark };
 const load = async (name: string): Promise<any> => {
   if (own[name]) return own[name];
   const theme = await themes.getTheme(name);

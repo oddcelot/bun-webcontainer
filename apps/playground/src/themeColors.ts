@@ -7,6 +7,7 @@ import { colorUtils, normalizeThemeColors } from "@pierre/theming/color";
 export const FAMILIES: Record<string, [string, string, string][]> = {
   Elysia: [["Elysia", "elysia-light", "elysia-dark"]],
   Solid: [["Solid", "solid-light", "solid-dark"]],
+  Svelte: [["Svelte", "svelte-light", "svelte-dark"]],
   Pierre: [
     ["Pierre", "pierre-light", "pierre-dark"],
     ["Pierre Soft", "pierre-light-soft", "pierre-dark-soft"],

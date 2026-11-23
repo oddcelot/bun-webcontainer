@@ -1,6 +1,7 @@
 import { registerCustomTheme } from "@pierre/diffs";
 import { elysiaDark, elysiaLight } from "../elysiaTheme";
 import { solidDark, solidLight } from "../solidTheme";
+import { svelteDark, svelteLight } from "../svelteTheme";
 import { languageByExt } from "../languages";
 
 /**
@@ -16,6 +17,8 @@ registerCustomTheme("elysia-light", async () => elysiaLight.zed, "zed");
 registerCustomTheme("elysia-dark", async () => elysiaDark.zed, "zed");
 registerCustomTheme("solid-light", async () => solidLight.zed, "zed");
 registerCustomTheme("solid-dark", async () => solidDark.zed, "zed");
+registerCustomTheme("svelte-light", async () => svelteLight.zed, "zed");
+registerCustomTheme("svelte-dark", async () => svelteDark.zed, "zed");
 
 /**
  * The language for a file, where its extension alone picks the wrong one: a language pack's files (src/languages).

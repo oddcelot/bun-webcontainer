@@ -6,6 +6,7 @@ import { envelope } from "./contentProtocol";
 import { THEME_VARS, elysiaThemes } from "./elysiaTheme";
 import { HOSTING } from "./hosting";
 import { SOLID_THEME_VARS, solidThemes } from "./solidTheme";
+import { SVELTE_THEME_VARS, svelteThemes } from "./svelteTheme";
 import { FAMILIES, chromeVars, withRealColors } from "./themeColors";
 
 export { FAMILIES };
@@ -38,7 +39,7 @@ if (HOSTING.theme?.family && DEFAULT_FAMILY[1] !== HOSTING.theme.family) console
 
 const controller = createThemeController({
   catalog: createThemeCatalog({
-    themes: [themes, elysiaThemes, solidThemes],
+    themes: [themes, elysiaThemes, solidThemes, svelteThemes],
     defaultLightThemeName: DEFAULT_FAMILY[1],
     defaultDarkThemeName: DEFAULT_FAMILY[2],
   }),
@@ -84,13 +85,14 @@ for (const href of HOSTING.theme?.fonts ?? []) {
 }
 
 /**
- * The theme's own variables: its chrome colors, plus what its family declares (e.g. Elysia's overlay, Solid's radius),
+ * The theme's own variables: its chrome colors, plus what its family declares (e.g. Elysia's overlay, Solid's and Svelte's radius),
  * then the host's.
  */
 const themeVarsFor = (theme: ThemeLike) => ({
   ...chromeVars(theme),
   ...THEME_VARS[themeName()],
   ...SOLID_THEME_VARS[themeName()],
+  ...SVELTE_THEME_VARS[themeName()],
   ...hostVars.base,
   ...hostVars[controller.getState().resolvedColorScheme],
 });
