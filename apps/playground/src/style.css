@@ -1583,6 +1583,8 @@ html[data-booting] #app > header > * { visibility: hidden; animation: boot-fallb
   padding: 6px;
 
   .palette-input {
+    /* Its own height, however long the list under it is (which scrolls instead). */
+    flex: none;
     height: 32px;
     padding: 0 10px;
     border: 1px solid var(--control-border);
