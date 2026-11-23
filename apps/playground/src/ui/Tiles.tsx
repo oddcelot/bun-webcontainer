@@ -60,6 +60,8 @@ export const PRESETS: { id: string; label: string; layout: TilingLayout<Tile> }[
     label: "Editor and preview",
     layout: { tree: { axis: "row", ratio: 0.16, a: "files", b: { axis: "row", ratio: 0.5, a: "editor", b: { axis: "col", ratio: 0.5, a: "preview", b: "console" } } }, hidden: ["files", "console"], floating: {} },
   },
+  // For a program without a page: its code and what it prints.
+  { id: "editor-console", label: "Editor and console", layout: { ...START, hidden: ["files", "preview"] } },
   { id: "stack", label: "Stacked", layout: STACK },
 ];
 
