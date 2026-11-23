@@ -87,7 +87,7 @@ With a `brand`, the playground reads as yours: your logo and `name` stand in the
 
 Configure reads the logo files into `hosting.js` and copies the card into `dist/` as `brand-card-<hash>.png`, so there is nothing else to deploy. Share sites cache a card by its URL; a changed picture gets a new name.
 
-`theme.family` is the theme family a first visit opens in, by the name of its light variant: `"solid-light"` (the SolidJS sites' colors and Geist), `"github-light"`, `"rose-pine-dawn"` and the others in the theme picker. Visitors can still pick another, and one they picked earlier stays. `theme.vars` sets CSS custom properties on top of whichever theme is on, for both schemes (`base`) or one (`light`, `dark`):
+`theme.family` is the theme family a first visit opens in, by the name of its light variant: `"solid-light"` (the SolidJS sites' colors), `"github-light"`, `"rose-pine-dawn"` and the others in the theme picker. Visitors can still pick another, and one they picked earlier stays. `theme.vars` sets CSS custom properties on top of whichever theme is on, for both schemes (`base`) or one (`light`, `dark`):
 
 ```json
 {

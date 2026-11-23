@@ -4,7 +4,7 @@ import { createTheme } from "@pierre/theming/themes";
 import type { Theme as ZedTheme } from "@pierre/highlights";
 
 // The SolidJS sites' look (solidjs.com and docs.solidjs.com share one set of tokens): their surfaces, text and brand
-// blues as the chrome, the code colors of solidjs.com's own code blocks, and Geist as the font. For a Solid playground
+// blues as the chrome, the code colors of solidjs.com's own code blocks (in the playground's own fonts). For a Solid playground
 // (the hosting file's `theme.family`, hosting/README.md), and a family like any other in the theme picker.
 // Each comes twice, like the Elysia pair: a TextMate theme (the theme controller, the chrome) and a Zed one
 // (@pierre/highlights, the code).
@@ -142,20 +142,14 @@ export const solidDark = theme("solid-dark", "dark", {
 
 /**
  * What the chrome takes from the sites beyond the theme's colors: the page behind the panes (their `slate-100` and
- * `slate-950`), the muted text as they have it, their medium radius, and Geist (the theme's `load` fetches the fonts).
+ * `slate-950`), the muted text as they have it and their medium radius. Not their font (Geist): every theme has the
+ * same fonts, so picking one moves nothing. A host that wants it names it in its hosting file (`theme.fonts`, `theme.vars`).
  */
-const FONTS = {
-  "--font-ui": '"Geist Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
-  "--font-mono": '"Geist Mono Variable", ui-monospace, "SF Mono", Menlo, Consolas, monospace',
-  "--radius": "10px",
-};
+const SHAPE = { "--radius": "10px" };
 export const SOLID_THEME_VARS: Record<string, Record<string, string>> = {
-  "solid-light": { ...FONTS, "--canvas": "#eef2f7", "--border": "#dfe4ec", "--muted": "#4a5568" },
-  "solid-dark": { ...FONTS, "--canvas": "#020e1e", "--border": "#303f52", "--muted": "#aab6c8" },
+  "solid-light": { ...SHAPE, "--canvas": "#eef2f7", "--border": "#dfe4ec", "--muted": "#4a5568" },
+  "solid-dark": { ...SHAPE, "--canvas": "#020e1e", "--border": "#303f52", "--muted": "#aab6c8" },
 };
-
-/** Geist and Geist Mono (variable, SIL OFL), fetched when a Solid theme first loads. A failed fetch leaves the fallbacks. */
-const fonts = () => Promise.all([import("@fontsource-variable/geist/wght.css"), import("@fontsource-variable/geist-mono/wght.css")]).catch(() => {});
 
 /** The pair as a theme family: selecting `solid-light` selects `solid-dark` for dark mode too. */
 export const solidThemes = createThemeCollection({
@@ -165,14 +159,14 @@ export const solidThemes = createThemeCollection({
       displayName: "Solid Light",
       collection: "Solid",
       colorScheme: "light",
-      load: async () => (void fonts(), solidLight),
+      load: async () => solidLight,
     }),
     createTheme({
       name: "solid-dark",
       displayName: "Solid Dark",
       collection: "Solid",
       colorScheme: "dark",
-      load: async () => (void fonts(), solidDark),
+      load: async () => solidDark,
     }),
   ],
 });
