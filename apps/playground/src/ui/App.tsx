@@ -16,7 +16,7 @@ import { inCommitBox } from "../git/store";
 import { Header } from "./Header";
 import { StatusBar } from "./StatusBar";
 import { Unsupported } from "./Unsupported";
-import { Tiles, createTiling, setTilingMode, tilingMode } from "./Tiles";
+import { Tiles, createTiles, runTilingCommand, setTilingMode, tilingMode } from "./Tiles";
 import type { Sized } from "../projectConfig";
 
 /** Panel sizes as fractions, kept across reloads. A hidden panel isn't kept: after a reload it opens at its size from before. */
@@ -39,7 +39,7 @@ const GLOBAL: Command[] = ["run", "stop", "toggleExplorer", "toggleGit", "toggle
 export function App() {
   const app = useContext(AppContext);
   // The tiling layout (ui/Tiles.tsx), when this page uses it: then it places and toggles the panels, not the columns below.
-  const tiling = tilingMode() ? createTiling() : undefined;
+  const tiling = tilingMode() ? createTiles() : undefined;
   // Per panel, not the root's initialSizes: the root's list only reached the first panel after a reload.
   const [columns, saveColumns] = sizesPref("layout.columns", [0.14, 0.43, 0.43]);
   const [rows, saveRows] = sizesPref("layout.right", [0.5, 0.5]);
@@ -174,7 +174,10 @@ export function App() {
   /** Runs a command of the page (a shortcut, or the command palette); false if it doesn't apply here, to leave the key be. */
   const perform = (command: Command): boolean => {
     const s = app.session;
-    if ((TILING_COMMANDS as readonly Command[]).includes(command)) return !!tiling && tiling.run(command as TilingCommand);
+    if ((TILING_COMMANDS as readonly Command[]).includes(command)) {
+      if (tiling) runTilingCommand(tiling, command as TilingCommand);
+      return !!tiling;
+    }
     switch (command) {
       case "run":
         if (s.canRun && !s.busy.run && s.ready()) app.run();
@@ -280,7 +283,7 @@ export function App() {
         */}
         {tiling ? (
           <Tiles
-            tiling={tiling}
+            tiles={tiling}
             panes={{
               files: () => (
                 <nav id="tree">

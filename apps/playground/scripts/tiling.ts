@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// The tiling layout (ui/Tiles.tsx, src/tiling.ts) in headless Chrome, against a dev server that is already running:
+// The tiling layout (ui/Tiles.tsx over @runbun/ui's Tiling) in headless Chrome, against a dev server that is already running:
 // the panels tile the room, the keyboard moves, turns, maximizes, floats and hides them, a drag drops one onto
 // another's side, and through all of it the preview's frame never loads again and the layout survives a reload.
 //   bun scripts/tiling.ts [url]        (default http://localhost:5173; SHOTS=<dir> keeps a screenshot per step)
@@ -30,16 +30,16 @@ type Box = { x: number; y: number; w: number; h: number; hidden: boolean; floati
 const tiles = (page: Page) =>
   page.evaluate(() =>
     Object.fromEntries(
-      [...document.querySelectorAll<HTMLElement>(".tiles .tile")].map((el) => {
+      [...document.querySelectorAll<HTMLElement>("[data-tiling-root] [data-tiling-tile]")].map((el) => {
         const r = el.getBoundingClientRect();
         const d = el.dataset;
-        return [d.tile!, { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height), hidden: "hidden" in d, floating: "floating" in d, max: "max" in d, focused: "focused" in d }];
+        return [d.tile!, { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height), hidden: "hidden" in d, floating: "floating" in d, max: "maximized" in d, focused: "focused" in d }];
       }),
     ),
   ) as Promise<Record<string, Box>>;
 /** After the tiles have glided to their places. */
 const settled = async (page: Page) => {
-  await page.waitForFunction(() => !document.querySelector(".tiles[data-animating]"), { timeout: 5000 });
+  await page.waitForFunction(() => !document.querySelector("[data-tiling-root][data-animating]"), { timeout: 5000 });
   await new Promise((r) => setTimeout(r, 60));
   return tiles(page);
 };
@@ -75,10 +75,10 @@ try {
   });
 
   await page.goto(`${EDITOR}/?example=demo&layout=tiling`, { waitUntil: "domcontentloaded" });
-  await page.waitForSelector(".tiles .tile", { timeout: 60_000 });
+  await page.waitForSelector("[data-tiling-root] [data-tiling-tile]", { timeout: 60_000 });
   await page.evaluate(() => localStorage.removeItem("layout.tiles"));
   await page.reload({ waitUntil: "domcontentloaded" });
-  await page.waitForSelector(".tiles .tile #editor", { timeout: 60_000 });
+  await page.waitForSelector("[data-tiling-root] [data-tiling-tile] #editor", { timeout: 60_000 });
   let t = await settled(page);
   report("the four panels tile the room", Object.keys(t).length === 4 && tiled(t) && t.files.x < t.editor.x && t.editor.x < t.preview.x && t.preview.y < t.console.y, t);
   await shot(page, "start");
@@ -122,7 +122,7 @@ try {
   await chord(page, "Ctrl+Alt+F");
   t = await settled(page);
   const room = await page.evaluate(() => {
-    const r = document.querySelector(".tiles")!.getBoundingClientRect();
+    const r = document.querySelector("[data-tiling-root]")!.getBoundingClientRect();
     return { w: Math.round(r.width), h: Math.round(r.height) };
   });
   report("maximize fills the room", t.console.max && t.console.w >= room.w - 10 && t.console.h >= room.h - 10, { console: t.console, room });
@@ -150,14 +150,14 @@ try {
   await page.mouse.down();
   await page.mouse.move(t.editor.x + t.editor.w * 0.15, center(t.editor).y, { steps: 8 });
   await shot(page, "dragging");
-  const dropShown = await page.evaluate(() => !document.querySelector<HTMLElement>(".tile-drop")!.hidden);
+  const dropShown = await page.evaluate(() => !document.querySelector<HTMLElement>("[data-tiling-drop]")!.hidden);
   await page.mouse.up();
   const before = t;
   t = await settled(page);
   report("drag by the grip: the preview lands left of the editor", dropShown && tiled(t) && t.preview.x < t.editor.x && t.preview.y === t.editor.y, { dropShown, t });
   await shot(page, "dropped");
   const handle = await page.evaluate(() => {
-    const el = document.querySelector<HTMLElement>('.tile-handle[data-axis="row"]')!;
+    const el = document.querySelector<HTMLElement>('[data-tiling-handle][data-orientation="horizontal"]')!;
     const r = el.getBoundingClientRect();
     return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
   });
@@ -177,7 +177,7 @@ try {
   // The layout is kept.
   const kept = await tiles(page);
   await page.reload({ waitUntil: "domcontentloaded" });
-  await page.waitForSelector(".tiles .tile #editor", { timeout: 60_000 });
+  await page.waitForSelector("[data-tiling-root] [data-tiling-tile] #editor", { timeout: 60_000 });
   t = await settled(page);
   const same = Object.keys(kept).every((n) => Math.abs(kept[n].x - t[n].x) <= 1 && Math.abs(kept[n].w - t[n].w) <= 1 && Math.abs(kept[n].y - t[n].y) <= 1);
   report("a reload keeps the layout", same, { kept, t });

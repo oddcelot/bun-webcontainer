@@ -1,6 +1,6 @@
-// node apps/playground/src/tiling.test.ts   (node >= 26 runs the TypeScript directly)
+// node packages/ui/solid/tilingTree.test.ts   (node >= 26 runs the TypeScript directly)
 import assert from "node:assert/strict";
-import { dwindle, insert, isTreeOf, layout, leaves, move, neighbor, remove, resize, setRatio, swap, toEdge, toggleSplit, type Tree } from "./tiling.ts";
+import { dwindle, insert, isTreeOf, layout, leaves, move, neighbor, remove, resize, setRatio, swap, toEdge, toggleSplit, type Tree } from "./tilingTree.ts";
 
 const BOX = { x: 0, y: 0, w: 1008, h: 608 };
 // files | editor | preview over console

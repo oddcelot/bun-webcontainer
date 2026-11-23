@@ -34,8 +34,8 @@ their rectangles.
 
 ### A. Own split tree over a flat panel list (prototyped)
 
-A pure module (`src/tiling.ts`, about 200 lines) holds the binary tree and its operations; a component
-(`src/ui/Tiles.tsx`) renders the panels as absolutely positioned siblings in a fixed DOM order and gives each the
+A pure module (`packages/ui/solid/tilingTree.ts`, about 200 lines) holds the binary tree and its operations; a
+component (`packages/ui/solid/Tiling.tsx`) renders the panels as absolutely positioned siblings in a fixed DOM order and gives each the
 rectangle the tree works out. Rearranging changes four CSS properties per panel and nothing else.
 
 - **For:** exactly the Hyprland model, including the things no library has (dwindle insertion, directional
@@ -135,7 +135,39 @@ What works:
 
 Verified by `scripts/tiling.ts` (headless Chrome, 17 checks against a running dev server): tiling, every command
 above, the drag, the border resize, the reload, and that the preview's iframe fires no `load` after the run through
-all of it. `src/tiling.test.ts` covers the tree operations.
+all of it. `packages/ui/solid/tilingTree.test.ts` covers the tree operations.
+
+### The component
+
+The layout is a component of `@runbun/ui` in the shape of a Kobalte one: parts under one name, state the caller's,
+data attributes to style by, no app imports.
+
+```tsx
+const tiling = createTiling({ tiles: ["files", "editor"], defaultLayout, initialLayout: stored, onLayoutChange: save });
+
+<Tiling tiling={tiling}>
+  <Tiling.Tile tileId="files" aria-label="Files">
+    <Files />
+    <Tiling.Grip />
+    <Tiling.Corner />
+  </Tiling.Tile>
+  <Tiling.Tile tileId="editor" aria-label="Editor">…</Tiling.Tile>
+  <Tiling.Handles aria-label="Resize panels" />
+  <Tiling.DropIndicator />
+</Tiling>
+```
+
+- `createTiling` returns the state and the commands: `focusDirection`, `move`, `toggleSplit`, `toggleMaximized`,
+  `toggleFloating`, `grow`, `setShown`/`toggle`, `override`/`reveal`, `reset`, `setLayout`, and the tracked
+  `layout`, `focused`, `maximized`, `shown`. It knows nothing of keys: the playground maps its keymap onto it
+  (`runTilingCommand` in `src/ui/Tiles.tsx`, which is now about 120 lines).
+- Parts carry `data-tiling-*` and state attributes (`data-focused`, `data-hidden`, `data-floating`,
+  `data-maximized`, `data-dragging`, `data-orientation`, `data-active`), and default classes styled by
+  `css/tiling.css` in the `runbun-ui` layer, so an app rule overrides them.
+- Where it differs from Kobalte: the state comes from `createTiling` rather than root props plus a children
+  function, since commands run from outside the root (the keymap, the status bar) and Kobalte's function children
+  need a workaround in Solid 2 as it is. The layout is uncontrolled (`initialLayout` + `onLayoutChange` +
+  `setLayout`); a controlled `layout` prop and an `as` prop for the parts are not there yet.
 
 Known gaps in the prototype:
 

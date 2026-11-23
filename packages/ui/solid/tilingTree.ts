@@ -1,5 +1,5 @@
 /**
- * The tiling layout's model (ui/Tiles.tsx draws it): a binary tree of splits with the panels as its leaves, as in
+ * The tiling layout's model (Tiling.tsx draws it): a binary tree of splits with the panels as its leaves, as in
  * Hyprland's dwindle layout. Everything here is pure: an operation returns a new tree, and `layout` turns a tree into
  * one rectangle per panel, so the panels themselves never move in the DOM (a moved iframe reloads).
  */
