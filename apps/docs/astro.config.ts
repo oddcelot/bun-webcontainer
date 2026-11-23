@@ -11,10 +11,8 @@ import remarkExamples from "./src/remark-examples.ts";
 import remarkStatus from "./src/remark-status.ts";
 import { DOCS_URL, PLAYGROUND_URL } from "./site-urls.ts";
 
-// The source repository, linked from the header (GitHub icon) and each page's "Edit page". It is private for now, so
-// the links would 404 for readers: set REPO_PUBLIC to true once it is public.
+// The source repository, linked from the header (GitHub icon) and each page's "Edit page".
 const REPO = "https://github.com/oddcelot/bun-webcontainer";
-const REPO_PUBLIC = false;
 
 /** The code themes, dark first: Shiki's names. */
 const CODE_THEMES = ["rose-pine", "rose-pine-dawn"] as const;
@@ -91,9 +89,8 @@ export default defineConfig({
         Banner: "./src/components/Banner.astro",
         Footer: "./src/components/Footer.astro",
       },
-      ...(REPO_PUBLIC
-        ? { social: [{ icon: "github", label: "GitHub", href: REPO }], editLink: { baseUrl: `${REPO}/edit/main/apps/docs/` } }
-        : {}),
+      social: [{ icon: "github", label: "GitHub", href: REPO }],
+      editLink: { baseUrl: `${REPO}/edit/main/apps/docs/` },
       // Starlight sets the title, description, canonical, og:url and twitter:card per page; the share image is the
       // playground's card (apps/playground/public/og.png), so links to the docs preview like links to the playground.
       // ?v=: social sites cache a card's image by its URL, so a redrawn card needs a new one. Bump it here and in the

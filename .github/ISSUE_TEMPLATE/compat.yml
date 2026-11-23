@@ -1,0 +1,31 @@
+name: Differs from Bun
+description: Code that runs in native Bun fails or behaves differently in the playground.
+labels: [compatibility]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check [the compatibility pages](https://docs.runbun.dev/compatibility/) first: some APIs can't work in a browser,
+        and those pages say which.
+  - type: textarea
+    id: code
+    attributes:
+      label: Code
+      description: The smallest program that shows it, or a share link to the project.
+      render: ts
+    validations:
+      required: true
+  - type: textarea
+    id: native
+    attributes:
+      label: Native Bun
+      description: What `bun run` prints, and its version (`bun --version`).
+    validations:
+      required: true
+  - type: textarea
+    id: playground
+    attributes:
+      label: The playground
+      description: What the playground prints instead, and your browser.
+    validations:
+      required: true

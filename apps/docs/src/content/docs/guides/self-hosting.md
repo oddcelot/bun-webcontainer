@@ -13,6 +13,8 @@ Every runbun release from 0.7.0 on comes with the playground as static files you
 
 [solid.runbun.dev](https://solid.runbun.dev) is one, a playground for SolidJS. Its repository, [oddcelot/solid-playground](https://github.com/oddcelot/solid-playground), holds no playground code: a pinned archive, a hosting file, and a check that runs its projects in headless Chrome.
 
+The playground is licensed under the [FSL-1.1-MIT](https://github.com/oddcelot/bun-webcontainer/blob/main/LICENSE.md). A copy for yourself, your team or an open source project is fine, under your own name. A copy offered as a commercial product that competes with runbun is not. Each release becomes MIT two years after it came out.
+
 ## What you need
 
 - A host that serves static files over HTTPS (or on `localhost`), from the root of a domain or subdomain. The archive's paths start at `/`; a copy under a sub-path has to be [built from source](https://github.com/oddcelot/bun-webcontainer) with `vite build --base=/sub/path/`.
