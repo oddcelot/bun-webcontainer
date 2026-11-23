@@ -1561,8 +1561,28 @@ html[data-booting] #app > header > * { visibility: hidden; animation: boot-fallb
   }
 }
 /* The project and theme pickers: Kobalte Selects whose lists open in a portal. */
-.dialog.shortcuts { width: min(44rem, calc(100vw - 2rem)); max-height: calc(100vh - 14vh - 2rem); overflow: auto; }
-.shortcuts-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); gap: 14px 24px; margin-top: 10px; }
+/* Keyboard shortcuts (Shortcuts.tsx): the whole window, as Settings is, its groups in as many columns as fit. */
+.dialog-positioner:has(> .dialog.shortcuts) {
+  padding-top: 0;
+  place-items: stretch;
+}
+.dialog.shortcuts {
+  width: auto;
+  max-height: none;
+  margin: 12px;
+  overflow: auto;
+}
+/* Columns that fill top to bottom: a long group (the tiling keys) doesn't leave a gap under the short ones beside it. */
+.shortcuts-groups {
+  columns: 19rem;
+  column-gap: 24px;
+  margin-top: 10px;
+
+  .shortcuts-group {
+    break-inside: avoid;
+    margin-bottom: 14px;
+  }
+}
 .shortcuts-group h3 { margin: 0 0 4px; color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
 .shortcuts-group dl { margin: 0; }
 .shortcuts-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 5px 0; border-bottom: 1px solid color-mix(in srgb, var(--control-border) 60%, transparent); font-size: 12px; }
