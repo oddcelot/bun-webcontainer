@@ -1,7 +1,7 @@
 import { createStore, flush, reconcile } from "solid-js";
 import type { PresetRequest } from "../embed/requests";
 import { CONTENT_ORIGIN } from "../contentOrigin";
-import { PREFIX, cardFromFrame, normalize, previewUrl, sendRequest, type Card } from "../preview";
+import { PREFIX, cardFromFrame, normalize, previewUrl, reloadOwnTabs, sendRequest, type Card } from "../preview";
 import { sendToFrame } from "../previewBridge";
 import { build, fromHttp, modeOf, noAuth, paramRows, queryOf, sent, splitParams, withQuery, type Auth, type BodyMode, type Field, type OffParam } from "../request";
 
@@ -349,6 +349,7 @@ export function createPreviews(running: () => boolean = () => false, read: (path
         if (tab.view === "response" && tab.response?.status.startsWith("503") && /No server running|No Bun\.serve handler/.test(tab.response.text)) void previews.request(tab.id);
     },
     reload() {
+      reloadOwnTabs();
       for (const tab of state.tabs) {
         if (tab.pending) {
           if (tab.id === state.active) void previews.request(tab.id);
