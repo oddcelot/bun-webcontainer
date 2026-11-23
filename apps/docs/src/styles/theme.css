@@ -125,6 +125,7 @@ html:root[data-theme] {
  * scoped styles. "Open playground" is the pink one.
  */
 .open-playground,
+.sponsor,
 site-search button[data-open-modal],
 .sl-menu-button,
 mobile-starlight-toc .toggle,
@@ -298,6 +299,17 @@ mobile-starlight-toc {
   padding: 0 12px;
   text-decoration: none;
   white-space: nowrap;
+}
+
+/* Sponsor, next to it: a square key with a pixel heart. */
+.sponsor {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin: 0 var(--px) calc(2 * var(--px));
+  color: var(--brand);
 }
 
 /* A runnable code block's poster is a card like the code blocks, and its Run button the pink key, as on the landing page. */
@@ -533,7 +545,7 @@ h1,
   .sl-link-card:hover,
   .card:hover,
   .pagination-links a:hover,
-  :is(.open-playground, site-search button[data-open-modal], .sl-link-button):active {
+  :is(.open-playground, .sponsor, site-search button[data-open-modal], .sl-link-button):active {
     translate: none;
   }
 }
