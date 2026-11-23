@@ -95,6 +95,14 @@ Dependencies install automatically when one of your own projects or an example o
 - **Project config:** an optional [`runbun.json`](/guides/project-config/) says what Run starts, sets environment variables, picks the open tabs, panels, their sizes and preview requests, and keeps files from edits.
 - **One tab per project:** a second tab with the same project can't save its changes.
 
+## Install as an app
+
+runbun.dev installs as an app in its own window: **Install** in the address bar or the browser menu in Chrome and Edge, **File → Add to Dock** in Safari on macOS, **Share → Add to Home Screen** on iOS. The installed app:
+
+- opens straight on the playground (the landing page stays at `runbun.dev/about`).
+
+Projects and settings are the same as in the browser tab.
+
 ## Embedding
 
 Any project can be put in another page, as a `<bun-playground>` element or an iframe. See [Embedding](/guides/embedding/) and the [embed reference](/reference/embed-api/).
