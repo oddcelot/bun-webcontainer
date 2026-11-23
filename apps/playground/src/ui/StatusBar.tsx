@@ -51,7 +51,7 @@ const keys = (command: Command) => keysFor(command).map(chordKeys);
  * The bar along the bottom, as in VS Code or Zed: panel toggles and the program's status on the left, the open
  * file's problems, cursor and language, the Bun release, Feedback and the privacy link on the right.
  */
-export function StatusBar(props: { treeShown: boolean; toggleFiles(): void; toggleGit(): void; previewShown: boolean; consoleShown: boolean; toggle(i: number): void }) {
+export function StatusBar(props: { tiling?: boolean; treeShown: boolean; toggleFiles(): void; toggleGit(): void; previewShown: boolean; consoleShown: boolean; toggle(i: number): void }) {
   const app = useContext(AppContext);
   const s = app.session;
   const ws = app.workspace;
@@ -73,7 +73,8 @@ export function StatusBar(props: { treeShown: boolean; toggleFiles(): void; togg
   return (
     <footer id="statusbar">
       <Tip tip="Show or hide the file tree" keys={keys("toggleExplorer")} type="button" aria-pressed={shows("files") ? "true" : "false"} onClick={props.toggleFiles}>
-        <i class="i-lucide-panel-left" aria-hidden="true" />
+        {/* A panel on the left is where the tree is in the classic layout; a tile can be anywhere. */}
+        <i class={props.tiling ? "i-lucide-folder-tree" : "i-lucide-panel-left"} aria-hidden="true" />
         <span class="sr-only">File tree</span>
       </Tip>
       <Tip tip="Show or hide the preview" keys={keys("togglePreview")} type="button" aria-pressed={props.previewShown ? "true" : "false"} onClick={() => props.toggle(0)}>

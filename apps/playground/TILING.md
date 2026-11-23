@@ -117,10 +117,10 @@ What works:
 | Action | Keys (rebindable in the shortcuts dialog) | Mouse |
 | --- | --- | --- |
 | Focus the panel left/down/up/right | Ctrl+Alt+H/J/K/L or arrows | click |
-| Move the panel | Ctrl+Alt+Shift+H/J/K/L or arrows | drag the grip at a panel's top edge, or Alt+drag anywhere on it |
+| Move the panel | Ctrl+Alt+Shift+H/J/K/L or arrows | hold Alt: each panel shows a grip in its middle; drag that, or anywhere on the panel |
 | Turn the panel's split | Ctrl+Alt+S | |
 | Maximize / restore | Ctrl+Alt+F | |
-| Float / tile again | Ctrl+Alt+V | drag a floating panel by its grip; resize by its corner |
+| Float / tile again | Ctrl+Alt+V | Alt+drag a floating panel; resize by its corner |
 | Hide the panel | Ctrl+Alt+C (Mod+B, Mod+J, Mod+Alt+B and the status bar still toggle) | |
 | Grow / shrink | Ctrl+Alt+G / Ctrl+Alt+R | drag a border, or the spot where borders meet to move them all at once; double-click resets; arrows when focused |
 | Reset the layout | palette: "Tiling: reset the layout" | |
@@ -199,7 +199,8 @@ Known gaps in the prototype:
 - No small-screen behavior: tiles get as narrow as the room makes them.
 - The default keys are a guess. Ctrl+Alt+arrows collide with some window managers (Rectangle, GNOME); Ctrl+Alt
   letters are AltGr combinations on some Windows keyboard layouts.
-- The grip sits over the top edge of each panel and can cover a few pixels of a tab bar while hovered.
+- The grips only show while Alt is held with the keyboard's focus in the page itself: Alt pressed inside the preview's
+  page doesn't reach it. Nothing on screen says "hold Alt" yet, so the drag is only found by knowing it.
 - The preview's own "expand" still exists next to "maximize"; one of them should go.
 - Not in the docs site or the changelog.
 
