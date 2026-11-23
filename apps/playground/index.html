@@ -28,21 +28,47 @@
       } catch {}
     </script>
     <!--
+      A web+runbun: link (public/site.webmanifest's protocol_handlers) arrives as ?link=<the link>. It becomes the URL
+      it stands for before anything reads the URL: web+runbun://example/<name> → ?example=, repo/<owner/repo…> → ?repo=,
+      git/<url> → ?git=, gallery → ?gallery, open → ?open, s/<id> → /s/<id> (a short share link). Anything else opens
+      the playground.
+    -->
+    <script>
+      try {
+        const q = new URLSearchParams(location.search);
+        const link = q.get("link");
+        if (link !== null) {
+          q.delete("link");
+          const [, name = "", rest = ""] = /^web\+runbun:(?:\/\/)?([a-z]+)\/?(.*)$/i.exec(link) ?? [];
+          const kind = name.toLowerCase();
+          if (kind === "s" && /^[\w-]+$/.test(rest)) location.replace(new URL(`s/${rest}`, location.href));
+          else {
+            if ((kind === "example" || kind === "repo" || kind === "git") && rest) q.set(kind, rest);
+            else q.set(kind === "gallery" ? "gallery" : "open", "");
+            history.replaceState(null, "", location.pathname + "?" + q.toString().replace(/=(?=&|$)/g, "") + location.hash);
+          }
+        }
+      } catch {}
+    </script>
+    <!--
       Landing page or playground. runbun.dev/ opens on the landing page (#landing), which is what search engines index;
       its "Open the playground" button starts the playground in place (src/entry.ts). A link to a project (?example=,
       ?repo=, a #code= share link, /s/<id>) or to a local runner (?connect=, packages/connect) opens the playground
-      right away, and so does every visit after the first
-      time it was opened. /about always shows the landing page. Set before the first paint, so neither flashes.
+      right away, and so does every visit after the first time it was opened, and every launch of the installed app
+      (public/site.webmanifest). /about always shows the landing page. Set before the first paint, so neither flashes.
     -->
     <script>
       try {
         const q = new URLSearchParams(location.search);
         // ?open: straight into the playground, e.g. from the docs' "Open playground" (src/entry.ts drops it from the URL).
-        const project = q.has("example") || q.has("repo") || q.has("connect") || q.has("open") || location.hash.startsWith("#code=");
+        // ?gallery: the manifest's "Starters and examples" shortcut.
+        const project = q.has("example") || q.has("repo") || q.has("git") || q.has("connect") || q.has("open") || q.has("gallery") || location.hash.startsWith("#code=");
+        // Installed as an app (its own window): it opens on the playground, not the landing page.
+        const installed = matchMedia("(display-mode: standalone), (display-mode: window-controls-overlay)").matches || navigator.standalone === true;
         const about = location.pathname.endsWith("/about");
         // data-landing="off": a host without the landing page (hosting/configure.ts, the hosting file's `landing`).
         const landing = document.documentElement.dataset.landing !== "off";
-        if (!landing || (!about && (project || localStorage.getItem("playground.opened")))) document.documentElement.dataset.view = "app";
+        if (!landing || (!about && (project || installed || localStorage.getItem("playground.opened")))) document.documentElement.dataset.view = "app";
       } catch {}
     </script>
     <!--

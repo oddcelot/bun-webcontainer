@@ -16,6 +16,10 @@ const [askingRepo, setAskingRepo] = createSignal<RepoMode | null>(null);
 /** Opens "Open a repository", set to `mode` (the Git panel's "Clone a repository" asks for a clone). */
 export const askRepo = (mode: RepoMode) => setAskingRepo(mode);
 
+/** Whether the gallery is open; main.ts opens it for `?gallery` (the installed app's "Starters and examples"). */
+const [open, setOpen] = createSignal(false);
+export const showGallery = () => setOpen(true);
+
 /**
  * The project switcher: a button naming the open project, which opens the gallery of starters, examples and GitHub
  * repos, with entries to open a local folder, a zip or any GitHub repo.
@@ -23,7 +27,6 @@ export const askRepo = (mode: RepoMode) => setAskingRepo(mode);
 export function ProjectPicker() {
   const app = useContext(AppContext);
   const s = app.session;
-  const [open, setOpen] = createSignal(false);
   const gitOn = () => app.features?.has("git") ?? true;
   // The mode the dialog was opened with, kept while it closes (the title doesn't flip during the fade).
   let last: RepoMode = "files";

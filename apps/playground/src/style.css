@@ -1076,6 +1076,30 @@ html[data-view="opening"] {
   min-height: 0;
 }
 header { display: flex; gap: 8px; align-items: center; padding: 6px 10px 4px; }
+/*
+ * The installed app with its title bar folded away (public/site.webmanifest, display_override): the header is the
+ * title bar. It keeps clear of the window's controls (left on macOS, right on Windows and Linux), at least as tall as
+ * the bar they sit in, and drags the window; its controls stay clickable. /about's landing page starts below the bar.
+ */
+@media (display-mode: window-controls-overlay) {
+  #app > header {
+    box-sizing: border-box;
+    min-height: env(titlebar-area-height, 0px);
+    padding-left: calc(env(titlebar-area-x, 0px) + 10px);
+    padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 10px);
+    app-region: drag;
+    -webkit-app-region: drag;
+
+    & :is(button, a, input, select, [role], [tabindex]) {
+      app-region: no-drag;
+      -webkit-app-region: no-drag;
+    }
+  }
+
+  #landing {
+    padding-top: env(titlebar-area-height, 0px);
+  }
+}
 header button:not(.select-trigger), #docs, #clear, #request button { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 /* By id: the share menu is in the header too, and its items mustn't take this height. */
 #example, #run, #run-more, #local-bun, #debug, #autosave, #watch, #docs, #share, #shortcuts, #settings, #storage, #theme { height: var(--control-height); }
