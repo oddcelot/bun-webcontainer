@@ -1,6 +1,6 @@
 import { For, createContext, createMemo, createSignal, omit, onSettled, untrack, useContext } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { dwindle, insert, isTreeOf, layout as place, leaves, move, neighbor, remove, resize, setRatio, swap, toEdge, toggleSplit, type Dir, type Rect, type Tree } from "./tilingTree";
+import { dwindle, insert, isTreeOf, layout as place, leaves, move, neighbor, remove, resize, setFirst, swap, toEdge, toggleSplit, type Axis, type Dir, type Rect, type Tree } from "./tilingTree";
 import "../css/tiling.css";
 
 /**
@@ -30,9 +30,12 @@ import "../css/tiling.css";
  * `data-focused`, `data-hidden`, `data-floating`, `data-maximized` and `data-dragging`; a handle `data-tiling-handle`,
  * `data-orientation` (`horizontal` between tiles side by side) and `data-active`; a crossing of handles
  * `data-tiling-crossing` and `data-active`; the indicator `data-tiling-drop`.
+ *
+ * It also draws a layout the caller decides (`movable: false`, a tree built from an app's own options and replaced
+ * with `setLayout`): the borders still drag, and `Tiling.Handles` says where to (`onSplitResize`).
  */
 
-export type { Dir, Rect, Tree } from "./tilingTree";
+export type { Dir, Fixed, Rect, Split, Tree } from "./tilingTree";
 
 /** What there is to keep: the tree of the tiled tiles, the hidden ones (which keep their place in it), and the floating ones' boxes as shares of the room. */
 export type TilingLayout<T extends string = string> = { tree: Tree | null; hidden: T[]; floating: Partial<Record<T, Rect>> };
@@ -64,8 +67,12 @@ export type TilingOptions<T extends string> = {
   gap?: number;
   /** Pixels around them all (0). */
   inset?: number;
-  /** The least a dragged border leaves a tile, in pixels (90). */
-  minSize?: number;
+  /** The least a dragged border leaves a tile, in pixels (90), or one for its width and one for its height. */
+  minSize?: number | { width: number; height: number };
+  /** Whether the reader can move tiles: by Alt+drag and by a `Tiling.Grip` (true). The commands are the caller's to run or not. */
+  movable?: boolean;
+  /** Whether the tiles glide to their places after a command (true), or are there at once. */
+  animated?: boolean;
 };
 
 /** A signal with its latest value readable at once: several steps of one event each build on the one before. */
@@ -93,6 +100,9 @@ export function createTiling<T extends string>(options: TilingOptions<T>) {
   const gap = options.gap ?? 8;
   const inset = options.inset ?? 0;
   const minSize = options.minSize ?? 90;
+  /** The least a border along that split leaves either side. */
+  const minOf = (axis: Axis) => (typeof minSize === "number" ? minSize : axis === "row" ? minSize.width : minSize.height);
+  const movable = options.movable ?? true;
   const saved = cell<TilingLayout<T>>(options.initialLayout ?? options.defaultLayout);
   /** Tiles shown or hidden over the reader's own choice, and not kept. */
   const forced = cell<Partial<Record<T, boolean>> | null>(null);
@@ -103,6 +113,7 @@ export function createTiling<T extends string>(options: TilingOptions<T>) {
   let settle: ReturnType<typeof setTimeout> | undefined;
   /** Lets the tiles glide to their places for a moment; not while dragging or as the room resizes. */
   const animate = () => {
+    if (options.animated === false) return;
     setAnimating(true);
     clearTimeout(settle);
     settle = setTimeout(() => setAnimating(false), 260);
@@ -232,6 +243,8 @@ export function createTiling<T extends string>(options: TilingOptions<T>) {
     focus: focusTile,
     /** The maximized tile, if any (tracked). */
     maximized: max.get,
+    /** The tile's box in the room, in pixels (tracked); undefined while it has none (hidden, or not in the tree). */
+    rect: rectOf,
     /** Whether the tile shows (tracked). */
     shown: (tile: T) => !hiddenOf(saved.get(), forced.get()).has(tile),
     /** Shows or hides a tile, as the reader's choice: kept, and over an `override`. A hidden tile keeps its place. */
@@ -318,7 +331,7 @@ export function createTiling<T extends string>(options: TilingOptions<T>) {
       animate();
     },
     /** For the parts below. */
-    internal: { gap, minSize, saved, room, max, view, viewNow, boxOf, rectOf, commit, animate, animating, setFocus, dropAt, land, onFocusElement: (fn: (tile: T) => void) => void (focusElement = fn) },
+    internal: { gap, minOf, movable, saved, room, max, view, viewNow, boxOf, rectOf, commit, animate, animating, setFocus, dropAt, land, onFocusElement: (fn: (tile: T) => void) => void (focusElement = fn) },
   };
 }
 
@@ -383,7 +396,7 @@ function TilingRoot<T extends string>(props: DivProps & { tiling: TilingState<T>
 
   /** A tiled tile onto another's side or middle, or an edge of the room; a floating one to where it's let go. */
   const dragTile = (tile: string, e: PointerEvent) => {
-    if (e.button !== 0 || t.max.now() === tile) return;
+    if (e.button !== 0 || !t.movable || t.max.now() === tile) return;
     e.preventDefault();
     t.setFocus(tile);
     const from = point(e);
@@ -440,7 +453,7 @@ function TilingRoot<T extends string>(props: DivProps & { tiling: TilingState<T>
       const tile = tileOf(e.target);
       if (!tile) return;
       t.setFocus(tile);
-      if (e.altKey && e.button === 0) {
+      if (t.movable && e.altKey && e.button === 0) {
         e.stopPropagation();
         dragTile(tile, e);
       }
@@ -483,15 +496,18 @@ function TilingRoot<T extends string>(props: DivProps & { tiling: TilingState<T>
   );
 }
 
-/** One tile, around its content (rendered once and kept mounted). `tileId` is one of the state's `tiles`. */
-function Tile(props: DivProps & { tileId: string }) {
+/**
+ * One tile, around its content (rendered once and kept mounted). `tileId` is one of the state's `tiles`. While
+ * `unplaced`, the tile gets no rectangle and the caller's `style` places it (a drawer over the others, say).
+ */
+function Tile(props: DivProps & { tileId: string; unplaced?: boolean }) {
   const root = useContext(RootContext);
   const { tiling } = root;
   const id = untrack(() => props.tileId);
-  const rest = omit(props, "tileId", "class", "children");
+  const rest = omit(props, "tileId", "unplaced", "class", "children", "style");
   // A hidden tile stays where it was, so it doesn't fly in from a corner when shown again.
   let last: Rect | undefined;
-  const style = () => rectStyle((last = tiling.internal.rectOf(id) ?? last) ?? { x: 0, y: 0, w: 0, h: 0 });
+  const style = () => (props.unplaced ? props.style : rectStyle((last = tiling.internal.rectOf(id) ?? last) ?? { x: 0, y: 0, w: 0, h: 0 }));
   const several = () => tiling.tiles.filter((t) => tiling.shown(t)).length > 1;
   return (
     <TileContext value={id}>
@@ -501,11 +517,12 @@ function Tile(props: DivProps & { tileId: string }) {
         tabindex="-1"
         data-tiling-tile=""
         data-tile={id}
-        data-hidden={tiling.shown(id) ? undefined : ""}
+        data-hidden={tiling.shown(id) || props.unplaced ? undefined : ""}
         data-focused={tiling.focused() === id && several() ? "" : undefined}
         data-floating={tiling.layout().floating[id] ? "" : undefined}
         data-maximized={tiling.maximized() === id ? "" : undefined}
         data-dragging={root.dragging() === id ? "" : undefined}
+        data-unplaced={props.unplaced ? "" : undefined}
         style={style()}
         {...rest}
       >
@@ -535,11 +552,21 @@ function Corner(props: DivProps) {
  * The borders between the tiles, one separator per split with both sides showing: dragged, moved with the arrow
  * keys when focused, and evened out by a double click. The props go on each. Where borders meet (three tiles at a
  * T, four at a cross) there is a crossing to drag them all by at once, in both directions.
+ *
+ * `onSplitResize` hears of each border a reader moved, by its split's path in the tree (`a`/`b` steps from the
+ * root) and the pixels its two sides now have; with `onSplitReset` a double click is the caller's to answer.
+ * `labelFor` names each border by its path, in place of one `aria-label` for all.
  */
-function Handles(props: DivProps) {
+function Handles(
+  props: DivProps & {
+    onSplitResize?: (path: string, size: { first: number; second: number }) => void;
+    onSplitReset?: (path: string) => void;
+    labelFor?: (path: string) => string | undefined;
+  },
+) {
   const root = useContext(RootContext);
   const t = root.tiling.internal;
-  const rest = omit(props, "class");
+  const rest = omit(props, "class", "onSplitResize", "onSplitReset", "labelFor");
   const [active, setActive] = createSignal<readonly string[]>([]);
   // The borders of the crossing under the pointer, to light them up with it.
   const [hot, setHot] = createSignal<readonly string[]>([]);
@@ -547,9 +574,19 @@ function Handles(props: DivProps) {
   const paths = createMemo(() => (t.max.get() === null ? t.view().handles.map((h) => h.path) : []));
   const handle = (path: string) => t.view().handles.find((h) => h.path === path);
   const sizeOf = (h: { axis: "row" | "col"; box: Rect }) => (h.axis === "row" ? h.box.w : h.box.h) - t.gap;
-  const set = (path: string, ratio: number) => {
+  /** Gives the first side of the split at `path` that many of the `total` pixels the two have, within their least. */
+  const set = (path: string, axis: Axis, first: number, total: number) => {
     const tree = t.saved.now().tree;
-    if (tree !== null) t.commit({ ...t.saved.now(), tree: setRatio(tree, path, ratio) });
+    const min = Math.min(t.minOf(axis), total / 2);
+    const px = Math.round(Math.min(total - min, Math.max(min, first)));
+    if (tree === null || total <= 0) return;
+    t.commit({ ...t.saved.now(), tree: setFirst(tree, path, px, total) });
+    props.onSplitResize?.(path, { first: px, second: total - px });
+  };
+  const reset = (path: string) => {
+    const h = t.viewNow().handles.find((h) => h.path === path);
+    if (props.onSplitReset) props.onSplitReset(path);
+    else if (h) set(path, h.axis, sizeOf(h) / 2, sizeOf(h));
   };
   /** Drags the borders at `paths` (one, or a crossing's) to the pointer, each along its own direction. */
   const drag = (paths: readonly string[], e: PointerEvent) => {
@@ -565,9 +602,8 @@ function Handles(props: DivProps) {
           const h = t.viewNow().handles.find((h) => h.path === path);
           if (!h) continue;
           const size = sizeOf(h);
-          if (size <= 2 * t.minSize) continue;
-          const at = h.axis === "row" ? p.x - h.box.x : p.y - h.box.y;
-          set(path, Math.min(size - t.minSize, Math.max(t.minSize, at - t.gap / 2)) / size);
+          if (size <= 2 * t.minOf(h.axis)) continue;
+          set(path, h.axis, (h.axis === "row" ? p.x - h.box.x : p.y - h.box.y) - t.gap / 2, size);
         }
       },
       () => {
@@ -609,10 +645,11 @@ function Handles(props: DivProps) {
   const nudge = (path: string, e: KeyboardEvent) => {
     const h = handle(path);
     if (!h) return;
-    const by = h.axis === "row" ? (e.key === "ArrowLeft" ? -1 : e.key === "ArrowRight" ? 1 : 0) : e.key === "ArrowUp" ? -1 : e.key === "ArrowDown" ? 1 : 0;
-    if (!by) return;
+    const [back, on] = h.axis === "row" ? ["ArrowLeft", "ArrowRight"] : ["ArrowUp", "ArrowDown"];
+    const by = { [back]: -16, [on]: 16, Home: -Infinity, End: Infinity }[e.key];
+    if (by === undefined) return;
     e.preventDefault();
-    set(path, ((h.axis === "row" ? h.rect.x - h.box.x : h.rect.y - h.box.y) + by * 16) / sizeOf(h));
+    set(path, h.axis, (h.axis === "row" ? h.rect.x - h.box.x : h.rect.y - h.box.y) + by, sizeOf(h));
   };
   /** The first side's share of the split, as a separator's value. */
   const share = (path: string) => {
@@ -638,10 +675,11 @@ function Handles(props: DivProps) {
           onPointerDown={(e) => drag([path], e)}
           onKeyDown={(e) => nudge(path, e)}
           onDblClick={() => {
-            set(path, 0.5);
+            reset(path);
             t.animate();
           }}
           {...rest}
+          aria-label={props.labelFor?.(path) ?? props["aria-label"]}
         />
       )}
     </For>
@@ -656,7 +694,7 @@ function Handles(props: DivProps) {
           onPointerEnter={() => setHot(pathsOf(key))}
           onPointerLeave={() => setHot([])}
           onDblClick={() => {
-            for (const path of pathsOf(key)) set(path, 0.5);
+            for (const path of pathsOf(key)) reset(path);
             t.animate();
           }}
         />

@@ -57,7 +57,7 @@ since they don't inherit the page's.
 | `Tip` | `solid/Tip.tsx` | A tooltip on hover and keyboard focus, with optional shortcut keys |
 | `Swatch` | `solid/Swatch.tsx` | A theme family's light and dark halves |
 | `FamilyListbox` | `solid/FamilyListbox.tsx` | The theme families as a grouped list with swatches |
-| `Tiling` (`.Tile`, `.Grip`, `.Corner`, `.Handles`, `.DropIndicator`), `createTiling` | `solid/Tiling.tsx` | A tiling layout over a split tree (`solid/tilingTree.ts`): tiles moved by direction or by dragging, resized, maximized, floated, hidden, without ever moving in the DOM; the layout and its commands are the caller's `createTiling` state |
+| `Tiling` (`.Tile`, `.Grip`, `.Corner`, `.Handles`, `.DropIndicator`), `createTiling` | `solid/Tiling.tsx` | A tiling layout over a split tree (`solid/tilingTree.ts`): tiles moved by direction or by dragging, resized, maximized, floated, hidden, without ever moving in the DOM, or a layout the caller decides and a reader only resizes (`movable: false`; the embed); the layout and its commands are the caller's `createTiling` state |
 | `AppearancePicker` | `solid/AppearancePicker.tsx` | Color scheme and theme family, with live preview; state is the caller's |
 
 State stays with the caller: components take values and callbacks (`value`/`onChange`, or `AppearancePicker`'s
