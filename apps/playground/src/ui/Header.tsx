@@ -1,5 +1,5 @@
 import { Show, createSignal, onSettled, untrack, useContext } from "solid-js";
-import { DOCS } from "../base";
+import { DOCS, REPO } from "../base";
 import { debugSession } from "../debugSession";
 import { chordKeys, keysFor } from "../keymap";
 import { HOSTING } from "../hosting";
@@ -203,6 +203,9 @@ export function Header() {
       </span>
       <Tip as="a" id="docs" href={DOCS} target="_blank" rel="noopener" tip="Documentation (opens in a new tab)">
         <i class="i-lucide-book-open" aria-hidden="true" /> Docs
+      </Tip>
+      <Tip as="a" id="github" href={REPO} target="_blank" rel="noopener" aria-label="Source code on GitHub" tip="Source code on GitHub (opens in a new tab)">
+        <i class="i-lucide-github" aria-hidden="true" />
       </Tip>
       <Tip id="share" popovertarget="share-menu" tip="Share this project">
         <i class="i-lucide-share-2" aria-hidden="true" /> Share

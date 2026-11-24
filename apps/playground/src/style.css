@@ -1109,9 +1109,9 @@ header { display: flex; gap: 8px; align-items: center; padding: 6px 10px 4px; }
     padding-top: env(titlebar-area-height, 0px);
   }
 }
-header button:not(.select-trigger), #docs, #clear, #request button { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+header button:not(.select-trigger), #docs, #github, #clear, #request button { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 /* By id: the share menu is in the header too, and its items mustn't take this height. */
-#example, #run, #run-more, #local-bun, #debug, #autosave, #watch, #docs, #share, #shortcuts, #settings, #storage, #theme { height: var(--control-height); }
+#example, #run, #run-more, #local-bun, #debug, #autosave, #watch, #docs, #github, #share, #shortcuts, #settings, #storage, #theme { height: var(--control-height); }
 /* Run and its menu (bun install): one control split in two. */
 #run-group { display: inline-flex; }
 #run { border-radius: 6px 0 0 6px; }
@@ -1165,10 +1165,11 @@ header button:not(.select-trigger), #docs, #clear, #request button { display: in
   }
 }
 /* Select triggers (@runbun/ui) style themselves; these rules would override them, since the library's CSS is in a lower layer. */
-header button:not(.select-trigger), #docs, #clear { background: var(--control); color: inherit; border: 1px solid var(--control-border); border-radius: 6px; padding: 0 10px; cursor: pointer; }
-header button:not(.select-trigger):hover, #docs:hover { background: var(--control-hover); }
+header button:not(.select-trigger), #docs, #github, #clear { background: var(--control); color: inherit; border: 1px solid var(--control-border); border-radius: 6px; padding: 0 10px; cursor: pointer; }
+header button:not(.select-trigger):hover, #docs:hover, #github:hover { background: var(--control-hover); }
 /* Docs sits right, before Share; a link styled as the buttons around it. */
 #docs { box-sizing: border-box; margin-left: auto; text-decoration: none; }
+#github { box-sizing: border-box; color: inherit; text-decoration: none; }
 /* Dim only when a button stays disabled a moment (an install, a slow start), so a quick run doesn't flicker. */
 header button { transition: opacity 0.12s; }
 header button:disabled { opacity: 0.5; cursor: default; transition: opacity 0.12s 0.3s; }
